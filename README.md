@@ -1,2 +1,2 @@
 # hhuTOSr
-hhu Teaching Operating System in Rust
+hhu Teaching Operating System written in Rust
