@@ -4,7 +4,7 @@ hhu Teaching Operating System written in Rust.
 Fuer das Bauen des Systems wird Rust nighly benoetigt.
 Installation mit folgendem Befehl:
 
-rustup toolchain install nightly
+`rustup toolchain install nightly`
 
 
 
