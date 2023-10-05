@@ -1,11 +1,8 @@
 # hhuTOSr
-hhu Teaching Operating System written in Rust.
+HHU Teaching Operating System written in Rust.
 
-Fuer das Bauen des Systems wird Rust nighly benoetigt.
-Installation mit folgendem Befehl:
+For building hhuTOSr, a rust nightly toolchain is need. Use the following command to install it:
 
 `rustup toolchain install nightly`
-
-
 
 hhuTOSr is derived from Philipp Oppermann’s [excellent series of blog posts](https://os.phil-opp.com/).

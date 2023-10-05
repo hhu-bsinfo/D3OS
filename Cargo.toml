@@ -1,0 +1,20 @@
+[package]
+edition = "2018"
+name = "hhu_tosr"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/startup.rs"
+
+[dependencies]
+spin = "0.5.2"
+x86_64 = "0.14.2"
+rlibc = "1.0.0"
+tinyrlibc = "0.3.0"
+
+[dependencies.lazy_static]
+version = "1.0"
+features = ["spin_no_std"]
+
