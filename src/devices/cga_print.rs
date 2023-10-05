@@ -29,15 +29,10 @@ pub struct Writer { }
 // Requires only one function 'write_str'
 impl fmt::Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        for byte in s.bytes() {
-			 match byte {
-                // printable ASCII byte or newline
-                0x20..=0x7e | b'\n' => cga::print_byte(byte),
-                
-                // not part of printable ASCII range
-                _ => cga::print_byte(0xfe),
-            }
+        for byte in s.chars() {
+            cga::print_char(byte)
         }
+
         Ok(())
     }
 }

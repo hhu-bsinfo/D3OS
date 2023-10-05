@@ -33,5 +33,4 @@ SECTIONS {
     }
 
     ___KERNEL_DATA_END__ = .;
-
 }
