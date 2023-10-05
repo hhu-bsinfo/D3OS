@@ -1,0 +1,37 @@
+name: build
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          target: x86_64-unknown-linux-gnu
+          components: rust-src
+
+      - uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: make nasm dosfstools mtools xorriso zstd unzip wget
+
+      - name: Build towboot image
+        run: make towboot
+
+      - name: Build limine image
+        run: make limine && wget -O limine-licence.txt https://raw.githubusercontent.com/limine-bootloader/limine/trunk/LICENSE
+
+      - name: Build grub image
+        run: make grub
+
+      - name: Create artifact
+        run: tar -czvf hhuTOSr.tar.gz hhuTOSr-limine.iso hhuTOSr-towboot.img run.sh bios/ovmf/build.sh limine-licence.txt README.md
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: hhuTOSr
+          path: hhuTOSr.tar.gz
