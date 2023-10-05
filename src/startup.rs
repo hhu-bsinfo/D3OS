@@ -30,7 +30,6 @@ use user::aufgabe1::keyboard_demo;
 
 
 fn aufgabe1() {
-   cga::clear();
    text_demo::run();
    keyboard_demo::run();
 }
@@ -38,11 +37,8 @@ fn aufgabe1() {
 
 #[no_mangle]
 pub extern fn startup() {
-
-
-	//cga::clear();
-	
-
+    cga::clear();
+    println!("Welcome to hhuTOSr!");
 
     aufgabe1();
     

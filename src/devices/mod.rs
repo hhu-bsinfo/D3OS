@@ -1,4 +1,3 @@
-
 #[macro_use]
 pub mod cga_print;
 pub mod cga;

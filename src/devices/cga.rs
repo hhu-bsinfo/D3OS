@@ -1,215 +1,151 @@
-/****************************************************************************
- *                                                                          *
- *                                    c g a                                 *
- *                                                                          *
- *--------------------------------------------------------------------------*
- * Beschreibung:    Mit Hilfe dieses Moduls kann man auf den Textbildschirm *
- *                  des PCs zugreifen. Der Zugriff erfolgt direkt auf der   * 
- *                  Hardwareebene, d.h. ueber den Bildschirmspeicher und    *
- *                  den I/O-Ports der Grafikkarte.                          *
- *                                                                          *
- * Autor:           Michael Schoetter, HHU Duesseldorf, 27.12.2021          *
- ****************************************************************************/
-
-
+use rlibc::{memcpy, memset};
+use x86_64::instructions::port::Port;
+use x86_64::instructions::port::PortWriteOnly;
+use crate::devices::cga::Color::{Black, LightGray};
 use crate::kernel::cpu as cpu;
-
 
 // make type comparable, printable and enable copy semantics
 #[allow(dead_code)]   // avoid warnings for unused colors
 #[repr(u8)]           // store each enum variant as an u8
 pub enum Color {
-    Black      = 0,
-    Blue       = 1,
-    Green      = 2,
-    Cyan       = 3,
-    Red        = 4,
-    Pink       = 5,
-    Brown      = 6,
-    LightGray  = 7,
-    DarkGray   = 8,
-    LightBlue  = 9,
+    Black = 0,
+    Blue = 1,
+    Green = 2,
+    Cyan = 3,
+    Red = 4,
+    Pink = 5,
+    Brown = 6,
+    LightGray = 7,
+    DarkGray = 8,
+    LightBlue = 9,
     LightGreen = 10,
-    LightCyan  = 11,
-    LightRed   = 12,
-    LightPink  = 13,
-    Yellow     = 14,
-    White      = 15,
+    LightCyan = 11,
+    LightRed = 12,
+    LightPink = 13,
+    Yellow = 14,
+    White = 15,
 }
 
+pub const CGA_STD_ATTR: u8 = (Color::Black as u8) << 4 | (Color::LightGray as u8);
 
-pub const CGA_STD_ATTR: u8       = (Color::Black as u8) << 4 | (Color::Green as u8);
+const CGA_MEMORY: *mut u8 = 0xb8000 as *mut u8;
+const CGA_ROWS: u16 = 25;
+const CGA_COLUMNS: u16 = 80;
 
-const CGA_BASE_ADDR: u32     = 0xb8000;
-const CGA_ROWS   : u32       = 25;
-const CGA_COLUMNS: u32       = 80;
+const CURSOR_START_INDEX: u8 = 0x0a;
+const CURSOR_END_INDEX: u8 = 0x0b;
+const CURSOR_HIGH_BYTE: u8 = 0x0e;
+const CURSOR_LOW_BYTE: u8 = 0x0f;
 
-const CGA_INDEX_PORT: u16    = 0x3d4;  // select register
-const CGA_DATA_PORT: u16     = 0x3d5;  // read/write register
-const CGA_HIGH_BYTE_CMD: u8  = 14;     // cursor high byte
-const CGA_LOW_BYTE_CMD: u8   = 15;     // cursor high byte
+static mut INDEX_PORT: PortWriteOnly<u8> = PortWriteOnly::new(0x3d4);
+static mut DATA_PORT: Port<u8> = Port::new(0x3d5);
 
-
-/*****************************************************************************
- * Funktion:        clear                                                    *
- *---------------------------------------------------------------------------*
- * Beschreibung:    Lösche den Textbildschirm.                               *
- *****************************************************************************/
 pub fn clear() {
-
-   /* Hier muss Code eingefuegt werden */
-
+    let cga_memory = CGA_MEMORY as *mut u16;
+    for i in 0..(CGA_ROWS * CGA_COLUMNS) {
+        unsafe { cga_memory.add(i as usize).write(0x0700); }
+    }
 }
 
-
-/*****************************************************************************
- * Funktion:        show                                                     *
- *---------------------------------------------------------------------------*
- * Beschreibung:    Anzeige eines Zeichens mit Attribut an einer bestimmten  *
- *                  Stelle auf dem Bildschirm.                               *
- *                                                                           *
- * Parameter:                                                                *
- *      x,y         Position des Zeichens                                    *
- *      character   Das auszugebende Zeichen                                 *
- *      attrib      Attributbyte fuer das Zeichen                            *
- *****************************************************************************/
-pub fn show (x: u32, y: u32, character: char, attrib: u8) {
-    let pos: u32;
-
-    if x>CGA_COLUMNS || y>CGA_ROWS
-    {    
+pub fn show(x: u16, y: u16, character: char, attrib: u8) {
+    if x > CGA_COLUMNS || y > CGA_ROWS {
 		return ; 
     }
     
-    pos = (y * CGA_COLUMNS + x) * 2;
+    let pos = ((y * CGA_COLUMNS + x) * 2) as isize;
 
     unsafe {
-        *((CGA_BASE_ADDR + pos) as *mut u8)     = character as u8;
-        *((CGA_BASE_ADDR + pos + 1) as *mut u8) = attrib;
+        *CGA_MEMORY.offset(pos) = character as u8;
+        *CGA_MEMORY.offset(pos + 1) = attrib;
     }
 }
 
+pub fn getpos() -> (u16, u16) {
+    let low: u8;
+    let high: u8;
 
-/*****************************************************************************
- * Funktion:        getpos                                                   *
- *---------------------------------------------------------------------------*
- * Beschreibung:    Abfragem der Cursorposition                              *
- *                                                                           *
- * Rückgabewerte:   x und y                                                  *
- *****************************************************************************/
-pub fn getpos () -> (u32, u32) {
+    unsafe {
+        INDEX_PORT.write(CURSOR_HIGH_BYTE);
+        high = DATA_PORT.read();
+        INDEX_PORT.write(CURSOR_LOW_BYTE);
+        low = DATA_PORT.read();
+    }
 
-   /* Hier muss Code eingefuegt werden */
-
-   (0,0) // Platzhalter, entfernen und durch sinnvollen Rueckgabewert ersetzen 
+    let pos = (low as u16) | ((high as u16) << 8);
+    return (pos % CGA_COLUMNS, pos / CGA_COLUMNS);
 }
 
+pub fn setpos(x: u16, y: u16) {
+    let pos: u16 = y * CGA_COLUMNS + x;
+    let low: u8 = (pos & 0xff) as u8;
+    let high: u8 = ((pos >> 8) & 0xff) as u8;
 
-/*****************************************************************************
- * Funktion:        setpos                                                   *
- *---------------------------------------------------------------------------*
- * Beschreibung:    Setzen des Cursors in Spalte x und Zeile y.              *
- *****************************************************************************/
-pub fn setpos (x:u32, y:u32) {
-
-   /* Hier muss Code eingefuegt werden */
-
+    unsafe {
+        INDEX_PORT.write(CURSOR_HIGH_BYTE);
+        DATA_PORT.write(high);
+        INDEX_PORT.write(CURSOR_LOW_BYTE);
+        DATA_PORT.write(low);
+    }
 }
 
-
-/*****************************************************************************
- * Funktion:        print_dec                                                *
- *---------------------------------------------------------------------------*
- * Beschreibung:    Ausgabe eines u32 Wertes als Dezimal-Zahl, ohne führende *
- *                  Null, an der aktuellen Cursorposition mit dem Standard-  *
- *                  Attribut.                                                *
- *                                                                           *
- * Parameter:       zahl       auszugebende Hex-Zahl                         *
- *****************************************************************************/
-pub fn print_dec (mut zahl: u32) {
+pub fn print_dec(zahl: u32) {
 
    /* Hier muss Code eingefuegt werden */
 
 }
 
- 
-/*****************************************************************************
- * Funktion:        print_hex                                                *
- *---------------------------------------------------------------------------*
- * Beschreibung:    Ausgabe eines u32 Wertes als Hex-Zahl, ohne führende     *
- *                  Null, an der aktuellen Cursorposition mit dem Standard-  *
- *                  Attribut.                                                *
- *                                                                           *
- * Parameter:       zahl       auszugebende Hex-Zahl                         *
- *****************************************************************************/
-pub fn print_hex (zahl: u32) {
+pub fn print_hex(zahl: u32) {
 
    /* Hier muss Code eingefuegt werden */
 
 }
 
- 
-/*****************************************************************************
- * Funktion:        print_byte                                               *
- *---------------------------------------------------------------------------*
- * Beschreibung:    Ausgabe eines Bytes an aktuellen Cursorposition mit dem  *
- *                  Standard-Attribut. '\n' fuer Zeilenvorschub.             *
- *                                                                           *
- * Parameter:       b       auszugebendes Zeichen                            *
- *****************************************************************************/
-pub fn print_byte (b: u8) {
-
-   /* Hier muss Code eingefuegt werden */
+pub fn print_byte(b: u8) {
 
 }
 
+pub fn print_char(c: char) {
+    let mut pos = getpos();
 
-/*****************************************************************************
- * Funktion:        print_str                                                *
- *---------------------------------------------------------------------------*
- * Beschreibung:    Ausgabe einer Zeichenkette, ab der aktuellen Cursor-     *
- *                  position. '\n' fuer Zeilenvorschub.                      *
- *                                                                           *
- * Parameter:       string      Auszugebende Zeichenkette                    *
- *                  attrib      Attributbyte fuer alle Zeichen der Z.kette   *
- *****************************************************************************/
-pub fn print_str (string: &str, attrib: u8) {
+    if c == '\n' {
+        pos.1 += 1;
+        pos.0 = 0;
+    } else {
+        show(pos.0, pos.1, c, attribute(Black, LightGray));
+        pos.0 += 1;
+    }
 
-   /* Hier muss Code eingefuegt werden */
+    if pos.0 >= CGA_COLUMNS {
+        pos.1 += 1;
+        pos.0 = 0;
+    }
 
+    if pos.1 >= CGA_ROWS {
+        scroll_up();
+        pos.0 = 0;
+        pos.1 = CGA_ROWS - 1;
+    }
+
+    setpos(pos.0, pos.1);
 }
-    
 
-/*****************************************************************************
- * Funktion:        scrollup                                                 *
- *---------------------------------------------------------------------------*
- * Beschreibung:    Verschiebt den Bildschirminhalt um eine Zeile nach oben. *
- *                  Die neue Zeile am unteren Bildrand wird mit Leerzeichen  *
- *                  gefuellt.                                                *
- *****************************************************************************/
-pub fn scrollup () {
-
-   /* Hier muss Code eingefuegt werden */
-
+pub fn print_str(string: &str, attrib: u8) {
+    for c in string.chars() {
+        print_char(c);
+    }
 }
- 
- 
-/*****************************************************************************
- * Funktion:        attribute                                                *
- *---------------------------------------------------------------------------*
- * Beschreibung:    Hilfsfunktion zur Erzeugung eines Attribut-Bytes aus     *
- *                  Hintergrund- und Vordergrundfarbe und der Angabe, ob das *
- *                  Zeichen blinkend darzustellen ist.                       *
- *                                                                           *
- * Parameter:       bg          Background color                             *
- *                  fg          Foreground color                             *
- *                  blink       yes/no                                       *
- *                                                                           *
- * Rückgabewert:    u8          Attribut-Code                                *
- *****************************************************************************/
-pub fn attribute (bg: Color, fg: Color, blink: bool) -> u8 {
 
-   /* Hier muss Code eingefuegt werden */
-   
-   0 // Platzhalter, entfernen und durch sinnvollen Rueckgabewert ersetzen 
+pub fn scroll_up() {
+    unsafe {
+        memcpy(CGA_MEMORY, CGA_MEMORY.offset((CGA_COLUMNS * 2) as isize), (CGA_COLUMNS * (CGA_ROWS - 1) * 2) as usize);
+
+        let last_line = CGA_MEMORY.offset((CGA_COLUMNS * (CGA_ROWS - 1) * 2) as isize) as *mut u16;
+        for i in 0..CGA_COLUMNS {
+            last_line.add(i as usize).write(0x0700);
+        }
+    }
+}
+
+pub fn attribute(bg: Color, fg: Color) -> u8 {
+    (bg as u8) << 4 | (fg as u8)
 }
