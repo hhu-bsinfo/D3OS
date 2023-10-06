@@ -8,8 +8,8 @@ use crate::devices::lfb::LFB;
 // It is thread safe by using 'Mutex'
 static mut WRITER: Mutex<Terminal> = Mutex::new( Terminal::empty() );
 
-pub unsafe fn initialize(addr: u64, pitch: u32, width: u32, height: u32, bpp: u8) {
-    WRITER = Mutex::new(Terminal::new(addr, pitch, width, height, bpp));
+pub fn initialize(addr: u64, pitch: u32, width: u32, height: u32, bpp: u8) {
+    unsafe { WRITER = Mutex::new(Terminal::new(addr, pitch, width, height, bpp)); }
 }
 
 pub fn get_writer() -> &'static Mutex<Terminal> {
