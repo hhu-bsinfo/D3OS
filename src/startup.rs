@@ -1,16 +1,11 @@
 #![feature(ptr_internals)]
 #![feature(const_mut_refs)]
-#![allow(dead_code)]          // avoid warnings 
-#![allow(unused_variables)]   // avoid warnings 
-#![allow(unused_imports)]
-#![allow(unused_macros)]
-#![feature(restricted_std)]
+#![no_std]
 
 extern crate spin; // we need a mutex in devices::cga_print
-extern crate std; // standard lib
-extern crate tinyrlibc; // ensure we have 'strlen', needed to build 'std'
-extern crate rlibc; // ensure we have compiler-builtin-funcs, needed to build 'std'
+extern crate rlibc;
 
+use core::panic::PanicInfo;
 
 // insert other modules
 #[macro_use]   // import macros, too
@@ -20,14 +15,16 @@ mod user;
 mod consts;
 
 use devices::cga;         // shortcut for cga
-use devices::cga_print;   // used to import code needed by println! 
-use devices::keyboard;    // shortcut for keyboard
-
-use kernel::cpu;
+use devices::cga_print;   // used to import code needed by println!
 
 use user::aufgabe1::text_demo;
 use user::aufgabe1::keyboard_demo;
 
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    println!("Panic: {}", info);
+    loop {}
+}
 
 fn aufgabe1() {
    text_demo::run();

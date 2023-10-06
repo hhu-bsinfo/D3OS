@@ -1,8 +1,5 @@
-use rlibc::{memcpy, memset};
-use x86_64::instructions::port::Port;
-use x86_64::instructions::port::PortWriteOnly;
+use x86_64::instructions::port::{Port, PortWriteOnly};
 use crate::devices::cga::Color::{Black, LightGray};
-use crate::kernel::cpu as cpu;
 
 // make type comparable, printable and enable copy semantics
 #[allow(dead_code)]   // avoid warnings for unused colors
@@ -26,14 +23,10 @@ pub enum Color {
     White = 15,
 }
 
-pub const CGA_STD_ATTR: u8 = (Color::Black as u8) << 4 | (Color::LightGray as u8);
-
 const CGA_MEMORY: *mut u8 = 0xb8000 as *mut u8;
 const CGA_ROWS: u16 = 25;
 const CGA_COLUMNS: u16 = 80;
 
-const CURSOR_START_INDEX: u8 = 0x0a;
-const CURSOR_END_INDEX: u8 = 0x0b;
 const CURSOR_HIGH_BYTE: u8 = 0x0e;
 const CURSOR_LOW_BYTE: u8 = 0x0f;
 
@@ -43,7 +36,7 @@ static mut DATA_PORT: Port<u8> = Port::new(0x3d5);
 pub fn clear() {
     let cga_memory = CGA_MEMORY as *mut u16;
     for i in 0..(CGA_ROWS * CGA_COLUMNS) {
-        unsafe { cga_memory.add(i as usize).write(0x0700); }
+        unsafe { cga_memory.offset(i as isize).write(0x0700); }
     }
 }
 
@@ -88,22 +81,6 @@ pub fn setpos(x: u16, y: u16) {
     }
 }
 
-pub fn print_dec(zahl: u32) {
-
-   /* Hier muss Code eingefuegt werden */
-
-}
-
-pub fn print_hex(zahl: u32) {
-
-   /* Hier muss Code eingefuegt werden */
-
-}
-
-pub fn print_byte(b: u8) {
-
-}
-
 pub fn print_char(c: char) {
     let mut pos = getpos();
 
@@ -129,7 +106,7 @@ pub fn print_char(c: char) {
     setpos(pos.0, pos.1);
 }
 
-pub fn print_str(string: &str, attrib: u8) {
+pub fn print_str(string: &str) {
     for c in string.chars() {
         print_char(c);
     }
@@ -137,11 +114,11 @@ pub fn print_str(string: &str, attrib: u8) {
 
 pub fn scroll_up() {
     unsafe {
-        memcpy(CGA_MEMORY, CGA_MEMORY.offset((CGA_COLUMNS * 2) as isize), (CGA_COLUMNS * (CGA_ROWS - 1) * 2) as usize);
+        CGA_MEMORY.copy_from(CGA_MEMORY.offset((CGA_COLUMNS * 2) as isize), (CGA_COLUMNS * (CGA_ROWS - 1) * 2) as usize);
 
         let last_line = CGA_MEMORY.offset((CGA_COLUMNS * (CGA_ROWS - 1) * 2) as isize) as *mut u16;
         for i in 0..CGA_COLUMNS {
-            last_line.add(i as usize).write(0x0700);
+            last_line.offset(i as isize).write(0x0700);
         }
     }
 }
