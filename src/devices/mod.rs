@@ -1,5 +1,6 @@
 #[macro_use]
-pub mod cga_print;
-pub mod cga;
+pub mod terminal;
+pub mod lfb;
 pub mod keyboard;
 pub mod key;
+pub mod fonts;
