@@ -8,34 +8,11 @@
  * Autor:           Michael Schoettner, 11.3.2023                            *
  *****************************************************************************/
 
+#![allow(unused_variables)]
+#![allow(dead_code)]
 
 use core::arch::asm;
-use x86_64::instructions::port::Port;
 use x86_64::instructions::interrupts;
-
-
-
-//
-// Schreibe 1 Byte an den gegebenen Port
-//
-pub fn outb(port: u16, data: u8) {
-	unsafe {
-        let mut port = Port::new(port);
-        port.write(data as u8);
-    }
-}
-
-
-//
-// Lese ein Byte vom gegebenen Port
-//
-pub fn inb(port: u16) -> u8 {
-	unsafe {
-        let mut port = Port::new(port);
-        port.read()
-    }
-}
-
 
 //
 // Pruefe, ob Interrupts erlaubt sind

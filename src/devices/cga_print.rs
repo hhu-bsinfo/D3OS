@@ -29,10 +29,7 @@ pub struct Writer { }
 // Requires only one function 'write_str'
 impl fmt::Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        for byte in s.chars() {
-            cga::print_char(byte)
-        }
-
+        cga::print_str(s);
         Ok(())
     }
 }
