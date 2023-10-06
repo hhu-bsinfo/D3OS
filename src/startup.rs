@@ -18,6 +18,7 @@ use crate::devices::terminal;   // used to import code needed by println!
 
 use user::aufgabe1::text_demo;
 use user::aufgabe1::keyboard_demo;
+use crate::kernel::multiboot;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -25,19 +26,9 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-unsafe fn initialize_lfb(mbi: u64) {
-    let flags = (mbi as *mut u32).read();
-    if flags & 0x1000 == 0 {
-        panic!("System is not using a graphics mode!");
-    }
-
-    let addr = ((mbi + 88) as *mut u64).read();
-    let pitch = ((mbi + 96) as *mut u32).read();
-    let width = ((mbi + 100) as *mut u32).read();
-    let height = ((mbi + 104) as *mut u32).read();
-    let bpp = ((mbi + 108) as *mut u8).read();
-
-    terminal::initialize(addr, pitch, width, height, bpp);
+fn initialize_lfb(mbi: u64) {
+    let fb_info: multiboot::FrameBufferInfo = multiboot::get_tag(mbi, multiboot::TagType::FramebufferInfo);
+    terminal::initialize(fb_info.addr, fb_info.pitch, fb_info.width, fb_info.height, fb_info.bpp);
 }
 
 fn aufgabe1() {
@@ -48,7 +39,7 @@ fn aufgabe1() {
 
 #[no_mangle]
 pub extern fn startup(mbi: u64) {
-    unsafe { initialize_lfb(mbi); }
+    initialize_lfb(mbi);
 
     println!("Welcome to hhuTOSr!");
 
