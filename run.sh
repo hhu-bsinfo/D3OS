@@ -21,7 +21,6 @@ readonly CONST_QEMU_MACHINE_PC="pc"
 readonly CONST_QEMU_CPU="qemu64"
 readonly CONST_QEMU_MACHINE_PC_KVM="pc,accel=kvm,kernel-irqchip=split"
 readonly CONST_QEMU_DEFAULT_RAM="256M"
-readonly CONST_QEMU_BIOS_PC=""
 readonly CONST_QEMU_BIOS_EFI="bios/ovmf/x64/OVMF.fd"
 readonly CONST_QEMU_ARGS="-boot d -vga std -rtc base=localtime -device isa-debug-exit"
 readonly CONST_QEMU_OLD_AUDIO_ARGS="-soundhw pcspk"
@@ -100,17 +99,6 @@ parse_machine() {
   fi
 }
 
-parse_bios() {
-  local bios=$1
-
-  if [ "${bios}" == "true" ]; then
-    QEMU_BIOS="${CONST_QEMU_BIOS_PC}"
-  else
-    printf "Invalid value for parameter 'bios' ('%s')!\\n" "${bios}"
-    exit 1
-  fi
-}
-
 parse_ram() {
   local memory=$1
 
@@ -146,8 +134,6 @@ print_usage() {
         Set the .iso or .img file, which qemu should boot (Default: hhuOS.img)
     -m, --machine
         Set the machine profile, which qemu should emulate ([pc] | [pc-kvm]) (Defualt: pc)
-    -b, --bios
-        Set to true, to use the classic BIOS instead of UEFI
     -r, --ram
         Set the amount of ram, which qemu should use (e.g. 256, 1G, ...) (Default: 128M)
     -c, --cpu
@@ -169,9 +155,6 @@ parse_args() {
       ;;
     -m | --machine)
       parse_machine "$val"
-      ;;
-    -b | --bios)
-      parse_bios "$val"
       ;;
     -r | --ram)
       parse_ram "$val"
@@ -206,11 +189,7 @@ run_qemu() {
     command="${command} -machine ${QEMU_MACHINE}"
   fi
 
-  if [ -n "${QEMU_BIOS}" ]; then
-    command="${command} -bios ${QEMU_BIOS}"
-  fi
-
-  command="${command} -m ${QEMU_RAM} -cpu ${QEMU_CPU} ${QEMU_ARGS} ${QEMU_BOOT_DEVICE} ${QEMU_AUDIO_ARGS}"
+  command="${command} -m ${QEMU_RAM} -cpu ${QEMU_CPU} -bios ${QEMU_BIOS} ${QEMU_ARGS} ${QEMU_BOOT_DEVICE} ${QEMU_AUDIO_ARGS}"
   
   printf "Running: %s\\n" "${command}"
 
