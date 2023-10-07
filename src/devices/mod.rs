@@ -1,5 +1,5 @@
 #[macro_use]
-pub mod terminal;
+pub mod lfb_terminal;
 pub mod lfb;
 pub mod keyboard;
 pub mod key;

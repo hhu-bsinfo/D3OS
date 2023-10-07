@@ -1,2 +1,0 @@
-
-pub mod aufgabe1;

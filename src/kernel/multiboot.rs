@@ -56,24 +56,27 @@ pub struct FrameBufferInfo {
     pub bpp: u8,
 }
 
-pub fn get_tag<T>(mbi: u64, tag_type: TagType) -> T {
+pub unsafe fn get_tag<T>(mbi: u64, tag_type: TagType) -> &'static T {
     let mut addr = mbi + (mem::size_of::<Info>() as u64);
-    let mut tag_ptr = addr as *const TagHeader;
-    let mut tag = unsafe { tag_ptr.read() };
+    let mut tag = addr as *const TagHeader;
 
-    while tag.tag_type != TagType::Terminate {
-        if tag.tag_type == tag_type {
-            unsafe { return (tag_ptr as *const T).read(); }
+    while (*tag).tag_type != TagType::Terminate {
+        if (*tag).tag_type == tag_type {
+            return &*(tag as *const T);
         }
 
-        addr += tag.size as u64;
+        addr += (*tag).size as u64;
         if addr % 8 != 0 {
             addr = (addr / 8) * 8 + 8;
         }
 
-        tag_ptr = addr as *const TagHeader;
-        tag = unsafe { tag_ptr.read() };
+        tag = addr as *const TagHeader;
     }
 
     panic!("Multiboot: Tag with type [{}] not found!", tag_type as u32);
+}
+
+pub unsafe fn get_string(mbi: u64, tag_type: TagType) -> *const u8 {
+    let header: &TagHeader = get_tag::<TagHeader>(mbi, tag_type);
+    return ((header as *const TagHeader) as *const u8).offset(mem::size_of::<TagHeader>() as isize);
 }
