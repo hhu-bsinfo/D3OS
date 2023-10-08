@@ -2,8 +2,11 @@
 
 extern crate spin; // we need a mutex in devices::cga_print
 extern crate rlibc;
+extern crate tinyrlibc;
+extern crate alloc;
 
 use core::panic::PanicInfo;
+use linked_list_allocator::LockedHeap;
 
 // insert other modules
 #[macro_use]   // import macros, too
@@ -14,6 +17,9 @@ mod consts;
 
 use crate::devices::lfb_terminal;
 use crate::kernel::multiboot;
+
+#[global_allocator]
+static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -28,6 +34,7 @@ unsafe fn initialize_lfb(mbi: u64) {
 
 #[no_mangle]
 pub unsafe extern fn startup(mbi: u64) {
+    ALLOCATOR.lock().init(0x300000 as *mut u8, 1024 * 1024);
     initialize_lfb(mbi);
 
     println!("Welcome to hhuTOSr!");

@@ -1,13 +1,13 @@
 use core::fmt;
 use core::fmt::Write;
 use spin::Mutex;
-use crate::devices::fonts::font_8x8::{CHAR_HEIGHT, CHAR_WIDTH};
+use crate::devices::lfb;
 use crate::devices::lfb::LFB;
 use crate::library::color::{Color, BLACK, INVISIBLE, WHITE};
 
 // The global writer that can used as an interface from other modules
 // It is thread safe by using 'Mutex'
-static mut WRITER: Mutex<Terminal> = Mutex::new( Terminal::empty() );
+static mut WRITER: Mutex<Terminal> = Mutex::new(Terminal::empty());
 
 pub fn initialize(addr: u64, pitch: u32, width: u32, height: u32, bpp: u8) {
     unsafe { WRITER = Mutex::new(Terminal::new(addr, pitch, width, height, bpp)); }
@@ -33,20 +33,20 @@ impl Terminal {
     pub fn new(addr: u64, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         let lfb = LFB::new(addr, pitch, width, height, bpp);
         lfb.clear();
-        lfb.draw_char(0, 0, &WHITE, &BLACK, char::from(219));
+        lfb.draw_char(0, 0, &WHITE, &BLACK, '_');
 
-        Self { lfb , columns: width / CHAR_WIDTH, rows: height / CHAR_HEIGHT, x: 0, y: 0 }
+        Self { lfb , columns: width / lfb::CHAR_WIDTH, rows: height / lfb::CHAR_HEIGHT, x: 0, y: 0 }
     }
 
     pub fn print_char(&mut self, c: char, fg_color: &Color, bg_color: &Color) {
         if c == '\n' {
             // Clear cursor
-            self.lfb.draw_char(self.x * CHAR_WIDTH, self.y * CHAR_HEIGHT, &INVISIBLE, bg_color, ' ');
+            self.lfb.draw_char(self.x * lfb::CHAR_WIDTH, self.y * lfb::CHAR_HEIGHT, &INVISIBLE, bg_color, ' ');
 
             self.y += 1;
             self.x = 0;
         } else {
-            self.lfb.draw_char(self.x * CHAR_WIDTH, self.y * CHAR_HEIGHT, fg_color, bg_color, c);
+            self.lfb.draw_char(self.x * lfb::CHAR_WIDTH, self.y * lfb::CHAR_HEIGHT, fg_color, bg_color, c);
             self.x += 1;
         }
 
@@ -56,13 +56,13 @@ impl Terminal {
         }
 
         if self.y >= self.rows {
-            self.lfb.scroll_up(CHAR_HEIGHT);
+            self.lfb.scroll_up(lfb::CHAR_HEIGHT as u32);
             self.x = 0;
             self.y = self.rows - 1;
         }
 
         // Draw cursor
-        self.lfb.draw_char(self.x * CHAR_WIDTH, self.y * CHAR_HEIGHT, fg_color, bg_color, char::from(219));
+        self.lfb.draw_char(self.x * lfb::CHAR_WIDTH, self.y * lfb::CHAR_HEIGHT, fg_color, bg_color, '_');
     }
 }
 

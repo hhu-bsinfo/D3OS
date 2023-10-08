@@ -1,4 +1,4 @@
-use crate::devices::fonts::font_8x8::{CHAR_HEIGHT, CHAR_WIDTH, get_char};
+use font8x8::{BASIC_FONTS, UnicodeFonts};
 use crate::library::color::Color;
 
 pub struct LFB {
@@ -9,6 +9,9 @@ pub struct LFB {
 
     pixel_drawer: PixelDrawer
 }
+
+pub const CHAR_HEIGHT: u32 = 8;
+pub const CHAR_WIDTH: u32 = 8;
 
 impl LFB {
     pub const fn empty() -> Self {
@@ -48,27 +51,24 @@ impl LFB {
     }
 
     pub fn draw_char(&self, x: u32, y: u32, fg_color: &Color, bg_color: &Color, c: char) {
-        let width_byte = if CHAR_WIDTH % 8 == 0 { CHAR_WIDTH / 8 } else { CHAR_WIDTH / 8 + 1 };
-        let bitmap = get_char(c);
-        let mut index = 0;
+        if let Some(bitmap) = BASIC_FONTS.get(c) {
+            let mut x_offset = 0;
+            let mut y_offset = 0;
 
-        for offset_y in 0..CHAR_HEIGHT {
-            let mut pos_x = x;
-            let pos_y = y + offset_y;
+            for row in &bitmap {
+                for col in 0..8 {
+                    let color = match *row & 1 << col {
+                        0 => bg_color,
+                        _ => fg_color
+                    };
 
-            for _xb in 0..width_byte {
-                for src in (0..8).rev() {
-                    if ((1 << src) & bitmap[index]) != 0 {
-                        self.draw_pixel(pos_x, pos_y, fg_color);
-                    } else {
-                        self.draw_pixel(pos_x, pos_y, bg_color);
-                    }
-
-                    pos_x += 1;
+                    self.draw_pixel(x + x_offset, y + y_offset, &color);
+                    x_offset += 1;
                 }
-            }
 
-            index += 1;
+                x_offset = 0;
+                y_offset += 1
+            }
         }
     }
 

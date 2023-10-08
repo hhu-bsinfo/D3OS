@@ -142,6 +142,10 @@ impl Color {
         Self { red: r as u8, green: g as u8, blue: b as u8, alpha: self.alpha }
     }
 
+    pub const fn with_alpha(&self, alpha: u8) -> Self {
+        Self { red: self.red, green: self.green, blue: self.blue, alpha }
+    }
+
     pub fn blend(&self, color: &Color) -> Color {
         if color.alpha == 0 {
             return Self { red: self.red, green: self.green, blue: self.blue, alpha: self.alpha };
