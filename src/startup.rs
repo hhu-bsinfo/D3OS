@@ -7,6 +7,7 @@ extern crate alloc;
 
 use core::panic::PanicInfo;
 use linked_list_allocator::LockedHeap;
+use multiboot2::{BootInformation, BootInformationHeader};
 
 // insert other modules
 #[macro_use]   // import macros, too
@@ -16,7 +17,6 @@ mod library;
 mod consts;
 
 use crate::devices::lfb_terminal;
-use crate::kernel::multiboot;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -27,25 +27,21 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-unsafe fn initialize_lfb(mbi: u64) {
-    let fb_info: &multiboot::FrameBufferInfo = multiboot::get_tag(mbi, multiboot::TagType::FramebufferInfo);
-    lfb_terminal::initialize(fb_info.addr, fb_info.pitch, fb_info.width, fb_info.height, fb_info.bpp);
-}
-
 #[no_mangle]
 pub unsafe extern fn startup(mbi: u64) {
+    // Get multiboot information
+    let multiboot = BootInformation::load(mbi as *const BootInformationHeader).unwrap();
+    let bootloader_name = multiboot.boot_loader_name_tag().unwrap();
+
+    // Initialize framebuffer
+    let fb_info = multiboot.framebuffer_tag().unwrap().unwrap();
+    lfb_terminal::initialize(fb_info.address(), fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+
+    // Initialize memory allocation
     ALLOCATOR.lock().init(0x300000 as *mut u8, 1024 * 1024);
-    initialize_lfb(mbi);
 
     println!("Welcome to hhuTOSr!");
-
-    print!("Bootloader: ");
-    let mut bootloader_name = multiboot::get_string(mbi, multiboot::TagType::BootLoaderName);
-    while bootloader_name.read() != 0 {
-        print!("{}", char::from(bootloader_name.read()));
-        bootloader_name = bootloader_name.offset(1);
-    }
-    println!("");
+    println!("Bootloader: {}", bootloader_name.name().unwrap());
     
     loop{}
 }
