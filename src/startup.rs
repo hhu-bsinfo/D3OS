@@ -8,15 +8,18 @@ extern crate alloc;
 use core::panic::PanicInfo;
 use linked_list_allocator::LockedHeap;
 use multiboot2::{BootInformation, BootInformationHeader};
+use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
+use pc_keyboard::layouts::{AnyLayout, De105Key};
+use crate::device::ps2;
 
 // insert other modules
-#[macro_use]   // import macros, too
-mod devices;
+mod device;
 mod kernel;
+#[macro_use]
 mod library;
 mod consts;
 
-use crate::devices::lfb_terminal;
+use crate::library::graphic::lfb_terminal;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -33,16 +36,36 @@ pub unsafe extern fn startup(mbi: u64) {
     let multiboot = BootInformation::load(mbi as *const BootInformationHeader).unwrap();
     let bootloader_name = multiboot.boot_loader_name_tag().unwrap();
 
+    // Initialize memory allocation
+    ALLOCATOR.lock().init(0x300000 as *mut u8, 1024 * 1024);
+
     // Initialize framebuffer
     let fb_info = multiboot.framebuffer_tag().unwrap().unwrap();
     lfb_terminal::initialize(fb_info.address(), fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
-    // Initialize memory allocation
-    ALLOCATOR.lock().init(0x300000 as *mut u8, 1024 * 1024);
+    // Initialize keyboard
+    ps2::init_controller();
+    ps2::init_keyboard();
 
     println!("Welcome to hhuTOSr!");
     println!("Bootloader: {}", bootloader_name.name().unwrap());
-    
-    loop{}
+
+    let mut controller = ps2::CONTROLLER.lock();
+    let mut keyboard = Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore);
+
+    loop {
+        if let Ok(scancode) = controller.read_data() {
+            if let Ok(Some(event)) = keyboard.add_byte(scancode) {
+                if let Some(key) = keyboard.process_keyevent(event) {
+                    match key {
+                        DecodedKey::Unicode(c) => {
+                            print!("{}", c);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
 }
 

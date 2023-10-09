@@ -1,5 +1,5 @@
-use font8x8::{BASIC_FONTS, UnicodeFonts};
-use crate::library::color::Color;
+use font8x8::{BASIC_FONTS, BLOCK_FONTS, BOX_FONTS, GREEK_FONTS, HIRAGANA_FONTS, LATIN_FONTS, MISC_FONTS, SGA_FONTS, UnicodeFonts};
+use crate::library::graphic::color::Color;
 
 pub struct LFB {
     addr: u64,
@@ -50,8 +50,31 @@ impl LFB {
         unsafe { (self.pixel_drawer)(self.addr, self.pitch, x, y, color) };
     }
 
-    pub fn draw_char(&self, x: u32, y: u32, fg_color: &Color, bg_color: &Color, c: char) {
-        if let Some(bitmap) = BASIC_FONTS.get(c) {
+    pub fn draw_char(&self, x: u32, y: u32, fg_color: &Color, bg_color: &Color, c: char) -> bool {
+        let mut glyph = BASIC_FONTS.get(c);
+        if glyph.is_none() {
+            glyph = LATIN_FONTS.get(c);
+            if glyph.is_none() {
+                glyph = BLOCK_FONTS.get(c);
+                if glyph.is_none() {
+                    glyph = BOX_FONTS.get(c);
+                    if glyph.is_none() {
+                        glyph = MISC_FONTS.get(c);
+                        if glyph.is_none() {
+                            glyph = GREEK_FONTS.get(c);
+                            if glyph.is_none() {
+                                glyph = HIRAGANA_FONTS.get(c);
+                                if glyph.is_none() {
+                                    glyph = SGA_FONTS.get(c);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(bitmap) = glyph {
             let mut x_offset = 0;
             let mut y_offset = 0;
 
@@ -67,9 +90,13 @@ impl LFB {
                 }
 
                 x_offset = 0;
-                y_offset += 1
+                y_offset += 1;
             }
+
+            return true;
         }
+
+        return false;
     }
 
     pub fn clear(&self) {

@@ -1,12 +1,13 @@
-#*****************************************************************************
-#* ACHTUNG:         Ein falsch angegebenes Laufwerk kann dazu fuehren, dass  *
-#*                  Daten auf dem spezifizierten Laufwerk verloren gehen!    *
-#*                  Nicht mit root-Rechten ausfuehren!                       *
-#*                                                                           *
-#* Autor:           Michael Schoettner, HHU, 12.03.2023                      *
-#*****************************************************************************/
+ifndef ($(BUILD_TYPE))
+	BUILD_TYPE := debug
+endif
+
+ifeq ($(BUILD_TYPE),release)
+	CARGO_BUILD_TYPE := --release
+endif
+
 TARGET := hhu_tosr
-RUST_OBJ := target/$(TARGET)/debug/lib$(TARGET).a
+RUST_OBJ := target/$(TARGET)/$(BUILD_TYPE)/lib$(TARGET).a
 
 ASM = nasm
 ASMOBJFORMAT = elf64
@@ -53,7 +54,7 @@ $(OBJDIR)/_%.o : %.asm
 # --------------------------------------------------------------------------
 # Regeln zum Compilieren der Rust-Dateien 
 rust_objs:
-	@RUST_TARGET_PATH=$(shell pwd) cargo build -Z build-std=std,panic_abort --target $(TARGET)
+	@RUST_TARGET_PATH=$(shell pwd) cargo build -Z build-std=std,panic_abort --target $(TARGET) $(CARGO_BUILD_TYPE)
 
 # --------------------------------------------------------------------------
 # System binden
