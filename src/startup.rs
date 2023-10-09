@@ -8,6 +8,7 @@ extern crate alloc;
 use core::panic::PanicInfo;
 use linked_list_allocator::LockedHeap;
 use multiboot2::{BootInformation, BootInformationHeader};
+use multiboot2::MemoryAreaType::{Available};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use crate::device::ps2;
@@ -36,12 +37,22 @@ pub unsafe extern fn startup(mbi: u64) {
     let multiboot = BootInformation::load(mbi as *const BootInformationHeader).unwrap();
     let bootloader_name = multiboot.boot_loader_name_tag().unwrap();
 
+    // Initialize memory management
+    let memory_info = multiboot.memory_map_tag().unwrap();
+    let mut heap_area = memory_info.memory_areas().get(0).unwrap();
+
+    for area in memory_info.memory_areas() {
+        if area.typ() == Available && area.size() > heap_area.size() {
+            heap_area = area;
+        }
+    }
+
     // Initialize memory allocation
-    ALLOCATOR.lock().init(0x300000 as *mut u8, 1024 * 1024);
+    ALLOCATOR.lock().init(heap_area.start_address() as *mut u8, (heap_area.end_address() - heap_area.start_address()) as usize);
 
     // Initialize framebuffer
     let fb_info = multiboot.framebuffer_tag().unwrap().unwrap();
-    lfb_terminal::initialize(fb_info.address(), fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+    lfb_terminal::initialize(fb_info.address() as * mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
     // Initialize keyboard
     ps2::init_controller();
