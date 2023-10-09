@@ -1,9 +1,9 @@
 use core::fmt;
 use core::fmt::Write;
 use spin::Mutex;
-use crate::devices::lfb;
-use crate::devices::lfb::LFB;
-use crate::library::color::{Color, BLACK, INVISIBLE, WHITE};
+use crate::library::graphic::{color, lfb};
+use crate::library::graphic::color::Color;
+use crate::library::graphic::lfb::LFB;
 
 // The global writer that can used as an interface from other modules
 // It is thread safe by using 'Mutex'
@@ -16,6 +16,8 @@ pub fn initialize(addr: u64, pitch: u32, width: u32, height: u32, bpp: u8) {
 pub fn get_writer() -> &'static Mutex<Terminal> {
     unsafe { &WRITER }
 }
+
+const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) { cursor } else { '_' };
 
 pub struct Terminal {
     lfb: LFB,
@@ -33,7 +35,7 @@ impl Terminal {
     pub fn new(addr: u64, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         let lfb = LFB::new(addr, pitch, width, height, bpp);
         lfb.clear();
-        lfb.draw_char(0, 0, &WHITE, &BLACK, '_');
+        lfb.draw_char(0, 0, &color::WHITE, &color::BLACK, CURSOR);
 
         Self { lfb , columns: width / lfb::CHAR_WIDTH, rows: height / lfb::CHAR_HEIGHT, x: 0, y: 0 }
     }
@@ -41,13 +43,14 @@ impl Terminal {
     pub fn print_char(&mut self, c: char, fg_color: &Color, bg_color: &Color) {
         if c == '\n' {
             // Clear cursor
-            self.lfb.draw_char(self.x * lfb::CHAR_WIDTH, self.y * lfb::CHAR_HEIGHT, &INVISIBLE, bg_color, ' ');
+            self.lfb.draw_char(self.x * lfb::CHAR_WIDTH, self.y * lfb::CHAR_HEIGHT, &color::INVISIBLE, bg_color, ' ');
 
             self.y += 1;
             self.x = 0;
         } else {
-            self.lfb.draw_char(self.x * lfb::CHAR_WIDTH, self.y * lfb::CHAR_HEIGHT, fg_color, bg_color, c);
-            self.x += 1;
+            if self.lfb.draw_char(self.x * lfb::CHAR_WIDTH, self.y * lfb::CHAR_HEIGHT, fg_color, bg_color, c) {
+                self.x += 1;
+            }
         }
 
         if self.x >= self.columns {
@@ -56,13 +59,13 @@ impl Terminal {
         }
 
         if self.y >= self.rows {
-            self.lfb.scroll_up(lfb::CHAR_HEIGHT as u32);
+            self.lfb.scroll_up(lfb::CHAR_HEIGHT);
             self.x = 0;
             self.y = self.rows - 1;
         }
 
         // Draw cursor
-        self.lfb.draw_char(self.x * lfb::CHAR_WIDTH, self.y * lfb::CHAR_HEIGHT, fg_color, bg_color, '_');
+        self.lfb.draw_char(self.x * lfb::CHAR_WIDTH, self.y * lfb::CHAR_HEIGHT, fg_color, bg_color, CURSOR);
     }
 }
 
@@ -72,7 +75,7 @@ impl Terminal {
 impl Write for Terminal {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for c in s.chars() {
-            self.print_char(c, &WHITE, &BLACK);
+            self.print_char(c, &color::WHITE, &color::BLACK);
         }
 
         Ok(())
