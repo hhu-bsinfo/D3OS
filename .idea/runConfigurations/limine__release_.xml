@@ -1,0 +1,8 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="limine (release)" type="MAKEFILE_TARGET_RUN_CONFIGURATION" factoryName="Makefile">
+    <makefile filename="$PROJECT_DIR$/Makefile" target="limine" workingDirectory="" arguments="BUILD_TYPE=release">
+      <envs />
+    </makefile>
+    <method v="2" />
+  </configuration>
+</component>
