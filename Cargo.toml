@@ -3,6 +3,7 @@ edition = "2021"
 name = "hhu_tosr"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+build = "build.rs"
 
 [lib]
 crate-type = ["staticlib"]
@@ -19,3 +20,8 @@ linked_list_allocator = "0.10.5"
 multiboot2 = "0.19.0"
 ps2 = "0.2.0"
 pc-keyboard = "0.7.0"
+anstyle-parse = "0.2.2"
+chrono = { version = "0.4.31", default-features = false, features = ["alloc"] }
+
+[build-dependencies]
+built = { version = "0.7.0", features = ["chrono", "git2"] }

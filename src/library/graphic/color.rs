@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use core::marker::Copy;
+
 /**
  * Convert RGB-colors into their 1-, 2-, 4-, 8-, 15-, 16-, 24-, and 32-Bit representations.
  * Provides the possibility to blend to transparent colors.
@@ -41,6 +43,14 @@ pub const BLUE: Color = Color { red: 0, green: 0, blue: 170, alpha: 255 };
 pub const MAGENTA: Color = Color { red: 170, green: 0, blue: 170, alpha: 255 };
 pub const CYAN: Color = Color { red: 0, green: 170, blue: 170, alpha: 255 };
 pub const WHITE: Color = Color { red: 170, green: 170, blue: 170 , alpha: 255 };
+
+impl Clone for Color {
+    fn clone(&self) -> Self {
+        Self { red: self.red, green: self.green, blue: self.blue, alpha: self.alpha }
+    }
+}
+
+impl Copy for Color {}
 
 impl Color {
     pub const fn from_rgb(rgb: u32, bpp: u8) -> Color {
@@ -86,26 +96,6 @@ impl Color {
         Self { red, green, blue, alpha: 0 }
     }
 
-    pub const fn bright(&self) -> Color {
-        let mut r: u16 = (self.red + BRIGHTNESS_SHIFT) as u16;
-        let mut g: u16 = (self.green + BRIGHTNESS_SHIFT) as u16;
-        let mut b: u16 = (self.blue + BRIGHTNESS_SHIFT) as u16;
-
-        if r > self.red as u16 {
-            r = 0xff;
-        }
-
-        if g > self.green as u16 {
-            g = 0xff;
-        }
-
-        if b > self.blue as u16 {
-            b = 0xff;
-        }
-
-        Self { red: r as u8, green: g as u8, blue: b as u8, alpha: self.alpha }
-    }
-
     pub const fn rgb_32(&self) -> u32 {
         ((self.alpha as u32) << 24) | ((self.red as u32) << 16) | ((self.green as u32) << 8) | ((self.blue) as u32)
     }
@@ -122,10 +112,30 @@ impl Color {
         ((self.blue as u16) >> 3) | (((self.green as u16) >> 3) << 5) | (((self.red as u16) >> 3) << 10)
     }
 
+    pub const fn bright(&self) -> Color {
+        let mut r: u16 = self.red as u16 + BRIGHTNESS_SHIFT as u16;
+        let mut g: u16 = self.green as u16 + BRIGHTNESS_SHIFT as u16;
+        let mut b: u16 = self.blue as u16 + BRIGHTNESS_SHIFT as u16;
+
+        if r > 0xff {
+            r = 0xff;
+        }
+
+        if g > 0xff {
+            g = 0xff;
+        }
+
+        if b > 0xff {
+            b = 0xff;
+        }
+
+        Self { red: r as u8, green: g as u8, blue: b as u8, alpha: self.alpha }
+    }
+
     pub const fn dim(&self) -> Color {
-        let mut r: i16 = (self.red - BRIGHTNESS_SHIFT) as i16;
-        let mut g: i16 = (self.green - BRIGHTNESS_SHIFT) as i16;
-        let mut b: i16 = (self.blue - BRIGHTNESS_SHIFT) as i16;
+        let mut r: i16 = self.red as i16 - BRIGHTNESS_SHIFT as i16;
+        let mut g: i16 = self.green as i16 - BRIGHTNESS_SHIFT as i16;
+        let mut b: i16 = self.blue as i16 - BRIGHTNESS_SHIFT as i16;
 
         if r < 0 {
             r = 0;

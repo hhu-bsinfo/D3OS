@@ -54,7 +54,7 @@ $(OBJDIR)/_%.o : %.asm
 # --------------------------------------------------------------------------
 # Regeln zum Compilieren der Rust-Dateien 
 rust_objs:
-	@RUST_TARGET_PATH=$(shell pwd) cargo build -Z build-std=std,panic_abort --target $(TARGET) $(CARGO_BUILD_TYPE)
+	@RUST_TARGET_PATH=$(shell pwd) CARGO_CFG_TARGET_FAMILY="$(TARGET)" cargo build -Z build-std=std,panic_abort --target $(TARGET) $(CARGO_BUILD_TYPE)
 
 # --------------------------------------------------------------------------
 # System binden

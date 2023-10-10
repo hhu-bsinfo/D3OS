@@ -5,7 +5,10 @@ extern crate rlibc;
 extern crate tinyrlibc;
 extern crate alloc;
 
+use alloc::format;
+use alloc::string::ToString;
 use core::panic::PanicInfo;
+use chrono::DateTime;
 use linked_list_allocator::LockedHeap;
 use multiboot2::{BootInformation, BootInformationHeader};
 use multiboot2::MemoryAreaType::{Available};
@@ -27,15 +30,20 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+    unsafe { lfb_terminal::WRITER.force_unlock(); };
     println!("Panic: {}", info);
     loop {}
+}
+
+pub mod built_info {
+    // The file has been placed there by the build script.
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
 #[no_mangle]
 pub unsafe extern fn startup(mbi: u64) {
     // Get multiboot information
     let multiboot = BootInformation::load(mbi as *const BootInformationHeader).unwrap();
-    let bootloader_name = multiboot.boot_loader_name_tag().unwrap();
 
     // Initialize memory management
     let memory_info = multiboot.memory_map_tag().unwrap();
@@ -58,8 +66,25 @@ pub unsafe extern fn startup(mbi: u64) {
     ps2::init_controller();
     ps2::init_keyboard();
 
-    println!("Welcome to hhuTOSr!");
-    println!("Bootloader: {}", bootloader_name.name().unwrap());
+    let version = format!("v{} ({})", built_info::PKG_VERSION, built_info::PROFILE);
+    let date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
+        Ok(date_time) => date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+        Err(_) => "Unknown".to_string()
+    };
+    let git_ref = match built_info::GIT_HEAD_REF {
+        Some(str) => str,
+        None => "Unknown"
+    };
+    let git_commit = match built_info::GIT_COMMIT_HASH_SHORT {
+        Some(str) => str,
+        None => "Unknown"
+    };
+    let bootloader_name = match multiboot.boot_loader_name_tag() {
+        Some(tag) => if tag.name().is_ok() { tag.name().unwrap() } else { "Unknown" },
+        None => "Unknown"
+    };
+
+    println!(include_str!("banner.txt"), version, date, git_ref, git_commit, bootloader_name);
 
     let mut controller = ps2::CONTROLLER.lock();
     let mut keyboard = Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore);
