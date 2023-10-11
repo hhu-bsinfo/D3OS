@@ -25,6 +25,7 @@ anstyle-parse = "0.2.2"
 chrono = { version = "0.4.31", default-features = false, features = ["alloc"] }
 intrusive-collections = "0.9.6"
 nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
+acpi = "5.0.0"
 
 [build-dependencies]
 built = { version = "0.7.0", features = ["chrono", "git2"] }

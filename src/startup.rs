@@ -1,3 +1,4 @@
+#![feature(ptr_from_ref)]
 #![no_std]
 
 extern crate spin; // we need a mutex in devices::cga_print
@@ -7,10 +8,11 @@ extern crate alloc;
 
 use alloc::format;
 use alloc::string::ToString;
+use core::mem::size_of;
 use core::panic::PanicInfo;
 use chrono::DateTime;
 use linked_list_allocator::LockedHeap;
-use multiboot2::{BootInformation, BootInformationHeader};
+use multiboot2::{BootInformation, BootInformationHeader, Tag};
 use multiboot2::MemoryAreaType::{Available};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
@@ -59,6 +61,15 @@ pub unsafe extern fn startup(mbi: u64) {
     // Initialize memory allocation
     ALLOCATOR.lock().init(heap_area.start_address() as *mut u8, (heap_area.end_address() - heap_area.start_address()) as usize);
 
+    // Initialize interrupts
+    pic::init();
+    int_disp::init();
+    cpu::enable_int();
+
+    // Initialize timer;
+    pit::init();
+    pit::plugin();
+
     // Initialize framebuffer
     let fb_info = multiboot.framebuffer_tag().unwrap().unwrap();
     lfb_terminal::initialize(fb_info.address() as * mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
@@ -83,14 +94,18 @@ pub unsafe extern fn startup(mbi: u64) {
 
     println!(include_str!("banner.txt"), version, date, git_ref, git_commit, bootloader_name);
 
-    // Initialize interrupts
-    pic::init();
-    int_disp::init();
-    cpu::enable_int();
+    // Initialize ACPI tables
+    let rsdp_addr: usize = if let Some(rsdp_tag) = multiboot.rsdp_v2_tag() {
+        core::ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
+    } else if let Some(rsdp_tag) = multiboot.rsdp_v1_tag() {
+        core::ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
+    } else {
+        panic!("ACPI not available!");
+    };
 
-    // Initialize timer;
-    pit::init();
-    pit::plugin();
+    kernel::acpi::init(rsdp_addr);
+    let tables = kernel::acpi::get_tables();
+    println!("ACPI revision: {}", tables.revision());
 
     // Initialize keyboard
     ps2::init_controller();
@@ -98,6 +113,7 @@ pub unsafe extern fn startup(mbi: u64) {
     ps2::plugin_keyboard();
 
     let mut decoder = Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore);
+    println!("Boot time: {} ms", pit::get_systime_ms());
 
     loop {
         let scancode = ps2::get_keyboard().lock().pop_scancode();
