@@ -88,11 +88,13 @@ multiboot_header:
     align 8
     dw MULTIBOOT_TAG_INFORMATION_REQUEST
     dw 0
-    dd 24
+    dd 32
     dd MULTIBOOT_REQUEST_BOOT_COMMAND_LINE
     dd MULTIBOOT_REQUEST_MODULE
     dd MULTIBOOT_REQUEST_MEMORY_MAP
     dd MULTIBOOT_REQUEST_FRAMEBUFFER_INFO
+    dd MULTIBOOT_REQUEST_ACPI_OLD_RSDP
+    dd MULTIBOOT_REQUEST_ACPI_NEW_RSDP
 
     ; Information request tag (optional)
     align 8

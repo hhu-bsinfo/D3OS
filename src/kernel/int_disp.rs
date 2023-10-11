@@ -87,6 +87,7 @@ static INT_VECTORS: Mutex<IntVectors> = Mutex::new(IntVectors { map: Vec::new() 
 #[no_mangle]
 pub extern "C" fn int_disp(int_number: u32) {
     if let Ok(vector) = InterruptVector::try_from(int_number as u8) {
+        unsafe { INT_VECTORS.force_unlock(); }
         let vectors = INT_VECTORS.lock();
         let isr_list = vectors.map.get(vector as usize);
         isr_list.unwrap().iter().for_each(|isr| {
