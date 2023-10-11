@@ -1,8 +1,63 @@
+use alloc::boxed::Box;
+use lazy_static::lazy_static;
+use nolock::queues::DequeueError;
+use nolock::queues::spsc::bounded;
+use nolock::queues::spsc::bounded::{BoundedReceiver, BoundedSender};
 use ps2::{Controller, KeyboardType};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use spin::Mutex;
+use crate::device::pic;
+use crate::kernel::int_disp;
+use crate::kernel::int_disp::InterruptVector;
+use crate::kernel::isr::ISR;
 
-pub static CONTROLLER: Mutex<Controller> = Mutex::new(unsafe { Controller::new() });
+static CONTROLLER: Mutex<Controller> = Mutex::new(unsafe { Controller::new() });
+
+lazy_static! {
+static ref KEYBOARD: Mutex<Keyboard> = Mutex::new(Keyboard::new(128));
+}
+
+pub fn get_keyboard() -> &'static Mutex<Keyboard> {
+    return &KEYBOARD;
+}
+
+pub struct Keyboard {
+    buffer: (BoundedReceiver<u8>, BoundedSender<u8>)
+}
+
+#[derive(Default)]
+pub struct KeyboardISR;
+
+impl Keyboard {
+    fn new(buffer_cap: usize) -> Self {
+        Self { buffer: bounded::queue::<u8>(buffer_cap) }
+    }
+
+    pub fn pop_scancode(&mut self) -> u8 {
+        loop {
+            match self.buffer.0.try_dequeue() {
+                Ok(code) => return code,
+                Err(DequeueError::Closed) => panic!("Keyboard: Queue is closed!"),
+                Err(_) => {}
+            }
+        }
+    }
+}
+
+impl ISR for KeyboardISR {
+    fn trigger(&self) {
+        if let Some(mut controller) = CONTROLLER.try_lock() {
+            if let Ok(data) = controller.read_data() {
+                unsafe {
+                    KEYBOARD.force_unlock();
+                    KEYBOARD.lock().buffer.1.try_enqueue(data).expect("Keyboard: Buffer is full!");
+                }
+            }
+        } else {
+            panic!("Keyboard: Controller is locked during interrupt!")
+        }
+    }
+}
 
 pub fn init_controller() {
     let mut controller = CONTROLLER.lock();
@@ -73,4 +128,9 @@ pub fn init_keyboard() {
     controller.keyboard().set_typematic_rate_and_delay(0).unwrap();
     controller.keyboard().set_leds(KeyboardLedFlags::empty()).unwrap();
     controller.keyboard().enable_scanning().unwrap();
+}
+
+pub fn plugin_keyboard() {
+    int_disp::assign(InterruptVector::Keyboard, Box::new(KeyboardISR::default()));
+    pic::allow(InterruptVector::Keyboard);
 }

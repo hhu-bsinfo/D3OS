@@ -30,6 +30,7 @@ pagetable_end:  equ 0x200000      ;  = 2 MB
 
 ; C-Funktion die am Ende des Assembler-Codes aufgerufen werden
 [EXTERN startup]
+[EXTERN setup_idt]
 
 
 ; Vom Compiler bereitgestellte Adressen
@@ -244,7 +245,7 @@ clear_bss:
 	cmp    rdi, ___BSS_END__
 	jne    clear_bss
 
-;	fninit         ; FPU aktivieren
+    call setup_idt
 	
     mov    rdi, [multiboot_info_address] ; 1. Parameter wird in rdi uebergeben
 	call   startup ; multiboot infos auslesen und 'main' aufrufen
@@ -252,15 +253,6 @@ clear_bss:
 	cli            ; Hier sollten wir nicht hinkommen
 	hlt
 
-
-
-;
-; Kurze Verzögerung für in/out-Befehle
-;
-delay:
-	jmp    .L2
-.L2:
-	ret
 
 
 ;
