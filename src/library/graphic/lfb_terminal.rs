@@ -4,6 +4,7 @@ use core::fmt::Write;
 use core::mem::size_of;
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use spin::Mutex;
+use crate::device::speaker;
 use crate::library::graphic::{color, lfb};
 use crate::library::graphic::ansi::COLOR_TABLE_256;
 use crate::library::graphic::buffered_lfb::BufferedLFB;
@@ -165,6 +166,12 @@ impl Terminal {
         }
 
         self.print_cursor();
+    }
+
+    fn handle_bell(&self) {
+        let mut speaker = speaker::get_speaker().lock();
+        speaker.play(440, 250);
+        speaker.play(880, 250);
     }
 
     fn handle_tab(&mut self) {
@@ -525,12 +532,9 @@ impl Perform for Terminal {
 
     fn execute(&mut self, byte: u8) {
         match byte {
-            0x09 => {
-                self.handle_tab();
-            }
-            0x0a => {
-                self.write_char('\n');
-            }
+            0x07 => self.handle_bell(),
+            0x09 => self.handle_tab(),
+            0x0a => self.write_char('\n'),
             _ => {}
         }
     }
@@ -545,15 +549,9 @@ impl Perform for Terminal {
 
     fn csi_dispatch(&mut self, params: &Params, _intermediates: &[u8], _ignore: bool, action: u8,) {
         match action {
-            0x41..=0x48 | 0x66 | 0x6e | 0x73 | 0x75 => {
-                self.handle_ansi_cursor_sequence(action, params);
-            },
-            0x4a | 0x4b => {
-                self.handle_ansi_erase_sequence(action, params);
-            },
-            0x6d => {
-                self.handle_ansi_color(params);
-            }
+            0x41..=0x48 | 0x66 | 0x6e | 0x73 | 0x75 => self.handle_ansi_cursor_sequence(action, params),
+            0x4a | 0x4b => self.handle_ansi_erase_sequence(action, params),
+            0x6d => self.handle_ansi_color(params),
             _ => {}
         }
     }

@@ -14,7 +14,8 @@ use multiboot2::{BootInformation, BootInformationHeader};
 use multiboot2::MemoryAreaType::{Available};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
-use crate::device::ps2;
+use crate::device::{cpu, pic, pit, ps2};
+use crate::kernel::int_disp;
 
 // insert other modules
 mod device;
@@ -62,10 +63,6 @@ pub unsafe extern fn startup(mbi: u64) {
     let fb_info = multiboot.framebuffer_tag().unwrap().unwrap();
     lfb_terminal::initialize(fb_info.address() as * mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
-    // Initialize keyboard
-    ps2::init_controller();
-    ps2::init_keyboard();
-
     let version = format!("v{} ({})", built_info::PKG_VERSION, built_info::PROFILE);
     let date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
         Ok(date_time) => date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -86,19 +83,31 @@ pub unsafe extern fn startup(mbi: u64) {
 
     println!(include_str!("banner.txt"), version, date, git_ref, git_commit, bootloader_name);
 
-    let mut controller = ps2::CONTROLLER.lock();
-    let mut keyboard = Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore);
+    // Initialize interrupts
+    pic::init();
+    int_disp::init();
+    cpu::enable_int();
+
+    // Initialize timer;
+    pit::init();
+    pit::plugin();
+
+    // Initialize keyboard
+    ps2::init_controller();
+    ps2::init_keyboard();
+    ps2::plugin_keyboard();
+
+    let mut decoder = Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore);
 
     loop {
-        if let Ok(scancode) = controller.read_data() {
-            if let Ok(Some(event)) = keyboard.add_byte(scancode) {
-                if let Some(key) = keyboard.process_keyevent(event) {
-                    match key {
-                        DecodedKey::Unicode(c) => {
-                            print!("{}", c);
-                        }
-                        _ => {}
+        let scancode = ps2::get_keyboard().lock().pop_scancode();
+        if let Ok(Some(event)) = decoder.add_byte(scancode) {
+            if let Some(key) = decoder.process_keyevent(event) {
+                match key {
+                    DecodedKey::Unicode(c) => {
+                        print!("{}", c);
                     }
+                    _ => {}
                 }
             }
         }
