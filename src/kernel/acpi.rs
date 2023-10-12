@@ -1,3 +1,4 @@
+use core::alloc::{Allocator, AllocError, Layout};
 use core::ptr::NonNull;
 use acpi::{AcpiTables, PhysicalMapping};
 
@@ -10,12 +11,33 @@ pub fn get_tables() -> &'static AcpiTables<AcpiHandler> {
 #[derive(Default, Clone)]
 pub struct AcpiHandler;
 
+#[derive(Clone)]
+pub struct AcpiAllocator<'a> {
+    allocator: &'a dyn Allocator
+}
+
 impl acpi::AcpiHandler for AcpiHandler {
     unsafe fn map_physical_region<T>(&self, physical_address: usize, size: usize) -> PhysicalMapping<Self, T> {
         PhysicalMapping::new(physical_address, NonNull::new(physical_address as *mut T).unwrap(), size, size, AcpiHandler)
     }
 
     fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {}
+}
+
+impl<'a> AcpiAllocator<'a> {
+    pub fn new(allocator: &'a dyn Allocator) -> Self {
+        Self { allocator }
+    }
+}
+
+unsafe impl<'a> Allocator for AcpiAllocator<'a> {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        self.allocator.allocate(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        self.allocator.deallocate(ptr, layout)
+    }
 }
 
 pub fn init(rsdp_addr: usize) {

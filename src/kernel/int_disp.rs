@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use alloc::collections::LinkedList;
 use alloc::vec::Vec;
 use spin::Mutex;
-use crate::device::pic;
+use crate::device::apic;
 use crate::kernel::isr::ISR;
 
 #[repr(u8)]
@@ -49,6 +49,20 @@ pub enum InterruptVector {
     Fpu = 0x2d,
     PrimaryAta = 0x2e,
     SecondaryAta = 0x2f,
+    // Possibly some other interrupts supported by IO APICs
+
+    SystemCall = 0x86,
+
+    // Local APIC interrupts (247 - 254)
+    Cmci = 0xf8,
+    ApicTimer = 0xf9,
+    Thermal = 0xfa,
+    Performance = 0xfb,
+    Lint0 = 0xfc,
+    Lint1 = 0xfd,
+    ApicError = 0xfe,
+
+    Spurious = 0xff
 }
 
 impl TryFrom<u8> for InterruptVector {
@@ -87,6 +101,8 @@ static INT_VECTORS: Mutex<IntVectors> = Mutex::new(IntVectors { map: Vec::new() 
 #[no_mangle]
 pub extern "C" fn int_disp(int_number: u32) {
     if let Ok(vector) = InterruptVector::try_from(int_number as u8) {
+        // Force unlock needed to avoid possible deadlock on INT_VECTORS.
+        // This can for example happen, if an interrupt occurs directly after registering its ISR, but before the INT_VECTORS mutex has been released
         unsafe { INT_VECTORS.force_unlock(); }
         let vectors = INT_VECTORS.lock();
         let isr_list = vectors.map.get(vector as usize);
@@ -94,7 +110,10 @@ pub extern "C" fn int_disp(int_number: u32) {
             isr.trigger();
         });
 
-        pic::send_eoi(vector);
+        // Force unlock needed to avoid possible deadlock on APIC.
+        // This can for example happen, if an interrupt occurs directly after enabling it in the IO APIC, but before the APIC mutex has been released
+        unsafe { apic::get_apic().force_unlock(); }
+        apic::get_apic().lock().send_eoi(vector);
     }
 }
 

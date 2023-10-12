@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 use x86_64::instructions::port::{Port, PortWriteOnly};
-use crate::device::pic;
+use crate::device::{apic, qemu_cfg};
 use crate::kernel::int_disp;
 use crate::kernel::int_disp::InterruptVector;
 use crate::kernel::isr::ISR;
@@ -33,14 +33,15 @@ impl ISR for PitISR {
 pub fn init() {
     unsafe {
         if TIMER.is_none() {
-            TIMER = Some(Pit::new(1));
+            TIMER = Some(Pit::new());
+            TIMER.as_mut().unwrap().set_int_rate(1);
         }
     }
 }
 
 pub fn plugin() {
     int_disp::assign(InterruptVector::Pit, Box::new(PitISR::default()));
-    pic::allow(InterruptVector::Pit);
+    apic::get_apic().lock().allow(InterruptVector::Pit);
 }
 
 pub fn get_systime_ms() -> usize {
@@ -62,11 +63,8 @@ pub fn wait(ms: usize) {
 }
 
 impl Pit {
-    fn new(interval_ms: usize) -> Self {
-        let mut pit = Self { ctrl_port: PortWriteOnly::new(0x43), data_port: Port::new(0x40), interval_ns: 0, elapsed_time_ns: 0 };
-        pit.set_int_rate(interval_ms);
-
-        return pit;
+    fn new() -> Self {
+        Self { ctrl_port: PortWriteOnly::new(0x43), data_port: Port::new(0x40), interval_ns: 0, elapsed_time_ns: 0 }
     }
 
     fn set_int_rate(&mut self, interval_ms: usize) {
@@ -76,6 +74,11 @@ impl Pit {
         }
 
         self.interval_ns = 1000000000 / (BASE_FREQUENCY / divisor);
+
+        // For some reason, the PIT interrupt rate is doubled, when it is attached to an IO APIC (only in QEMU)
+        if qemu_cfg::is_available() {
+            divisor *= 2;
+        }
 
         unsafe {
             self.ctrl_port.write(0x36); // Select channel 0, Use low-/high byte access mode, Set operating mode to rate generator

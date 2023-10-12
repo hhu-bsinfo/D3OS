@@ -6,7 +6,7 @@ use nolock::queues::spsc::bounded::{BoundedReceiver, BoundedSender};
 use ps2::{Controller, KeyboardType};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use spin::Mutex;
-use crate::device::pic;
+use crate::device::apic;
 use crate::kernel::int_disp;
 use crate::kernel::int_disp::InterruptVector;
 use crate::kernel::isr::ISR;
@@ -135,5 +135,5 @@ pub fn init_keyboard() {
 
 pub fn plugin_keyboard() {
     int_disp::assign(InterruptVector::Keyboard, Box::new(KeyboardISR::default()));
-    pic::allow(InterruptVector::Keyboard);
+    apic::get_apic().lock().allow(InterruptVector::Keyboard);
 }
