@@ -1,4 +1,5 @@
 #![feature(ptr_from_ref)]
+#![feature(allocator_api)]
 #![no_std]
 
 extern crate spin; // we need a mutex in devices::cga_print
@@ -14,7 +15,7 @@ use chrono::DateTime;
 use linked_list_allocator::LockedHeap;
 use multiboot2::{BootInformation, BootInformationHeader, Tag};
 use multiboot2::MemoryAreaType::{Available};
-use crate::device::{cpu, pic, pit, ps2};
+use crate::device::{apic, cpu, pit, ps2};
 use crate::kernel::int_disp;
 
 // insert other modules
@@ -60,8 +61,19 @@ pub unsafe extern fn startup(mbi: u64) {
     // Initialize memory allocation
     ALLOCATOR.lock().init(heap_area.start_address() as *mut u8, (heap_area.end_address() - heap_area.start_address()) as usize);
 
-    // Initialize interrupts
-    pic::init();
+    // Initialize ACPI tables
+    let rsdp_addr: usize = if let Some(rsdp_tag) = multiboot.rsdp_v2_tag() {
+        core::ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
+    } else if let Some(rsdp_tag) = multiboot.rsdp_v1_tag() {
+        core::ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
+    } else {
+        panic!("ACPI not available!");
+    };
+
+    kernel::acpi::init(rsdp_addr);
+
+    // Initialize interrupt
+    apic::init();
     int_disp::init();
     cpu::enable_int();
 
@@ -97,20 +109,6 @@ pub unsafe extern fn startup(mbi: u64) {
     };
 
     println!(include_str!("banner.txt"), version, date, git_ref, git_commit, bootloader_name);
-
-    // Initialize ACPI tables
-    let rsdp_addr: usize = if let Some(rsdp_tag) = multiboot.rsdp_v2_tag() {
-        core::ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
-    } else if let Some(rsdp_tag) = multiboot.rsdp_v1_tag() {
-        core::ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
-    } else {
-        panic!("ACPI not available!");
-    };
-
-    kernel::acpi::init(rsdp_addr);
-    let tables = kernel::acpi::get_tables();
-
-    println!("ACPI revision: {}", tables.revision());
     println!("Boot time: {} ms", pit::get_systime_ms());
 
     let terminal = lfb_terminal::get_writer();
