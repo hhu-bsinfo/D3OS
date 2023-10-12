@@ -14,8 +14,6 @@ use chrono::DateTime;
 use linked_list_allocator::LockedHeap;
 use multiboot2::{BootInformation, BootInformationHeader, Tag};
 use multiboot2::MemoryAreaType::{Available};
-use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
-use pc_keyboard::layouts::{AnyLayout, De105Key};
 use crate::device::{cpu, pic, pit, ps2};
 use crate::kernel::int_disp;
 
@@ -27,6 +25,7 @@ mod library;
 mod consts;
 
 use crate::library::graphic::lfb_terminal;
+use crate::library::io::stream::InputStream;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -70,9 +69,14 @@ pub unsafe extern fn startup(mbi: u64) {
     pit::init();
     pit::plugin();
 
-    // Initialize framebuffer
+    // Initialize keyboard
+    ps2::init_controller();
+    ps2::init_keyboard();
+    ps2::plugin_keyboard();
+
+    // Initialize terminal
     let fb_info = multiboot.framebuffer_tag().unwrap().unwrap();
-    lfb_terminal::initialize(fb_info.address() as * mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+    lfb_terminal::initialize(fb_info.address() as * mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp(), ps2::get_keyboard());
 
     let version = format!("v{} ({})", built_info::PKG_VERSION, built_info::PROFILE);
     let date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
@@ -105,27 +109,15 @@ pub unsafe extern fn startup(mbi: u64) {
 
     kernel::acpi::init(rsdp_addr);
     let tables = kernel::acpi::get_tables();
+
     println!("ACPI revision: {}", tables.revision());
-
-    // Initialize keyboard
-    ps2::init_controller();
-    ps2::init_keyboard();
-    ps2::plugin_keyboard();
-
-    let mut decoder = Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore);
     println!("Boot time: {} ms", pit::get_systime_ms());
 
+    let terminal = lfb_terminal::get_writer();
     loop {
-        let scancode = ps2::get_keyboard().lock().pop_scancode();
-        if let Ok(Some(event)) = decoder.add_byte(scancode) {
-            if let Some(key) = decoder.process_keyevent(event) {
-                match key {
-                    DecodedKey::Unicode(c) => {
-                        print!("{}", c);
-                    }
-                    _ => {}
-                }
-            }
+        match terminal.lock().read_byte() {
+            -1 => panic!("Terminal input stream closed!"),
+            _ => {}
         }
     }
 }

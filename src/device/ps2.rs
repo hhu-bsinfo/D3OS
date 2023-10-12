@@ -10,6 +10,7 @@ use crate::device::pic;
 use crate::kernel::int_disp;
 use crate::kernel::int_disp::InterruptVector;
 use crate::kernel::isr::ISR;
+use crate::library::io::stream::InputStream;
 
 static CONTROLLER: Mutex<Controller> = Mutex::new(unsafe { Controller::new() });
 
@@ -32,12 +33,14 @@ impl Keyboard {
     fn new(buffer_cap: usize) -> Self {
         Self { buffer: bounded::queue::<u8>(buffer_cap) }
     }
+}
 
-    pub fn pop_scancode(&mut self) -> u8 {
+impl InputStream for Keyboard {
+    fn read_byte(&mut self) -> i16 {
         loop {
             match self.buffer.0.try_dequeue() {
-                Ok(code) => return code,
-                Err(DequeueError::Closed) => panic!("Keyboard: Queue is closed!"),
+                Ok(code) => return code as i16,
+                Err(DequeueError::Closed) => return -1,
                 Err(_) => {}
             }
         }

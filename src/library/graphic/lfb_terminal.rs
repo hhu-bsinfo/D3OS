@@ -3,6 +3,8 @@ use core::{fmt};
 use core::fmt::Write;
 use core::mem::size_of;
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
+use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
+use pc_keyboard::layouts::{AnyLayout, De105Key};
 use spin::Mutex;
 use crate::device::speaker;
 use crate::library::graphic::{color, lfb};
@@ -10,22 +12,30 @@ use crate::library::graphic::ansi::COLOR_TABLE_256;
 use crate::library::graphic::buffered_lfb::BufferedLFB;
 use crate::library::graphic::color::Color;
 use crate::library::graphic::lfb::LFB;
+use crate::library::graphic::terminal::Terminal;
+use crate::library::io::stream::{InputStream, OutputStream};
 
 // The global writer that can be used as an interface from other modules
 // It is thread safe by using 'Mutex'
-pub static mut WRITER: Mutex<Terminal> = Mutex::new(Terminal::empty());
+pub static mut WRITER: Mutex<LFBTerminal> = Mutex::new(LFBTerminal::empty());
 
-pub fn initialize(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
-    unsafe { WRITER = Mutex::new(Terminal::new(buffer, pitch, width, height, bpp, true)); }
+pub fn initialize(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8, keyboard_stream: &'static Mutex<dyn InputStream>) {
+    unsafe { WRITER = Mutex::new(LFBTerminal::new(buffer, pitch, width, height, bpp, true, keyboard_stream)); }
+}
+
+pub fn get_writer() -> &'static Mutex<LFBTerminal<'static>> {
+    unsafe { return &WRITER; }
 }
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) { cursor } else { '_' };
 const TAB_SPACES: u32 = 8;
 
-pub struct Terminal {
+pub struct LFBTerminal<'a> {
     lfb: BufferedLFB,
     char_buffer: Vec<Character>,
     parser: Option<Parser>,
+    keyboard_stream: Option<&'a Mutex<dyn InputStream>>,
+    decoder: Keyboard<AnyLayout, ScancodeSet1>,
 
     columns: u32,
     rows: u32,
@@ -53,12 +63,54 @@ struct Character {
     bg_color: Color
 }
 
-impl Terminal {
+impl OutputStream for LFBTerminal<'_> {
+    fn write_byte(&mut self, b: u8) {
+        if self.parser.is_some() {
+            let mut parser = self.parser.as_mut().unwrap().clone();
+            parser.advance(self, b);
+            self.parser = Some(parser);
+        } else {
+            self.write_char(char::from(b));
+        }
+    }
+}
+
+impl InputStream for LFBTerminal<'_> {
+    fn read_byte(&mut self) -> i16 {
+        if self.keyboard_stream.is_none() {
+            return -1;
+        }
+
+        let mut stream = self.keyboard_stream.as_mut().unwrap().lock();
+        loop {
+            let scancode = stream.read_byte();
+            if scancode == -1 {
+                panic!("Keyboard stream closed!");
+            }
+
+            if let Ok(Some(event)) = self.decoder.add_byte(scancode as u8) {
+                if let Some(key) = self.decoder.process_keyevent(event) {
+                    match key {
+                        DecodedKey::Unicode(c) => {
+                            self.write_byte(c as u8);
+                            return c as i16;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Terminal for LFBTerminal<'_> {}
+
+impl<'a> LFBTerminal<'a> {
     pub const fn empty() -> Self {
-        Self { lfb: BufferedLFB::empty(), char_buffer: Vec::new(), parser: None, columns: 0, rows: 0, x: 0, y: 0, fg_color: color::INVISIBLE, bg_color: color::INVISIBLE, fg_base_color: color::INVISIBLE, bg_base_color: color::INVISIBLE, fg_bright: false, bg_bright: false, invert: false, bright: false, dim: false, ansi_saved_x: 0, ansi_saved_y: 0 }
+        Self { lfb: BufferedLFB::empty(), char_buffer: Vec::new(), parser: None, keyboard_stream: None, decoder: Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore), columns: 0, rows: 0, x: 0, y: 0, fg_color: color::INVISIBLE, bg_color: color::INVISIBLE, fg_base_color: color::INVISIBLE, bg_base_color: color::INVISIBLE, fg_bright: false, bg_bright: false, invert: false, bright: false, dim: false, ansi_saved_x: 0, ansi_saved_y: 0 }
     }
 
-    pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8, ansi_support: bool) -> Self {
+    pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8, ansi_support: bool, input_stream: &'a Mutex<dyn InputStream>) -> Self {
         let raw_lfb = LFB::new(buffer, pitch, width, height, bpp);
         let mut lfb = BufferedLFB::new(raw_lfb);
 
@@ -77,7 +129,7 @@ impl Terminal {
 
         let parser = if ansi_support { Some(Parser::<Utf8Parser>::new()) } else { None };
 
-        Self { lfb, char_buffer, parser, columns, rows, x: 0, y: 0, fg_color: color::WHITE, bg_color: color::BLACK, fg_base_color: color::WHITE, bg_base_color: color::BLACK, fg_bright: false, bg_bright: false, invert: false, bright: false, dim: false, ansi_saved_x: 0, ansi_saved_y: 0 }
+        Self { lfb, char_buffer, parser, keyboard_stream: Some(input_stream), decoder: Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore), columns, rows, x: 0, y: 0, fg_color: color::WHITE, bg_color: color::BLACK, fg_base_color: color::WHITE, bg_base_color: color::BLACK, fg_bright: false, bg_bright: false, invert: false, bright: false, dim: false, ansi_saved_x: 0, ansi_saved_y: 0 }
     }
 
     fn print_char_at(&mut self, c: char, x: u32, y: u32, fg_color: Color, bg_color: Color) -> bool {
@@ -117,16 +169,6 @@ impl Terminal {
 
     fn write_char(&mut self, c: char) {
         self.print_char(c, self.fg_color, self.bg_color);
-    }
-
-    pub fn write_byte(&mut self, c: u8) {
-        if self.parser.is_some() {
-            let mut parser = self.parser.as_mut().unwrap().clone();
-            parser.advance(self, c);
-            self.parser = Some(parser);
-        } else {
-            self.write_char(char::from(c));
-        }
     }
 
     fn clear_cursor(&mut self) {
@@ -525,7 +567,7 @@ fn parse_complex_color(iter: &mut ParamsIter) -> Option<Color> {
     }
 }
 
-impl Perform for Terminal {
+impl Perform for LFBTerminal<'_> {
     fn print(&mut self, c: char) {
         self.write_char(c);
     }
@@ -562,7 +604,7 @@ impl Perform for Terminal {
 // Implementation of the 'core::fmt::Write' trait for our Terminal
 // Required to output formatted strings
 // Requires only one function 'write_str'
-impl Write for Terminal {
+impl Write for LFBTerminal<'_>{
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for c in s.bytes() {
             self.write_byte(c);
