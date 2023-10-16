@@ -1,8 +1,6 @@
-use spin::Mutex;
 use x86_64::instructions::port::{Port, PortWriteOnly};
 use crate::device::pit;
-
-static SPEAKER: Mutex<Speaker> = Mutex::new(Speaker::new());
+use crate::kernel;
 
 pub struct Speaker {
     ctrl_port: PortWriteOnly<u8>,
@@ -10,12 +8,8 @@ pub struct Speaker {
     ppi_port: Port<u8>
 }
 
-pub fn get_speaker() -> &'static Mutex<Speaker> {
-    return &SPEAKER;
-}
-
 impl Speaker {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self { ctrl_port: PortWriteOnly::new(0x43), data_port_2: PortWriteOnly::new(0x42), ppi_port: Port::new(0x61) }
     }
 
@@ -42,8 +36,10 @@ impl Speaker {
     }
 
     pub fn play(&mut self, freq: usize, duration_ms: usize) {
+        let timer = kernel::get_device_service().get_timer();
+
         self.on(freq);
-        pit::wait(duration_ms);
+        timer.wait(duration_ms);
         self.off();
     }
 }

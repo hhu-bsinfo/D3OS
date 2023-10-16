@@ -1,8 +1,7 @@
 use alloc::boxed::Box;
-use alloc::collections::LinkedList;
 use alloc::vec::Vec;
 use spin::Mutex;
-use crate::device::apic;
+use crate::kernel;
 use crate::kernel::isr::ISR;
 
 #[repr(u8)]
@@ -89,43 +88,53 @@ impl TryFrom<u8> for InterruptVector {
 
 const MAX_VECTORS: usize = 256;
 
-struct IntVectors {
-    map: Vec<LinkedList<Box<dyn ISR>>>,
+pub struct InterruptDispatcher {
+    int_vectors: Vec<Mutex<Vec<Box<dyn ISR>>>>
 }
 
-unsafe impl Send for IntVectors {}
-unsafe impl Sync for IntVectors {}
+unsafe impl Send for InterruptDispatcher {}
+unsafe impl Sync for InterruptDispatcher {}
 
-static INT_VECTORS: Mutex<IntVectors> = Mutex::new(IntVectors { map: Vec::new() });
+impl InterruptDispatcher {
+    pub const fn new() -> Self {
+        Self { int_vectors: Vec::new() }
+    }
+
+    pub fn init(&mut self) {
+        for _ in 0..MAX_VECTORS {
+            self.int_vectors.push(Mutex::new(Vec::new()));
+        }
+    }
+
+    pub fn assign(&mut self, vector: InterruptVector, isr: Box<dyn ISR>) {
+        match self.int_vectors.get(vector as usize) {
+            Some(vec) => vec.lock().push(isr),
+            None => panic!("Assigning ISR to illegal vector number {}!", vector as u8)
+        }
+    }
+
+    pub fn dispatch(&mut self, int_number: u32) {
+        if let Ok(vector) = InterruptVector::try_from(int_number as u8) {
+            if let Some(isr_vec) = self.int_vectors.get(int_number as usize).as_mut() {
+                if isr_vec.is_locked() {
+                    // We have to force unlock inside the interrupt handler, or else the system will hang forever.
+                    // While this might be unsafe, it is extremely unlikely that we destroy something here, since we only need read access to the vectors.
+                    // The only scenario, in which something might break, is when two or more drivers are trying to assign an ISR to the same vector,
+                    // while an interrupt for that vector occurs.
+                    unsafe { isr_vec.force_unlock(); }
+                }
+
+                for isr in isr_vec.lock().iter() {
+                    isr.trigger();
+                }
+            }
+
+            kernel::get_interrupt_service().get_apic().send_eoi(vector);
+        }
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn int_disp(int_number: u32) {
-    if let Ok(vector) = InterruptVector::try_from(int_number as u8) {
-        // Force unlock needed to avoid possible deadlock on INT_VECTORS.
-        // This can for example happen, if an interrupt occurs directly after registering its ISR, but before the INT_VECTORS mutex has been released
-        unsafe { INT_VECTORS.force_unlock(); }
-        let vectors = INT_VECTORS.lock();
-        let isr_list = vectors.map.get(vector as usize);
-        isr_list.unwrap().iter().for_each(|isr| {
-            isr.trigger();
-        });
-
-        // Force unlock needed to avoid possible deadlock on APIC.
-        // This can for example happen, if an interrupt occurs directly after enabling it in the IO APIC, but before the APIC mutex has been released
-        unsafe { apic::get_apic().force_unlock(); }
-        apic::get_apic().lock().send_eoi(vector);
-    }
-}
-
-pub fn init() {
-    let mut vectors = INT_VECTORS.lock();
-
-    for _ in 0..MAX_VECTORS {
-        vectors.map.push(LinkedList::new());
-    }
-}
-
-pub fn assign(vector: InterruptVector, isr: Box<dyn ISR>) {
-    let mut vectors = INT_VECTORS.lock();
-    vectors.map[vector as usize].push_back(isr);
+    kernel::get_interrupt_service().get_dispatcher().dispatch(int_number);
 }

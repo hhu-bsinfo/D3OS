@@ -1,5 +1,6 @@
 #![feature(ptr_from_ref)]
 #![feature(allocator_api)]
+#![feature(alloc_layout_extra)]
 #![no_std]
 
 extern crate spin; // we need a mutex in devices::cga_print
@@ -12,28 +13,24 @@ use alloc::string::ToString;
 use core::mem::size_of;
 use core::panic::PanicInfo;
 use chrono::DateTime;
-use linked_list_allocator::LockedHeap;
 use multiboot2::{BootInformation, BootInformationHeader, Tag};
 use multiboot2::MemoryAreaType::{Available};
-use crate::device::{apic, cpu, pit, ps2};
-use crate::kernel::int_disp;
+use x86_64::instructions::interrupts;
 
 // insert other modules
+#[macro_use]
 mod device;
 mod kernel;
-#[macro_use]
 mod library;
 mod consts;
 
-use crate::library::graphic::lfb_terminal;
-use crate::library::io::stream::InputStream;
-
-#[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
-
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    unsafe { lfb_terminal::WRITER.force_unlock(); };
+    let terminal = kernel::get_device_service().get_terminal();
+    if terminal.is_locked() {
+        unsafe { terminal.force_unlock(); };
+    }
+
     println!("Panic: {}", info);
     loop {}
 }
@@ -58,8 +55,7 @@ pub unsafe extern fn startup(mbi: u64) {
         }
     }
 
-    // Initialize memory allocation
-    ALLOCATOR.lock().init(heap_area.start_address() as *mut u8, (heap_area.end_address() - heap_area.start_address()) as usize);
+    kernel::get_memory_service().init(heap_area.start_address() as usize, heap_area.end_address() as usize);
 
     // Initialize ACPI tables
     let rsdp_addr: usize = if let Some(rsdp_tag) = multiboot.rsdp_v2_tag() {
@@ -70,25 +66,23 @@ pub unsafe extern fn startup(mbi: u64) {
         panic!("ACPI not available!");
     };
 
-    kernel::acpi::init(rsdp_addr);
+    kernel::get_device_service().init_acpi_tables(rsdp_addr);
 
-    // Initialize interrupt
-    apic::init();
-    int_disp::init();
-    cpu::enable_int();
+    // Initialize interrupts
+    kernel::get_interrupt_service().init();
+    interrupts::enable();
 
     // Initialize timer;
-    pit::init();
-    pit::plugin();
+    kernel::get_device_service().init_timer();
+    kernel::get_device_service().get_timer().plugin();
 
     // Initialize keyboard
-    ps2::init_controller();
-    ps2::init_keyboard();
-    ps2::plugin_keyboard();
+    kernel::get_device_service().init_keyboard();
+    kernel::get_device_service().get_ps2().plugin_keyboard();
 
     // Initialize terminal
     let fb_info = multiboot.framebuffer_tag().unwrap().unwrap();
-    lfb_terminal::initialize(fb_info.address() as * mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp(), ps2::get_keyboard());
+    kernel::get_device_service().init_terminal(fb_info.address() as * mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
     let version = format!("v{} ({})", built_info::PKG_VERSION, built_info::PROFILE);
     let date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
@@ -109,9 +103,9 @@ pub unsafe extern fn startup(mbi: u64) {
     };
 
     println!(include_str!("banner.txt"), version, date, git_ref, git_commit, bootloader_name);
-    println!("Boot time: {} ms", pit::get_systime_ms());
+    println!("Boot time: {} ms", kernel::get_device_service().get_timer().get_systime_ms());
 
-    let terminal = lfb_terminal::get_writer();
+    let terminal = kernel::get_device_service().get_terminal();
     loop {
         match terminal.lock().read_byte() {
             -1 => panic!("Terminal input stream closed!"),
