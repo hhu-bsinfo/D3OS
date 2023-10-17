@@ -1,3 +1,4 @@
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::mem::size_of;
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
@@ -57,6 +58,21 @@ impl OutputStream for LFBTerminal {
             self.write_char(char::from(b));
         }
     }
+
+    fn write_str(&mut self, string: &String) {
+        if self.parser.is_some() {
+            let mut parser = self.parser.as_mut().unwrap().clone();
+            for b in string.bytes() {
+                parser.advance(self, b);
+            }
+
+            self.parser = Some(parser);
+        } else {
+            for b in string.bytes() {
+                self.write_char(char::from(b));
+            }
+        }
+    }
 }
 
 impl InputStream for LFBTerminal {
@@ -84,7 +100,12 @@ impl InputStream for LFBTerminal {
     }
 }
 
-impl Terminal for LFBTerminal {}
+impl Terminal for LFBTerminal {
+    fn clear(&mut self) {
+        self.lfb.lfb().clear();
+        self.lfb.flush();
+        self.set_pos(0, 0);
+    }}
 
 impl LFBTerminal {
     pub const fn empty() -> Self {

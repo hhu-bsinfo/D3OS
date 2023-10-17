@@ -1,19 +1,19 @@
+use alloc::string::String;
 use core::fmt;
 use core::fmt::Write;
 use crate::kernel;
 use crate::library::io::stream::{InputStream, OutputStream};
 
-pub trait Terminal: OutputStream + InputStream {}
+pub trait Terminal: OutputStream + InputStream {
+    fn clear(&mut self);
+}
 
 // Implementation of the 'core::fmt::Write' trait for our Terminal
 // Required to output formatted strings
 // Requires only one function 'write_str'
 impl Write for dyn Terminal {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        for c in s.bytes() {
-            self.write_byte(c);
-        }
-
+        self.write_str(&String::from(s));
         Ok(())
     }
 }

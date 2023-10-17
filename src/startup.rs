@@ -1,6 +1,7 @@
 #![feature(ptr_from_ref)]
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]
+#![feature(trait_upcasting)]
 #![no_std]
 
 extern crate spin; // we need a mutex in devices::cga_print
@@ -13,9 +14,11 @@ use alloc::string::ToString;
 use core::mem::size_of;
 use core::panic::PanicInfo;
 use chrono::DateTime;
+use lazy_static::lazy_static;
 use multiboot2::{BootInformation, BootInformationHeader, Tag};
 use multiboot2::MemoryAreaType::{Available};
 use x86_64::instructions::interrupts;
+use crate::kernel::log::Logger;
 
 // insert other modules
 #[macro_use]
@@ -40,6 +43,10 @@ pub mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
+lazy_static! {
+static ref LOG: Logger = Logger::new("Boot");
+}
+
 #[no_mangle]
 pub unsafe extern fn startup(mbi: u64) {
     // Get multiboot information
@@ -57,6 +64,16 @@ pub unsafe extern fn startup(mbi: u64) {
 
     kernel::get_memory_service().init(heap_area.start_address() as usize, heap_area.end_address() as usize);
 
+    // Initialize terminal
+    let fb_info = multiboot.framebuffer_tag().unwrap().unwrap();
+    kernel::get_device_service().init_terminal(fb_info.address() as * mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+
+    // Enable terminal logging
+    kernel::get_log_service().register(kernel::get_device_service().get_terminal());
+
+    LOG.info("Welcome to hhuTOSr!");
+    LOG.info("Memory management has been initialized!");
+
     // Initialize ACPI tables
     let rsdp_addr: usize = if let Some(rsdp_tag) = multiboot.rsdp_v2_tag() {
         core::ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
@@ -67,22 +84,26 @@ pub unsafe extern fn startup(mbi: u64) {
     };
 
     kernel::get_device_service().init_acpi_tables(rsdp_addr);
+    LOG.info(format!("ACPI revision: [{}]", kernel::get_device_service().get_acpi_tables().revision()).as_str());
 
     // Initialize interrupts
     kernel::get_interrupt_service().init();
+    LOG.info("Enabling interrupts");
     interrupts::enable();
 
-    // Initialize timer;
+    // Initialize timer
+    LOG.info("Initializing timer");
     kernel::get_device_service().init_timer();
     kernel::get_device_service().get_timer().plugin();
 
     // Initialize keyboard
+    LOG.info("Initializing PS/2 devices");
     kernel::get_device_service().init_keyboard();
     kernel::get_device_service().get_ps2().plugin_keyboard();
 
-    // Initialize terminal
-    let fb_info = multiboot.framebuffer_tag().unwrap().unwrap();
-    kernel::get_device_service().init_terminal(fb_info.address() as * mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+    // Disable terminal logging
+    kernel::get_log_service().remove(kernel::get_device_service().get_terminal());
+    kernel::get_device_service().get_terminal().lock().clear();
 
     let version = format!("v{} ({})", built_info::PKG_VERSION, built_info::PROFILE);
     let date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
@@ -103,7 +124,6 @@ pub unsafe extern fn startup(mbi: u64) {
     };
 
     println!(include_str!("banner.txt"), version, date, git_ref, git_commit, bootloader_name);
-    println!("Boot time: {} ms", kernel::get_device_service().get_timer().get_systime_ms());
 
     let terminal = kernel::get_device_service().get_terminal();
     loop {
