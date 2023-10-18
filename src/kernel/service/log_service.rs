@@ -34,10 +34,11 @@ impl LogService {
         let seconds = ms / 1000;
         let fraction = ms % 1000;
 
-        let string = format!("{}[{}.{:0<3}]{}[{}]{}[{}] {}", ansi::FOREGROUND_CYAN, seconds, fraction, ansi_color(level), level_as_string(level), ansi::FOREGROUND_DEFAULT, name, msg);
-        for stream in self.streams.iter() {
-            stream.lock().write_str(&string);
-            stream.lock().write_byte('\n' as u8);
+        let string = format!("{}[{}.{:0>3}]{}[{}]{}[{}] {}", ansi::FOREGROUND_CYAN, seconds, fraction, ansi_color(level), level_as_string(level), ansi::FOREGROUND_DEFAULT, name, msg);
+        for stream_mutex in self.streams.iter() {
+            let mut stream = stream_mutex.lock();
+            stream.write_str(&string);
+            stream.write_byte('\n' as u8);
         }
     }
 

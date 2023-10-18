@@ -6,3 +6,4 @@ pub mod qemu_cfg;
 #[macro_use]
 pub mod terminal;
 pub mod lfb_terminal;
+pub mod serial;

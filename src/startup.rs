@@ -2,6 +2,7 @@
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]
 #![feature(trait_upcasting)]
+#![feature(const_for)]
 #![no_std]
 
 extern crate spin; // we need a mutex in devices::cga_print
@@ -64,11 +65,18 @@ pub unsafe extern fn startup(mbi: u64) {
 
     kernel::get_memory_service().init(heap_area.start_address() as usize, heap_area.end_address() as usize);
 
-    // Initialize terminal
+    // Initialize serial port and enable serial logging
+    kernel::get_device_service().init_serial_port();
+    match kernel::get_device_service().get_serial_port() {
+        Some(serial) => {
+            kernel::get_log_service().register(serial);
+        }
+        None => {}
+    }
+
+    // Initialize terminal and enable terminal logging
     let fb_info = multiboot.framebuffer_tag().unwrap().unwrap();
     kernel::get_device_service().init_terminal(fb_info.address() as * mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
-
-    // Enable terminal logging
     kernel::get_log_service().register(kernel::get_device_service().get_terminal());
 
     LOG.info("Welcome to hhuTOSr!");
@@ -101,6 +109,14 @@ pub unsafe extern fn startup(mbi: u64) {
     kernel::get_device_service().init_keyboard();
     kernel::get_device_service().get_ps2().plugin_keyboard();
 
+    // Enable serial port interrupts
+    match kernel::get_device_service().get_serial_port() {
+        Some(serial) => {
+            serial.lock().plugin();
+        }
+        None => {}
+    }
+
     // Disable terminal logging
     kernel::get_log_service().remove(kernel::get_device_service().get_terminal());
     kernel::get_device_service().get_terminal().lock().clear();
@@ -124,6 +140,8 @@ pub unsafe extern fn startup(mbi: u64) {
     };
 
     println!(include_str!("banner.txt"), version, date, git_ref, git_commit, bootloader_name);
+
+    LOG.info("Finished booting");
 
     let terminal = kernel::get_device_service().get_terminal();
     loop {
