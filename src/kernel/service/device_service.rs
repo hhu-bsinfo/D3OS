@@ -3,6 +3,8 @@ use spin::Mutex;
 use crate::device::lfb_terminal::LFBTerminal;
 use crate::device::pit::Pit;
 use crate::device::ps2::PS2;
+use crate::device::serial;
+use crate::device::serial::{BaudRate, ComPort, SerialPort};
 use crate::device::speaker::Speaker;
 use crate::device::terminal::Terminal;
 use crate::kernel::Service;
@@ -13,6 +15,7 @@ pub struct DeviceService {
     speaker: Mutex<Speaker>,
     ps2: PS2,
     terminal: Mutex<LFBTerminal>,
+    serial: Option<Mutex<SerialPort>>,
     acpi_tables: Option<AcpiTables<AcpiHandler>>
 }
 
@@ -20,7 +23,14 @@ impl Service for DeviceService {}
 
 impl DeviceService {
     pub const fn new() -> Self {
-        Self { pit: Pit::new(), speaker: Mutex::new(Speaker::new()), ps2: PS2::new(), terminal: Mutex::new(LFBTerminal::empty()), acpi_tables: None }
+        Self {
+            pit: Pit::new(),
+            speaker: Mutex::new(Speaker::new()),
+            ps2: PS2::new(),
+            terminal: Mutex::new(LFBTerminal::empty()),
+            serial: None,
+            acpi_tables: None
+        }
     }
 
     pub fn init_timer(&mut self) {
@@ -34,6 +44,27 @@ impl DeviceService {
 
     pub fn init_terminal(&mut self, buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
         self.terminal = Mutex::new(LFBTerminal::new(buffer, pitch, width, height, bpp, true));
+    }
+
+    pub fn init_serial_port(&mut self) {
+        let mut serial: Option<SerialPort> = None;
+        unsafe {
+            if serial::check_port(ComPort::Com1) {
+                serial = Some(SerialPort::new(ComPort::Com1));
+            } else if serial::check_port(ComPort::Com2) {
+                serial = Some(SerialPort::new(ComPort::Com2));
+            } else if serial::check_port(ComPort::Com3) {
+                serial = Some(SerialPort::new(ComPort::Com3));
+            } else if serial::check_port(ComPort::Com4) {
+                serial = Some(SerialPort::new(ComPort::Com4));
+            }
+        }
+
+        if serial.is_some() {
+            unsafe { serial.as_mut().unwrap().init(128, BaudRate::Baud115200); }
+            self.serial = Some(Mutex::new(serial.unwrap()));
+        }
+
     }
 
     pub fn init_acpi_tables(&mut self, rsdp_addr: usize) {
@@ -66,6 +97,10 @@ impl DeviceService {
 
     pub fn get_terminal(&mut self) -> &Mutex<dyn Terminal> {
         return &mut self.terminal;
+    }
+
+    pub fn get_serial_port(&mut self) -> &mut Option<Mutex<SerialPort>> {
+        return &mut self.serial;
     }
 
     pub fn get_acpi_tables(&mut self) -> &mut AcpiTables<AcpiHandler> {

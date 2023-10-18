@@ -102,10 +102,10 @@ impl InputStream for LFBTerminal {
 
 impl Terminal for LFBTerminal {
     fn clear(&mut self) {
-        self.lfb.lfb().clear();
-        self.lfb.flush();
+        self.clear_screen();
         self.set_pos(0, 0);
-    }}
+    }
+}
 
 impl LFBTerminal {
     pub const fn empty() -> Self {

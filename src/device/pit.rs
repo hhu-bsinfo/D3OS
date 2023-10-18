@@ -46,7 +46,7 @@ impl Pit {
 
         self.interval_ns = 1000000000 / (BASE_FREQUENCY / divisor);
 
-        LOG.info(format!("Setting timer interval to [{}ms] (Divisor: [{}]", if self.interval_ns / 1000000 < 1 { 1 } else { self.interval_ns / 1000000 }, divisor).as_str());
+        LOG.info(format!("Setting timer interval to [{}ms] (Divisor: [{}])", if self.interval_ns / 1000000 < 1 { 1 } else { self.interval_ns / 1000000 }, divisor).as_str());
 
         // For some reason, the PIT interrupt rate is doubled, when it is attached to an IO APIC (only in QEMU)
         if qemu_cfg::is_available() {

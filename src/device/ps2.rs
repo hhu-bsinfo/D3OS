@@ -60,7 +60,16 @@ impl ISR for KeyboardISR {
         if let Some(mut controller) = kernel::get_device_service().get_ps2().controller.try_lock() {
             if let Ok(data) = controller.read_data() {
                 let keyboard = kernel::get_device_service().get_ps2().get_keyboard();
-                keyboard.buffer.as_mut().expect("Keyboard: ISR happened before initialization!").1.try_enqueue(data).expect("Keyboard: Buffer is full!");
+                match keyboard.buffer.as_mut() {
+                    Some(buffer) => {
+                        while buffer.1.try_enqueue(data).is_err() {
+                            if buffer.0.try_dequeue().is_err() {
+                                panic!("Serial: Failed to store received byte in buffer!");
+                            }
+                        }
+                    }
+                    None => panic!("Keyboard: ISR called before initialization!")
+                }
             }
         } else {
             panic!("Keyboard: Controller is locked during interrupt!");
