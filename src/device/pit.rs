@@ -30,6 +30,10 @@ impl ISR for PitISR {
     fn trigger(&self) {
         let timer = kernel::get_device_service().get_timer();
         timer.elapsed_time_ns += timer.interval_ns;
+
+        if timer.get_systime_ms() % 10 == 0 {
+            kernel::get_thread_service().get_scheduler().switch_thread();
+        }
     }
 }
 

@@ -42,10 +42,31 @@ pub struct LFBTerminal {
     ansi_saved_y: u32
 }
 
+pub struct CursorThread {
+    terminal: &'static mut LFBTerminal,
+    visible: bool
+}
+
 struct Character {
     value: char,
     fg_color: Color,
     bg_color: Color
+}
+
+impl CursorThread {
+    pub const fn new(terminal: &'static mut LFBTerminal) -> Self {
+        Self { terminal, visible: false }
+    }
+
+    pub fn run(&mut self) {
+        loop {
+            let character = &self.terminal.char_buffer[(self.terminal.y * self.terminal.columns + self.terminal.x) as usize];
+            self.terminal.print_char_at(if self.visible { character.value } else { CURSOR }, self.terminal.x, self.terminal.y, character.fg_color, character.bg_color);
+            self.visible = !self.visible;
+
+            kernel::get_device_service().get_timer().wait(250);
+        }
+    }
 }
 
 impl OutputStream for LFBTerminal {
@@ -112,7 +133,7 @@ impl LFBTerminal {
         Self { lfb: BufferedLFB::empty(), char_buffer: Vec::new(), parser: None, decoder: Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore), columns: 0, rows: 0, x: 0, y: 0, fg_color: color::INVISIBLE, bg_color: color::INVISIBLE, fg_base_color: color::INVISIBLE, bg_base_color: color::INVISIBLE, fg_bright: false, bg_bright: false, invert: false, bright: false, dim: false, ansi_saved_x: 0, ansi_saved_y: 0 }
     }
 
-    pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8, ansi_support: bool) -> Self {
+    pub fn new<>(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8, ansi_support: bool) -> Self {
         let raw_lfb = LFB::new(buffer, pitch, width, height, bpp);
         let mut lfb = BufferedLFB::new(raw_lfb);
 
@@ -141,11 +162,16 @@ impl LFBTerminal {
 
     fn print_char(&mut self, c: char, fg_color: Color, bg_color: Color) {
         if c == '\n' {
+            let old_x = self.x;
+            let old_y = self.y;
+
             self.clear_cursor();
             self.clear_line_from_cursor();
 
             self.y += 1;
             self.x = 0;
+
+            self.clear_cursor_at(old_x, old_y);
         } else {
             if self.print_char_at(c, self.x, self.y, fg_color, bg_color) {
                 let index = (self.y * self.columns + self.x) as usize;
@@ -164,6 +190,8 @@ impl LFBTerminal {
             self.scroll_up();
             self.x = 0;
             self.y = self.rows - 1;
+
+            self.print_char_at('_', 0, self.rows, self.bg_color, self.bg_color);
         }
 
         self.print_cursor();
@@ -174,8 +202,12 @@ impl LFBTerminal {
     }
 
     fn clear_cursor(&mut self) {
-        let character: &Character = &self.char_buffer[(self.y * self.columns + self.x) as usize];
-        self.print_char_at(character.value, self.x, self.y, character.fg_color, character.bg_color);
+        self.clear_cursor_at(self.x, self.y);
+    }
+
+    fn clear_cursor_at(&mut self, x: u32, y: u32) {
+        let character: &Character = &self.char_buffer[(y * self.columns + x) as usize];
+        self.print_char_at(character.value, x, y, character.fg_color, character.bg_color);
     }
 
     fn print_cursor(&mut self) {

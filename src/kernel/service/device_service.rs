@@ -1,21 +1,24 @@
+use alloc::boxed::Box;
 use acpi::AcpiTables;
 use spin::Mutex;
-use crate::device::lfb_terminal::LFBTerminal;
+use crate::device::lfb_terminal::{CursorThread, LFBTerminal};
 use crate::device::pit::Pit;
 use crate::device::ps2::PS2;
 use crate::device::serial;
 use crate::device::serial::{BaudRate, ComPort, SerialPort};
 use crate::device::speaker::Speaker;
 use crate::device::terminal::Terminal;
+use crate::kernel;
 use crate::kernel::Service;
 use crate::kernel::service::memory_service::AcpiHandler;
+use crate::kernel::thread::thread::Thread;
 
 pub struct DeviceService {
     pit: Pit,
     speaker: Mutex<Speaker>,
     ps2: PS2,
-    terminal: Mutex<LFBTerminal>,
-    serial: Option<Mutex<SerialPort>>,
+    terminal: LFBTerminal,
+    serial: Option<SerialPort>,
     acpi_tables: Option<AcpiTables<AcpiHandler>>
 }
 
@@ -27,7 +30,7 @@ impl DeviceService {
             pit: Pit::new(),
             speaker: Mutex::new(Speaker::new()),
             ps2: PS2::new(),
-            terminal: Mutex::new(LFBTerminal::empty()),
+            terminal: LFBTerminal::empty(),
             serial: None,
             acpi_tables: None
         }
@@ -43,7 +46,13 @@ impl DeviceService {
     }
 
     pub fn init_terminal(&mut self, buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
-        self.terminal = Mutex::new(LFBTerminal::new(buffer, pitch, width, height, bpp, true));
+        self.terminal = LFBTerminal::new(buffer, pitch, width, height, bpp, true);
+        kernel::get_thread_service().get_scheduler().ready(Thread::new(Box::new(|| {
+            let terminal = &mut kernel::get_device_service().terminal;
+            let mut cursor_thread = CursorThread::new(terminal);
+
+            cursor_thread.run();
+        })))
     }
 
     pub fn init_serial_port(&mut self) {
@@ -62,7 +71,7 @@ impl DeviceService {
 
         if serial.is_some() {
             unsafe { serial.as_mut().unwrap().init(128, BaudRate::Baud115200); }
-            self.serial = Some(Mutex::new(serial.unwrap()));
+            self.serial = Some(serial.unwrap());
         }
 
     }
@@ -95,11 +104,11 @@ impl DeviceService {
         return &mut self.ps2;
     }
 
-    pub fn get_terminal(&mut self) -> &Mutex<dyn Terminal> {
+    pub fn get_terminal(&mut self) -> &mut dyn Terminal {
         return &mut self.terminal;
     }
 
-    pub fn get_serial_port(&mut self) -> &mut Option<Mutex<SerialPort>> {
+    pub fn get_serial_port(&mut self) -> &mut Option<SerialPort> {
         return &mut self.serial;
     }
 

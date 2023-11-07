@@ -193,16 +193,12 @@ impl InputStream for SerialPort {
 
 impl ISR for SerialISR {
     fn trigger(&self) {
-        let serial_mutex = kernel::get_device_service().get_serial_port();
-        assert!(serial_mutex.is_some());
+        let serial = match kernel::get_device_service().get_serial_port() {
+            Some(serial) => serial,
+            None => return
+        };
 
         unsafe {
-            if serial_mutex.as_mut().unwrap().is_locked() {
-                serial_mutex.as_mut().unwrap().force_unlock();
-            }
-
-            let mut serial = serial_mutex.as_mut().unwrap().lock();
-
             if (serial.fifo_control_reg.read() & 0x01) == 0x01 {
                 return;
             }
