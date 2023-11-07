@@ -1,7 +1,7 @@
+use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use spin::Mutex;
 use crate::kernel;
 use crate::library::graphic::ansi;
 use crate::library::io::stream::OutputStream;
@@ -17,7 +17,7 @@ pub enum LogLevel {
 
 pub struct LogService {
     level: LogLevel,
-    streams: Vec<&'static Mutex<dyn OutputStream>>
+    streams: Vec<Box<&'static mut dyn OutputStream>>
 }
 
 impl LogService {
@@ -25,7 +25,7 @@ impl LogService {
         Self { level: LogLevel::INFO, streams: Vec::new() }
     }
 
-    pub fn log(&self, level: LogLevel, name: &String, msg: &str) {
+    pub fn log(&mut self, level: LogLevel, name: &String, msg: &str) {
         if level < self.level {
             return;
         }
@@ -35,19 +35,20 @@ impl LogService {
         let fraction = ms % 1000;
 
         let string = format!("{}[{}.{:0>3}]{}[{}]{}[{}] {}", ansi::FOREGROUND_CYAN, seconds, fraction, ansi_color(level), level_as_string(level), ansi::FOREGROUND_DEFAULT, name, msg);
-        for stream_mutex in self.streams.iter() {
-            let mut stream = stream_mutex.lock();
+
+        for i in 0 .. self.streams.len() {
+            let stream = &mut self.streams[i];
             stream.write_str(&string);
             stream.write_byte('\n' as u8);
         }
     }
 
-    pub fn register(&mut self, stream: &'static Mutex<dyn OutputStream>) {
-        self.streams.push(stream);
+    pub fn register(&mut self, stream: &'static mut dyn OutputStream) {
+        self.streams.push(Box::new(stream));
     }
 
-    pub fn remove(&mut self, stream: &'static Mutex<dyn OutputStream>) {
-        self.streams.retain(|element| core::ptr::from_ref(*element) != core::ptr::from_ref(stream));
+    pub fn remove(&mut self, stream: &mut dyn OutputStream) {
+        self.streams.retain(|element| core::ptr::from_ref(*element.as_ref()) != core::ptr::from_ref(stream));
     }
 }
 

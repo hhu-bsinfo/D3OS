@@ -1,4 +1,5 @@
 [GLOBAL setup_idt]
+[GLOBAL interrupt_return]
 
 [EXTERN int_disp]
 
@@ -42,6 +43,7 @@ wrapper_body:
 	mov    rdi, rax
 	call   int_disp
 
+interrupt_return:
 	; Restore registers
 	pop    r11
 	pop    r10

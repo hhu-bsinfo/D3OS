@@ -34,5 +34,5 @@ macro_rules! println {
 
 // Helper function of print macros (must be public)
 pub fn print(args: fmt::Arguments) {
-    kernel::get_device_service().get_terminal().lock().write_fmt(args).unwrap();
+    kernel::get_device_service().get_terminal().write_fmt(args).unwrap();
 }

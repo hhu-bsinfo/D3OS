@@ -3,6 +3,8 @@
 #![feature(alloc_layout_extra)]
 #![feature(trait_upcasting)]
 #![feature(const_for)]
+#![feature(new_uninit)]
+#![feature(const_mut_refs)]
 #![no_std]
 
 extern crate spin; // we need a mutex in devices::cga_print
@@ -10,6 +12,7 @@ extern crate rlibc;
 extern crate tinyrlibc;
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::ToString;
 use core::mem::size_of;
@@ -20,6 +23,7 @@ use multiboot2::{BootInformation, BootInformationHeader, Tag};
 use multiboot2::MemoryAreaType::{Available};
 use x86_64::instructions::interrupts;
 use crate::kernel::log::Logger;
+use crate::kernel::thread::thread::Thread;
 
 // insert other modules
 #[macro_use]
@@ -30,11 +34,6 @@ mod consts;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    let terminal = kernel::get_device_service().get_terminal();
-    if terminal.is_locked() {
-        unsafe { terminal.force_unlock(); };
-    }
-
     println!("Panic: {}", info);
     loop {}
 }
@@ -64,6 +63,9 @@ pub unsafe extern fn startup(mbi: u64) {
     }
 
     kernel::get_memory_service().init(heap_area.start_address() as usize, heap_area.end_address() as usize);
+
+    // Initialize scheduler
+    kernel::get_thread_service().init();
 
     // Initialize serial port and enable serial logging
     kernel::get_device_service().init_serial_port();
@@ -112,14 +114,25 @@ pub unsafe extern fn startup(mbi: u64) {
     // Enable serial port interrupts
     match kernel::get_device_service().get_serial_port() {
         Some(serial) => {
-            serial.lock().plugin();
+            serial.plugin();
         }
         None => {}
     }
 
+    let scheduler = kernel::get_thread_service().get_scheduler();
+    scheduler.ready(Thread::new(Box::new(|| {
+        let terminal = kernel::get_device_service().get_terminal();
+        loop {
+            match terminal.read_byte() {
+                -1 => panic!("Terminal input stream closed!"),
+                _ => {}
+            }
+        }
+    })));
+
     // Disable terminal logging
     kernel::get_log_service().remove(kernel::get_device_service().get_terminal());
-    kernel::get_device_service().get_terminal().lock().clear();
+    kernel::get_device_service().get_terminal().clear();
 
     let version = format!("v{} ({})", built_info::PKG_VERSION, built_info::PROFILE);
     let date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
@@ -141,14 +154,7 @@ pub unsafe extern fn startup(mbi: u64) {
 
     println!(include_str!("banner.txt"), version, date, git_ref, git_commit, bootloader_name);
 
-    LOG.info("Finished booting");
-
-    let terminal = kernel::get_device_service().get_terminal();
-    loop {
-        match terminal.lock().read_byte() {
-            -1 => panic!("Terminal input stream closed!"),
-            _ => {}
-        }
-    }
+    LOG.info("Starting scheduler");
+    scheduler.start();
 }
 
