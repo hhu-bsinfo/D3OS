@@ -22,6 +22,7 @@ use core::marker::Copy;
  *  Red  Green Blue
  * XXXXX XXXXX XXXXX
  */
+#[derive(Copy, Clone)]
 pub struct Color {
     pub red: u8,
     pub green: u8,
@@ -43,14 +44,6 @@ pub const BLUE: Color = Color { red: 0, green: 0, blue: 170, alpha: 255 };
 pub const MAGENTA: Color = Color { red: 170, green: 0, blue: 170, alpha: 255 };
 pub const CYAN: Color = Color { red: 0, green: 170, blue: 170, alpha: 255 };
 pub const WHITE: Color = Color { red: 170, green: 170, blue: 170 , alpha: 255 };
-
-impl Clone for Color {
-    fn clone(&self) -> Self {
-        Self { red: self.red, green: self.green, blue: self.blue, alpha: self.alpha }
-    }
-}
-
-impl Copy for Color {}
 
 impl Color {
     pub const fn from_rgb(rgb: u32, bpp: u8) -> Color {
