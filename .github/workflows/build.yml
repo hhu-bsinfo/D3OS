@@ -22,7 +22,7 @@ jobs:
         run: make towboot
 
       - name: Build limine image
-        run: make limine && wget -O limine-licence.txt https://raw.githubusercontent.com/limine-bootloader/limine/trunk/LICENSE
+        run: make limine && wget -O limine-licence.txt https://raw.githubusercontent.com/limine-bootloader/limine/trunk/COPYING
 
       - name: Build grub image
         run: make grub

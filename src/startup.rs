@@ -30,7 +30,6 @@ use crate::kernel::thread::thread::Thread;
 mod device;
 mod kernel;
 mod library;
-mod consts;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
