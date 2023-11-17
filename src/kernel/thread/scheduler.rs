@@ -1,9 +1,12 @@
 use alloc::boxed::Box;
+use alloc::collections::VecDeque;
+use alloc::vec::Vec;
 use core::ptr;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
-use nolock::queues::{DequeueError, mpsc};
-use nolock::queues::mpsc::jiffy::{Receiver, Sender};
+use spin::{Mutex, MutexGuard};
+use crate::kernel;
+use crate::kernel::interrupt_dispatcher::InterruptVector;
 use crate::kernel::thread::thread::{start_first_thread, switch_thread, Thread};
 
 static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -14,18 +17,14 @@ pub fn next_thread_id() -> usize {
 
 pub struct Scheduler {
     current_thread: *mut Thread,
-    ready_queue: Option<(Receiver<Box<Thread>>, Sender<Box<Thread>>)>,
+    ready_queue: Mutex<VecDeque<Box<Thread>>>,
+    sleep_list: Mutex<Vec<(*mut Thread, usize)>>,
     initialized: bool
 }
 
 impl Scheduler {
-
     pub const fn new() -> Self {
-        Self { current_thread: ptr::null_mut(), ready_queue: None, initialized: false }
-    }
-
-    pub fn init_queue(&mut self) {
-        self.ready_queue = Some(mpsc::jiffy::queue());
+        Self { current_thread: ptr::null_mut(), ready_queue: Mutex::new(VecDeque::new()), sleep_list: Mutex::new(Vec::new()), initialized: false }
     }
 
     pub fn set_init(&mut self) {
@@ -40,30 +39,37 @@ impl Scheduler {
     }
 
     pub fn start(&mut self) {
-        if self.ready_queue.is_none() {
-            panic!("Scheduler: Trying to start scheduler before queue has been initialized!");
-        }
+        let current;
 
-        let thread = match self.ready_queue.as_mut().unwrap().0.try_dequeue() {
-            Ok(thread) => thread,
-            Err(error) => panic!("Scheduler: Failed to dequeue first thread (Error: {:?})", error)
-        };
+        {
+            let mut ready_queue = self.ready_queue.lock();
+            let thread = match ready_queue.pop_back() {
+                Some(thread) => thread,
+                None => panic!("Scheduler: Failed to dequeue first thread!")
+            };
 
-        unsafe {
-            let current = Box::into_raw(thread);
+            current = Box::into_raw(thread);
             self.current_thread = current;
-            start_first_thread(current);
         }
+
+        if current.is_null() {
+            panic!("Scheduler: Trying to start scheduler with no threads enqueued!");
+        }
+
+        unsafe { start_first_thread(current); }
     }
 
     pub fn ready(&mut self, thread: Box<Thread>) {
-        if self.ready_queue.is_none() {
-            panic!("Scheduler: Trying to enqueue thread before queue has been initialized!");
+        self.ready_queue.lock().push_front(thread);
+    }
+
+    pub fn sleep(&mut self, ms: usize) {
+        {
+            let wakeup_time = kernel::get_device_service().get_timer().get_systime_ms() + ms;
+            self.sleep_list.lock().push((self.current_thread, wakeup_time));
         }
 
-        if self.ready_queue.as_mut().unwrap().1.enqueue(thread).is_err() {
-            panic!("Scheduler: Failed to enqueue thread!");
-        }
+        self.block();
     }
 
     pub fn switch_thread(&mut self) {
@@ -71,22 +77,73 @@ impl Scheduler {
             return;
         }
 
-        let queue = self.ready_queue.as_mut().unwrap();
-        let current = self.current_thread;
-        let next = match queue.0.try_dequeue() {
-            Ok(thread) => thread,
-            Err(error) => {
-                if error == DequeueError::Empty {
-                    return;
+        let mut current = ptr::null_mut();
+        let mut next = ptr::null_mut();
+
+        if let Some(mut ready_queue) = self.ready_queue.try_lock() {
+            if let Some(mut sleep_list) = self.sleep_list.try_lock() {
+                Scheduler::check_sleep_list(&mut ready_queue, &mut sleep_list);
+            }
+
+            let next_thread = match ready_queue.pop_back() {
+                Some(thread) => thread,
+                None => return
+            };
+
+            current = self.current_thread;
+            next = Box::into_raw(next_thread);
+            self.current_thread = next;
+
+            unsafe { ready_queue.push_front(Box::from_raw(current)); }
+        }
+
+        if !current.is_null() && !next.is_null() {
+            kernel::get_interrupt_service().get_apic().send_eoi(InterruptVector::Pit);
+            unsafe { switch_thread(current, next); }
+        }
+    }
+
+    pub fn block(&mut self) {
+        let current;
+        let next;
+
+        {
+            let mut ready_queue = self.ready_queue.lock();
+            let mut sleep_list = self.sleep_list.lock();
+            let mut next_thread = ready_queue.pop_back();
+
+            while next_thread.is_none() {
+                Scheduler::check_sleep_list(&mut ready_queue, &mut sleep_list);
+                next_thread = ready_queue.pop_back();
+            }
+
+            current = self.current_thread;
+            next = Box::into_raw(next_thread.unwrap());
+            self.current_thread = next;
+
+            // Thread has enqueued itself into sleep list and waited so long, that it dequeued itself in the meantime
+            if current == next {
+                return;
+            }
+        }
+
+        unsafe { switch_thread(current, next); }
+    }
+
+    fn check_sleep_list(ready_queue: &mut MutexGuard<VecDeque<Box<Thread>>>, sleep_list: &mut MutexGuard<Vec<(*mut Thread, usize)>>) {
+        let time = kernel::get_device_service().get_timer().get_systime_ms();
+
+        sleep_list.retain(|entry| {
+            if time >= entry.1 {
+                unsafe {
+                    let thread = Box::from_raw(entry.0);
+                    ready_queue.push_front(thread)
                 }
 
-                panic!("Scheduler: Failed to dequeue next thread (Error: {:?})", error)
+                return false;
             }
-        };
 
-        unsafe { self.ready(Box::from_raw(current)) }
-        self.current_thread = Box::into_raw(next);
-
-        unsafe { switch_thread(current, self.current_thread); }
+            return true;
+        });
     }
 }

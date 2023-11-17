@@ -1,5 +1,6 @@
 use alloc::boxed::Box;
 use alloc::format;
+use core::hint::spin_loop;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortWriteOnly};
@@ -73,7 +74,9 @@ impl Pit {
 
     pub fn wait(&self, ms: usize) {
         let end_time = self.get_systime_ms() + ms;
-        while self.get_systime_ms() < end_time {}
+        while self.get_systime_ms() < end_time {
+            spin_loop();
+        }
     }
 
     pub fn plugin(&self) {

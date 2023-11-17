@@ -101,6 +101,8 @@ impl CursorThread {
     }
 
     pub fn run(&mut self) {
+        let scheduler = kernel::get_thread_service().get_scheduler();
+
         loop {
             {
                 let mut display = self.terminal.display.lock();
@@ -111,7 +113,7 @@ impl CursorThread {
                 self.visible = !self.visible;
             }
 
-            kernel::get_device_service().get_timer().wait(250);
+            scheduler.sleep(250);
         }
     }
 }

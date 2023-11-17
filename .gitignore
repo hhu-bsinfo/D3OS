@@ -108,6 +108,7 @@ Cargo.lock
 
 build/
 *.iso
+*.img
 hhuTOSr.bin
 hhuTOSr.initrd
 towboot-x64.efi

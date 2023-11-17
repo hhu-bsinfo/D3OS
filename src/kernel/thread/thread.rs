@@ -3,7 +3,6 @@ use alloc::format;
 use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use crate::kernel;
-use crate::kernel::interrupt_dispatcher::InterruptVector;
 use crate::kernel::log::Logger;
 use crate::kernel::thread::scheduler;
 
@@ -53,10 +52,7 @@ impl Thread {
 
     pub unsafe fn kickoff() {
         let scheduler = kernel::get_thread_service().get_scheduler();
-        let interrupt_service = kernel::get_interrupt_service();
-
         scheduler.set_init();
-        interrupt_service.get_apic().send_eoi(InterruptVector::Pit);
 
         LOG.info(format!("Starting new thread with id [{}]", scheduler.get_current_thread().get_id()).as_str());
 

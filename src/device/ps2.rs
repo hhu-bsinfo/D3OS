@@ -64,7 +64,7 @@ impl ISR for KeyboardISR {
                     Some(buffer) => {
                         while buffer.1.try_enqueue(data).is_err() {
                             if buffer.0.try_dequeue().is_err() {
-                                panic!("Serial: Failed to store received byte in buffer!");
+                                panic!("Keyboard: Failed to store received byte in buffer!");
                             }
                         }
                     }
