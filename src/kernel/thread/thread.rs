@@ -1,9 +1,7 @@
 use alloc::boxed::Box;
-use alloc::format;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
 use core::ptr;
-use core::ptr::from_ref;
 use lazy_static::lazy_static;
 use crate::kernel;
 use crate::kernel::log::Logger;
@@ -33,7 +31,7 @@ pub fn start_first_thread(thread: &Thread) {
 }
 
 pub fn switch_thread(current: &Thread, next: &Thread) {
-    unsafe { thread_switch(from_ref(&current.old_rsp0) as *mut u64, next.old_rsp0); }
+    unsafe { thread_switch(ptr::from_ref(&current.old_rsp0) as *mut u64, next.old_rsp0); }
 }
 
 impl Thread {
@@ -57,15 +55,18 @@ impl Thread {
         let scheduler = kernel::get_thread_service().get_scheduler();
         scheduler.set_init();
 
-        let thread = scheduler.get_current_thread();
-        LOG.info(format!("Starting new thread with id [{}]", thread.get_id()).as_str());
-
         unsafe {
-            let thread_ptr = ptr::from_ref(thread.as_ref()) as *mut Thread;
+            let thread_ptr = ptr::from_ref(scheduler.get_current_thread().as_ref()) as *mut Thread;
             ((*thread_ptr).entry)();
         }
 
-        loop {}
+        scheduler.exit();
+    }
+
+    #[allow(dead_code)]
+    pub fn join(&self) {
+        let scheduler = kernel::get_thread_service().get_scheduler();
+        scheduler.join(self.id);
     }
 
     pub fn get_id(&self) -> usize {

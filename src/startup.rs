@@ -17,6 +17,7 @@ use alloc::format;
 use alloc::string::ToString;
 use core::mem::size_of;
 use core::panic::PanicInfo;
+use core::ptr;
 use chrono::DateTime;
 use lazy_static::lazy_static;
 use multiboot2::{BootInformation, BootInformationHeader, Tag};
@@ -63,6 +64,9 @@ pub unsafe extern fn startup(mbi: u64) {
 
     kernel::get_memory_service().init(heap_area.start_address() as usize, heap_area.end_address() as usize);
 
+    // Initialize scheduler
+    kernel::get_thread_service().initialize();
+
     // Initialize serial port and enable serial logging
     kernel::get_device_service().init_serial_port();
     match kernel::get_device_service().get_serial_port() {
@@ -82,9 +86,9 @@ pub unsafe extern fn startup(mbi: u64) {
 
     // Initialize ACPI tables
     let rsdp_addr: usize = if let Some(rsdp_tag) = multiboot.rsdp_v2_tag() {
-        core::ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
+        ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
     } else if let Some(rsdp_tag) = multiboot.rsdp_v1_tag() {
-        core::ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
+        ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
     } else {
         panic!("ACPI not available!");
     };
@@ -118,9 +122,12 @@ pub unsafe extern fn startup(mbi: u64) {
     let scheduler = kernel::get_thread_service().get_scheduler();
     scheduler.ready(Thread::new(Box::new(|| {
         let terminal = kernel::get_device_service().get_terminal();
+        terminal.write_str(">");
+
         loop {
             match terminal.read_byte() {
                 -1 => panic!("Terminal input stream closed!"),
+                0x0a => terminal.write_str(">"),
                 _ => {}
             }
         }

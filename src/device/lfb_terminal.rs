@@ -123,7 +123,7 @@ impl OutputStream for LFBTerminal {
         self.write_str(&String::from(char::from(b)));
     }
 
-    fn write_str(&mut self, string: &String) {
+    fn write_str(&mut self, string: &str) {
         if self.parser.is_some() {
             let mut parser = self.parser.as_mut().unwrap().lock().clone();
             for b in string.bytes() {
