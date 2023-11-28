@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::ptr;
 use crate::kernel;
 use crate::library::graphic::ansi;
 use crate::library::io::stream::OutputStream;
@@ -48,7 +49,7 @@ impl LogService {
     }
 
     pub fn remove(&mut self, stream: &mut dyn OutputStream) {
-        self.streams.retain(|element| core::ptr::from_ref(*element.as_ref()) != core::ptr::from_ref(stream));
+        self.streams.retain(|element| ptr::from_ref(*element.as_ref()) != ptr::from_ref(stream));
     }
 }
 

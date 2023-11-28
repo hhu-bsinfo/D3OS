@@ -1,6 +1,9 @@
 use alloc::boxed::Box;
 use alloc::format;
+use alloc::rc::Rc;
 use alloc::vec::Vec;
+use core::ptr;
+use core::ptr::from_ref;
 use lazy_static::lazy_static;
 use crate::kernel;
 use crate::kernel::log::Logger;
@@ -25,17 +28,17 @@ pub struct Thread {
     entry: Box<dyn FnMut()>
 }
 
-pub unsafe fn start_first_thread(thread: *mut Thread) {
-    thread_start((*thread).old_rsp0);
+pub fn start_first_thread(thread: &Thread) {
+    unsafe { thread_start(thread.old_rsp0); }
 }
 
-pub unsafe fn switch_thread(current: *mut Thread, next: *mut Thread) {
-    thread_switch(&mut (*current).old_rsp0, (*next).old_rsp0)
+pub fn switch_thread(current: &Thread, next: &Thread) {
+    unsafe { thread_switch(from_ref(&current.old_rsp0) as *mut u64, next.old_rsp0); }
 }
 
 impl Thread {
-    pub fn new(entry: Box<dyn FnMut()>) -> Box<Thread> {
-        let mut thread = Box::new(Thread{ id: scheduler::next_thread_id(), stack: Vec::with_capacity(STACK_SIZE / 8), old_rsp0: 0, entry });
+    pub fn new(entry: Box<dyn FnMut()>) -> Rc<Thread> {
+        let mut thread = Thread{ id: scheduler::next_thread_id(), stack: Vec::with_capacity(STACK_SIZE / 8), old_rsp0: 0, entry };
         let stack = &mut thread.stack;
 
         if stack.capacity() % 8 != 0 {
@@ -47,16 +50,21 @@ impl Thread {
         }
 
         thread.prepare_stack();
-        return thread;
+        return Rc::new(thread);
     }
 
-    pub unsafe fn kickoff() {
+    pub fn kickoff() {
         let scheduler = kernel::get_thread_service().get_scheduler();
         scheduler.set_init();
 
-        LOG.info(format!("Starting new thread with id [{}]", scheduler.get_current_thread().get_id()).as_str());
+        let thread = scheduler.get_current_thread();
+        LOG.info(format!("Starting new thread with id [{}]", thread.get_id()).as_str());
 
-        ((*scheduler.get_current_thread()).entry)();
+        unsafe {
+            let thread_ptr = ptr::from_ref(thread.as_ref()) as *mut Thread;
+            ((*thread_ptr).entry)();
+        }
+
         loop {}
     }
 
