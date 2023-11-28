@@ -151,26 +151,26 @@ pub unsafe fn check_port(port: ComPort) -> bool {
 
 impl OutputStream for SerialPort {
     fn write_byte(&mut self, b: u8) {
-        if self.buffer.is_none() {
-            panic!("Serial: Trying to set speed before initialization!");
-        }
-
-        if b == '\n' as u8 {
-            self.write_byte(0x0d);
-        }
-
-        unsafe {
-            while (self.line_status_reg.read() & 0x20) != 0x20 {
-                core::hint::spin_loop();
-            }
-
-            self.data_reg.write(b);
-        }
+        self.write_str(&String::from(char::from(b)));
     }
 
-    fn write_str(&mut self, string: &String) {
+    fn write_str(&mut self, string: &str) {
+        if self.buffer.is_none() {
+            panic!("Serial: Trying to write before initialization!");
+        }
+
         for b in string.bytes() {
-            self.write_byte(b);
+            if b == '\n' as u8 {
+                self.write_byte(0x0d);
+            }
+
+            unsafe {
+                while (self.line_status_reg.read() & 0x20) != 0x20 {
+                    core::hint::spin_loop();
+                }
+
+                self.data_reg.write(b);
+            }
         }
     }
 }

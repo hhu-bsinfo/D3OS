@@ -3,6 +3,7 @@ use alloc::rc::Rc;
 use alloc::vec::Vec;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
+use smallmap::Map;
 use spin::{Mutex, MutexGuard};
 use crate::kernel;
 use crate::kernel::interrupt_dispatcher::InterruptVector;
@@ -18,12 +19,13 @@ pub struct Scheduler {
     current_thread: Option<Rc<Thread>>,
     ready_queue: Mutex<VecDeque<Rc<Thread>>>,
     sleep_list: Mutex<Vec<(Rc<Thread>, usize)>>,
+    join_map: Mutex<Map<usize, Vec<Rc<Thread>>>>,
     initialized: bool
 }
 
 impl Scheduler {
-    pub const fn new() -> Self {
-        Self { current_thread: None, ready_queue: Mutex::new(VecDeque::new()), sleep_list: Mutex::new(Vec::new()), initialized: false }
+    pub fn new() -> Self {
+        Self { current_thread: None, ready_queue: Mutex::new(VecDeque::new()), sleep_list: Mutex::new(Vec::new()), join_map: Mutex::new(Map::new()), initialized: false }
     }
 
     pub fn set_init(&mut self) {
@@ -54,7 +56,9 @@ impl Scheduler {
     }
 
     pub fn ready(&mut self, thread: Rc<Thread>) {
+        let id = thread.get_id();
         self.ready_queue.lock().push_front(thread);
+        self.join_map.lock().insert(id, Vec::new());
     }
 
     pub fn sleep(&mut self, ms: usize) {
@@ -122,6 +126,41 @@ impl Scheduler {
         }
 
         switch_thread(current.as_ref(), next.as_ref());
+    }
+
+    pub fn join(&mut self, thread_id: usize) {
+        {
+            let mut join_map = self.join_map.lock();
+            let current_thread = self.get_current_thread();
+
+            match join_map.get_mut(&thread_id) {
+                Some(join_list) => join_list.push(current_thread),
+                None => panic!("Scheduler: Missing join_map entry for thread id {} on join()!", current_thread.get_id())
+            }
+        }
+
+        self.block();
+    }
+
+    pub fn exit(&mut self) {
+        {
+            let mut ready_queue = self.ready_queue.lock();
+            let mut join_map = self.join_map.lock();
+            let id = self.get_current_thread().get_id();
+
+            match join_map.get_mut(&id) {
+                Some(join_list) => {
+                    for thread in join_list {
+                        ready_queue.push_front(Rc::clone(thread));
+                    }
+                },
+                None => panic!("Scheduler: Missing join_map entry for thread id {} on exit()!", id)
+            }
+
+            join_map.remove(&id);
+        }
+
+        self.block();
     }
 
     fn check_sleep_list(ready_queue: &mut MutexGuard<VecDeque<Rc<Thread>>>, sleep_list: &mut MutexGuard<Vec<(Rc<Thread>, usize)>>) {

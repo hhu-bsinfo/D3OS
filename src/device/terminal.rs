@@ -1,4 +1,3 @@
-use alloc::string::String;
 use core::fmt;
 use core::fmt::Write;
 use crate::kernel;
@@ -13,7 +12,7 @@ pub trait Terminal: OutputStream + InputStream {
 // Requires only one function 'write_str'
 impl Write for dyn Terminal {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.write_str(&String::from(s));
+        self.write_str(s);
         Ok(())
     }
 }
