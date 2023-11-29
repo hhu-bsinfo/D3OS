@@ -7,7 +7,7 @@ use smallmap::Map;
 use spin::{Mutex, MutexGuard};
 use crate::kernel;
 use crate::kernel::interrupt_dispatcher::InterruptVector;
-use crate::kernel::thread::thread::{start_first_thread, switch_thread, Thread};
+use crate::kernel::thread::thread::Thread;
 
 static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -52,7 +52,7 @@ impl Scheduler {
             self.current_thread = Some(Rc::clone(&thread));
         }
 
-        start_first_thread(thread.as_ref());
+        Thread::start_first(thread.as_ref());
     }
 
     pub fn ready(&mut self, thread: Rc<Thread>) {
@@ -98,7 +98,7 @@ impl Scheduler {
         }
 
         kernel::get_interrupt_service().get_apic().send_eoi(InterruptVector::Pit);
-        switch_thread(current.as_ref(), next.as_ref());
+        Thread::switch(current.as_ref(), next.as_ref());
     }
 
     pub fn block(&mut self) {
@@ -125,7 +125,7 @@ impl Scheduler {
             }
         }
 
-        switch_thread(current.as_ref(), next.as_ref());
+        Thread::switch(current.as_ref(), next.as_ref());
     }
 
     pub fn join(&mut self, thread_id: usize) {

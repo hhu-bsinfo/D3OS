@@ -97,7 +97,7 @@ impl DisplayState {
 
 impl CursorThread {
     pub const fn new(terminal: &'static mut LFBTerminal) -> Self {
-        Self { terminal, visible: false }
+        Self { terminal, visible: true }
     }
 
     pub fn run(&mut self) {
