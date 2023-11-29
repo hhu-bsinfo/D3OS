@@ -120,14 +120,14 @@ pub unsafe extern fn startup(mbi: u64) {
     }
 
     let scheduler = kernel::get_thread_service().get_scheduler();
-    scheduler.ready(Thread::new(Box::new(|| {
+    scheduler.ready(Thread::new_kernel_thread(Box::new(|| {
         let terminal = kernel::get_device_service().get_terminal();
-        terminal.write_str(">");
+        terminal.write_str("> ");
 
         loop {
             match terminal.read_byte() {
                 -1 => panic!("Terminal input stream closed!"),
-                0x0a => terminal.write_str(">"),
+                0x0a => terminal.write_str("> "),
                 _ => {}
             }
         }

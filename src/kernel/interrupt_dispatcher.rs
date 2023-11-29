@@ -115,16 +115,20 @@ impl InterruptDispatcher {
 
     pub fn dispatch(&mut self, int_number: u32) {
         if let Ok(vector) = InterruptVector::try_from(int_number as u8) {
-            if let Some(isr_vec) = self.int_vectors.get(int_number as usize).as_mut() {
-                if isr_vec.is_locked() {
+            if let Some(isr_vec_mutex) = self.int_vectors.get(int_number as usize).as_mut() {
+                let mut isr_vec = isr_vec_mutex.try_lock();
+                while isr_vec_mutex.is_locked() {
                     // We have to force unlock inside the interrupt handler, or else the system will hang forever.
                     // While this might be unsafe, it is extremely unlikely that we destroy something here, since we only need read access to the vectors.
                     // The only scenario, in which something might break, is when two or more drivers are trying to assign an ISR to the same vector,
                     // while an interrupt for that vector occurs.
-                    unsafe { isr_vec.force_unlock(); }
+                    unsafe {
+                        isr_vec_mutex.force_unlock();
+                        isr_vec = isr_vec_mutex.try_lock();
+                    }
                 }
 
-                for isr in isr_vec.lock().iter() {
+                for isr in isr_vec.unwrap().iter() {
                     isr.trigger();
                 }
             }

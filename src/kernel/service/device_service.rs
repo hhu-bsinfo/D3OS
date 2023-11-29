@@ -47,7 +47,7 @@ impl DeviceService {
 
     pub fn init_terminal(&mut self, buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
         self.terminal = LFBTerminal::new(buffer, pitch, width, height, bpp);
-        kernel::get_thread_service().get_scheduler().ready(Thread::new(Box::new(|| {
+        kernel::get_thread_service().get_scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
             let terminal = &mut kernel::get_device_service().terminal;
             let mut cursor_thread = CursorThread::new(terminal);
 

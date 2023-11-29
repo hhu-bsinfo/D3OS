@@ -27,6 +27,8 @@ pagetable_end:  equ 0x200000      ;  = 2 MB
 ; Von uns bereitgestellte Funktionen
 [GLOBAL start]
 [GLOBAL idt]
+[GLOBAL get_tss_address]
+[GLOBAL tss_set_rsp0]
 
 ; C-Funktion die am Ende des Assembler-Codes aufgerufen werden
 [EXTERN startup]
@@ -247,6 +249,18 @@ clear_bss:
 	cmp    rdi, ___BSS_END__
 	jne    clear_bss
 
+    ; TSS-Basisadresse im GDT-Eintrag setzen
+    call tss_set_base_address
+
+    ; Kernel-Stack im TSS = rsp0 setzen
+    mov rdi, init_stack.end
+    call tss_set_rsp0
+
+    ; Lade TSS-Register mit dem 5. GDT-Eintrag
+    xor rax, rax
+    mov rax, 6 * 8
+    ltr ax
+
     call setup_idt
 	
     mov    rdi, [multiboot_info_address] ; 1. Parameter wird in rdi uebergeben
@@ -255,7 +269,50 @@ clear_bss:
 	cli            ; Hier sollten wir nicht hinkommen
 	hlt
 
+;
+; TSS Basisadresse in GDT-Eintrag setzen
+;
+tss_set_base_address:
+    ; TSS Basisadresse in GDT-Eintrag aktualisieren
+    mov rbx, tss_entry
 
+    ; Basis-Adresse setzen [00:15]
+    mov rax, tss
+    mov word [rbx+2], ax
+
+    ; Basis-Adresse setzen [16:23]
+    mov rax, tss
+    shr rax, 16
+    mov byte [rbx+4], al
+
+    ; Basis-Adresse setzen [24:31]
+    mov rax, tss
+    shr rax, 24
+    mov byte [rbx+7], al
+
+    ; Obere 32 Bit der Basis im TSS-Deskriptor schreiben
+    mov rax, tss
+    shr rax, 32
+    mov dword [rbx+8], eax
+
+    ; Letzte beiden Bytes auf 0 setzen
+    xor rax, rax
+    mov word [rbx+12], ax
+
+    ret
+
+; Kernel-Stack im TSS = rsp0 setzen
+; rdi = Zeiger auf Stack (letzter genutzer Eintrag)
+tss_set_rsp0:
+    mov rax, tss
+    mov [rax+4], rdi
+    ret
+
+
+; Adresse des TSS abfragen
+get_tss_address:
+    mov rax, tss
+    ret
 
 ;
 ; Funktionen für den C++ Compiler. Diese Label müssen für den Linker
@@ -277,30 +334,64 @@ __cxa_pure_virtual: ; "virtual" Methode ohne Implementierung aufgerufen
 gdt:
 	dw  0,0,0,0   ; NULL-Deskriptor
 
-	; 32-Bit-Codesegment-Deskriptor
+    ; Kernel 32-Bit-Codesegment-Deskriptor (nur fuer das Booten benoetigt)
 	dw  0xFFFF    ; 4Gb - (0x100000*0x1000 = 4Gb)
 	dw  0x0000    ; base address=0
 	dw  0x9A00    ; code read/exec
 	dw  0x00CF    ; granularity=4096, 386 (+5th nibble of limit)
 
-	; 64-Bit-Codesegment-Deskriptor
+	; Kernel 64-Bit-Codesegment-Deskriptor
 	dw  0xFFFF    ; 4Gb - (0x100000*0x1000 = 4Gb)
 	dw  0x0000    ; base address=0
 	dw  0x9A00    ; code read/exec
 	dw  0x00AF    ; granularity=4096, 386 (+5th nibble of limit), Long-Mode
 
-	; Datensegment-Deskriptor
+	; Kernel 64-Bit-Datensegment-Deskriptor
 	dw  0xFFFF    ; 4Gb - (0x100000*0x1000 = 4Gb)
 	dw  0x0000    ; base address=0
 	dw  0x9200    ; data read/write
 	dw  0x00CF    ; granularity=4096, 386 (+5th nibble of limit)
 
+    ; User 64-Bit-Codesegment-Deskriptor
+    dw  0xFFFF    ; limit [00:15] = 4Gb - (0x100000*0x1000 = 4Gb)
+    dw  0x0000    ; base  [00:15] = 0
+    dw  0xFA00    ; base  [16:23] = 0, data code/exec, DPL=3, present
+    dw  0x00AF    ; limit [16:19], granularity=4096, 386, base [24:31]
+
+    ; User 64-Bit-Datensegment-Deskriptor
+    dw  0xFFFF    ; limit [00:15] = 4Gb - (0x100000*0x1000 = 4Gb)
+    dw  0x0000    ; base  [00:15] = 0
+    dw  0xF200    ; base  [16:23] = 0, data read/write, DPL=3, present
+    dw  0x00CF    ; limit [16:19], granularity=4096, 386, base [24:31]
+
+tss_entry:
+    ; Task State Segment Deskriptor
+    dw  0x0068    ; limit [00:15] = 0x6b = 104 Bytes (no I/O bitmap)
+    dw  0x0000    ; base  [00:15] = 0
+    dw  0x8900    ; base  [16:23, ], tss, DPL=0, present
+    dw  0x0000    ; limit [16:19] = 0, granularity=0, 386, Long-Mode, base [24:31]
+
+    dw  0x0000    ; base [47:32]
+    dw  0x0000    ; base [63:32]
+    dw  0x0000    ; 000 + reserved
+    dw  0x0000    ; reserved
+
 gdt_80:
-	dw  4*8 - 1   ; GDT Limit=24, 4 GDT Eintraege - 1
+    ; 7 Eintraege in der GDT, aber der TSS-Eintrag hat 16 Byte und zaehlt daher doppelt!
+	dw  8*8 - 1   ; GDT Limit = 64, 7 GDT Eintraege - 1
 	dq  gdt       ; Adresse der GDT
 
 multiboot_info_address:
 	dq  0
+
+;
+; Speicher (104 Bytes) fuer ein Task State Segment (TSS) ohne IO-Bitmap
+; siehe auch: https://stackoverflow.com/questions/54876039/creating-a-proper-task-state-segment-tss-structure-with-and-without-an-io-bitm
+;
+tss:
+    times 100 db 0
+    dw 0
+    dw 0x68
 
 [SECTION .bss]
 

@@ -188,12 +188,14 @@ impl Apic {
     pub fn send_eoi(&mut self, _vector: InterruptVector) {
         match self.local_apic.as_mut() {
             None => panic!("APIC: Trying to call send_eoi() before init()!"),
-            Some(local_apic) => unsafe {
-                if local_apic.is_locked() {
-                    local_apic.force_unlock();
+            Some(local_apic_mutex) => unsafe {
+                let mut local_apic = local_apic_mutex.try_lock();
+                while local_apic.is_none() {
+                    local_apic_mutex.force_unlock();
+                    local_apic = local_apic_mutex.try_lock();
                 }
 
-                local_apic.lock().end_of_interrupt();
+                local_apic.unwrap().end_of_interrupt();
             }
         }
     }
