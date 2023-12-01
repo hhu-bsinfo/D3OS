@@ -177,7 +177,7 @@ impl PS2 {
 
     pub fn plugin_keyboard(&self) {
         let int_service = kernel::get_interrupt_service();
-        int_service.get_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardISR::default()));
-        int_service.get_apic().allow(InterruptVector::Keyboard);
+        int_service.assign_handler(InterruptVector::Keyboard, Box::new(KeyboardISR::default()));
+        int_service.allow_interrupt(InterruptVector::Keyboard);
     }
 }

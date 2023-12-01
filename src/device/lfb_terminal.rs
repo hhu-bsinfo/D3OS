@@ -101,7 +101,7 @@ impl CursorThread {
     }
 
     pub fn run(&mut self) {
-        let scheduler = kernel::get_thread_service().get_scheduler();
+        let thread_service = kernel::get_thread_service();
 
         loop {
             {
@@ -113,7 +113,7 @@ impl CursorThread {
                 self.visible = !self.visible;
             }
 
-            scheduler.sleep(250);
+            thread_service.sleep(250);
         }
     }
 }

@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use nolock::queues::{DequeueError, mpmc};
 use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
 use x86_64::instructions::port::Port;
-use crate::device::serial::ComPort::{Com1, Com3};
+use crate::device::serial::ComPort::{Com1, Com2, Com3, Com4};
 use crate::kernel;
 use crate::kernel::interrupt_dispatcher::InterruptVector;
 use crate::kernel::isr::ISR;
@@ -270,15 +270,14 @@ impl SerialPort {
     }
 
     pub fn plugin(&mut self) {
-        let int_service = kernel::get_interrupt_service();
+        let vector = match self.port {
+            Com1 | Com3 => InterruptVector::Com1,
+            Com2 | Com4 => InterruptVector::Com2
+        };
 
-        if self.port == Com1 || self.port == Com3 {
-            int_service.get_dispatcher().assign(InterruptVector::Com1, Box::new(SerialISR::default()));
-            int_service.get_apic().allow(InterruptVector::Com1);
-        } else {
-            int_service.get_dispatcher().assign(InterruptVector::Com2, Box::new(SerialISR::default()));
-            int_service.get_apic().allow(InterruptVector::Com2);
-        }
+        let int_service = kernel::get_interrupt_service();
+        int_service.assign_handler(vector, Box::new(SerialISR::default()));
+        int_service.allow_interrupt(vector);
 
         unsafe { self.interrupt_reg.write(0x01) } // Enable interrupts
     }

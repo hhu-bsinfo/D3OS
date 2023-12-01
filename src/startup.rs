@@ -65,7 +65,7 @@ pub unsafe extern fn startup(mbi: u64) {
     kernel::get_memory_service().init(heap_area.start_address() as usize, heap_area.end_address() as usize);
 
     // Initialize scheduler
-    kernel::get_thread_service().initialize();
+    kernel::get_thread_service().init();
 
     // Initialize serial port and enable serial logging
     kernel::get_device_service().init_serial_port();
@@ -103,13 +103,11 @@ pub unsafe extern fn startup(mbi: u64) {
 
     // Initialize timer
     LOG.info("Initializing timer");
-    kernel::get_device_service().init_timer();
-    kernel::get_device_service().get_timer().plugin();
+    kernel::get_time_service().init();
 
     // Initialize keyboard
     LOG.info("Initializing PS/2 devices");
     kernel::get_device_service().init_keyboard();
-    kernel::get_device_service().get_ps2().plugin_keyboard();
 
     // Enable serial port interrupts
     match kernel::get_device_service().get_serial_port() {
@@ -119,8 +117,8 @@ pub unsafe extern fn startup(mbi: u64) {
         None => {}
     }
 
-    let scheduler = kernel::get_thread_service().get_scheduler();
-    scheduler.ready(Thread::new_kernel_thread(Box::new(|| {
+    let thread_service = kernel::get_thread_service();
+    thread_service.ready_thread(Thread::new_kernel_thread(Box::new(|| {
         let terminal = kernel::get_device_service().get_terminal();
         terminal.write_str("> ");
 
@@ -158,6 +156,6 @@ pub unsafe extern fn startup(mbi: u64) {
     println!(include_str!("banner.txt"), version, date, git_ref, git_commit, bootloader_name);
 
     LOG.info("Starting scheduler");
-    scheduler.start();
+    thread_service.start_scheduler();
 }
 

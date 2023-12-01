@@ -1,6 +1,5 @@
 use alloc::boxed::Box;
 use alloc::format;
-use core::hint::spin_loop;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortWriteOnly};
@@ -19,28 +18,33 @@ pub const BASE_FREQUENCY: usize = 1193182;
 pub struct Pit {
     ctrl_port: Mutex<PortWriteOnly<u8>>,
     data_port: Mutex<Port<u8>>,
-
     interval_ns: usize,
-    elapsed_time_ns: usize,
 }
 
-#[derive(Default)]
-pub struct PitISR;
+pub struct PitISR {
+    interval_ns: usize
+}
 
 impl ISR for PitISR {
     fn trigger(&self) {
-        let timer = kernel::get_device_service().get_timer();
-        timer.elapsed_time_ns += timer.interval_ns;
+        let time_service = kernel::get_time_service();
+        time_service.inc_systime(self.interval_ns);
 
-        if timer.get_systime_ms() % 10 == 0 {
-            kernel::get_thread_service().get_scheduler().switch_thread();
+        if time_service.get_systime_ms() % 10 == 0 {
+            kernel::get_thread_service().switch_thread();
         }
+    }
+}
+
+impl PitISR {
+    pub const fn new(interval_ns: usize) -> Self {
+        Self { interval_ns }
     }
 }
 
 impl Pit {
     pub const fn new() -> Self {
-        Self { ctrl_port: Mutex::new(PortWriteOnly::new(0x43)), data_port: Mutex::new(Port::new(0x40)), interval_ns: 0, elapsed_time_ns: 0 }
+        Self { ctrl_port: Mutex::new(PortWriteOnly::new(0x43)), data_port: Mutex::new(Port::new(0x40)), interval_ns: 0 }
     }
 
     pub fn set_int_rate(&mut self, interval_ms: usize) {
@@ -68,20 +72,9 @@ impl Pit {
         }
     }
 
-    pub fn get_systime_ms(&self) -> usize {
-        self.elapsed_time_ns / 1000000
-    }
-
-    pub fn wait(&self, ms: usize) {
-        let end_time = self.get_systime_ms() + ms;
-        while self.get_systime_ms() < end_time {
-            spin_loop();
-        }
-    }
-
     pub fn plugin(&self) {
         let int_service = kernel::get_interrupt_service();
-        int_service.get_dispatcher().assign(InterruptVector::Pit, Box::new(PitISR::default()));
-        int_service.get_apic().allow(InterruptVector::Pit);
+        int_service.assign_handler(InterruptVector::Pit, Box::new(PitISR::new(self.interval_ns)));
+        int_service.allow_interrupt(InterruptVector::Pit);
     }
 }

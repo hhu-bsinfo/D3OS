@@ -31,7 +31,7 @@ impl LogService {
             return;
         }
 
-        let ms = kernel::get_device_service().get_timer().get_systime_ms();
+        let ms = kernel::get_time_service().get_systime_ms();
         let seconds = ms / 1000;
         let fraction = ms % 1000;
 
