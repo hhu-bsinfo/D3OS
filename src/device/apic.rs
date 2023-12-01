@@ -185,7 +185,7 @@ impl Apic {
         }
     }
 
-    pub fn send_eoi(&mut self, _vector: InterruptVector) {
+    pub fn send_eoi(&mut self) {
         match self.local_apic.as_mut() {
             None => panic!("APIC: Trying to call send_eoi() before init()!"),
             Some(local_apic_mutex) => unsafe {

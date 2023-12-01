@@ -1,5 +1,8 @@
+use alloc::boxed::Box;
 use crate::device::apic::Apic;
-use crate::kernel::interrupt_dispatcher::InterruptDispatcher;
+use crate::kernel;
+use crate::kernel::interrupt_dispatcher::{InterruptDispatcher, InterruptVector};
+use crate::kernel::isr::ISR;
 use crate::kernel::Service;
 
 pub struct InterruptService {
@@ -19,11 +22,24 @@ impl InterruptService {
         self.apic.init();
     }
 
-    pub fn get_apic(&mut self) -> &mut Apic {
-        return &mut self.apic;
+    pub fn allow_interrupt(&mut self, vector: InterruptVector) {
+        self.apic.allow(vector);
     }
 
-    pub fn get_dispatcher(&mut self) -> &mut InterruptDispatcher {
-        return &mut self.int_disp;
+    pub fn end_of_interrupt(&mut self) {
+        self.apic.send_eoi();
     }
+
+    pub fn assign_handler(&mut self, vector: InterruptVector, isr: Box<dyn ISR>) {
+        self.int_disp.assign(vector, isr);
+    }
+
+    pub fn dispatch_interrupt(&mut self, int_number: u32) {
+        self.int_disp.dispatch(int_number)
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn int_disp(int_number: u32) {
+    kernel::get_interrupt_service().dispatch_interrupt(int_number);
 }

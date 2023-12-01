@@ -36,10 +36,10 @@ impl Speaker {
     }
 
     pub fn play(&mut self, freq: usize, duration_ms: usize) {
-        let timer = kernel::get_device_service().get_timer();
+        let time_service = kernel::get_time_service();
 
         self.on(freq);
-        timer.wait(duration_ms);
+        time_service.wait(duration_ms);
         self.off();
     }
 }

@@ -55,33 +55,36 @@ impl Thread {
     }
 
     pub fn kickoff_kernel_thread() {
-        let scheduler = kernel::get_thread_service().get_scheduler();
-        let thread = scheduler.get_current_thread();
+        let thread_service = kernel::get_thread_service();
+        let thread = thread_service.get_current_thread();
+        thread_service.set_scheduler_init();
 
         unsafe {
             let thread_ptr = ptr::from_ref(thread.as_ref()) as *mut Thread;
             tss_set_rsp0(thread.get_kernel_stack_addr() as u64);
 
             if thread.is_kernel_thread() {
-                scheduler.set_init();
+                thread_service.set_scheduler_init();
                 ((*thread_ptr).entry)();
             } else {
                 (*thread_ptr).switch_to_user_mode();
             }
         }
 
-        scheduler.exit();
+        thread_service.exit_thread();
     }
 
     pub fn kickoff_user_thread() {
-        let scheduler = kernel::get_thread_service().get_scheduler();
+        let thread_service = kernel::get_thread_service();
+        let thread = thread_service.get_current_thread();
+        thread_service.set_scheduler_init();
 
         unsafe {
-            let thread_ptr = ptr::from_ref(scheduler.get_current_thread().as_ref()) as *mut Thread;
+            let thread_ptr = ptr::from_ref(thread.as_ref()) as *mut Thread;
             ((*thread_ptr).entry)();
         }
 
-        scheduler.exit();
+        thread_service.exit_thread();
     }
 
     pub fn start_first(thread: &Thread) {
@@ -98,8 +101,7 @@ impl Thread {
 
     #[allow(dead_code)]
     pub fn join(&self) {
-        let scheduler = kernel::get_thread_service().get_scheduler();
-        scheduler.join(self.id);
+        kernel::get_thread_service().join_thread(self.get_id());
     }
 
     pub fn get_id(&self) -> usize {

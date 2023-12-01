@@ -6,7 +6,6 @@ use core::sync::atomic::Ordering::Relaxed;
 use smallmap::Map;
 use spin::{Mutex, MutexGuard};
 use crate::kernel;
-use crate::kernel::interrupt_dispatcher::InterruptVector;
 use crate::kernel::thread::thread::Thread;
 
 static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -63,7 +62,7 @@ impl Scheduler {
 
     pub fn sleep(&mut self, ms: usize) {
         {
-            let wakeup_time = kernel::get_device_service().get_timer().get_systime_ms() + ms;
+            let wakeup_time = kernel::get_time_service().get_systime_ms() + ms;
             let thread = self.get_current_thread();
             self.sleep_list.lock().push((thread, wakeup_time));
         }
@@ -97,7 +96,7 @@ impl Scheduler {
             return;
         }
 
-        kernel::get_interrupt_service().get_apic().send_eoi(InterruptVector::Pit);
+        kernel::get_interrupt_service().end_of_interrupt();
         Thread::switch(current.as_ref(), next.as_ref());
     }
 
@@ -164,7 +163,7 @@ impl Scheduler {
     }
 
     fn check_sleep_list(ready_queue: &mut MutexGuard<VecDeque<Rc<Thread>>>, sleep_list: &mut MutexGuard<Vec<(Rc<Thread>, usize)>>) {
-        let time = kernel::get_device_service().get_timer().get_systime_ms();
+        let time = kernel::get_time_service().get_systime_ms();
 
         sleep_list.retain(|entry| {
             if time >= entry.1 {
