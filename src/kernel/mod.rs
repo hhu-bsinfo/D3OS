@@ -5,11 +5,11 @@ use crate::kernel::service::memory_service::MemoryService;
 use crate::kernel::service::thread_service::ThreadService;
 use crate::kernel::service::time_service::TimeService;
 
-pub mod interrupt_dispatcher;
-pub mod isr;
 pub mod service;
 pub mod log;
 pub mod thread;
+pub mod interrupt;
+pub mod syscall;
 
 #[global_allocator]
 static mut MEMORY_SERVICE: MemoryService = MemoryService::new();

@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use spin::Mutex;
 use crate::kernel;
-use crate::kernel::isr::ISR;
+use crate::kernel::interrupt::isr::ISR;
 
 #[repr(u8)]
 #[derive(PartialEq, PartialOrd, Copy, Clone)]
@@ -49,8 +49,6 @@ pub enum InterruptVector {
     PrimaryAta = 0x2e,
     SecondaryAta = 0x2f,
     // Possibly some other interrupts supported by IO APICs
-
-    SystemCall = 0x86,
 
     // Local APIC interrupts (247 - 254)
     Cmci = 0xf8,

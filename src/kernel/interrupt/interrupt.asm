@@ -1,5 +1,6 @@
 [GLOBAL setup_idt]
 [GLOBAL interrupt_return]
+[GLOBAL idt]
 
 [EXTERN int_disp]
 
@@ -102,5 +103,5 @@ idt_entry i
 %endrep
 
 idt_descr:
-	dw  256*8 - 1    ; 256 Einträge
+	dw  256*16 - 1    ; 256 Einträge
 	dq idt

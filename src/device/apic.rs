@@ -9,7 +9,7 @@ use spin::Mutex;
 use x2apic::ioapic::{IoApic, IrqFlags, IrqMode, RedirectionTableEntry};
 use x2apic::lapic::{LocalApic, LocalApicBuilder, xapic_base};
 use crate::{kernel};
-use crate::kernel::interrupt_dispatcher::InterruptVector;
+use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::kernel::service::memory_service::AcpiAllocator;
 use crate::kernel::log::Logger;
 

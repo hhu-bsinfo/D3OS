@@ -5,6 +5,7 @@ use core::ptr;
 use lazy_static::lazy_static;
 use crate::kernel;
 use crate::kernel::log::Logger;
+use crate::kernel::syscall::user_api::thread_api;
 use crate::kernel::thread::scheduler;
 
 extern "C" {
@@ -84,7 +85,7 @@ impl Thread {
             ((*thread_ptr).entry)();
         }
 
-        thread_service.exit_thread();
+        thread_api::usr_thread_exit();
     }
 
     pub fn start_first(thread: &Thread) {

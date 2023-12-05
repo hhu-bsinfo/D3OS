@@ -8,8 +8,8 @@ use ps2::error::{ControllerError, KeyboardError};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use spin::Mutex;
 use crate::kernel;
-use crate::kernel::interrupt_dispatcher::InterruptVector;
-use crate::kernel::isr::ISR;
+use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
+use crate::kernel::interrupt::isr::ISR;
 use crate::library::io::stream::InputStream;
 use crate::kernel::log::Logger;
 

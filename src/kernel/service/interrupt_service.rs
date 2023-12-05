@@ -1,9 +1,10 @@
 use alloc::boxed::Box;
 use crate::device::apic::Apic;
 use crate::kernel;
-use crate::kernel::interrupt_dispatcher::{InterruptDispatcher, InterruptVector};
-use crate::kernel::isr::ISR;
+use crate::kernel::interrupt::interrupt_dispatcher::{InterruptDispatcher, InterruptVector};
+use crate::kernel::interrupt::isr::ISR;
 use crate::kernel::Service;
+use crate::kernel::syscall::syscall_dispatcher;
 
 pub struct InterruptService {
     apic: Apic,
@@ -20,6 +21,7 @@ impl InterruptService {
     pub fn init(&mut self) {
         self.int_disp.init();
         self.apic.init();
+        syscall_dispatcher::init();
     }
 
     pub fn allow_interrupt(&mut self, vector: InterruptVector) {
