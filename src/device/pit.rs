@@ -5,8 +5,8 @@ use spin::Mutex;
 use x86_64::instructions::port::{Port, PortWriteOnly};
 use crate::device::qemu_cfg;
 use crate::kernel;
-use crate::kernel::interrupt_dispatcher::InterruptVector;
-use crate::kernel::isr::ISR;
+use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
+use crate::kernel::interrupt::isr::ISR;
 use crate::kernel::log::Logger;
 
 lazy_static!{
