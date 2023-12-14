@@ -6,6 +6,7 @@
 #![feature(new_uninit)]
 #![feature(const_mut_refs)]
 #![feature(naked_functions)]
+#![feature(exact_size_is_empty)]
 #![no_std]
 
 extern crate spin; // we need a mutex in devices::cga_print
