@@ -19,7 +19,7 @@ lazy_static! {
 static ref LOG: Logger = Logger::new("Scheduler");
 }
 
-const STACK_SIZE: usize = 65536;
+const STACK_SIZE: usize = 1048576;
 
 pub struct Thread {
     id: usize,
@@ -158,10 +158,10 @@ impl Thread {
         self.kernel_stack[capacity - 7] = 0; // rdi
         self.kernel_stack[capacity - 6] = Thread::kickoff_user_thread as u64; // Address of 'kickoff_user_thread()'
 
-        self.kernel_stack[capacity - 5] = 0x23; // cs = user code segment; 4. entry, rpl = 3
+        self.kernel_stack[capacity - 5] = 0x2b; // cs = user code segment; 5. entry, rpl = 3
         self.kernel_stack[capacity - 4] = 0x202; // rflags (Interrupts enabled)
         self.kernel_stack[capacity - 3] = user_stack_addr + (self.user_stack.capacity() - 1) as u64 * 8; // rsp for user stack
-        self.kernel_stack[capacity - 2] = 0x2b; // ss = user data segment; 5. entry, rpl = 3
+        self.kernel_stack[capacity - 2] = 0x23; // ss = user data segment; 4. entry, rpl = 3
 
         self.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
 

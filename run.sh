@@ -106,16 +106,11 @@ parse_debug() {
   QEMU_GDB_PORT="${port}"
 }
 
-start_gdb() {
-  gdb -x "/tmp/gdbcommands.$(id -u)" "loader/boot/hhuOS.bin"
-  exit $?
-}
-
 print_usage() {
   printf "Usage: ./run.sh [OPTION...]
     Available options:
     -f, --file
-        Set the .iso or .img file, which qemu should boot (Default: hhuOS.img)
+        Set the .iso or .img file, which qemu should boot (Default: hhuTOSr-towboot.img)
     -m, --machine
         Set the machine profile, which qemu should emulate ([pc] | [pc-kvm]) (Defualt: pc)
     -r, --ram
@@ -148,9 +143,6 @@ parse_args() {
       ;;
     -d | --debug)
       parse_debug "$val"
-      ;;
-    -g | --gdb)
-      start_gdb
       ;;
     -h | --help)
       print_usage

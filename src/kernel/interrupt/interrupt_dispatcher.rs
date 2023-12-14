@@ -112,9 +112,13 @@ impl InterruptDispatcher {
     }
 
     pub fn dispatch(&mut self, int_number: u32) {
+        if int_number < 32 {
+            panic!("Interrupt Dispatcher: CPU Exception [{}]", int_number);
+        }
+
         if let Some(isr_vec_mutex) = self.int_vectors.get(int_number as usize).as_mut() {
             let mut isr_vec = isr_vec_mutex.try_lock();
-            while isr_vec_mutex.is_locked() {
+            while isr_vec.is_none() {
                 // We have to force unlock inside the interrupt handler, or else the system will hang forever.
                 // While this might be unsafe, it is extremely unlikely that we destroy something here, since we only need read access to the vectors.
                 // The only scenario, in which something might break, is when two or more drivers are trying to assign an ISR to the same vector,
@@ -123,6 +127,10 @@ impl InterruptDispatcher {
                     isr_vec_mutex.force_unlock();
                     isr_vec = isr_vec_mutex.try_lock();
                 }
+            }
+
+            if isr_vec.iter().is_empty() {
+                panic!("Interrupt Dispatcher: No handler registered for interrupt vector [{}]!", int_number);
             }
 
             for isr in isr_vec.unwrap().iter() {

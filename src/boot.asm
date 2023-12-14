@@ -27,6 +27,7 @@ pagetable_end:  equ 0x200000      ;  = 2 MB
 ; Von uns bereitgestellte Funktionen
 [GLOBAL start]
 [GLOBAL idt]
+[GLOBAL tss]
 [GLOBAL get_tss_address]
 [GLOBAL tss_set_rsp0]
 
@@ -132,14 +133,8 @@ start:
 	cli              ; Interrupts ausschalten
 	lgdt   [gdt_80]  ; Neue Segmentdeskriptoren setzen
 
-	; Globales Datensegment
-	mov    eax, 3 * 0x8
-	mov    ds, ax
-	mov    es, ax
-	mov    fs, ax
-	mov    gs, ax
-
 	; Stack festlegen
+	mov    ax, 3 * 0x8
 	mov    ss, ax
 	mov    esp, init_stack+STACK_SIZE
    
@@ -308,7 +303,6 @@ tss_set_rsp0:
     mov [rax+4], rdi
     ret
 
-
 ; Adresse des TSS abfragen
 get_tss_address:
     mov rax, tss
@@ -352,17 +346,17 @@ gdt:
 	dw  0x9200    ; data read/write
 	dw  0x00CF    ; granularity=4096, 386 (+5th nibble of limit)
 
-    ; User 64-Bit-Codesegment-Deskriptor
-    dw  0xFFFF    ; limit [00:15] = 4Gb - (0x100000*0x1000 = 4Gb)
-    dw  0x0000    ; base  [00:15] = 0
-    dw  0xFA00    ; base  [16:23] = 0, data code/exec, DPL=3, present
-    dw  0x00AF    ; limit [16:19], granularity=4096, 386, base [24:31]
-
     ; User 64-Bit-Datensegment-Deskriptor
     dw  0xFFFF    ; limit [00:15] = 4Gb - (0x100000*0x1000 = 4Gb)
     dw  0x0000    ; base  [00:15] = 0
     dw  0xF200    ; base  [16:23] = 0, data read/write, DPL=3, present
     dw  0x00CF    ; limit [16:19], granularity=4096, 386, base [24:31]
+
+    ; User 64-Bit-Codesegment-Deskriptor
+    dw  0xFFFF    ; limit [00:15] = 4Gb - (0x100000*0x1000 = 4Gb)
+    dw  0x0000    ; base  [00:15] = 0
+    dw  0xFA00    ; base  [16:23] = 0, data code/exec, DPL=3, present
+    dw  0x00AF    ; limit [16:19], granularity=4096, 386, base [24:31]
 
 tss_entry:
     ; Task State Segment Deskriptor
