@@ -51,8 +51,10 @@ thread_switch:
     mov [rdi], rsp
 
     ; Set rsp0 of kernel stack in tss (3. parameter 'next_rsp0_end')
+    push rsi
     mov rdi, rdx
     call tss_set_rsp0
+    pop rsi
 
     ; Load registers of next thread by using 'next_rsp0' (second parameter)
     mov rsp, rsi

@@ -89,7 +89,7 @@ setup_idt:
 idt:
 %macro idt_entry 1
 	dw  (wrapper_%1 - wrapper_0) & 0xffff ; Offset 0 -> 15
-	dw  0x0000 | 0x8 * 2 ; Selector points to 64-Bit CS descriptor of GDT
+	dw  0x0008 ; Selector points to 64-Bit CS descriptor of GDT
 	dw  0x8e00 ; 8 -> interrupt is present, e -> 80386 64-bit interrupt gate
 	dw  ((wrapper_%1 - wrapper_0) & 0xffff0000) >> 16 ; Offset 16 .. 31
 	dd  ((wrapper_%1 - wrapper_0) & 0xffffffff00000000) >> 32 ; Offset 32..63

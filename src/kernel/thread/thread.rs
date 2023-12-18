@@ -3,6 +3,9 @@ use alloc::rc::Rc;
 use alloc::vec::Vec;
 use core::ptr;
 use lazy_static::lazy_static;
+use x86_64::PrivilegeLevel::Ring3;
+use x86_64::structures::gdt::SegmentSelector;
+use x86_64::VirtAddr;
 use crate::kernel;
 use crate::kernel::log::Logger;
 use crate::kernel::syscall::user_api::thread_api;
@@ -12,7 +15,6 @@ extern "C" {
     fn thread_kernel_start(old_rsp0: u64);
     fn thread_user_start(old_rsp0: u64);
     fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_rsp0_end: u64);
-    fn tss_set_rsp0(old_rsp0: u64);
 }
 
 lazy_static! {
@@ -62,7 +64,7 @@ impl Thread {
 
         unsafe {
             let thread_ptr = ptr::from_ref(thread.as_ref()) as *mut Thread;
-            tss_set_rsp0(thread.get_kernel_stack_addr() as u64);
+            kernel::get_thread_service().set_tss_rsp0(VirtAddr::new(thread.get_kernel_stack_addr() as u64));
 
             if thread.is_kernel_thread() {
                 thread_service.set_scheduler_init();
@@ -158,10 +160,10 @@ impl Thread {
         self.kernel_stack[capacity - 7] = 0; // rdi
         self.kernel_stack[capacity - 6] = Thread::kickoff_user_thread as u64; // Address of 'kickoff_user_thread()'
 
-        self.kernel_stack[capacity - 5] = 0x2b; // cs = user code segment; 5. entry, rpl = 3
+        self.kernel_stack[capacity - 5] = SegmentSelector::new(4, Ring3).0 as u64; // cs = user code segment
         self.kernel_stack[capacity - 4] = 0x202; // rflags (Interrupts enabled)
         self.kernel_stack[capacity - 3] = user_stack_addr + (self.user_stack.capacity() - 1) as u64 * 8; // rsp for user stack
-        self.kernel_stack[capacity - 2] = 0x23; // ss = user data segment; 4. entry, rpl = 3
+        self.kernel_stack[capacity - 2] = SegmentSelector::new(3, Ring3).0 as u64; // ss = user data segment
 
         self.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
 

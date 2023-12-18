@@ -33,10 +33,10 @@ syscall_handler:
     push   r15
 
     ; Switch to kernel stack and enable interrupts
-    mov rbx, rsp ; Save user rsp in rbx
-    mov rsp, [tss + 4] ; Switch to kernel stack
-    push rbx ; Save user rsp (in rbx) on stack
-    sti
+    ;mov rbx, rsp ; Save user rsp in rbx
+    ;mov rsp, [tss + 4] ; Switch to kernel stack
+    ;push rbx ; Save user rsp (in rbx) on stack
+    ;sti
 
     ; Check if system call ID is not too big
     cmp rax, NUM_SYSCALLS
