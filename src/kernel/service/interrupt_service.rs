@@ -13,12 +13,18 @@ pub struct InterruptService {
 
 impl Service for InterruptService {}
 
+extern "C" {
+    fn setup_idt();
+}
+
 impl InterruptService {
     pub const fn new() -> Self {
         Self { apic: Apic::new(), int_disp: InterruptDispatcher::new() }
     }
 
     pub fn init(&mut self) {
+        unsafe { setup_idt(); }
+
         self.int_disp.init();
         self.apic.init();
         syscall_dispatcher::init();
