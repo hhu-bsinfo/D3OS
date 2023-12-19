@@ -21,14 +21,11 @@ jobs:
       - name: Build towboot image
         run: make towboot
 
-      - name: Build limine image
-        run: make limine && wget -O limine-licence.txt https://raw.githubusercontent.com/limine-bootloader/limine/trunk/COPYING
-
       - name: Build grub image
         run: make grub
 
       - name: Create artifact
-        run: tar -czvf hhuTOSr.tar.gz hhuTOSr-limine.iso hhuTOSr-towboot.img run.sh bios/ovmf/build.sh limine-licence.txt README.md
+        run: tar -czvf hhuTOSr.tar.gz hhuTOSr-towboot.img run.sh bios/ovmf/build.sh README.md
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3

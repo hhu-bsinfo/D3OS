@@ -1,13 +1,9 @@
-%include "src/constants.asm"
-
 [EXTERN ___BSS_START__]
 [EXTERN ___BSS_END__]
 
 [EXTERN ___KERNEL_DATA_START__]
 [EXTERN ___KERNEL_DATA_END__]
 [EXTERN start]
-
-; %define TEXT_MODE
 
 ; Multiboot constants
 MUTLIBOOT_EAX_MAGIC equ 0x36d76289
@@ -53,6 +49,7 @@ MULTIBOOT_REQUEST_EFI_64_BIT_IMAGE_HANDLE_POINTER equ 20
 MULTIBOOT_REQUEST_IMAGE_LOAD_BASE_PHYSICAL_ADDRESS equ 21
 
 ; Multiboot tag flags
+MULTIBOOT_TAG_FLAG_REQUIRED equ 0x00
 MULTIBOOT_TAG_FLAG_OPTIONAL equ 0x01
 
 ; Multiboot console flags
@@ -60,17 +57,10 @@ MULTIBOOT_CONSOLE_FLAG_FORCE_TEXT_MODE equ 0x01
 MULTIBOOT_CONSOLE_FLAG_SUPPORT_TEXT_MODE equ 0x02
 
 ; Multiboot framebuffer options
-%ifdef TEXT_MODE
-   MULTIBOOT_GRAPHICS_MODE    equ 1
-   MULTIBOOT_GRAPHICS_WIDTH   equ 80
-   MULTIBOOT_GRAPHICS_HEIGHT  equ 25
-   MULTIBOOT_GRAPHICS_BPP     equ 0
-%else
-   MULTIBOOT_GRAPHICS_MODE   equ 0
-   MULTIBOOT_GRAPHICS_WIDTH  equ 800
-   MULTIBOOT_GRAPHICS_HEIGHT equ 600
-   MULTIBOOT_GRAPHICS_BPP    equ 32
-%endif
+MULTIBOOT_GRAPHICS_MODE   equ 0
+MULTIBOOT_GRAPHICS_WIDTH  equ 800
+MULTIBOOT_GRAPHICS_HEIGHT equ 600
+MULTIBOOT_GRAPHICS_BPP    equ 32
 
 [SECTION .text]
 [BITS 64]
@@ -83,34 +73,24 @@ multiboot_header:
     dd MULTIBOOT_HEADER_LENGTH
     dd MULTIBOOT_HEADER_CHECKSUM
 
-    ; Address tag
-    align 8
-    dw MULTIBOOT_TAG_ADDRESS
-    dw MULTIBOOT_TAG_FLAG_OPTIONAL
-    dd 24
-    dd (multiboot_header)
-    dd (___KERNEL_DATA_START__)
-    dd (___KERNEL_DATA_END__)
-    dd (___BSS_END__)
-
-    ; EFI amd64 Entry address tag
+    ; EFI amd64 entry address tag
     align 8
     dw MULTIBOOT_TAG_EFI_AMD64_ENTRY_ADDRESS
-    dw MULTIBOOT_TAG_FLAG_OPTIONAL
+    dw MULTIBOOT_TAG_FLAG_REQUIRED
     dd 12
     dd (start)
 
     ; EFI boot services tag
     align 8
     dw MULTIBOOT_TAG_EFI_BOOT_SERVICES
-    dw MULTIBOOT_TAG_FLAG_OPTIONAL
+    dw MULTIBOOT_TAG_FLAG_REQUIRED
     dd 8
 
-    ; Information request tag (required)
+    ; Information request tag
     align 8
     dw MULTIBOOT_TAG_INFORMATION_REQUEST
-    dw 0
-    dd 36
+    dw MULTIBOOT_TAG_FLAG_REQUIRED
+    dd 44
     dd MULTIBOOT_REQUEST_BOOT_LOADER_NAME
     dd MULTIBOOT_REQUEST_BOOT_COMMAND_LINE
     dd MULTIBOOT_REQUEST_MODULE
@@ -118,11 +98,13 @@ multiboot_header:
     dd MULTIBOOT_REQUEST_FRAMEBUFFER_INFO
     dd MULTIBOOT_REQUEST_ACPI_OLD_RSDP
     dd MULTIBOOT_REQUEST_ACPI_NEW_RSDP
+    dd MULTIBOOT_REQUEST_EFI_64_BIT_SYSTEM_TABLE_POINTER
+    dd MULTIBOOT_REQUEST_EFI_64_BIT_IMAGE_HANDLE_POINTER
 
     ; Framebuffer tag
     align 8
     dw MULTIBOOT_TAG_FRAMEBUFFER
-    dw 0
+    dw MULTIBOOT_TAG_FLAG_REQUIRED
     dd 20
     dd MULTIBOOT_GRAPHICS_WIDTH
     dd MULTIBOOT_GRAPHICS_HEIGHT
@@ -137,6 +119,6 @@ multiboot_header:
     ; Termination tag
     align 8
     dw MULTIBOOT_TAG_TERMINATE
-    dw 0
+    dw MULTIBOOT_TAG_FLAG_REQUIRED
     dd 8
 multiboot_header_end:

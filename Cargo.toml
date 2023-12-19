@@ -7,7 +7,7 @@ build = "build.rs"
 
 [lib]
 crate-type = ["staticlib"]
-path = "src/startup.rs"
+path = "src/boot.rs"
 
 [dependencies]
 rlibc = "1.0.0"
