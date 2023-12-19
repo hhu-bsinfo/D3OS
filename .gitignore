@@ -113,9 +113,5 @@ build/
 hhuTOSr.bin
 hhuTOSr.initrd
 towboot-x64.efi
-limine
-limine-uefi-cd.bin
-limine-bios-cd.bin
-limine-bios.sys
 BOOTX64.EFI
 OVMF.fd

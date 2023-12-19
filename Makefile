@@ -18,11 +18,10 @@ SYSTEM := build/$(TARGET).bin
 LINKER_SCRIPT := src/link.ld
 
 GRUB-ISO := hhuTOSr-grub.iso
-LIMINE-ISO := hhuTOSr-limine.iso
 TOWBOOT-IMG := hhuTOSr-towboot.img
 
 .PHONY: default
-default: limine
+default: towboot
 
 # -------------------------------------------------------------------------
 # Namen der Unterverzeichnisse mit den Assembler-Quelltexten
@@ -68,15 +67,6 @@ $(GRUB-ISO): $(SYSTEM)
 	@grub-mkrescue -o $(GRUB-ISO) loader/grub
 
 grub: $(GRUB-ISO)
-
-# --------------------------------------------------------------------------
-# LIMINE ISO erstellen
-$(LIMINE-ISO): $(SYSTEM)
-	@cp $(SYSTEM) loader/limine/iso/hhuTOSr.bin
-	cd loader/limine && ./build.sh && cd ../..
-	@mv loader/limine/hhuTOSr-limine.iso .
-
-limine: $(LIMINE-ISO)
 
 # --------------------------------------------------------------------------
 # TOWBOOT IMG erstellen

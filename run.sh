@@ -22,8 +22,6 @@ QEMU_GDB_PORT=""
 
 if [ -f "hhuTOSr-towboot.img" ]; then
   QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=hhuTOSr-towboot.img"
-elif [ -f "hhuTOSr-limine.iso" ]; then
-  QEMU_BOOT_DEVICE="-boot d -cdrom hhuTOSr-limine.iso"
 elif [ -f "hhuTOSr-grub.iso" ]; then
   QEMU_BOOT_DEVICE="-boot d -cdrom hhuTOSr-grub.iso"
 fi

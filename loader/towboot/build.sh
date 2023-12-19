@@ -1,6 +1,6 @@
 #!/bin/bash
 
-readonly TOWBOOT_VERSION="0.6.1"
+readonly TOWBOOT_VERSION="0.7.1"
 readonly FILE_LIST=("towboot-x64.efi" "hhuTOSr.bin" "towboot.toml")
 
 if [[ ! -f "towboot-x64.efi" ]]; then

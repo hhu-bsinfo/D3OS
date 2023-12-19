@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
+use core::arch::asm;
 use core::ptr;
 use lazy_static::lazy_static;
 use x86_64::PrivilegeLevel::Ring3;
@@ -10,12 +11,6 @@ use crate::kernel;
 use crate::kernel::log::Logger;
 use crate::kernel::syscall::user_api::thread_api;
 use crate::kernel::thread::scheduler;
-
-extern "C" {
-    fn thread_kernel_start(old_rsp0: u64);
-    fn thread_user_start(old_rsp0: u64);
-    fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_rsp0_end: u64);
-}
 
 lazy_static! {
 static ref LOG: Logger = Logger::new("Scheduler");
@@ -29,6 +24,95 @@ pub struct Thread {
     user_stack: Vec<u64>,
     old_rsp0: u64,
     entry: Box<dyn FnMut()>
+}
+
+#[naked]
+unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
+    asm!(
+    "mov rsp, rdi", // First parameter -> load 'old_rsp0'
+    "pop rbp",
+    "pop rdi", // 'old_rsp0' is here
+    "pop rsi",
+    "pop rdx",
+    "pop rcx",
+    "pop rbx",
+    "pop rax",
+    "pop r15",
+    "pop r14",
+    "pop r13",
+    "pop r12",
+    "pop r11",
+    "pop r10",
+    "pop r9",
+    "pop r8",
+    "popf",
+    "ret",
+    options(noreturn)
+    );
+}
+
+#[naked]
+unsafe extern "C" fn thread_user_start(old_rsp0: u64) {
+    asm!(
+    "mov rsp, rdi", // Load 'old_rsp' (first parameter)
+    "pop rdi",
+    "iretq", // Switch to user-mode
+    options(noreturn)
+    )
+}
+
+#[naked]
+unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_rsp0_end: u64) {
+    asm!(
+    // Save registers of current thread
+    "pushf",
+    "push r8",
+    "push r9",
+    "push r10",
+    "push r11",
+    "push r12",
+    "push r13",
+    "push r14",
+    "push r15",
+    "push rax",
+    "push rbx",
+    "push rcx",
+    "push rdx",
+    "push rsi",
+    "push rdi",
+    "push rbp",
+
+    // Save stack pointer in 'current_rsp0' (first parameter)
+    "mov [rdi], rsp",
+
+    // Set rsp0 of kernel stack in tss (3. parameter 'next_rsp0_end')
+    "push rsi",
+    "mov rdi, rdx",
+    "call tss_set_rsp0",
+    "pop rsi",
+
+    // Load registers of next thread by using 'next_rsp0' (second parameter)
+    "mov rsp, rsi",
+    "pop rbp",
+    "pop rdi",
+    "pop rsi",
+    "pop rdx",
+    "pop rcx",
+    "pop rbx",
+    "pop rax",
+    "pop r15",
+    "pop r14",
+    "pop r13",
+    "pop r12",
+    "pop r11",
+    "pop r10",
+    "pop r9",
+    "pop r8",
+    "popf",
+
+    "ret", // Return to next thread
+    options(noreturn)
+    )
 }
 
 impl Thread {
@@ -91,7 +175,7 @@ impl Thread {
     }
 
     pub fn start_first(thread: &Thread) {
-        unsafe { thread_kernel_start(thread.old_rsp0); }
+        unsafe { thread_kernel_start(thread.old_rsp0) }
     }
 
     pub fn switch(current: &Thread, next: &Thread) {

@@ -117,7 +117,8 @@ pub fn syscall5(arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64
     let mut ret: u64;
 
     unsafe {
-        asm!("syscall",
+        asm!(
+        "syscall",
         inlateout("rax") arg0 => ret,
         in("rdi") arg1,
         in("rsi") arg2,
