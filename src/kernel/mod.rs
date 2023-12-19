@@ -1,3 +1,4 @@
+use uefi::table::{Runtime, SystemTable};
 use crate::kernel::service::device_service::DeviceService;
 use crate::kernel::service::interrupt_service::InterruptService;
 use crate::kernel::service::log_service::LogService;
@@ -18,6 +19,7 @@ static mut DEVICE_SERVICE: DeviceService = DeviceService::new();
 static mut LOG_SERVICE: LogService = LogService::new();
 static mut THREAD_SERVICE: ThreadService = ThreadService::new();
 static mut TIME_SERVICE: TimeService = TimeService::new();
+static mut EFI_SYSTEM_TABLE: Option<SystemTable<Runtime>> = None;
 
 pub trait Service {}
 
@@ -43,4 +45,14 @@ pub fn get_thread_service() -> &'static mut ThreadService {
 
 pub fn get_time_service() -> &'static mut TimeService {
     unsafe { return &mut TIME_SERVICE }
+}
+
+pub fn get_efi_system_table() -> &'static Option<SystemTable<Runtime>> {
+    unsafe {
+        return &mut EFI_SYSTEM_TABLE;
+    }
+}
+
+pub fn set_efi_system_table(table: SystemTable<Runtime>) {
+    unsafe { EFI_SYSTEM_TABLE = Some(table); }
 }
