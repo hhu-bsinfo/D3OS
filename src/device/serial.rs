@@ -1,7 +1,6 @@
 use alloc::boxed::Box;
-use alloc::format;
 use alloc::string::String;
-use lazy_static::lazy_static;
+use log::info;
 use nolock::queues::{DequeueError, mpmc};
 use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
 use x86_64::instructions::port::Port;
@@ -9,12 +8,7 @@ use crate::device::serial::ComPort::{Com1, Com2, Com3, Com4};
 use crate::kernel;
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::kernel::interrupt::isr::ISR;
-use crate::kernel::log::Logger;
 use crate::library::io::stream::{InputStream, OutputStream};
-
-lazy_static! {
-static ref LOG: Logger = Logger::new("COM");
-}
 
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -136,13 +130,15 @@ pub struct SerialPort {
 #[derive(Default)]
 pub struct SerialISR;
 
-pub unsafe fn check_port(port: ComPort) -> bool {
+pub fn check_port(port: ComPort) -> bool {
     let mut scratch = Port::<u8>::new(port as u16 + 7);
 
     for i in 0 .. 0xff {
-        scratch.write(i as u8);
-        if scratch.read() != i {
-            return false;
+        unsafe {
+            scratch.write(i);
+            if scratch.read() != i {
+                return false;
+            }
         }
     }
 
@@ -155,13 +151,9 @@ impl OutputStream for SerialPort {
     }
 
     fn write_str(&mut self, string: &str) {
-        if self.buffer.is_none() {
-            panic!("Serial: Trying to write before initialization!");
-        }
-
         for b in string.bytes() {
             if b == '\n' as u8 {
-                self.write_byte(0x0d);
+                self.write_str("\r");
             }
 
             unsafe {
@@ -234,25 +226,38 @@ impl SerialPort {
         }
     }
 
-    pub unsafe fn init(&mut self, buffer_cap: usize, speed: BaudRate) {
+    pub fn init(&mut self, buffer_cap: usize, speed: BaudRate) {
+        if !check_port(self.port) {
+            panic!("Serial: Port [{:?}] not found!", self.port);
+        }
+
         self.buffer = Some(mpmc::bounded::scq::queue(buffer_cap));
 
-        self.interrupt_reg.write(0x00); // Disable all interrupts
-        self.line_control_reg.write(0x80); // Enable DLAB, so that the divisor can be set
+        unsafe {
+            self.interrupt_reg.write(0x00); // Disable all interrupts
+            self.set_speed(speed);
+            self.line_control_reg.write(0x03); // 8 bits per char, no parity, one stop bit
+            self.fifo_control_reg.write(0x07); // Enable FIFO-buffers, Clear FIFO-buffers, Trigger interrupt after each byte
+            self.modem_control_reg.write(0x0b); // Enable data lines
+        }
+    }
 
-        self.set_speed(speed);
+    pub fn init_write_only(&mut self) {
+        if !check_port(self.port) {
+            panic!("Serial: Port [{:?}] not found!", self.port);
+        }
 
-        self.line_control_reg.write(0x03); // 8 bits per char, no parity, one stop bit
-        self.fifo_control_reg.write(0x07); // Enable FIFO-buffers, Clear FIFO-buffers, Trigger interrupt after each byte
-        self.modem_control_reg.write(0x0b); // Enable data lines
+        unsafe {
+            self.interrupt_reg.write(0x00); // Disable all interrupts
+            self.set_speed(BaudRate::Baud115200);
+            self.line_control_reg.write(0x03); // 8 bits per char, no parity, one stop bit
+            self.fifo_control_reg.write(0x00); // Disable FIFO-buffers
+            self.modem_control_reg.write(0x0b); // Enable data lines
+        }
     }
 
     pub fn set_speed(&mut self, speed: BaudRate) {
-        if self.buffer.is_none() {
-            panic!("Serial: Trying to set speed before initialization!");
-        }
-
-        LOG.info(format!("Setting speed to [{:?}]", speed).as_str());
+        info!("Setting speed to [{:?}]", speed);
 
         unsafe {
             let interrupt_backup = self.interrupt_reg.read();
@@ -270,6 +275,10 @@ impl SerialPort {
     }
 
     pub fn plugin(&mut self) {
+        if self.buffer.is_none() {
+            panic!("Serial: Calling plugin() before initialization!");
+        }
+
         let vector = match self.port {
             Com1 | Com3 => InterruptVector::Com1,
             Com2 | Com4 => InterruptVector::Com2

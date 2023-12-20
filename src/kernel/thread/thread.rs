@@ -3,18 +3,12 @@ use alloc::rc::Rc;
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::ptr;
-use lazy_static::lazy_static;
 use x86_64::PrivilegeLevel::Ring3;
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::VirtAddr;
 use crate::kernel;
-use crate::kernel::log::Logger;
 use crate::kernel::syscall::user_api::thread_api;
 use crate::kernel::thread::scheduler;
-
-lazy_static! {
-static ref LOG: Logger = Logger::new("Scheduler");
-}
 
 const STACK_SIZE: usize = 1048576;
 
@@ -148,7 +142,7 @@ impl Thread {
 
         unsafe {
             let thread_ptr = ptr::from_ref(thread.as_ref()) as *mut Thread;
-            kernel::get_thread_service().set_tss_rsp0(VirtAddr::new(thread.get_kernel_stack_addr() as u64));
+            kernel::get_tss().lock().privilege_stack_table[0] = VirtAddr::new(thread.get_kernel_stack_addr() as u64);
 
             if thread.is_kernel_thread() {
                 thread_service.set_scheduler_init();

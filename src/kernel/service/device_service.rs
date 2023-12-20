@@ -49,22 +49,24 @@ impl DeviceService {
         })))
     }
 
+    pub fn is_terminal_initialized(&self) -> bool {
+        return self.terminal.is_valid();
+    }
+
     pub fn init_serial_port(&mut self) {
         let mut serial: Option<SerialPort> = None;
-        unsafe {
-            if serial::check_port(ComPort::Com1) {
-                serial = Some(SerialPort::new(ComPort::Com1));
-            } else if serial::check_port(ComPort::Com2) {
-                serial = Some(SerialPort::new(ComPort::Com2));
-            } else if serial::check_port(ComPort::Com3) {
-                serial = Some(SerialPort::new(ComPort::Com3));
-            } else if serial::check_port(ComPort::Com4) {
-                serial = Some(SerialPort::new(ComPort::Com4));
-            }
+        if serial::check_port(ComPort::Com1) {
+            serial = Some(SerialPort::new(ComPort::Com1));
+        } else if serial::check_port(ComPort::Com2) {
+            serial = Some(SerialPort::new(ComPort::Com2));
+        } else if serial::check_port(ComPort::Com3) {
+            serial = Some(SerialPort::new(ComPort::Com3));
+        } else if serial::check_port(ComPort::Com4) {
+            serial = Some(SerialPort::new(ComPort::Com4));
         }
 
         if serial.is_some() {
-            unsafe { serial.as_mut().unwrap().init(128, BaudRate::Baud115200); }
+            serial.as_mut().unwrap().init(128, BaudRate::Baud115200);
             self.serial = Some(serial.unwrap());
         }
 

@@ -201,6 +201,10 @@ impl LFBTerminal {
         }
     }
 
+    pub fn is_valid(&self) -> bool {
+        return self.parser.is_some();
+    }
+
     fn print_char(&mut self, c: char) {
         let mut display = self.display.lock();
         let mut cursor = self.cursor.lock();
