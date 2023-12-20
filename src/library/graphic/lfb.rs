@@ -11,6 +11,9 @@ pub struct LFB {
     pixel_drawer: PixelDrawer
 }
 
+unsafe impl Send for LFB {}
+unsafe impl Sync for LFB {}
+
 pub const CHAR_HEIGHT: u32 = 16;
 pub const CHAR_WIDTH: u32 = 8;
 

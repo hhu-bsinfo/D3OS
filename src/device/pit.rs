@@ -1,17 +1,11 @@
 use alloc::boxed::Box;
-use alloc::format;
-use lazy_static::lazy_static;
+use log::info;
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortWriteOnly};
 use crate::device::qemu_cfg;
 use crate::kernel;
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::kernel::interrupt::isr::ISR;
-use crate::kernel::log::Logger;
-
-lazy_static!{
-    static ref LOG: Logger = Logger::new("PIT");
-}
 
 pub const BASE_FREQUENCY: usize = 1193182;
 
@@ -55,7 +49,7 @@ impl Pit {
 
         self.interval_ns = 1000000000 / (BASE_FREQUENCY / divisor);
 
-        LOG.info(format!("Setting timer interval to [{}ms] (Divisor: [{}])", if self.interval_ns / 1000000 < 1 { 1 } else { self.interval_ns / 1000000 }, divisor).as_str());
+        info!("Setting timer interval to [{}ms] (Divisor: [{}])", if self.interval_ns / 1000000 < 1 { 1 } else { self.interval_ns / 1000000 }, divisor);
 
         // For some reason, the PIT interrupt rate is doubled, when it is attached to an IO APIC (only in QEMU)
         if qemu_cfg::is_available() {

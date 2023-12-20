@@ -78,4 +78,8 @@ impl MemoryService {
     pub unsafe fn init(&self, heap_start_address: usize, heap_end_address: usize) {
         self.heap.lock().init(heap_start_address as *mut u8, heap_end_address - heap_start_address);
     }
+
+    pub fn is_initialized(&self) -> bool {
+        return self.heap.lock().size() > 0;
+    }
 }

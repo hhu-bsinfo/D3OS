@@ -1,7 +1,11 @@
+use spin::Mutex;
 use uefi::table::{Runtime, SystemTable};
+use x86_64::structures::gdt::GlobalDescriptorTable;
+use x86_64::structures::tss::TaskStateSegment;
+use x86_64::VirtAddr;
+use crate::kernel::log::Logger;
 use crate::kernel::service::device_service::DeviceService;
 use crate::kernel::service::interrupt_service::InterruptService;
-use crate::kernel::service::log_service::LogService;
 use crate::kernel::service::memory_service::MemoryService;
 use crate::kernel::service::thread_service::ThreadService;
 use crate::kernel::service::time_service::TimeService;
@@ -16,10 +20,14 @@ pub mod syscall;
 static mut MEMORY_SERVICE: MemoryService = MemoryService::new();
 static mut INTERRUPT_SERVICE: InterruptService = InterruptService::new();
 static mut DEVICE_SERVICE: DeviceService = DeviceService::new();
-static mut LOG_SERVICE: LogService = LogService::new();
 static mut THREAD_SERVICE: ThreadService = ThreadService::new();
 static mut TIME_SERVICE: TimeService = TimeService::new();
 static mut EFI_SYSTEM_TABLE: Option<SystemTable<Runtime>> = None;
+
+static LOGGER: Mutex<Logger> = Mutex::new(Logger::new());
+
+static GDT: Mutex<GlobalDescriptorTable> = Mutex::new(GlobalDescriptorTable::new());
+static TSS: Mutex<TaskStateSegment> = Mutex::new(TaskStateSegment::new());
 
 pub trait Service {}
 
@@ -35,10 +43,6 @@ pub fn get_device_service() -> &'static mut DeviceService {
     unsafe { return &mut DEVICE_SERVICE }
 }
 
-pub fn get_log_service() -> &'static mut LogService {
-    unsafe { return &mut LOG_SERVICE }
-}
-
 pub fn get_thread_service() -> &'static mut ThreadService {
     unsafe { return &mut THREAD_SERVICE }
 }
@@ -48,11 +52,26 @@ pub fn get_time_service() -> &'static mut TimeService {
 }
 
 pub fn get_efi_system_table() -> &'static Option<SystemTable<Runtime>> {
-    unsafe {
-        return &mut EFI_SYSTEM_TABLE;
-    }
+    unsafe { return &mut EFI_SYSTEM_TABLE; }
 }
 
 pub fn set_efi_system_table(table: SystemTable<Runtime>) {
     unsafe { EFI_SYSTEM_TABLE = Some(table); }
+}
+
+pub fn get_logger() -> &'static Mutex<Logger> {
+    return &LOGGER;
+}
+
+pub fn get_gdt() -> &'static Mutex<GlobalDescriptorTable> {
+    return &GDT;
+}
+
+pub fn get_tss() -> &'static Mutex<TaskStateSegment> {
+    return &TSS;
+}
+
+#[no_mangle]
+pub extern "C" fn tss_set_rsp0(rsp0: u64) {
+    get_tss().lock().privilege_stack_table[0] = VirtAddr::new(rsp0);
 }
