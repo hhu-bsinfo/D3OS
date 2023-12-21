@@ -1,8 +1,6 @@
 [GLOBAL init_syscalls]
 [GLOBAL syscall_handler]
 
-[EXTERN idt]
-[EXTERN tss]
 [EXTERN syscall_disp]
 [EXTERN syscall_abort]
 

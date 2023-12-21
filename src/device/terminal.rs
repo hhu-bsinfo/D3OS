@@ -1,10 +1,11 @@
-use core::fmt;
+use core::{fmt, ptr};
 use core::fmt::Write;
+use core::ops::Deref;
 use crate::kernel;
 use crate::library::io::stream::{InputStream, OutputStream};
 
 pub trait Terminal: OutputStream + InputStream {
-    fn clear(&mut self);
+    fn clear(&self);
 }
 
 // Implementation of the 'core::fmt::Write' trait for our Terminal
@@ -12,7 +13,7 @@ pub trait Terminal: OutputStream + InputStream {
 // Requires only one function 'write_str'
 impl Write for dyn Terminal {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.write_str(s);
+        self.deref().write_str(s);
         Ok(())
     }
 }
@@ -33,5 +34,10 @@ macro_rules! println {
 
 // Helper function of print macros (must be public)
 pub fn print(args: fmt::Arguments) {
-    kernel::get_device_service().get_terminal().write_fmt(args).unwrap();
+    let terminal;
+    // Writing to LFBTerminal does not need a mutable reference,
+    // so it is safe to construct a mutable reference here and use it for writing.
+    unsafe { terminal = ptr::from_ref(kernel::terminal()).cast_mut().as_mut().unwrap(); }
+
+    terminal.write_fmt(args).unwrap();
 }

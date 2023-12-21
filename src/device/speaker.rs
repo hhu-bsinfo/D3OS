@@ -1,6 +1,6 @@
 use x86_64::instructions::port::{Port, PortWriteOnly};
 use crate::device::pit;
-use crate::kernel;
+use crate::device::pit::Timer;
 
 pub struct Speaker {
     ctrl_port: PortWriteOnly<u8>,
@@ -36,10 +36,8 @@ impl Speaker {
     }
 
     pub fn play(&mut self, freq: usize, duration_ms: usize) {
-        let time_service = kernel::get_time_service();
-
         self.on(freq);
-        time_service.wait(duration_ms);
+        Timer::wait(duration_ms);
         self.off();
     }
 }

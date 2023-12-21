@@ -34,5 +34,5 @@ log = "0.4.20"
 [build-dependencies]
 built = { version = "0.7.1", features = ["chrono", "git2"] }
 
-[profile.release]
-debug = true
+# [profile.release]
+# debug = true

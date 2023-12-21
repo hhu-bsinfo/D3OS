@@ -1,3 +1,3 @@
 pub trait ISR {
-    fn trigger(&self);
+    fn trigger(&mut self);
 }

@@ -94,24 +94,23 @@ unsafe impl Send for InterruptDispatcher {}
 unsafe impl Sync for InterruptDispatcher {}
 
 impl InterruptDispatcher {
-    pub const fn new() -> Self {
-        Self { int_vectors: Vec::new() }
-    }
-
-    pub fn init(&mut self) {
+    pub fn new() -> Self {
+        let mut int_vectors = Vec::<Mutex<Vec<Box<dyn ISR>>>>::new();
         for _ in 0..MAX_VECTORS {
-            self.int_vectors.push(Mutex::new(Vec::new()));
+            int_vectors.push(Mutex::new(Vec::new()));
         }
+
+        return Self { int_vectors };
     }
 
-    pub fn assign(&mut self, vector: InterruptVector, isr: Box<dyn ISR>) {
+    pub fn assign(&self, vector: InterruptVector, isr: Box<dyn ISR>) {
         match self.int_vectors.get(vector as usize) {
             Some(vec) => vec.lock().push(isr),
             None => panic!("Assigning ISR to illegal vector number {}!", vector as u8)
         }
     }
 
-    pub fn dispatch(&mut self, int_number: u32) {
+    pub fn dispatch(&self, int_number: u32) {
         if int_number < 32 {
             panic!("Interrupt Dispatcher: CPU Exception [{}]", int_number);
         }
@@ -133,11 +132,11 @@ impl InterruptDispatcher {
                 panic!("Interrupt Dispatcher: No handler registered for interrupt vector [{}]!", int_number);
             }
 
-            for isr in isr_vec.unwrap().iter() {
+            for isr in isr_vec.unwrap().iter_mut() {
                 isr.trigger();
             }
         }
 
-        kernel::get_interrupt_service().end_of_interrupt();
+        kernel::apic().end_of_interrupt();
     }
 }

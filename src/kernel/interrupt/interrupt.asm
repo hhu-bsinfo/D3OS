@@ -2,7 +2,7 @@
 [GLOBAL interrupt_return]
 [GLOBAL idt]
 
-[EXTERN int_disp]
+[EXTERN dispatch_interrupt]
 
 [SECTION .text]
 [BITS 64]
@@ -42,7 +42,7 @@ wrapper_body:
 
 	; Call dispatcher with interrupt number as parameter
 	mov rdi, rax
-	call int_disp
+	call dispatch_interrupt
 
 interrupt_return:
 	; Restore registers

@@ -1,6 +1,7 @@
 use alloc::collections::VecDeque;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
+use core::cell::{Cell, RefCell};
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use smallmap::Map;
@@ -15,30 +16,33 @@ pub fn next_thread_id() -> usize {
 }
 
 pub struct Scheduler {
-    current_thread: Option<Rc<Thread>>,
+    current_thread: Mutex<RefCell<Option<Rc<Thread>>>>,
     ready_queue: Mutex<VecDeque<Rc<Thread>>>,
     sleep_list: Mutex<Vec<(Rc<Thread>, usize)>>,
     join_map: Mutex<Map<usize, Vec<Rc<Thread>>>>,
-    initialized: bool
+    initialized: Mutex<Cell<bool>>
 }
+
+unsafe impl Send for Scheduler {}
+unsafe impl Sync for Scheduler {}
 
 impl Scheduler {
     pub fn new() -> Self {
-        Self { current_thread: None, ready_queue: Mutex::new(VecDeque::new()), sleep_list: Mutex::new(Vec::new()), join_map: Mutex::new(Map::new()), initialized: false }
+        Self { current_thread: Mutex::new(RefCell::new(None)), ready_queue: Mutex::new(VecDeque::new()), sleep_list: Mutex::new(Vec::new()), join_map: Mutex::new(Map::new()), initialized: Mutex::new(Cell::new(false)) }
     }
 
-    pub fn set_init(&mut self) {
-        self.initialized = true;
+    pub fn set_init(&self) {
+        self.initialized.lock().set(true);
     }
 
-    pub fn get_current_thread(&self) -> Rc<Thread> {
-        match self.current_thread.as_ref() {
+    pub fn current_thread(&self) -> Rc<Thread> {
+        match self.current_thread.lock().borrow().as_ref() {
             Some(thread) => Rc::clone(thread),
             None => panic!("Scheduler: Trying to access current thread before initialization!")
         }
     }
 
-    pub fn start(&mut self) {
+    pub fn start(&self) {
         let thread;
 
         {
@@ -48,30 +52,31 @@ impl Scheduler {
                 None => panic!("Scheduler: Failed to dequeue first thread!")
             };
 
-            self.current_thread = Some(Rc::clone(&thread));
+            self.current_thread.lock().replace(Some(Rc::clone(&thread)));
         }
 
         Thread::start_first(thread.as_ref());
     }
 
-    pub fn ready(&mut self, thread: Rc<Thread>) {
-        let id = thread.get_id();
+    pub fn ready(&self, thread: Rc<Thread>) {
+        let id = thread.id();
         self.ready_queue.lock().push_front(thread);
         self.join_map.lock().insert(id, Vec::new());
     }
 
-    pub fn sleep(&mut self, ms: usize) {
+    pub fn sleep(&self, ms: usize) {
         {
-            let wakeup_time = kernel::get_time_service().get_systime_ms() + ms;
-            let thread = self.get_current_thread();
+            let wakeup_time = kernel::timer().read().systime_ms() + ms;
+            let thread = self.current_thread();
             self.sleep_list.lock().push((thread, wakeup_time));
         }
 
         self.block();
     }
 
-    pub fn switch_thread(&mut self) {
-        if !self.initialized {
+    pub fn switch_thread(&self) {
+        let initialized = self.initialized.try_lock();
+        if initialized.is_none() || !initialized.unwrap().get() {
             return;
         }
 
@@ -88,19 +93,19 @@ impl Scheduler {
                 None => return
             };
 
-            current = self.get_current_thread();
-            self.current_thread = Some(Rc::clone(&next));
+            current = self.current_thread();
+            self.current_thread.lock().replace(Some(Rc::clone(&next)));
 
             ready_queue.push_front(Rc::clone(&current));
         } else {
             return;
         }
 
-        kernel::get_interrupt_service().end_of_interrupt();
+        kernel::apic().end_of_interrupt();
         Thread::switch(current.as_ref(), next.as_ref());
     }
 
-    pub fn block(&mut self) {
+    pub fn block(&self) {
         let current;
         let next;
 
@@ -114,12 +119,12 @@ impl Scheduler {
                 next_thread = ready_queue.pop_back();
             }
 
-            current = self.get_current_thread();
+            current = self.current_thread();
             next = next_thread.unwrap();
-            self.current_thread = Some(Rc::clone(&next));
+            self.current_thread.lock().replace(Some(Rc::clone(&next)));
 
             // Thread has enqueued itself into sleep list and waited so long, that it dequeued itself in the meantime
-            if current.get_id() == next.get_id() {
+            if current.id() == next.id() {
                 return;
             }
         }
@@ -127,25 +132,25 @@ impl Scheduler {
         Thread::switch(current.as_ref(), next.as_ref());
     }
 
-    pub fn join(&mut self, thread_id: usize) {
+    pub fn join(&self, thread_id: usize) {
         {
             let mut join_map = self.join_map.lock();
-            let current_thread = self.get_current_thread();
+            let current_thread = self.current_thread();
 
             match join_map.get_mut(&thread_id) {
                 Some(join_list) => join_list.push(current_thread),
-                None => panic!("Scheduler: Missing join_map entry for thread id {} on join()!", current_thread.get_id())
+                None => panic!("Scheduler: Missing join_map entry for thread id {} on join()!", current_thread.id())
             }
         }
 
         self.block();
     }
 
-    pub fn exit(&mut self) {
+    pub fn exit(&self) {
         {
             let mut ready_queue = self.ready_queue.lock();
             let mut join_map = self.join_map.lock();
-            let id = self.get_current_thread().get_id();
+            let id = self.current_thread().id();
 
             match join_map.get_mut(&id) {
                 Some(join_list) => {
@@ -163,15 +168,17 @@ impl Scheduler {
     }
 
     fn check_sleep_list(ready_queue: &mut MutexGuard<VecDeque<Rc<Thread>>>, sleep_list: &mut MutexGuard<Vec<(Rc<Thread>, usize)>>) {
-        let time = kernel::get_time_service().get_systime_ms();
+        if let Some(timer) = kernel::timer().try_read() {
+            let time = timer.systime_ms();
 
-        sleep_list.retain(|entry| {
-            if time >= entry.1 {
-                ready_queue.push_front(Rc::clone(&entry.0));
-                return false;
-            }
+            sleep_list.retain(|entry| {
+                if time >= entry.1 {
+                    ready_queue.push_front(Rc::clone(&entry.0));
+                    return false;
+                }
 
-            return true;
-        });
+                return true;
+            });
+        }
     }
 }

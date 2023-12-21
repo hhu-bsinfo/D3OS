@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use log::info;
+use core::hint::spin_loop;
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortWriteOnly};
 use crate::device::qemu_cfg;
@@ -9,47 +9,55 @@ use crate::kernel::interrupt::isr::ISR;
 
 pub const BASE_FREQUENCY: usize = 1193182;
 
-pub struct Pit {
+pub struct Timer {
     ctrl_port: Mutex<PortWriteOnly<u8>>,
     data_port: Mutex<Port<u8>>,
     interval_ns: usize,
+    systime_ns: usize
 }
 
-pub struct PitISR {
-    interval_ns: usize
+pub struct TimerISR {
+    pending_incs: usize
 }
 
-impl ISR for PitISR {
-    fn trigger(&self) {
-        let time_service = kernel::get_time_service();
-        time_service.inc_systime(self.interval_ns);
+impl ISR for TimerISR {
+    fn trigger(&mut self) {
+        let mut systime = 1;
+        self.pending_incs += 1;
+        if let Some(mut timer) = kernel::timer().try_write() {
+            while self.pending_incs > 0 {
+                timer.inc_systime();
+                self.pending_incs -= 1;
+            }
 
-        if time_service.get_systime_ms() % 10 == 0 {
-            kernel::get_thread_service().switch_thread();
+            systime = timer.systime_ms();
+        }
+
+
+        if systime % 10 == 0 {
+            kernel::scheduler().switch_thread();
         }
     }
 }
 
-impl PitISR {
-    pub const fn new(interval_ns: usize) -> Self {
-        Self { interval_ns }
+impl TimerISR {
+    pub const fn new() -> Self {
+        Self { pending_incs: 0 }
     }
 }
 
-impl Pit {
+impl Timer {
     pub const fn new() -> Self {
-        Self { ctrl_port: Mutex::new(PortWriteOnly::new(0x43)), data_port: Mutex::new(Port::new(0x40)), interval_ns: 0 }
+        Self { ctrl_port: Mutex::new(PortWriteOnly::new(0x43)), data_port: Mutex::new(Port::new(0x40)), interval_ns: 0, systime_ns: 0 }
     }
 
-    pub fn set_int_rate(&mut self, interval_ms: usize) {
+    pub fn interrupt_rate(&mut self, interval_ms: usize) {
         let mut divisor = (BASE_FREQUENCY / 1000) * interval_ms;
         if divisor > u16::MAX as usize {
             divisor = u16::MAX as usize;
         }
 
         self.interval_ns = 1000000000 / (BASE_FREQUENCY / divisor);
-
-        info!("Setting timer interval to [{}ms] (Divisor: [{}])", if self.interval_ns / 1000000 < 1 { 1 } else { self.interval_ns / 1000000 }, divisor);
 
         // For some reason, the PIT interrupt rate is doubled, when it is attached to an IO APIC (only in QEMU)
         if qemu_cfg::is_available() {
@@ -67,8 +75,22 @@ impl Pit {
     }
 
     pub fn plugin(&self) {
-        let int_service = kernel::get_interrupt_service();
-        int_service.assign_handler(InterruptVector::Pit, Box::new(PitISR::new(self.interval_ns)));
-        int_service.allow_interrupt(InterruptVector::Pit);
+        kernel::interrupt_dispatcher().assign(InterruptVector::Pit, Box::new(TimerISR::new()));
+        kernel::apic().allow(InterruptVector::Pit);
+    }
+
+    pub fn systime_ms(&self) -> usize {
+        return self.systime_ns / 1000000;
+    }
+
+    pub fn wait(ms: usize) {
+        let end_time = kernel::timer().read().systime_ms() + ms;
+        while kernel::timer().read().systime_ms() < end_time {
+            spin_loop();
+        }
+    }
+
+    fn inc_systime(&mut self) {
+        self.systime_ns += self.interval_ns;
     }
 }

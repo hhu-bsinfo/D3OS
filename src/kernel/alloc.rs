@@ -4,7 +4,7 @@ use acpi::PhysicalMapping;
 use linked_list_allocator::LockedHeap;
 use crate::kernel::Service;
 
-pub struct MemoryService {
+pub struct KernelAllocator {
     heap: LockedHeap
 }
 
@@ -26,9 +26,9 @@ unsafe impl<'a> Allocator for AcpiAllocator<'a> {
     }
 }
 
-impl Service for MemoryService {}
+impl Service for KernelAllocator {}
 
-unsafe impl GlobalAlloc for MemoryService {
+unsafe impl GlobalAlloc for KernelAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         return self.heap.lock().allocate_first_fit(layout).ok().map_or(core::ptr::null_mut(), |allocation| allocation.as_ptr());
     }
@@ -38,7 +38,7 @@ unsafe impl GlobalAlloc for MemoryService {
     }
 }
 
-unsafe impl Allocator for MemoryService {
+unsafe impl Allocator for KernelAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         if layout.size() == 0 {
             return Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0));
@@ -70,7 +70,7 @@ impl<'a> AcpiAllocator<'a> {
     }
 }
 
-impl MemoryService {
+impl KernelAllocator {
     pub const fn new() -> Self {
         Self { heap: LockedHeap::empty() }
     }

@@ -1,6 +1,8 @@
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 use core::mem::size_of;
+use core::ptr;
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
@@ -44,12 +46,12 @@ pub struct LFBTerminal {
     display: Mutex<DisplayState>,
     cursor: Mutex<CursorState>,
     color: Mutex<ColorState>,
-    parser: Option<Mutex<Parser>>,
+    parser: Mutex<RefCell<Parser>>,
     decoder: Mutex<Keyboard<AnyLayout, ScancodeSet1>>
 }
 
 pub struct CursorThread {
-    terminal: &'static mut LFBTerminal,
+    terminal: &'static LFBTerminal,
     visible: bool
 }
 
@@ -74,10 +76,6 @@ impl ColorState {
 }
 
 impl DisplayState {
-    pub const fn empty() -> Self {
-        Self { size: (0, 0), lfb: BufferedLFB::empty(), char_buffer: Vec::new() }
-    }
-
     pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         let raw_lfb = LFB::new(buffer, pitch, width, height, bpp);
         let mut lfb = BufferedLFB::new(raw_lfb);
@@ -96,13 +94,11 @@ impl DisplayState {
 }
 
 impl CursorThread {
-    pub const fn new(terminal: &'static mut LFBTerminal) -> Self {
+    pub const fn new(terminal: &'static LFBTerminal) -> Self {
         Self { terminal, visible: true }
     }
 
     pub fn run(&mut self) {
-        let thread_service = kernel::get_thread_service();
-
         loop {
             {
                 let mut display = self.terminal.display.lock();
@@ -113,35 +109,35 @@ impl CursorThread {
                 self.visible = !self.visible;
             }
 
-            thread_service.sleep(250);
+            kernel::scheduler().sleep(250);
         }
     }
 }
 
+unsafe impl Send for LFBTerminal {}
+unsafe impl Sync for LFBTerminal {}
+
 impl OutputStream for LFBTerminal {
-    fn write_byte(&mut self, b: u8) {
+    fn write_byte(&self, b: u8) {
         self.write_str(&String::from(char::from(b)));
     }
 
-    fn write_str(&mut self, string: &str) {
-        if self.parser.is_some() {
-            let mut parser = self.parser.as_mut().unwrap().lock().clone();
-            for b in string.bytes() {
-                parser.advance(self, b);
-            }
-
-            self.parser = Some(Mutex::new(parser));
-        } else {
-            for b in string.bytes() {
-                self.print_char(char::from(b));
-            }
+    fn write_str(&self, string: &str) {
+        let parser = self.parser.lock().clone();
+        for b in string.bytes() {
+            // advance() passes mutable terminal reference to methods in 'Perform' trait,
+            // but for LFBTerminal, none of these methods actually need a mutable reference,
+            // so it is safe to just construct a mutable reference here.
+            unsafe { parser.borrow_mut().advance(ptr::from_ref(self).cast_mut().as_mut().unwrap(), b); }
         }
+
+        self.parser.lock().swap(&parser);
     }
 }
 
 impl InputStream for LFBTerminal {
-    fn read_byte(&mut self) -> i16 {
-        let keyboard = kernel::get_device_service().get_ps2().get_keyboard();
+    fn read_byte(&self) -> i16 {
+        let keyboard = kernel::ps2_devices().keyboard();
         let read_byte;
 
         loop {
@@ -170,42 +166,28 @@ impl InputStream for LFBTerminal {
 }
 
 impl Terminal for LFBTerminal {
-    fn clear(&mut self) {
+    fn clear(&self) {
         let mut display = self.display.lock();
         let mut cursor = self.cursor.lock();
         let mut color = self.color.lock();
 
         LFBTerminal::clear_screen(&mut display, &mut color);
-        LFBTerminal::set_pos(&mut display, &mut cursor, &mut color, (0, 0));
+        LFBTerminal::position(&mut display, &mut cursor, &mut color, (0, 0));
     }
 }
 
 impl LFBTerminal {
-    pub const fn empty() -> Self {
-        Self {
-            display: Mutex::new(DisplayState::empty()),
-            cursor: Mutex::new(CursorState::new()),
-            color: Mutex::new(ColorState::new()),
-            parser: None,
-            decoder: Mutex::new(Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore))
-        }
-    }
-
     pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         Self {
             display: Mutex::new(DisplayState::new(buffer, pitch, width, height, bpp)),
             cursor: Mutex::new(CursorState::new()),
             color: Mutex::new(ColorState::new()),
-            parser: Some(Mutex::new(Parser::<Utf8Parser>::new())),
+            parser: Mutex::new(RefCell::new(Parser::<Utf8Parser>::new())),
             decoder: Mutex::new(Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore))
         }
     }
 
-    pub fn is_valid(&self) -> bool {
-        return self.parser.is_some();
-    }
-
-    fn print_char(&mut self, c: char) {
+    fn print_char(&self, c: char) {
         let mut display = self.display.lock();
         let mut cursor = self.cursor.lock();
         let mut color = self.color.lock();
@@ -263,7 +245,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn set_pos(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>, pos: (u16, u16)) {
+    fn position(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>, pos: (u16, u16)) {
         cursor.pos = pos;
 
         while cursor.pos.1 >= display.size.1 {
@@ -273,16 +255,16 @@ impl LFBTerminal {
     }
 
     fn handle_bell() {
-        let mut speaker = kernel::get_device_service().get_speaker().lock();
+        let mut speaker = kernel::speaker().lock();
         speaker.play(440, 250);
         speaker.play(880, 250);
     }
 
     fn handle_tab(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>) {
         if cursor.pos.0 + TAB_SPACES >= display.size.0{
-            LFBTerminal::set_pos(display, cursor, color, (0, cursor.pos.1 + 1));
+            LFBTerminal::position(display, cursor, color, (0, cursor.pos.1 + 1));
         } else {
-            LFBTerminal::set_pos(display, cursor, color, (((cursor.pos.0 + TAB_SPACES) / TAB_SPACES) * TAB_SPACES, cursor.pos.1));
+            LFBTerminal::position(display, cursor, color, (((cursor.pos.0 + TAB_SPACES) / TAB_SPACES) * TAB_SPACES, cursor.pos.1));
         }
     }
 
@@ -412,25 +394,25 @@ impl LFBTerminal {
                     LFBTerminal::handle_ansi_graphic_rendition(color, code);
                 },
                 30..=39 => {
-                    if let Some(col) = get_color(code - 30, &mut iter) {
+                    if let Some(col) = ansi_color(code - 30, &mut iter) {
                         color.fg_base_color = col;
                         color.fg_bright = false;
                     }
                 },
                 40..=49 => {
-                    if let Some(col) = get_color(code - 40, &mut iter) {
+                    if let Some(col) = ansi_color(code - 40, &mut iter) {
                         color.bg_base_color = col;
                         color.bg_bright = false;
                     }
                 },
                 90..=97 => {
-                    if let Some(col) = get_color(code - 90, &mut iter) {
+                    if let Some(col) = ansi_color(code - 90, &mut iter) {
                         color.fg_base_color = col;
                         color.fg_bright = true;
                     }
                 },
                 100..=107 => {
-                    if let Some(col) = get_color(code - 100, &mut iter) {
+                    if let Some(col) = ansi_color(code - 100, &mut iter) {
                         color.bg_base_color = col;
                         color.bg_bright = true;
                     }
@@ -505,7 +487,7 @@ impl LFBTerminal {
                 if param.is_some() {
                     let y_move = param.unwrap()[0];
                     let row = cursor.pos.1 - if y_move == 0 { 1 } else { y_move };
-                    LFBTerminal::set_pos(display, cursor, color, (cursor.pos.0, if row > 0 { row } else { 0 }));
+                    LFBTerminal::position(display, cursor, color, (cursor.pos.0, if row > 0 { row } else { 0 }));
                 }
             },
             0x42 => { // Move cursor down
@@ -513,7 +495,7 @@ impl LFBTerminal {
                 if param.is_some() {
                     let y_move = param.unwrap()[0];
                     let row = cursor.pos.1 + if y_move == 0 { 1 } else { y_move };
-                    LFBTerminal::set_pos(display, cursor, color, (cursor.pos.0, if row < display.size.1 { row } else { display.size.1 - 1 }));
+                    LFBTerminal::position(display, cursor, color, (cursor.pos.0, if row < display.size.1 { row } else { display.size.1 - 1 }));
                 };
             },
             0x43 => { // Move cursor right
@@ -521,7 +503,7 @@ impl LFBTerminal {
                 if param.is_some() {
                     let x_move = param.unwrap()[0];
                     let column = cursor.pos.0 + if x_move == 0 { 1 } else { x_move };
-                    LFBTerminal::set_pos(display, cursor, color, (if column < display.size.0 { column } else { display.size.0 - 1 }, cursor.pos.1));
+                    LFBTerminal::position(display, cursor, color, (if column < display.size.0 { column } else { display.size.0 - 1 }, cursor.pos.1));
                 };
             },
             0x44 => { // Move cursor left
@@ -529,28 +511,28 @@ impl LFBTerminal {
                 if param.is_some() {
                     let x_move = param.unwrap()[0];
                     let column = cursor.pos.0 - if x_move == 0 { 1 } else { x_move };
-                    LFBTerminal::set_pos(display, cursor, color, (if column > 0 { column } else { 0 }, cursor.pos.1));
+                    LFBTerminal::position(display, cursor, color, (if column > 0 { column } else { 0 }, cursor.pos.1));
                 };
             },
             0x45 => { // Move cursor to start of next line
                 let param = iter.next();
                 if param.is_some() {
                     let row = cursor.pos.1 + param.unwrap()[0] + 1;
-                    LFBTerminal::set_pos(display, cursor, color, (0, if row < display.size.1 { row } else { display.size.1 - 1 }));
+                    LFBTerminal::position(display, cursor, color, (0, if row < display.size.1 { row } else { display.size.1 - 1 }));
                 };
             },
             0x46 => { // Move cursor to start of previous line
                 let param = iter.next();
                 if param.is_some() {
                     let row = cursor.pos.1 - param.unwrap()[0] - 1;
-                    LFBTerminal::set_pos(display, cursor, color, (0, if row > 0 { row } else { 0 }));
+                    LFBTerminal::position(display, cursor, color, (0, if row > 0 { row } else { 0 }));
                 };
             }
             0x47 => { // Move cursor to column
                 let param = iter.next();
                 if param.is_some() {
                     let column = param.unwrap()[0];
-                    LFBTerminal::set_pos(display, cursor, color, (if column < display.size.0 { column } else { display.size.0 - 1 }, cursor.pos.1));
+                    LFBTerminal::position(display, cursor, color, (if column < display.size.0 { column } else { display.size.0 - 1 }, cursor.pos.1));
                 }
             }
             0x48 | 0x66 => { // Set cursor position
@@ -561,16 +543,16 @@ impl LFBTerminal {
                     let column = param1.unwrap()[0];
                     let row = param2.unwrap()[0];
 
-                    LFBTerminal::set_pos(display, cursor, color, (if column > display.size.0 { display.size.0 - 1 } else { column }, if row > display.size.1 { display.size.1 - 1 } else { row }));
+                    LFBTerminal::position(display, cursor, color, (if column > display.size.0 { display.size.0 - 1 } else { column }, if row > display.size.1 { display.size.1 - 1 } else { row }));
                 } else {
-                    LFBTerminal::set_pos(display, cursor, color, (0, 0));
+                    LFBTerminal::position(display, cursor, color, (0, 0));
                 }
             }
             0x73 => { // Save cursor position
                 cursor.saved_pos = (cursor.pos.0, cursor.pos.1);
             }
             0x75 => { // Restore cursor position
-                LFBTerminal::set_pos(display, cursor, color, cursor.saved_pos);
+                LFBTerminal::position(display, cursor, color, cursor.saved_pos);
             }
             _ => {}
         }
@@ -588,7 +570,7 @@ impl LFBTerminal {
                     1 => LFBTerminal::clear_screen_to_cursor(display, cursor, color),
                     2 => {
                         LFBTerminal::clear_screen(display, color);
-                        LFBTerminal::set_pos(display, cursor, color, (0, 0));
+                        LFBTerminal::position(display, cursor, color, (0, 0));
                     }
                     _ => {}
                 }
@@ -606,7 +588,7 @@ impl LFBTerminal {
     }
 }
 
-fn get_color(code: u16, iter: &mut ParamsIter) -> Option<Color> {
+fn ansi_color(code: u16, iter: &mut ParamsIter) -> Option<Color> {
     match code {
         0 => Some(color::BLACK),
         1 => Some(color::RED),
