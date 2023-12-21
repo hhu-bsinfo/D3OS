@@ -14,7 +14,7 @@ use crate::library::io::stream::OutputStream;
 
 pub struct Logger {
     level: Level,
-    streams: Vec<Box<&'static mut dyn OutputStream>>,
+    streams: Vec<Box<&'static dyn OutputStream>>,
     serial: Option<SerialPort>
 }
 
@@ -28,15 +28,12 @@ impl log::Log for Logger {
             return;
         }
 
-        let ms = kernel::get_time_service().get_systime_ms();
-        let seconds = ms / 1000;
-        let fraction = ms % 1000;
         let level = record.metadata().level();
         let file = record.file().unwrap_or("unknown")
             .split('/').rev().next().unwrap_or("unknown");
         let line = record.line().unwrap_or(0);
 
-        let mut logger = kernel::get_logger().lock();
+        let mut logger = kernel::logger().lock();
         if logger.streams.is_empty() {
             if let Some(serial) = logger.serial.as_mut() {
                 serial.write_str(ansi::FOREGROUND_CYAN);
@@ -50,7 +47,7 @@ impl log::Log for Logger {
                 serial.write_str(file);
                 serial.write_str("] ");
 
-                if kernel::get_memory_service().is_initialized() {
+                if kernel::allocator().is_initialized() {
                     serial.write_str(record.args().to_string().as_str());
                 } else {
                     serial.write_str(record.args().as_str().unwrap_or_else(|| "Formatted messages are not supported before heap initialization!"));
@@ -59,11 +56,14 @@ impl log::Log for Logger {
                 serial.write_str("\n");
             }
         } else {
+            let systime = kernel::timer().read().systime_ms();
+            let seconds = systime / 1000;
+            let fraction = systime % 1000;
+
             let string = format!("{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}] {}\n", ansi::FOREGROUND_CYAN, seconds, fraction, ansi_color(level), level.as_str(), ansi::FOREGROUND_DEFAULT, file, line, record.args());
 
             for i in 0..self.streams.len() {
-                let stream = logger.streams[i].as_mut();
-                stream.write_str(&string);
+                logger.streams[i].write_str(&string);
             }
         }
     }
@@ -77,8 +77,8 @@ impl Logger {
     }
 
     pub fn init(&self) -> Result<(), SetLoggerError> {
-        unsafe { kernel::get_logger().force_unlock(); }
-        let mut logger = kernel::get_logger().lock();
+        unsafe { kernel::logger().force_unlock(); } // The caller needed to call kernel::logger().lock() in order to call init()
+        let mut logger = kernel::logger().lock();
 
         if serial::check_port(ComPort::Com1) { logger.serial = Some(SerialPort::new(ComPort::Com1)) }
         else if serial::check_port(ComPort::Com2) { logger.serial = Some(SerialPort::new(ComPort::Com2)) }
@@ -95,11 +95,11 @@ impl Logger {
         }
     }
 
-    pub fn register(&mut self, stream: &'static mut dyn OutputStream) {
+    pub fn register(&mut self, stream: &'static dyn OutputStream) {
         self.streams.push(Box::new(stream));
     }
 
-    pub fn remove(&mut self, stream: &mut dyn OutputStream) {
+    pub fn remove(&mut self, stream: &dyn OutputStream) {
         self.streams.retain(|element| !ptr::addr_eq(ptr::from_ref(*element.as_ref()), ptr::from_ref(stream)));
     }
 }

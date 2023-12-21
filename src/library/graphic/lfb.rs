@@ -18,10 +18,6 @@ pub const CHAR_HEIGHT: u32 = 16;
 pub const CHAR_WIDTH: u32 = 8;
 
 impl LFB {
-    pub const fn empty() -> Self {
-        Self { buffer: 0 as *mut u8, pitch: 0, width: 0, height: 0, bpp: 0, pixel_drawer: draw_pixel_stub }
-    }
-
     pub const fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         let pixel_drawer: PixelDrawer = match bpp {
             15 => {

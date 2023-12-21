@@ -136,29 +136,26 @@ impl Thread {
     }
 
     pub fn kickoff_kernel_thread() {
-        let thread_service = kernel::get_thread_service();
-        let thread = thread_service.get_current_thread();
-        thread_service.set_scheduler_init();
+        let scheduler = kernel::scheduler();
+        let thread = scheduler.current_thread();
+        scheduler.set_init();
 
         unsafe {
             let thread_ptr = ptr::from_ref(thread.as_ref()) as *mut Thread;
-            kernel::get_tss().lock().privilege_stack_table[0] = VirtAddr::new(thread.get_kernel_stack_addr() as u64);
+            kernel::tss().lock().privilege_stack_table[0] = VirtAddr::new(thread.kernel_stack_addr() as u64);
 
             if thread.is_kernel_thread() {
-                thread_service.set_scheduler_init();
                 ((*thread_ptr).entry)();
             } else {
                 (*thread_ptr).switch_to_user_mode();
             }
         }
 
-        thread_service.exit_thread();
+        scheduler.exit();
     }
 
     pub fn kickoff_user_thread() {
-        let thread_service = kernel::get_thread_service();
-        let thread = thread_service.get_current_thread();
-        thread_service.set_scheduler_init();
+        let thread = kernel::scheduler().current_thread();
 
         unsafe {
             let thread_ptr = ptr::from_ref(thread.as_ref()) as *mut Thread;
@@ -169,11 +166,13 @@ impl Thread {
     }
 
     pub fn start_first(thread: &Thread) {
-        unsafe { thread_kernel_start(thread.old_rsp0) }
+        unsafe {
+            thread_kernel_start(thread.old_rsp0)
+        }
     }
 
     pub fn switch(current: &Thread, next: &Thread) {
-        unsafe { thread_switch(ptr::from_ref(&current.old_rsp0) as *mut u64, next.old_rsp0, next.get_kernel_stack_addr() as u64); }
+        unsafe { thread_switch(ptr::from_ref(&current.old_rsp0) as *mut u64, next.old_rsp0, next.kernel_stack_addr() as u64); }
     }
 
     pub fn is_kernel_thread(&self) -> bool {
@@ -182,14 +181,14 @@ impl Thread {
 
     #[allow(dead_code)]
     pub fn join(&self) {
-        kernel::get_thread_service().join_thread(self.get_id());
+        kernel::scheduler().join(self.id());
     }
 
-    pub fn get_id(&self) -> usize {
+    pub fn id(&self) -> usize {
         return self.id;
     }
 
-    pub fn get_kernel_stack_addr(&self) -> *const u64 {
+    pub fn kernel_stack_addr(&self) -> *const u64 {
         unsafe { return self.kernel_stack.as_ptr().offset(((self.kernel_stack.capacity() - 1) * 8) as isize); }
     }
 

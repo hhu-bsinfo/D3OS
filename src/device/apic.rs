@@ -9,21 +9,18 @@ use x2apic::ioapic::{IoApic, IrqFlags, IrqMode, RedirectionTableEntry};
 use x2apic::lapic::{LocalApic, LocalApicBuilder, xapic_base};
 use crate::{kernel};
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
-use crate::kernel::service::memory_service::AcpiAllocator;
+use crate::kernel::alloc::AcpiAllocator;
 
 pub struct Apic {
-    local_apic: Option<Mutex<LocalApic>>,
-    io_apic: Option<Mutex<IoApic>>,
+    local_apic: Mutex<LocalApic>,
+    io_apic: Mutex<IoApic>,
     irq_overrides: Vec<InterruptSourceOverride>,
     nmi_sources: Vec<NmiSource>,
 }
 
 impl Apic {
-    pub const fn new() -> Self {
-        Self { local_apic: None, io_apic: None, irq_overrides: Vec::new(), nmi_sources: Vec::new() }
-    }
 
-    pub fn init(&mut self) {
+    pub fn new() -> Self {
         // Check if APIC is available
         let cpuid = CpuId::new();
         match cpuid.get_feature_info() {
@@ -38,8 +35,8 @@ impl Apic {
         info!("APIC detected");
 
         // Find APIC relevant structures in ACPI tables
-        let madt = kernel::get_device_service().get_acpi_tables().find_table::<Madt>().unwrap_or_else(|err| panic!("MADT not available ({:?})!", err));
-        let int_model = madt.parse_interrupt_model_in(AcpiAllocator::new(kernel::get_memory_service())).unwrap_or_else(|err| panic!("Interrupt model not found in MADT ({:?})!", err));
+        let madt = kernel::acpi_tables().lock().find_table::<Madt>().unwrap_or_else(|err| panic!("MADT not available ({:?})!", err));
+        let int_model = madt.parse_interrupt_model_in(AcpiAllocator::new(kernel::allocator())).unwrap_or_else(|err| panic!("Interrupt model not found in MADT ({:?})!", err));
 
         if let Some(cpu_info) = int_model.1 {
             info!("[{}] application {} detected", cpu_info.application_processors.len(), if cpu_info.application_processors.len() == 1 { "processor" } else { "processors" });
@@ -47,162 +44,165 @@ impl Apic {
         }
 
         // Read APIC MMIO base address and create new Local Apic instance
-        // Needs to be executed in unsafe block; APIC availability has been check before hand, so this should work.
+        // Needs to be executed in unsafe block; APIC availability has been check before, so this should work.
         let apic_address = unsafe { xapic_base() };
-        self.local_apic = Some(Mutex::new(LocalApicBuilder::new()
+        let local_apic = Mutex::new(LocalApicBuilder::new()
             .timer_vector(InterruptVector::ApicTimer as usize)
             .error_vector(InterruptVector::ApicError as usize)
             .spurious_vector(InterruptVector::Spurious as usize)
             .set_xapic_base(apic_address)
             .build()
-            .unwrap_or_else(|err| panic!("Failed to initialize Local APIC ({})!", err))));
+            .unwrap_or_else(|err| panic!("Failed to initialize Local APIC ({})!", err)));
 
-        let mut local_apic = self.local_apic.as_mut().unwrap().lock();
-        info!("Initialized local APIC [{}]", unsafe { local_apic.id() });
+        let io_apic;
+        let mut irq_overrides = Vec::<InterruptSourceOverride>::new();
+        let mut nmi_sources = Vec::<NmiSource>::new();
 
-        match int_model.0 {
-            InterruptModel::Unknown => panic!("No APIC described by MADT!"),
-            InterruptModel::Apic(apic_desc) => {
-                info!("[{}] IO {} detected", apic_desc.io_apics.len(), if apic_desc.io_apics.len() == 1 { "APIC" } else { "APICs" });
+        {
+            let mut local_apic_locked = local_apic.lock();
+            info!("Initialized local APIC [{}]", unsafe { local_apic_locked.id() });
 
-                if apic_desc.io_apics.len() > 1 {
-                    panic!("More than one IO APIC found!");
-                }
+            match int_model.0 {
+                InterruptModel::Unknown => panic!("No APIC described by MADT!"),
+                InterruptModel::Apic(apic_desc) => {
+                    info!("[{}] IO {} detected", apic_desc.io_apics.len(), if apic_desc.io_apics.len() == 1 { "APIC" } else { "APICs" });
 
-                let io_apic_desc = apic_desc.io_apics.get(0).unwrap_or_else(|| panic!("No IO APIC described by MADT!"));
+                    if apic_desc.io_apics.len() > 1 {
+                        panic!("More than one IO APIC found!");
+                    }
 
-                info!("Initializing IO APIC");
-                // Needs to be executed in unsafe block; Since exactly one IO APIC has been detected, this should work
-                unsafe { self.io_apic = Some(Mutex::new(IoApic::new(io_apic_desc.address as u64))); }
+                    let io_apic_desc = apic_desc.io_apics.get(0).unwrap_or_else(|| panic!("No IO APIC described by MADT!"));
 
-                let mut io_apic = self.io_apic.as_mut().unwrap().lock();
-                unsafe { io_apic.init(io_apic_desc.global_system_interrupt_base as u8); }
+                    info!("Initializing IO APIC");
+                    // Needs to be executed in unsafe block; Since exactly one IO APIC has been detected, this should work
+                    unsafe { io_apic = Mutex::new(IoApic::new(io_apic_desc.address as u64)); }
 
-                // Read and store IRQ override entries
-                info!("[{}] interrupt source {} detected", apic_desc.interrupt_source_overrides.len(), if apic_desc.interrupt_source_overrides.len() == 1 { "override" } else { "overrides" });
+                    let mut io_apic_locked = io_apic.lock();
+                    unsafe { io_apic_locked.init(io_apic_desc.global_system_interrupt_base as u8); }
 
-                for irq_override in apic_desc.interrupt_source_overrides.iter() {
-                    info!("IRQ override [{}]->[{}], Polarity: [{:?}], Trigger: [{:?}]", irq_override.isa_source, irq_override.global_system_interrupt, irq_override.polarity, irq_override.trigger_mode);
-                    self.irq_overrides.push(InterruptSourceOverride {
-                        isa_source: irq_override.isa_source,
-                        global_system_interrupt: irq_override.global_system_interrupt,
-                        polarity: irq_override.polarity,
-                        trigger_mode: irq_override.trigger_mode });
-                }
+                    // Read and store IRQ override entries
+                    info!("[{}] interrupt source {} detected", apic_desc.interrupt_source_overrides.len(), if apic_desc.interrupt_source_overrides.len() == 1 { "override" } else { "overrides" });
 
-                // Read and store non-maskable interrupts sources
-                info!("[{}] NMI {} detected", apic_desc.interrupt_source_overrides.len(), if apic_desc.interrupt_source_overrides.len() == 1 { "source" } else { "sources" });
+                    for irq_override in apic_desc.interrupt_source_overrides.iter() {
+                        info!("IRQ override [{}]->[{}], Polarity: [{:?}], Trigger: [{:?}]", irq_override.isa_source, irq_override.global_system_interrupt, irq_override.polarity, irq_override.trigger_mode);
+                        irq_overrides.push(InterruptSourceOverride {
+                            isa_source: irq_override.isa_source,
+                            global_system_interrupt: irq_override.global_system_interrupt,
+                            polarity: irq_override.polarity,
+                            trigger_mode: irq_override.trigger_mode
+                        });
+                    }
 
-                for nmi_source in apic_desc.nmi_sources.iter() {
-                    info!("NMI source [{}], Polarity: [{:?}], Trigger: [{:?}]", nmi_source.global_system_interrupt, nmi_source.polarity, nmi_source.trigger_mode);
-                    self.nmi_sources.push(NmiSource {
-                        global_system_interrupt: nmi_source.global_system_interrupt,
-                        polarity: nmi_source.polarity,
-                        trigger_mode: nmi_source.trigger_mode,
-                    });
-                }
+                    // Read and store non-maskable interrupts sources
+                    info!("[{}] NMI {} detected", apic_desc.interrupt_source_overrides.len(), if apic_desc.interrupt_source_overrides.len() == 1 { "source" } else { "sources" });
 
-                // Initialize redirection table with regards to IRQ override entries
-                // Needs to be executed in unsafe block; At this point, the IO APIC has been initialized successfully, so we can assume, that reading the MSR works.
-                for i in io_apic_desc.global_system_interrupt_base as u8 .. unsafe { io_apic.max_table_entry() } {
-                    let mut entry = RedirectionTableEntry::default();
-                    let mut flags = IrqFlags::MASKED;
+                    for nmi_source in apic_desc.nmi_sources.iter() {
+                        info!("NMI source [{}], Polarity: [{:?}], Trigger: [{:?}]", nmi_source.global_system_interrupt, nmi_source.polarity, nmi_source.trigger_mode);
+                        nmi_sources.push(NmiSource {
+                            global_system_interrupt: nmi_source.global_system_interrupt,
+                            polarity: nmi_source.polarity,
+                            trigger_mode: nmi_source.trigger_mode,
+                        });
+                    }
 
-                    entry.set_mode(IrqMode::Fixed);
+                    // Initialize redirection table with regards to IRQ override entries
+                    // Needs to be executed in unsafe block; At this point, the IO APIC has been initialized successfully, so we can assume, that reading the MSR works.
+                    for i in io_apic_desc.global_system_interrupt_base as u8..unsafe { io_apic_locked.max_table_entry() } {
+                        let mut entry = RedirectionTableEntry::default();
+                        let mut flags = IrqFlags::MASKED;
 
-                    // Needs to be executed in unsafe block; At this point, the APIC has been initialized successfully, so we can assume, that reading the MSR works.
-                    entry.set_dest(unsafe { local_apic.id() } as u8);
+                        entry.set_mode(IrqMode::Fixed);
 
-                    match get_override_for_target(&self.irq_overrides, i) {
-                        None => entry.set_vector(i + InterruptVector::Pit as u8),
-                        Some(irq_override) => {
-                            if irq_override.polarity == Polarity::ActiveLow {
-                                flags |= IrqFlags::LOW_ACTIVE;
+                        // Needs to be executed in unsafe block; At this point, the APIC has been initialized successfully, so we can assume, that reading the MSR works.
+                        entry.set_dest(unsafe { local_apic_locked.id() } as u8);
+
+                        match override_for_target(&irq_overrides, i) {
+                            None => entry.set_vector(i + InterruptVector::Pit as u8),
+                            Some(irq_override) => {
+                                if irq_override.polarity == Polarity::ActiveLow {
+                                    flags |= IrqFlags::LOW_ACTIVE;
+                                }
+                                if irq_override.trigger_mode == TriggerMode::Level {
+                                    flags |= IrqFlags::LEVEL_TRIGGERED;
+                                }
+
+                                entry.set_vector(irq_override.isa_source + InterruptVector::Pit as u8);
                             }
-                            if irq_override.trigger_mode == TriggerMode::Level {
-                                flags |= IrqFlags::LEVEL_TRIGGERED;
-                            }
-
-                            entry.set_vector(irq_override.isa_source + InterruptVector::Pit as u8);
                         }
+
+                        entry.set_flags(flags);
+
+                        // Needs to be executed in unsafe block; Tables entries have been initialized in IoApic::init(), so writing them works.
+                        unsafe { io_apic_locked.set_table_entry(i, entry); }
                     }
 
-                    entry.set_flags(flags);
+                    // Set entries for non-maskable interrupts
+                    for nmi in nmi_sources.iter() {
+                        let mut entry = RedirectionTableEntry::default();
+                        let mut flags = IrqFlags::empty();
 
-                    // Needs to be executed in unsafe block; Tables entries have been initialized in IoApic::init(), so writing them works.
-                    unsafe { io_apic.set_table_entry(i, entry); }
-                }
+                        if nmi.polarity == Polarity::ActiveLow {
+                            flags |= IrqFlags::LOW_ACTIVE;
+                        }
+                        if nmi.trigger_mode == TriggerMode::Level {
+                            flags |= IrqFlags::LEVEL_TRIGGERED;
+                        }
 
-                // Set entries for non-maskable interrupts
-                for nmi in self.nmi_sources.iter() {
-                    let mut entry = RedirectionTableEntry::default();
-                    let mut flags = IrqFlags::empty();
+                        entry.set_mode(IrqMode::NonMaskable);
+                        entry.set_vector(0);
+                        entry.set_flags(flags);
 
-                    if nmi.polarity == Polarity::ActiveLow {
-                        flags |= IrqFlags::LOW_ACTIVE;
+                        // Needs to be executed in unsafe block; At this point, the APIC has been initialized successfully, so we can assume, that reading the MSR works.
+                        entry.set_dest(unsafe { local_apic_locked.id() } as u8);
+
+                        // Needs to be executed in unsafe block; Tables entries have been initialized in IoApic::init(), so writing them works.
+                        unsafe { io_apic_locked.set_table_entry(nmi.global_system_interrupt as u8, entry); }
                     }
-                    if nmi.trigger_mode == TriggerMode::Level {
-                        flags |= IrqFlags::LEVEL_TRIGGERED;
-                    }
+                },
+                _ => panic!("No APIC described by MADT!")
+            }
 
-                    entry.set_mode(IrqMode::NonMaskable);
-                    entry.set_vector(0);
-                    entry.set_flags(flags);
-
-                    // Needs to be executed in unsafe block; At this point, the APIC has been initialized successfully, so we can assume, that reading the MSR works.
-                    entry.set_dest(unsafe { local_apic.id() } as u8);
-
-                    // Needs to be executed in unsafe block; Tables entries have been initialized in IoApic::init(), so writing them works.
-                    unsafe { io_apic.set_table_entry(nmi.global_system_interrupt as u8, entry); }
-                }
-            },
-            _ => panic!("No APIC described by MADT!")
+            // Initialization is finished -> Enable Local Apic
+            info!("Enabling local APIC [{}]", unsafe { local_apic_locked.id() });
+            unsafe {
+                local_apic_locked.enable();
+                local_apic_locked.disable_timer();
+            }
         }
 
-        // Initialization is finished -> Enable Local Apic
-        info!("Enabling local APIC [{}]", unsafe { local_apic.id() });
-        unsafe {
-            local_apic.enable();
-            local_apic.disable_timer();
-        }
+        return Self { local_apic, io_apic, irq_overrides, nmi_sources };
     }
 
-    pub fn allow(&mut self, vector: InterruptVector) {
-        let target = get_target_gsi(&self.irq_overrides, vector as u8 - InterruptVector::Pit as u8);
+    pub fn allow(&self, vector: InterruptVector) {
+        let target = target_gsi(&self.irq_overrides, vector as u8 - InterruptVector::Pit as u8);
         if is_nmi(&self.nmi_sources, target) {
             panic!("Trying to mask a non-maskable interrupt");
         }
 
-        match self.io_apic.as_mut() {
-            None => panic!("APIC: Trying to call allow() before init()!"),
-            Some(io_apic) => unsafe { io_apic.lock().enable_irq(target); }
-        }
+        unsafe { self.io_apic.lock().enable_irq(target); }
     }
 
-    pub fn send_eoi(&mut self) {
-        match self.local_apic.as_mut() {
-            None => panic!("APIC: Trying to call send_eoi() before init()!"),
-            Some(local_apic_mutex) => unsafe {
-                let mut local_apic = local_apic_mutex.try_lock();
-                while local_apic.is_none() {
-                    local_apic_mutex.force_unlock();
-                    local_apic = local_apic_mutex.try_lock();
-                }
-
-                local_apic.unwrap().end_of_interrupt();
-            }
+    pub fn end_of_interrupt(&self) {
+        let mut local_apic = self.local_apic.try_lock();
+        while local_apic.is_none() {
+            // It its extremely unlikely, that the local APIC is locked during an interrupt,
+            // but if it happens, the whole system would hang, trying to send an EOI.
+            unsafe { self.local_apic.force_unlock(); }
+            local_apic = self.local_apic.try_lock();
         }
+
+        unsafe { local_apic.unwrap().end_of_interrupt(); }
     }
 }
 
-fn get_target_gsi(irq_overrides: &Vec<InterruptSourceOverride>, source_irq: u8) -> u8 {
-    match get_override_for_source(irq_overrides, source_irq) {
+fn target_gsi(irq_overrides: &Vec<InterruptSourceOverride>, source_irq: u8) -> u8 {
+    match override_for_source(irq_overrides, source_irq) {
         None => source_irq,
         Some(irq_override) => irq_override.global_system_interrupt as u8
     }
 }
 
-fn get_override_for_source(irq_overrides: &Vec<InterruptSourceOverride>, source_irq: u8) -> Option<&InterruptSourceOverride> {
+fn override_for_source(irq_overrides: &Vec<InterruptSourceOverride>, source_irq: u8) -> Option<&InterruptSourceOverride> {
     for irq_override in irq_overrides.iter() {
         if irq_override.isa_source == source_irq {
             return Some(irq_override);
@@ -212,7 +212,7 @@ fn get_override_for_source(irq_overrides: &Vec<InterruptSourceOverride>, source_
     return None;
 }
 
-fn get_override_for_target(irq_overrides: &Vec<InterruptSourceOverride>, target_gsi: u8) -> Option<&InterruptSourceOverride> {
+fn override_for_target(irq_overrides: &Vec<InterruptSourceOverride>, target_gsi: u8) -> Option<&InterruptSourceOverride> {
     for irq_override in irq_overrides.iter() {
         if irq_override.global_system_interrupt as u8 == target_gsi {
             return Some(irq_override);

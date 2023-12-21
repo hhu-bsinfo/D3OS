@@ -3,17 +3,17 @@ use crate::kernel::syscall::user_api::{syscall0, syscall1, SystemCall};
 
 #[no_mangle]
 pub extern "C" fn sys_thread_switch() {
-    kernel::get_thread_service().switch_thread();
+    kernel::scheduler().switch_thread();
 }
 
 #[no_mangle]
 pub extern "C" fn sys_thread_sleep(ms: usize) {
-    kernel::get_thread_service().sleep(ms);
+    kernel::scheduler().sleep(ms);
 }
 
 #[no_mangle]
 pub extern "C" fn sys_thread_exit() {
-    kernel::get_thread_service().exit_thread();
+    kernel::scheduler().exit();
 }
 
 #[allow(dead_code)]

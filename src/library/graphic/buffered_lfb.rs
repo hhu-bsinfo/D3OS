@@ -8,10 +8,6 @@ pub struct BufferedLFB {
 }
 
 impl BufferedLFB {
-    pub const fn empty() -> Self {
-        Self { buffer: Vec::new(), lfb: LFB::empty(), target_lfb: LFB::empty() }
-    }
-
     pub fn new(lfb: LFB) -> Self {
         let buffer = Vec::with_capacity((lfb.height() * lfb.pitch()) as usize);
         let raw_buffer = buffer.as_ptr() as *mut u8;

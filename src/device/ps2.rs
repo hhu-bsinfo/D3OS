@@ -11,58 +11,52 @@ use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::kernel::interrupt::isr::ISR;
 use crate::library::io::stream::InputStream;
 
-pub struct Keyboard {
-    buffer: Option<(Receiver<u8>, Sender<u8>)>
-}
+const KEYBOARD_BUFFER_CAPACITY: usize = 128;
 
 pub struct PS2 {
     controller: Mutex<Controller>,
     keyboard: Keyboard
 }
 
+pub struct Keyboard {
+    buffer: (Receiver<u8>, Sender<u8>)
+}
+
 #[derive(Default)]
 pub struct KeyboardISR;
 
 impl Keyboard {
-    const fn new() -> Self {
-        Self { buffer: None }
+    fn new(buffer_cap: usize) -> Self {
+        Self { buffer: mpmc::bounded::scq::queue(buffer_cap) }
     }
 
-    fn init(&mut self, buffer_cap: usize) {
-        self.buffer = Some(mpmc::bounded::scq::queue(buffer_cap));
+    pub fn plugin(&self) {
+        kernel::interrupt_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardISR::default()));
+        kernel::apic().allow(InterruptVector::Keyboard);
     }
 }
 
 impl InputStream for Keyboard {
-    fn read_byte(&mut self) -> i16 {
+    fn read_byte(&self) -> i16 {
         loop {
-            if let Some(buffer) = self.buffer.as_mut() {
-                match buffer.0.try_dequeue() {
-                    Ok(code) => return code as i16,
-                    Err(DequeueError::Closed) => return -1,
-                    Err(_) => {}
-                }
-            } else {
-                panic!("Keyboard: Trying to read before initialization!");
+            match self.buffer.0.try_dequeue() {
+                Ok(code) => return code as i16,
+                Err(DequeueError::Closed) => return -1,
+                Err(_) => {}
             }
         }
     }
 }
 
 impl ISR for KeyboardISR {
-    fn trigger(&self) {
-        if let Some(mut controller) = kernel::get_device_service().get_ps2().controller.try_lock() {
+    fn trigger(&mut self) {
+        if let Some(mut controller) = kernel::ps2_devices().controller.try_lock() {
             if let Ok(data) = controller.read_data() {
-                let keyboard = kernel::get_device_service().get_ps2().get_keyboard();
-                match keyboard.buffer.as_mut() {
-                    Some(buffer) => {
-                        while buffer.1.try_enqueue(data).is_err() {
-                            if buffer.0.try_dequeue().is_err() {
-                                panic!("Keyboard: Failed to store received byte in buffer!");
-                            }
-                        }
+                let keyboard = kernel::ps2_devices().keyboard();
+                while keyboard.buffer.1.try_enqueue(data).is_err() {
+                    if keyboard.buffer.0.try_dequeue().is_err() {
+                        panic!("Keyboard: Failed to store received byte in buffer!");
                     }
-                    None => panic!("Keyboard: ISR called before initialization!")
                 }
             }
         } else {
@@ -72,11 +66,11 @@ impl ISR for KeyboardISR {
 }
 
 impl PS2 {
-    pub const fn new() -> Self {
-        Self { controller: unsafe { Mutex::new(Controller::new()) }, keyboard: Keyboard::new() }
+    pub fn new() -> Self {
+        Self { controller: unsafe { Mutex::new(Controller::new()) }, keyboard: Keyboard::new(KEYBOARD_BUFFER_CAPACITY) }
     }
 
-    pub fn init_controller(&mut self) -> Result<(), ControllerError> {
+    pub fn init_controller(&self) -> Result<(), ControllerError> {
         info!("Initializing controller");
         let mut controller = self.controller.lock();
 
@@ -161,17 +155,10 @@ impl PS2 {
         controller.keyboard().set_leds(KeyboardLedFlags::empty())?;
         controller.keyboard().enable_scanning()?;
 
-        self.keyboard.init(128);
         return Ok(());
     }
 
-    pub fn get_keyboard(&mut self) -> &mut Keyboard {
-        return &mut self.keyboard;
-    }
-
-    pub fn plugin_keyboard(&self) {
-        let int_service = kernel::get_interrupt_service();
-        int_service.assign_handler(InterruptVector::Keyboard, Box::new(KeyboardISR::default()));
-        int_service.allow_interrupt(InterruptVector::Keyboard);
+    pub fn keyboard(&self) -> &Keyboard {
+        return &self.keyboard;
     }
 }

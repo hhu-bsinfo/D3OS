@@ -38,6 +38,7 @@ use x86_64::instructions::tables::load_tss;
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
+use crate::kernel::syscall::syscall_dispatcher;
 use crate::kernel::thread::thread::Thread;
 
 // insert other modules
@@ -48,7 +49,7 @@ mod library;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if kernel::get_device_service().is_terminal_initialized() {
+    if kernel::terminal_initialized() {
         println!("Panic: {}", info);
     } else {
         let record = Record::builder()
@@ -57,8 +58,8 @@ fn panic(info: &PanicInfo) -> ! {
             .args(*info.message().unwrap_or(&Arguments::new_const(&["A panic occurred!"])))
             .build();
 
-        let logger = kernel::get_logger().lock();
-        unsafe { kernel::get_logger().force_unlock() };
+        let logger = kernel::logger().lock();
+        unsafe { kernel::logger().force_unlock() }; // log() also calls kernel::logger().lock()
         logger.log(&record);
     }
 
@@ -73,6 +74,7 @@ pub mod built_info {
 extern "C" {
     static ___BSS_START__: u64;
     static ___BSS_END__: u64;
+    fn setup_idt();
 }
 
 #[no_mangle]
@@ -95,7 +97,7 @@ pub extern fn start() {
     clear_bss();
 
     // Initialize logger
-    if kernel::get_logger().lock().init().is_err() {
+    if kernel::logger().lock().init().is_err() {
         panic!("Failed to initialize logger!")
     }
 
@@ -141,7 +143,7 @@ pub extern fn start() {
         heap_start = heap_area.phys_start as usize;
         heap_end = heap_area.phys_start as usize + heap_area.page_count as usize * PAGE_SIZE - 1;
 
-        kernel::set_efi_system_table(runtime_table);
+        kernel::init_efi_system_table(runtime_table);
     } else if let Some(memory_map) = multiboot.memory_map_tag() {
         // EFI services have been exited, but the bootloader has provided us with a Multiboot2 memory map
         info!("EFI boot services have been exited");
@@ -182,31 +184,24 @@ pub extern fn start() {
 
     // Initialize heap, after which format strings may be used in log messages and panics
     info!("Initializing heap");
-    unsafe { kernel::get_memory_service().init(heap_start, heap_end); }
+    unsafe { kernel::allocator().init(heap_start, heap_end); }
     info!("Heap is initialized (Start: [{} MiB], End: [{} MiB]]", heap_start / 1024 / 1024, heap_end / 1024 / 1024);
 
-    // Initialize thread service
-    let thread_service = kernel::get_thread_service();
-    thread_service.init();
-
     // Initialize serial port and enable serial logging
-    kernel::get_device_service().init_serial_port();
-    match kernel::get_device_service().get_serial_port() {
-        Some(serial) => {
-            kernel::get_logger().lock().register(serial);
-        }
-        None => {}
+    kernel::init_serial_port();
+    if let Some(serial) = kernel::serial_port() {
+        kernel::logger().lock().register(serial);
     }
 
     // Initialize terminal and enable terminal logging
     let fb_info = multiboot.framebuffer_tag()
         .unwrap_or_else(|| panic!("No framebuffer information provided by bootloader!"))
-        .unwrap_or_else(|_| panic!("Framebuffer type is unknown!"));
-    kernel::get_device_service().init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
-    kernel::get_logger().lock().register(kernel::get_device_service().get_terminal());
+        .unwrap_or_else(|fb_type| panic!("Unknown framebuffer type [{}]!", fb_type));
+    kernel::init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+    kernel::logger().lock().register(kernel::terminal());
 
     info!("Welcome to hhuTOSr!");
-    let version = format!("v{} ({})", built_info::PKG_VERSION, built_info::PROFILE);
+    let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
     let git_ref = built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown");
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or_else(|| "Unknown");
     let build_date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
@@ -233,51 +228,57 @@ pub extern fn start() {
         panic!("ACPI not available!");
     };
 
-    kernel::get_device_service().init_acpi_tables(rsdp_addr);
+    kernel::init_acpi_tables(rsdp_addr);
 
     // Initialize interrupts
-    kernel::get_interrupt_service().init();
+    unsafe { setup_idt(); }
+    syscall_dispatcher::init();
+    kernel::init_apic();
+
+    // Initialize timer
+    {
+        info!("Initializing timer");
+        let mut timer = kernel::timer().write();
+        timer.interrupt_rate(1);
+        timer.plugin();
+    }
+
+    // Enable interrupts
     info!("Enabling interrupts");
     interrupts::enable();
 
-    // Initialize timer
-    info!("Initializing timer");
-    kernel::get_time_service().init();
-
     // Initialize EFI runtime service (if available and not done already during memory initialization)
-    if kernel::get_efi_system_table().is_none() {
+    if kernel::efi_system_table().is_none() {
         if let Some(sdt_tag) = multiboot.efi_sdt64_tag() {
             info!("Initializing EFI runtime services");
             let system_table;
             unsafe { system_table = SystemTable::<Runtime>::from_ptr(sdt_tag.sdt_address() as *mut c_void); };
 
             if system_table.is_some() {
-                kernel::set_efi_system_table(system_table.unwrap());
+                kernel::init_efi_system_table(system_table.unwrap());
             } else {
                 error!("Failed to create EFI system table struct from pointer!");
             }
         }
     }
 
-    if let Some(system_table) = kernel::get_efi_system_table() {
+    if let Some(system_table) = kernel::efi_system_table() {
         info!("EFI runtime services available (Vendor: [{}], UEFI version: [{}])", system_table.firmware_vendor(), system_table.uefi_revision());
     }
 
     // Initialize keyboard
     info!("Initializing PS/2 devices");
-    kernel::get_device_service().init_keyboard();
+    kernel::init_keyboard();
+    kernel::ps2_devices().keyboard().plugin();
 
     // Enable serial port interrupts
-    match kernel::get_device_service().get_serial_port() {
-        Some(serial) => {
-            serial.plugin();
-        }
-        None => {}
+    if let Some(serial) = kernel::serial_port() {
+        serial.plugin();
     }
 
-    let thread_service = kernel::get_thread_service();
-    thread_service.ready_thread(Thread::new_kernel_thread(Box::new(|| {
-        let terminal = kernel::get_device_service().get_terminal();
+    let scheduler = kernel::scheduler();
+    scheduler.ready(Thread::new_kernel_thread(Box::new(|| {
+        let terminal = kernel::terminal();
         terminal.write_str("> ");
 
         loop {
@@ -290,8 +291,8 @@ pub extern fn start() {
     })));
 
     // Disable terminal logging
-    kernel::get_logger().lock().remove(kernel::get_device_service().get_terminal());
-    kernel::get_device_service().get_terminal().clear();
+    kernel::logger().lock().remove(kernel::terminal());
+    kernel::terminal().clear();
 
     println!(include_str!("banner.txt"),
              version,
@@ -302,7 +303,7 @@ pub extern fn start() {
              bootloader_name);
 
     info!("Starting scheduler");
-    thread_service.start_scheduler();
+    scheduler.start();
 }
 
 fn clear_bss() {
@@ -316,8 +317,8 @@ fn clear_bss() {
 }
 
 fn setup_gdt() {
-    let mut gdt = kernel::get_gdt().lock();
-    let tss = kernel::get_tss().lock();
+    let mut gdt = kernel::gdt().lock();
+    let tss = kernel::tss().lock();
 
     gdt.add_entry(Descriptor::kernel_code_segment());
     gdt.add_entry(Descriptor::kernel_data_segment());
