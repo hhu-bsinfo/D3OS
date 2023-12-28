@@ -130,7 +130,7 @@ pub fn tss() -> &'static Mutex<TaskStateSegment> {
 }
 
 pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
-    return ACPI_TABLES.get().expect("Trying to acces ACPI tables befor initialization!");
+    return ACPI_TABLES.get().expect("Trying to access ACPI tables before initialization!");
 }
 
 pub fn efi_system_table() -> Option<&'static SystemTable<Runtime>> {
@@ -185,6 +185,11 @@ pub fn ps2_devices() -> &'static PS2 {
 #[no_mangle]
 pub extern "C" fn tss_set_rsp0(rsp0: u64) {
     tss().lock().privilege_stack_table[0] = VirtAddr::new(rsp0);
+}
+
+#[no_mangle]
+pub extern "C" fn tss_get_rsp0() -> u64 {
+    return tss().lock().privilege_stack_table[0].as_u64();
 }
 
 #[no_mangle]

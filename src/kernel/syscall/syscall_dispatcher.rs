@@ -14,10 +14,10 @@ pub fn init() {
     unsafe { Efer::update(|flags| flags.set(EferFlags::SYSTEM_CALL_EXTENSIONS, true)); }
 
     // Set code and stack segments for syscall
-    let cs_syscall = SegmentSelector::new(2, PrivilegeLevel::Ring0);
-    let ss_syscall = SegmentSelector::new(3, PrivilegeLevel::Ring0);
-    let cs_sysret = SegmentSelector::new(5, PrivilegeLevel::Ring3);
-    let ss_sysret = SegmentSelector::new(4, PrivilegeLevel::Ring3);
+    let cs_syscall = SegmentSelector::new(1, PrivilegeLevel::Ring0);
+    let ss_syscall = SegmentSelector::new(2, PrivilegeLevel::Ring0);
+    let cs_sysret = SegmentSelector::new(4, PrivilegeLevel::Ring3);
+    let ss_sysret = SegmentSelector::new(3, PrivilegeLevel::Ring3);
 
     if let Err(err) = Star::write(cs_sysret, ss_sysret, cs_syscall, ss_syscall) {
         panic!("System Call: Failed to initialize STAR register (Error: {})", err)
