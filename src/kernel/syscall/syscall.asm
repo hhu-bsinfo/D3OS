@@ -3,12 +3,13 @@
 
 [EXTERN syscall_disp]
 [EXTERN syscall_abort]
+[EXTERN tss_get_rsp0]
 
 [SECTION .text]
 [BITS 64]
 
 ; Maximum system call ID (must be consistent with NUM_SYSCALLS in 'kernel/syscall/user_api/mod.rs')
-NUM_SYSCALLS equ 3
+NUM_SYSCALLS equ 4
 
 syscall_handler:
     ; We are now in ring 0, but still on the user stack
@@ -31,12 +32,22 @@ syscall_handler:
     push   r15
 
     ; Switch to kernel stack and enable interrupts
-    ;mov rbx, rsp ; Save user rsp in rbx
-    ;mov rsp, [tss + 4] ; Switch to kernel stack
-    ;push rbx ; Save user rsp (in rbx) on stack
-    ;sti
+    mov r15, rax ; Save system call ID in r15
+    mov r14, rdi ; Save first parameter in r14
+    mov r13, rsi ; Save second parameter in r13
+    mov r12, rdx ; Save third parameter in r12
+    call tss_get_rsp0 ; Get kernel rsp (returned in rax)
+    mov rbx, rax ; Save kernel rsp in rbx
+    mov rcx, rsp ; Save user rsp in rcx
+    mov rdx, r12 ; Restore third parameter
+    mov rsi, r13 ; Restore second parameter
+    mov rdi, r14 ; Restore first parameter
+    mov rax, r15 ; Restore system call ID
+    mov rsp, rbx ; Switch to kernel stack
+    push rcx ; Save user rsp on stack
+    sti
 
-    ; Check if system call ID is not too big
+    ; Check if system call ID is in bounds
     cmp rax, NUM_SYSCALLS
     jge syscall_abort ; Panics and does not return
 

@@ -36,8 +36,10 @@ use uefi::table::Runtime;
 use x86_64::instructions::segmentation::{CS, DS, ES, FS, GS, Segment, SS};
 use x86_64::instructions::tables::load_tss;
 use x86_64::PrivilegeLevel::Ring0;
+use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
+use x86_64::structures::paging::PageTableFlags;
 use crate::kernel::syscall::syscall_dispatcher;
 use crate::kernel::thread::thread::Thread;
 
@@ -182,6 +184,9 @@ pub extern fn start() {
     // Has to be done after EFI boot services have been exited, since they rely on their own GDT
     setup_gdt();
 
+    // Enable user access bits in EFI identity mapping (needed for system calls to work)
+    setup_paging();
+
     // Initialize heap, after which format strings may be used in log messages and panics
     info!("Initializing heap");
     unsafe { kernel::allocator().init(heap_start, heap_end); }
@@ -260,10 +265,6 @@ pub extern fn start() {
                 error!("Failed to create EFI system table struct from pointer!");
             }
         }
-    }
-
-    if let Some(system_table) = kernel::efi_system_table() {
-        info!("EFI runtime services available (Vendor: [{}], UEFI version: [{}])", system_table.firmware_vendor(), system_table.uefi_revision());
     }
 
     // Initialize keyboard
@@ -349,4 +350,36 @@ fn setup_gdt() {
         FS::set_reg(SegmentSelector::new(0, Ring0));
         GS::set_reg(SegmentSelector::new(0, Ring0));
     }
+}
+
+fn setup_paging() {
+    unsafe {
+        Cr0::update(|flags| flags.remove(Cr0Flags::WRITE_PROTECT));
+
+        let page_map_address = Cr3::read().0.start_address();
+        let level = if Cr4::read().contains(Cr4Flags::L5_PAGING) { 5 } else { 4 };
+        setup_page_map(paging_pointer(page_map_address.as_u64()), level);
+
+        Cr0::update(|flags| flags.insert(Cr0Flags::WRITE_PROTECT));
+    }
+}
+
+unsafe fn setup_page_map(map: *mut u64, level: usize) {
+    for i in 0..512 {
+        let entry = map.offset(i).read();
+        if entry != 0 {
+            let mut flags = PageTableFlags::from_bits_truncate(entry);
+            flags.insert(PageTableFlags::USER_ACCESSIBLE);
+
+            map.offset(i).write(entry | flags.bits());
+
+            if level > 1 && !flags.contains(PageTableFlags::HUGE_PAGE) {
+                setup_page_map(paging_pointer(entry), level - 1);
+            }
+        }
+    }
+}
+
+fn paging_pointer(entry: u64) -> *mut u64 {
+    return (entry & 0x000ffffffffff000) as *mut u64;
 }
