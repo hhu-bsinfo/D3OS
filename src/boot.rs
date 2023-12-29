@@ -2,6 +2,7 @@
 #![feature(alloc_layout_extra)]
 #![feature(const_mut_refs)]
 #![feature(naked_functions)]
+#![feature(asm_const)]
 #![feature(exact_size_is_empty)]
 #![feature(panic_info_message)]
 #![feature(fmt_internals)]
