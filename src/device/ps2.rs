@@ -8,7 +8,7 @@ use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use spin::Mutex;
 use crate::kernel;
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
-use crate::kernel::interrupt::isr::ISR;
+use crate::kernel::interrupt::interrupt_handler::InterruptHandler;
 use crate::library::io::stream::InputStream;
 
 const KEYBOARD_BUFFER_CAPACITY: usize = 128;
@@ -23,7 +23,7 @@ pub struct Keyboard {
 }
 
 #[derive(Default)]
-pub struct KeyboardISR;
+struct KeyboardInterruptHandler;
 
 impl Keyboard {
     fn new(buffer_cap: usize) -> Self {
@@ -31,7 +31,7 @@ impl Keyboard {
     }
 
     pub fn plugin(&self) {
-        kernel::interrupt_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardISR::default()));
+        kernel::interrupt_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardInterruptHandler::default()));
         kernel::apic().allow(InterruptVector::Keyboard);
     }
 }
@@ -48,7 +48,7 @@ impl InputStream for Keyboard {
     }
 }
 
-impl ISR for KeyboardISR {
+impl InterruptHandler for KeyboardInterruptHandler {
     fn trigger(&mut self) {
         if let Some(mut controller) = kernel::ps2_devices().controller.try_lock() {
             if let Ok(data) = controller.read_data() {

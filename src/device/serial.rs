@@ -8,7 +8,7 @@ use x86_64::instructions::port::Port;
 use crate::device::serial::ComPort::{Com1, Com2, Com3, Com4};
 use crate::kernel;
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
-use crate::kernel::interrupt::isr::ISR;
+use crate::kernel::interrupt::interrupt_handler::InterruptHandler;
 use crate::library::io::stream::{InputStream, OutputStream};
 
 #[allow(dead_code)]
@@ -121,11 +121,11 @@ pub struct SerialPort {
     buffer: Once<(Receiver<u8>, Sender<u8>)>
 }
 
-pub struct SerialISR {
+struct SerialInterruptHandler {
     port: ComPort
 }
 
-impl SerialISR {
+impl SerialInterruptHandler {
     pub const fn new(port: ComPort) -> Self {
         Self { port }
     }
@@ -187,7 +187,7 @@ impl InputStream for SerialPort {
     }
 }
 
-impl ISR for SerialISR {
+impl InterruptHandler for SerialInterruptHandler {
     fn trigger(&mut self) {
         if let Some(serial) = kernel::serial_port() {
             let mut data_reg = Port::<u8>::new(self.port as u16);
@@ -209,7 +209,7 @@ impl ISR for SerialISR {
                                 }
                             }
                         }
-                        None => panic!("Serial: ISR called before initialization!")
+                        None => panic!("Serial: Interrupt handler called before initialization!")
                     }
                 }
             }
@@ -298,7 +298,7 @@ impl SerialPort {
             Com2 | Com4 => InterruptVector::Com2
         };
 
-        kernel::interrupt_dispatcher().assign(vector, Box::new(SerialISR::new(self.port)));
+        kernel::interrupt_dispatcher().assign(vector, Box::new(SerialInterruptHandler::new(self.port)));
         kernel::apic().allow(vector);
 
         unsafe { interrupt_reg.write(0x01) } // Enable interrupts
