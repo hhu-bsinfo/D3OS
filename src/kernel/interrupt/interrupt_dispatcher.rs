@@ -1,11 +1,15 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::ops::Deref;
+use core::ptr;
 use spin::Mutex;
+use x86_64::set_general_handler;
+use x86_64::structures::idt::InterruptStackFrame;
 use crate::kernel;
-use crate::kernel::interrupt::isr::ISR;
+use crate::kernel::interrupt::interrupt_handler::InterruptHandler;
 
 #[repr(u8)]
-#[derive(PartialEq, PartialOrd, Copy, Clone)]
+#[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
 #[allow(dead_code)]
 pub enum InterruptVector {
     // Hardware exceptions
@@ -67,6 +71,31 @@ impl TryFrom<u8> for InterruptVector {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
+            value if value == InterruptVector::DivisionByZero as u8 => Ok(InterruptVector::DivisionByZero),
+            value if value == InterruptVector::Debug as u8 => Ok(InterruptVector::Debug),
+            value if value == InterruptVector::NonMaskableInterrupt as u8 => Ok(InterruptVector::NonMaskableInterrupt),
+            value if value == InterruptVector::Breakpoint as u8 => Ok(InterruptVector::Breakpoint),
+            value if value == InterruptVector::Overflow as u8 => Ok(InterruptVector::Overflow),
+            value if value == InterruptVector::BoundRangeExceeded as u8 => Ok(InterruptVector::BoundRangeExceeded),
+            value if value == InterruptVector::InvalidOpcode as u8 => Ok(InterruptVector::InvalidOpcode),
+            value if value == InterruptVector::DeviceNotAvailable as u8 => Ok(InterruptVector::DeviceNotAvailable),
+            value if value == InterruptVector::DoubleFault as u8 => Ok(InterruptVector::DoubleFault),
+            value if value == InterruptVector::CoprocessorSegmentOverrun as u8 => Ok(InterruptVector::CoprocessorSegmentOverrun),
+            value if value == InterruptVector::InvalidTaskStateSegment as u8 => Ok(InterruptVector::InvalidTaskStateSegment),
+            value if value == InterruptVector::SegmentNotPresent as u8 => Ok(InterruptVector::SegmentNotPresent),
+            value if value == InterruptVector::StackSegmentFault as u8 => Ok(InterruptVector::StackSegmentFault),
+            value if value == InterruptVector::GeneralProtectionFault as u8 => Ok(InterruptVector::GeneralProtectionFault),
+            value if value == InterruptVector::PageFault as u8 => Ok(InterruptVector::PageFault),
+            value if value == InterruptVector::X87FloatingPointException as u8 => Ok(InterruptVector::X87FloatingPointException),
+            value if value == InterruptVector::AlignmentCheck as u8 => Ok(InterruptVector::AlignmentCheck),
+            value if value == InterruptVector::MachineCheck as u8 => Ok(InterruptVector::MachineCheck),
+            value if value == InterruptVector::SimdFloatingPointException as u8 => Ok(InterruptVector::SimdFloatingPointException),
+            value if value == InterruptVector::VirtualizationException as u8 => Ok(InterruptVector::VirtualizationException),
+            value if value == InterruptVector::ControlProtectionException as u8 => Ok(InterruptVector::ControlProtectionException),
+            value if value == InterruptVector::HypervisorInjectionException as u8 => Ok(InterruptVector::HypervisorInjectionException),
+            value if value == InterruptVector::VmmCommunicationException as u8 => Ok(InterruptVector::VmmCommunicationException),
+            value if value == InterruptVector::SecurityException as u8 => Ok(InterruptVector::SecurityException),
+
             value if value == InterruptVector::Pit as u8 => Ok(InterruptVector::Pit),
             value if value == InterruptVector::Keyboard as u8 => Ok(InterruptVector::Keyboard),
             value if value == InterruptVector::Cascade as u8 => Ok(InterruptVector::Cascade),
@@ -79,6 +108,15 @@ impl TryFrom<u8> for InterruptVector {
             value if value == InterruptVector::Fpu as u8 => Ok(InterruptVector::Fpu),
             value if value == InterruptVector::PrimaryAta as u8 => Ok(InterruptVector::PrimaryAta),
             value if value == InterruptVector::SecondaryAta as u8 => Ok(InterruptVector::SecondaryAta),
+
+            value if value == InterruptVector::Cmci as u8 => Ok(InterruptVector::Cmci),
+            value if value == InterruptVector::ApicTimer as u8 => Ok(InterruptVector::ApicTimer),
+            value if value == InterruptVector::Thermal as u8 => Ok(InterruptVector::Thermal),
+            value if value == InterruptVector::Performance as u8 => Ok(InterruptVector::Performance),
+            value if value == InterruptVector::Lint0 as u8 => Ok(InterruptVector::Lint0),
+            value if value == InterruptVector::Lint1 as u8 => Ok(InterruptVector::Lint1),
+            value if value == InterruptVector::ApicError as u8 => Ok(InterruptVector::ApicError),
+            value if value == InterruptVector::Spurious as u8 => Ok(InterruptVector::Spurious),
             _ => Err(())
         }
     }
@@ -87,54 +125,70 @@ impl TryFrom<u8> for InterruptVector {
 const MAX_VECTORS: usize = 256;
 
 pub struct InterruptDispatcher {
-    int_vectors: Vec<Mutex<Vec<Box<dyn ISR>>>>
+    int_vectors: Vec<Mutex<Vec<Box<dyn InterruptHandler>>>>
 }
 
 unsafe impl Send for InterruptDispatcher {}
 unsafe impl Sync for InterruptDispatcher {}
 
+pub fn setup_idt() {
+    let mut idt = kernel::idt().lock();
+
+    set_general_handler!(&mut idt, handle_exception, 0..31);
+    set_general_handler!(&mut idt, handle_interrupt, 32..255);
+
+    unsafe {
+        // We need to obtain a static reference to the IDT for the following operation.
+        // We know, that it has a static lifetime, since it is are declared as a static variable in 'kernel/mod.rs'.
+        // However, since it is hidden behind a Mutex, the borrow checker does not see it with a static lifetime.
+        let idt_ref = ptr::from_ref(idt.deref()).as_ref().unwrap();
+        idt_ref.load();
+    }
+}
+
+fn handle_exception(frame: InterruptStackFrame, index: u8, error: Option<u64>) {
+    panic!("CPU Exception: [{} - {:?}]\nError code: [{:?}]\n{:?}", index, InterruptVector::try_from(index).unwrap(), error, frame);
+}
+
+fn handle_interrupt(_frame: InterruptStackFrame, index: u8, _error: Option<u64>) {
+    kernel::interrupt_dispatcher().dispatch(index);
+}
+
 impl InterruptDispatcher {
     pub fn new() -> Self {
-        let mut int_vectors = Vec::<Mutex<Vec<Box<dyn ISR>>>>::new();
-        for _ in 0..MAX_VECTORS {
+        let mut int_vectors = Vec::<Mutex<Vec<Box<dyn InterruptHandler>>>>::new();
+        for _ in 32..MAX_VECTORS {
             int_vectors.push(Mutex::new(Vec::new()));
         }
 
         return Self { int_vectors };
     }
 
-    pub fn assign(&self, vector: InterruptVector, isr: Box<dyn ISR>) {
+    pub fn assign(&self, vector: InterruptVector, handler: Box<dyn InterruptHandler>) {
         match self.int_vectors.get(vector as usize) {
-            Some(vec) => vec.lock().push(isr),
-            None => panic!("Assigning ISR to illegal vector number {}!", vector as u8)
+            Some(vec) => vec.lock().push(handler),
+            None => panic!("Assigning interrupt handler to illegal vector number {}!", vector as u8)
         }
     }
 
-    pub fn dispatch(&self, int_number: u32) {
-        if int_number < 32 {
-            panic!("Interrupt Dispatcher: CPU Exception [{}]", int_number);
+    pub fn dispatch(&self, interrupt: u8) {
+        let handler_vec_mutex = self.int_vectors.get(interrupt as usize).expect("Interrupt Dispatcher: No handler vec assigned!");
+        let mut handler_vec = handler_vec_mutex.try_lock();
+        while handler_vec.is_none() {
+            // We have to force unlock inside the interrupt handler, or else the system will hang forever.
+            // While this might be unsafe, it is extremely unlikely that we destroy something here, since we only need read access to the vectors.
+            // The only scenario, in which something might break, is when two or more drivers are trying to assign an interrupt handler to the same vector,
+            // while an interrupt for that vector occurs.
+            unsafe { handler_vec_mutex.force_unlock(); }
+            handler_vec = handler_vec_mutex.try_lock();
         }
 
-        if let Some(isr_vec_mutex) = self.int_vectors.get(int_number as usize).as_mut() {
-            let mut isr_vec = isr_vec_mutex.try_lock();
-            while isr_vec.is_none() {
-                // We have to force unlock inside the interrupt handler, or else the system will hang forever.
-                // While this might be unsafe, it is extremely unlikely that we destroy something here, since we only need read access to the vectors.
-                // The only scenario, in which something might break, is when two or more drivers are trying to assign an ISR to the same vector,
-                // while an interrupt for that vector occurs.
-                unsafe {
-                    isr_vec_mutex.force_unlock();
-                    isr_vec = isr_vec_mutex.try_lock();
-                }
-            }
+        if handler_vec.iter().is_empty() {
+            panic!("Interrupt Dispatcher: No handler registered!");
+        }
 
-            if isr_vec.iter().is_empty() {
-                panic!("Interrupt Dispatcher: No handler registered for interrupt vector [{}]!", int_number);
-            }
-
-            for isr in isr_vec.unwrap().iter_mut() {
-                isr.trigger();
-            }
+        for handler in handler_vec.unwrap().iter_mut() {
+            handler.trigger();
         }
 
         kernel::apic().end_of_interrupt();

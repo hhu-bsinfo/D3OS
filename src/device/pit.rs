@@ -5,7 +5,7 @@ use x86_64::instructions::port::{Port, PortWriteOnly};
 use crate::device::qemu_cfg;
 use crate::kernel;
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
-use crate::kernel::interrupt::isr::ISR;
+use crate::kernel::interrupt::interrupt_handler::InterruptHandler;
 
 pub const BASE_FREQUENCY: usize = 1193182;
 
@@ -16,11 +16,11 @@ pub struct Timer {
     systime_ns: usize
 }
 
-pub struct TimerISR {
+struct TimerInterruptHandler {
     pending_incs: usize
 }
 
-impl ISR for TimerISR {
+impl InterruptHandler for TimerInterruptHandler {
     fn trigger(&mut self) {
         let mut systime = 1;
         self.pending_incs += 1;
@@ -40,7 +40,7 @@ impl ISR for TimerISR {
     }
 }
 
-impl TimerISR {
+impl TimerInterruptHandler {
     pub const fn new() -> Self {
         Self { pending_incs: 0 }
     }
@@ -75,7 +75,7 @@ impl Timer {
     }
 
     pub fn plugin(&self) {
-        kernel::interrupt_dispatcher().assign(InterruptVector::Pit, Box::new(TimerISR::new()));
+        kernel::interrupt_dispatcher().assign(InterruptVector::Pit, Box::new(TimerInterruptHandler::new()));
         kernel::apic().allow(InterruptVector::Pit);
     }
 

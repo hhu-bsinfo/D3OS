@@ -6,12 +6,11 @@
 #![feature(exact_size_is_empty)]
 #![feature(panic_info_message)]
 #![feature(fmt_internals)]
+#![feature(abi_x86_interrupt)]
 #![allow(internal_features)]
 #![no_main]
 #![no_std]
 
-extern crate spin; // we need a mutex in devices::cga_print
-extern crate rlibc;
 extern crate tinyrlibc;
 extern crate alloc;
 
@@ -41,6 +40,7 @@ use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::PageTableFlags;
+use crate::kernel::interrupt::interrupt_dispatcher;
 use crate::kernel::syscall::syscall_dispatcher;
 use crate::kernel::thread::thread::Thread;
 
@@ -77,7 +77,6 @@ pub mod built_info {
 extern "C" {
     static ___BSS_START__: u64;
     static ___BSS_END__: u64;
-    fn setup_idt();
 }
 
 #[no_mangle]
@@ -183,9 +182,11 @@ pub extern fn start() {
 
     // Setup global descriptor table
     // Has to be done after EFI boot services have been exited, since they rely on their own GDT
+    info!("Initializing GDT");
     setup_gdt();
 
     // Enable user access bits in EFI identity mapping (needed for system calls to work)
+    info!("Initializing Paging");
     setup_paging();
 
     // Initialize heap, after which format strings may be used in log messages and panics
@@ -237,7 +238,9 @@ pub extern fn start() {
     kernel::init_acpi_tables(rsdp_addr);
 
     // Initialize interrupts
-    unsafe { setup_idt(); }
+    info!("Initializing IDT");
+    interrupt_dispatcher::setup_idt();
+    info!("Initializing system calls");
     syscall_dispatcher::init();
     kernel::init_apic();
 
@@ -328,9 +331,9 @@ fn setup_gdt() {
     gdt.add_entry(Descriptor::user_code_segment());
 
     unsafe {
-        // We need to obtain a static reference to TSS and GDT for the following operations.
-        // We know, that they have a static lifetime, since they are declared as static variable in 'kernel/mod.rs'.
-        // However, since they are hidden behind a Mutex, the borrow checker does not see them with a static lifetime
+        // We need to obtain a static reference to the TSS and GDT for the following operations.
+        // We know, that they have a static lifetime, since they are declared as static variables in 'kernel/mod.rs'.
+        // However, since they are hidden behind a Mutex, the borrow checker does not see them with a static lifetime.
         let gdt_ref = ptr::from_ref(gdt.deref()).as_ref().unwrap();
         let tss_ref = ptr::from_ref(tss.deref()).as_ref().unwrap();
         gdt.add_entry(Descriptor::tss_segment(tss_ref));

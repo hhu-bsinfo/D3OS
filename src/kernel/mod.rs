@@ -3,6 +3,7 @@ use acpi::AcpiTables;
 use spin::{Mutex, Once, RwLock};
 use uefi::table::{Runtime, SystemTable};
 use x86_64::structures::gdt::GlobalDescriptorTable;
+use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
 use crate::device::apic::Apic;
@@ -40,6 +41,7 @@ impl EfiSystemTable {
 
 static GDT: Mutex<GlobalDescriptorTable> = Mutex::new(GlobalDescriptorTable::new());
 static TSS: Mutex<TaskStateSegment> = Mutex::new(TaskStateSegment::new());
+static IDT: Mutex<InterruptDescriptorTable> = Mutex::new(InterruptDescriptorTable::new());
 static EFI_SYSTEM_TABLE: Once<EfiSystemTable> = Once::new();
 static ACPI_TABLES: Once<Mutex<AcpiTables<AcpiHandler>>> = Once::new();
 
@@ -129,6 +131,10 @@ pub fn tss() -> &'static Mutex<TaskStateSegment> {
     return &TSS;
 }
 
+pub fn idt() -> &'static Mutex<InterruptDescriptorTable> {
+    return &IDT;
+}
+
 pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
     return ACPI_TABLES.get().expect("Trying to access ACPI tables before initialization!");
 }
@@ -190,9 +196,4 @@ pub extern "C" fn tss_set_rsp0(rsp0: u64) {
 #[no_mangle]
 pub extern "C" fn tss_get_rsp0() -> u64 {
     return tss().lock().privilege_stack_table[0].as_u64();
-}
-
-#[no_mangle]
-pub extern "C" fn dispatch_interrupt(int_number: u32) {
-    interrupt_dispatcher().dispatch(int_number);
 }
