@@ -11,38 +11,38 @@
 #![no_main]
 #![no_std]
 
-extern crate tinyrlibc;
 extern crate alloc;
+extern crate tinyrlibc;
 
+use crate::kernel::interrupt::interrupt_dispatcher;
+use crate::kernel::syscall::syscall_dispatcher;
+use crate::kernel::thread::thread::Thread;
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::ToString;
+use chrono::DateTime;
 use core::arch::asm;
 use core::ffi::c_void;
+use core::fmt::Arguments;
 use core::mem::size_of;
 use core::ops::Deref;
 use core::panic::PanicInfo;
 use core::ptr;
-use core::fmt::Arguments;
-use chrono::DateTime;
-use log::{error, info, Log, Record};
 use log::Level::Error;
+use log::{error, info, Log, Record};
 use multiboot2::{BootInformation, BootInformationHeader, MemoryAreaType, Tag};
-use uefi_raw::table::boot::MemoryType;
-use x86_64::instructions::interrupts;
 use uefi::prelude::*;
 use uefi::table::boot::PAGE_SIZE;
 use uefi::table::Runtime;
-use x86_64::instructions::segmentation::{CS, DS, ES, FS, GS, Segment, SS};
+use uefi_raw::table::boot::MemoryType;
+use x86_64::instructions::interrupts;
+use x86_64::instructions::segmentation::{Segment, CS, DS, ES, FS, GS, SS};
 use x86_64::instructions::tables::load_tss;
-use x86_64::PrivilegeLevel::Ring0;
 use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::PageTableFlags;
-use crate::kernel::interrupt::interrupt_dispatcher;
-use crate::kernel::syscall::syscall_dispatcher;
-use crate::kernel::thread::thread::Thread;
+use x86_64::PrivilegeLevel::Ring0;
 
 // insert other modules
 #[macro_use]
@@ -58,7 +58,11 @@ fn panic(info: &PanicInfo) -> ! {
         let record = Record::builder()
             .level(Error)
             .file(Some("panic"))
-            .args(*info.message().unwrap_or(&Arguments::new_const(&["A panic occurred!"])))
+            .args(
+                *info
+                    .message()
+                    .unwrap_or(&Arguments::new_const(&["A panic occurred!"])),
+            )
             .build();
 
         let logger = kernel::logger().lock();
@@ -80,7 +84,7 @@ extern "C" {
 }
 
 #[no_mangle]
-pub extern fn start() {
+pub extern "C" fn start() {
     interrupts::disable();
 
     // Get multiboot values from eax and ebx
@@ -112,7 +116,10 @@ pub extern fn start() {
     }
 
     let multiboot;
-    unsafe { multiboot = BootInformation::load(multiboot2_address as *const BootInformationHeader).unwrap_or_else(|_| panic!("Failed to get Multiboot2 information!")); };
+    unsafe {
+        multiboot = BootInformation::load(multiboot2_address as *const BootInformationHeader)
+            .unwrap_or_else(|_| panic!("Failed to get Multiboot2 information!"));
+    };
 
     let heap_start: usize;
     let heap_end: usize;
@@ -120,14 +127,24 @@ pub extern fn start() {
     if let Some(_) = multiboot.efi_bs_not_exited_tag() {
         // EFI boot services have not been exited and we obtain access to the memory map and EFI runtime services by exiting them manually
         info!("EFI boot services have not been exited");
-        let image_tag = multiboot.efi_ih64_tag().unwrap_or_else(|| panic!("EFI image handle not available!"));
-        let sdt_tag = multiboot.efi_sdt64_tag().unwrap_or_else(|| panic!("EFI system table not available!"));
+        let image_tag = multiboot
+            .efi_ih64_tag()
+            .unwrap_or_else(|| panic!("EFI image handle not available!"));
+        let sdt_tag = multiboot
+            .efi_sdt64_tag()
+            .unwrap_or_else(|| panic!("EFI system table not available!"));
         let image_handle;
         let system_table;
 
         unsafe {
-            image_handle = Handle::from_ptr(image_tag.image_handle() as *mut c_void).unwrap_or_else(|| panic!("Failed to create EFI image handle struct from pointer!"));
-            system_table = SystemTable::<Boot>::from_ptr(sdt_tag.sdt_address() as *mut c_void).unwrap_or_else(|| panic!("Failed to create EFI system table struct from pointer!"));
+            image_handle = Handle::from_ptr(image_tag.image_handle() as *mut c_void)
+                .unwrap_or_else(|| {
+                    panic!("Failed to create EFI image handle struct from pointer!")
+                });
+            system_table = SystemTable::<Boot>::from_ptr(sdt_tag.sdt_address() as *mut c_void)
+                .unwrap_or_else(|| {
+                    panic!("Failed to create EFI system table struct from pointer!")
+                });
             system_table.boot_services().set_image_handle(image_handle);
         }
 
@@ -135,7 +152,10 @@ pub extern fn start() {
         let (runtime_table, memory_map) = system_table.exit_boot_services(MemoryType::LOADER_DATA);
 
         info!("Searching memory map for largest usable area");
-        let mut heap_area = memory_map.entries().next().unwrap_or_else(|| panic!("EFI memory map is empty!"));
+        let mut heap_area = memory_map
+            .entries()
+            .next()
+            .unwrap_or_else(|| panic!("EFI memory map is empty!"));
         for area in memory_map.entries() {
             if area.ty == MemoryType::CONVENTIONAL && area.page_count > heap_area.page_count {
                 heap_area = area;
@@ -150,7 +170,10 @@ pub extern fn start() {
         // EFI services have been exited, but the bootloader has provided us with a Multiboot2 memory map
         info!("EFI boot services have been exited");
         info!("Bootloader provides Multiboot2 memory map");
-        let mut heap_area = memory_map.memory_areas().get(0).unwrap_or_else(|| panic!("Multiboot2 memory map is empty!"));
+        let mut heap_area = memory_map
+            .memory_areas()
+            .get(0)
+            .unwrap_or_else(|| panic!("Multiboot2 memory map is empty!"));
 
         info!("Searching memory map for largest usable area");
         for area in memory_map.memory_areas() {
@@ -165,7 +188,10 @@ pub extern fn start() {
         // EFI services have been exited, but the bootloader has provided us with the EFI memory map
         info!("EFI boot services have been exited");
         info!("Bootloader provides EFI memory map");
-        let mut heap_area = memory_map.memory_areas().next().unwrap_or_else(|| panic!("EFI memory map is empty!"));
+        let mut heap_area = memory_map
+            .memory_areas()
+            .next()
+            .unwrap_or_else(|| panic!("EFI memory map is empty!"));
 
         info!("Searching memory map for largest usable area");
         for area in memory_map.memory_areas() {
@@ -191,8 +217,14 @@ pub extern fn start() {
 
     // Initialize heap, after which format strings may be used in log messages and panics
     info!("Initializing heap");
-    unsafe { kernel::allocator().init(heap_start, heap_end); }
-    info!("Heap is initialized (Start: [{} MiB], End: [{} MiB]]", heap_start / 1024 / 1024, heap_end / 1024 / 1024);
+    unsafe {
+        kernel::allocator().init(heap_start, heap_end);
+    }
+    info!(
+        "Heap is initialized (Start: [{} MiB], End: [{} MiB]]",
+        heap_start / 1024 / 1024,
+        heap_end / 1024 / 1024
+    );
 
     // Initialize serial port and enable serial logging
     kernel::init_serial_port();
@@ -201,27 +233,49 @@ pub extern fn start() {
     }
 
     // Initialize terminal and enable terminal logging
-    let fb_info = multiboot.framebuffer_tag()
+    let fb_info = multiboot
+        .framebuffer_tag()
         .unwrap_or_else(|| panic!("No framebuffer information provided by bootloader!"))
         .unwrap_or_else(|fb_type| panic!("Unknown framebuffer type [{}]!", fb_type));
-    kernel::init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+    kernel::init_terminal(
+        fb_info.address() as *mut u8,
+        fb_info.pitch(),
+        fb_info.width(),
+        fb_info.height(),
+        fb_info.bpp(),
+    );
     kernel::logger().lock().register(kernel::terminal());
 
     info!("Welcome to hhuTOSr!");
-    let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
+    let version = format!(
+        "v{} ({} - O{})",
+        built_info::PKG_VERSION,
+        built_info::PROFILE,
+        built_info::OPT_LEVEL
+    );
     let git_ref = built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown");
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or_else(|| "Unknown");
     let build_date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
         Ok(date_time) => date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
-        Err(_) => "Unknown".to_string()
+        Err(_) => "Unknown".to_string(),
     };
     let bootloader_name = match multiboot.boot_loader_name_tag() {
-        Some(tag) => if tag.name().is_ok() { tag.name().unwrap_or("Unknown") } else { "Unknown" },
-        None => "Unknown"
+        Some(tag) => {
+            if tag.name().is_ok() {
+                tag.name().unwrap_or("Unknown")
+            } else {
+                "Unknown"
+            }
+        }
+        None => "Unknown",
     };
 
     info!("OS Version: [{}]", version);
-    info!("Git Version: [{} - {}]", built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown"), git_commit);
+    info!(
+        "Git Version: [{} - {}]",
+        built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown"),
+        git_commit
+    );
     info!("Build Date: [{}]", build_date);
     info!("Compiler: [{}]", built_info::RUSTC_VERSION);
     info!("Bootloader: [{}]", bootloader_name);
@@ -261,7 +315,10 @@ pub extern fn start() {
         if let Some(sdt_tag) = multiboot.efi_sdt64_tag() {
             info!("Initializing EFI runtime services");
             let system_table;
-            unsafe { system_table = SystemTable::<Runtime>::from_ptr(sdt_tag.sdt_address() as *mut c_void); };
+            unsafe {
+                system_table =
+                    SystemTable::<Runtime>::from_ptr(sdt_tag.sdt_address() as *mut c_void);
+            };
 
             if system_table.is_some() {
                 kernel::init_efi_system_table(system_table.unwrap());
@@ -299,13 +356,19 @@ pub extern fn start() {
     kernel::logger().lock().remove(kernel::terminal());
     kernel::terminal().clear();
 
-    println!(include_str!("banner.txt"),
-             version,
-             git_ref.rsplit("/").next().unwrap_or(git_ref),
-             git_commit,
-             build_date,
-             built_info::RUSTC_VERSION.split_once("(").unwrap_or((built_info::RUSTC_VERSION, "")).0.trim(),
-             bootloader_name);
+    println!(
+        include_str!("banner.txt"),
+        version,
+        git_ref.rsplit("/").next().unwrap_or(git_ref),
+        git_commit,
+        build_date,
+        built_info::RUSTC_VERSION
+            .split_once("(")
+            .unwrap_or((built_info::RUSTC_VERSION, ""))
+            .0
+            .trim(),
+        bootloader_name
+    );
 
     info!("Starting scheduler");
     scheduler.start();

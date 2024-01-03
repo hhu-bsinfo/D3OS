@@ -1,5 +1,8 @@
-use font8x8::{BASIC_FONTS, BLOCK_FONTS, BOX_FONTS, GREEK_FONTS, HIRAGANA_FONTS, LATIN_FONTS, MISC_FONTS, SGA_FONTS, UnicodeFonts};
 use crate::library::graphic::color::Color;
+use font8x8::{
+    UnicodeFonts, BASIC_FONTS, BLOCK_FONTS, BOX_FONTS, GREEK_FONTS, HIRAGANA_FONTS, LATIN_FONTS,
+    MISC_FONTS, SGA_FONTS,
+};
 
 pub struct LFB {
     buffer: *mut u8,
@@ -8,7 +11,7 @@ pub struct LFB {
     height: u32,
     bpp: u8,
 
-    pixel_drawer: PixelDrawer
+    pixel_drawer: PixelDrawer,
 }
 
 unsafe impl Send for LFB {}
@@ -20,24 +23,21 @@ pub const CHAR_WIDTH: u32 = 8;
 impl LFB {
     pub const fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         let pixel_drawer: PixelDrawer = match bpp {
-            15 => {
-                draw_pixel_15_bit
-            }
-            16 => {
-                draw_pixel_16_bit
-            }
-            24 => {
-                draw_pixel_24_bit
-            }
-            32 => {
-                draw_pixel_32_bit
-            }
-            _ => {
-                draw_pixel_stub
-            }
+            15 => draw_pixel_15_bit,
+            16 => draw_pixel_16_bit,
+            24 => draw_pixel_24_bit,
+            32 => draw_pixel_32_bit,
+            _ => draw_pixel_stub,
         };
 
-        Self { buffer, pitch, width, height, bpp, pixel_drawer }
+        Self {
+            buffer,
+            pitch,
+            width,
+            height,
+            bpp,
+            pixel_drawer,
+        }
     }
 
     pub const fn buffer(&self) -> *mut u8 {
@@ -112,7 +112,7 @@ impl LFB {
                 for col in 0..8 {
                     let color = match *row & 1 << col {
                         0 => bg_color,
-                        _ => fg_color
+                        _ => fg_color,
                     };
 
                     self.draw_pixel(x + x_offset, y + y_offset, color);
@@ -131,15 +131,23 @@ impl LFB {
     }
 
     pub fn clear(&self) {
-        unsafe { self.buffer.write_bytes(0, (self.pitch * self.height) as usize); }
+        unsafe {
+            self.buffer
+                .write_bytes(0, (self.pitch * self.height) as usize);
+        }
     }
 
     pub fn scroll_up(&self, lines: u32) {
         unsafe {
             // Move screen buffer upwards by the given amount of lines
-            self.buffer.copy_from(self.buffer.offset((self.pitch * lines) as isize), (self.pitch * (self.height - lines)) as usize);
+            self.buffer.copy_from(
+                self.buffer.offset((self.pitch * lines) as isize),
+                (self.pitch * (self.height - lines)) as usize,
+            );
             // Clear lower part of the screen
-            self.buffer.offset((self.pitch * (self.height - lines)) as isize).write_bytes(0, (self.pitch * lines) as usize);
+            self.buffer
+                .offset((self.pitch * (self.height - lines)) as isize)
+                .write_bytes(0, (self.pitch * lines) as usize);
         }
     }
 }
@@ -155,7 +163,7 @@ unsafe fn draw_pixel_15_bit(addr: *mut u8, pitch: u32, x: u32, y: u32, color: &C
     let index = (x + y * (pitch / 2)) as isize;
     let rgb = color.rgb_15();
 
-    (addr as *mut u16).offset(index).write(rgb) ;
+    (addr as *mut u16).offset(index).write(rgb);
 }
 
 unsafe fn draw_pixel_16_bit(addr: *mut u8, pitch: u32, x: u32, y: u32, color: &Color) {

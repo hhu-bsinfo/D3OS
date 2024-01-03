@@ -1,3 +1,16 @@
+use crate::device::apic::Apic;
+use crate::device::lfb_terminal::{CursorThread, LFBTerminal};
+use crate::device::pit::Timer;
+use crate::device::ps2::PS2;
+use crate::device::serial;
+use crate::device::serial::{BaudRate, ComPort, SerialPort};
+use crate::device::speaker::Speaker;
+use crate::device::terminal::Terminal;
+use crate::kernel::alloc::{AcpiHandler, KernelAllocator};
+use crate::kernel::interrupt::interrupt_dispatcher::InterruptDispatcher;
+use crate::kernel::log::Logger;
+use crate::kernel::thread::scheduler::Scheduler;
+use crate::kernel::thread::thread::Thread;
 use ::alloc::boxed::Box;
 use acpi::AcpiTables;
 use spin::{Mutex, Once, RwLock};
@@ -6,28 +19,15 @@ use x86_64::structures::gdt::GlobalDescriptorTable;
 use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
-use crate::device::apic::Apic;
-use crate::device::lfb_terminal::{CursorThread, LFBTerminal};
-use crate::device::speaker::Speaker;
-use crate::device::pit::Timer;
-use crate::device::ps2::PS2;
-use crate::device::serial;
-use crate::device::serial::{BaudRate, ComPort, SerialPort};
-use crate::device::terminal::Terminal;
-use crate::kernel::alloc::{AcpiHandler, KernelAllocator};
-use crate::kernel::interrupt::interrupt_dispatcher::InterruptDispatcher;
-use crate::kernel::log::Logger;
-use crate::kernel::thread::scheduler::Scheduler;
-use crate::kernel::thread::thread::Thread;
 
 pub mod alloc;
-pub mod log;
-pub mod thread;
 pub mod interrupt;
+pub mod log;
 pub mod syscall;
+pub mod thread;
 
 struct EfiSystemTable {
-    table: SystemTable<Runtime>
+    table: SystemTable<Runtime>,
 }
 
 unsafe impl Send for EfiSystemTable {}
@@ -72,7 +72,7 @@ pub fn init_acpi_tables(rsdp_addr: usize) {
             let tables = AcpiTables::from_rsdp(handler, rsdp_addr);
             match tables {
                 Ok(tables) => Mutex::new(tables),
-                Err(_) => panic!("Failed to parse ACPI tables")
+                Err(_) => panic!("Failed to parse ACPI tables"),
             }
         }
     });
@@ -112,8 +112,10 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
 pub fn init_keyboard() {
     PS2.call_once(|| {
         let mut ps2 = PS2::new();
-        ps2.init_controller().unwrap_or_else(|err| panic!("Failed to initialize PS2 controller (Error: {:?})", err));
-        ps2.init_keyboard().unwrap_or_else(|err| panic!("Failed to initialize PS2 keyboard (Error: {:?})", err));
+        ps2.init_controller()
+            .unwrap_or_else(|err| panic!("Failed to initialize PS2 controller (Error: {:?})", err));
+        ps2.init_keyboard()
+            .unwrap_or_else(|err| panic!("Failed to initialize PS2 keyboard (Error: {:?})", err));
 
         return ps2;
     });
@@ -136,14 +138,16 @@ pub fn idt() -> &'static Mutex<InterruptDescriptorTable> {
 }
 
 pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
-    return ACPI_TABLES.get().expect("Trying to access ACPI tables before initialization!");
+    return ACPI_TABLES
+        .get()
+        .expect("Trying to access ACPI tables before initialization!");
 }
 
 pub fn efi_system_table() -> Option<&'static SystemTable<Runtime>> {
     return match EFI_SYSTEM_TABLE.get() {
         Some(wrapper) => Some(&wrapper.table),
-        None => None
-    }
+        None => None,
+    };
 }
 
 pub fn allocator() -> &'static KernelAllocator {
@@ -165,7 +169,9 @@ pub fn scheduler() -> &'static Scheduler {
 }
 
 pub fn apic() -> &'static Apic {
-    return APIC.get().expect("Trying to access APIC before initialization!");
+    return APIC
+        .get()
+        .expect("Trying to access APIC before initialization!");
 }
 
 pub fn timer() -> &'static RwLock<Timer> {
@@ -181,11 +187,15 @@ pub fn serial_port() -> Option<&'static SerialPort> {
 }
 
 pub fn terminal() -> &'static dyn Terminal {
-    return TERMINAL.get().expect("Trying to access terminal before initialization!");
+    return TERMINAL
+        .get()
+        .expect("Trying to access terminal before initialization!");
 }
 
 pub fn ps2_devices() -> &'static PS2 {
-    return PS2.get().expect("Trying to access keyboard before initialization!");
+    return PS2
+        .get()
+        .expect("Trying to access keyboard before initialization!");
 }
 
 #[no_mangle]

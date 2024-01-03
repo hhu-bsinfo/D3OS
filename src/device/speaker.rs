@@ -1,16 +1,20 @@
-use x86_64::instructions::port::{Port, PortWriteOnly};
 use crate::device::pit;
 use crate::device::pit::Timer;
+use x86_64::instructions::port::{Port, PortWriteOnly};
 
 pub struct Speaker {
     ctrl_port: PortWriteOnly<u8>,
     data_port_2: PortWriteOnly<u8>,
-    ppi_port: Port<u8>
+    ppi_port: Port<u8>,
 }
 
 impl Speaker {
     pub const fn new() -> Self {
-        Self { ctrl_port: PortWriteOnly::new(0x43), data_port_2: PortWriteOnly::new(0x42), ppi_port: Port::new(0x61) }
+        Self {
+            ctrl_port: PortWriteOnly::new(0x43),
+            data_port_2: PortWriteOnly::new(0x42),
+            ppi_port: Port::new(0x61),
+        }
     }
 
     pub fn on(&mut self, freq: usize) {

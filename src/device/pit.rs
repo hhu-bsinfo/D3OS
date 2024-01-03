@@ -1,11 +1,11 @@
-use alloc::boxed::Box;
-use core::hint::spin_loop;
-use spin::Mutex;
-use x86_64::instructions::port::{Port, PortWriteOnly};
 use crate::device::qemu_cfg;
 use crate::kernel;
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::kernel::interrupt::interrupt_handler::InterruptHandler;
+use alloc::boxed::Box;
+use core::hint::spin_loop;
+use spin::Mutex;
+use x86_64::instructions::port::{Port, PortWriteOnly};
 
 pub const BASE_FREQUENCY: usize = 1193182;
 
@@ -13,11 +13,11 @@ pub struct Timer {
     ctrl_port: Mutex<PortWriteOnly<u8>>,
     data_port: Mutex<Port<u8>>,
     interval_ns: usize,
-    systime_ns: usize
+    systime_ns: usize,
 }
 
 struct TimerInterruptHandler {
-    pending_incs: usize
+    pending_incs: usize,
 }
 
 impl InterruptHandler for TimerInterruptHandler {
@@ -33,7 +33,6 @@ impl InterruptHandler for TimerInterruptHandler {
             systime = timer.systime_ms();
         }
 
-
         if systime % 10 == 0 {
             kernel::scheduler().switch_thread();
         }
@@ -48,7 +47,12 @@ impl TimerInterruptHandler {
 
 impl Timer {
     pub const fn new() -> Self {
-        Self { ctrl_port: Mutex::new(PortWriteOnly::new(0x43)), data_port: Mutex::new(Port::new(0x40)), interval_ns: 0, systime_ns: 0 }
+        Self {
+            ctrl_port: Mutex::new(PortWriteOnly::new(0x43)),
+            data_port: Mutex::new(Port::new(0x40)),
+            interval_ns: 0,
+            systime_ns: 0,
+        }
     }
 
     pub fn interrupt_rate(&mut self, interval_ms: usize) {
@@ -75,7 +79,8 @@ impl Timer {
     }
 
     pub fn plugin(&self) {
-        kernel::interrupt_dispatcher().assign(InterruptVector::Pit, Box::new(TimerInterruptHandler::new()));
+        kernel::interrupt_dispatcher()
+            .assign(InterruptVector::Pit, Box::new(TimerInterruptHandler::new()));
         kernel::apic().allow(InterruptVector::Pit);
     }
 

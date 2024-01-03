@@ -1,5 +1,5 @@
-use core::arch::asm;
 use crate::kernel::syscall::user_api::SystemCall::ThreadExit;
+use core::arch::asm;
 
 pub mod thread_api;
 

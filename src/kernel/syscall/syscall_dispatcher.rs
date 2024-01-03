@@ -1,10 +1,12 @@
+use crate::kernel::syscall::user_api::thread_api::{
+    sys_thread_exit, sys_thread_sleep, sys_thread_switch,
+};
+use crate::kernel::syscall::user_api::NUM_SYSCALLS;
 use core::arch::asm;
-use x86_64::{PrivilegeLevel, VirtAddr};
 use x86_64::registers::control::{Efer, EferFlags};
 use x86_64::registers::model_specific::{LStar, Star};
 use x86_64::structures::gdt::SegmentSelector;
-use crate::kernel::syscall::user_api::NUM_SYSCALLS;
-use crate::kernel::syscall::user_api::thread_api::{sys_thread_exit, sys_thread_sleep, sys_thread_switch};
+use x86_64::{PrivilegeLevel, VirtAddr};
 
 pub fn init() {
     // Enable system call extensions
@@ -17,7 +19,10 @@ pub fn init() {
     let ss_sysret = SegmentSelector::new(3, PrivilegeLevel::Ring3);
 
     if let Err(err) = Star::write(cs_sysret, ss_sysret, cs_syscall, ss_syscall) {
-        panic!("System Call: Failed to initialize STAR register (Error: {})", err)
+        panic!(
+            "System Call: Failed to initialize STAR register (Error: {})",
+            err
+        )
     }
 
     // Set rip for syscall
@@ -39,7 +44,7 @@ impl SyscallTable {
             handle: [
                 sys_thread_switch as *const _,
                 sys_thread_sleep as *const _,
-                sys_thread_exit as *const _
+                sys_thread_exit as *const _,
             ],
         }
     }
