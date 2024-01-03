@@ -14,15 +14,18 @@ jobs:
           target: x86_64-unknown-linux-gnu
           components: rust-src
 
+      - name: Install cargo-make
+        run: cargo install --no-default-features cargo-make
+
       - uses: awalsh128/cache-apt-pkgs-action@v1
         with:
           packages: make nasm dosfstools mtools xorriso zstd unzip wget
 
       - name: Build towboot image
-        run: make towboot
+        run: cargo make towboot
 
       - name: Build grub image
-        run: make grub
+        run: cargo make grub
 
       - name: Create artifact
         run: tar -czvf hhuTOSr.tar.gz hhuTOSr-towboot.img run.sh bios/ovmf/build.sh README.md

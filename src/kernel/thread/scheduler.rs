@@ -1,3 +1,5 @@
+use crate::kernel;
+use crate::kernel::thread::thread::Thread;
 use alloc::collections::VecDeque;
 use alloc::format;
 use alloc::rc::Rc;
@@ -7,8 +9,6 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use smallmap::Map;
 use spin::{Mutex, MutexGuard};
-use crate::kernel;
-use crate::kernel::thread::thread::Thread;
 
 static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -19,12 +19,16 @@ pub fn next_thread_id() -> usize {
 struct ReadyState {
     initialized: Cell<bool>,
     current_thread: RefCell<Option<Rc<Thread>>>,
-    ready_queue: VecDeque<Rc<Thread>>
+    ready_queue: VecDeque<Rc<Thread>>,
 }
 
 impl ReadyState {
     pub fn new() -> Self {
-        Self { initialized: Cell::new(false), current_thread: RefCell::new(None), ready_queue: VecDeque::new() }
+        Self {
+            initialized: Cell::new(false),
+            current_thread: RefCell::new(None),
+            ready_queue: VecDeque::new(),
+        }
     }
 }
 
@@ -39,7 +43,11 @@ unsafe impl Sync for Scheduler {}
 
 impl Scheduler {
     pub fn new() -> Self {
-        Self { state: Mutex::new(ReadyState::new()), sleep_list: Mutex::new(Vec::new()), join_map: Mutex::new(Map::new()) }
+        Self {
+            state: Mutex::new(ReadyState::new()),
+            sleep_list: Mutex::new(Vec::new()),
+            join_map: Mutex::new(Map::new()),
+        }
     }
 
     pub fn set_init(&self) {
@@ -56,7 +64,10 @@ impl Scheduler {
 
         {
             let mut state = self.state.lock();
-            thread = state.ready_queue.pop_back().expect("Scheduler: Failed to dequeue first thread!");
+            thread = state
+                .ready_queue
+                .pop_back()
+                .expect("Scheduler: Failed to dequeue first thread!");
             state.current_thread.replace(Some(Rc::clone(&thread)));
         }
 
@@ -100,7 +111,7 @@ impl Scheduler {
 
             next = match state.ready_queue.pop_back() {
                 Some(thread) => thread,
-                None => return
+                None => return,
             };
 
             current = Scheduler::current(&state);
@@ -148,7 +159,13 @@ impl Scheduler {
             let mut join_map = self.join_map.lock();
 
             let thread = Scheduler::current(&state);
-            let join_list = join_map.get_mut(&thread_id).expect(format!("Scheduler: Missing join_map entry for thread id {}!", thread.id()).as_str());
+            let join_list = join_map.get_mut(&thread_id).expect(
+                format!(
+                    "Scheduler: Missing join_map entry for thread id {}!",
+                    thread.id()
+                )
+                .as_str(),
+            );
 
             join_list.push(thread);
         }
@@ -162,7 +179,13 @@ impl Scheduler {
             let mut join_map = self.join_map.lock();
 
             let thread = Scheduler::current(&state);
-            let join_list = join_map.get_mut(&thread.id()).expect(format!("Scheduler: Missing join_map entry for thread id {}!", thread.id()).as_str());
+            let join_list = join_map.get_mut(&thread.id()).expect(
+                format!(
+                    "Scheduler: Missing join_map entry for thread id {}!",
+                    thread.id()
+                )
+                .as_str(),
+            );
 
             for thread in join_list {
                 state.ready_queue.push_front(Rc::clone(thread));
@@ -175,10 +198,19 @@ impl Scheduler {
     }
 
     fn current(state: &MutexGuard<ReadyState>) -> Rc<Thread> {
-        return Rc::clone(state.current_thread.borrow().as_ref().expect("Scheduler: Trying to access current thread before initialization!"));
+        return Rc::clone(
+            state
+                .current_thread
+                .borrow()
+                .as_ref()
+                .expect("Scheduler: Trying to access current thread before initialization!"),
+        );
     }
 
-    fn check_sleep_list(state: &mut MutexGuard<ReadyState>, sleep_list: &mut MutexGuard<Vec<(Rc<Thread>, usize)>>) {
+    fn check_sleep_list(
+        state: &mut MutexGuard<ReadyState>,
+        sleep_list: &mut MutexGuard<Vec<(Rc<Thread>, usize)>>,
+    ) {
         if let Some(timer) = kernel::timer().try_read() {
             let time = timer.systime_ms();
 

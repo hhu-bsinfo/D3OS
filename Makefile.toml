@@ -1,0 +1,78 @@
+[env.development]
+RUST_OBJECT = "target/${TARGET}/debug/lib${TARGET}.a"
+CARGO_BUILD_OPTION = "--lib"
+
+[env.production]
+RUST_OBJECT = "target/${TARGET}/release/lib${TARGET}.a"
+CARGO_BUILD_OPTION = "--release"
+
+[env]
+RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
+TARGET = "hhu_tosr"
+CARGO_CFG_TARGET_FAMILY = "${TARGET}"
+SOURCE_DIRECOTRY = "src/"
+OBJECT_DIRECOTRY = "build/"
+MULTIBOOT2_OBJECT = "${OBJECT_DIRECOTRY}/multiboot2.o"
+SYSTEM = "${OBJECT_DIRECOTRY}/${TARGET}.bin"
+
+# Build tasks
+
+[tasks.default]
+alias = "towboot"
+
+[tasks.compile]
+command = "cargo"
+args = [ "build", "-Z", "build-std=core,alloc", "--target", "${TARGET}", "${CARGO_BUILD_OPTION}" ]
+
+[tasks.build-multiboot2-header]
+command = "nasm"
+args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${MULTIBOOT2_OBJECT}", "${SOURCE_DIRECOTRY}/multiboot2.asm" ]
+dependencies = [ "create-object-directory" ]
+
+[tasks.link]
+command = "ld"
+args = [ "-n", "-T", "${SOURCE_DIRECOTRY}/link.ld", "-o", "${SYSTEM}", "${MULTIBOOT2_OBJECT}", "${RUST_OBJECT}" ]
+dependencies = [ "compile", "build-multiboot2-header" ]
+
+[tasks.create-object-directory]
+command = "mkdir"
+args = [ "-p", "${OBJECT_DIRECOTRY}" ]
+
+# Towboot tasks
+
+[tasks.towboot]
+cwd = "loader/towboot"
+command = "./build.sh"
+dependencies = [ "copy-binary-towboot" ]
+
+[tasks.copy-binary-towboot]
+command = "cp"
+args = [ "${SYSTEM}", "loader/towboot/hhuTOSr.bin" ]
+dependencies = [ "link" ]
+
+# Grub tasks
+
+[tasks.grub]
+command = "grub-mkrescue"
+args = [ "-o", "hhuTOSr-grub.iso", "loader/grub" ]
+dependencies = [ "copy-binary-grub" ]
+
+[tasks.copy-binary-grub]
+command = "cp"
+args = [ "${SYSTEM}", "loader/grub/boot/hhuTOSr.bin" ]
+dependencies = [ "link" ]
+
+# Cleanup tasks
+
+[tasks.clean]
+command = "cargo"
+args = [ "clean" ]
+dependencies = [ "remove-build-directory", "remove-images" ]
+
+[tasks.remove-build-directory]
+command = "rm"
+args = [ "-rf", "build" ]
+
+[tasks.remove-images]
+command = "rm"
+args = [ "-f", "hhuTOSr-towboot.img", "hhuTOSr-grub.iso" ]

@@ -1,15 +1,15 @@
-use alloc::boxed::Box;
-use alloc::string::String;
-use log::info;
-use nolock::queues::{DequeueError, mpmc};
-use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
-use spin::Once;
-use x86_64::instructions::port::Port;
 use crate::device::serial::ComPort::{Com1, Com2, Com3, Com4};
 use crate::kernel;
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::kernel::interrupt::interrupt_handler::InterruptHandler;
 use crate::library::io::stream::{InputStream, OutputStream};
+use alloc::boxed::Box;
+use alloc::string::String;
+use log::info;
+use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
+use nolock::queues::{mpmc, DequeueError};
+use spin::Once;
+use x86_64::instructions::port::Port;
 
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -18,7 +18,7 @@ pub enum ComPort {
     Com1 = 0x3f8,
     Com2 = 0x2f8,
     Com3 = 0x3e8,
-    Com4 = 0x2e8
+    Com4 = 0x2e8,
 }
 
 #[allow(dead_code)]
@@ -113,16 +113,16 @@ pub enum BaudRate {
     Baud5 = 23040,
     Baud4 = 28800,
     Baud3 = 38400,
-    Baud2 = 57600
+    Baud2 = 57600,
 }
 
 pub struct SerialPort {
     port: ComPort,
-    buffer: Once<(Receiver<u8>, Sender<u8>)>
+    buffer: Once<(Receiver<u8>, Sender<u8>)>,
 }
 
 struct SerialInterruptHandler {
-    port: ComPort
+    port: ComPort,
 }
 
 impl SerialInterruptHandler {
@@ -134,7 +134,7 @@ impl SerialInterruptHandler {
 pub fn check_port(port: ComPort) -> bool {
     let mut scratch = Port::<u8>::new(port as u16 + 7);
 
-    for i in 0 .. 0xff {
+    for i in 0..0xff {
         unsafe {
             scratch.write(i);
             if scratch.read() != i {
@@ -209,7 +209,7 @@ impl InterruptHandler for SerialInterruptHandler {
                                 }
                             }
                         }
-                        None => panic!("Serial: Interrupt handler called before initialization!")
+                        None => panic!("Serial: Interrupt handler called before initialization!"),
                     }
                 }
             }
@@ -221,7 +221,7 @@ impl SerialPort {
     pub const fn new(port: ComPort) -> Self {
         Self {
             port,
-            buffer: Once::new()
+            buffer: Once::new(),
         }
     }
 
@@ -230,7 +230,8 @@ impl SerialPort {
             panic!("Serial: Port [{:?}] not found!", self.port);
         }
 
-        self.buffer.call_once(|| mpmc::bounded::scq::queue(buffer_cap));
+        self.buffer
+            .call_once(|| mpmc::bounded::scq::queue(buffer_cap));
 
         let mut interrupt_reg = Port::<u8>::new(self.port as u16 + 1);
         let mut fifo_control_reg = Port::<u8>::new(self.port as u16 + 2);
@@ -295,13 +296,13 @@ impl SerialPort {
         let mut interrupt_reg = Port::<u8>::new(self.port as u16 + 1);
         let vector = match self.port {
             Com1 | Com3 => InterruptVector::Com1,
-            Com2 | Com4 => InterruptVector::Com2
+            Com2 | Com4 => InterruptVector::Com2,
         };
 
-        kernel::interrupt_dispatcher().assign(vector, Box::new(SerialInterruptHandler::new(self.port)));
+        kernel::interrupt_dispatcher()
+            .assign(vector, Box::new(SerialInterruptHandler::new(self.port)));
         kernel::apic().allow(vector);
 
         unsafe { interrupt_reg.write(0x01) } // Enable interrupts
     }
 }
-

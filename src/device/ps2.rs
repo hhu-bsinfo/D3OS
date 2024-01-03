@@ -1,25 +1,25 @@
-use alloc::boxed::Box;
-use log::info;
-use nolock::queues::{DequeueError, mpmc};
-use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
-use ps2::{Controller, KeyboardType};
-use ps2::error::{ControllerError, KeyboardError};
-use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
-use spin::Mutex;
 use crate::kernel;
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::kernel::interrupt::interrupt_handler::InterruptHandler;
 use crate::library::io::stream::InputStream;
+use alloc::boxed::Box;
+use log::info;
+use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
+use nolock::queues::{mpmc, DequeueError};
+use ps2::error::{ControllerError, KeyboardError};
+use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
+use ps2::{Controller, KeyboardType};
+use spin::Mutex;
 
 const KEYBOARD_BUFFER_CAPACITY: usize = 128;
 
 pub struct PS2 {
     controller: Mutex<Controller>,
-    keyboard: Keyboard
+    keyboard: Keyboard,
 }
 
 pub struct Keyboard {
-    buffer: (Receiver<u8>, Sender<u8>)
+    buffer: (Receiver<u8>, Sender<u8>),
 }
 
 #[derive(Default)]
@@ -27,11 +27,16 @@ struct KeyboardInterruptHandler;
 
 impl Keyboard {
     fn new(buffer_cap: usize) -> Self {
-        Self { buffer: mpmc::bounded::scq::queue(buffer_cap) }
+        Self {
+            buffer: mpmc::bounded::scq::queue(buffer_cap),
+        }
     }
 
     pub fn plugin(&self) {
-        kernel::interrupt_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardInterruptHandler::default()));
+        kernel::interrupt_dispatcher().assign(
+            InterruptVector::Keyboard,
+            Box::new(KeyboardInterruptHandler::default()),
+        );
         kernel::apic().allow(InterruptVector::Keyboard);
     }
 }
@@ -67,7 +72,10 @@ impl InterruptHandler for KeyboardInterruptHandler {
 
 impl PS2 {
     pub fn new() -> Self {
-        Self { controller: unsafe { Mutex::new(Controller::new()) }, keyboard: Keyboard::new(KEYBOARD_BUFFER_CAPACITY) }
+        Self {
+            controller: unsafe { Mutex::new(Controller::new()) },
+            keyboard: Keyboard::new(KEYBOARD_BUFFER_CAPACITY),
+        }
     }
 
     pub fn init_controller(&self) -> Result<(), ControllerError> {
@@ -83,7 +91,12 @@ impl PS2 {
 
         // Disable interrupts and translation
         let mut config = controller.read_config()?;
-        config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT | ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT | ControllerConfigFlags::ENABLE_TRANSLATE, false);
+        config.set(
+            ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT
+                | ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT
+                | ControllerConfigFlags::ENABLE_TRANSLATE,
+            false,
+        );
         controller.write_config(config)?;
 
         // Perform self test on controller
@@ -125,7 +138,7 @@ impl PS2 {
     pub fn init_keyboard(&mut self) -> Result<(), KeyboardError> {
         info!("Initializing keyboard");
         let mut controller = self.controller.lock();
-        
+
         // Perform self test on keyboard
         if controller.keyboard().reset_and_self_test().is_err() {
             panic!("Keyboard is not working!");
@@ -138,13 +151,15 @@ impl PS2 {
         info!("Detected keyboard type [{:?}]", kb_type);
 
         match kb_type {
-            KeyboardType::ATWithTranslation | KeyboardType::MF2WithTranslation | KeyboardType::ThinkPadWithTranslation => {
+            KeyboardType::ATWithTranslation
+            | KeyboardType::MF2WithTranslation
+            | KeyboardType::ThinkPadWithTranslation => {
                 info!("Enabling keyboard translation");
                 let mut config = controller.read_config()?;
                 config.set(ControllerConfigFlags::ENABLE_TRANSLATE, true);
                 controller.write_config(config)?;
             }
-            _ => info!("Keyboard does not need translation")
+            _ => info!("Keyboard does not need translation"),
         }
 
         // Setup keyboard

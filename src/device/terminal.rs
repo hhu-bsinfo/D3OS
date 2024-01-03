@@ -1,8 +1,8 @@
-use core::{fmt, ptr};
-use core::fmt::Write;
-use core::ops::Deref;
 use crate::kernel;
 use crate::library::io::stream::{InputStream, OutputStream};
+use core::fmt::Write;
+use core::ops::Deref;
+use core::{fmt, ptr};
 
 pub trait Terminal: OutputStream + InputStream {
     fn clear(&self);
@@ -37,7 +37,12 @@ pub fn print(args: fmt::Arguments) {
     let terminal;
     // Writing to LFBTerminal does not need a mutable reference,
     // so it is safe to construct a mutable reference here and use it for writing.
-    unsafe { terminal = ptr::from_ref(kernel::terminal()).cast_mut().as_mut().unwrap(); }
+    unsafe {
+        terminal = ptr::from_ref(kernel::terminal())
+            .cast_mut()
+            .as_mut()
+            .unwrap();
+    }
 
     terminal.write_fmt(args).unwrap();
 }
