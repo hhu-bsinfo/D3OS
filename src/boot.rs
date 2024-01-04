@@ -38,10 +38,11 @@ use uefi_raw::table::boot::MemoryType;
 use x86_64::instructions::interrupts;
 use x86_64::instructions::segmentation::{Segment, CS, DS, ES, FS, GS, SS};
 use x86_64::instructions::tables::load_tss;
+use x86_64::PhysAddr;
 use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
-use x86_64::structures::paging::PageTableFlags;
+use x86_64::structures::paging::{PageTable, PageTableFlags};
 use x86_64::PrivilegeLevel::Ring0;
 
 // insert other modules
@@ -216,7 +217,7 @@ pub extern "C" fn start() {
     setup_paging();
 
     // Initialize heap, after which format strings may be used in log messages and panics
-    info!("Initializing heap");
+    info!("Initializing Heap");
     unsafe {
         kernel::allocator().init(heap_start, heap_end);
     }
@@ -420,33 +421,31 @@ fn setup_gdt() {
 }
 
 fn setup_paging() {
+    let page_table_addr = Cr3::read().0.start_address();
+    let level = if Cr4::read().contains(Cr4Flags::L5_PAGING) { 5 } else { 4 };
+
     unsafe {
         Cr0::update(|flags| flags.remove(Cr0Flags::WRITE_PROTECT));
-
-        let page_map_address = Cr3::read().0.start_address();
-        let level = if Cr4::read().contains(Cr4Flags::L5_PAGING) { 5 } else { 4 };
-        setup_page_map(paging_pointer(page_map_address.as_u64()), level);
-
+        setup_page_table(page_table_from_addr(page_table_addr), level);
         Cr0::update(|flags| flags.insert(Cr0Flags::WRITE_PROTECT));
     }
 }
 
-unsafe fn setup_page_map(map: *mut u64, level: usize) {
-    for i in 0..512 {
-        let entry = map.offset(i).read();
-        if entry != 0 {
-            let mut flags = PageTableFlags::from_bits_truncate(entry);
-            flags.insert(PageTableFlags::USER_ACCESSIBLE);
+unsafe fn setup_page_table(table: &mut PageTable, level: usize) {
+    for entry in table.iter_mut() {
+        if entry.is_unused() {
+            continue;
+        }
 
-            map.offset(i).write(entry | flags.bits());
+        let flags = entry.flags();
+        entry.set_flags(flags | PageTableFlags::USER_ACCESSIBLE);
 
-            if level > 1 && !flags.contains(PageTableFlags::HUGE_PAGE) {
-                setup_page_map(paging_pointer(entry), level - 1);
-            }
+        if level > 1 && !flags.contains(PageTableFlags::HUGE_PAGE) {
+            setup_page_table(page_table_from_addr(entry.addr()), level - 1);
         }
     }
 }
 
-fn paging_pointer(entry: u64) -> *mut u64 {
-    return (entry & 0x000ffffffffff000) as *mut u64;
+unsafe fn page_table_from_addr(addr: PhysAddr) -> &'static mut PageTable {
+    return (addr.as_u64() as *mut PageTable).as_mut().expect("Page table address is 0!");
 }
