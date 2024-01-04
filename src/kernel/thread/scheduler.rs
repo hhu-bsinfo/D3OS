@@ -4,7 +4,6 @@ use alloc::collections::VecDeque;
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
-use core::cell::{Cell, RefCell};
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use smallmap::Map;
@@ -17,16 +16,16 @@ pub fn next_thread_id() -> usize {
 }
 
 struct ReadyState {
-    initialized: Cell<bool>,
-    current_thread: RefCell<Option<Rc<Thread>>>,
+    initialized: bool,
+    current_thread: Option<Rc<Thread>>,
     ready_queue: VecDeque<Rc<Thread>>,
 }
 
 impl ReadyState {
     pub fn new() -> Self {
         Self {
-            initialized: Cell::new(false),
-            current_thread: RefCell::new(None),
+            initialized: false,
+            current_thread: None,
             ready_queue: VecDeque::new(),
         }
     }
@@ -51,7 +50,7 @@ impl Scheduler {
     }
 
     pub fn set_init(&self) {
-        self.state.lock().initialized.set(true);
+        self.state.lock().initialized = true;
     }
 
     pub fn current_thread(&self) -> Rc<Thread> {
@@ -68,7 +67,7 @@ impl Scheduler {
                 .ready_queue
                 .pop_back()
                 .expect("Scheduler: Failed to dequeue first thread!");
-            state.current_thread.replace(Some(Rc::clone(&thread)));
+            state.current_thread = Some(Rc::clone(&thread));
         }
 
         Thread::start_first(thread.as_ref());
@@ -101,7 +100,7 @@ impl Scheduler {
         let next;
 
         if let Some(mut state) = self.state.try_lock() {
-            if !state.initialized.get() {
+            if !state.initialized {
                 return;
             }
 
@@ -115,7 +114,7 @@ impl Scheduler {
             };
 
             current = Scheduler::current(&state);
-            state.current_thread.replace(Some(Rc::clone(&next)));
+            state.current_thread = Some(Rc::clone(&next));
 
             state.ready_queue.push_front(Rc::clone(&current));
         } else {
@@ -142,7 +141,7 @@ impl Scheduler {
 
             current = Scheduler::current(&state);
             next = next_thread.unwrap();
-            state.current_thread.replace(Some(Rc::clone(&next)));
+            state.current_thread = Some(Rc::clone(&next));
 
             // Thread has enqueued itself into sleep list and waited so long, that it dequeued itself in the meantime
             if current.id() == next.id() {
@@ -198,13 +197,7 @@ impl Scheduler {
     }
 
     fn current(state: &MutexGuard<ReadyState>) -> Rc<Thread> {
-        return Rc::clone(
-            state
-                .current_thread
-                .borrow()
-                .as_ref()
-                .expect("Scheduler: Trying to access current thread before initialization!"),
-        );
+        return Rc::clone(state.current_thread.as_ref().expect("Scheduler: Trying to access current thread before initialization!"));
     }
 
     fn check_sleep_list(
