@@ -1,7 +1,7 @@
 use crate::device::serial;
 use crate::device::serial::ComPort;
 use crate::device::serial::SerialPort;
-use crate::kernel;
+use crate::{built_info, kernel};
 use crate::library::graphic::ansi;
 use crate::library::io::stream::OutputStream;
 use alloc::boxed::Box;
@@ -45,7 +45,7 @@ impl log::Log for Logger {
                 serial.write_str("[0.000]");
                 serial.write_str(ansi_color(level));
                 serial.write_str("[");
-                serial.write_str(level.as_str());
+                serial.write_str(level_token(level));
                 serial.write_str("]");
                 serial.write_str(ansi::FOREGROUND_DEFAULT);
                 serial.write_str("[");
@@ -73,7 +73,7 @@ impl log::Log for Logger {
                 seconds,
                 fraction,
                 ansi_color(level),
-                level.as_str(),
+                level_token(level),
                 ansi::FOREGROUND_DEFAULT,
                 file,
                 line,
@@ -118,9 +118,13 @@ impl Logger {
             logger.serial.as_mut().unwrap().init_write_only();
         }
 
+        if built_info::PROFILE == "debug" {
+            logger.level = Level::Debug;
+        }
+
         unsafe {
             let logger_ref = ptr::from_ref(logger.deref()).as_ref().unwrap();
-            return log::set_logger(logger_ref).map(|()| log::set_max_level(LevelFilter::Info));
+            return log::set_logger(logger_ref).map(|()| log::set_max_level(LevelFilter::Debug));
         }
     }
 
@@ -142,5 +146,15 @@ fn ansi_color(level: Level) -> &'static str {
         Level::Info => ansi::FOREGROUND_BRIGHT_BLUE,
         Level::Warn => ansi::FOREGROUND_BRIGHT_YELLOW,
         Level::Error => ansi::FOREGROUND_BRIGHT_RED,
+    }
+}
+
+fn level_token(level: Level) -> &'static str {
+    match level {
+        Level::Trace => "TRC",
+        Level::Debug => "DBG",
+        Level::Info => "INF",
+        Level::Warn => "WRN",
+        Level::Error => "ERR",
     }
 }

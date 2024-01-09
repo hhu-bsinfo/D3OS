@@ -10,7 +10,7 @@ use x86_64::structures::gdt::SegmentSelector;
 use x86_64::PrivilegeLevel::Ring3;
 use x86_64::VirtAddr;
 
-const STACK_SIZE: usize = 1048576;
+const STACK_SIZE: usize = 65536;
 
 pub struct Thread {
     id: usize,

@@ -6,7 +6,7 @@ use crate::device::serial;
 use crate::device::serial::{BaudRate, ComPort, SerialPort};
 use crate::device::speaker::Speaker;
 use crate::device::terminal::Terminal;
-use crate::kernel::alloc::{AcpiHandler, KernelAllocator};
+use crate::kernel::memory::alloc::{AcpiHandler, KernelAllocator};
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptDispatcher;
 use crate::kernel::log::Logger;
 use crate::kernel::thread::scheduler::Scheduler;
@@ -20,8 +20,8 @@ use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
 
-pub mod alloc;
 pub mod interrupt;
+pub mod memory;
 pub mod log;
 pub mod syscall;
 pub mod thread;

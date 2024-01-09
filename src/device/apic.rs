@@ -1,5 +1,5 @@
 use crate::kernel;
-use crate::kernel::alloc::AcpiAllocator;
+use crate::kernel::memory::alloc::AcpiAllocator;
 use crate::kernel::interrupt::interrupt_dispatcher::InterruptVector;
 use acpi::madt::Madt;
 use acpi::platform::interrupt::{InterruptSourceOverride, NmiSource, Polarity, TriggerMode};
