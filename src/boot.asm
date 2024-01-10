@@ -1,17 +1,19 @@
 [EXTERN ___BSS_START__]
 [EXTERN ___BSS_END__]
-
 [EXTERN ___KERNEL_DATA_START__]
 [EXTERN ___KERNEL_DATA_END__]
 [EXTERN start]
 
-; MULTIBOOT2 constants
+; Kernel constants
+STACK_SIZE equ 0x10000
+
+; Multiboot2 constants
 MULTIBOOT2_HEADER_MAGIC equ 0xe85250d6
 MULTIBOOT2_HEADER_ARCHITECTURE equ 0
-MULTIBOOT2_HEADER_LENGTH equ (multiboot2_header_end - multiboot2_header)
+MULTIBOOT2_HEADER_LENGTH equ (boot - multiboot2_header)
 MULTIBOOT2_HEADER_CHECKSUM equ -(MULTIBOOT2_HEADER_MAGIC + MULTIBOOT2_HEADER_ARCHITECTURE + MULTIBOOT2_HEADER_LENGTH)
 
-; MULTIBOOT2 tag types
+; Multiboot2 tag types
 MULTIBOOT2_TAG_TERMINATE equ 0
 MULTIBOOT2_TAG_INFORMATION_REQUEST equ 1
 MULTIBOOT2_TAG_ADDRESS equ 2
@@ -24,7 +26,7 @@ MULTIBOOT2_TAG_EFI_I386_ENTRY_ADDRESS equ 8
 MULTIBOOT2_TAG_EFI_AMD64_ENTRY_ADDRESS equ 9
 MULTIBOOT2_TAG_RELOCATABLE_HEADER equ 10
 
-; MULTIBOOT2 request types
+; Multiboot2 request types
 MULTIBOOT2_REQUEST_BOOT_COMMAND_LINE equ 1
 MULTIBOOT2_REQUEST_BOOT_LOADER_NAME equ 2
 MULTIBOOT2_REQUEST_MODULE equ 3
@@ -47,15 +49,15 @@ MULTIBOOT2_REQUEST_EFI_32_BIT_IMAGE_HANDLE_POINTER equ 19
 MULTIBOOT2_REQUEST_EFI_64_BIT_IMAGE_HANDLE_POINTER equ 20
 MULTIBOOT2_REQUEST_IMAGE_LOAD_BASE_PHYSICAL_ADDRESS equ 21
 
-; MULTIBOOT2 tag flags
+; Multiboot2 tag flags
 MULTIBOOT2_TAG_FLAG_REQUIRED equ 0x00
 MULTIBOOT2_TAG_FLAG_OPTIONAL equ 0x01
 
-; MULTIBOOT2 console flags
+; Multiboot2 console flags
 MULTIBOOT2_CONSOLE_FLAG_FORCE_TEXT_MODE equ 0x01
 MULTIBOOT2_CONSOLE_FLAG_SUPPORT_TEXT_MODE equ 0x02
 
-; MULTIBOOT2 framebuffer options
+; Multiboot2 framebuffer options
 MULTIBOOT2_GRAPHICS_MODE   equ 0
 MULTIBOOT2_GRAPHICS_WIDTH  equ 800
 MULTIBOOT2_GRAPHICS_HEIGHT equ 600
@@ -77,7 +79,7 @@ multiboot2_header:
     dw MULTIBOOT2_TAG_EFI_AMD64_ENTRY_ADDRESS
     dw MULTIBOOT2_TAG_FLAG_REQUIRED
     dd 12
-    dd (start)
+    dd (boot)
 
     ; EFI boot services tag
     align 8
@@ -129,4 +131,33 @@ multiboot2_header:
     dw MULTIBOOT2_TAG_TERMINATE
     dw MULTIBOOT2_TAG_FLAG_REQUIRED
     dd 8
-multiboot2_header_end:
+
+boot:
+    cld ; Expected by GCC
+    cli ; Disable interrupts
+
+    ; Clear BSS section
+    mov rdi, ___BSS_START__
+clear_bss:
+    mov byte [rdi], 0
+    inc rdi
+    cmp rdi, ___BSS_END__
+    jne clear_bss
+
+    ; Switch stack to our own stack, because the EFI stack may be located inside
+    ; reserved memory and will thus be ignored by our paging implementation.
+    mov rsp, init_stack.end
+
+    ; Call rust function with multiboot2 magic number and address (initially located in eax and ebx)
+    xor rdi, rdi
+    xor rsi, rsi
+    mov edi, eax
+    mov esi, ebx
+    call start
+
+[SECTION .bss]
+
+global init_stack:data (init_stack.end - init_stack)
+init_stack:
+	  resb STACK_SIZE
+.end:

@@ -3,16 +3,11 @@ use core::ptr;
 use log::debug;
 use spin::{Mutex, Once};
 use x86_64::PhysAddr;
-use crate::kernel::memory::{KERNEL_PHYS_SIZE, PAGE_SIZE};
+use crate::kernel::memory::{KERNEL_PHYS_SIZE, MemorySpace, PAGE_SIZE};
 
 static KERNEL_PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> = Mutex::new(PageFrameListAllocator::new());
 static USER_PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> = Mutex::new(PageFrameListAllocator::new());
 static MAX_PHYSICAL_ADDRESS: Once<PhysAddr> = Once::new();
-
-pub enum MemorySpace {
-    Kernel,
-    User
-}
 
 pub struct MemoryRegion {
     start: PhysAddr,
@@ -26,6 +21,14 @@ impl MemoryRegion {
 
     pub fn from_size(start: PhysAddr, size: usize) -> Self {
         Self { start, end: start + (size - 1) }
+    }
+
+    pub fn set_start(&mut self, start: PhysAddr) {
+        if start >= self.end {
+            panic!("MemoryRegion: 'start' must be lower than 'end'!");
+        }
+
+        self.start = start;
     }
 
     pub fn start(&self) -> PhysAddr {

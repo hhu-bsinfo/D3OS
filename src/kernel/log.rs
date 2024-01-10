@@ -29,13 +29,7 @@ impl log::Log for Logger {
         }
 
         let level = record.metadata().level();
-        let file = record
-            .file()
-            .unwrap_or("unknown")
-            .split('/')
-            .rev()
-            .next()
-            .unwrap_or("unknown");
+        let file = record.file().unwrap_or("unknown").split('/').rev().next().unwrap_or("unknown");
         let line = record.line().unwrap_or(0);
 
         let mut logger = kernel::logger().lock();
@@ -55,9 +49,7 @@ impl log::Log for Logger {
                 if kernel::allocator().is_initialized() {
                     serial.write_str(record.args().to_string().as_str());
                 } else {
-                    serial.write_str(record.args().as_str().unwrap_or_else(|| {
-                        "Formatted messages are not supported before heap initialization!"
-                    }));
+                    serial.write_str(record.args().as_str().unwrap_or_else(|| { "Formatted messages are not supported before heap initialization!" }));
                 }
 
                 serial.write_str("\n");
@@ -67,18 +59,8 @@ impl log::Log for Logger {
             let seconds = systime / 1000;
             let fraction = systime % 1000;
 
-            let string = format!(
-                "{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}] {}\n",
-                ansi::FOREGROUND_CYAN,
-                seconds,
-                fraction,
-                ansi_color(level),
-                level_token(level),
-                ansi::FOREGROUND_DEFAULT,
-                file,
-                line,
-                record.args()
-            );
+            let string = format!("{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}] {}\n", ansi::FOREGROUND_CYAN, seconds, fraction,
+                                 ansi_color(level), level_token(level),ansi::FOREGROUND_DEFAULT, file, line, record.args());
 
             for i in 0..self.streams.len() {
                 logger.streams[i].write_str(&string);

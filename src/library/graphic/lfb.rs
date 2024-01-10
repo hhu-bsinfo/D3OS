@@ -30,14 +30,7 @@ impl LFB {
             _ => draw_pixel_stub,
         };
 
-        Self {
-            buffer,
-            pitch,
-            width,
-            height,
-            bpp,
-            pixel_drawer,
-        }
+        Self { buffer, pitch, width, height, bpp, pixel_drawer }
     }
 
     pub const fn buffer(&self) -> *mut u8 {
@@ -132,22 +125,17 @@ impl LFB {
 
     pub fn clear(&self) {
         unsafe {
-            self.buffer
-                .write_bytes(0, (self.pitch * self.height) as usize);
+            self.buffer.write_bytes(0, (self.pitch * self.height) as usize);
         }
     }
 
     pub fn scroll_up(&self, lines: u32) {
         unsafe {
             // Move screen buffer upwards by the given amount of lines
-            self.buffer.copy_from(
-                self.buffer.offset((self.pitch * lines) as isize),
-                (self.pitch * (self.height - lines)) as usize,
-            );
+            self.buffer.copy_from(self.buffer.offset((self.pitch * lines) as isize), (self.pitch * (self.height - lines)) as usize);
+
             // Clear lower part of the screen
-            self.buffer
-                .offset((self.pitch * (self.height - lines)) as isize)
-                .write_bytes(0, (self.pitch * lines) as usize);
+            self.buffer.offset((self.pitch * (self.height - lines)) as isize).write_bytes(0, (self.pitch * lines) as usize);
         }
     }
 }

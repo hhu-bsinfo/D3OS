@@ -89,16 +89,11 @@ impl<'a> AcpiAllocator<'a> {
 
 impl KernelAllocator {
     pub const fn new() -> Self {
-        Self {
-            heap: LockedHeap::empty(),
-        }
+        Self { heap: LockedHeap::empty() }
     }
 
     pub unsafe fn init(&self, heap_start_address: usize, heap_end_address: usize) {
-        self.heap.lock().init(
-            heap_start_address as *mut u8,
-            heap_end_address - heap_start_address,
-        );
+        self.heap.lock().init(heap_start_address as *mut u8, heap_end_address - heap_start_address);
     }
 
     pub fn is_initialized(&self) -> bool {
