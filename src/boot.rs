@@ -21,14 +21,13 @@ use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use chrono::DateTime;
-use core::arch::asm;
 use core::ffi::c_void;
 use core::fmt::Arguments;
 use core::mem::size_of;
 use core::ops::Deref;
 use core::panic::PanicInfo;
 use core::ptr;
+use chrono::DateTime;
 use log::{debug, error, info, Level, Log, Record};
 use multiboot2::{BootInformation, BootInformationHeader, MemoryAreaType, Tag};
 use uefi::prelude::*;
@@ -38,13 +37,14 @@ use uefi_raw::table::boot::MemoryType;
 use x86_64::instructions::interrupts;
 use x86_64::instructions::segmentation::{Segment, CS, DS, ES, FS, GS, SS};
 use x86_64::instructions::tables::load_tss;
-use x86_64::PhysAddr;
-use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
+use x86_64::{PhysAddr, VirtAddr};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
-use x86_64::structures::paging::{PageTable, PageTableFlags};
+use x86_64::structures::paging::{Page, PageTableFlags};
 use x86_64::PrivilegeLevel::Ring0;
+use x86_64::structures::paging::page::PageRange;
 use crate::kernel::memory;
+use crate::kernel::memory::MemorySpace;
 use crate::kernel::memory::physical::MemoryRegion;
 
 // insert other modules
@@ -80,31 +80,12 @@ pub mod built_info {
 extern "C" {
     static ___KERNEL_DATA_START__: u64;
     static ___KERNEL_DATA_END__: u64;
-    static ___BSS_START__: u64;
-    static ___BSS_END__: u64;
 }
 
 const INIT_HEAP_SIZE: usize = 0x400000;
 
 #[no_mangle]
-pub extern "C" fn start() {
-    interrupts::disable();
-
-    // Get multiboot values from eax and ebx
-    let multiboot2_magic: u32;
-    let multiboot2_address: u32;
-
-    unsafe {
-        asm!(
-        "mov ecx, ebx", // ebx cannot be used with 'out', because rbx is reserved for internal LLVM usage
-        out("eax") multiboot2_magic,
-        out("ecx") multiboot2_address
-        );
-    }
-
-    // Clear bss section before any static structures are accessed
-    clear_bss();
-
+pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
     // Initialize logger
     if kernel::logger().lock().init().is_err() {
         panic!("Failed to initialize logger!")
@@ -118,11 +99,7 @@ pub extern "C" fn start() {
         panic!("Invalid Multiboot2 magic number!");
     }
 
-    let multiboot;
-    unsafe {
-        multiboot = BootInformation::load(multiboot2_address as *const BootInformationHeader)
-            .unwrap_or_else(|_| panic!("Failed to get Multiboot2 information!"));
-    };
+    let multiboot = unsafe { BootInformation::load(multiboot2_addr).expect("Failed to get Multiboot2 information!") };
 
     // Initialize temporary heap, after which format strings may be used in log messages and panics
     let kernel_image_region = kernel_image_region();
@@ -138,24 +115,14 @@ pub extern "C" fn start() {
     if let Some(_) = multiboot.efi_bs_not_exited_tag() {
         // EFI boot services have not been exited and we obtain access to the memory map and EFI runtime services by exiting them manually
         info!("EFI boot services have not been exited");
-        let image_tag = multiboot
-            .efi_ih64_tag()
-            .unwrap_or_else(|| panic!("EFI image handle not available!"));
-        let sdt_tag = multiboot
-            .efi_sdt64_tag()
-            .unwrap_or_else(|| panic!("EFI system table not available!"));
+        let image_tag = multiboot.efi_ih64_tag().expect("EFI image handle not available!");
+        let sdt_tag = multiboot.efi_sdt64_tag().expect("EFI system table not available!");
         let image_handle;
         let system_table;
 
         unsafe {
-            image_handle = Handle::from_ptr(image_tag.image_handle() as *mut c_void)
-                .unwrap_or_else(|| {
-                    panic!("Failed to create EFI image handle struct from pointer!")
-                });
-            system_table = SystemTable::<Boot>::from_ptr(sdt_tag.sdt_address() as *mut c_void)
-                .unwrap_or_else(|| {
-                    panic!("Failed to create EFI system table struct from pointer!")
-                });
+            image_handle = Handle::from_ptr(image_tag.image_handle() as *mut c_void).expect("Failed to create EFI image handle struct from pointer!");
+            system_table = SystemTable::<Boot>::from_ptr(sdt_tag.sdt_address() as *mut c_void).expect("Failed to create EFI system table struct from pointer!");
             system_table.boot_services().set_image_handle(image_handle);
         }
 
@@ -205,16 +172,21 @@ pub extern "C" fn start() {
     info!("Initializing GDT");
     setup_gdt();
 
-    // Enable user access bits in EFI identity mapping (needed for system calls to work)
-    info!("Initializing Paging");
-    setup_paging();
-
     // The bootloader marks the kernel image region as available, so we need to check for regions overlapping
     // with the kernel image and temporary heap and build a new memory map with the kernel image and heap cut out.
+    // Furthermore, we need to make sure, that no region start at address 0, ot avoid null pointer panics.
     let mut available_memory_regions = Vec::new();
     let kernel_region = MemoryRegion::new(kernel_image_region.start(), heap_end);
 
-    for region in bootloader_memory_regions {
+    for mut region in bootloader_memory_regions {
+        if region.start() == PhysAddr::zero() {
+            if region.end() > PhysAddr::new(memory::PAGE_SIZE as u64) {
+                region.set_start(PhysAddr::new(memory::PAGE_SIZE as u64))
+            } else {
+                continue
+            }
+        }
+
         if region.start() < kernel_region.start() && region.end() >= kernel_region.start() { // Region starts below the kernel image
             if region.end() <= kernel_region.end() { // Region starts below and ends inside the kernel image
                 available_memory_regions.push(MemoryRegion::new(region.start(), kernel_region.start() - 1u64));
@@ -235,7 +207,13 @@ pub extern "C" fn start() {
         }
     }
 
+    // Initialize physical memory management
+    info!("Initializing page frame allocator");
     unsafe { memory::physical::init(available_memory_regions); }
+
+    // Initialize virtual memory management
+    info!("Initializing paging");
+    memory::r#virtual::init();
 
     // Initialize serial port and enable serial logging
     kernel::init_serial_port();
@@ -244,49 +222,32 @@ pub extern "C" fn start() {
     }
 
     // Initialize terminal and enable terminal logging
-    let fb_info = multiboot
-        .framebuffer_tag()
-        .unwrap_or_else(|| panic!("No framebuffer information provided by bootloader!"))
-        .unwrap_or_else(|fb_type| panic!("Unknown framebuffer type [{}]!", fb_type));
-    kernel::init_terminal(
-        fb_info.address() as *mut u8,
-        fb_info.pitch(),
-        fb_info.width(),
-        fb_info.height(),
-        fb_info.bpp(),
-    );
+    let fb_info = multiboot.framebuffer_tag()
+        .expect("No framebuffer information provided by bootloader!")
+        .expect("Unknown framebuffer type!");
+
+    let fb_start_page = Page::from_start_address(VirtAddr::new(fb_info.address())).expect("Framebuffer address is not page aligned!");
+    let fb_end_page = Page::from_start_address(VirtAddr::new(fb_info.address() + (fb_info.height() * fb_info.pitch()) as u64).align_up(PAGE_SIZE as u64)).unwrap();
+    memory::r#virtual::map(PageRange { start: fb_start_page, end: fb_end_page }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE | PageTableFlags::NO_CACHE);
+
+    kernel::init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
     kernel::logger().lock().register(kernel::terminal());
 
     info!("Welcome to hhuTOSr!");
-    let version = format!(
-        "v{} ({} - O{})",
-        built_info::PKG_VERSION,
-        built_info::PROFILE,
-        built_info::OPT_LEVEL
-    );
-    let git_ref = built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown");
-    let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or_else(|| "Unknown");
+    let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
+    let git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
+    let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("Unknown");
     let build_date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
         Ok(date_time) => date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
         Err(_) => "Unknown".to_string(),
     };
     let bootloader_name = match multiboot.boot_loader_name_tag() {
-        Some(tag) => {
-            if tag.name().is_ok() {
-                tag.name().unwrap_or("Unknown")
-            } else {
-                "Unknown"
-            }
-        }
+        Some(tag) => if tag.name().is_ok() { tag.name().unwrap_or("Unknown") } else { "Unknown" },
         None => "Unknown",
     };
 
     info!("OS Version: [{}]", version);
-    info!(
-        "Git Version: [{} - {}]",
-        built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown"),
-        git_commit
-    );
+    info!("Git Version: [{} - {}]", built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown"), git_commit);
     info!("Build Date: [{}]", build_date);
     info!("Compiler: [{}]", built_info::RUSTC_VERSION);
     info!("Bootloader: [{}]", bootloader_name);
@@ -325,18 +286,17 @@ pub extern "C" fn start() {
     if kernel::efi_system_table().is_none() {
         if let Some(sdt_tag) = multiboot.efi_sdt64_tag() {
             info!("Initializing EFI runtime services");
-            let system_table;
-            unsafe {
-                system_table =
-                    SystemTable::<Runtime>::from_ptr(sdt_tag.sdt_address() as *mut c_void);
-            };
-
+            let system_table = unsafe { SystemTable::<Runtime>::from_ptr(sdt_tag.sdt_address() as *mut c_void) };
             if system_table.is_some() {
                 kernel::init_efi_system_table(system_table.unwrap());
             } else {
                 error!("Failed to create EFI system table struct from pointer!");
             }
         }
+    }
+
+    if let Some(system_table) = kernel::efi_system_table() {
+        info!("EFI runtime services available (Vendor: [{}], UEFI version: [{}])", system_table.firmware_vendor(), system_table.uefi_revision());
     }
 
     // Initialize keyboard
@@ -367,32 +327,11 @@ pub extern "C" fn start() {
     kernel::logger().lock().remove(kernel::terminal());
     kernel::terminal().clear();
 
-    println!(
-        include_str!("banner.txt"),
-        version,
-        git_ref.rsplit("/").next().unwrap_or(git_ref),
-        git_commit,
-        build_date,
-        built_info::RUSTC_VERSION
-            .split_once("(")
-            .unwrap_or((built_info::RUSTC_VERSION, ""))
-            .0
-            .trim(),
-        bootloader_name
-    );
+    println!(include_str!("banner.txt"), version, git_ref.rsplit("/").next().unwrap_or(git_ref), git_commit, build_date,
+             built_info::RUSTC_VERSION.split_once("(").unwrap_or((built_info::RUSTC_VERSION, "")).0.trim(), bootloader_name);
 
     info!("Starting scheduler");
     scheduler.start();
-}
-
-fn clear_bss() {
-    unsafe {
-        let bss_start = ptr::from_ref(&___BSS_START__) as *mut u8;
-        let bss_end = ptr::from_ref(&___BSS_END__) as *const u8;
-        let length = bss_end as usize - bss_start as usize;
-
-        bss_start.write_bytes(0, length);
-    }
 }
 
 fn kernel_image_region() -> MemoryRegion {
@@ -443,34 +382,4 @@ fn setup_gdt() {
         FS::set_reg(SegmentSelector::new(0, Ring0));
         GS::set_reg(SegmentSelector::new(0, Ring0));
     }
-}
-
-fn setup_paging() {
-    let page_table_addr = Cr3::read().0.start_address();
-    let level = if Cr4::read().contains(Cr4Flags::L5_PAGING) { 5 } else { 4 };
-
-    unsafe {
-        Cr0::update(|flags| flags.remove(Cr0Flags::WRITE_PROTECT));
-        setup_page_table(page_table_from_addr(page_table_addr), level);
-        Cr0::update(|flags| flags.insert(Cr0Flags::WRITE_PROTECT));
-    }
-}
-
-unsafe fn setup_page_table(table: &mut PageTable, level: usize) {
-    for entry in table.iter_mut() {
-        if entry.is_unused() {
-            continue;
-        }
-
-        let flags = entry.flags();
-        entry.set_flags(flags | PageTableFlags::USER_ACCESSIBLE);
-
-        if level > 1 && !flags.contains(PageTableFlags::HUGE_PAGE) {
-            setup_page_table(page_table_from_addr(entry.addr()), level - 1);
-        }
-    }
-}
-
-unsafe fn page_table_from_addr(addr: PhysAddr) -> &'static mut PageTable {
-    return (addr.as_u64() as *mut PageTable).as_mut().expect("Page table address is 0!");
 }

@@ -24,6 +24,7 @@ impl InterruptHandler for TimerInterruptHandler {
     fn trigger(&mut self) {
         let mut systime = 1;
         self.pending_incs += 1;
+
         if let Some(mut timer) = kernel::timer().try_write() {
             while self.pending_incs > 0 {
                 timer.inc_systime();
@@ -79,8 +80,7 @@ impl Timer {
     }
 
     pub fn plugin(&self) {
-        kernel::interrupt_dispatcher()
-            .assign(InterruptVector::Pit, Box::new(TimerInterruptHandler::new()));
+        kernel::interrupt_dispatcher().assign(InterruptVector::Pit, Box::new(TimerInterruptHandler::new()));
         kernel::apic().allow(InterruptVector::Pit);
     }
 

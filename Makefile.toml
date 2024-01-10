@@ -12,7 +12,7 @@ TARGET = "hhu_tosr"
 CARGO_CFG_TARGET_FAMILY = "${TARGET}"
 SOURCE_DIRECOTRY = "src/"
 OBJECT_DIRECOTRY = "build/"
-MULTIBOOT2_OBJECT = "${OBJECT_DIRECOTRY}/multiboot2.o"
+ASM_OBJECT = "${OBJECT_DIRECOTRY}/boot.o"
 SYSTEM = "${OBJECT_DIRECOTRY}/${TARGET}.bin"
 
 # Build tasks
@@ -24,15 +24,15 @@ alias = "towboot"
 command = "cargo"
 args = [ "build", "-Z", "build-std=core,alloc", "--target", "${TARGET}", "${CARGO_BUILD_OPTION}" ]
 
-[tasks.build-multiboot2-header]
+[tasks.build-asm]
 command = "nasm"
-args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${MULTIBOOT2_OBJECT}", "${SOURCE_DIRECOTRY}/multiboot2.asm" ]
+args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${ASM_OBJECT}", "${SOURCE_DIRECOTRY}/boot.asm" ]
 dependencies = [ "create-object-directory" ]
 
 [tasks.link]
 command = "ld"
-args = [ "-n", "-T", "${SOURCE_DIRECOTRY}/link.ld", "-o", "${SYSTEM}", "${MULTIBOOT2_OBJECT}", "${RUST_OBJECT}" ]
-dependencies = [ "compile", "build-multiboot2-header" ]
+args = [ "-n", "-T", "${SOURCE_DIRECOTRY}/link.ld", "-o", "${SYSTEM}", "${ASM_OBJECT}", "${RUST_OBJECT}" ]
+dependencies = [ "compile", "build-asm" ]
 
 [tasks.create-object-directory]
 command = "mkdir"

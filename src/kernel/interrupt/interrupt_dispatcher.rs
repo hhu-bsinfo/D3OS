@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr;
 use spin::Mutex;
+use x86_64::registers::control::Cr2;
 use x86_64::set_general_handler;
 use x86_64::structures::idt::InterruptStackFrame;
 
@@ -180,6 +181,7 @@ pub fn setup_idt() {
 
     set_general_handler!(&mut idt, handle_exception, 0..31);
     set_general_handler!(&mut idt, handle_interrupt, 32..255);
+    set_general_handler!(&mut idt, handle_page_fault, 14);
 
     unsafe {
         // We need to obtain a static reference to the IDT for the following operation.
@@ -191,13 +193,11 @@ pub fn setup_idt() {
 }
 
 fn handle_exception(frame: InterruptStackFrame, index: u8, error: Option<u64>) {
-    panic!(
-        "CPU Exception: [{} - {:?}]\nError code: [{:?}]\n{:?}",
-        index,
-        InterruptVector::try_from(index).unwrap(),
-        error,
-        frame
-    );
+    panic!("CPU Exception: [{} - {:?}]\nError code: [{:?}]\n{:?}", index, InterruptVector::try_from(index).unwrap(), error, frame);
+}
+
+fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>) {
+    panic!("Page Fault!\nError code: [{:?}]\nAddress: [{:0>16x}]\n{:?}", error, Cr2::read(), frame);
 }
 
 fn handle_interrupt(_frame: InterruptStackFrame, index: u8, _error: Option<u64>) {
@@ -217,27 +217,19 @@ impl InterruptDispatcher {
     pub fn assign(&self, vector: InterruptVector, handler: Box<dyn InterruptHandler>) {
         match self.int_vectors.get(vector as usize) {
             Some(vec) => vec.lock().push(handler),
-            None => panic!(
-                "Assigning interrupt handler to illegal vector number {}!",
-                vector as u8
-            ),
+            None => panic!("Assigning interrupt handler to illegal vector number {}!", vector as u8)
         }
     }
 
     pub fn dispatch(&self, interrupt: u8) {
-        let handler_vec_mutex = self
-            .int_vectors
-            .get(interrupt as usize)
-            .expect("Interrupt Dispatcher: No handler vec assigned!");
+        let handler_vec_mutex = self.int_vectors.get(interrupt as usize).expect("Interrupt Dispatcher: No handler vec assigned!");
         let mut handler_vec = handler_vec_mutex.try_lock();
         while handler_vec.is_none() {
             // We have to force unlock inside the interrupt handler, or else the system will hang forever.
             // While this might be unsafe, it is extremely unlikely that we destroy something here, since we only need read access to the vectors.
             // The only scenario, in which something might break, is when two or more drivers are trying to assign an interrupt handler to the same vector,
             // while an interrupt for that vector occurs.
-            unsafe {
-                handler_vec_mutex.force_unlock();
-            }
+            unsafe { handler_vec_mutex.force_unlock(); }
             handler_vec = handler_vec_mutex.try_lock();
         }
 

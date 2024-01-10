@@ -33,10 +33,7 @@ impl Keyboard {
     }
 
     pub fn plugin(&self) {
-        kernel::interrupt_dispatcher().assign(
-            InterruptVector::Keyboard,
-            Box::new(KeyboardInterruptHandler::default()),
-        );
+        kernel::interrupt_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardInterruptHandler::default()));
         kernel::apic().allow(InterruptVector::Keyboard);
     }
 }

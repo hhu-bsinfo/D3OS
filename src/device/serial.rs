@@ -299,8 +299,7 @@ impl SerialPort {
             Com2 | Com4 => InterruptVector::Com2,
         };
 
-        kernel::interrupt_dispatcher()
-            .assign(vector, Box::new(SerialInterruptHandler::new(self.port)));
+        kernel::interrupt_dispatcher().assign(vector, Box::new(SerialInterruptHandler::new(self.port)));
         kernel::apic().allow(vector);
 
         unsafe { interrupt_reg.write(0x01) } // Enable interrupts

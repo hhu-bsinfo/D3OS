@@ -112,10 +112,8 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
 pub fn init_keyboard() {
     PS2.call_once(|| {
         let mut ps2 = PS2::new();
-        ps2.init_controller()
-            .unwrap_or_else(|err| panic!("Failed to initialize PS2 controller (Error: {:?})", err));
-        ps2.init_keyboard()
-            .unwrap_or_else(|err| panic!("Failed to initialize PS2 keyboard (Error: {:?})", err));
+        ps2.init_controller().unwrap_or_else(|err| panic!("Failed to initialize PS2 controller (Error: {:?})", err));
+        ps2.init_keyboard().unwrap_or_else(|err| panic!("Failed to initialize PS2 keyboard (Error: {:?})", err));
 
         return ps2;
     });
@@ -138,9 +136,7 @@ pub fn idt() -> &'static Mutex<InterruptDescriptorTable> {
 }
 
 pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
-    return ACPI_TABLES
-        .get()
-        .expect("Trying to access ACPI tables before initialization!");
+    return ACPI_TABLES.get().expect("Trying to access ACPI tables before initialization!");
 }
 
 pub fn efi_system_table() -> Option<&'static SystemTable<Runtime>> {
@@ -169,9 +165,7 @@ pub fn scheduler() -> &'static Scheduler {
 }
 
 pub fn apic() -> &'static Apic {
-    return APIC
-        .get()
-        .expect("Trying to access APIC before initialization!");
+    return APIC.get().expect("Trying to access APIC before initialization!");
 }
 
 pub fn timer() -> &'static RwLock<Timer> {
@@ -187,15 +181,11 @@ pub fn serial_port() -> Option<&'static SerialPort> {
 }
 
 pub fn terminal() -> &'static dyn Terminal {
-    return TERMINAL
-        .get()
-        .expect("Trying to access terminal before initialization!");
+    return TERMINAL.get().expect("Trying to access terminal before initialization!");
 }
 
 pub fn ps2_devices() -> &'static PS2 {
-    return PS2
-        .get()
-        .expect("Trying to access keyboard before initialization!");
+    return PS2.get().expect("Trying to access keyboard before initialization!");
 }
 
 #[no_mangle]
