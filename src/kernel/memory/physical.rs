@@ -1,74 +1,176 @@
 use alloc::vec::Vec;
+use core::fmt::{Debug, Formatter};
 use core::ptr;
-use log::debug;
+use log::{debug, info};
 use spin::{Mutex, Once};
 use x86_64::PhysAddr;
-use crate::kernel::memory::{KERNEL_PHYS_SIZE, MemorySpace, PAGE_SIZE};
+use x86_64::structures::paging::frame::PhysFrameRange;
+use x86_64::structures::paging::PhysFrame;
+use crate::kernel::memory::{KERNEL_PHYS_LIMIT, MemorySpace, PAGE_SIZE};
 
 static KERNEL_PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> = Mutex::new(PageFrameListAllocator::new());
 static USER_PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> = Mutex::new(PageFrameListAllocator::new());
-static MAX_PHYSICAL_ADDRESS: Once<PhysAddr> = Once::new();
+static PHYS_LIMIT: Once<PhysFrame> = Once::new();
 
-pub struct MemoryRegion {
-    start: PhysAddr,
-    end: PhysAddr
-}
+/// Initialize page frame allocation with available memory regions, obtained during the boot process.
+pub unsafe fn init(mut regions: Vec<PhysFrameRange>, kernel_heap_end: PhysFrame) {
+    regions.sort_by(|range1, range2| range1.start.cmp(&range2.start));
+    PHYS_LIMIT.call_once(|| regions.iter().max_by(|region1, region2| region1.end.cmp(&region2.end)).unwrap().end);
+    info!("Available physical memory: [{} MiB]", PHYS_LIMIT.get().unwrap().start_address().as_u64() / 1024 / 1024);
 
-impl MemoryRegion {
-    pub const fn new(start: PhysAddr, end: PhysAddr) -> Self {
-        Self { start, end }
-    }
+    // Calculate memory required for page tables to map the whole physical memory
+    let page_table_memory = calc_page_table_memory(4);
 
-    pub fn from_size(start: PhysAddr, size: usize) -> Self {
-        Self { start, end: start + (size - 1) }
-    }
+    // Set kernel limit to heap end
+    let mut kernel_phys_limit = kernel_heap_end;
 
-    pub fn set_start(&mut self, start: PhysAddr) {
-        if start >= self.end {
-            panic!("MemoryRegion: 'start' must be lower than 'end'!");
+    // Calculate physical kernel limit
+    let mut available_kernel_memory = 0;
+    let mut region_iter = regions.iter();
+    while available_kernel_memory < page_table_memory {
+        let required_memory = page_table_memory - available_kernel_memory;
+        if required_memory <= 0 {
+            break;
         }
 
-        self.start = start;
+        let region = region_iter.next().expect("Not enough physical memory for required page tables available!");
+        if region.count() * PAGE_SIZE >= required_memory {
+            // The region is larger than the required memory, so we only use a part of it for the kernel
+            available_kernel_memory = available_kernel_memory + required_memory;
+            kernel_phys_limit = region.start + (required_memory / PAGE_SIZE) as u64;
+        } else {
+            // Use the full region for the kernel
+            available_kernel_memory = available_kernel_memory + region.count() * PAGE_SIZE;
+            kernel_phys_limit = region.end;
+        };
     }
 
-    pub fn start(&self) -> PhysAddr {
-        return self.start;
+    // Physical kernel memory must include kernel heap
+    if kernel_phys_limit < kernel_heap_end {
+        kernel_phys_limit = kernel_heap_end;
     }
 
-    pub fn end(&self) -> PhysAddr {
-        return self.end;
+    info!("Physical kernel memory: [{} MiB]", kernel_phys_limit.start_address().as_u64() / 1024 / 1024);
+    KERNEL_PHYS_LIMIT.call_once(|| kernel_phys_limit);
+
+    for mut region in regions {
+        // Check if the given region transcends over the physical kernel limit
+        if region.start < kernel_phys_limit && region.end >= kernel_phys_limit {
+            // Insert region partially up to the physical kernel limit
+            let kernel_region = PhysFrameRange { start: region.start, end: kernel_phys_limit };
+            free(kernel_region);
+
+            // Calculate remaining region
+            region = PhysFrameRange { start: kernel_phys_limit, end: region.end };
+        }
+
+        free(region);
     }
 
-    pub fn size(&self) -> usize {
-        return (self.end - self.start + 1) as usize;
+
+    debug!("Kernel page frame allocator:\n{:?}", KERNEL_PAGE_FRAME_ALLOCATOR.lock());
+    debug!("User page frame allocator:\n{:?}", USER_PAGE_FRAME_ALLOCATOR.lock());
+}
+
+/// Allocate `frame_count` contiguous page frames in either kernel or user space, depending on `space`.
+pub fn alloc(frame_count: usize, space: MemorySpace) -> PhysFrameRange {
+    unsafe {
+        return match space {
+            MemorySpace::Kernel => KERNEL_PAGE_FRAME_ALLOCATOR.lock().alloc_block(frame_count),
+            MemorySpace::User => USER_PAGE_FRAME_ALLOCATOR.lock().alloc_block(frame_count)
+        }
     }
+}
+
+/// Free `frame_count` contiguous page frames starting at `addr`.
+/// Unsafe because invalid parameters may break the list allocator.
+pub unsafe fn free(frames: PhysFrameRange) {
+    if frames.start < kernel_phys_limit() {
+        KERNEL_PAGE_FRAME_ALLOCATOR.lock().free_block(frames);
+    } else {
+        USER_PAGE_FRAME_ALLOCATOR.lock().free_block(frames);
+    }
+}
+
+pub fn phys_limit() -> PhysFrame {
+    return *PHYS_LIMIT.get().expect("PageFrameAllocator: 'PHYS_LIMIT' accessed before initialization!");
+}
+
+pub fn kernel_phys_limit() -> PhysFrame {
+    return *KERNEL_PHYS_LIMIT.get().expect("PageFrameAllocator: 'KERNEL_PHYS_LIMIT' accessed before initialization!");
+}
+
+fn calc_page_table_memory(levels: usize) -> usize {
+    let available_memory: usize = phys_limit().start_address().align_up(0x200000u64).as_u64() as usize;
+
+    let mut page_table_sizes = Vec::<usize>::with_capacity(levels);
+    for level in 0..levels {
+        page_table_sizes.push(0);
+        if level == 0 {
+            page_table_sizes[level] = available_memory / PAGE_SIZE / 512
+        } else {
+            page_table_sizes[level] = page_table_sizes[level - 1] / 512;
+            if page_table_sizes[level] == 0 {
+                page_table_sizes[level] = 1;
+            }
+        }
+    }
+
+    let needed_memory = page_table_sizes.iter().sum::<usize>() * PAGE_SIZE;
+    debug!("Page table sizes required to map physical memory: {:?}", page_table_sizes);
+    debug!("Required page table memory: [{} KiB]", needed_memory / 1024);
+
+    return needed_memory;
 }
 
 /// Entry in the free list.
 /// Represents a block of available physical memory.
 struct PageFrameNode {
-    size: usize,
+    frame_count: usize,
     next: Option<&'static mut PageFrameNode>
 }
 
 impl PageFrameNode {
-    const fn new(size: usize) -> Self {
-        Self { size, next: None }
+    const fn new(frame_count: usize) -> Self {
+        Self { frame_count, next: None }
     }
 
-    fn start(&self) -> PhysAddr {
-        return PhysAddr::new(ptr::from_ref(self) as u64);
+    fn range(&self) -> PhysFrameRange {
+        let start = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(self) as u64)).unwrap();
+        let end = start + self.frame_count as u64;
+
+        return PhysFrameRange { start, end };
     }
 
-    fn end(&self) -> PhysAddr {
-        return self.start() + self.size - 1u64;
+    fn start(&self) -> PhysFrame {
+        return PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(self) as u64)).unwrap();
+    }
+
+    fn end(&self) -> PhysFrame {
+        return self.start() + self.frame_count as u64;
     }
 }
 
 /// Manages block of available physical memory as a linked list
-/// Since each page frame is exactly 4 KiB large, allocations must a multiple for 4096.
+/// Since each page frame is exactly 4 KiB large, allocations are always a multiple of 4096.
 struct PageFrameListAllocator {
     head: PageFrameNode
+}
+
+impl Debug for PageFrameListAllocator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let mut available: usize = 0;
+
+        let mut current = &self.head;
+        while let Some(block) = &current.next {
+            write!(f, "{:?}\n", block.range())?;
+            available = available + block.frame_count;
+
+            current = current.next.as_ref().unwrap();
+        }
+
+        write!(f, "Available memory: [{} KiB]", available * PAGE_SIZE / 1024)
+    }
 }
 
 impl PageFrameListAllocator {
@@ -77,12 +179,9 @@ impl PageFrameListAllocator {
     }
 
     /// Insert a new block, sorted ascending by its memory address.
-    unsafe fn insert(&mut self, addr: PhysAddr, size: usize) {
-        assert_eq!(addr.as_u64() % PAGE_SIZE as u64, 0);
-        assert_eq!(size % PAGE_SIZE, 0);
-
-        let mut new_block = PageFrameNode::new(size);
-        let new_block_ptr = addr.as_u64() as *mut PageFrameNode;
+    unsafe fn insert(&mut self, frames: PhysFrameRange) {
+        let mut new_block = PageFrameNode::new(frames.count());
+        let new_block_ptr = frames.start.start_address().as_u64() as *mut PageFrameNode;
 
         // Check if list is empty
         if self.head.next.is_none() {
@@ -96,7 +195,7 @@ impl PageFrameListAllocator {
         // List is not empty -> Search for correct position and insert new block
         let mut current = &mut self.head;
         while let Some(ref mut block) = current.next {
-            if block.start() > addr {
+            if block.start().start_address() > frames.start.start_address() {
                 new_block.next = current.next.take();
                 new_block_ptr.write(new_block);
                 current.next = Some(&mut *new_block_ptr);
@@ -114,10 +213,10 @@ impl PageFrameListAllocator {
     }
 
     /// Search a free memory block.
-    fn find_free_block(&mut self, size: usize) -> Option<&'static mut PageFrameNode> {
+    fn find_free_block(&mut self, frame_count: usize) -> Option<&'static mut PageFrameNode> {
         let mut current = &mut self.head;
         while let Some(ref mut block) = current.next {
-            if block.size >= size {
+            if block.frame_count >= frame_count {
                 let next = block.next.take();
                 let ret = Some(current.next.take().unwrap());
                 current.next = next;
@@ -133,18 +232,15 @@ impl PageFrameListAllocator {
     }
 
     /// Allocate `frame_count` page frames.
-    unsafe fn alloc_block(&mut self, frame_count: usize) -> PhysAddr {
-        let size = frame_count * PAGE_SIZE;
-
-        match self.find_free_block(size) {
+    unsafe fn alloc_block(&mut self, frame_count: usize) -> PhysFrameRange {
+        match self.find_free_block(frame_count) {
             Some(block) => {
-                let alloc_end = block.start() + (size - 1);
-                let remaining_block_size = block.end() - alloc_end;
-                if remaining_block_size > 0 {
-                    self.insert(alloc_end + 1u64, remaining_block_size as usize);
+                let remaining = PhysFrameRange { start: block.start() + frame_count as u64, end: block.end() };
+                if remaining.count() > 0 {
+                    self.insert(remaining);
                 }
                 
-                return block.start();
+                return PhysFrameRange { start: block.start(), end: remaining.start };
             },
             None => panic!("PageFrameAllocator: Out of memory!")
         }
@@ -152,33 +248,28 @@ impl PageFrameListAllocator {
 
     /// Free a block of memory, consisting of at least one page frame.
     /// The block is inserted ascending by address and fused with its neighbours, if possible.
-    unsafe fn free_block(&mut self, addr: PhysAddr, frame_count: usize) {
-        assert_eq!(addr.as_u64() % PAGE_SIZE as u64, 0);
-
-        let free_start = addr;
-        let free_end = addr - 1u64 + frame_count * PAGE_SIZE;
-
+    unsafe fn free_block(&mut self, frames: PhysFrameRange) {
         let mut current = &mut self.head;
         let new_block_ptr: *mut PageFrameNode;
 
         // Run through list and check if fusion is possible
         while let Some(ref mut block) = current.next {
-            if free_end + 1u64 == block.start() {
+            if frames.end == block.start() {
                 // The freed memory block extends 'block' from the bottom
-                let mut new_block = PageFrameNode::new(block.size + frame_count * PAGE_SIZE);
-                new_block_ptr = free_start.as_u64() as *mut PageFrameNode;
+                let mut new_block = PageFrameNode::new(block.frame_count + frames.count());
+                new_block_ptr = frames.start.start_address().as_u64() as *mut PageFrameNode;
                 new_block.next = block.next.take();
                 new_block_ptr.write(new_block);
 
                 return;
-            } else if block.end() + 1u64 == free_start {
+            } else if block.end() == frames.start {
                 // The freed memory block extends 'block' from the top
-                let new_block = PageFrameNode::new(block.size + frame_count * PAGE_SIZE);
-                new_block_ptr = block.start().as_u64() as *mut PageFrameNode;
+                let new_block = PageFrameNode::new(block.frame_count + frames.count());
+                new_block_ptr = block.start().start_address().as_u64() as *mut PageFrameNode;
                 new_block_ptr.write(new_block);
 
                 return;
-            } else if block.end() + 1u64 < free_start {
+            } else if block.end() < frames.start {
                 // The freed memory block does not extend any existing block and needs a new entry in the list
                 break;
             }
@@ -186,72 +277,6 @@ impl PageFrameListAllocator {
             current = current.next.as_mut().unwrap();
         }
 
-        self.insert(addr, frame_count * PAGE_SIZE);
-    }
-}
-
-pub fn max_physical_address() -> PhysAddr {
-    return *MAX_PHYSICAL_ADDRESS.get().expect("PageFrameAllocator: MAX_PHYSICAL_ADDRESS accessed before initialization!");
-}
-
-/// Initialize page frame allocation with available memory regions, obtained during the boot process.
-pub unsafe fn init(regions: Vec<MemoryRegion>) {
-    let mut max_phys_addr: PhysAddr = PhysAddr::zero();
-
-    for mut region in regions {
-        // Skip invalid entries
-        if region.start >= region.end {
-            continue;
-        }
-
-        // Check if the given region transcends over the physical kernel limit
-        if region.start < KERNEL_PHYS_SIZE && region.end >= KERNEL_PHYS_SIZE {
-            // Insert region partially up to the physical kernel limit
-            let kernel_region = MemoryRegion::new(region.start, KERNEL_PHYS_SIZE - 1u64);
-            insert_memory_region(kernel_region);
-
-            // Calculate remaining region
-            region = MemoryRegion::new(KERNEL_PHYS_SIZE, region.end);
-        }
-
-        if region.end > max_phys_addr {
-            max_phys_addr = region.end;
-        }
-
-        insert_memory_region(region);
-    }
-
-    MAX_PHYSICAL_ADDRESS.call_once(|| max_phys_addr);
-}
-
-/// Allocate `frame_count` contiguous page frames in either kernel or user space, depending on `space`.
-pub fn alloc(frame_count: usize, space: MemorySpace) -> PhysAddr {
-    unsafe {
-        return match space {
-            MemorySpace::Kernel => KERNEL_PAGE_FRAME_ALLOCATOR.lock().alloc_block(frame_count),
-            MemorySpace::User => USER_PAGE_FRAME_ALLOCATOR.lock().alloc_block(frame_count)
-        }
-    }
-}
-
-/// Free `frame_count` contiguous page frames starting at `addr`.
-/// Unsafe because invalid parameters may break the list allocator.
-pub unsafe fn free(addr: PhysAddr, frame_count: usize) {
-    if addr < KERNEL_PHYS_SIZE {
-        KERNEL_PAGE_FRAME_ALLOCATOR.lock().free_block(addr, frame_count);
-    } else {
-        USER_PAGE_FRAME_ALLOCATOR.lock().free_block(addr, frame_count);
-    }
-}
-
-/// Insert a memory region into the list. Start and end addresses of each region are aligned before insertion.
-unsafe fn insert_memory_region(region: MemoryRegion) {
-    let aligned_region = MemoryRegion::new(region.start.align_down(PAGE_SIZE as u64), region.end.align_up(PAGE_SIZE as u64) - 1u64);
-    debug!("Inserting region (Start: 0x{:0>16x}, End: 0x{:0>16x})", aligned_region.start.as_u64(), aligned_region.end.as_u64());
-
-    if aligned_region.start > (KERNEL_PHYS_SIZE - 1u64) {
-        USER_PAGE_FRAME_ALLOCATOR.lock().insert(aligned_region.start, aligned_region.size());
-    } else {
-        KERNEL_PAGE_FRAME_ALLOCATOR.lock().insert(aligned_region.start, aligned_region.size());
+        self.insert(frames);
     }
 }

@@ -3,10 +3,9 @@ use log::info;
 use spin::{Mutex, Once};
 use x86_64::structures::paging::{Page, PageTable, PageTableFlags, PageTableIndex, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
-use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::page::PageRange;
 use crate::kernel::memory::{MemorySpace, PAGE_SIZE, physical};
-use crate::kernel::memory::physical::max_physical_address;
+use crate::kernel::memory::physical::phys_limit;
 
 static VIRTUAL_MEMORY_MANAGER: Once<Mutex<VirtualMemoryManager>> = Once::new();
 
@@ -18,11 +17,11 @@ struct VirtualMemoryManager {
 unsafe impl Send for VirtualMemoryManager {}
 unsafe impl Sync for VirtualMemoryManager {}
 
-pub fn init() {
-    let max_phys_addr = max_physical_address().align_up(PAGE_SIZE as u64);
+pub fn create_kernel_mapping() -> PhysFrame {
+    let max_phys_addr = phys_limit().start_address();
     let page_count = max_phys_addr.as_u64() as usize / PAGE_SIZE;
 
-    info!("Mapping [{}] pages for [{}] MiB of physical memory", page_count, max_phys_addr.as_u64() / 1024 / 1024);
+    info!("Mapping [{}] pages for [{} MiB] of physical memory", page_count, max_phys_addr.as_u64() / 1024 / 1024);
 
     VIRTUAL_MEMORY_MANAGER.call_once(|| Mutex::new(VirtualMemoryManager::new(4)));
 
@@ -30,8 +29,7 @@ pub fn init() {
     map(range, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
     let manager = VIRTUAL_MEMORY_MANAGER.get().unwrap().lock();
-    let root_table_address = PhysFrame::from_start_address(PhysAddr::new(manager.root_table as u64)).unwrap();
-    unsafe { Cr3::write(root_table_address, Cr3Flags::empty()) };
+    return PhysFrame::from_start_address(PhysAddr::new(manager.root_table as u64)).unwrap();
 }
 
 pub fn map(pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
@@ -45,8 +43,8 @@ fn page_table_index(virt_addr: VirtAddr, level: usize) -> PageTableIndex {
 
 impl VirtualMemoryManager {
     pub fn new(depth: usize) -> Self {
-        let table_addr = physical::alloc(1, MemorySpace::Kernel);
-        let root_table = table_addr.as_u64() as *mut PageTable;
+        let table_addr = physical::alloc(1, MemorySpace::Kernel).start;
+        let root_table = table_addr.start_address().as_u64() as *mut PageTable;
 
         unsafe { root_table.as_mut().unwrap().zero(); }
         Self { root_table, depth }
@@ -65,8 +63,8 @@ impl VirtualMemoryManager {
             for entry in table.iter_mut().skip(start_index) {
                 let next_level_table;
                 if entry.addr().is_null() { // Entry is empty -> Allocate new page frame
-                    let phys_addr = physical::alloc(1, MemorySpace::Kernel);
-                    entry.set_addr(phys_addr, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+                    let phys_addr = physical::alloc(1, MemorySpace::Kernel).start;
+                    entry.set_addr(phys_addr.start_address(), PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
                     next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
                     next_level_table.zero();
@@ -104,8 +102,8 @@ impl VirtualMemoryManager {
                             break;
                         }
 
-                        let frame_addr = physical::alloc(1, MemorySpace::User);
-                        entry.set_addr(frame_addr, flags);
+                        let frame_addr = physical::alloc(1, MemorySpace::User).start;
+                        entry.set_addr(frame_addr.start_address(), flags);
                     }
                 }
             }

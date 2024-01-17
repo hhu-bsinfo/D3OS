@@ -3,6 +3,8 @@ use acpi::PhysicalMapping;
 use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
 use core::ptr::NonNull;
 use linked_list_allocator::LockedHeap;
+use x86_64::structures::paging::frame::PhysFrameRange;
+use crate::kernel::memory::PAGE_SIZE;
 
 pub struct KernelAllocator {
     heap: LockedHeap,
@@ -92,8 +94,8 @@ impl KernelAllocator {
         Self { heap: LockedHeap::empty() }
     }
 
-    pub unsafe fn init(&self, heap_start_address: usize, heap_end_address: usize) {
-        self.heap.lock().init(heap_start_address as *mut u8, heap_end_address - heap_start_address);
+    pub unsafe fn init(&self, frames: &PhysFrameRange) {
+        self.heap.lock().init(frames.start.start_address().as_u64() as *mut u8, frames.count() * PAGE_SIZE);
     }
 
     pub fn is_initialized(&self) -> bool {
