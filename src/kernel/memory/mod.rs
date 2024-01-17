@@ -1,4 +1,5 @@
-use x86_64::PhysAddr;
+use spin::Once;
+use x86_64::structures::paging::PhysFrame;
 
 pub mod alloc;
 pub mod physical;
@@ -11,4 +12,4 @@ pub enum MemorySpace {
 }
 
 pub const PAGE_SIZE: usize = 0x1000;
-pub const KERNEL_PHYS_SIZE: PhysAddr = PhysAddr::new(0x4000000); // 64 MiB physical memory for the kernel
+pub static KERNEL_PHYS_LIMIT: Once<PhysFrame> = Once::new();

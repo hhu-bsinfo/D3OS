@@ -28,9 +28,9 @@ use core::panic::PanicInfo;
 use core::ptr;
 use chrono::DateTime;
 use log::{debug, error, info, Level, Log, Record};
-use multiboot2::{BootInformation, BootInformationHeader, MemoryAreaType, Tag};
+use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, Tag};
 use uefi::prelude::*;
-use uefi::table::boot::PAGE_SIZE;
+use uefi::table::boot::{MemoryMap, PAGE_SIZE};
 use uefi::table::Runtime;
 use uefi_raw::table::boot::MemoryType;
 use x86_64::instructions::interrupts;
@@ -39,12 +39,13 @@ use x86_64::instructions::tables::load_tss;
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
-use x86_64::structures::paging::{Page, PageTableFlags};
+use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
+use x86_64::registers::control::{Cr3, Cr3Flags};
+use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use crate::kernel::memory;
 use crate::kernel::memory::MemorySpace;
-use crate::kernel::memory::physical::MemoryRegion;
 
 // insert other modules
 #[macro_use]
@@ -63,6 +64,7 @@ fn panic(info: &PanicInfo) -> ! {
             .args(*info.message().unwrap_or(&Arguments::new_const(&["A panic occurred!"])))
             .build();
 
+        unsafe { kernel::logger().force_unlock() };
         let logger = kernel::logger().lock();
         unsafe { kernel::logger().force_unlock() }; // log() also calls kernel::logger().lock()
         logger.log(&record);
@@ -81,7 +83,7 @@ extern "C" {
     static ___KERNEL_DATA_END__: u64;
 }
 
-const INIT_HEAP_SIZE: usize = 0x400000;
+const INIT_HEAP_PAGES: usize = 0x400;
 
 #[no_mangle]
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
@@ -100,17 +102,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     let multiboot = unsafe { BootInformation::load(multiboot2_addr).expect("Failed to get Multiboot2 information!") };
 
-    // Initialize temporary heap, after which format strings may be used in log messages and panics
-    let kernel_image_region = kernel_image_region();
-    let heap_start = kernel_image_region.end() + 1u64;
-    let heap_end = heap_start + (INIT_HEAP_SIZE - 1);
+    let mut heap_region = PhysFrameRange { start: PhysFrame::from_start_address(PhysAddr::zero()).unwrap(), end: PhysFrame::from_start_address(PhysAddr::zero()).unwrap() };
+    let bootloader_memory_regions: Vec<PhysFrameRange>;
 
-    info!("Initializing temporary heap");
-    unsafe { kernel::allocator().init(heap_start.as_u64() as usize, heap_end.as_u64() as usize); }
-    debug!("Temporary heap is initialized (Start: [{} MiB], End: [{} MiB]]", heap_start.as_u64() / 1024 / 1024, heap_end.as_u64() / 1024 / 1024);
-
-    let mut bootloader_memory_regions: Vec<MemoryRegion> = Vec::new();
-
+    // Search memory map, provided by bootloader of EFI, for usable memory
+    // and initialize kernel heap, after which format strings may be used in logs and panics.
     if let Some(_) = multiboot.efi_bs_not_exited_tag() {
         // EFI boot services have not been exited and we obtain access to the memory map and EFI runtime services by exiting them manually
         info!("EFI boot services have not been exited");
@@ -128,91 +124,44 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         info!("Exiting EFI boot services to obtain runtime system table and memory map");
         let (runtime_table, memory_map) = system_table.exit_boot_services(MemoryType::LOADER_DATA);
 
-        info!("Searching memory map for available regions");
-        for area in memory_map.entries() {
-            if area.ty == MemoryType::CONVENTIONAL {
-                let region = MemoryRegion::from_size(PhysAddr::new(area.phys_start), area.page_count as usize * PAGE_SIZE);
-                bootloader_memory_regions.push(region);
-            }
-        }
-
+        bootloader_memory_regions = scan_efi_memory_map(&memory_map, &mut heap_region);
         kernel::init_efi_system_table(runtime_table);
-    } else if let Some(memory_map) = multiboot.memory_map_tag() {
-        // EFI services have been exited, but the bootloader has provided us with a Multiboot2 memory map
-        info!("EFI boot services have been exited");
-        info!("Bootloader provides Multiboot2 memory map");
-
-        info!("Searching memory map for available regions");
-        for area in memory_map.memory_areas() {
-            if area.typ() == MemoryAreaType::Available {
-                let region = MemoryRegion::new(PhysAddr::new(area.start_address()), PhysAddr::new(area.end_address() - 1));
-                bootloader_memory_regions.push(region);
-            }
-        }
-
-    } else if let Some(memory_map) = multiboot.efi_memory_map_tag() {
-        // EFI services have been exited, but the bootloader has provided us with the EFI memory map
-        info!("EFI boot services have been exited");
-        info!("Bootloader provides EFI memory map");
-
-        info!("Searching memory map for available regions");
-        for area in memory_map.memory_areas() {
-            if area.ty.0 == MemoryType::CONVENTIONAL.0 {
-                let region = MemoryRegion::from_size(PhysAddr::new(area.phys_start), area.page_count as usize * PAGE_SIZE);
-                bootloader_memory_regions.push(region);
-            }
-        }
     } else {
-        panic!("No memory information available!");
+        info!("EFI boot services have been exited");
+        if let Some(memory_map) = multiboot.efi_memory_map_tag() {
+            // EFI services have been exited, but the bootloader has provided us with the EFI memory map
+            info!("Bootloader provides EFI memory map");
+            bootloader_memory_regions = scan_efi_multiboot2_memory_map(memory_map, &mut heap_region);
+        } else if let Some(memory_map) = multiboot.memory_map_tag() {
+            // EFI services have been exited, but the bootloader has provided us with a Multiboot2 memory map
+            info!("Bootloader provides Multiboot2 memory map");
+            bootloader_memory_regions = scan_multiboot2_memory_map(memory_map, &mut heap_region);
+        } else {
+            panic!("No memory information available!");
+        }
     }
 
     // Setup global descriptor table
     // Has to be done after EFI boot services have been exited, since they rely on their own GDT
     info!("Initializing GDT");
-    setup_gdt();
+    init_gdt();
 
     // The bootloader marks the kernel image region as available, so we need to check for regions overlapping
     // with the kernel image and temporary heap and build a new memory map with the kernel image and heap cut out.
-    // Furthermore, we need to make sure, that no region start at address 0, ot avoid null pointer panics.
-    let mut available_memory_regions = Vec::new();
-    let kernel_region = MemoryRegion::new(kernel_image_region.start(), heap_end);
-
-    for mut region in bootloader_memory_regions {
-        if region.start() == PhysAddr::zero() {
-            if region.end() > PhysAddr::new(memory::PAGE_SIZE as u64) {
-                region.set_start(PhysAddr::new(memory::PAGE_SIZE as u64))
-            } else {
-                continue
-            }
-        }
-
-        if region.start() < kernel_region.start() && region.end() >= kernel_region.start() { // Region starts below the kernel image
-            if region.end() <= kernel_region.end() { // Region starts below and ends inside the kernel image
-                available_memory_regions.push(MemoryRegion::new(region.start(), kernel_region.start() - 1u64));
-            } else { // Regions starts below and ends above the kernel image
-                let lower_region = MemoryRegion::new(region.start(), kernel_region.start() - 1u64);
-                let upper_region = MemoryRegion::new(kernel_region.end() + 1u64, region.end());
-                available_memory_regions.push(lower_region);
-                available_memory_regions.push(upper_region);
-            }
-        } else if region.start() <= kernel_region.end() && region.end() >= kernel_region.start() { // Region starts within the kernel image
-            if region.end() <= kernel_region.end() { // Regions start within and ends within the kernel image
-                continue;
-            } else { // Region starts within and ends above the kernel image
-                available_memory_regions.push(MemoryRegion::new(kernel_region.end() + 1u64, region.end()));
-            }
-        } else { // Region does not interfere with the kernel image
-            available_memory_regions.push(region);
-        }
-    }
+    // Furthermore, we need to make sure, that no region starts at address 0, to avoid null pointer panics.
+    let null_region = PhysFrameRange { start: PhysFrame::from_start_address(PhysAddr::zero()).unwrap(), end: PhysFrame::from_start_address(PhysAddr::new(PAGE_SIZE as u64)).unwrap() };
+    let mut available_memory_regions = cut_region(bootloader_memory_regions, null_region);
+    available_memory_regions = cut_region(available_memory_regions, kernel_image_region());
+    available_memory_regions = cut_region(available_memory_regions, heap_region);
 
     // Initialize physical memory management
     info!("Initializing page frame allocator");
-    unsafe { memory::physical::init(available_memory_regions); }
+    unsafe { memory::physical::init(available_memory_regions, heap_region.end); }
 
     // Initialize virtual memory management
     info!("Initializing paging");
-    memory::r#virtual::init();
+    let page_table_addr = memory::r#virtual::create_kernel_mapping();
+    unsafe { Cr3::write(page_table_addr, Cr3Flags::empty()) };
 
     // Initialize serial port and enable serial logging
     kernel::init_serial_port();
@@ -333,22 +282,13 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     scheduler.start();
 }
 
-fn kernel_image_region() -> MemoryRegion {
-    let start: PhysAddr;
-    let mut end: PhysAddr;
-
-    unsafe {
-        start = PhysAddr::new(ptr::from_ref(&___KERNEL_DATA_START__) as u64);
-        end = PhysAddr::new(ptr::from_ref(&___KERNEL_DATA_END__) as u64);
-    }
-
-    // Align up to 1 MiB
-    end = end.align_up(0x100000u64);
-
-    return MemoryRegion::new(start, end);
+fn init_kernel_heap(heap_region: &PhysFrameRange) {
+    info!("Initializing kernel heap");
+    unsafe { kernel::allocator().init(heap_region); }
+    debug!("Kernel heap is initialized (Start: [{} KiB], End: [{} KiB]])", heap_region.start.start_address().as_u64() / 1024, heap_region.end.start_address().as_u64() / 1024);
 }
 
-fn setup_gdt() {
+fn init_gdt() {
     let mut gdt = kernel::gdt().lock();
     let tss = kernel::tss().lock();
 
@@ -381,4 +321,121 @@ fn setup_gdt() {
         FS::set_reg(SegmentSelector::new(0, Ring0));
         GS::set_reg(SegmentSelector::new(0, Ring0));
     }
+}
+
+fn kernel_image_region() -> PhysFrameRange {
+    let start: PhysFrame;
+    let end: PhysFrame;
+
+    unsafe {
+        start = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(&___KERNEL_DATA_START__) as u64)).expect("Kernel code is not page aligned!");
+        end = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(&___KERNEL_DATA_END__) as u64).align_up(PAGE_SIZE as u64)).unwrap();
+    }
+
+    return PhysFrameRange { start, end };
+}
+
+fn scan_efi_memory_map(memory_map: &MemoryMap, heap_region: &mut PhysFrameRange) -> Vec<PhysFrameRange> {
+    info!("Searching memory map for region usable for kernel heap");
+    let kernel_region = kernel_image_region();
+    let heap_area = memory_map.entries()
+        .filter(|area| (area.ty == MemoryType::CONVENTIONAL || area.ty == MemoryType::LOADER_CODE || area.ty == MemoryType::LOADER_DATA
+            || area.ty == MemoryType::BOOT_SERVICES_CODE || area.ty == MemoryType::BOOT_SERVICES_DATA)
+            && area.page_count >= INIT_HEAP_PAGES as u64 && area.phys_start >= kernel_region.end.start_address().as_u64())
+        .min_by(|area1, area2| area1.phys_start.cmp(&area2.phys_start))
+        .expect("Failed to find memory region usable for kernel heap!");
+
+    heap_region.start = PhysFrame::from_start_address(PhysAddr::new(heap_area.phys_start)).unwrap();
+    heap_region.end = heap_region.start + INIT_HEAP_PAGES as u64;
+    init_kernel_heap(heap_region);
+
+    info!("Searching memory map for available regions");
+    let mut regions: Vec<PhysFrameRange> = Vec::new();
+    memory_map.entries()
+        .filter(|area| area.ty == MemoryType::CONVENTIONAL || area.ty == MemoryType::LOADER_CODE || area.ty == MemoryType::LOADER_DATA
+            || area.ty == MemoryType::BOOT_SERVICES_CODE || area.ty == MemoryType::BOOT_SERVICES_DATA)
+        .for_each(|area| {
+            let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
+            regions.push(PhysFrameRange { start, end: start + area.page_count });
+        });
+
+    return regions;
+}
+
+fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag, heap_region: &mut PhysFrameRange) -> Vec<PhysFrameRange> {
+    info!("Searching memory map for region usable for kernel heap");
+    let kernel_region = kernel_image_region();
+    let heap_area = memory_map.memory_areas().filter(|area|
+        (area.ty.0 == MemoryType::CONVENTIONAL.0 || area.ty.0 == MemoryType::LOADER_CODE.0 || area.ty.0 == MemoryType::LOADER_DATA.0
+            || area.ty.0 == MemoryType::BOOT_SERVICES_CODE.0 || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0) // .0 necessary because of different version dependencies to uefi-crate
+            && area.page_count >= INIT_HEAP_PAGES as u64 && area.phys_start >= kernel_region.end.start_address().as_u64())
+        .min_by(|area1, area2| area1.phys_start.cmp(&area2.phys_start))
+        .expect("Failed to find memory region usable for kernel heap!");
+
+    heap_region.start = PhysFrame::from_start_address(PhysAddr::new(heap_area.phys_start)).unwrap();
+    heap_region.end = heap_region.start + INIT_HEAP_PAGES as u64;
+    init_kernel_heap(heap_region);
+
+    info!("Searching memory map for available regions");
+    let mut regions: Vec<PhysFrameRange> = Vec::new();
+    memory_map.memory_areas()
+        .filter(|area| area.ty.0 == MemoryType::CONVENTIONAL.0 || area.ty.0 == MemoryType::LOADER_CODE.0 || area.ty.0 == MemoryType::LOADER_DATA.0
+            || area.ty.0 == MemoryType::BOOT_SERVICES_CODE.0 || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0) // .0 necessary because of different version dependencies to uefi-crate
+        .for_each(|area| {
+            let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
+            regions.push(PhysFrameRange { start, end: start + area.page_count });
+        });
+
+    return regions;
+}
+
+fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag, heap_region: &mut PhysFrameRange) -> Vec<PhysFrameRange> {
+    info!("Searching memory map for region usable for kernel heap");
+    let kernel_region = kernel_image_region();
+    let heap_area = memory_map.memory_areas().iter().filter(|area|
+        area.typ() == MemoryAreaType::Available && area.size() / PAGE_SIZE as u64 >= INIT_HEAP_PAGES as u64 && area.start_address() >= kernel_region.end.start_address().as_u64())
+        .min_by(|area1, area2| area1.start_address().cmp(&area2.start_address()))
+        .expect("Failed to find memory region usable for kernel heap!");
+
+    heap_region.start = PhysFrame::from_start_address(PhysAddr::new(heap_area.start_address()).align_up(PAGE_SIZE as u64)).unwrap();
+    heap_region.end = heap_region.start + INIT_HEAP_PAGES as u64;
+    init_kernel_heap(heap_region);
+
+    info!("Searching memory map for available regions");
+    let mut regions: Vec<PhysFrameRange> = Vec::new();
+    memory_map.memory_areas().iter()
+        .filter(|area| area.typ() == MemoryAreaType::Available)
+        .for_each(|area| {
+            regions.push(PhysFrameRange {
+                start: PhysFrame::from_start_address(PhysAddr::new(area.start_address()).align_up(PAGE_SIZE as u64)).unwrap(),
+                end: PhysFrame::from_start_address(PhysAddr::new(area.end_address()).align_down(PAGE_SIZE as u64)).unwrap()
+            });
+        });
+
+    return regions;
+}
+
+fn cut_region(regions: Vec<PhysFrameRange>, reserved_region: PhysFrameRange) -> Vec<PhysFrameRange>{
+    let mut new_regions: Vec<PhysFrameRange> = Vec::new();
+
+    for region in regions {
+        if region.start < reserved_region.start && region.end >= reserved_region.start { // Region starts below the reserved region
+            if region.end <= reserved_region.end { // Region starts below and ends inside the reserved region
+                new_regions.push(PhysFrameRange { start: region.start, end: reserved_region.start });
+            } else { // Regions starts below and ends above the kernel image
+                new_regions.push(PhysFrameRange { start: region.start, end: reserved_region.start }); // Region below reserved region
+                new_regions.push(PhysFrameRange { start: reserved_region.end, end: region.end }); // Region above reserved region
+            }
+        } else if region.start <= reserved_region.end && region.end >= reserved_region.start { // Region starts within the reserved region
+            if region.end <= reserved_region.end { // Regions start within and ends within the reserved region
+                continue
+            } else { // Region starts within and ends above the reserved region
+                new_regions.push(PhysFrameRange { start: reserved_region.end, end: region.end });
+            }
+        } else { // Region does not interfere with the reserved region
+            new_regions.push(region);
+        }
+    }
+
+    return new_regions;
 }
