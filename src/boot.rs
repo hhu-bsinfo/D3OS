@@ -12,7 +12,6 @@
 #![no_std]
 
 extern crate alloc;
-extern crate tinyrlibc;
 
 use crate::kernel::interrupt::interrupt_dispatcher;
 use crate::kernel::syscall::syscall_dispatcher;
