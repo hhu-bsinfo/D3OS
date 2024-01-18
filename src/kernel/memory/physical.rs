@@ -269,7 +269,7 @@ impl PageFrameListAllocator {
                 new_block_ptr.write(new_block);
 
                 return;
-            } else if block.end() < frames.start {
+            } else if block.end() > frames.start {
                 // The freed memory block does not extend any existing block and needs a new entry in the list
                 break;
             }
