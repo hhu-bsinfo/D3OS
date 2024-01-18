@@ -22,7 +22,7 @@ alias = "towboot"
 
 [tasks.compile]
 command = "cargo"
-args = [ "build", "-Z", "build-std=core,alloc", "--target", "${TARGET}", "${CARGO_BUILD_OPTION}" ]
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${TARGET}", "${CARGO_BUILD_OPTION}" ]
 
 [tasks.build-asm]
 command = "nasm"
