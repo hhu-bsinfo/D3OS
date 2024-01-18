@@ -160,8 +160,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize virtual memory management
     info!("Initializing paging");
-    let page_table_addr = memory::r#virtual::create_kernel_mapping();
-    unsafe { Cr3::write(page_table_addr, Cr3Flags::empty()) };
+    let address_space = memory::r#virtual::create_address_space();
+    unsafe { Cr3::write(address_space.read().page_table_address(), Cr3Flags::empty()) };
 
     // Initialize serial port and enable serial logging
     kernel::init_serial_port();
@@ -176,7 +176,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     let fb_start_page = Page::from_start_address(VirtAddr::new(fb_info.address())).expect("Framebuffer address is not page aligned!");
     let fb_end_page = Page::from_start_address(VirtAddr::new(fb_info.address() + (fb_info.height() * fb_info.pitch()) as u64).align_up(PAGE_SIZE as u64)).unwrap();
-    memory::r#virtual::map(PageRange { start: fb_start_page, end: fb_end_page }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE | PageTableFlags::NO_CACHE);
+    address_space.write().map(PageRange { start: fb_start_page, end: fb_end_page }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE | PageTableFlags::NO_CACHE);
 
     kernel::init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
     kernel::logger().lock().register(kernel::terminal());
