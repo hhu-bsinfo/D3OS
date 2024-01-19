@@ -14,7 +14,7 @@ use core::mem::size_of;
 use core::ptr;
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
-use spin::{Mutex, MutexGuard};
+use spin::Mutex;
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) { cursor } else { '_' };
 const TAB_SPACES: u16 = 8;
@@ -225,12 +225,12 @@ impl LFBTerminal {
         }
     }
 
-    fn print_char_at(display: &mut MutexGuard<DisplayState>, color: &mut MutexGuard<ColorState>, c: char, pos: (u16, u16)) -> bool {
+    fn print_char_at(display: &mut DisplayState, color: &mut ColorState, c: char, pos: (u16, u16)) -> bool {
         display.lfb.lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, &color.fg_color, &color.bg_color, c)
             && display.lfb.direct_lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, &color.fg_color, &color.bg_color, c)
     }
 
-    fn scroll_up(display: &mut MutexGuard<DisplayState>, color: &mut MutexGuard<ColorState>) {
+    fn scroll_up(display: &mut DisplayState, color: &mut ColorState) {
         unsafe {
             let char_ptr = display.char_buffer.as_ptr() as *mut u8;
             char_ptr.copy_from(char_ptr.offset(display.size.0 as isize * size_of::<Character>() as isize),
@@ -250,7 +250,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn position(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>, pos: (u16, u16)) {
+    fn position(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState, pos: (u16, u16)) {
         cursor.pos = pos;
 
         while cursor.pos.1 >= display.size.1 {
@@ -265,7 +265,7 @@ impl LFBTerminal {
         speaker.play(880, 250);
     }
 
-    fn handle_tab(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>) {
+    fn handle_tab(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
         if cursor.pos.0 + TAB_SPACES >= display.size.0 {
             LFBTerminal::position(display, cursor, color, (0, cursor.pos.1 + 1));
         } else {
@@ -273,7 +273,7 @@ impl LFBTerminal {
         }
     }
 
-    fn clear_screen(display: &mut MutexGuard<DisplayState>, color: &mut MutexGuard<ColorState>) {
+    fn clear_screen(display: &mut DisplayState, color: &mut ColorState) {
         // Clear screen
         let size = display.size;
         display.lfb.lfb().fill_rect(0, 0, size.0 as u32 * lfb::CHAR_WIDTH, size.1 as u32 * lfb::CHAR_HEIGHT, &color.bg_color);
@@ -288,7 +288,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn clear_screen_to_cursor(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>) {
+    fn clear_screen_to_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
         let pos = cursor.pos;
         let size = display.size;
 
@@ -310,7 +310,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn clear_screen_from_cursor(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>) {
+    fn clear_screen_from_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
         let pos = cursor.pos;
         let size = display.size;
 
@@ -331,7 +331,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn clear_line(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>) {
+    fn clear_line(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
         let pos = cursor.pos;
         let size = display.size;
 
@@ -349,7 +349,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn clear_line_to_cursor(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>) {
+    fn clear_line_to_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
         let pos = cursor.pos;
         let size = display.size;
 
@@ -368,7 +368,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn clear_line_from_cursor(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>) {
+    fn clear_line_from_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
         let pos = cursor.pos;
         let size = display.size;
 
@@ -387,7 +387,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn handle_ansi_color(color: &mut MutexGuard<ColorState>, params: &Params) {
+    fn handle_ansi_color(color: &mut ColorState, params: &Params) {
         let mut iter = params.iter();
         while let Some(param) = iter.next() {
             let code = param[0];
@@ -449,7 +449,7 @@ impl LFBTerminal {
         color.bg_color = bg_self;
     }
 
-    fn handle_ansi_graphic_rendition(color: &mut MutexGuard<ColorState>, code: u16) {
+    fn handle_ansi_graphic_rendition(color: &mut ColorState, code: u16) {
         match code {
             0 => {
                 color.fg_base_color = color::WHITE;
@@ -482,7 +482,7 @@ impl LFBTerminal {
         }
     }
 
-    fn handle_ansi_cursor_sequence(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>, code: u8, params: &Params) {
+    fn handle_ansi_cursor_sequence(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState, code: u8, params: &Params) {
         let mut iter = params.iter();
         match code {
             0x41 => {
@@ -570,7 +570,7 @@ impl LFBTerminal {
         }
     }
 
-    fn handle_ansi_erase_sequence(display: &mut MutexGuard<DisplayState>, cursor: &mut MutexGuard<CursorState>, color: &mut MutexGuard<ColorState>, code: u8, params: &Params) {
+    fn handle_ansi_erase_sequence(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState, code: u8, params: &Params) {
         let mut iter = params.iter();
         let param = iter.next();
         let erase_code = if param.is_some() {

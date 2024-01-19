@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use smallmap::Map;
-use spin::{Mutex, MutexGuard};
+use spin::Mutex;
 
 static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -178,13 +178,7 @@ impl Scheduler {
             let mut join_map = self.join_map.lock();
 
             let thread = Scheduler::current(&state);
-            let join_list = join_map.get_mut(&thread.id()).expect(
-                format!(
-                    "Scheduler: Missing join_map entry for thread id {}!",
-                    thread.id()
-                )
-                .as_str(),
-            );
+            let join_list = join_map.get_mut(&thread.id()).expect(format!("Scheduler: Missing join_map entry for thread id {}!", thread.id()).as_str());
 
             for thread in join_list {
                 state.ready_queue.push_front(Rc::clone(thread));
@@ -196,14 +190,11 @@ impl Scheduler {
         self.block();
     }
 
-    fn current(state: &MutexGuard<ReadyState>) -> Rc<Thread> {
+    fn current(state: &ReadyState) -> Rc<Thread> {
         return Rc::clone(state.current_thread.as_ref().expect("Scheduler: Trying to access current thread before initialization!"));
     }
 
-    fn check_sleep_list(
-        state: &mut MutexGuard<ReadyState>,
-        sleep_list: &mut MutexGuard<Vec<(Rc<Thread>, usize)>>,
-    ) {
+    fn check_sleep_list(state: &mut ReadyState, sleep_list: &mut Vec<(Rc<Thread>, usize)>) {
         if let Some(timer) = kernel::timer().try_read() {
             let time = timer.systime_ms();
 
