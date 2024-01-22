@@ -19,16 +19,13 @@ jobs:
 
       - uses: awalsh128/cache-apt-pkgs-action@v1
         with:
-          packages: make nasm dosfstools mtools xorriso zstd unzip wget
+          packages: make nasm dosfstools mtools zstd unzip wget
 
-      - name: Build towboot image
-        run: cargo make towboot
-
-      - name: Build grub image
-        run: cargo make grub
+      - name: Build
+        run: cargo make
 
       - name: Create artifact
-        run: tar -czvf hhuTOSr.tar.gz hhuTOSr-towboot.img run.sh bios/ovmf/build.sh README.md
+        run: tar -czvf hhuTOSr.tar.gz hhuTOSr.img run.sh efi/ovmf/build.sh README.md
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3

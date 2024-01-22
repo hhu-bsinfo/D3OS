@@ -1,0 +1,9 @@
+[package]
+edition = "2021"
+name = "library_thread"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+
+
+[dependencies]
+library_syscall = { path = "../syscall" }

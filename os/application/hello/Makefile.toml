@@ -1,0 +1,36 @@
+[env.development]
+CARGO_CFG_TARGET_FAMILY = "hhu_tosr_app"
+BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/${CARGO_CFG_TARGET_FAMILY}/debug"
+CARGO_BUILD_OPTION = "--lib"
+
+[env.production]
+CARGO_CFG_TARGET_FAMILY = "hhu_tosr_app"
+BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/${CARGO_CFG_TARGET_FAMILY}/release"
+CARGO_BUILD_OPTION = "--release"
+
+[env]
+RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
+SOURCE_DIRECOTRY = "${CARGO_MAKE_WORKING_DIRECTORY}/src"
+LINKER_FILE = "${CARGO_MAKE_WORKING_DIRECTORY}/../link.ld"
+RUST_OBJECT = "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}.a"
+APPLICATION = "${BUILD_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}"
+
+# Build tasks
+
+[tasks.default]
+alias = "link"
+
+[tasks.compile]
+command = "cargo"
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+
+[tasks.link]
+command = "ld"
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${APPLICATION}", "${RUST_OBJECT}" ]
+dependencies = [ "compile" ]
+
+# Cleanup tasks
+
+[tasks.clean]
+command = "cargo"
+args = [ "clean" ]
