@@ -1,0 +1,59 @@
+[env.development]
+CARGO_CFG_TARGET_FAMILY = "hhu_tosr"
+BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/${CARGO_CFG_TARGET_FAMILY}/debug"
+CARGO_BUILD_OPTION = "--lib"
+
+[env.production]
+CARGO_CFG_TARGET_FAMILY = "hhu_tosr"
+BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/${CARGO_CFG_TARGET_FAMILY}/release"
+CARGO_BUILD_OPTION = "--release"
+
+[env]
+RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
+SOURCE_DIRECOTRY = "${CARGO_MAKE_WORKING_DIRECTORY}/src"
+BOOTLOADER_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/loader"
+LINKER_FILE = "${CARGO_MAKE_WORKING_DIRECTORY}/link.ld"
+RUST_OBJECT = "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}.a"
+ASM_OBJECT = "${BUILD_DIRECTORY}/boot.o"
+KERNEL = "${BUILD_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}.elf"
+
+# Build tasks
+
+[tasks.default]
+alias = "image"
+
+[tasks.compile]
+command = "cargo"
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+
+[tasks.build-asm]
+command = "nasm"
+args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${ASM_OBJECT}", "${SOURCE_DIRECOTRY}/boot.asm" ]
+
+[tasks.link]
+command = "ld"
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${KERNEL}", "${ASM_OBJECT}", "${RUST_OBJECT}" ]
+dependencies = [ "compile", "build-asm" ]
+
+# Bootloader tasks
+
+[tasks.image]
+cwd = "${BOOTLOADER_DIRECTORY}"
+command = "./build.sh"
+dependencies = [ "copy-kernel-to-bootloader" ]
+
+[tasks.copy-kernel-to-bootloader]
+command = "cp"
+args = [ "${KERNEL}", "${BOOTLOADER_DIRECTORY}/hhuTOSr.elf" ]
+dependencies = [ "link" ]
+
+# Cleanup tasks
+
+[tasks.clean]
+command = "cargo"
+args = [ "clean" ]
+dependencies = [ "remove-image" ]
+
+[tasks.remove-image]
+command = "rm"
+args = [ "-f", "hhuTOSr.img" ]

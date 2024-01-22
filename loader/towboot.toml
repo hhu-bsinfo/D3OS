@@ -1,0 +1,8 @@
+default = "hhuTOSr"
+timeout = 0
+log_level = "info"
+
+[entries]
+  [entries.hhuTOSr]
+    name = "hhuTOSr"
+    image = "\\hhuTOSr.elf"

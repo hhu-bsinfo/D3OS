@@ -5,10 +5,11 @@ readonly CONST_QEMU_MACHINE_PC="pc"
 readonly CONST_QEMU_CPU="qemu64"
 readonly CONST_QEMU_MACHINE_PC_KVM="pc,accel=kvm,kernel-irqchip=split"
 readonly CONST_QEMU_DEFAULT_RAM="128M"
-readonly CONST_QEMU_BIOS_EFI="bios/ovmf/x64/OVMF.fd"
+readonly CONST_QEMU_BIOS_EFI="efi/ovmf/x64/OVMF.fd"
 readonly CONST_QEMU_ARGS="-boot d -vga std -rtc base=localtime -device isa-debug-exit"
 readonly CONST_QEMU_OLD_AUDIO_ARGS="-soundhw pcspk"
 readonly CONST_QEMU_NEW_AUDIO_ARGS="-audiodev id=pa,driver=pa -machine pcspk-audiodev=pa"
+readonly CONST_QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=hhuTOSr.img"
 
 QEMU_BIOS="${CONST_QEMU_BIOS_EFI}"
 QEMU_MACHINE="${CONST_QEMU_MACHINE_PC}"
@@ -16,15 +17,10 @@ QEMU_RAM="${CONST_QEMU_DEFAULT_RAM}"
 QEMU_CPU="${CONST_QEMU_CPU}"
 QEMU_CPU_OVERWRITE="false"
 QEMU_AUDIO_ARGS="${CONST_QEMU_NEW_AUDIO_ARGS}"
+QEMU_BOOT_DEVICE="${CONST_QEMU_BOOT_DEVICE}"
 QEMU_ARGS="${CONST_QEMU_ARGS}"
 
 QEMU_GDB_PORT=""
-
-if [ -f "hhuTOSr-towboot.img" ]; then
-  QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=hhuTOSr-towboot.img"
-elif [ -f "hhuTOSr-grub.iso" ]; then
-  QEMU_BOOT_DEVICE="-boot d -cdrom hhuTOSr-grub.iso"
-fi
 
 version_lt() {
   test "$(printf "%s\n" "$@" | sort -V | tr ' ' '\n' | head -n 1)" != "${2}"
@@ -39,7 +35,7 @@ set_audio_parameters() {
 }
 
 get_ovmf() {
-  cd "bios/ovmf" || exit 1
+  cd "efi/ovmf" || exit 1
   ./build.sh || exit 1
   cd "../.." || exit 1
 }
@@ -127,9 +123,6 @@ parse_args() {
     local val=$2
 
     case $arg in
-    -f | --file)
-      parse_file "$val"
-      ;;
     -m | --machine)
       parse_machine "$val"
       ;;
@@ -179,11 +172,6 @@ run_qemu() {
 }
 
 parse_args "$@"
-
-if [ "${QEMU_BOOT_DEVICE}" == "" ]; then
-  printf "No bootable image found!\\n"
-  exit 1
-fi
 
 get_ovmf
 

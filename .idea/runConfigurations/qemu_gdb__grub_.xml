@@ -1,9 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="qemu-gdb (grub)" type="CLion_Remote" version="1" remoteCommand="localhost:1234" symbolFile="$PROJECT_DIR$/build/hhu_tosr.bin" sysroot="$PROJECT_DIR$">
-    <debugger kind="GDB" isBundled="true" />
-    <pathMapping remote=":" local="" />
-    <method v="2">
-      <option name="ToolBeforeRunTask" enabled="true" actionId="Tool_External Tools_qemu-gdb hhuTOSr (grub)" />
-    </method>
-  </configuration>
-</component>
