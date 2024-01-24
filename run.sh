@@ -11,7 +11,7 @@ readonly CONST_QEMU_OLD_AUDIO_ARGS="-soundhw pcspk"
 readonly CONST_QEMU_NEW_AUDIO_ARGS="-audiodev id=pa,driver=pa -machine pcspk-audiodev=pa"
 readonly CONST_QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=hhuTOSr.img"
 
-QEMU_BIOS="${CONST_QEMU_BIOS_EFI}"
+QEMU_BIOS=""
 QEMU_MACHINE="${CONST_QEMU_MACHINE_PC}"
 QEMU_RAM="${CONST_QEMU_DEFAULT_RAM}"
 QEMU_CPU="${CONST_QEMU_CPU}"
@@ -100,6 +100,12 @@ parse_debug() {
   QEMU_GDB_PORT="${port}"
 }
 
+parse_bios() {
+  local bios=$1
+
+  QEMU_BIOS="${bios}"
+}
+
 print_usage() {
   printf "Usage: ./run.sh [OPTION...]
     Available options:
@@ -113,6 +119,8 @@ print_usage() {
         Set the CPU model, which qemu should emulate (e.g. 486, pentium, pentium2, ...) (Default: base)
     -d, --debug
         Set the port, on which qemu should listen for GDB clients (default: disabled)
+    -b, --bios
+        Set the BIOS file, which qemu should use (Default: Download newest OVMF)
     -h, --help
         Show this help message\\n"
 }
@@ -134,6 +142,9 @@ parse_args() {
       ;;
     -d | --debug)
       parse_debug "$val"
+      ;;
+    -b | --bios)
+      parse_bios "$val"
       ;;
     -h | --help)
       print_usage
@@ -173,7 +184,10 @@ run_qemu() {
 
 parse_args "$@"
 
-get_ovmf
+if [ -z "${QEMU_BIOS}" ]; then
+  QEMU_BIOS="${CONST_QEMU_BIOS_EFI}"
+  get_ovmf
+fi
 
 QEMU_ARGS="${QEMU_ARGS}"
 set_audio_parameters
