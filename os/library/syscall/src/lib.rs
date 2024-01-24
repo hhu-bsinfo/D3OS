@@ -6,9 +6,10 @@ use crate::SystemCall::ThreadExit;
 #[repr(u8)]
 #[allow(dead_code)]
 pub enum SystemCall {
-    ThreadSwitch = 0,
-    ThreadSleep = 1,
-    ThreadExit = 2,
+    Print = 0,
+    ThreadSwitch,
+    ThreadSleep,
+    ThreadExit,
 }
 
 pub const NUM_SYSCALLS: usize = ThreadExit as usize + 1;

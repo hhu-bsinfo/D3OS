@@ -7,3 +7,11 @@ authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhl
 [lib]
 crate-type = ["staticlib"]
 path = "src/hello.rs"
+
+[dependencies]
+# Local dependencies
+syscall = { path = "../../library/syscall" }
+thread = { path = "../../library/thread" }
+
+# External dependencies
+spin = "0.9.8"

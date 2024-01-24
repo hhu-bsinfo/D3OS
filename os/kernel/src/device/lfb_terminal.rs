@@ -1,10 +1,10 @@
 use crate::device::terminal::Terminal;
-use library_graphic::ansi::COLOR_TABLE_256;
-use library_graphic::buffered_lfb::BufferedLFB;
-use library_graphic::color::Color;
-use library_graphic::lfb::LFB;
-use library_graphic::{color, lfb};
-use library_io::stream::{InputStream, OutputStream};
+use graphic::ansi::COLOR_TABLE_256;
+use graphic::buffered_lfb::BufferedLFB;
+use graphic::color::Color;
+use graphic::lfb::LFB;
+use graphic::{color, lfb};
+use io::stream::{InputStream, OutputStream};
 use alloc::string::String;
 use alloc::vec::Vec;
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};

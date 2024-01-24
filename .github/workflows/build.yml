@@ -22,7 +22,7 @@ jobs:
           packages: make nasm dosfstools mtools zstd unzip wget
 
       - name: Build
-        run: cargo make
+        run: cargo make --no-workspace
 
       - name: Create artifact
         run: tar -czvf hhuTOSr.tar.gz hhuTOSr.img run.sh efi/ovmf/build.sh README.md

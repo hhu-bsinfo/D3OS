@@ -222,7 +222,7 @@ impl InterruptDispatcher {
     }
 
     pub fn dispatch(&self, interrupt: u8) {
-        let handler_vec_mutex = self.int_vectors.get(interrupt as usize).expect("Interrupt Dispatcher: No handler vec assigned!");
+        let handler_vec_mutex = self.int_vectors.get(interrupt as usize).unwrap_or_else(|| panic!("Interrupt Dispatcher: No handler vec assigned for interrupt [{}]!", interrupt));
         let mut handler_vec = handler_vec_mutex.try_lock();
         while handler_vec.is_none() {
             // We have to force unlock inside the interrupt handler, or else the system will hang forever.
@@ -234,7 +234,7 @@ impl InterruptDispatcher {
         }
 
         if handler_vec.iter().is_empty() {
-            panic!("Interrupt Dispatcher: No handler registered!");
+            panic!("Interrupt Dispatcher: No handler registered for interrupt [{}]!", interrupt);
         }
 
         for handler in handler_vec.unwrap().iter_mut() {

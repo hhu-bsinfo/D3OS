@@ -5,4 +5,5 @@ log_level = "info"
 [entries]
   [entries.hhuTOSr]
     name = "hhuTOSr"
-    image = "\\hhuTOSr.elf"
+    image = "\\kernel.elf"
+  modules = [ { image = "\\initrd.tar", argv = "initrd" } ]

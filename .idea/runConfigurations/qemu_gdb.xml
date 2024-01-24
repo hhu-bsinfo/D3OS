@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="qemu-gdb" type="CLion_Remote" version="1" remoteCommand="localhost:1234" symbolFile="$PROJECT_DIR$/target/hhu_tosr/debug/kernel.elf" sysroot="$PROJECT_DIR$">
+  <configuration default="false" name="qemu-gdb" type="CLion_Remote" version="1" remoteCommand="localhost:1234" symbolFile="$PROJECT_DIR$/loader/kernel.elf" sysroot="$PROJECT_DIR$">
     <debugger kind="GDB" isBundled="true" />
     <pathMapping remote=":" local="" />
     <method v="2">

@@ -106,11 +106,9 @@ Cargo.lock
 
 # End of https://www.toptal.com/developers/gitignore/api/rust,clion+iml
 
-build/
-*.iso
-*.img
-hhuTOSr.elf
-hhuTOSr.initrd
-towboot-x64.efi
+loader/kernel.elf
+loader/initrd.tar
+loader/towboot-x64.efi
+hhuTOSr.img
 BOOTX64.EFI
 OVMF.fd
