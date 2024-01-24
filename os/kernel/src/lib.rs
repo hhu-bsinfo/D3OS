@@ -7,6 +7,7 @@
 #![feature(panic_info_message)]
 #![feature(fmt_internals)]
 #![feature(abi_x86_interrupt)]
+#![feature(trait_upcasting)]
 #![allow(internal_features)]
 #![no_std]
 
@@ -25,7 +26,9 @@ use crate::thread::scheduler::Scheduler;
 use crate::thread::thread::Thread;
 use alloc::boxed::Box;
 use acpi::AcpiTables;
+use multiboot2::ModuleTag;
 use spin::{Mutex, Once, RwLock};
+use tar_no_std::TarArchiveRef;
 use uefi::table::{Runtime, SystemTable};
 use x86_64::structures::gdt::GlobalDescriptorTable;
 use x86_64::structures::idt::InterruptDescriptorTable;
@@ -61,6 +64,7 @@ static TSS: Mutex<TaskStateSegment> = Mutex::new(TaskStateSegment::new());
 static IDT: Mutex<InterruptDescriptorTable> = Mutex::new(InterruptDescriptorTable::new());
 static EFI_SYSTEM_TABLE: Once<EfiSystemTable> = Once::new();
 static ACPI_TABLES: Once<Mutex<AcpiTables<AcpiHandler>>> = Once::new();
+static INIT_RAMDISK: Once<TarArchiveRef> = Once::new();
 
 #[global_allocator]
 static ALLOCATOR: KernelAllocator = KernelAllocator::new();
@@ -136,6 +140,13 @@ pub fn init_keyboard() {
     });
 }
 
+pub fn init_initrd(module: &ModuleTag) {
+    INIT_RAMDISK.call_once(|| {
+        let initrd_bytes = unsafe { core::slice::from_raw_parts(module.start_address() as *const u8, (module.end_address() - module.start_address()) as usize) };
+        return TarArchiveRef::new(initrd_bytes);
+    });
+}
+
 pub fn terminal_initialized() -> bool {
     return TERMINAL.get().is_some();
 }
@@ -161,6 +172,10 @@ pub fn efi_system_table() -> Option<&'static SystemTable<Runtime>> {
         Some(wrapper) => Some(&wrapper.table),
         None => None,
     };
+}
+
+pub fn initrd() -> &'static TarArchiveRef<'static> {
+    return &INIT_RAMDISK.get().expect("Trying to access initial ramdisk before initialization!");
 }
 
 pub fn allocator() -> &'static KernelAllocator {

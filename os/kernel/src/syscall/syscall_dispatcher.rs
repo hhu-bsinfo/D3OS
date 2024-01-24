@@ -3,8 +3,8 @@ use x86_64::registers::control::{Efer, EferFlags};
 use x86_64::registers::model_specific::{LStar, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
-use library_syscall::NUM_SYSCALLS;
-use crate::syscall::{sys_thread_exit, sys_thread_sleep, sys_thread_switch};
+use syscall::NUM_SYSCALLS;
+use crate::syscall::{sys_print, sys_thread_exit, sys_thread_sleep, sys_thread_switch};
 
 
 pub fn init() {
@@ -41,6 +41,7 @@ impl SyscallTable {
     pub const fn new() -> Self {
         SyscallTable {
             handle: [
+                sys_print as *const _,
                 sys_thread_switch as *const _,
                 sys_thread_sleep as *const _,
                 sys_thread_exit as *const _,

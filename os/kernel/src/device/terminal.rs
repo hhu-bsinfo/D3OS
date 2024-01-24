@@ -1,4 +1,4 @@
-use library_io::stream::{InputStream, OutputStream};
+use io::stream::{InputStream, OutputStream};
 use core::fmt::Write;
 use core::ops::Deref;
 use core::{fmt, ptr};
@@ -14,7 +14,7 @@ pub trait Terminal: OutputStream + InputStream {
 impl Write for dyn Terminal {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.deref().write_str(s);
-        Ok(())
+        return Ok(());
     }
 }
 

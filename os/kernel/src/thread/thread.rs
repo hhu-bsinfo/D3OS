@@ -4,17 +4,19 @@ use alloc::rc::Rc;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::asm;
-use core::ptr;
+use core::{mem, ptr};
+use core::ops::Deref;
+use goblin::elf64;
+use goblin::elf::Elf;
 use spin::RwLock;
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::PrivilegeLevel::Ring3;
 use x86_64::structures::paging::{Page, PageTableFlags};
 use x86_64::structures::paging::page::PageRange;
 use x86_64::VirtAddr;
-use library_thread::usr_thread_exit;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{AddressSpace, create_address_space, kernel_address_space};
-use crate::{scheduler, tss};
+use crate::{memory, scheduler, tss};
 
 const STACK_SIZE_PAGES: usize = 16;
 const USER_STACK_ADDRESS: usize = 0x400000000000;
@@ -25,11 +27,11 @@ pub struct Thread {
     user_stack: Vec<u64>,
     address_space: Arc<RwLock<AddressSpace>>,
     old_rsp0: VirtAddr,
-    entry: Box<dyn FnMut()>,
+    entry: Box<fn()>,
 }
 
 impl Thread {
-    pub fn new_kernel_thread(entry: Box<dyn FnMut()>) -> Rc<Thread> {
+    pub fn new_kernel_thread(entry: Box<fn()>) -> Rc<Thread> {
         let mut thread = Thread {
             id: scheduler::next_thread_id(),
             kernel_stack: Vec::with_capacity((STACK_SIZE_PAGES * PAGE_SIZE) / 8),
@@ -44,11 +46,30 @@ impl Thread {
     }
 
     #[allow(dead_code)]
-    pub fn new_user_thread(entry: Box<dyn FnMut()>) -> Rc<Thread> {
+    pub fn new_user_thread(elf_buffer: &[u8]) -> Rc<Thread> {
         let address_space = create_address_space();
+
+        let elf = Elf::parse(elf_buffer).expect("Failed to parse application!");
+        elf.program_headers.iter()
+            .filter(|header| header.p_type == elf64::program_header::PT_LOAD)
+            .for_each(|header| {
+                let page_count = if header.p_memsz as usize % PAGE_SIZE == 0 { header.p_memsz as usize / PAGE_SIZE } else { (header.p_memsz as usize / PAGE_SIZE) + 1 };
+                let frames = memory::physical::alloc(page_count, MemorySpace::User);
+                let virt_start = Page::from_start_address(VirtAddr::new(header.p_vaddr)).expect("ELF: Program section not page aligned!");
+                let pages = PageRange { start: virt_start, end: virt_start + page_count as u64 };
+
+                unsafe {
+                    let code = elf_buffer.as_ptr().offset(header.p_offset as isize);
+                    let target = frames.start.start_address().as_u64() as *mut u8;
+                    target.copy_from(code, header.p_filesz as usize);
+                    target.offset(header.p_filesz as isize).write_bytes(0, (header.p_memsz - header.p_filesz) as usize);
+                }
+
+                address_space.write().map_physical(frames, pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+            });
+
         let user_stack_start = Page::from_start_address(VirtAddr::new(USER_STACK_ADDRESS as u64)).unwrap();
         let user_stack = unsafe { Vec::from_raw_parts(USER_STACK_ADDRESS as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8) };
-
         address_space.write().map(PageRange { start: user_stack_start, end: user_stack_start + STACK_SIZE_PAGES as u64 }, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
         let mut thread = Thread {
@@ -57,7 +78,7 @@ impl Thread {
             user_stack,
             address_space,
             old_rsp0: VirtAddr::zero(),
-            entry,
+            entry: unsafe { Box::new(mem::transmute(elf.entry as *const ())) }
         };
 
         thread.prepare_kernel_stack();
@@ -81,17 +102,6 @@ impl Thread {
         }
 
         scheduler.exit();
-    }
-
-    pub fn kickoff_user_thread() {
-        let thread = scheduler().current_thread();
-
-        unsafe {
-            let thread_ptr = ptr::from_ref(thread.as_ref()) as *mut Thread;
-            ((*thread_ptr).entry)();
-        }
-
-        usr_thread_exit();
     }
 
     pub fn start_first(thread: &Thread) {
@@ -162,7 +172,7 @@ impl Thread {
         }
 
         self.kernel_stack[capacity - 7] = 0; // rdi
-        self.kernel_stack[capacity - 6] = Thread::kickoff_user_thread as u64; // Address of 'kickoff_user_thread()'
+        self.kernel_stack[capacity - 6] = *self.entry.deref() as u64; // Address of 'kickoff_user_thread()'
 
         self.kernel_stack[capacity - 5] = SegmentSelector::new(4, Ring3).0 as u64; // cs = user code segment
         self.kernel_stack[capacity - 4] = 0x202; // rflags (Interrupts enabled)

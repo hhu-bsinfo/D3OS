@@ -1,7 +1,7 @@
 use crate::device::serial::ComPort::{Com1, Com2, Com3, Com4};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use library_io::stream::{InputStream, OutputStream};
+use io::stream::{InputStream, OutputStream};
 use alloc::boxed::Box;
 use alloc::string::String;
 use log::info;

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 readonly TOWBOOT_VERSION="0.7.1"
-readonly FILE_LIST=("towboot-x64.efi" "hhuTOSr.elf" "towboot.toml")
+readonly FILE_LIST=("towboot-x64.efi" "kernel.elf" "initrd.tar" "towboot.toml")
 readonly IMAGE="../hhuTOSr.img"
 
 if [[ ! -f "towboot-x64.efi" ]]; then
@@ -20,7 +20,8 @@ mmd -i part.img efi || exit 1
 mmd -i part.img efi/boot || exit 1
 mcopy -i part.img towboot-x64.efi ::efi/boot/bootx64.efi || exit 1
 mcopy -i part.img towboot.toml :: || exit 1
-mcopy -i part.img hhuTOSr.elf :: || exit 1
+mcopy -i part.img kernel.elf :: || exit 1
+mcopy -i part.img initrd.tar :: || exit 1
 
 fallocate -l 1M fill.img || exit 1
 cat fill.img part.img fill.img > "${IMAGE}" || exit 1

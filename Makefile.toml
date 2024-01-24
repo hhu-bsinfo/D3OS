@@ -1,0 +1,39 @@
+[env]
+BOOTLOADER_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/loader"
+INITRD_DIRECTORY = "${BOOTLOADER_DIRECTORY}/initrd"
+
+[tasks.default]
+alias = "image"
+
+# Build tasks
+
+[tasks.link_members]
+run_task = { name = "link", fork = true }
+dependencies = [ "create-initrd-directory" ]
+
+[tasks.create-initrd-directory]
+command = "mkdir"
+args = [ "-p", "${INITRD_DIRECTORY}" ]
+
+[tasks.image]
+cwd = "${BOOTLOADER_DIRECTORY}"
+command = "./build.sh"
+dependencies = [ "link_members", "initrd" ]
+
+[tasks.initrd]
+cwd = "${INITRD_DIRECTORY}"
+command = "tar"
+args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello" ]
+dependencies = [ "link_members" ]
+
+# Cleanup tasks
+
+[tasks.clean]
+dependencies = [ "clean_workspace", "clean_members" ]
+
+[tasks.clean_workspace]
+command = "rm"
+args = [ "-rf", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hhuTOSr.img", "${BOOTLOADER_DIRECTORY}/initrd.tar"  ]
+
+[tasks.clean_members]
+run_task = { name = "clean", fork = true }

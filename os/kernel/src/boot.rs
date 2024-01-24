@@ -3,7 +3,8 @@ use crate::syscall::syscall_dispatcher;
 use crate::thread::thread::Thread;
 use alloc::boxed::Box;
 use alloc::format;
-use alloc::string::ToString;
+use alloc::rc::Rc;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::ffi::c_void;
 use core::fmt::Arguments;
@@ -29,7 +30,7 @@ use x86_64::PrivilegeLevel::Ring0;
 use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use crate::{allocator, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_keyboard, init_serial_port, init_terminal, logger, memory, ps2_devices, scheduler, serial_port, terminal, terminal_initialized, timer, tss};
+use crate::{allocator, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_serial_port, init_terminal, initrd, logger, memory, ps2_devices, scheduler, serial_port, terminal, terminal_initialized, timer, tss};
 use crate::memory::MemorySpace;
 
 #[panic_handler]
@@ -155,7 +156,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     let fb_start_page = Page::from_start_address(VirtAddr::new(fb_info.address())).expect("Framebuffer address is not page aligned!");
     let fb_end_page = Page::from_start_address(VirtAddr::new(fb_info.address() + (fb_info.height() * fb_info.pitch()) as u64).align_up(PAGE_SIZE as u64)).unwrap();
-    address_space.write().map(PageRange { start: fb_start_page, end: fb_end_page }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE | PageTableFlags::NO_CACHE);
+    address_space.write().map(PageRange { start: fb_start_page, end: fb_end_page }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
 
     init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
     logger().lock().register(terminal());
@@ -236,19 +237,39 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         serial.plugin();
     }
 
-    let scheduler = scheduler();
-    scheduler.ready(Thread::new_kernel_thread(Box::new(|| {
+    // Ready terminal read thread
+    scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
+        let mut command = String::new();
         let terminal = terminal();
         terminal.write_str("> ");
 
         loop {
             match terminal.read_byte() {
                 -1 => panic!("Terminal input stream closed!"),
-                0x0a => terminal.write_str("> "),
-                _ => {}
+                0x0a => {
+                    match initrd().entries().find(|entry| entry.filename().as_str() == command) {
+                        Some(app) => {
+                            let thread = Thread::new_user_thread(app.data());
+                            scheduler().ready(Rc::clone(&thread));
+                            thread.join();
+                        }
+                        None => println!("Command not found!")
+                    }
+
+                    command.clear();
+                    terminal.write_str("> ")
+                },
+                c => command.push(char::from_u32(c as u32).unwrap())
             }
         }
     })));
+
+    // Load application
+    let initrd_tag = multiboot.module_tags()
+        .find(|module| module.cmdline().is_ok_and(|name| name == "initrd"))
+        .expect("Initrd not found!");
+
+    init_initrd(initrd_tag);
 
     // Disable terminal logging
     logger().lock().remove(terminal());
@@ -258,7 +279,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
              built_info::RUSTC_VERSION.split_once("(").unwrap_or((built_info::RUSTC_VERSION, "")).0.trim(), bootloader_name);
 
     info!("Starting scheduler");
-    scheduler.start();
+    scheduler().start();
 }
 
 fn init_kernel_heap(heap_region: &PhysFrameRange) {
