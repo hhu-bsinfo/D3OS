@@ -12,6 +12,7 @@ pub fn sleep(ms: usize) {
     syscall1(SystemCall::ThreadSleep as u64, ms as u64);
 }
 
-pub fn exit() {
+pub fn exit() -> ! {
     syscall0(SystemCall::ThreadExit as u64);
+    panic!("System call 'ThreadExit' has returned!")
 }

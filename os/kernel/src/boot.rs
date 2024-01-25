@@ -253,7 +253,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
                             scheduler().ready(Rc::clone(&thread));
                             thread.join();
                         }
-                        None => println!("Command not found!")
+                        None => {
+                            if !command.is_empty() {
+                                println!("Command not found!");
+                            }
+                        }
                     }
 
                     command.clear();

@@ -1,4 +1,4 @@
-ENTRY(main)
+ENTRY(entry)
 
 SECTIONS {
     . = 0x10000000000;   /* load at address 1 TB */
