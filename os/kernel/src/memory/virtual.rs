@@ -68,7 +68,7 @@ impl Drop for AddressSpace {
 
 impl AddressSpace {
     pub fn new(depth: usize) -> Self {
-        let table_addr = physical::alloc(1, MemorySpace::Kernel).start;
+        let table_addr = physical::alloc(1).start;
         let root_table = table_addr.start_address().as_u64() as *mut PageTable;
         unsafe { root_table.as_mut().unwrap().zero(); }
 
@@ -118,7 +118,7 @@ impl AddressSpace {
                     continue;
                 }
 
-                let phys_frame = physical::alloc(1, MemorySpace::Kernel).start;
+                let phys_frame = physical::alloc(1).start;
                 let flags = source[index].flags();
                 target_entry.set_frame(phys_frame, flags);
 
@@ -142,7 +142,7 @@ impl AddressSpace {
             for entry in table.iter_mut().skip(start_index) {
                 let next_level_table;
                 if entry.addr().is_null() { // Entry is empty -> Allocate new page frame
-                    let phys_frame = physical::alloc(1, MemorySpace::Kernel).start;
+                    let phys_frame = physical::alloc(1).start;
                     entry.set_frame(phys_frame, flags);
 
                     next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
@@ -205,7 +205,7 @@ impl AddressSpace {
                 break;
             }
 
-            let phys_frame = physical::alloc(1, MemorySpace::User).start;
+            let phys_frame = physical::alloc(1).start;
             entry.set_frame(phys_frame, flags);
         }
 
