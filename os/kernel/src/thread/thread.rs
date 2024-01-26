@@ -54,7 +54,7 @@ impl Thread {
             .filter(|header| header.p_type == elf64::program_header::PT_LOAD)
             .for_each(|header| {
                 let page_count = if header.p_memsz as usize % PAGE_SIZE == 0 { header.p_memsz as usize / PAGE_SIZE } else { (header.p_memsz as usize / PAGE_SIZE) + 1 };
-                let frames = memory::physical::alloc(page_count, MemorySpace::User);
+                let frames = memory::physical::alloc(page_count);
                 let virt_start = Page::from_start_address(VirtAddr::new(header.p_vaddr)).expect("ELF: Program section not page aligned!");
                 let pages = PageRange { start: virt_start, end: virt_start + page_count as u64 };
 
