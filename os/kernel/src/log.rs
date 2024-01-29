@@ -3,7 +3,7 @@ use crate::device::serial::ComPort;
 use crate::device::serial::SerialPort;
 use crate::{allocator, logger, timer};
 use graphic::ansi;
-use io::stream::OutputStream;
+use stream::OutputStream;
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::ToString;

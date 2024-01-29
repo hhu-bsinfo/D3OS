@@ -4,7 +4,7 @@ use graphic::buffered_lfb::BufferedLFB;
 use graphic::color::Color;
 use graphic::lfb::LFB;
 use graphic::{color, lfb};
-use io::stream::{InputStream, OutputStream};
+use stream::{InputStream, OutputStream};
 use alloc::vec::Vec;
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use core::cell::RefCell;

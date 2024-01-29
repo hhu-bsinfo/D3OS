@@ -6,8 +6,5 @@ authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhl
 
 [dependencies]
 # Local dependencies
-syscall = { path = "../../library/syscall" }
+io = { path = "../../library/io" }
 thread = { path = "../../library/thread" }
-
-# External dependencies
-spin = "0.9.8"

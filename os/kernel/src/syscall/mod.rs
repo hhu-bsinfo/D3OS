@@ -4,6 +4,15 @@ use crate::process::process::current_process;
 pub mod syscall_dispatcher;
 
 #[no_mangle]
+pub extern "C" fn sys_read() -> u64 {
+    let terminal = terminal();
+    match terminal.read_byte() {
+        -1 => panic!("Input stream closed!"),
+        c => c as u64
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn sys_write(buffer: *const u8, length: usize) {
     let terminal = terminal();
     for i in 0..length {

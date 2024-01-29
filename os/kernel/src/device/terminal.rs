@@ -1,4 +1,4 @@
-use io::stream::{InputStream, OutputStream};
+use stream::{InputStream, OutputStream};
 use core::fmt::Write;
 use core::ops::Deref;
 use core::{fmt, ptr};
