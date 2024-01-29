@@ -1,6 +1,8 @@
 #![no_std]
 
+#[allow(unused_imports)]
 use runtime::*;
+use io::{print, println};
 use thread::{process_id, thread_id};
 
 #[no_mangle]

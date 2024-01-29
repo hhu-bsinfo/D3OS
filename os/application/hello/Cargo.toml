@@ -11,4 +11,5 @@ path = "src/hello.rs"
 [dependencies]
 # Local dependencies
 runtime = { path = "../../library/runtime" }
+io = { path = "../../library/io" }
 thread = { path = "../../library/thread" }

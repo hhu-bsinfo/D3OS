@@ -1,3 +1,5 @@
+#![no_std]
+
 use core::fmt;
 use core::fmt::Write;
 use core::ops::Deref;

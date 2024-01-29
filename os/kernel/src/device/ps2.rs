@@ -1,6 +1,6 @@
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use io::stream::InputStream;
+use stream::InputStream;
 use alloc::boxed::Box;
 use log::info;
 use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};

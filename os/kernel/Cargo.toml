@@ -12,7 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 # Local dependencies
 graphic = { path = "../library/graphic" }
-io = { path = "../library/io" }
+stream = { path = "../library/stream" }
 syscall = { path = "../library/syscall" }
 
 # External depencies
