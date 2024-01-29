@@ -1,4 +1,4 @@
-use crate::thread::thread::Thread;
+use crate::process::thread::Thread;
 use alloc::collections::VecDeque;
 use alloc::format;
 use alloc::rc::Rc;
@@ -18,23 +18,19 @@ pub fn next_thread_id() -> usize {
 struct ReadyState {
     initialized: bool,
     current_thread: Option<Rc<Thread>>,
-    ready_queue: VecDeque<Rc<Thread>>,
+    ready_queue: VecDeque<Rc<Thread>>
 }
 
 impl ReadyState {
     pub fn new() -> Self {
-        Self {
-            initialized: false,
-            current_thread: None,
-            ready_queue: VecDeque::new(),
-        }
+        Self { initialized: false, current_thread: None, ready_queue: VecDeque::new() }
     }
 }
 
 pub struct Scheduler {
     state: Mutex<ReadyState>,
     sleep_list: Mutex<Vec<(Rc<Thread>, usize)>>,
-    join_map: Mutex<Map<usize, Vec<Rc<Thread>>>>,
+    join_map: Mutex<Map<usize, Vec<Rc<Thread>>>>
 }
 
 unsafe impl Send for Scheduler {}
@@ -42,11 +38,7 @@ unsafe impl Sync for Scheduler {}
 
 impl Scheduler {
     pub fn new() -> Self {
-        Self {
-            state: Mutex::new(ReadyState::new()),
-            sleep_list: Mutex::new(Vec::new()),
-            join_map: Mutex::new(Map::new()),
-        }
+        Self { state: Mutex::new(ReadyState::new()), sleep_list: Mutex::new(Vec::new()), join_map: Mutex::new(Map::new()) }
     }
 
     pub fn set_init(&self) {
@@ -63,10 +55,7 @@ impl Scheduler {
 
         {
             let mut state = self.state.lock();
-            thread = state
-                .ready_queue
-                .pop_back()
-                .expect("Scheduler: Failed to dequeue first thread!");
+            thread = state.ready_queue.pop_back().expect("Scheduler: Failed to dequeue first thread!");
             state.current_thread = Some(Rc::clone(&thread));
         }
 
@@ -158,13 +147,7 @@ impl Scheduler {
             let mut join_map = self.join_map.lock();
 
             let thread = Scheduler::current(&state);
-            let join_list = join_map.get_mut(&thread_id).expect(
-                format!(
-                    "Scheduler: Missing join_map entry for thread id {}!",
-                    thread.id()
-                )
-                .as_str(),
-            );
+            let join_list = join_map.get_mut(&thread_id).expect(format!("Scheduler: Missing join_map entry for thread id {}!", thread.id()).as_str());
 
             join_list.push(thread);
         }
@@ -185,6 +168,10 @@ impl Scheduler {
             }
 
             join_map.remove(&thread.id());
+
+            if !thread.is_kernel_thread() {
+                thread.process().exit();
+            }
         }
 
         self.block();
