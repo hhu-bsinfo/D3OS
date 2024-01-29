@@ -6,7 +6,7 @@ use crate::SystemCall::ThreadExit;
 #[repr(u8)]
 #[allow(dead_code)]
 pub enum SystemCall {
-    Print = 0,
+    Write = 0,
     ThreadSwitch,
     ThreadSleep,
     ThreadExit,
