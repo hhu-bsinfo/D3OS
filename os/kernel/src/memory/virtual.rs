@@ -1,59 +1,38 @@
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use core::cmp::min;
-use core::ops::Deref;
 use spin::RwLock;
 use x86_64::structures::paging::{Page, PageTable, PageTableFlags, PageTableIndex, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
-use x86_64::registers::control::Cr3;
+use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use crate::memory::{MemorySpace, PAGE_SIZE, physical};
 use crate::memory::physical::phys_limit;
-
-static ADDRESS_SPACES: RwLock<Vec<Arc<RwLock<AddressSpace>>>> = RwLock::new(Vec::new());
+use crate::process::process::kernel_process;
 
 pub struct AddressSpace {
-    root_table: *mut PageTable,
+    root_table: RwLock<*mut PageTable>,
     depth: usize
 }
 
 unsafe impl Send for AddressSpace {}
 unsafe impl Sync for AddressSpace {}
 
-pub fn create_address_space() -> Arc<RwLock<AddressSpace>> {
-    let mut address_spaces = ADDRESS_SPACES.write();
+pub fn create_address_space() -> Arc<AddressSpace> {
+    match kernel_process() {
+        Some(kernel_process) => { // Create user address space
+            let kernel_space = AddressSpace::from_other(&kernel_process.address_space());
+            Arc::new(kernel_space)
+        }
+        None => { // Create kernel address space
+            let address_space = AddressSpace::new(4);
+            let max_phys_addr = phys_limit().start_address();
+            let range = PageRange { start: Page::containing_address(VirtAddr::zero()), end: Page::containing_address(VirtAddr::new(max_phys_addr.as_u64())) };
 
-    if address_spaces.is_empty() {
-        // Create kernel address space
-        let address_space = Arc::new(RwLock::new(AddressSpace::new(4)));
-        let max_phys_addr = phys_limit().start_address();
-        let range = PageRange { start: Page::containing_address(VirtAddr::zero()), end: Page::containing_address(VirtAddr::new(max_phys_addr.as_u64())) };
-
-        address_space.write().map(range, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
-        address_spaces.push(Arc::clone(&address_space));
-
-        return Arc::clone(&address_space);
-    } else {
-        // Create user address space
-        let kernel_space = address_spaces[0].read();
-        let address_space = Arc::new(RwLock::new(AddressSpace::from_other(kernel_space.deref())));
-
-        return Arc::clone(&address_space);
+            address_space.map(range, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
+            Arc::new(address_space)
+        }
     }
-
-}
-
-pub fn current_address_space() -> Arc<RwLock<AddressSpace>> {
-    let cr3 = Cr3::read();
-    ADDRESS_SPACES.read().iter()
-        .find(|address_space| address_space.read().root_table.cast_const() as u64 == cr3.0.start_address().as_u64())
-        .unwrap()
-        .clone()
-}
-
-pub fn kernel_address_space() -> Arc<RwLock<AddressSpace>> {
-    ADDRESS_SPACES.read().get(0).expect("Trying to access kernel address space before initialization!").clone()
 }
 
 fn page_table_index(virt_addr: VirtAddr, level: usize) -> PageTableIndex {
@@ -72,42 +51,48 @@ impl AddressSpace {
         let root_table = table_addr.start_address().as_u64() as *mut PageTable;
         unsafe { root_table.as_mut().unwrap().zero(); }
 
-        Self { root_table, depth }
+        Self { root_table: RwLock::new(root_table), depth }
     }
 
     pub fn from_other(other: &AddressSpace) -> Self {
-        let mut address_space = AddressSpace::new(other.depth);
-        AddressSpace::copy_table(other.root_table(), address_space.root_table_mut(), other.depth);
+        let address_space = AddressSpace::new(other.depth);
+
+        {
+            let root_table_guard = address_space.root_table.write();
+            let root_table = unsafe { root_table_guard.as_mut().unwrap() };
+            let other_root_table_guard = other.root_table.read();
+            let other_root_table = unsafe { other_root_table_guard.as_ref().unwrap() };
+
+            AddressSpace::copy_table(other_root_table, root_table, other.depth);
+        }
 
         return address_space;
     }
 
-    pub fn page_table_address(&self) -> PhysFrame {
-        PhysFrame::from_start_address(PhysAddr::new(self.root_table.cast_const() as u64)).unwrap()
+    pub fn load(&self) {
+        unsafe { Cr3::write(self.page_table_address(), Cr3Flags::empty()) };
     }
 
-    pub fn map(&mut self, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
+    pub fn page_table_address(&self) -> PhysFrame {
+        PhysFrame::from_start_address(PhysAddr::new(self.root_table.read().cast_const() as u64)).unwrap()
+    }
+
+    pub fn map(&self, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let depth = self.depth;
-        let root_table = self.root_table_mut();
+        let root_table_guard = self.root_table.write();
+        let root_table = unsafe { root_table_guard.as_mut().unwrap() };
         let frames = PhysFrameRange { start: PhysFrame::from_start_address(PhysAddr::zero()).unwrap(), end: PhysFrame::from_start_address(PhysAddr::zero()).unwrap() };
 
         AddressSpace::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
-    pub fn map_physical(&mut self, frames: PhysFrameRange, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
+    pub fn map_physical(&self, frames: PhysFrameRange, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let depth = self.depth;
-        let root_table = self.root_table_mut();
+        let root_table_guard = self.root_table.write();
+        let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
         assert_eq!(frames.count(), pages.count());
         AddressSpace::map_in_table(root_table, frames, pages, space, flags, depth);
-    }
-
-    fn root_table(&self) -> &PageTable {
-        unsafe { self.root_table.as_ref().unwrap() }
-    }
-
-    fn root_table_mut(&mut self) -> &mut PageTable {
-        unsafe { self.root_table.as_mut().unwrap() }
     }
 
     fn copy_table(source: &PageTable, target: &mut PageTable, level: usize) {

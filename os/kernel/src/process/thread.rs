@@ -1,4 +1,4 @@
-use crate::thread::scheduler;
+use crate::process::scheduler;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::sync::Arc;
@@ -8,15 +8,14 @@ use core::{mem, ptr};
 use core::ops::Deref;
 use goblin::elf64;
 use goblin::elf::Elf;
-use spin::RwLock;
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::PrivilegeLevel::Ring3;
 use x86_64::structures::paging::{Page, PageTableFlags};
 use x86_64::structures::paging::page::PageRange;
 use x86_64::VirtAddr;
 use crate::memory::{MemorySpace, PAGE_SIZE};
-use crate::memory::r#virtual::{AddressSpace, create_address_space, kernel_address_space};
 use crate::{memory, scheduler, tss};
+use crate::process::process::{create_process, kernel_process, Process};
 
 const STACK_SIZE_PAGES: usize = 16;
 const USER_STACK_ADDRESS: usize = 0x400000000000;
@@ -25,7 +24,7 @@ pub struct Thread {
     id: usize,
     kernel_stack: Vec<u64>,
     user_stack: Vec<u64>,
-    address_space: Arc<RwLock<AddressSpace>>,
+    process: Arc<Process>,
     old_rsp0: VirtAddr,
     entry: Box<fn()>,
 }
@@ -36,7 +35,7 @@ impl Thread {
             id: scheduler::next_thread_id(),
             kernel_stack: Vec::with_capacity((STACK_SIZE_PAGES * PAGE_SIZE) / 8),
             user_stack: Vec::with_capacity(0),
-            address_space: kernel_address_space(),
+            process: kernel_process().expect("Trying to create a kernel thread before process initialization!"),
             old_rsp0: VirtAddr::zero(),
             entry,
         };
@@ -47,7 +46,8 @@ impl Thread {
 
     #[allow(dead_code)]
     pub fn new_user_thread(elf_buffer: &[u8]) -> Rc<Thread> {
-        let address_space = create_address_space();
+        let process = create_process();
+        let address_space = process.address_space();
 
         let elf = Elf::parse(elf_buffer).expect("Failed to parse application!");
         elf.program_headers.iter()
@@ -65,18 +65,18 @@ impl Thread {
                     target.offset(header.p_filesz as isize).write_bytes(0, (header.p_memsz - header.p_filesz) as usize);
                 }
 
-                address_space.write().map_physical(frames, pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+                process.address_space().map_physical(frames, pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
             });
 
         let user_stack_start = Page::from_start_address(VirtAddr::new(USER_STACK_ADDRESS as u64)).unwrap();
         let user_stack = unsafe { Vec::from_raw_parts(USER_STACK_ADDRESS as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8) };
-        address_space.write().map(PageRange { start: user_stack_start, end: user_stack_start + STACK_SIZE_PAGES as u64 }, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+        address_space.map(PageRange { start: user_stack_start, end: user_stack_start + STACK_SIZE_PAGES as u64 }, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
         let mut thread = Thread {
             id: scheduler::next_thread_id(),
             kernel_stack: Vec::with_capacity((STACK_SIZE_PAGES * PAGE_SIZE) / 8),
             user_stack,
-            address_space,
+            process,
             old_rsp0: VirtAddr::zero(),
             entry: unsafe { Box::new(mem::transmute(elf.entry as *const ())) }
         };
@@ -109,11 +109,15 @@ impl Thread {
     }
 
     pub fn switch(current: &Thread, next: &Thread) {
-        unsafe { thread_switch(ptr::from_ref(&current.old_rsp0) as *mut u64, next.old_rsp0.as_u64(), next.kernel_stack_addr() as u64, next.address_space.read().page_table_address().start_address().as_u64()); }
+        unsafe { thread_switch(ptr::from_ref(&current.old_rsp0) as *mut u64, next.old_rsp0.as_u64(), next.kernel_stack_addr() as u64, next.process().address_space().page_table_address().start_address().as_u64()); }
     }
 
     pub fn is_kernel_thread(&self) -> bool {
         return self.user_stack.capacity() == 0;
+    }
+
+    pub fn process(&self) -> Arc<Process> {
+        return Arc::clone(&self.process);
     }
 
     #[allow(dead_code)]

@@ -1,6 +1,6 @@
 use crate::interrupt::interrupt_dispatcher;
 use crate::syscall::syscall_dispatcher;
-use crate::thread::thread::Thread;
+use crate::process::thread::Thread;
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::rc::Rc;
@@ -26,11 +26,11 @@ use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
-use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use crate::{allocator, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_serial_port, init_terminal, initrd, logger, memory, ps2_devices, scheduler, serial_port, terminal, terminal_initialized, timer, tss};
 use crate::memory::MemorySpace;
+use crate::process::process::create_process;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -134,8 +134,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize virtual memory management
     info!("Initializing paging");
-    let address_space = memory::r#virtual::create_address_space();
-    unsafe { Cr3::write(address_space.read().page_table_address(), Cr3Flags::empty()) };
+    let kernel_process = create_process();
+    kernel_process.address_space().load();
 
     // Initialize serial port and enable serial logging
     init_serial_port();
@@ -150,7 +150,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     let fb_start_page = Page::from_start_address(VirtAddr::new(fb_info.address())).expect("Framebuffer address is not page aligned!");
     let fb_end_page = Page::from_start_address(VirtAddr::new(fb_info.address() + (fb_info.height() * fb_info.pitch()) as u64).align_up(PAGE_SIZE as u64)).unwrap();
-    address_space.write().map(PageRange { start: fb_start_page, end: fb_end_page }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
+    kernel_process.address_space().map(PageRange { start: fb_start_page, end: fb_end_page }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
 
     init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
     logger().lock().register(terminal());

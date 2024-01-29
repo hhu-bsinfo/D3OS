@@ -14,7 +14,7 @@ use x86_64::VirtAddr;
 use x86_64::structures::paging::{Page, PageTableFlags};
 use crate::{acpi_tables, allocator};
 use crate::memory::MemorySpace;
-use crate::memory::r#virtual::current_address_space;
+use crate::process::process::current_process;
 
 pub struct Apic {
     local_apic: Mutex<LocalApic>,
@@ -50,7 +50,8 @@ impl Apic {
         // Read physical APIC MMIO base address and map it to the kernel address space
         // Needs to be executed in unsafe block; APIC availability has been checked before, so this should work.
         let apic_page = Page::from_start_address(VirtAddr::new(unsafe { xapic_base() })).expect("Local Apic MMIO address is not page aligned!");
-        current_address_space().write().map(PageRange { start: apic_page, end: apic_page + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
+        let address_space = current_process().address_space();
+        address_space.map(PageRange { start: apic_page, end: apic_page + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
 
         let local_apic = Mutex::new(LocalApicBuilder::new()
                 .timer_vector(InterruptVector::ApicTimer as usize)
@@ -84,7 +85,7 @@ impl Apic {
 
                     info!("Initializing IO APIC");
                     let io_apic_page = Page::from_start_address(VirtAddr::new(io_apic_desc.address as u64)).expect("IO Apic MMIO address is not page aligned!");
-                    current_address_space().write().map(PageRange { start: io_apic_page, end: io_apic_page + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
+                    address_space.map(PageRange { start: io_apic_page, end: io_apic_page + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
                     unsafe { io_apic = Mutex::new(IoApic::new(io_apic_page.start_address().as_u64())); } // Needs to be executed in unsafe block; Since exactly one IO APIC has been detected, this should work
 
                     let mut io_apic_locked = io_apic.lock();

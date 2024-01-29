@@ -22,8 +22,8 @@ use crate::device::terminal::Terminal;
 use crate::memory::alloc::{AcpiHandler, KernelAllocator};
 use crate::interrupt::interrupt_dispatcher::InterruptDispatcher;
 use crate::log::Logger;
-use crate::thread::scheduler::Scheduler;
-use crate::thread::thread::Thread;
+use crate::process::scheduler::Scheduler;
+use crate::process::thread::Thread;
 use alloc::boxed::Box;
 use acpi::AcpiTables;
 use multiboot2::ModuleTag;
@@ -44,7 +44,7 @@ pub mod interrupt;
 pub mod memory;
 pub mod log;
 pub mod syscall;
-pub mod thread;
+pub mod process;
 
 struct EfiSystemTable {
     table: SystemTable<Runtime>,
