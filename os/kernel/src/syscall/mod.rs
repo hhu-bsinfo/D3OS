@@ -1,10 +1,13 @@
-use crate::scheduler;
+use crate::{scheduler, terminal};
 
 pub mod syscall_dispatcher;
 
 #[no_mangle]
-pub extern "C" fn sys_print(c: u32) {
-    print!("{}", char::from_u32(c).unwrap());
+pub extern "C" fn sys_write(buffer: *const u8, length: usize) {
+    let terminal = terminal();
+    for i in 0..length {
+        unsafe { terminal.write_byte(buffer.offset(i as isize).read()) };
+    }
 }
 
 #[no_mangle]

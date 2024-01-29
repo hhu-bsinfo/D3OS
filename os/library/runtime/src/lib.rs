@@ -4,7 +4,7 @@ use core::fmt;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use spin::Mutex;
-use syscall::{syscall1, SystemCall};
+use syscall::{syscall2, SystemCall};
 
 #[macro_export]
 macro_rules! print {
@@ -35,10 +35,7 @@ impl Writer {
 
 impl Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        for c in s.chars() {
-            syscall1(SystemCall::Print as u64, c as u64);
-        }
-
+        syscall2(SystemCall::Write as u64, s.as_bytes().as_ptr() as u64, s.len() as u64);
         return Ok(());
     }
 }
