@@ -2,6 +2,14 @@
 
 use syscall::{syscall0, syscall1, SystemCall};
 
+pub fn process_id() -> usize {
+    syscall0(SystemCall::ProcessId as u64) as usize
+}
+
+pub fn thread_id() -> usize {
+    syscall0(SystemCall::ThreadId as u64) as usize
+}
+
 #[allow(dead_code)]
 pub fn switch() {
     syscall0(SystemCall::ThreadSwitch as u64);
