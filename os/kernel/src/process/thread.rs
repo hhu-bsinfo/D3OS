@@ -15,6 +15,7 @@ use x86_64::structures::paging::page::PageRange;
 use x86_64::VirtAddr;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::{memory, scheduler, tss};
+use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::process::{create_process, kernel_process, Process};
 
 const STACK_SIZE_PAGES: usize = 16;
@@ -66,11 +67,14 @@ impl Thread {
                 }
 
                 process.address_space().map_physical(frames, pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+                process.add_vma(VirtualMemoryArea::new(pages, VmaType::Code));
             });
 
         let user_stack_start = Page::from_start_address(VirtAddr::new(USER_STACK_ADDRESS as u64)).unwrap();
+        let user_stack_pages = PageRange { start: user_stack_start, end: user_stack_start + STACK_SIZE_PAGES as u64 };
         let user_stack = unsafe { Vec::from_raw_parts(USER_STACK_ADDRESS as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8) };
-        address_space.map(PageRange { start: user_stack_start, end: user_stack_start + STACK_SIZE_PAGES as u64 }, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+        address_space.map(user_stack_pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+        process.add_vma(VirtualMemoryArea::new(user_stack_pages, VmaType::Stack));
 
         let mut thread = Thread {
             id: scheduler::next_thread_id(),
@@ -109,7 +113,7 @@ impl Thread {
     }
 
     pub fn switch(current: &Thread, next: &Thread) {
-        unsafe { thread_switch(ptr::from_ref(&current.old_rsp0) as *mut u64, next.old_rsp0.as_u64(), next.kernel_stack_addr() as u64, next.process().address_space().page_table_address().start_address().as_u64()); }
+        unsafe { thread_switch(ptr::from_ref(&current.old_rsp0) as *mut u64, next.old_rsp0.as_u64(), next.kernel_stack_addr() as u64, next.process().address_space().page_table_address().as_u64()); }
     }
 
     pub fn is_kernel_thread(&self) -> bool {

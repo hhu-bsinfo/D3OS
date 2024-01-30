@@ -4,7 +4,7 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use spin::RwLock;
 use crate::{memory, scheduler};
-use crate::memory::r#virtual::AddressSpace;
+use crate::memory::r#virtual::{AddressSpace, VirtualMemoryArea, VmaType};
 
 static PROCESSES: RwLock<Vec<Arc<Process>>> = RwLock::new(Vec::new());
 static PROCESS_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -37,12 +37,13 @@ pub fn current_process() -> Arc<Process> {
 
 pub struct Process {
     id: usize,
-    address_space: Arc<AddressSpace>
+    address_space: Arc<AddressSpace>,
+    memory_areas: RwLock<Vec<VirtualMemoryArea>>
 }
 
 impl Process {
     fn new() -> Self {
-        Self { id: next_process_id(), address_space: memory::r#virtual::create_address_space() }
+        Self { id: next_process_id(), address_space: memory::r#virtual::create_address_space(), memory_areas: RwLock::new(Vec::new()) }
     }
 
     pub fn id(&self) -> usize {
@@ -51,6 +52,22 @@ impl Process {
 
     pub fn address_space(&self) -> Arc<AddressSpace> {
         Arc::clone(&self.address_space)
+    }
+
+    pub fn add_vma(&self, new_area: VirtualMemoryArea) {
+        let mut areas = self.memory_areas.write();
+        match areas.iter().find(|area| area.overlaps_with(&new_area)) {
+            Some(_) => panic!("Process: Trying to add a VMA, which overlaps with an existing one!"),
+            None => areas.push(new_area)
+        }
+    }
+
+    pub fn find_vma(&self, typ: VmaType) -> Option<VirtualMemoryArea> {
+        let areas = self.memory_areas.read();
+        match areas.iter().find(|area| area.typ() == typ) {
+            Some(area) => Some(*area),
+            None => None
+        }
     }
 
     pub fn exit(&self) {

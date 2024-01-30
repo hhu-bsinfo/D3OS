@@ -3,11 +3,12 @@
 use core::arch::asm;
 use crate::SystemCall::ThreadExit;
 
-#[repr(u8)]
+#[repr(usize)]
 #[allow(dead_code)]
 pub enum SystemCall {
     Read = 0,
     Write,
+    MapUserHeap,
     ProcessId,
     ThreadId,
     ThreadSwitch,
@@ -18,13 +19,13 @@ pub enum SystemCall {
 pub const NUM_SYSCALLS: usize = ThreadExit as usize + 1;
 
 #[inline(always)]
-pub fn syscall0(arg0: u64) -> u64 {
-    let ret: u64;
+pub fn syscall0(call: SystemCall) -> usize {
+    let ret: usize;
 
     unsafe {
         asm!(
         "syscall",
-        inlateout("rax") arg0 => ret,
+        inlateout("rax") call as usize => ret,
         out("rcx") _,
         out("r11") _,
         options(preserves_flags, nostack)
@@ -35,13 +36,13 @@ pub fn syscall0(arg0: u64) -> u64 {
 }
 
 #[inline(always)]
-pub fn syscall1(arg0: u64, arg1: u64) -> u64 {
-    let ret: u64;
+pub fn syscall1(call: SystemCall, arg1: usize) -> usize {
+    let ret: usize;
 
     unsafe {
         asm!(
         "syscall",
-        inlateout("rax") arg0 => ret,
+        inlateout("rax") call as usize => ret,
         in("rdi") arg1,
         out("rcx") _,
         out("r11") _,
@@ -54,13 +55,13 @@ pub fn syscall1(arg0: u64, arg1: u64) -> u64 {
 
 #[inline(always)]
 #[allow(dead_code)]
-pub fn syscall2(arg0: u64, arg1: u64, arg2: u64) -> u64 {
-    let ret: u64;
+pub fn syscall2(call: SystemCall, arg1: usize, arg2: usize) -> usize {
+    let ret: usize;
 
     unsafe {
         asm!(
         "syscall",
-        inlateout("rax") arg0 => ret,
+        inlateout("rax") call as usize => ret,
         in("rdi") arg1,
         in("rsi") arg2,
         out("rcx") _,
@@ -74,13 +75,13 @@ pub fn syscall2(arg0: u64, arg1: u64, arg2: u64) -> u64 {
 
 #[inline(always)]
 #[allow(dead_code)]
-pub fn syscall3(arg0: u64, arg1: u64, arg2: u64, arg3: u64) -> u64 {
-    let ret: u64;
+pub fn syscall3(call: SystemCall, arg1: usize, arg2: usize, arg3: usize) -> usize {
+    let ret: usize;
 
     unsafe {
         asm!(
         "syscall",
-        inlateout("rax") arg0 => ret,
+        inlateout("rax") call as usize => ret,
         in("rdi") arg1,
         in("rsi") arg2,
         in("rdx") arg3,
