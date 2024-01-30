@@ -212,6 +212,8 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
     "pop r9",
     "pop r8",
     "popf",
+
+    "call unlock_scheduler",
     "ret",
     options(noreturn)
     );
@@ -284,6 +286,8 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
     "pop r9",
     "pop r8",
     "popf",
+
+    "call unlock_scheduler",
     "ret", // Return to next thread
     options(noreturn)
     )

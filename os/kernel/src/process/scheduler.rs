@@ -7,7 +7,7 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use smallmap::Map;
 use spin::Mutex;
-use crate::{apic, timer};
+use crate::{apic, scheduler, timer};
 
 static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -36,6 +36,12 @@ pub struct Scheduler {
 unsafe impl Send for Scheduler {}
 unsafe impl Sync for Scheduler {}
 
+/// Called from assembly code, after the thread has been switched
+#[no_mangle]
+pub unsafe extern "C" fn unlock_scheduler() {
+    scheduler().state.force_unlock();
+}
+
 impl Scheduler {
     pub fn new() -> Self {
         Self { state: Mutex::new(ReadyState::new()), sleep_list: Mutex::new(Vec::new()), join_map: Mutex::new(Map::new()) }
@@ -51,13 +57,9 @@ impl Scheduler {
     }
 
     pub fn start(&self) {
-        let thread;
-
-        {
-            let mut state = self.state.lock();
-            thread = state.ready_queue.pop_back().expect("Scheduler: Failed to dequeue first thread!");
-            state.current_thread = Some(Rc::clone(&thread));
-        }
+        let mut state = self.state.lock();
+        let thread = state.ready_queue.pop_back().expect("Scheduler: Failed to dequeue first thread!");
+        state.current_thread = Some(Rc::clone(&thread));
 
         Thread::start_first(thread.as_ref());
     }
@@ -72,22 +74,19 @@ impl Scheduler {
     }
 
     pub fn sleep(&self, ms: usize) {
-        {
-            let wakeup_time = timer().read().systime_ms() + ms;
-            let state = self.state.lock();
-            let mut sleep_list = self.sleep_list.lock();
+        let mut state = self.state.lock();
+        let thread = Scheduler::current(&state);
+        let wakeup_time = timer().read().systime_ms() + ms;
 
-            let thread = Scheduler::current(&state);
+        { // Execute in own block, so that sleep_list is automatically freed when it is not needed anymore
+            let mut sleep_list = self.sleep_list.lock();
             sleep_list.push((thread, wakeup_time));
         }
 
-        self.block();
+        self.block(&mut state);
     }
 
     pub fn switch_thread(&self) {
-        let current;
-        let next;
-
         if let Some(mut state) = self.state.try_lock() {
             if !state.initialized {
                 return;
@@ -97,70 +96,40 @@ impl Scheduler {
                 Scheduler::check_sleep_list(&mut state, &mut sleep_list);
             }
 
-            next = match state.ready_queue.pop_back() {
+            let next = match state.ready_queue.pop_back() {
                 Some(thread) => thread,
                 None => return,
             };
 
-            current = Scheduler::current(&state);
+            let current = Scheduler::current(&state);
             state.current_thread = Some(Rc::clone(&next));
 
             state.ready_queue.push_front(Rc::clone(&current));
-        } else {
-            return;
+
+            apic().end_of_interrupt();
+            Thread::switch(current.as_ref(), next.as_ref());
         }
-
-        apic().end_of_interrupt();
-        Thread::switch(current.as_ref(), next.as_ref());
-    }
-
-    pub fn block(&self) {
-        let current;
-        let next;
-
-        {
-            let mut state = self.state.lock();
-            let mut sleep_list = self.sleep_list.lock();
-            let mut next_thread = state.ready_queue.pop_back();
-
-            while next_thread.is_none() {
-                Scheduler::check_sleep_list(&mut state, &mut sleep_list);
-                next_thread = state.ready_queue.pop_back();
-            }
-
-            current = Scheduler::current(&state);
-            next = next_thread.unwrap();
-            state.current_thread = Some(Rc::clone(&next));
-
-            // Thread has enqueued itself into sleep list and waited so long, that it dequeued itself in the meantime
-            if current.id() == next.id() {
-                return;
-            }
-        }
-
-        Thread::switch(current.as_ref(), next.as_ref());
     }
 
     pub fn join(&self, thread_id: usize) {
-        {
-            let state = self.state.lock();
+        let mut state = self.state.lock();
+        let thread = Scheduler::current(&state);
+
+        { // Execute in own block, so that join_map is automatically freed when it is not needed anymore
             let mut join_map = self.join_map.lock();
-
-            let thread = Scheduler::current(&state);
             let join_list = join_map.get_mut(&thread_id).expect(format!("Scheduler: Missing join_map entry for thread id {}!", thread.id()).as_str());
-
             join_list.push(thread);
         }
 
-        self.block();
+        self.block(&mut state);
     }
 
     pub fn exit(&self) {
-        {
-            let mut state = self.state.lock();
-            let mut join_map = self.join_map.lock();
+        let mut state = self.state.lock();
+        let thread = Scheduler::current(&state);
 
-            let thread = Scheduler::current(&state);
+        { // Execute in own block, so that join_map is automatically freed when it is not needed anymore
+            let mut join_map = self.join_map.lock();
             let join_list = join_map.get_mut(&thread.id()).expect(format!("Scheduler: Missing join_map entry for thread id {}!", thread.id()).as_str());
 
             for thread in join_list {
@@ -168,13 +137,36 @@ impl Scheduler {
             }
 
             join_map.remove(&thread.id());
+        }
 
-            if !thread.is_kernel_thread() {
-                thread.process().exit();
+        if !thread.is_kernel_thread() {
+            thread.process().exit();
+        }
+
+        self.block(&mut state);
+    }
+
+    fn block(&self, state: &mut ReadyState) {
+        let mut next_thread = state.ready_queue.pop_back();
+
+        { // Execute in own block, so that sleep_list is automatically freed when it is not needed anymore
+            let mut sleep_list = self.sleep_list.lock();
+            while next_thread.is_none() {
+                Scheduler::check_sleep_list(state, &mut sleep_list);
+                next_thread = state.ready_queue.pop_back();
             }
         }
 
-        self.block();
+        let current = Scheduler::current(&state);
+        let next = next_thread.unwrap();
+        state.current_thread = Some(Rc::clone(&next));
+
+        // Thread has enqueued itself into sleep list and waited so long, that it dequeued itself in the meantime
+        if current.id() == next.id() {
+            return;
+        }
+
+        Thread::switch(current.as_ref(), next.as_ref());
     }
 
     fn current(state: &ReadyState) -> Rc<Thread> {
