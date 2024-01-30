@@ -117,7 +117,7 @@ impl Scheduler {
 
         { // Execute in own block, so that join_map is automatically freed when it is not needed anymore
             let mut join_map = self.join_map.lock();
-            let join_list = join_map.get_mut(&thread_id).expect(format!("Scheduler: Missing join_map entry for thread id {}!", thread.id()).as_str());
+            let join_list = join_map.get_mut(&thread_id).expect(format!("Scheduler: Missing join_map entry for thread id {}!", thread_id).as_str());
             join_list.push(thread);
         }
 

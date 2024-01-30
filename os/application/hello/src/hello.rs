@@ -1,5 +1,7 @@
 #![no_std]
 
+extern crate alloc;
+
 #[allow(unused_imports)]
 use runtime::*;
 use io::{print, println};

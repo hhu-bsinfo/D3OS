@@ -32,7 +32,7 @@ impl Writer {
 
 impl Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        syscall2(SystemCall::Write as u64, s.as_bytes().as_ptr() as u64, s.len() as u64);
+        syscall2(SystemCall::Write, s.as_bytes().as_ptr() as usize, s.len());
         return Ok(());
     }
 }

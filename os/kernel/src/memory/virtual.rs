@@ -15,6 +15,17 @@ pub struct AddressSpace {
     depth: usize
 }
 
+#[derive(Copy, Clone)]
+pub struct VirtualMemoryArea {
+    range: PageRange,
+    typ: VmaType
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum VmaType {
+    Code, Heap, Stack
+}
+
 unsafe impl Send for AddressSpace {}
 unsafe impl Sync for AddressSpace {}
 
@@ -45,6 +56,43 @@ impl Drop for AddressSpace {
     }
 }
 
+impl VirtualMemoryArea {
+    pub const fn new(range: PageRange, typ: VmaType) -> Self {
+        Self { range, typ }
+    }
+
+    pub fn from_address(start: VirtAddr, size: usize, typ: VmaType) -> Self {
+        let start_page = Page::from_start_address(start).expect("VirtualMemoryArea: Address is not page aligned!");
+        let range = PageRange { start: start_page, end: start_page + (size / PAGE_SIZE) as u64 };
+
+        Self { range, typ }
+    }
+
+    pub fn start(&self) -> VirtAddr {
+        self.range.start.start_address()
+    }
+
+    pub fn end(&self) -> VirtAddr {
+        self.range.end.start_address()
+    }
+
+    pub fn range(&self) -> PageRange {
+        self.range
+    }
+
+    pub fn typ(&self) -> VmaType {
+        self.typ
+    }
+
+    pub fn overlaps_with(&self, other: &VirtualMemoryArea) -> bool {
+        if self.range.end <= other.range.start || self.range.start >= other.range.end {
+            false
+        } else {
+            true
+        }
+    }
+}
+
 impl AddressSpace {
     pub fn new(depth: usize) -> Self {
         let table_addr = physical::alloc(1).start;
@@ -70,11 +118,15 @@ impl AddressSpace {
     }
 
     pub fn load(&self) {
-        unsafe { Cr3::write(self.page_table_address(), Cr3Flags::empty()) };
+        unsafe { Cr3::write(PhysFrame::from_start_address(self.page_table_address()).unwrap(), Cr3Flags::empty()) };
     }
 
-    pub fn page_table_address(&self) -> PhysFrame {
-        PhysFrame::from_start_address(PhysAddr::new(self.root_table.read().cast_const() as u64)).unwrap()
+    pub fn page_table_address(&self) -> PhysAddr {
+        // Get root table pointer without locking.
+        // We cannot use the lock here, because this function is called by the scheduler.
+        // This is still safe, since we only return an address and not a reference.
+        let root_table = unsafe { self.root_table.as_mut_ptr().read() };
+        PhysAddr::new(root_table as u64)
     }
 
     pub fn map(&self, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {

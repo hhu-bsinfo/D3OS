@@ -3,24 +3,24 @@
 use syscall::{syscall0, syscall1, SystemCall};
 
 pub fn process_id() -> usize {
-    syscall0(SystemCall::ProcessId as u64) as usize
+    syscall0(SystemCall::ProcessId)
 }
 
 pub fn thread_id() -> usize {
-    syscall0(SystemCall::ThreadId as u64) as usize
+    syscall0(SystemCall::ThreadId)
 }
 
 #[allow(dead_code)]
 pub fn switch() {
-    syscall0(SystemCall::ThreadSwitch as u64);
+    syscall0(SystemCall::ThreadSwitch);
 }
 
 #[allow(dead_code)]
 pub fn sleep(ms: usize) {
-    syscall1(SystemCall::ThreadSleep as u64, ms as u64);
+    syscall1(SystemCall::ThreadSleep, ms);
 }
 
 pub fn exit() -> ! {
-    syscall0(SystemCall::ThreadExit as u64);
+    syscall0(SystemCall::ThreadExit);
     panic!("System call 'ThreadExit' has returned!")
 }
