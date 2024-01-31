@@ -9,7 +9,7 @@ extern {
     fn main();
 }
 
-const HEAP_SIZE: usize = 0x1000000;
+const HEAP_SIZE: usize = 0x100000;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
