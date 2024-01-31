@@ -32,8 +32,11 @@ use tar_no_std::TarArchiveRef;
 use uefi::table::{Runtime, SystemTable};
 use x86_64::structures::gdt::GlobalDescriptorTable;
 use x86_64::structures::idt::InterruptDescriptorTable;
+use x86_64::structures::paging::frame::PhysFrameRange;
+use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::tss::TaskStateSegment;
-use x86_64::VirtAddr;
+use x86_64::{PhysAddr, VirtAddr};
+use crate::memory::PAGE_SIZE;
 
 extern crate alloc;
 
@@ -142,6 +145,12 @@ pub fn init_keyboard() {
 
 pub fn init_initrd(module: &ModuleTag) {
     INIT_RAMDISK.call_once(|| {
+        let initrd_frames = PhysFrameRange {
+            start: PhysFrame::from_start_address(PhysAddr::new(module.start_address() as u64)).expect("Initial ramdisk is not page aligned!"),
+            end: PhysFrame::from_start_address(PhysAddr::new(module.end_address() as u64).align_up(PAGE_SIZE as u64)).unwrap(),
+        };
+        unsafe { memory::physical::reserve(initrd_frames); }
+
         let initrd_bytes = unsafe { core::slice::from_raw_parts(module.start_address() as *const u8, (module.end_address() - module.start_address()) as usize) };
         return TarArchiveRef::new(initrd_bytes);
     });

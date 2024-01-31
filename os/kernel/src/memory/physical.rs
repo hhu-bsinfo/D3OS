@@ -73,13 +73,6 @@ impl PageFrameNode {
         Self { frame_count, next: None }
     }
 
-    fn range(&self) -> PhysFrameRange {
-        let start = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(self) as u64)).unwrap();
-        let end = start + self.frame_count as u64;
-
-        return PhysFrameRange { start, end };
-    }
-
     fn start(&self) -> PhysFrame {
         return PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(self) as u64)).unwrap();
     }
@@ -101,7 +94,7 @@ impl Debug for PageFrameListAllocator {
 
         let mut current = &self.head;
         while let Some(block) = &current.next {
-            write!(f, "{:?}\n", block.range())?;
+            write!(f, "Block: [0x{:x} - 0x{:x}], Frame count: [{}]\n", block.start().start_address().as_u64(), block.end().start_address().as_u64(), block.end() - block.start())?;
             available = available + block.frame_count;
 
             current = current.next.as_ref().unwrap();
@@ -235,7 +228,7 @@ impl PageFrameListAllocator {
                     let below_size = reserved.start - block.start();
                     block.frame_count = below_size as usize;
 
-                    let mut above_block = PageFrameNode::new((block.end() - reserved.end) as usize);
+                    let mut above_block = PageFrameNode::new((reserved.end - block.end()) as usize);
                     let above_block_ptr = reserved.end.start_address().as_u64() as *mut PageFrameNode;
                     above_block.next = block.next.take();
                     block.next = Some(&mut *above_block_ptr);
