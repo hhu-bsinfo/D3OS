@@ -56,7 +56,7 @@ pub fn phys_limit() -> PhysFrame {
     return PHYS_LIMIT.get().unwrap().lock().get();
 }
 
-// Get a dump of the current free list.
+/// Get a dump of the current free list.
 pub fn dump() -> String {
     format!("{:?}", PAGE_FRAME_ALLOCATOR.lock())
 }
@@ -119,7 +119,7 @@ impl PageFrameListAllocator {
 
     /// Insert a new block, sorted ascending by its memory address.
     unsafe fn insert(&mut self, frames: PhysFrameRange) {
-        let mut new_block = PageFrameNode::new(frames.count());
+        let mut new_block = PageFrameNode::new((frames.end - frames.start) as usize);
         let new_block_ptr = frames.start.start_address().as_u64() as *mut PageFrameNode;
 
         // Check if list is empty
@@ -175,7 +175,7 @@ impl PageFrameListAllocator {
         match self.find_free_block(frame_count) {
             Some(block) => {
                 let remaining = PhysFrameRange { start: block.start() + frame_count as u64, end: block.end() };
-                if remaining.count() > 0 {
+                if (remaining.end - remaining.start) > 0 {
                     unsafe { self.insert(remaining); }
                 }
                 
@@ -195,7 +195,7 @@ impl PageFrameListAllocator {
         while let Some(ref mut block) = current.next {
             if frames.end == block.start() {
                 // The freed memory block extends 'block' from the bottom
-                let mut new_block = PageFrameNode::new(block.frame_count + frames.count());
+                let mut new_block = PageFrameNode::new(block.frame_count + (frames.end - frames.start) as usize);
                 new_block_ptr = frames.start.start_address().as_u64() as *mut PageFrameNode;
                 new_block.next = block.next.take();
                 new_block_ptr.write(new_block);
@@ -203,7 +203,7 @@ impl PageFrameListAllocator {
                 return;
             } else if block.end() == frames.start {
                 // The freed memory block extends 'block' from the top
-                let new_block = PageFrameNode::new(block.frame_count + frames.count());
+                let new_block = PageFrameNode::new(block.frame_count + (frames.end - frames.start) as usize);
                 new_block_ptr = block.start().start_address().as_u64() as *mut PageFrameNode;
                 new_block_ptr.write(new_block);
 

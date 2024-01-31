@@ -95,7 +95,7 @@ impl KernelAllocator {
     }
 
     pub unsafe fn init(&self, frames: &PhysFrameRange) {
-        self.heap.lock().init(frames.start.start_address().as_u64() as *mut u8, frames.count() * PAGE_SIZE);
+        self.heap.lock().init(frames.start.start_address().as_u64() as *mut u8, (frames.end - frames.start) as usize * PAGE_SIZE);
     }
 
     pub fn is_initialized(&self) -> bool {
