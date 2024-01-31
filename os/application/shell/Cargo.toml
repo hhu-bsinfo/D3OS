@@ -1,12 +1,12 @@
 [package]
 edition = "2021"
-name = "hello"
+name = "shell"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
 
 [lib]
 crate-type = ["staticlib"]
-path = "src/hello.rs"
+path = "src/shell.rs"
 
 [dependencies]
 # Local dependencies

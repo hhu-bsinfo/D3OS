@@ -4,7 +4,7 @@ use x86_64::registers::model_specific::{LStar, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 use syscall::NUM_SYSCALLS;
-use crate::syscall::{sys_write, sys_thread_exit, sys_thread_sleep, sys_thread_switch, sys_process_id, sys_thread_id, sys_read, sys_map_user_heap};
+use crate::syscall::{sys_write, sys_thread_exit, sys_thread_sleep, sys_thread_switch, sys_process_id, sys_thread_id, sys_read, sys_map_user_heap, sys_thread_join, sys_application_start};
 
 
 pub fn init() {
@@ -48,7 +48,9 @@ impl SyscallTable {
                 sys_thread_id as *const _,
                 sys_thread_switch as *const _,
                 sys_thread_sleep as *const _,
+                sys_thread_join as *const _,
                 sys_thread_exit as *const _,
+                sys_application_start as *const _
             ],
         }
     }

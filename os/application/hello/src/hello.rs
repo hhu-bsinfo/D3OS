@@ -2,12 +2,15 @@
 
 extern crate alloc;
 
+use concurrent::{process, thread};
 #[allow(unused_imports)]
 use runtime::*;
 use io::{print, println};
-use thread::{process_id, thread_id};
 
 #[no_mangle]
 pub fn main() {
-    println!("Hello from Thread [{}] in Process [{}]!", thread_id(), process_id());
+    let process = process::current();
+    let thread = thread::current();
+
+    println!("Hello from Thread [{}] in Process [{}]!", process.id(), thread.id());
 }

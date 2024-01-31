@@ -2,6 +2,7 @@
 
 use core::panic::PanicInfo;
 use linked_list_allocator::LockedHeap;
+use concurrent::thread;
 use io::{print, println};
 use syscall::{syscall1, SystemCall};
 
