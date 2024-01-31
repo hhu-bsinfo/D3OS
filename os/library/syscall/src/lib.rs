@@ -1,7 +1,7 @@
 #![no_std]
 
 use core::arch::asm;
-use crate::SystemCall::ThreadExit;
+use crate::SystemCall::ApplicationStart;
 
 #[repr(usize)]
 #[allow(dead_code)]
@@ -13,10 +13,12 @@ pub enum SystemCall {
     ThreadId,
     ThreadSwitch,
     ThreadSleep,
+    ThreadJoin,
     ThreadExit,
+    ApplicationStart
 }
 
-pub const NUM_SYSCALLS: usize = ThreadExit as usize + 1;
+pub const NUM_SYSCALLS: usize = ApplicationStart as usize + 1;
 
 #[inline(always)]
 pub fn syscall0(call: SystemCall) -> usize {

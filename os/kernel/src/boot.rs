@@ -1,10 +1,8 @@
 use crate::interrupt::interrupt_dispatcher;
 use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
-use alloc::boxed::Box;
 use alloc::format;
-use alloc::rc::Rc;
-use alloc::string::{String, ToString};
+use alloc::string::ToString;
 use core::ffi::c_void;
 use core::fmt::Arguments;
 use core::mem::size_of;
@@ -231,43 +229,17 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         serial.plugin();
     }
 
-    // Ready terminal read thread
-    scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
-        let mut command = String::new();
-        let terminal = terminal();
-        terminal.write_str("> ");
-
-        loop {
-            match terminal.read_byte() {
-                -1 => panic!("Terminal input stream closed!"),
-                0x0a => {
-                    match initrd().entries().find(|entry| entry.filename().as_str() == command) {
-                        Some(app) => {
-                            let thread = Thread::new_user_thread(app.data());
-                            scheduler().ready(Rc::clone(&thread));
-                            thread.join();
-                        }
-                        None => {
-                            if !command.is_empty() {
-                                println!("Command not found!");
-                            }
-                        }
-                    }
-
-                    command.clear();
-                    terminal.write_str("> ")
-                },
-                c => command.push(char::from_u32(c as u32).unwrap())
-            }
-        }
-    })));
-
-    // Load application
+    // Load initial ramdisk
     let initrd_tag = multiboot.module_tags()
         .find(|module| module.cmdline().is_ok_and(|name| name == "initrd"))
         .expect("Initrd not found!");
-
     init_initrd(initrd_tag);
+
+    // Ready shell thread
+    let shell = initrd().entries()
+        .find(|entry| entry.filename().as_str() == "shell")
+        .expect("Shell application not available!");
+    scheduler().ready(Thread::new_user_thread(shell.data()));
 
     // Disable terminal logging
     logger().lock().remove(terminal());

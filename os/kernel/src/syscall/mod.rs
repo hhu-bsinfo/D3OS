@@ -1,8 +1,12 @@
+use alloc::rc::Rc;
+use core::ptr::slice_from_raw_parts;
+use core::str::from_utf8;
 use x86_64::structures::paging::PageTableFlags;
-use crate::{scheduler, terminal};
+use crate::{initrd, scheduler, terminal};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::process::current_process;
+use crate::process::thread::Thread;
 
 pub mod syscall_dispatcher;
 
@@ -17,10 +21,9 @@ pub extern "C" fn sys_read() -> u64 {
 
 #[no_mangle]
 pub extern "C" fn sys_write(buffer: *const u8, length: usize) {
+    let string = from_utf8(unsafe { slice_from_raw_parts(buffer, length).as_ref().unwrap() }).unwrap();
     let terminal = terminal();
-    for i in 0..length {
-        unsafe { terminal.write_byte(buffer.offset(i as isize).read()) };
-    }
+    terminal.write_str(string);
 }
 
 #[no_mangle]
@@ -57,6 +60,24 @@ pub extern "C" fn sys_thread_sleep(ms: usize) {
 }
 
 #[no_mangle]
+pub extern "C" fn sys_thread_join(id: usize) {
+    scheduler().join(id);
+}
+
+#[no_mangle]
 pub extern "C" fn sys_thread_exit() {
     scheduler().exit();
+}
+
+#[no_mangle]
+pub extern "C" fn sys_application_start(name_buffer: *const u8, name_length: usize) -> usize {
+    let app_name = from_utf8(unsafe { slice_from_raw_parts(name_buffer, name_length).as_ref().unwrap() }).unwrap();
+    match initrd().entries().find(|entry| entry.filename().as_str() == app_name) {
+        Some(app) => {
+            let thread = Thread::new_user_thread(app.data());
+            scheduler().ready(Rc::clone(&thread));
+            thread.id()
+        }
+        None => 0
+    }
 }
