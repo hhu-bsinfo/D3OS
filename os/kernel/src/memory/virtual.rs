@@ -143,7 +143,7 @@ impl AddressSpace {
         let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
-        assert_eq!(frames.count(), pages.count());
+        assert_eq!(frames.end - frames.start, pages.end - pages.start);
         AddressSpace::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
@@ -192,7 +192,7 @@ impl AddressSpace {
                 pages = PageRange { start: pages.start + allocated_pages as u64, end: pages.end };
                 total_allocated_pages = total_allocated_pages + allocated_pages;
 
-                if frames.count() > 0 {
+                if frames.end > frames.start {
                     frames = PhysFrameRange { start: frames.start + allocated_pages as u64, end: frames.end };
                 }
 
@@ -204,7 +204,7 @@ impl AddressSpace {
             total_allocated_pages += match space {
                 MemorySpace::Kernel => AddressSpace::identity_map_kernel(table, pages, flags),
                 MemorySpace::User => {
-                    if frames.count() == 0 {
+                    if frames.start == frames.end {
                         AddressSpace::map_user(table, pages, flags)
                     } else {
                         AddressSpace::map_user_physical(table, frames, pages, flags)
@@ -218,11 +218,11 @@ impl AddressSpace {
 
     fn identity_map_kernel(table: &mut PageTable, pages: PageRange, flags: PageTableFlags) -> usize {
         let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
-        let alloc_count = min(pages.count(), 512 - start_index);
+        let alloc_count = min((pages.end - pages.start) as usize, 512 - start_index);
         let mut frame_addr = PhysAddr::new(pages.start.start_address().as_u64());
 
-        for (index, entry) in table.iter_mut().skip(start_index).enumerate() {
-            if index >= start_index + alloc_count {
+        for (count, entry) in table.iter_mut().skip(start_index).enumerate() {
+            if count >= alloc_count {
                 break;
             }
 
@@ -235,10 +235,10 @@ impl AddressSpace {
 
     fn map_user(table: &mut PageTable, pages: PageRange, flags: PageTableFlags) -> usize {
         let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
-        let alloc_count = min(pages.count(), 512 - start_index);
+        let alloc_count = min((pages.end - pages.start) as usize, 512 - start_index);
 
-        for (index, entry) in table.iter_mut().skip(start_index).enumerate() {
-            if index >= start_index + alloc_count {
+        for (count, entry) in table.iter_mut().skip(start_index).enumerate() {
+            if count >= alloc_count {
                 break;
             }
 
@@ -251,11 +251,11 @@ impl AddressSpace {
 
     fn map_user_physical(table: &mut PageTable, frames: PhysFrameRange, pages: PageRange, flags: PageTableFlags) -> usize {
         let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
-        let alloc_count = min(pages.count(), 512 - start_index);
+        let alloc_count = min((pages.end - pages.start) as usize, 512 - start_index);
         let mut frame_iter = frames.into_iter().skip(start_index);
 
-        for (index, entry) in table.iter_mut().skip(start_index).enumerate() {
-            if index >= start_index + alloc_count {
+        for (count, entry) in table.iter_mut().skip(start_index).enumerate() {
+            if count >= alloc_count {
                 break;
             }
 
