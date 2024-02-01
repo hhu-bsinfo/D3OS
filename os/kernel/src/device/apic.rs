@@ -8,7 +8,7 @@ use log::info;
 use raw_cpuid::CpuId;
 use spin::Mutex;
 use x2apic::ioapic::{IoApic, IrqFlags, IrqMode, RedirectionTableEntry};
-use x2apic::lapic::{xapic_base, LocalApic, LocalApicBuilder};
+use x2apic::lapic::{LocalApic, LocalApicBuilder};
 use x86_64::structures::paging::page::PageRange;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{Page, PageTableFlags};
@@ -49,10 +49,11 @@ impl Apic {
 
         // Read physical APIC MMIO base address and map it to the kernel address space
         // Needs to be executed in unsafe block; APIC availability has been checked before, so this should work.
-        let apic_page = Page::from_start_address(VirtAddr::new(unsafe { xapic_base() })).expect("Local Apic MMIO address is not page aligned!");
+        let apic_page = Page::from_start_address(VirtAddr::new(madt.local_apic_address as u64)).expect("Local Apic MMIO address is not page aligned!");
         let address_space = current_process().address_space();
         address_space.map(PageRange { start: apic_page, end: apic_page + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
 
+        info!("Mapped APIC registers");
         let local_apic = Mutex::new(LocalApicBuilder::new()
                 .timer_vector(InterruptVector::ApicTimer as usize)
                 .error_vector(InterruptVector::ApicError as usize)
@@ -61,6 +62,7 @@ impl Apic {
                 .build()
                 .unwrap_or_else(|err| panic!("Failed to initialize Local APIC ({})!", err)),
         );
+        info!("Initialized local APIC");
 
         let io_apic;
         let mut irq_overrides = Vec::<InterruptSourceOverride>::new();
