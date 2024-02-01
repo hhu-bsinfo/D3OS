@@ -2,10 +2,11 @@ use crate::device::qemu_cfg;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use alloc::boxed::Box;
+use core::arch::asm;
 use core::hint::spin_loop;
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortWriteOnly};
-use crate::{apic, interrupt_dispatcher, scheduler, timer};
+use crate::{apic, interrupt_dispatcher, timer};
 
 pub const BASE_FREQUENCY: usize = 1193182;
 
@@ -22,7 +23,6 @@ struct TimerInterruptHandler {
 
 impl InterruptHandler for TimerInterruptHandler {
     fn trigger(&mut self) {
-        let mut systime = 1;
         self.pending_incs += 1;
 
         if let Some(mut timer) = timer().try_write() {
@@ -30,12 +30,6 @@ impl InterruptHandler for TimerInterruptHandler {
                 timer.inc_systime();
                 self.pending_incs -= 1;
             }
-
-            systime = timer.systime_ms();
-        }
-
-        if systime % 10 == 0 {
-            scheduler().switch_thread();
         }
     }
 }
@@ -98,4 +92,30 @@ impl Timer {
     fn inc_systime(&mut self) {
         self.systime_ns += self.interval_ns;
     }
+}
+
+/// Used to calibrate the APIC timer.
+#[naked]
+pub unsafe extern "C" fn early_delay_50ms() {
+    asm!(
+    "mov al, 0x30", // Channel 0, mode 0, low-/high byte access mode
+    "outb 0x43", // Control port
+
+    // Set counter value to 0xe90b (roughly 50ms)
+    "mov al, 0x0b", // Low byte
+    "outb 0x40", // Data port
+    "mov al, 0xe9", // High byte
+    "outb 0x40", // Data port
+
+    // Wait until output pin bit is set (counter reached 0)
+    "2:", // Loop label
+    "mov al, 0xe2", // Read status byte -> channel 0, mode 0, low-/high byte access mode
+    "outb 0x43", // Control port
+    "inb 0x40", // Data port
+    "test al, 0x80", // Test bit 7 (output pin state)
+    "jz 2b", // If bit 7 is not set -> loop
+
+    "ret",
+    options(noreturn)
+    );
 }
