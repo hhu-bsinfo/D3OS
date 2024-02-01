@@ -207,7 +207,7 @@ fn handle_interrupt(_frame: InterruptStackFrame, index: u8, _error: Option<u64>)
 impl InterruptDispatcher {
     pub fn new() -> Self {
         let mut int_vectors = Vec::<Mutex<Vec<Box<dyn InterruptHandler>>>>::new();
-        for _ in 32..MAX_VECTORS {
+        for _ in 0..MAX_VECTORS {
             int_vectors.push(Mutex::new(Vec::new()));
         }
 
