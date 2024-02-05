@@ -5,7 +5,7 @@ readonly CONST_QEMU_MACHINE_PC="pc"
 readonly CONST_QEMU_CPU="qemu64"
 readonly CONST_QEMU_MACHINE_PC_KVM="pc,accel=kvm,kernel-irqchip=split"
 readonly CONST_QEMU_DEFAULT_RAM="128M"
-readonly CONST_QEMU_BIOS_EFI="efi/ovmf/x64/OVMF.fd"
+readonly CONST_QEMU_BIOS_EFI="efi/OVMF.fd"
 readonly CONST_QEMU_ARGS="-boot d -vga std -rtc base=localtime -device isa-debug-exit"
 readonly CONST_QEMU_OLD_AUDIO_ARGS="-soundhw pcspk"
 readonly CONST_QEMU_NEW_AUDIO_ARGS="-audiodev id=pa,driver=pa -machine pcspk-audiodev=pa"
@@ -35,9 +35,9 @@ set_audio_parameters() {
 }
 
 get_ovmf() {
-  cd "efi/ovmf" || exit 1
+  cd "efi" || exit 1
   ./build.sh || exit 1
-  cd "../.." || exit 1
+  cd ".." || exit 1
 }
 
 check_file() {
