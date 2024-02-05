@@ -25,6 +25,9 @@ use crate::log::Logger;
 use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use alloc::boxed::Box;
+use core::fmt::Arguments;
+use core::panic::PanicInfo;
+use ::log::{Level, Log, Record};
 use acpi::AcpiTables;
 use multiboot2::ModuleTag;
 use spin::{Mutex, Once, RwLock};
@@ -48,6 +51,31 @@ pub mod memory;
 pub mod log;
 pub mod syscall;
 pub mod process;
+
+pub mod built_info {
+    // The file has been placed there by the build script.
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+}
+
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    if terminal_initialized() {
+        println!("Panic: {}", info);
+    } else {
+        let record = Record::builder()
+            .level(Level::Error)
+            .file(Some("panic"))
+            .args(*info.message().unwrap_or(&Arguments::new_const(&["A panic occurred!"])))
+            .build();
+
+        unsafe { logger().force_unlock() };
+        let log = logger().lock();
+        unsafe { logger().force_unlock() }; // log() also calls logger().lock()
+        log.log(&record);
+    }
+
+    loop {}
+}
 
 struct EfiSystemTable {
     table: SystemTable<Runtime>,

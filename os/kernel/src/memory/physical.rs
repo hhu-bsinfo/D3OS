@@ -82,7 +82,7 @@ impl PageFrameNode {
     }
 }
 
-/// Manages block of available physical memory as a linked list
+/// Manages blocks of available physical memory as a linked list
 /// Since each page frame is exactly 4 KiB large, allocations are always a multiple of 4096.
 struct PageFrameListAllocator {
     head: PageFrameNode

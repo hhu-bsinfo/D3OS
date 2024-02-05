@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr;
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
-use crate::boot::built_info;
+use crate::built_info;
 
 pub struct Logger {
     level: Level,
