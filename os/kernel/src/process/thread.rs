@@ -5,7 +5,6 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::{mem, ptr};
-use core::ops::Deref;
 use goblin::elf64;
 use goblin::elf::Elf;
 use x86_64::structures::gdt::SegmentSelector;
@@ -18,7 +17,7 @@ use crate::{memory, scheduler, tss};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::process::{create_process, kernel_process, Process};
 
-const STACK_SIZE_PAGES: usize = 16;
+const STACK_SIZE_PAGES: usize = 64;
 const USER_STACK_ADDRESS: usize = 0x400000000000;
 
 pub struct Thread {
@@ -32,9 +31,11 @@ pub struct Thread {
 
 impl Thread {
     pub fn new_kernel_thread(entry: Box<fn()>) -> Rc<Thread> {
+        let stack_pages = memory::physical::alloc(STACK_SIZE_PAGES);
+        let stack = unsafe { Vec::from_raw_parts(stack_pages.start.start_address().as_u64() as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8) };
         let mut thread = Thread {
             id: scheduler::next_thread_id(),
-            kernel_stack: Vec::with_capacity((STACK_SIZE_PAGES * PAGE_SIZE) / 8),
+            kernel_stack: stack,
             user_stack: Vec::with_capacity(0),
             process: kernel_process().expect("Trying to create a kernel thread before process initialization!"),
             old_rsp0: VirtAddr::zero(),
@@ -70,6 +71,8 @@ impl Thread {
                 process.add_vma(VirtualMemoryArea::new(pages, VmaType::Code));
             });
 
+        let kernel_stack_pages = memory::physical::alloc(STACK_SIZE_PAGES);
+        let kernel_stack = unsafe { Vec::from_raw_parts(kernel_stack_pages.start.start_address().as_u64() as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8) };
         let user_stack_start = Page::from_start_address(VirtAddr::new(USER_STACK_ADDRESS as u64)).unwrap();
         let user_stack_pages = PageRange { start: user_stack_start, end: user_stack_start + STACK_SIZE_PAGES as u64 };
         let user_stack = unsafe { Vec::from_raw_parts(USER_STACK_ADDRESS as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8) };
@@ -78,7 +81,7 @@ impl Thread {
 
         let mut thread = Thread {
             id: scheduler::next_thread_id(),
-            kernel_stack: Vec::with_capacity((STACK_SIZE_PAGES * PAGE_SIZE) / 8),
+            kernel_stack,
             user_stack,
             process,
             old_rsp0: VirtAddr::zero(),
@@ -180,12 +183,11 @@ impl Thread {
         }
 
         self.kernel_stack[capacity - 7] = 0; // rdi
-        self.kernel_stack[capacity - 6] = *self.entry.deref() as u64; // Address of 'kickoff_user_thread()'
+        self.kernel_stack[capacity - 6] = *self.entry as u64; // Address of 'kickoff_user_thread()'
 
         self.kernel_stack[capacity - 5] = SegmentSelector::new(4, Ring3).0 as u64; // cs = user code segment
         self.kernel_stack[capacity - 4] = 0x202; // rflags (Interrupts enabled)
-        self.kernel_stack[capacity - 3] =
-            user_stack_addr + (self.user_stack.capacity() - 1) as u64 * 8; // rsp for user stack
+        self.kernel_stack[capacity - 3] = user_stack_addr + (self.user_stack.capacity() - 1) as u64 * 8; // rsp for user stack
         self.kernel_stack[capacity - 2] = SegmentSelector::new(3, Ring3).0 as u64; // ss = user data segment
 
         self.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
