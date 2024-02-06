@@ -7,6 +7,7 @@ use core::arch::asm;
 use core::{mem, ptr};
 use goblin::elf64;
 use goblin::elf::Elf;
+use spin::Mutex;
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::PrivilegeLevel::Ring3;
 use x86_64::structures::paging::{Page, PageTableFlags};
@@ -14,31 +15,41 @@ use x86_64::structures::paging::page::PageRange;
 use x86_64::VirtAddr;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::{memory, scheduler, tss};
+use crate::memory::alloc::StackAllocator;
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::process::{create_process, kernel_process, Process};
 
+pub const USER_STACK_ADDRESS: usize = 0x400000000000;
 const STACK_SIZE_PAGES: usize = 64;
-const USER_STACK_ADDRESS: usize = 0x400000000000;
+
+struct Stacks {
+    kernel_stack: Vec<u64, StackAllocator>,
+    user_stack: Vec<u64, StackAllocator>,
+    old_rsp0: VirtAddr
+}
 
 pub struct Thread {
     id: usize,
-    kernel_stack: Vec<u64>,
-    user_stack: Vec<u64>,
+    stacks: Mutex<Stacks>,
     process: Arc<Process>,
-    old_rsp0: VirtAddr,
     entry: Box<fn()>,
+}
+
+impl Stacks {
+    const fn new(kernel_stack: Vec<u64, StackAllocator>, user_stack: Vec<u64, StackAllocator>) -> Self {
+        Self { kernel_stack, user_stack, old_rsp0: VirtAddr::zero() }
+    }
 }
 
 impl Thread {
     pub fn new_kernel_thread(entry: Box<fn()>) -> Rc<Thread> {
-        let stack_pages = memory::physical::alloc(STACK_SIZE_PAGES);
-        let stack = unsafe { Vec::from_raw_parts(stack_pages.start.start_address().as_u64() as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8) };
-        let mut thread = Thread {
+        let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in((STACK_SIZE_PAGES * PAGE_SIZE) / 8, StackAllocator::new());
+        let user_stack = Vec::with_capacity_in(0, StackAllocator::new()); // Dummy stack
+
+        let thread = Thread {
             id: scheduler::next_thread_id(),
-            kernel_stack: stack,
-            user_stack: Vec::with_capacity(0),
+            stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: kernel_process().expect("Trying to create a kernel thread before process initialization!"),
-            old_rsp0: VirtAddr::zero(),
             entry,
         };
 
@@ -71,20 +82,17 @@ impl Thread {
                 process.add_vma(VirtualMemoryArea::new(pages, VmaType::Code));
             });
 
-        let kernel_stack_pages = memory::physical::alloc(STACK_SIZE_PAGES);
-        let kernel_stack = unsafe { Vec::from_raw_parts(kernel_stack_pages.start.start_address().as_u64() as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8) };
+        let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in((STACK_SIZE_PAGES * PAGE_SIZE) / 8, StackAllocator::new());
         let user_stack_start = Page::from_start_address(VirtAddr::new(USER_STACK_ADDRESS as u64)).unwrap();
         let user_stack_pages = PageRange { start: user_stack_start, end: user_stack_start + STACK_SIZE_PAGES as u64 };
-        let user_stack = unsafe { Vec::from_raw_parts(USER_STACK_ADDRESS as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8) };
+        let user_stack = unsafe { Vec::from_raw_parts_in(USER_STACK_ADDRESS as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8, StackAllocator::new()) };
         address_space.map(user_stack_pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
         process.add_vma(VirtualMemoryArea::new(user_stack_pages, VmaType::Stack));
 
-        let mut thread = Thread {
+        let thread = Thread {
             id: scheduler::next_thread_id(),
-            kernel_stack,
-            user_stack,
+            stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process,
-            old_rsp0: VirtAddr::zero(),
             entry: unsafe { Box::new(mem::transmute(elf.entry as *const ())) }
         };
 
@@ -94,33 +102,48 @@ impl Thread {
 
     pub fn kickoff_kernel_thread() {
         let scheduler = scheduler();
-        let thread = scheduler.current_thread();
         scheduler.set_init();
 
-        unsafe {
-            let thread_ptr = ptr::from_ref(thread.as_ref()) as *mut Thread;
-            tss().lock().privilege_stack_table[0] = VirtAddr::new(thread.kernel_stack_addr() as u64);
+        let thread = scheduler.current_thread();
+        tss().lock().privilege_stack_table[0] = VirtAddr::new(thread.kernel_stack_addr() as u64);
 
-            if thread.is_kernel_thread() {
-                ((*thread_ptr).entry)();
-            } else {
-                (*thread_ptr).switch_to_user_mode();
-            }
+        if thread.is_kernel_thread() {
+            (thread.entry)();
+            drop(thread); // Manually decrease reference count, because exit() will never return
+            scheduler.exit();
+        } else {
+            let thread_ptr = ptr::from_ref(thread.as_ref());
+            drop(thread); // Manually decrease reference count, because switch_to_user_mode() will never return
+
+            let thread_ref = unsafe { thread_ptr.as_ref().unwrap() };
+            thread_ref.switch_to_user_mode();
         }
-
-        scheduler.exit();
     }
 
-    pub fn start_first(thread: &Thread) {
-        unsafe { thread_kernel_start(thread.old_rsp0.as_u64()) }
+    pub unsafe fn start_first(thread_ptr: *const Thread) {
+        let thread = thread_ptr.as_ref().unwrap();
+        let old_rsp0 = thread.stacks.lock().old_rsp0;
+
+        thread_kernel_start(old_rsp0.as_u64());
     }
 
-    pub fn switch(current: &Thread, next: &Thread) {
-        unsafe { thread_switch(ptr::from_ref(&current.old_rsp0) as *mut u64, next.old_rsp0.as_u64(), next.kernel_stack_addr() as u64, next.process().address_space().page_table_address().as_u64()); }
+    pub unsafe fn switch(current_ptr: *const Thread, next_ptr: *const Thread) {
+        let current = current_ptr.as_ref().unwrap();
+        let next = next_ptr.as_ref().unwrap();
+        let current_rsp0 = ptr::from_ref(&current.stacks.lock().old_rsp0) as *mut u64;
+        let next_rsp0 = next.stacks.lock().old_rsp0.as_u64();
+        let next_rsp0_end = next.kernel_stack_addr() as u64;
+        let next_address_space = next.process.address_space().page_table_address().as_u64();
+
+        unsafe { thread_switch(current_rsp0, next_rsp0, next_rsp0_end, next_address_space); }
     }
 
     pub fn is_kernel_thread(&self) -> bool {
-        return self.user_stack.capacity() == 0;
+        return self.stacks.lock().user_stack.capacity() == 0;
+    }
+
+    pub fn stacks_locked(&self) -> bool {
+        self.stacks.is_locked()
     }
 
     pub fn process(&self) -> Arc<Process> {
@@ -137,64 +160,72 @@ impl Thread {
     }
 
     pub fn kernel_stack_addr(&self) -> *const u64 {
-        unsafe { return self.kernel_stack.as_ptr().offset(((self.kernel_stack.capacity() - 1) * 8) as isize); }
+        let stacks = self.stacks.lock();
+        unsafe { return stacks.kernel_stack.as_ptr().offset(((stacks.kernel_stack.capacity() - 1) * 8) as isize); }
     }
 
-    fn prepare_kernel_stack(&mut self) {
-        let stack_addr = self.kernel_stack.as_ptr() as u64;
-        let capacity = self.kernel_stack.capacity();
+    fn prepare_kernel_stack(&self) {
+        let mut stacks = self.stacks.lock();
+        let stack_addr = stacks.kernel_stack.as_ptr() as u64;
+        let capacity = stacks.kernel_stack.capacity();
 
-        for _ in 0..self.kernel_stack.capacity() {
-            self.kernel_stack.push(0);
+        for _ in 0..stacks.kernel_stack.capacity() {
+            stacks.kernel_stack.push(0);
         }
 
-        self.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
-        self.kernel_stack[capacity - 2] = Thread::kickoff_kernel_thread as u64; // Address of 'kickoff_kernel_thread()';
-        self.kernel_stack[capacity - 3] = 0x202; // rflags (Interrupts enabled)
+        stacks.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
+        stacks.kernel_stack[capacity - 2] = Thread::kickoff_kernel_thread as u64; // Address of 'kickoff_kernel_thread()';
+        stacks.kernel_stack[capacity - 3] = 0x202; // rflags (Interrupts enabled)
 
-        self.kernel_stack[capacity - 4] = 0; // r8
-        self.kernel_stack[capacity - 5] = 0; // r9
-        self.kernel_stack[capacity - 6] = 0; // r10
-        self.kernel_stack[capacity - 7] = 0; // r11
-        self.kernel_stack[capacity - 8] = 0; // r12
-        self.kernel_stack[capacity - 9] = 0; // r13
-        self.kernel_stack[capacity - 10] = 0; // r14
-        self.kernel_stack[capacity - 11] = 0; // r15
+        stacks.kernel_stack[capacity - 4] = 0; // r8
+        stacks.kernel_stack[capacity - 5] = 0; // r9
+        stacks.kernel_stack[capacity - 6] = 0; // r10
+        stacks.kernel_stack[capacity - 7] = 0; // r11
+        stacks.kernel_stack[capacity - 8] = 0; // r12
+        stacks.kernel_stack[capacity - 9] = 0; // r13
+        stacks.kernel_stack[capacity - 10] = 0; // r14
+        stacks.kernel_stack[capacity - 11] = 0; // r15
 
-        self.kernel_stack[capacity - 12] = 0; // rax
-        self.kernel_stack[capacity - 13] = 0; // rbx
-        self.kernel_stack[capacity - 14] = 0; // rcx
-        self.kernel_stack[capacity - 15] = 0; // rdx
+        stacks.kernel_stack[capacity - 12] = 0; // rax
+        stacks.kernel_stack[capacity - 13] = 0; // rbx
+        stacks.kernel_stack[capacity - 14] = 0; // rcx
+        stacks.kernel_stack[capacity - 15] = 0; // rdx
 
-        self.kernel_stack[capacity - 16] = 0; // rsi
-        self.kernel_stack[capacity - 17] = 0; // rdi
-        self.kernel_stack[capacity - 18] = 0; // rbp
+        stacks.kernel_stack[capacity - 16] = 0; // rsi
+        stacks.kernel_stack[capacity - 17] = 0; // rdi
+        stacks.kernel_stack[capacity - 18] = 0; // rbp
 
-        self.old_rsp0 = VirtAddr::new(stack_addr + ((capacity - 18) * 8) as u64);
+        stacks.old_rsp0 = VirtAddr::new(stack_addr + ((capacity - 18) * 8) as u64);
     }
 
-    fn switch_to_user_mode(&mut self) {
-        let kernel_stack_addr = self.kernel_stack.as_ptr() as u64;
-        let user_stack_addr = self.user_stack.as_ptr() as u64;
-        let capacity = self.kernel_stack.capacity();
+    fn switch_to_user_mode(&self) {
+        let old_rsp0: u64;
 
-        for _ in 0..self.user_stack.capacity() {
-            self.user_stack.push(0);
+        { // Separate block to make sure that the lock is released, before calling `thread_user_start()`.
+            let mut stacks = self.stacks.lock();
+            let kernel_stack_addr = stacks.kernel_stack.as_ptr() as u64;
+            let user_stack_addr = stacks.user_stack.as_ptr() as u64;
+            let capacity = stacks.kernel_stack.capacity();
+
+            for _ in 0..stacks.user_stack.capacity() {
+                stacks.user_stack.push(0);
+            }
+
+            stacks.kernel_stack[capacity - 7] = 0; // rdi
+            stacks.kernel_stack[capacity - 6] = *self.entry as u64; // Address of 'kickoff_user_thread()'
+
+            stacks.kernel_stack[capacity - 5] = SegmentSelector::new(4, Ring3).0 as u64; // cs = user code segment
+            stacks.kernel_stack[capacity - 4] = 0x202; // rflags (Interrupts enabled)
+            stacks.kernel_stack[capacity - 3] = user_stack_addr + (stacks.user_stack.capacity() - 1) as u64 * 8; // rsp for user stack
+            stacks.kernel_stack[capacity - 2] = SegmentSelector::new(3, Ring3).0 as u64; // ss = user data segment
+
+            stacks.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
+
+            stacks.old_rsp0 = VirtAddr::new(kernel_stack_addr + ((capacity - 7) * 8) as u64);
+            old_rsp0 = stacks.old_rsp0.as_u64();
         }
 
-        self.kernel_stack[capacity - 7] = 0; // rdi
-        self.kernel_stack[capacity - 6] = *self.entry as u64; // Address of 'kickoff_user_thread()'
-
-        self.kernel_stack[capacity - 5] = SegmentSelector::new(4, Ring3).0 as u64; // cs = user code segment
-        self.kernel_stack[capacity - 4] = 0x202; // rflags (Interrupts enabled)
-        self.kernel_stack[capacity - 3] = user_stack_addr + (self.user_stack.capacity() - 1) as u64 * 8; // rsp for user stack
-        self.kernel_stack[capacity - 2] = SegmentSelector::new(3, Ring3).0 as u64; // ss = user data segment
-
-        self.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
-
-        self.old_rsp0 = VirtAddr::new(kernel_stack_addr + ((capacity - 7) * 8) as u64);
-
-        unsafe { thread_user_start(self.old_rsp0.as_u64()); }
+        unsafe { thread_user_start(old_rsp0); }
     }
 }
 

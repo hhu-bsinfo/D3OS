@@ -110,8 +110,6 @@ static SERIAL_PORT: Once<SerialPort> = Once::new();
 static TERMINAL: Once<LFBTerminal> = Once::new();
 static PS2: Once<PS2> = Once::new();
 
-pub trait Service {}
-
 pub fn init_efi_system_table(table: SystemTable<Runtime>) {
     EFI_SYSTEM_TABLE.call_once(|| EfiSystemTable::new(table));
 }
@@ -158,7 +156,7 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
     scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
         let mut cursor_thread = CursorThread::new(&TERMINAL.get().unwrap());
         cursor_thread.run();
-    })))
+    })));
 }
 
 pub fn init_keyboard() {
