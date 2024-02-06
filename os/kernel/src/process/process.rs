@@ -41,6 +41,14 @@ pub struct Process {
     memory_areas: RwLock<Vec<VirtualMemoryArea>>
 }
 
+impl Drop for Process {
+    fn drop(&mut self) {
+        for vma in self.memory_areas.read().iter() {
+            self.address_space.unmap(vma.range());
+        }
+    }
+}
+
 impl Process {
     fn new() -> Self {
         Self { id: next_process_id(), address_space: memory::r#virtual::create_address_space(), memory_areas: RwLock::new(Vec::new()) }

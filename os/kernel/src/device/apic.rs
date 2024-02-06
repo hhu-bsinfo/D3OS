@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-use crate::memory::alloc::AcpiAllocator;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use acpi::madt::Madt;
 use acpi::platform::interrupt::{InterruptSourceOverride, NmiSource, Polarity, TriggerMode};
@@ -53,7 +52,7 @@ impl Apic {
 
         // Find APIC relevant structures in ACPI tables
         let madt = acpi_tables().lock().find_table::<Madt>().expect("MADT not available!");
-        let int_model = madt.parse_interrupt_model_in(AcpiAllocator::new(allocator())).expect("Interrupt model not found in MADT!");
+        let int_model = madt.parse_interrupt_model_in(allocator()).expect("Interrupt model not found in MADT!");
 
         if let Some(cpu_info) = int_model.1 {
             info!("[{}] application {} detected", cpu_info.application_processors.len(), if cpu_info.application_processors.len() == 1 { "processor" } else { "processors" });

@@ -102,7 +102,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     let heap_region = memory::physical::alloc(INIT_HEAP_PAGES);
     unsafe { allocator().init(&heap_region); }
     debug!("Kernel heap is initialized [0x{:x} - 0x{:x}]", heap_region.start.start_address().as_u64(), heap_region.end.start_address().as_u64());
-
     debug!("Page frame allocator:\n{}", memory::physical::dump());
 
     // Initialize virtual memory management
@@ -225,7 +224,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
                         Some(app) => {
                             let thread = Thread::new_user_thread(app.data());
                             scheduler().ready(Rc::clone(&thread));
-                            thread.join();
+                            thread.join()
                         }
                         None => {
                             if !command.is_empty() {
@@ -242,10 +241,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         }
     })));
 
-    /*let shell = initrd().entries()
+    /*scheduler().ready(Thread::new_user_thread(initrd()
         .find(|entry| entry.filename().as_str() == "shell")
-        .expect("Shell application not available!");
-    scheduler().ready(Thread::new_user_thread(shell.data()));*/
+        .expect("Shell application not available!")
+        .data()));*/
 
     // Disable terminal logging
     logger().lock().remove(terminal());

@@ -1,5 +1,7 @@
 use alloc::sync::Arc;
 use core::cmp::min;
+use core::ptr;
+use log::debug;
 use spin::RwLock;
 use x86_64::structures::paging::{Page, PageTable, PageTableFlags, PageTableIndex, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
@@ -52,7 +54,11 @@ fn page_table_index(virt_addr: VirtAddr, level: usize) -> PageTableIndex {
 
 impl Drop for AddressSpace {
     fn drop(&mut self) {
-        todo!()
+        let depth = self.depth;
+        let root_table_guard = self.root_table.write();
+        let root_table = unsafe { root_table_guard.as_mut().unwrap() };
+
+        AddressSpace::drop_table(root_table, depth);
     }
 }
 
@@ -147,6 +153,22 @@ impl AddressSpace {
         AddressSpace::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
+    pub fn translate(&self, addr: VirtAddr) -> Option<PhysAddr> {
+        let depth = self.depth;
+        let root_table_guard = self.root_table.read();
+        let root_table = unsafe { root_table_guard.as_mut().unwrap() };
+
+        AddressSpace::translate_in_table(root_table, addr, depth)
+    }
+
+    pub fn unmap(&self, pages: PageRange) {
+        let depth = self.depth;
+        let root_table_guard = self.root_table.read();
+        let root_table = unsafe { root_table_guard.as_mut().unwrap() };
+
+        AddressSpace::unmap_in_table(root_table, pages, depth);
+    }
+
     fn copy_table(source: &PageTable, target: &mut PageTable, level: usize) {
         if level > 1 { // On all levels larger than 1, we allocate new page frames
             for (index, target_entry) in target.iter_mut().enumerate() {
@@ -178,7 +200,7 @@ impl AddressSpace {
         if level > 1 { // Calculate next level page table until level == 1
             for entry in table.iter_mut().skip(start_index) {
                 let next_level_table;
-                if entry.addr().is_null() { // Entry is empty -> Allocate new page frame
+                if entry.is_unused() { // Entry is empty -> Allocate new page frame
                     let phys_frame = physical::alloc(1).start;
                     entry.set_frame(phys_frame, flags);
 
@@ -190,7 +212,7 @@ impl AddressSpace {
 
                 let allocated_pages = AddressSpace::map_in_table(next_level_table, frames, pages, space, flags, level - 1);
                 pages = PageRange { start: pages.start + allocated_pages as u64, end: pages.end };
-                total_allocated_pages = total_allocated_pages + allocated_pages;
+                total_allocated_pages += allocated_pages;
 
                 if frames.end > frames.start {
                     frames = PhysFrameRange { start: frames.start + allocated_pages as u64, end: frames.end };
@@ -214,6 +236,86 @@ impl AddressSpace {
         }
 
         return total_allocated_pages;
+    }
+
+    fn unmap_in_table(table: &mut PageTable, mut pages: PageRange, level: usize) -> usize {
+        let mut total_freed_pages: usize = 0;
+        let start_index = usize::from(page_table_index(pages.start.start_address(), level));
+
+        if level > 1 { // Calculate next level page table until level == 1
+            for entry in table.iter_mut().skip(start_index) {
+                if entry.is_unused() {
+                    continue;
+                }
+
+                let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
+                let freed_pages = AddressSpace::unmap_in_table(next_level_table, pages, level - 1);
+                pages = PageRange { start: pages.start + freed_pages as u64, end: pages.end };
+                total_freed_pages += freed_pages;
+
+                if AddressSpace::is_table_empty(next_level_table) {
+                    let table_frame = PhysFrame::from_start_address(entry.addr()).unwrap();
+                    unsafe { physical::free(PhysFrameRange { start: table_frame, end: table_frame + 1 }); }
+                    entry.set_unused();
+                }
+
+                if pages.start >= pages.end {
+                    break;
+                }
+            }
+        } else { // Reached level 1 page table
+            let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
+            let free_count = min((pages.end - pages.start) as usize, 512 - start_index);
+
+            for (count, entry) in table.iter_mut().skip(start_index).enumerate() {
+                if count >= free_count {
+                    break;
+                }
+
+                if entry.addr() != PhysAddr::zero() {
+                    let frame = PhysFrame::from_start_address(entry.addr()).unwrap();
+                    unsafe { physical::free(PhysFrameRange { start: frame, end: frame + 1 }); }
+                }
+
+                entry.set_unused();
+            }
+
+            return free_count;
+        }
+
+        return total_freed_pages;
+    }
+
+    fn drop_table(table: &mut PageTable, level: usize) {
+        if level > 1 { // Calculate next level page table until level == 1
+            for entry in table.iter_mut() {
+                if entry.addr() == PhysAddr::zero() {
+                    continue;
+                }
+
+                let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
+                AddressSpace::drop_table(next_level_table, level - 1);
+            }
+
+            let table_frame = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(table) as u64)).unwrap();
+            unsafe { physical::free(PhysFrameRange { start: table_frame, end: table_frame + 1 }); }
+        }
+    }
+
+    fn translate_in_table(table: &mut PageTable, addr: VirtAddr, level: usize) -> Option<PhysAddr> {
+        let aligned_addr = addr.align_down(PAGE_SIZE as u64);
+        let index = usize::from(page_table_index(aligned_addr, level));
+        let entry = &table[index];
+        if entry.is_unused() {
+            return None;
+        }
+
+        if level > 1 { // Calculate next level page table until level == 1
+            let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
+            return AddressSpace::translate_in_table(next_level_table, addr, level - 1);
+        } else { // Reached level 1 page table
+            return Some(entry.addr() + (addr - aligned_addr));
+        }
     }
 
     fn identity_map_kernel(table: &mut PageTable, pages: PageRange, flags: PageTableFlags) -> usize {
@@ -263,5 +365,15 @@ impl AddressSpace {
         }
 
         return alloc_count;
+    }
+
+    fn is_table_empty(table: &PageTable) -> bool {
+        for entry in table.iter() {
+            if !entry.is_unused() {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

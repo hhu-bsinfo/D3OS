@@ -193,12 +193,20 @@ impl PageFrameListAllocator {
                 new_block.next = block.next.take();
                 new_block_ptr.write(new_block);
 
+                current.next = Some(&mut *new_block_ptr);
                 return;
             } else if block.end() == frames.start {
                 // The freed memory block extends 'block' from the top
-                let new_block = PageFrameNode::new(block.frame_count + (frames.end - frames.start) as usize);
-                new_block_ptr = block.start().start_address().as_u64() as *mut PageFrameNode;
-                new_block_ptr.write(new_block);
+                block.frame_count += (frames.end - frames.start) as usize;
+
+                // The extended 'block' may now extend its successor from the bottom
+                let end = block.end();
+                if let Some(ref mut next) = block.next {
+                    if end == next.start() {
+                        block.frame_count += next.frame_count;
+                        block.next = next.next.take();
+                    }
+                }
 
                 return;
             } else if block.end() > frames.start {
