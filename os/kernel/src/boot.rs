@@ -209,7 +209,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         .expect("Initrd not found!");
     init_initrd(initrd_tag);
 
-    // Ready shell thread
     // Ready terminal read thread
     scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
         let mut command = String::new();
@@ -224,7 +223,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
                         Some(app) => {
                             let thread = Thread::new_user_thread(app.data());
                             scheduler().ready(Rc::clone(&thread));
-                            thread.join()
+                            thread.join();
                         }
                         None => {
                             if !command.is_empty() {
@@ -241,7 +240,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         }
     })));
 
-    /*scheduler().ready(Thread::new_user_thread(initrd()
+    // Ready shell thread
+    /*scheduler().ready(Thread::new_user_thread(initrd().entries()
         .find(|entry| entry.filename().as_str() == "shell")
         .expect("Shell application not available!")
         .data()));*/

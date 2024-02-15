@@ -135,7 +135,7 @@ impl Scheduler {
         let mut state = self.state.lock();
         let current = Scheduler::current(&state);
 
-        { // Execute in own block, so that join_map is automatically freed when it is not needed anymore
+        { // Execute in own block, so that join_map is released automatically when it is not needed anymore
             let mut join_map = self.join_map.lock();
             let join_list = join_map.get_mut(&current.id()).expect(format!("Scheduler: Missing join_map entry for thread id {}!", current.id()).as_str());
 

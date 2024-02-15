@@ -105,7 +105,7 @@ impl Thread {
         scheduler.set_init();
 
         let thread = scheduler.current_thread();
-        tss().lock().privilege_stack_table[0] = VirtAddr::new(thread.kernel_stack_addr() as u64);
+        tss().lock().privilege_stack_table[0] = thread.kernel_stack_addr();
 
         if thread.is_kernel_thread() {
             (thread.entry)();
@@ -132,7 +132,7 @@ impl Thread {
         let next = next_ptr.as_ref().unwrap();
         let current_rsp0 = ptr::from_ref(&current.stacks.lock().old_rsp0) as *mut u64;
         let next_rsp0 = next.stacks.lock().old_rsp0.as_u64();
-        let next_rsp0_end = next.kernel_stack_addr() as u64;
+        let next_rsp0_end = next.kernel_stack_addr().as_u64();
         let next_address_space = next.process.address_space().page_table_address().as_u64();
 
         unsafe { thread_switch(current_rsp0, next_rsp0, next_rsp0_end, next_address_space); }
@@ -159,9 +159,10 @@ impl Thread {
         return self.id;
     }
 
-    pub fn kernel_stack_addr(&self) -> *const u64 {
+    pub fn kernel_stack_addr(&self) -> VirtAddr {
         let stacks = self.stacks.lock();
-        unsafe { return stacks.kernel_stack.as_ptr().offset(((stacks.kernel_stack.capacity() - 1) * 8) as isize); }
+        let kernel_stack_addr = VirtAddr::new(stacks.kernel_stack.as_ptr() as u64);
+        return kernel_stack_addr + stacks.kernel_stack.capacity() * 8;
     }
 
     fn prepare_kernel_stack(&self) {
@@ -211,7 +212,6 @@ impl Thread {
                 stacks.user_stack.push(0);
             }
 
-            stacks.kernel_stack[capacity - 7] = 0; // rdi
             stacks.kernel_stack[capacity - 6] = *self.entry as u64; // Address of 'kickoff_user_thread()'
 
             stacks.kernel_stack[capacity - 5] = SegmentSelector::new(4, Ring3).0 as u64; // cs = user code segment
@@ -221,7 +221,7 @@ impl Thread {
 
             stacks.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
 
-            stacks.old_rsp0 = VirtAddr::new(kernel_stack_addr + ((capacity - 7) * 8) as u64);
+            stacks.old_rsp0 = VirtAddr::new(kernel_stack_addr + ((capacity - 6) * 8) as u64);
             old_rsp0 = stacks.old_rsp0.as_u64();
         }
 
@@ -260,7 +260,6 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
 unsafe extern "C" fn thread_user_start(old_rsp0: u64) {
     asm!(
     "mov rsp, rdi", // Load 'old_rsp' (first parameter)
-    "pop rdi",
     "iretq", // Switch to user-mode
     options(noreturn)
     )
