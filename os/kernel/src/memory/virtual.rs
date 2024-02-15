@@ -32,6 +32,7 @@ unsafe impl Send for AddressSpace {}
 unsafe impl Sync for AddressSpace {}
 
 pub fn create_address_space() -> Arc<AddressSpace> {
+    debug!("Page frame allocator before address space creation:\n{}", physical::dump());
     match kernel_process() {
         Some(kernel_process) => { // Create user address space
             let kernel_space = AddressSpace::from_other(&kernel_process.address_space());
@@ -59,6 +60,7 @@ impl Drop for AddressSpace {
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
         AddressSpace::drop_table(root_table, depth);
+        debug!("Page frame allocator after address space drop:\n{}", physical::dump());
     }
 }
 
@@ -272,12 +274,11 @@ impl AddressSpace {
                     break;
                 }
 
-                if entry.addr() != PhysAddr::zero() {
+                if !entry.is_unused() {
                     let frame = PhysFrame::from_start_address(entry.addr()).unwrap();
                     unsafe { physical::free(PhysFrameRange { start: frame, end: frame + 1 }); }
+                    entry.set_unused();
                 }
-
-                entry.set_unused();
             }
 
             return free_count;

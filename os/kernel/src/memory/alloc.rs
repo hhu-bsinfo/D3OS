@@ -84,13 +84,8 @@ unsafe impl Allocator for StackAllocator {
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         // Ignore virtual addresses
         if (ptr.as_ptr() as usize) < phys_limit().start_address().as_u64() as usize {
-            if PAGE_SIZE % layout.align() != 0 {
-                panic!("StackAllocator: Buffer to free is not page aligned!")
-            }
-
-            if layout.size() % PAGE_SIZE != 0 {
-                panic!("StackAllocator: Buffer to free has a size, which is not a multiple of PAGE_SIZE!")
-            }
+            assert_eq!(PAGE_SIZE % layout.align(), 0);
+            assert_eq!(layout.size() % PAGE_SIZE, 0);
 
             let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64)).unwrap();
             physical::free(PhysFrameRange { start, end: start + (layout.size() / PAGE_SIZE) as u64 });
