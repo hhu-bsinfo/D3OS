@@ -1,12 +1,9 @@
-# hhuTOSr
-HHU Teaching Operating System written in Rust.
-
-HhuTOSr is derived from Philipp Oppermann’s [excellent series of blog posts](https://os.phil-opp.com/).
+# D3OS
+A new research operating system, developed by the [operating systems group](https://www.cs.hhu.de/en/research-groups/operating-systems.html) of the department of computer science at [Heinrich Heine University Düsseldorf](https://www.hhu.de)
 
 ## Requirements
 
-For building hhuTOSr, a _rust_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/). 
-HhuTOSr requires some features of nightly rust. Use the following command to install it:
+For building D3OS, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/).
 
 `rustup toolchain install nightly`
 
@@ -24,7 +21,7 @@ Further the following packages for Debian/Ubuntu based systems (or their equival
 
 To run the final OS image _QEMU_ is required:
 
-`apt install qemu-system-x86_64 ovmf`
+`apt install qemu-system-x86_64`
 
 ## Build
 
@@ -32,7 +29,7 @@ For a full build run:
 
 `cargo make`
 
-This will produce _hhuTOSr.img_.
+This will produce _d3os.img_.
 
 ## Run
 

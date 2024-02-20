@@ -1,9 +1,9 @@
-default = "hhuTOSr"
+default = "d3os"
 timeout = 0
 log_level = "info"
 
 [entries]
-  [entries.hhuTOSr]
-    name = "hhuTOSr"
+  [entries.d3os]
+    name = "D3OS"
     image = "\\kernel.elf"
   modules = [ { image = "\\initrd.tar", argv = "initrd" } ]

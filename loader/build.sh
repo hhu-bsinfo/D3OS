@@ -2,7 +2,7 @@
 
 readonly TOWBOOT_VERSION="0.7.1"
 readonly FILE_LIST=("towboot-x64.efi" "kernel.elf" "initrd.tar" "towboot.toml")
-readonly IMAGE="../hhuTOSr.img"
+readonly IMAGE="../d3os.img"
 
 if [[ ! -f "towboot-x64.efi" ]]; then
   wget -O towboot-x64.efi "https://github.com/hhuOS/towboot/releases/download/v${TOWBOOT_VERSION}/towboot-v${TOWBOOT_VERSION}-x86_64.efi" || exit 1

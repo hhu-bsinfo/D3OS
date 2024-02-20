@@ -25,10 +25,10 @@ jobs:
         run: cargo make --no-workspace
 
       - name: Create artifact
-        run: tar -czvf hhuTOSr.tar.gz hhuTOSr.img run.sh efi/build.sh README.md
+        run: tar -czvf d3os.tar.gz d3os.img run.sh efi/build.sh README.md
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
-          name: hhuTOSr
-          path: hhuTOSr.tar.gz
+          name: D3OS
+          path: d3os.tar.gz

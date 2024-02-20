@@ -1,10 +1,10 @@
 [env.development]
-CARGO_CFG_TARGET_FAMILY = "../../../hhu_tosr_app"
+CARGO_CFG_TARGET_FAMILY = "../../../d3os_application"
 BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/${CARGO_CFG_TARGET_FAMILY}/debug"
 CARGO_BUILD_OPTION = "--lib"
 
 [env.production]
-CARGO_CFG_TARGET_FAMILY = "hhu_tosr_app"
+CARGO_CFG_TARGET_FAMILY = "../../../d3os_application"
 BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/${CARGO_CFG_TARGET_FAMILY}/release"
 CARGO_BUILD_OPTION = "--release"
 
