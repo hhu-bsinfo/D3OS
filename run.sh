@@ -9,7 +9,7 @@ readonly CONST_QEMU_BIOS_EFI="efi/OVMF.fd"
 readonly CONST_QEMU_ARGS="-boot d -vga std -rtc base=localtime -device isa-debug-exit"
 readonly CONST_QEMU_OLD_AUDIO_ARGS="-soundhw pcspk"
 readonly CONST_QEMU_NEW_AUDIO_ARGS="-audiodev id=pa,driver=pa -machine pcspk-audiodev=pa"
-readonly CONST_QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=hhuTOSr.img"
+readonly CONST_QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img"
 
 QEMU_BIOS=""
 QEMU_MACHINE="${CONST_QEMU_MACHINE_PC}"
@@ -51,14 +51,11 @@ check_file() {
 
 parse_file() {
   local path=$1
-  
+
   if [[ $path == *.iso ]]; then
     QEMU_BOOT_DEVICE="-boot d -cdrom ${path}"
   elif [[ $path == *.img ]]; then
     QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=${path}"
-  else
-    printf "Invalid file '%s'!\\n" "${path}"
-    exit 1
   fi
   
   check_file $path
@@ -110,7 +107,7 @@ print_usage() {
   printf "Usage: ./run.sh [OPTION...]
     Available options:
     -f, --file
-        Set the .iso or .img file, which qemu should boot (Default: hhuTOSr-towboot.img)
+        Set the .iso or .img file, which qemu should boot (Default: d3os.img)
     -m, --machine
         Set the machine profile, which qemu should emulate ([pc] | [pc-kvm]) (Defualt: pc)
     -r, --ram
@@ -120,7 +117,7 @@ print_usage() {
     -d, --debug
         Set the port, on which qemu should listen for GDB clients (default: disabled)
     -b, --bios
-        Set the BIOS file, which qemu should use (Default: Download newest OVMF)
+        Set the BIOS file, which qemu should use (Default: Download OVMF from Ubuntu 20.04 packages)
     -h, --help
         Show this help message\\n"
 }

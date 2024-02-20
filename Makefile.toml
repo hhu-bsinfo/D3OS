@@ -33,7 +33,7 @@ dependencies = [ "clean_workspace", "clean_members" ]
 
 [tasks.clean_workspace]
 command = "rm"
-args = [ "-rf", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hhuTOSr.img", "${BOOTLOADER_DIRECTORY}/initrd.tar"  ]
+args = [ "-rf", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img", "${BOOTLOADER_DIRECTORY}/initrd.tar"  ]
 
 [tasks.clean_members]
 run_task = { name = "clean", fork = true }

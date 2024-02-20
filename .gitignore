@@ -106,7 +106,7 @@ Cargo.lock
 
 # End of https://www.toptal.com/developers/gitignore/api/rust,clion+iml
 
-hhuTOSr.img
+d3os.img
 efi/OVMF.fd
 loader/kernel.elf
 loader/initrd.tar

@@ -41,11 +41,11 @@ const INIT_HEAP_PAGES: usize = 0x400;
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
     // Initialize logger
     if logger().lock().init().is_err() {
-        panic!("Failed to initialize logger!")
+        panic!("Failed to initialize loggerr!")
     }
 
     // Log messages and panics are now working, but cannot use format string until the heap is initialized later on
-    info!("Welcome to hhuTOSr early boot environment!");
+    info!("Welcome to D3OS early boot environment!");
 
     // Get multiboot information
     if multiboot2_magic != multiboot2::MAGIC {
@@ -127,7 +127,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
     logger().lock().register(terminal());
 
-    info!("Welcome to hhuTOSr!");
+    info!("Welcome to D3OS!");
     let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
     let git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("Unknown");
