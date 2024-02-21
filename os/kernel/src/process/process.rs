@@ -78,6 +78,14 @@ impl Process {
         }
     }
 
+    pub fn update_vma(&self, vma: VirtualMemoryArea, update: impl Fn(&mut VirtualMemoryArea)) {
+        let mut areas = self.memory_areas.write();
+        match areas.iter_mut().find(|area| **area == vma) {
+            Some(area) => update(area),
+            None => panic!("Trying to update a non-existent VMA!")
+        }
+    }
+
     pub fn exit(&self) {
         PROCESSES.write().retain(|process| process.id != self.id);
     }

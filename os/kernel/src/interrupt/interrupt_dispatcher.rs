@@ -7,7 +7,8 @@ use spin::Mutex;
 use x86_64::registers::control::Cr2;
 use x86_64::set_general_handler;
 use x86_64::structures::idt::InterruptStackFrame;
-use crate::{apic, idt, interrupt_dispatcher};
+use crate::{apic, idt, interrupt_dispatcher, scheduler};
+use crate::memory::PAGE_SIZE;
 
 #[repr(u8)]
 #[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
@@ -197,7 +198,15 @@ fn handle_exception(frame: InterruptStackFrame, index: u8, error: Option<u64>) {
 }
 
 fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>) {
-    panic!("Page Fault!\nError code: [{:?}]\nAddress: [{:0>16x}]\n{:?}", error, Cr2::read(), frame);
+    let fault_addr = Cr2::read();
+    let thread = scheduler().current_thread();
+
+    // Check if page fault occurred right below the user stack
+    if !thread.stacks_locked() && fault_addr > (thread.user_stack_start() - PAGE_SIZE as u64) && fault_addr < thread.user_stack_start() {
+        thread.grow_user_stack(); // Grow stack by one page
+    } else {
+        panic!("Page Fault!\nError code: [{:?}]\nAddress: [{:0>16x}]\n{:?}", error, fault_addr, frame);
+    }
 }
 
 fn handle_interrupt(_frame: InterruptStackFrame, index: u8, _error: Option<u64>) {

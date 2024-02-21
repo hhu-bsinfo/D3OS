@@ -19,8 +19,8 @@ use crate::memory::alloc::StackAllocator;
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::process::{create_process, kernel_process, Process};
 
-pub const USER_STACK_ADDRESS: usize = 0x400000000000;
-const STACK_SIZE_PAGES: usize = 64;
+pub const USER_STACK_END: usize = 0x400000000000;
+const KERNEL_STACK_PAGES: usize = 64;
 
 struct Stacks {
     kernel_stack: Vec<u64, StackAllocator>,
@@ -43,7 +43,7 @@ impl Stacks {
 
 impl Thread {
     pub fn new_kernel_thread(entry: Box<fn()>) -> Rc<Thread> {
-        let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in((STACK_SIZE_PAGES * PAGE_SIZE) / 8, StackAllocator::new());
+        let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in((KERNEL_STACK_PAGES * PAGE_SIZE) / 8, StackAllocator::new());
         let user_stack = Vec::with_capacity_in(0, StackAllocator::new()); // Dummy stack
 
         let thread = Thread {
@@ -82,10 +82,10 @@ impl Thread {
                 process.add_vma(VirtualMemoryArea::new(pages, VmaType::Code));
             });
 
-        let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in((STACK_SIZE_PAGES * PAGE_SIZE) / 8, StackAllocator::new());
-        let user_stack_start = Page::from_start_address(VirtAddr::new(USER_STACK_ADDRESS as u64)).unwrap();
-        let user_stack_pages = PageRange { start: user_stack_start, end: user_stack_start + STACK_SIZE_PAGES as u64 };
-        let user_stack = unsafe { Vec::from_raw_parts_in(USER_STACK_ADDRESS as *mut u64, 0, (STACK_SIZE_PAGES * PAGE_SIZE) / 8, StackAllocator::new()) };
+        let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in((KERNEL_STACK_PAGES * PAGE_SIZE) / 8, StackAllocator::new());
+        let user_stack_end = Page::from_start_address(VirtAddr::new(USER_STACK_END as u64)).unwrap();
+        let user_stack_pages = PageRange { start: user_stack_end - 1, end: user_stack_end };
+        let user_stack = unsafe { Vec::from_raw_parts_in(user_stack_pages.start.start_address().as_u64() as *mut u64, 0, PAGE_SIZE / 8, StackAllocator::new()) };
         address_space.map(user_stack_pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
         process.add_vma(VirtualMemoryArea::new(user_stack_pages, VmaType::Stack));
 
@@ -144,6 +144,23 @@ impl Thread {
 
     pub fn stacks_locked(&self) -> bool {
         self.stacks.is_locked()
+    }
+
+    pub fn grow_user_stack(&self) {
+        let mut stacks = self.stacks.lock();
+
+        // Grow stack area -> Allocate one page right below the stack
+        self.process.find_vma(VmaType::Stack).unwrap().grow_downwards(1);
+
+        // Adapt stack Vec to new start address
+        let user_stack_capacity = stacks.user_stack.capacity() + (PAGE_SIZE / 8);
+        let user_stack_start = USER_STACK_END - (user_stack_capacity * 8);
+        stacks.user_stack = unsafe { Vec::from_raw_parts_in(user_stack_start as *mut u64, 0, user_stack_capacity, StackAllocator::new()) };
+    }
+
+    pub fn user_stack_start(&self) -> VirtAddr {
+        let stacks = self.stacks.lock();
+        VirtAddr::new(stacks.user_stack.as_ptr() as u64)
     }
 
     pub fn process(&self) -> Arc<Process> {

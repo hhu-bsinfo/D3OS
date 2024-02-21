@@ -10,14 +10,14 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use crate::memory::{MemorySpace, PAGE_SIZE, physical};
 use crate::memory::physical::phys_limit;
-use crate::process::process::kernel_process;
+use crate::process::process::{current_process, kernel_process};
 
 pub struct AddressSpace {
     root_table: RwLock<*mut PageTable>,
     depth: usize
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct VirtualMemoryArea {
     range: PageRange,
     typ: VmaType
@@ -98,6 +98,14 @@ impl VirtualMemoryArea {
         } else {
             true
         }
+    }
+
+    pub fn grow_downwards(&self, pages: usize) {
+        let new_pages = PageRange { start: self.range.start - pages as u64, end: self.range.start };
+        let process = current_process();
+
+        process.address_space().map(new_pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+        process.update_vma(*self, |vma| vma.range.start = new_pages.start);
     }
 }
 
