@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "qemu-gdb",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/loader/kernel.elf",
+            "cwd": "${workspaceFolder}",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "miDebuggerServerAddress": "localhost:1234",
+            "stopAtEntry": false,
+            "setupCommands": [
+                { "text": "-enable-pretty-printing" },
+                { "text": "set disassembly-flavor intel"}
+            ],
+            "preLaunchTask": "qemu-gdb"
+        }
+    ]
+}

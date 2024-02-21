@@ -10,6 +10,7 @@ readonly CONST_QEMU_ARGS="-boot d -vga std -rtc base=localtime -device isa-debug
 readonly CONST_QEMU_OLD_AUDIO_ARGS="-soundhw pcspk"
 readonly CONST_QEMU_NEW_AUDIO_ARGS="-audiodev id=pa,driver=pa -machine pcspk-audiodev=pa"
 readonly CONST_QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img"
+readonly CONST_QEMU_GDB_PORT="1234"
 
 QEMU_BIOS=""
 QEMU_MACHINE="${CONST_QEMU_MACHINE_PC}"
@@ -19,8 +20,7 @@ QEMU_CPU_OVERWRITE="false"
 QEMU_AUDIO_ARGS="${CONST_QEMU_NEW_AUDIO_ARGS}"
 QEMU_BOOT_DEVICE="${CONST_QEMU_BOOT_DEVICE}"
 QEMU_ARGS="${CONST_QEMU_ARGS}"
-
-QEMU_GDB_PORT=""
+QEMU_DEBUG_TYPE=""
 
 version_lt() {
   test "$(printf "%s\n" "$@" | sort -V | tr ' ' '\n' | head -n 1)" != "${2}"
@@ -88,13 +88,14 @@ parse_cpu() {
 }
 
 parse_debug() {
-  local port=$1
+  local type=$1
 
-  echo "set architecture i386
-      set disassembly-flavor intel
-      target remote 127.0.0.1:${port}" >/tmp/gdbcommands."$(id -u)"
-
-  QEMU_GDB_PORT="${port}"
+  if [ "${type}" == "default" ] || [ "${type}" == "background" ] || [ "${type}" == "vscode" ]; then
+    QEMU_DEBUG_TYPE="${type}"
+  else
+    printf "Invalid debug type '%s'!\\n" "${type}"
+    exit 1
+  fi
 }
 
 parse_bios() {
@@ -115,7 +116,7 @@ print_usage() {
     -c, --cpu
         Set the CPU model, which qemu should emulate (e.g. 486, pentium, pentium2, ...) (Default: base)
     -d, --debug
-        Set the port, on which qemu should listen for GDB clients (default: disabled)
+        Enable debugging with a debug type ([default] | [vscode]) (default: Disabled)
     -b, --bios
         Set the BIOS file, which qemu should use (Default: Download OVMF from Ubuntu 20.04 packages)
     -h, --help
@@ -168,12 +169,12 @@ run_qemu() {
   
   printf "Running: %s\\n" "${command}"
 
-  if [ -n "${QEMU_GDB_PORT}" ]; then
-    if [ "${QEMU_GDB_PORT}" == "1234" ]; then
-      $command -gdb tcp::"${QEMU_GDB_PORT}" -S &
-    else
-      $command -gdb tcp::"${QEMU_GDB_PORT}" -S
-    fi
+  if [ "${QEMU_DEBUG_TYPE}" == "default" ]; then
+    $command -gdb tcp::"${CONST_QEMU_GDB_PORT}" -S
+  elif [ "${QEMU_DEBUG_TYPE}" == "background" ]; then
+    $command -gdb tcp::"${CONST_QEMU_GDB_PORT}" -S &
+  elif [ "${QEMU_DEBUG_TYPE}" == "vscode" ]; then
+    echo "Debugging with VSCode..."; $command -gdb tcp::"${CONST_QEMU_GDB_PORT}" -S
   else
     $command
   fi
