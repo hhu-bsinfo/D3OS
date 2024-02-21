@@ -3,7 +3,7 @@
     <debugger kind="GDB" isBundled="true" />
     <pathMapping remote=":" local="" />
     <method v="2">
-      <option name="ToolBeforeRunTask" enabled="true" actionId="Tool_External Tools_qemu-gdb hhuTOSr" />
+      <option name="ToolBeforeRunTask" enabled="true" actionId="Tool_External Tools_qemu-gdb D3OS" />
     </method>
   </configuration>
 </component>
