@@ -7,3 +7,4 @@ pub mod speaker;
 pub mod terminal;
 pub mod lfb_terminal;
 pub mod serial;
+pub mod pci;

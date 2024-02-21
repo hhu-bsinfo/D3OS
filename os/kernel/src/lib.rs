@@ -39,6 +39,7 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::{PhysAddr, VirtAddr};
+use crate::device::pci::PciBus;
 use crate::memory::PAGE_SIZE;
 
 extern crate alloc;
@@ -109,6 +110,7 @@ static SPEAKER: Mutex<Speaker> = Mutex::new(Speaker::new());
 static SERIAL_PORT: Once<SerialPort> = Once::new();
 static TERMINAL: Once<LFBTerminal> = Once::new();
 static PS2: Once<PS2> = Once::new();
+static PCI: Once<PciBus> = Once::new();
 
 pub fn init_efi_system_table(table: SystemTable<Runtime>) {
     EFI_SYSTEM_TABLE.call_once(|| EfiSystemTable::new(table));
@@ -169,6 +171,10 @@ pub fn init_keyboard() {
     });
 }
 
+pub fn init_pci() {
+    PCI.call_once(|| PciBus::scan());
+}
+
 pub fn init_initrd(module: &ModuleTag) {
     INIT_RAMDISK.call_once(|| {
         let initrd_frames = PhysFrameRange {
@@ -178,81 +184,85 @@ pub fn init_initrd(module: &ModuleTag) {
         unsafe { memory::physical::reserve(initrd_frames); }
 
         let initrd_bytes = unsafe { core::slice::from_raw_parts(module.start_address() as *const u8, (module.end_address() - module.start_address()) as usize) };
-        return TarArchiveRef::new(initrd_bytes);
+        TarArchiveRef::new(initrd_bytes)
     });
 }
 
 pub fn terminal_initialized() -> bool {
-    return TERMINAL.get().is_some();
+    TERMINAL.get().is_some()
 }
 
 pub fn gdt() -> &'static Mutex<GlobalDescriptorTable> {
-    return &GDT;
+    &GDT
 }
 
 pub fn tss() -> &'static Mutex<TaskStateSegment> {
-    return &TSS;
+    &TSS
 }
 
 pub fn idt() -> &'static Mutex<InterruptDescriptorTable> {
-    return &IDT;
+    &IDT
 }
 
 pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
-    return ACPI_TABLES.get().expect("Trying to access ACPI tables before initialization!");
+    ACPI_TABLES.get().expect("Trying to access ACPI tables before initialization!")
 }
 
 pub fn efi_system_table() -> Option<&'static SystemTable<Runtime>> {
-    return match EFI_SYSTEM_TABLE.get() {
+    match EFI_SYSTEM_TABLE.get() {
         Some(wrapper) => Some(&wrapper.table),
         None => None,
-    };
+    }
 }
 
 pub fn initrd() -> &'static TarArchiveRef<'static> {
-    return &INIT_RAMDISK.get().expect("Trying to access initial ramdisk before initialization!");
+    &INIT_RAMDISK.get().expect("Trying to access initial ramdisk before initialization!")
 }
 
 pub fn allocator() -> &'static KernelAllocator {
-    return &ALLOCATOR;
+    &ALLOCATOR
 }
 
 pub fn logger() -> &'static Mutex<Logger> {
-    return &LOGGER;
+    &LOGGER
 }
 
 pub fn interrupt_dispatcher() -> &'static InterruptDispatcher {
     INTERRUPT_DISPATCHER.call_once(|| InterruptDispatcher::new());
-    return INTERRUPT_DISPATCHER.get().unwrap();
+    INTERRUPT_DISPATCHER.get().unwrap()
 }
 
 pub fn scheduler() -> &'static Scheduler {
     SCHEDULER.call_once(|| Scheduler::new());
-    return &SCHEDULER.get().unwrap();
+    &SCHEDULER.get().unwrap()
 }
 
 pub fn apic() -> &'static Apic {
-    return APIC.get().expect("Trying to access APIC before initialization!");
+    APIC.get().expect("Trying to access APIC before initialization!")
 }
 
 pub fn timer() -> &'static RwLock<Timer> {
-    return &TIMER;
+    &TIMER
 }
 
 pub fn speaker() -> &'static Mutex<Speaker> {
-    return &SPEAKER;
+    &SPEAKER
 }
 
 pub fn serial_port() -> Option<&'static SerialPort> {
-    return SERIAL_PORT.get();
+    SERIAL_PORT.get()
 }
 
 pub fn terminal() -> &'static dyn Terminal {
-    return TERMINAL.get().expect("Trying to access terminal before initialization!");
+    TERMINAL.get().expect("Trying to access terminal before initialization!")
 }
 
 pub fn ps2_devices() -> &'static PS2 {
-    return PS2.get().expect("Trying to access keyboard before initialization!");
+    PS2.get().expect("Trying to access keyboard before initialization!")
+}
+
+pub fn pci_bus() -> &'static PciBus {
+    PCI.get().expect("Trying to access PCI bus before initialization!")
 }
 
 #[no_mangle]
@@ -262,5 +272,5 @@ pub extern "C" fn tss_set_rsp0(rsp0: u64) {
 
 #[no_mangle]
 pub extern "C" fn tss_get_rsp0() -> u64 {
-    return tss().lock().privilege_stack_table[0].as_u64();
+    tss().lock().privilege_stack_table[0].as_u64()
 }
