@@ -2,6 +2,33 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "clean",
+            "group": "build",
+            "type": "shell",
+            "isBackground": false,
+            "command": "cargo",
+            "args": [ "make", "clean" ],
+            "problemMatcher": []
+        },
+        {
+            "label": "build",
+            "group": "build",
+            "type": "shell",
+            "isBackground": false,
+            "command": "cargo",
+            "args": [ "make", "--no-workspace", "--profile", "development" ],
+            "problemMatcher": []
+        },
+        {
+            "label": "qemu",
+            "type": "shell",
+            "isBackground": false,
+            "command": "${workspaceRoot}/run.sh",
+            "args": [],
+            "problemMatcher": [],
+            "dependsOn": "build"
+        },
+        {
             "label": "qemu-gdb",
             "type": "shell",
             "isBackground": true,
@@ -24,11 +51,7 @@
                     }
                   }
             ],
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false
-            }
+            "dependsOn": "build"
         }
     ]
 }
