@@ -1,9 +1,9 @@
 use alloc::format;
 use alloc::string::String;
-use core::cell::{Cell};
+use core::cell::Cell;
 use core::fmt::{Debug, Formatter};
 use core::ptr;
-use spin::{Mutex};
+use spin::Mutex;
 use spin::once::Once;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::frame::PhysFrameRange;

@@ -44,7 +44,7 @@ pub struct Process {
 impl Drop for Process {
     fn drop(&mut self) {
         for vma in self.memory_areas.read().iter() {
-            self.address_space.unmap(vma.range());
+            self.address_space.unmap(vma.range(), true);
         }
     }
 }
