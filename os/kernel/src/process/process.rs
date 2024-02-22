@@ -6,7 +6,7 @@ use spin::RwLock;
 use crate::{memory, scheduler};
 use crate::memory::r#virtual::{AddressSpace, VirtualMemoryArea, VmaType};
 
-static PROCESSES: RwLock<Vec<Arc<Process>>> = RwLock::new(Vec::new());
+static PROCESSES: RwLock<ProcessManagement> = RwLock::new(ProcessManagement::new());
 static PROCESS_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 fn next_process_id() -> usize {
@@ -15,23 +15,66 @@ fn next_process_id() -> usize {
 
 pub fn create_process() -> Arc<Process> {
     let process = Arc::new(Process::new());
-    PROCESSES.write().push(Arc::clone(&process));
+    PROCESSES.write().add(Arc::clone(&process));
 
     return process;
 }
 
 pub fn kernel_process() -> Option<Arc<Process>> {
-    match PROCESSES.read().get(0) {
-        Some(kernel_process) => Some(Arc::clone(kernel_process)),
-        None => None
-    }
+    PROCESSES.read().kernel_process()
 }
 
 pub fn current_process() -> Arc<Process> {
-    if PROCESSES.read().len() > 1 {
-        scheduler().current_thread().process()
-    } else {
-        kernel_process().unwrap()
+    PROCESSES.read().current_process()
+}
+
+pub fn cleanup_exited_processes() {
+    if let Some(mut management) = PROCESSES.try_write() {
+        management.drop_exited_process();
+    }
+}
+
+struct ProcessManagement {
+    active_processes: Vec<Arc<Process>>,
+    exited_processes: Vec<Arc<Process>>
+}
+
+impl ProcessManagement {
+    const fn new() -> Self {
+        Self { active_processes: Vec::new(), exited_processes: Vec::new() }
+    }
+
+    fn add(&mut self, process: Arc<Process>) {
+        self.active_processes.push(process);
+    }
+
+    fn kernel_process(&self) -> Option<Arc<Process>> {
+        match self.active_processes.get(0) {
+            Some(kernel_process) => Some(Arc::clone(kernel_process)),
+            None => None
+        }
+    }
+
+    fn current_process(&self) -> Arc<Process> {
+        if self.active_processes.len() > 1 {
+            scheduler().current_thread().process()
+        } else {
+            kernel_process().unwrap()
+        }
+    }
+
+    fn exit(&mut self, id: usize) {
+        let index = self.active_processes.iter()
+            .position(|process| process.id == id)
+            .expect("Process: Trying to exit a non-existent process!");
+
+        let process = Arc::clone(&self.active_processes[index]);
+        self.active_processes.swap_remove(index);
+        self.exited_processes.push(process);
+    }
+
+    fn drop_exited_process(&mut self) {
+        self.exited_processes.clear();
     }
 }
 
@@ -87,6 +130,6 @@ impl Process {
     }
 
     pub fn exit(&self) {
-        PROCESSES.write().retain(|process| process.id != self.id);
+        PROCESSES.write().exit(self.id);
     }
 }

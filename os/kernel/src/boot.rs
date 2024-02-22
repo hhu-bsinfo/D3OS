@@ -3,8 +3,7 @@ use crate::interrupt::interrupt_dispatcher;
 use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
 use alloc::format;
-use alloc::rc::Rc;
-use alloc::string::{String, ToString};
+use alloc::string::ToString;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Deref;
@@ -28,7 +27,7 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use crate::{allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, ps2_devices, scheduler, serial_port, terminal, timer, tss};
 use crate::memory::MemorySpace;
-use crate::process::process::create_process;
+use crate::process::process::{cleanup_exited_processes, create_process};
 
 extern "C" {
     static ___KERNEL_DATA_START__: u64;
@@ -212,42 +211,19 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         .expect("Initrd not found!");
     init_initrd(initrd_tag);
 
-    // Ready terminal read thread
+    // Ready process cleanup thread
     scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
-        let mut command = String::new();
-        let terminal = terminal();
-        terminal.write_str("> ");
-
         loop {
-            match terminal.read_byte() {
-                -1 => panic!("Terminal input stream closed!"),
-                0x0a => {
-                    match initrd().entries().find(|entry| entry.filename().as_str() == command) {
-                        Some(app) => {
-                            let thread = Thread::new_user_thread(app.data());
-                            scheduler().ready(Rc::clone(&thread));
-                            thread.join();
-                        }
-                        None => {
-                            if !command.is_empty() {
-                                println!("Command not found!");
-                            }
-                        }
-                    }
-
-                    command.clear();
-                    terminal.write_str("> ")
-                },
-                c => command.push(char::from_u32(c as u32).unwrap())
-            }
+            scheduler().sleep(100);
+            cleanup_exited_processes();
         }
     })));
 
     // Ready shell thread
-    /*scheduler().ready(Thread::new_user_thread(initrd().entries()
+    scheduler().ready(Thread::new_user_thread(initrd().entries()
         .find(|entry| entry.filename().as_str() == "shell")
         .expect("Shell application not available!")
-        .data()));*/
+        .data()));
 
     // Disable terminal logging
     logger().lock().remove(terminal());
