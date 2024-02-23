@@ -1,7 +1,6 @@
 use alloc::sync::Arc;
 use core::cmp::min;
 use core::ptr;
-use log::debug;
 use spin::RwLock;
 use x86_64::structures::paging::{Page, PageTable, PageTableFlags, PageTableIndex, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
@@ -34,7 +33,6 @@ unsafe impl Sync for AddressSpace {}
 pub fn create_address_space() -> Arc<AddressSpace> {
     match kernel_process() {
         Some(kernel_process) => { // Create user address space
-            debug!("Page frame allocator before address space creation:\n{}", physical::dump());
             let kernel_space = AddressSpace::from_other(&kernel_process.address_space());
             Arc::new(kernel_space)
         }
@@ -60,7 +58,6 @@ impl Drop for AddressSpace {
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
         AddressSpace::drop_table(root_table, depth);
-        debug!("Page frame allocator after address space drop:\n{}", physical::dump());
     }
 }
 
@@ -309,6 +306,9 @@ impl AddressSpace {
                 AddressSpace::drop_table(next_level_table, level - 1);
             }
         }
+
+        // Clear table
+        table.iter_mut().for_each(|entry| entry.set_unused());
 
         let table_frame = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(table) as u64)).unwrap();
         unsafe { physical::free(PhysFrameRange { start: table_frame, end: table_frame + 1 }); }
