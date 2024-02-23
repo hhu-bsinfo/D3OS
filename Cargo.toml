@@ -6,3 +6,6 @@ members = [
     "os/application/hello",
     "os/application/shell"
 ]
+
+# [profile.release]
+# debug = true
