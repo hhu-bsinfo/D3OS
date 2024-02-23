@@ -13,7 +13,7 @@ use crate::memory::PAGE_SIZE;
 static PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> = Mutex::new(PageFrameListAllocator::new());
 static PHYS_LIMIT: Once<Mutex<Cell<PhysFrame>>> = Once::new();
 
-/// Insert an available memory regions obtained during the boot process.
+/// Insert an available memory region obtained during the boot process.
 pub unsafe fn insert(mut region: PhysFrameRange) {
     PHYS_LIMIT.call_once(|| Mutex::new(Cell::new(PhysFrame::from_start_address(PhysAddr::zero()).unwrap())));
 
@@ -35,12 +35,12 @@ pub unsafe fn insert(mut region: PhysFrameRange) {
     free(region);
 }
 
-/// Allocate `frame_count` contiguous page frames in either kernel or user space, depending on `space`.
+/// Allocate `frame_count` contiguous page frames.
 pub fn alloc(frame_count: usize) -> PhysFrameRange {
     PAGE_FRAME_ALLOCATOR.lock().alloc_block(frame_count)
 }
 
-/// Free `frame_count` contiguous page frames starting at `addr`.
+/// Free `frame_count` contiguous page frames.
 /// Unsafe because invalid parameters may break the list allocator.
 pub unsafe fn free(frames: PhysFrameRange) {
     PAGE_FRAME_ALLOCATOR.lock().free_block(frames);
@@ -226,6 +226,7 @@ impl PageFrameListAllocator {
 
         // Run through list and search for free blocks, containing the reserved block
         while let Some(ref mut block) = current.next {
+
             if block.start() > reserved.end { // Block lies completely above reserved region and since the list is sorted, we can abort
                 break;
             } else if block.start() < reserved.start && block.end() >= reserved.start { // Block starts below the reserved region
@@ -234,9 +235,10 @@ impl PageFrameListAllocator {
                     block.frame_count -= overlapping as usize;
                 } else { // Block starts below and ends above the reserved region
                     let below_size = reserved.start - block.start();
+                    let above_size = block.end() - reserved.end;
                     block.frame_count = below_size as usize;
 
-                    let mut above_block = PageFrameNode::new((reserved.end - block.end()) as usize);
+                    let mut above_block = PageFrameNode::new(above_size as usize);
                     let above_block_ptr = reserved.end.start_address().as_u64() as *mut PageFrameNode;
                     above_block.next = block.next.take();
                     block.next = Some(&mut *above_block_ptr);
