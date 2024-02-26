@@ -1,0 +1,15 @@
+[package]
+edition = "2021"
+name = "uptime"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/uptime.rs"
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+io = { path = "../../library/io" }
+time = { path = "../../library/time" }

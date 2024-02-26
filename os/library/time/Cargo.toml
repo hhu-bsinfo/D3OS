@@ -1,0 +1,12 @@
+[package]
+edition = "2021"
+name = "time"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+
+[dependencies]
+# Local dependencies
+syscall = { path = "../syscall" }
+
+# External dependencies
+chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
