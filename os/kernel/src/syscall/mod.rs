@@ -2,7 +2,7 @@ use alloc::rc::Rc;
 use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
 use x86_64::structures::paging::PageTableFlags;
-use crate::{initrd, scheduler, terminal};
+use crate::{initrd, scheduler, terminal, timer};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::process::current_process;
@@ -80,4 +80,9 @@ pub extern "C" fn sys_application_start(name_buffer: *const u8, name_length: usi
         }
         None => 0
     }
+}
+
+#[no_mangle]
+pub extern "C" fn sys_get_system_time() -> usize {
+    timer().read().systime_ms()
 }
