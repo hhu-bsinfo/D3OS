@@ -79,7 +79,7 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 struct EfiSystemTable {
-    table: SystemTable<Runtime>,
+    table: RwLock<SystemTable<Runtime>>,
 }
 
 unsafe impl Send for EfiSystemTable {}
@@ -87,7 +87,7 @@ unsafe impl Sync for EfiSystemTable {}
 
 impl EfiSystemTable {
     const fn new(table: SystemTable<Runtime>) -> Self {
-        Self { table }
+        Self { table: RwLock::new(table) }
     }
 }
 
@@ -178,7 +178,7 @@ pub fn init_pci() {
 pub fn init_initrd(module: &ModuleTag) {
     INIT_RAMDISK.call_once(|| {
         let initrd_frames = PhysFrameRange {
-            start: PhysFrame::from_start_address(PhysAddr::new(module.start_address() as u64)).expect("Initial ramdisk is not page aligned!"),
+            start: PhysFrame::from_start_address(PhysAddr::new(module.start_address() as u64)).expect("Initial ramdisk is not page aligned"),
             end: PhysFrame::from_start_address(PhysAddr::new(module.end_address() as u64).align_up(PAGE_SIZE as u64)).unwrap(),
         };
         unsafe { memory::physical::reserve(initrd_frames); }
@@ -208,7 +208,7 @@ pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
     ACPI_TABLES.get().expect("Trying to access ACPI tables before initialization!")
 }
 
-pub fn efi_system_table() -> Option<&'static SystemTable<Runtime>> {
+pub fn efi_system_table() -> Option<&'static RwLock<SystemTable<Runtime>>> {
     match EFI_SYSTEM_TABLE.get() {
         Some(wrapper) => Some(&wrapper.table),
         None => None,

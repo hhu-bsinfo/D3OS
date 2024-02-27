@@ -13,11 +13,11 @@ And activate it for the current folder with:
 
 To run the build commands _cargo-make_ is required. Install it with:
 
-`cargo install cargo-make`
+`cargo install --no-default-features cargo-make`
 
 Further the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
 
-`apt install build-essential nasm mtools fdisk zstd `
+`apt install build-essential nasm mtools fdisk zstd`
 
 To run the final OS image _QEMU_ is required:
 
@@ -27,7 +27,7 @@ To run the final OS image _QEMU_ is required:
 
 For a full build run: 
 
-`cargo make`
+`cargo make --no-workspace`
 
 This will produce _d3os.img_.
 

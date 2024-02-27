@@ -62,13 +62,13 @@ impl Thread {
         let process = create_process();
         let address_space = process.address_space();
 
-        let elf = Elf::parse(elf_buffer).expect("Failed to parse application!");
+        let elf = Elf::parse(elf_buffer).expect("Failed to parse application");
         elf.program_headers.iter()
             .filter(|header| header.p_type == elf64::program_header::PT_LOAD)
             .for_each(|header| {
                 let page_count = if header.p_memsz as usize % PAGE_SIZE == 0 { header.p_memsz as usize / PAGE_SIZE } else { (header.p_memsz as usize / PAGE_SIZE) + 1 };
                 let frames = memory::physical::alloc(page_count);
-                let virt_start = Page::from_start_address(VirtAddr::new(header.p_vaddr)).expect("ELF: Program section not page aligned!");
+                let virt_start = Page::from_start_address(VirtAddr::new(header.p_vaddr)).expect("ELF: Program section not page aligned");
                 let pages = PageRange { start: virt_start, end: virt_start + page_count as u64 };
 
                 unsafe {

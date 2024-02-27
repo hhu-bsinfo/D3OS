@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use core::marker::Copy;
 
 /**
@@ -32,68 +30,21 @@ pub struct Color {
 
 const BRIGHTNESS_SHIFT: u8 = 85;
 
-pub const INVISIBLE: Color = Color {
-    red: 0,
-    green: 0,
-    blue: 0,
-    alpha: 0,
-};
+pub const INVISIBLE: Color = Color { red: 0, green: 0, blue: 0, alpha: 0 };
 
 // ANSI colors
-pub const BLACK: Color = Color {
-    red: 0,
-    green: 0,
-    blue: 0,
-    alpha: 255,
-};
-pub const RED: Color = Color {
-    red: 170,
-    green: 0,
-    blue: 0,
-    alpha: 255,
-};
-pub const GREEN: Color = Color {
-    red: 0,
-    green: 170,
-    blue: 0,
-    alpha: 255,
-};
-pub const YELLOW: Color = Color {
-    red: 170,
-    green: 170,
-    blue: 0,
-    alpha: 255,
-};
-pub const BROWN: Color = Color {
-    red: 170,
-    green: 85,
-    blue: 0,
-    alpha: 255,
-};
-pub const BLUE: Color = Color {
-    red: 0,
-    green: 0,
-    blue: 170,
-    alpha: 255,
-};
-pub const MAGENTA: Color = Color {
-    red: 170,
-    green: 0,
-    blue: 170,
-    alpha: 255,
-};
-pub const CYAN: Color = Color {
-    red: 0,
-    green: 170,
-    blue: 170,
-    alpha: 255,
-};
-pub const WHITE: Color = Color {
-    red: 170,
-    green: 170,
-    blue: 170,
-    alpha: 255,
-};
+pub const BLACK: Color = Color { red: 0, green: 0, blue: 0, alpha: 255 };
+pub const RED: Color = Color { red: 170, green: 0, blue: 0, alpha: 255 };
+pub const GREEN: Color = Color { red: 0, green: 170, blue: 0, alpha: 255 };
+pub const YELLOW: Color = Color { red: 170, green: 170, blue: 0, alpha: 255 };
+pub const BROWN: Color = Color { red: 170, green: 85, blue: 0, alpha: 255 };
+pub const BLUE: Color = Color { red: 0, green: 0, blue: 170, alpha: 255 };
+pub const MAGENTA: Color = Color { red: 170, green: 0, blue: 170, alpha: 255 };
+pub const CYAN: Color = Color { red: 0, green: 170, blue: 170, alpha: 255 };
+pub const WHITE: Color = Color { red: 170, green: 170, blue: 170, alpha: 255, };
+
+// Arbitrary colors
+pub const HHU_BLUE: Color = Color { red: 0, green: 106, blue: 179, alpha: 255 };
 
 impl Color {
     pub const fn from_rgb(rgb: u32, bpp: u8) -> Color {
@@ -241,7 +192,7 @@ impl Color {
         }
     }
 
-    pub fn blend(&self, color: &Color) -> Color {
+    pub fn blend(&self, color: Color) -> Color {
         if color.alpha == 0 {
             return Self {
                 red: self.red,

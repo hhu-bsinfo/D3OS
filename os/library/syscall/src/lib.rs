@@ -1,7 +1,7 @@
 #![no_std]
 
 use core::arch::asm;
-use crate::SystemCall::SystemTime;
+use crate::SystemCall::SetDate;
 
 #[repr(usize)]
 #[allow(dead_code)]
@@ -16,10 +16,12 @@ pub enum SystemCall {
     ThreadJoin,
     ThreadExit,
     ApplicationStart,
-    SystemTime
+    GetSystemTime,
+    GetDate,
+    SetDate
 }
 
-pub const NUM_SYSCALLS: usize = SystemTime as usize + 1;
+pub const NUM_SYSCALLS: usize = SetDate as usize + 1;
 
 #[inline(always)]
 pub fn syscall0(call: SystemCall) -> usize {
