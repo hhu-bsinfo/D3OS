@@ -1,3 +1,4 @@
+use alloc::format;
 use crate::device::terminal::Terminal;
 use graphic::ansi::COLOR_TABLE_256;
 use graphic::buffered_lfb::BufferedLFB;
@@ -13,10 +14,11 @@ use core::ptr;
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::Mutex;
-use crate::{ps2_devices, scheduler, speaker};
+use crate::{efi_system_table, ps2_devices, scheduler, speaker};
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) { cursor } else { '_' };
 const TAB_SPACES: u16 = 8;
+const CURSOR_UPDATE_INTERVAL: usize = 250;
 
 struct CursorState {
     pos: (u16, u16),
@@ -101,18 +103,23 @@ impl CursorThread {
     }
 
     pub fn run(&mut self) {
+        let mut sleep_counter = 0usize;
+
         loop {
-            {
-                let mut display = self.terminal.display.lock();
-                let cursor = self.terminal.cursor.lock();
-                let character = display.char_buffer[(cursor.pos.1 * display.size.0 + cursor.pos.0) as usize];
+            scheduler().sleep(CURSOR_UPDATE_INTERVAL);
+            sleep_counter += CURSOR_UPDATE_INTERVAL;
 
-                display.lfb.direct_lfb().draw_char(cursor.pos.0 as u32 * lfb::CHAR_WIDTH, cursor.pos.1 as u32 * lfb::CHAR_HEIGHT,
-                    &character.fg_color, &character.bg_color, if self.visible { character.value } else { CURSOR });
-                self.visible = !self.visible;
+            let mut display = self.terminal.display.lock();
+            let cursor = self.terminal.cursor.lock();
+            let character = display.char_buffer[(cursor.pos.1 * display.size.0 + cursor.pos.0) as usize];
+
+            display.lfb.direct_lfb().draw_char(cursor.pos.0 as u32 * lfb::CHAR_WIDTH, cursor.pos.1 as u32 * lfb::CHAR_HEIGHT, character.fg_color, character.bg_color, if self.visible { character.value } else { CURSOR });
+            self.visible = !self.visible;
+
+            if sleep_counter >= 1000 {
+                LFBTerminal::print_time(&mut display);
+                sleep_counter = 0;
             }
-
-            scheduler().sleep(250);
         }
     }
 }
@@ -230,8 +237,26 @@ impl LFBTerminal {
     }
 
     fn print_char_at(display: &mut DisplayState, color: &mut ColorState, c: char, pos: (u16, u16)) -> bool {
-        display.lfb.lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, &color.fg_color, &color.bg_color, c)
-            && display.lfb.direct_lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, &color.fg_color, &color.bg_color, c)
+        display.lfb.lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color.fg_color, color.bg_color, c)
+            && display.lfb.direct_lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color.fg_color, color.bg_color, c)
+    }
+
+    fn print_time(display: &mut DisplayState) {
+        if let Some(efi_system_table) = efi_system_table() {
+            let system_table = efi_system_table.read();
+            let runtime_services = unsafe { system_table.runtime_services() };
+
+            if let Ok(date) = runtime_services.get_time() {
+                let date_str = format!("{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
+                let str_pos = display.size.0 - date_str.len() as u16;
+
+                for c in date_str.chars().enumerate() {
+                    let pos = (str_pos + c.0 as u16, 0u16);
+                    display.lfb.lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color::WHITE, color::HHU_BLUE, c.1);
+                    display.lfb.direct_lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color::WHITE, color::HHU_BLUE, c.1);
+                }
+            }
+        }
     }
 
     fn scroll_up(display: &mut DisplayState, color: &mut ColorState) {
@@ -250,7 +275,9 @@ impl LFBTerminal {
 
         let size = display.size;
         display.lfb.lfb().scroll_up(lfb::CHAR_HEIGHT);
-        display.lfb.lfb().fill_rect(0, (size.1 - 1) as u32 * lfb::CHAR_HEIGHT, size.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, &color.bg_color);
+        display.lfb.lfb().fill_rect(0, (size.1 - 1) as u32 * lfb::CHAR_HEIGHT, size.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
+
+        LFBTerminal::print_time(display);
         display.lfb.flush();
     }
 
@@ -280,7 +307,7 @@ impl LFBTerminal {
     fn clear_screen(display: &mut DisplayState, color: &mut ColorState) {
         // Clear screen
         let size = display.size;
-        display.lfb.lfb().fill_rect(0, 0, size.0 as u32 * lfb::CHAR_WIDTH, size.1 as u32 * lfb::CHAR_HEIGHT, &color.bg_color);
+        display.lfb.lfb().fill_rect(0, 0, size.0 as u32 * lfb::CHAR_WIDTH, size.1 as u32 * lfb::CHAR_HEIGHT, color.bg_color);
 
         // Clear character buffer
         display.char_buffer.iter_mut().for_each(|item| {
@@ -289,6 +316,7 @@ impl LFBTerminal {
             item.bg_color = color.bg_color;
         });
 
+        LFBTerminal::print_time(display);
         display.lfb.flush();
     }
 
@@ -297,10 +325,10 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear from start of line to cursor
-        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::CHAR_HEIGHT, pos.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, &color.bg_color);
+        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::CHAR_HEIGHT, pos.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
 
         // Clear from start of screen to line before cursor
-        display.lfb.lfb().fill_rect(0, 0, size.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, &color.bg_color);
+        display.lfb.lfb().fill_rect(0, 0, size.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color.bg_color);
 
         // Clear character buffer from beginning of screen to cursor
         display.char_buffer.iter_mut().enumerate()
@@ -311,6 +339,7 @@ impl LFBTerminal {
                 item.1.bg_color = color.bg_color;
             });
 
+        LFBTerminal::print_time(display);
         display.lfb.flush();
     }
 
@@ -319,10 +348,10 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear from cursor to end of line
-        display.lfb.lfb().fill_rect(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, (size.0 - pos.0) as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, &color.bg_color);
+        display.lfb.lfb().fill_rect(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, (size.0 - pos.0) as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
 
         // Clear from next line to end of screen
-        display.lfb.lfb().fill_rect(0, (pos.1 + 1) as u32 * lfb::CHAR_HEIGHT, size.0 as u32 * lfb::CHAR_WIDTH, (size.1 - pos.1 - 1) as u32 * lfb::CHAR_HEIGHT, &color.bg_color);
+        display.lfb.lfb().fill_rect(0, (pos.1 + 1) as u32 * lfb::CHAR_HEIGHT, size.0 as u32 * lfb::CHAR_WIDTH, (size.1 - pos.1 - 1) as u32 * lfb::CHAR_HEIGHT, color.bg_color);
 
         // Clear character buffer from cursor to end of screen
         display.char_buffer.iter_mut().skip((pos.1 * size.0 + pos.0) as usize)
@@ -332,6 +361,7 @@ impl LFBTerminal {
                 item.bg_color = color.bg_color;
             });
 
+        LFBTerminal::print_time(display);
         display.lfb.flush();
     }
 
@@ -340,7 +370,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::CHAR_HEIGHT, size.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, &color.bg_color);
+        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::CHAR_HEIGHT, size.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
         // Clear line in character buffer
         display.char_buffer.iter_mut().skip((pos.1 * size.0) as usize).enumerate()
             .filter(|item| item.0 < size.0 as usize)
@@ -350,6 +380,9 @@ impl LFBTerminal {
                 item.1.bg_color = color.bg_color;
             });
 
+        if pos.1 == 0 {
+            LFBTerminal::print_time(display);
+        }
         display.lfb.flush();
     }
 
@@ -358,7 +391,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::CHAR_HEIGHT, pos.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, &color.bg_color);
+        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::CHAR_HEIGHT, pos.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
 
         // Clear line in character buffer
         display.char_buffer.iter_mut().skip((pos.1 * size.0) as usize).enumerate()
@@ -369,6 +402,9 @@ impl LFBTerminal {
                 item.1.bg_color = color.bg_color;
             });
 
+        if pos.1 == 0 {
+            LFBTerminal::print_time(display);
+        }
         display.lfb.flush();
     }
 
@@ -377,7 +413,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.lfb.lfb().fill_rect(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, (size.0 - pos.0) as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, &color.bg_color);
+        display.lfb.lfb().fill_rect(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, (size.0 - pos.0) as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
 
         // Clear line in character buffer
         display.char_buffer.iter_mut().skip((pos.1 * size.0 + pos.0) as usize).enumerate()
@@ -388,6 +424,9 @@ impl LFBTerminal {
                 item.1.bg_color = color.bg_color;
             });
 
+        if pos.1 == 0 {
+            LFBTerminal::print_time(display);
+        }
         display.lfb.flush();
     }
 
@@ -628,12 +667,7 @@ fn parse_complex_color(iter: &mut ParamsIter) -> Option<Color> {
             let green = iter.next()?[0] as u8;
             let blue = iter.next()?[0] as u8;
 
-            Some(Color {
-                red,
-                green,
-                blue,
-                alpha: 255,
-            })
+            Some(Color { red, green, blue, alpha: 255 })
         }
         5 => {
             let index = iter.next()?[0] as usize;
@@ -655,11 +689,7 @@ impl Perform for LFBTerminal {
     fn execute(&mut self, byte: u8) {
         match byte {
             0x07 => LFBTerminal::handle_bell(),
-            0x09 => LFBTerminal::handle_tab(
-                &mut self.display.lock(),
-                &mut self.cursor.lock(),
-                &mut self.color.lock(),
-            ),
+            0x09 => LFBTerminal::handle_tab(&mut self.display.lock(), &mut self.cursor.lock(), &mut self.color.lock()),
             0x0a => self.print_char('\n'),
             _ => {}
         }

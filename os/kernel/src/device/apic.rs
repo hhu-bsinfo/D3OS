@@ -51,8 +51,8 @@ impl Apic {
         info!("APIC detected");
 
         // Find APIC relevant structures in ACPI tables
-        let madt = acpi_tables().lock().find_table::<Madt>().expect("MADT not available!");
-        let int_model = madt.parse_interrupt_model_in(allocator()).expect("Interrupt model not found in MADT!");
+        let madt = acpi_tables().lock().find_table::<Madt>().expect("MADT not available");
+        let int_model = madt.parse_interrupt_model_in(allocator()).expect("Interrupt model not found in MADT");
 
         if let Some(cpu_info) = int_model.1 {
             info!("[{}] application {} detected", cpu_info.application_processors.len(), if cpu_info.application_processors.len() == 1 { "processor" } else { "processors" });
@@ -61,7 +61,7 @@ impl Apic {
 
         // Read physical APIC MMIO base address and map it to the kernel address space
         // Needs to be executed in unsafe block; APIC availability has been checked before, so this should work.
-        let apic_page = Page::from_start_address(VirtAddr::new(madt.local_apic_address as u64)).expect("Local Apic MMIO address is not page aligned!");
+        let apic_page = Page::from_start_address(VirtAddr::new(madt.local_apic_address as u64)).expect("Local Apic MMIO address is not page aligned");
         let address_space = current_process().address_space();
         address_space.map(PageRange { start: apic_page, end: apic_page + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
 
@@ -96,7 +96,7 @@ impl Apic {
                     let io_apic_desc = apic_desc.io_apics.get(0).unwrap_or_else(|| panic!("No IO APIC described by MADT!"));
 
                     info!("Initializing IO APIC");
-                    let io_apic_page = Page::from_start_address(VirtAddr::new(io_apic_desc.address as u64)).expect("IO Apic MMIO address is not page aligned!");
+                    let io_apic_page = Page::from_start_address(VirtAddr::new(io_apic_desc.address as u64)).expect("IO Apic MMIO address is not page aligned");
                     address_space.map(PageRange { start: io_apic_page, end: io_apic_page + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
                     unsafe { io_apic_mutex = Mutex::new(IoApic::new(io_apic_page.start_address().as_u64())); } // Needs to be executed in unsafe block; Since exactly one IO APIC has been detected, this should work
 

@@ -67,7 +67,7 @@ impl VirtualMemoryArea {
     }
 
     pub fn from_address(start: VirtAddr, size: usize, typ: VmaType) -> Self {
-        let start_page = Page::from_start_address(start).expect("VirtualMemoryArea: Address is not page aligned!");
+        let start_page = Page::from_start_address(start).expect("VirtualMemoryArea: Address is not page aligned");
         let range = PageRange { start: start_page, end: start_page + (size / PAGE_SIZE) as u64 };
 
         Self { range, typ }
