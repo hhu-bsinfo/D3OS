@@ -11,10 +11,12 @@ use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use core::cell::RefCell;
 use core::mem::size_of;
 use core::ptr;
+use chrono::TimeDelta;
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::Mutex;
-use crate::{efi_system_table, ps2_devices, scheduler, speaker};
+use crate::{built_info, efi_system_table, ps2_devices, scheduler, speaker, timer};
+use crate::process::process::active_process_ids;
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) { cursor } else { '_' };
 const TAB_SPACES: u16 = 8;
@@ -65,7 +67,7 @@ struct Character {
 
 impl CursorState {
     pub const fn new() -> Self {
-        Self { pos: (0, 0), saved_pos: (0, 0) }
+        Self { pos: (0, 1), saved_pos: (0, 1) }
     }
 }
 
@@ -117,7 +119,7 @@ impl CursorThread {
             self.visible = !self.visible;
 
             if sleep_counter >= 1000 {
-                LFBTerminal::print_time(&mut display);
+                LFBTerminal::draw_status_bar(&mut display);
                 sleep_counter = 0;
             }
         }
@@ -241,22 +243,40 @@ impl LFBTerminal {
             && display.lfb.direct_lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color.fg_color, color.bg_color, c)
     }
 
-    fn print_time(display: &mut DisplayState) {
+    fn draw_status_bar(display: &mut DisplayState) {
+        // Draw background
+        for i in 0..display.size.0 as u32 * lfb::CHAR_WIDTH {
+            for j in 0..lfb::CHAR_HEIGHT {
+                display.lfb.lfb().draw_pixel(i, j, color::WHITE);
+            }
+        }
+
+        // Collect system information
+        let uptime = TimeDelta::milliseconds(timer().read().systime_ms() as i64);
+        let active_process_ids = active_process_ids();
+        let active_thread_ids = scheduler().active_thread_ids();
+
+        // Draw info string
+        let info_string = format!("D3OS v{} ({}) | Uptime: {:0>2}:{:0>2}:{:0>2} | Processes: {} | Threads: {}",
+                                  built_info::PKG_VERSION, built_info::PROFILE,
+                                  uptime.num_hours(), uptime.num_minutes() % 60, uptime.num_seconds() - (uptime.num_minutes() * 60),
+                                  active_process_ids.len(),
+                                  active_thread_ids.len());
+
+        display.lfb.lfb().draw_string(0, 0, color::HHU_BLUE, color::WHITE, info_string.as_str());
+
+        // Draw date
         if let Some(efi_system_table) = efi_system_table() {
             let system_table = efi_system_table.read();
             let runtime_services = unsafe { system_table.runtime_services() };
 
             if let Ok(date) = runtime_services.get_time() {
                 let date_str = format!("{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
-                let str_pos = display.size.0 - date_str.len() as u16;
-
-                for c in date_str.chars().enumerate() {
-                    let pos = (str_pos + c.0 as u16, 0u16);
-                    display.lfb.lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color::WHITE, color::HHU_BLUE, c.1);
-                    display.lfb.direct_lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color::WHITE, color::HHU_BLUE, c.1);
-                }
+                display.lfb.lfb().draw_string((display.size.0 as u32 - date_str.len() as u32) * lfb::CHAR_WIDTH, 0, color::HHU_BLUE, color::WHITE, &date_str);
             }
         }
+
+        display.lfb.flush_lines(0, lfb::CHAR_HEIGHT);
     }
 
     fn scroll_up(display: &mut DisplayState, color: &mut ColorState) {
@@ -277,12 +297,16 @@ impl LFBTerminal {
         display.lfb.lfb().scroll_up(lfb::CHAR_HEIGHT);
         display.lfb.lfb().fill_rect(0, (size.1 - 1) as u32 * lfb::CHAR_HEIGHT, size.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
 
-        LFBTerminal::print_time(display);
+        LFBTerminal::draw_status_bar(display);
         display.lfb.flush();
     }
 
     fn position(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState, pos: (u16, u16)) {
-        cursor.pos = pos;
+        if pos.1 == 0 {
+            cursor.pos = (pos.0, 1);
+        } else {
+            cursor.pos = pos
+        }
 
         while cursor.pos.1 >= display.size.1 {
             cursor.pos.1 -= 1;
@@ -316,7 +340,7 @@ impl LFBTerminal {
             item.bg_color = color.bg_color;
         });
 
-        LFBTerminal::print_time(display);
+        LFBTerminal::draw_status_bar(display);
         display.lfb.flush();
     }
 
@@ -339,7 +363,7 @@ impl LFBTerminal {
                 item.1.bg_color = color.bg_color;
             });
 
-        LFBTerminal::print_time(display);
+        LFBTerminal::draw_status_bar(display);
         display.lfb.flush();
     }
 
@@ -361,7 +385,7 @@ impl LFBTerminal {
                 item.bg_color = color.bg_color;
             });
 
-        LFBTerminal::print_time(display);
+        LFBTerminal::draw_status_bar(display);
         display.lfb.flush();
     }
 
@@ -381,7 +405,7 @@ impl LFBTerminal {
             });
 
         if pos.1 == 0 {
-            LFBTerminal::print_time(display);
+            LFBTerminal::draw_status_bar(display);
         }
         display.lfb.flush();
     }
@@ -403,7 +427,7 @@ impl LFBTerminal {
             });
 
         if pos.1 == 0 {
-            LFBTerminal::print_time(display);
+            LFBTerminal::draw_status_bar(display);
         }
         display.lfb.flush();
     }
@@ -425,7 +449,7 @@ impl LFBTerminal {
             });
 
         if pos.1 == 0 {
-            LFBTerminal::print_time(display);
+            LFBTerminal::draw_status_bar(display);
         }
         display.lfb.flush();
     }

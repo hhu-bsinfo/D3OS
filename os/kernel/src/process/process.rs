@@ -20,6 +20,10 @@ pub fn create_process() -> Arc<Process> {
     return process;
 }
 
+pub fn active_process_ids() -> Vec<usize> {
+    PROCESSES.read().active_ids()
+}
+
 pub fn kernel_process() -> Option<Arc<Process>> {
     PROCESSES.read().kernel_process()
 }
@@ -46,6 +50,10 @@ impl ProcessManagement {
 
     fn add(&mut self, process: Arc<Process>) {
         self.active_processes.push(process);
+    }
+
+    fn active_ids(&self) -> Vec<usize> {
+        self.active_processes.iter().map(|process| process.id()).collect()
     }
 
     fn kernel_process(&self) -> Option<Arc<Process>> {
