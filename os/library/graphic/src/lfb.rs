@@ -123,6 +123,12 @@ impl LFB {
         return false;
     }
 
+    pub fn draw_string(&self, x: u32, y: u32, fg_color: Color, bg_color: Color, string: &str) {
+        for c in string.chars().enumerate() {
+            self.draw_char(x + (c.0 as u32 * CHAR_WIDTH), y, fg_color, bg_color, c.1);
+        }
+    }
+
     pub fn clear(&self) {
         unsafe {
             self.buffer.write_bytes(0, (self.pitch * self.height) as usize);
@@ -142,8 +148,7 @@ impl LFB {
 
 type PixelDrawer = unsafe fn(addr: *mut u8, pitch: u32, x: u32, y: u32, color: Color);
 
-fn draw_pixel_stub(addr: *mut u8, pitch: u32, x: u32, y: u32, color: Color) {
-    #![allow(unused_variables)]
+fn draw_pixel_stub(_addr: *mut u8, _pitch: u32, _x: u32, _y: u32, _color: Color) {
     panic!("Using empty LFB!");
 }
 

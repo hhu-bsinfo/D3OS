@@ -52,6 +52,14 @@ impl Scheduler {
         self.state.lock().initialized = true;
     }
 
+    pub fn active_thread_ids(&self) -> Vec<usize> {
+        let state = self.state.lock();
+        let sleep_list = self.sleep_list.lock();
+
+        state.ready_queue.iter().map(|thread| thread.id()).collect::<Vec<usize>>()
+            .into_iter().chain(sleep_list.iter().map(|entry| entry.0.id())).collect()
+    }
+
     pub fn current_thread(&self) -> Rc<Thread> {
         let state = self.state.lock();
         return Scheduler::current(&state);

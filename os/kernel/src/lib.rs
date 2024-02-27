@@ -153,7 +153,9 @@ pub fn init_serial_port() {
 }
 
 pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
-    TERMINAL.call_once(|| LFBTerminal::new(buffer, pitch, width, height, bpp));
+    let terminal = LFBTerminal::new(buffer, pitch, width, height, bpp);
+    terminal.clear();
+    TERMINAL.call_once(|| terminal);
 
     scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
         let mut cursor_thread = CursorThread::new(&TERMINAL.get().unwrap());
