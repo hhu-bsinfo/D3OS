@@ -59,7 +59,30 @@ impl LFB {
             return;
         }
 
-        unsafe { (self.pixel_drawer)(self.buffer, self.pitch, x, y, color) };
+        // Do not draw pixels with alpha = 0
+        if color.alpha == 0 {
+            return;
+        }
+
+        // Blend if necessary and draw pixel
+        if color.alpha < 255 {
+            unsafe { (self.pixel_drawer)(self.buffer, self.pitch, x, y, self.read_pixel(x, y).blend(color)) };
+        } else {
+            unsafe { (self.pixel_drawer)(self.buffer, self.pitch, x, y, color) };
+        }
+    }
+
+    pub fn read_pixel(&self, x: u32, y: u32) -> Color {
+        if x > self.width - 1 || y > self.height - 1 {
+            panic!("LinearFrameBuffer: Trying to read a pixel out of bounds!");
+        }
+
+        let bpp = if self.bpp == 15 { 16 } else { self.bpp() };
+
+        unsafe {
+            let ptr = self.buffer.offset(((x * (bpp / 8) as u32) + y * self.pitch) as isize) as *const u32;
+            Color::from_rgb(ptr.read(), self.bpp)
+        }
     }
 
     pub fn fill_rect(&self, x: u32, y: u32, width: u32, height: u32, color: Color) {

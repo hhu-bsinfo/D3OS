@@ -246,7 +246,7 @@ impl LFBTerminal {
         // Draw background
         for i in 0..display.size.0 as u32 * lfb::CHAR_WIDTH {
             for j in 0..lfb::CHAR_HEIGHT {
-                display.lfb.lfb().draw_pixel(i, j, color::WHITE);
+                display.lfb.lfb().draw_pixel(i, j, color::HHU_GREEN);
             }
         }
 
@@ -262,7 +262,7 @@ impl LFBTerminal {
                                   active_process_ids.len(),
                                   active_thread_ids.len());
 
-        display.lfb.lfb().draw_string(0, 0, color::HHU_BLUE, color::WHITE, info_string.as_str());
+        display.lfb.lfb().draw_string(0, 0, color::HHU_BLUE, color::INVISIBLE, info_string.as_str());
 
         // Draw date
         if let Some(efi_system_table) = efi_system_table() {
@@ -271,7 +271,7 @@ impl LFBTerminal {
 
             if let Ok(date) = runtime_services.get_time() {
                 let date_str = format!("{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
-                display.lfb.lfb().draw_string((display.size.0 as u32 - date_str.len() as u32) * lfb::CHAR_WIDTH, 0, color::HHU_BLUE, color::WHITE, &date_str);
+                display.lfb.lfb().draw_string((display.size.0 as u32 - date_str.len() as u32) * lfb::CHAR_WIDTH, 0, color::HHU_BLUE, color::INVISIBLE, &date_str);
             }
         }
 
