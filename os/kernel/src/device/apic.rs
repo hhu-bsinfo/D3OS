@@ -12,11 +12,10 @@ use x2apic::lapic::{LocalApic, LocalApicBuilder, TimerDivide, TimerMode};
 use x86_64::structures::paging::page::PageRange;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{Page, PageTableFlags};
-use crate::{acpi_tables, allocator, apic, interrupt_dispatcher, scheduler};
+use crate::{acpi_tables, allocator, apic, interrupt_dispatcher, process_manager, scheduler};
 use crate::device::pit;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::MemorySpace;
-use crate::process::process::current_process;
 
 pub struct Apic {
     local_apic: Mutex<LocalApic>,
@@ -62,7 +61,7 @@ impl Apic {
         // Read physical APIC MMIO base address and map it to the kernel address space
         // Needs to be executed in unsafe block; APIC availability has been checked before, so this should work.
         let apic_page = Page::from_start_address(VirtAddr::new(madt.local_apic_address as u64)).expect("Local Apic MMIO address is not page aligned");
-        let address_space = current_process().address_space();
+        let address_space = process_manager().read().kernel_process().unwrap().address_space();
         address_space.map(PageRange { start: apic_page, end: apic_page + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
 
         let local_apic_mutex = Mutex::new(LocalApicBuilder::new()

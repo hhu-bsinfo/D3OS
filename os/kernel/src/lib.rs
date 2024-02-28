@@ -41,6 +41,7 @@ use x86_64::structures::tss::TaskStateSegment;
 use x86_64::{PhysAddr, VirtAddr};
 use crate::device::pci::PciBus;
 use crate::memory::PAGE_SIZE;
+use crate::process::process::ProcessManager;
 
 extern crate alloc;
 
@@ -101,6 +102,7 @@ static INIT_RAMDISK: Once<TarArchiveRef> = Once::new();
 #[global_allocator]
 static ALLOCATOR: KernelAllocator = KernelAllocator::new();
 static LOGGER: Mutex<Logger> = Mutex::new(Logger::new());
+static PROCESS_MANAGER: RwLock<ProcessManager> = RwLock::new(ProcessManager::new());
 static SCHEDULER: Once<Scheduler> = Once::new();
 static INTERRUPT_DISPATCHER: Once<InterruptDispatcher> = Once::new();
 
@@ -232,6 +234,10 @@ pub fn logger() -> &'static Mutex<Logger> {
 pub fn interrupt_dispatcher() -> &'static InterruptDispatcher {
     INTERRUPT_DISPATCHER.call_once(|| InterruptDispatcher::new());
     INTERRUPT_DISPATCHER.get().unwrap()
+}
+
+pub fn process_manager() -> &'static RwLock<ProcessManager> {
+    &PROCESS_MANAGER
 }
 
 pub fn scheduler() -> &'static Scheduler {

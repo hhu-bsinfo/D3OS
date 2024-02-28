@@ -15,8 +15,7 @@ use chrono::TimeDelta;
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::Mutex;
-use crate::{built_info, efi_system_table, ps2_devices, scheduler, speaker, timer};
-use crate::process::process::active_process_ids;
+use crate::{built_info, efi_system_table, process_manager, ps2_devices, scheduler, speaker, timer};
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) { cursor } else { '_' };
 const TAB_SPACES: u16 = 8;
@@ -253,7 +252,7 @@ impl LFBTerminal {
 
         // Collect system information
         let uptime = TimeDelta::milliseconds(timer().read().systime_ms() as i64);
-        let active_process_ids = active_process_ids();
+        let active_process_ids = process_manager().read().active_process_ids();
         let active_thread_ids = scheduler().active_thread_ids();
 
         // Draw info string

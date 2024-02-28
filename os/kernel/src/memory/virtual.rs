@@ -1,4 +1,3 @@
-use alloc::sync::Arc;
 use core::cmp::min;
 use core::ptr;
 use spin::RwLock;
@@ -8,8 +7,7 @@ use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use crate::memory::{MemorySpace, PAGE_SIZE, physical};
-use crate::memory::physical::phys_limit;
-use crate::process::process::{current_process, kernel_process};
+use crate::process_manager;
 
 pub struct AddressSpace {
     root_table: RwLock<*mut PageTable>,
@@ -29,23 +27,6 @@ pub enum VmaType {
 
 unsafe impl Send for AddressSpace {}
 unsafe impl Sync for AddressSpace {}
-
-pub fn create_address_space() -> Arc<AddressSpace> {
-    match kernel_process() {
-        Some(kernel_process) => { // Create user address space
-            let kernel_space = AddressSpace::from_other(&kernel_process.address_space());
-            Arc::new(kernel_space)
-        }
-        None => { // Create kernel address space
-            let address_space = AddressSpace::new(4);
-            let max_phys_addr = phys_limit().start_address();
-            let range = PageRange { start: Page::containing_address(VirtAddr::zero()), end: Page::containing_address(VirtAddr::new(max_phys_addr.as_u64())) };
-
-            address_space.map(range, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
-            Arc::new(address_space)
-        }
-    }
-}
 
 fn page_table_index(virt_addr: VirtAddr, level: usize) -> PageTableIndex {
     return PageTableIndex::new_truncate((virt_addr.as_u64() >> 12 >> ((level as u8 - 1) * 9)) as u16);
@@ -99,7 +80,7 @@ impl VirtualMemoryArea {
 
     pub fn grow_downwards(&self, pages: usize) {
         let new_pages = PageRange { start: self.range.start - pages as u64, end: self.range.start };
-        let process = current_process();
+        let process = process_manager().read().current_process();
 
         process.address_space().map(new_pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
         process.update_vma(*self, |vma| vma.range.start = new_pages.start);
