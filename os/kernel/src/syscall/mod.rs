@@ -7,10 +7,9 @@ use core::str::from_utf8;
 use chrono::{Datelike, DateTime, TimeDelta, Timelike};
 use uefi::table::runtime::{Time, TimeParams};
 use x86_64::structures::paging::PageTableFlags;
-use crate::{efi_system_table, initrd, scheduler, terminal, timer};
+use crate::{efi_system_table, initrd, process_manager, scheduler, terminal, timer};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
-use crate::process::process::current_process;
 use crate::process::thread::Thread;
 
 pub mod syscall_dispatcher;
@@ -33,7 +32,7 @@ pub extern "C" fn sys_write(buffer: *const u8, length: usize) {
 
 #[no_mangle]
 pub extern "C" fn sys_map_user_heap(size: usize) -> usize {
-    let process = current_process();
+    let process = process_manager().read().current_process();
     let code_area = process.find_vma(VmaType::Code).expect("Process does not have code area!");
     let heap_start = code_area.end().align_up(PAGE_SIZE as u64);
     let heap_area = VirtualMemoryArea::from_address(heap_start, size, VmaType::Heap);
@@ -46,7 +45,7 @@ pub extern "C" fn sys_map_user_heap(size: usize) -> usize {
 
 #[no_mangle]
 pub extern "C" fn sys_process_id() -> usize {
-    current_process().id()
+    process_manager().read().current_process().id()
 }
 
 #[no_mangle]

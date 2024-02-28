@@ -25,9 +25,8 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use crate::{allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, ps2_devices, scheduler, serial_port, terminal, timer, tss};
+use crate::{allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
 use crate::memory::MemorySpace;
-use crate::process::process::{cleanup_exited_processes, create_process};
 
 extern "C" {
     static ___KERNEL_DATA_START__: u64;
@@ -105,7 +104,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize virtual memory management
     info!("Initializing paging");
-    let kernel_process = create_process();
+    let kernel_process = process_manager().write().create_process();
     kernel_process.address_space().load();
 
     // Initialize serial port and enable serial logging
@@ -216,7 +215,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
         loop {
             scheduler().sleep(100);
-            cleanup_exited_processes();
+            process_manager().write().drop_exited_process();
         }
     })));
 
