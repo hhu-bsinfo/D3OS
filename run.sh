@@ -129,6 +129,9 @@ parse_args() {
     local val=$2
 
     case $arg in
+    -f | --file)
+      parse_file "$val"
+      ;;
     -m | --machine)
       parse_machine "$val"
       ;;
