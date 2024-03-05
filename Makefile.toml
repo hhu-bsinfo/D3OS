@@ -3,7 +3,7 @@ BOOTLOADER_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/loader"
 INITRD_DIRECTORY = "${BOOTLOADER_DIRECTORY}/initrd"
 
 [tasks.default]
-alias = "image"
+alias = "towboot"
 
 # Build tasks
 
@@ -15,9 +15,21 @@ dependencies = [ "create-initrd-directory" ]
 command = "mkdir"
 args = [ "-p", "${INITRD_DIRECTORY}" ]
 
-[tasks.image]
-cwd = "${BOOTLOADER_DIRECTORY}"
+[tasks.towboot]
+cwd = "${BOOTLOADER_DIRECTORY}/towboot"
 command = "./build.sh"
+dependencies = [ "link_members", "initrd" ]
+
+[tasks.grub]
+cwd = "${BOOTLOADER_DIRECTORY}/grub"
+command = "grub-mkrescue"
+args = [ "-o", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.iso", "iso/" ]
+dependencies = [ "grub-copy-files" ]
+
+[tasks.grub-copy-files]
+cwd = "${BOOTLOADER_DIRECTORY}"
+command = "cp"
+args = [ "kernel.elf", "initrd.tar", "grub/iso/boot" ]
 dependencies = [ "link_members", "initrd" ]
 
 [tasks.initrd]
@@ -33,7 +45,12 @@ dependencies = [ "clean_workspace", "clean_members" ]
 
 [tasks.clean_workspace]
 command = "rm"
-args = [ "-rf", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img", "${BOOTLOADER_DIRECTORY}/initrd.tar"  ]
+args = [ "-rf",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img",
+    "${BOOTLOADER_DIRECTORY}/kernel.elf",
+    "${BOOTLOADER_DIRECTORY}/initrd.tar",
+    "${BOOTLOADER_DIRECTORY}/grub/iso/boot/kernel.elf",
+    "${BOOTLOADER_DIRECTORY}/grub/iso/boot/initrd.tar"  ]
 
 [tasks.clean_members]
 run_task = { name = "clean", fork = true }

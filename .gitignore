@@ -126,8 +126,11 @@ Cargo.lock
 # End of https://www.toptal.com/developers/gitignore/api/rust,clion+iml,VisualStudioCode
 
 d3os.img
+d3os.iso
 efi/OVMF.fd
 loader/kernel.elf
 loader/initrd.tar
-loader/towboot-x64.efi
 loader/initrd
+loader/towboot/towboot-x64.efi
+loader/grub/iso/boot/kernel.elf
+loader/grub/iso/boot/initrd.tar
