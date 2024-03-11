@@ -168,8 +168,8 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
 pub fn init_keyboard() {
     PS2.call_once(|| {
         let mut ps2 = PS2::new();
-        ps2.init_controller().unwrap_or_else(|err| panic!("Failed to initialize PS2 controller (Error: {:?})", err));
-        ps2.init_keyboard().unwrap_or_else(|err| panic!("Failed to initialize PS2 keyboard (Error: {:?})", err));
+        ps2.init_controller();
+        ps2.init_keyboard();
 
         return ps2;
     });
@@ -266,7 +266,7 @@ pub fn terminal() -> &'static dyn Terminal {
 }
 
 pub fn ps2_devices() -> &'static PS2 {
-    PS2.get().expect("Trying to access keyboard before initialization!")
+    PS2.get().expect("Trying to access PS/2 devices before initialization!")
 }
 
 pub fn pci_bus() -> &'static PciBus {
