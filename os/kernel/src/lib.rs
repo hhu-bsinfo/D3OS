@@ -27,7 +27,7 @@ use crate::process::thread::Thread;
 use alloc::boxed::Box;
 use core::fmt::Arguments;
 use core::panic::PanicInfo;
-use ::log::{Level, Log, Record};
+use ::log::{error, Level, Log, Record};
 use acpi::AcpiTables;
 use multiboot2::ModuleTag;
 use spin::{Mutex, Once, RwLock};
@@ -168,8 +168,15 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
 pub fn init_keyboard() {
     PS2.call_once(|| {
         let mut ps2 = PS2::new();
-        ps2.init_controller();
-        ps2.init_keyboard();
+        match ps2.init_controller() {
+            Ok(_) => {
+                match ps2.init_keyboard() {
+                    Ok(_) => {}
+                    Err(error) => error!("Keyboard initialization failed: {:?}", error)
+                }
+            }
+            Err(error) => error!("PS/2 controller initialization failed: {:?}", error)
+        }
 
         return ps2;
     });

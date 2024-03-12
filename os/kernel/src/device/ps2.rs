@@ -7,6 +7,7 @@ use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
 use nolock::queues::{mpmc, DequeueError};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use ps2::{Controller, KeyboardType};
+use ps2::error::{ControllerError, KeyboardError};
 use spin::Mutex;
 use crate::{apic, interrupt_dispatcher, ps2_devices};
 
@@ -74,75 +75,76 @@ impl PS2 {
         }
     }
 
-    pub fn init_controller(&self) {
+    pub fn init_controller(&self) -> Result<(), ControllerError> {
         info!("Initializing controller");
         let mut controller = self.controller.lock();
 
         // Disable ports
-        controller.disable_keyboard().expect("Failed to disable first port");
-        controller.disable_mouse().expect("Failed to disable second port");
+        controller.disable_keyboard()?;
+        controller.disable_mouse()?;
 
         // Flush output buffer
         let _ = controller.read_data();
 
         // Disable interrupts and translation
-        let mut config = controller.read_config().expect("Failed to read config");
+        let mut config = controller.read_config()?;
         config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT | ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT | ControllerConfigFlags::ENABLE_TRANSLATE, false);
-        controller.write_config(config).expect("Failed to write config");
+        controller.write_config(config)?;
 
         // Perform self test on controller
-        controller.test_controller().expect("Self test failed");
+        controller.test_controller()?;
         info!("Self test result is OK");
 
         // Check if the controller has reset itself during the self test and if so, write the configuration byte again
-        if controller.read_config().expect("Failed to read config") != config {
-            controller.write_config(config).expect("Failed to write config");
+        if controller.read_config()? != config {
+            controller.write_config(config)?;
         }
 
         // Check if keyboard is present
-        if controller.test_keyboard().is_ok() {
+        let test_result = controller.test_keyboard();
+        if test_result.is_ok() {
             // Enable keyboard
             info!("First port detected");
-            controller.enable_keyboard().expect("Failed to enable first port");
+            controller.enable_keyboard()?;
             config.set(ControllerConfigFlags::DISABLE_KEYBOARD, false);
             config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT, true);
-            controller.write_config(config).expect("Failed to write config");
+            controller.write_config(config)?;
             info!("First port enabled");
-        } else {
-            panic!("No keyboard detected!");
         }
+
+        return test_result;
     }
 
-    pub fn init_keyboard(&mut self) {
+    pub fn init_keyboard(&mut self) -> Result<(), KeyboardError> {
         info!("Initializing keyboard");
         let mut controller = self.controller.lock();
 
         // Perform self test on keyboard
-        controller.keyboard().reset_and_self_test().expect("Keyboard self test failed");
+        controller.keyboard().reset_and_self_test()?;
         info!("Keyboard has been reset and self test result is OK");
 
         // Enable keyboard translation if needed
-        controller.keyboard().disable_scanning().expect("Failed to disable scanning");
-        let kb_type = controller.keyboard().get_keyboard_type().expect("Failed to query keyboard type");
+        controller.keyboard().disable_scanning()?;
+        let kb_type = controller.keyboard().get_keyboard_type()?;
         info!("Detected keyboard type [{:?}]", kb_type);
 
         match kb_type {
             KeyboardType::ATWithTranslation | KeyboardType::MF2WithTranslation | KeyboardType::ThinkPadWithTranslation => {
                 info!("Enabling keyboard translation");
-                let mut config = controller.read_config().expect("Failed to read config");
+                let mut config = controller.read_config()?;
                 config.set(ControllerConfigFlags::ENABLE_TRANSLATE, true);
-                controller.write_config(config).expect("Failed to write config");
+                controller.write_config(config)?;
             }
             _ => info!("Keyboard does not need translation"),
         }
 
         // Setup keyboard
         info!("Enabling keyboard");
-        controller.keyboard().set_defaults().expect("Failed to set default keyboard configuration");
-        controller.keyboard().set_scancode_set(1).expect("Failed to set scancode set");
-        controller.keyboard().set_typematic_rate_and_delay(0).expect("Failed to set typematic rate");
-        controller.keyboard().set_leds(KeyboardLedFlags::empty()).expect("Failed to set LEDs");
-        controller.keyboard().enable_scanning().expect("Failed to enable scanning");
+        controller.keyboard().set_defaults()?;
+        controller.keyboard().set_scancode_set(1)?;
+        controller.keyboard().set_typematic_rate_and_delay(0)?;
+        controller.keyboard().set_leds(KeyboardLedFlags::empty())?;
+        controller.keyboard().enable_scanning()
     }
 
     pub fn keyboard(&self) -> &Keyboard {
