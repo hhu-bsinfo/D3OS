@@ -1,0 +1,9 @@
+[package]
+edition = "2021"
+name = "drawutil"
+version = "0.1.0"
+authors = ["Artur Herdt"]
+
+[dependencies]
+# Local dependencies
+syscall = { path = "../syscall" }

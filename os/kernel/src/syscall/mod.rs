@@ -1,13 +1,15 @@
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::ToString;
+use drawutil::drawer::DrawCommand;
+use graphic::color::Color;
 use core::ptr;
 use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
 use chrono::{Datelike, DateTime, TimeDelta, Timelike};
 use uefi::table::runtime::{Time, TimeParams};
 use x86_64::structures::paging::PageTableFlags;
-use crate::{efi_system_table, initrd, process_manager, scheduler, terminal, timer};
+use crate::{efi_system_table, initrd, process_manager, scheduler, terminal, timer, lfb};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::thread::Thread;
@@ -37,7 +39,11 @@ pub extern "C" fn sys_map_user_heap(size: usize) -> usize {
     let heap_start = code_area.end().align_up(PAGE_SIZE as u64);
     let heap_area = VirtualMemoryArea::from_address(heap_start, size, VmaType::Heap);
 
-    process.address_space().map(heap_area.range(), MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+    process.address_space().map(
+        heap_area.range(), 
+        MemorySpace::User, 
+        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE
+    );
     process.add_vma(heap_area);
 
     return heap_start.as_u64() as usize;
@@ -153,4 +159,23 @@ pub extern "C" fn sys_set_date(date_ms: usize) -> usize {
     }
 
     return false as usize;
+}
+
+/// Following format is required to be kept for the buffer:
+/// ```
+/// buffer: [ [command; 8 bytes][data; n byte] ], length: 1 + n
+/// ```
+#[no_mangle]
+pub extern "C" fn sys_write_graphic(command_ptr: *const DrawCommand, length: usize) -> usize {
+    let enum_val = unsafe { command_ptr.as_ref().unwrap() };
+    match enum_val {
+        DrawCommand::DrawLine { from, to } => {
+            // for i in from.x..to.x {
+            //     lfb().draw_pixel(i, from.y, Color::from_rgb(0xFFFFFFFF, 32u8))
+            // }
+            lfb().fill_rect(from.x, from.y, (to.x - from.x), (to.y - from.y), Color::from_rgb(0xFFFFFFFF, 32u8))
+        },
+        DrawCommand::DrawPolygon { vertices } => println!("HAHANOOOO"),
+    };
+    return 0usize;
 }

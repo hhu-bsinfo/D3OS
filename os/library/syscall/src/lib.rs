@@ -1,7 +1,7 @@
 #![no_std]
 
 use core::arch::asm;
-use crate::SystemCall::SetDate;
+use crate::SystemCall::WriteGraphic;
 
 #[repr(usize)]
 #[allow(dead_code)]
@@ -18,10 +18,11 @@ pub enum SystemCall {
     ApplicationStart,
     GetSystemTime,
     GetDate,
-    SetDate
+    SetDate,
+    WriteGraphic
 }
 
-pub const NUM_SYSCALLS: usize = SetDate as usize + 1;
+pub const NUM_SYSCALLS: usize = WriteGraphic as usize + 1;
 
 #[inline(always)]
 pub fn syscall0(call: SystemCall) -> usize {

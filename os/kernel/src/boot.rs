@@ -25,7 +25,7 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use crate::{allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
+use crate::{allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_lfb, init_pci, init_serial_port, init_terminal, initrd, logger, memory, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
 use crate::memory::MemorySpace;
 
 extern "C" {
@@ -121,6 +121,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     let fb_start_page = Page::from_start_address(VirtAddr::new(fb_info.address())).expect("Framebuffer address is not page aligned");
     let fb_end_page = Page::from_start_address(VirtAddr::new(fb_info.address() + (fb_info.height() * fb_info.pitch()) as u64).align_up(PAGE_SIZE as u64)).unwrap();
     kernel_process.address_space().map(PageRange { start: fb_start_page, end: fb_end_page }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+
+    init_lfb(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
     init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
     logger().lock().register(terminal());

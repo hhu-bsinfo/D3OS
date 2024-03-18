@@ -8,6 +8,7 @@
 #![feature(fmt_internals)]
 #![feature(abi_x86_interrupt)]
 #![feature(trait_upcasting)]
+#![feature(strict_provenance)]
 #![allow(internal_features)]
 #![no_std]
 
@@ -25,6 +26,7 @@ use crate::log::Logger;
 use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use alloc::boxed::Box;
+use graphic::lfb::LFB;
 use core::fmt::Arguments;
 use core::panic::PanicInfo;
 use ::log::{error, Level, Log, Record};
@@ -114,6 +116,8 @@ static TERMINAL: Once<LFBTerminal> = Once::new();
 static PS2: Once<PS2> = Once::new();
 static PCI: Once<PciBus> = Once::new();
 
+static LFB: Once<LFB> = Once::new();
+
 pub fn init_efi_system_table(table: SystemTable<Runtime>) {
     EFI_SYSTEM_TABLE.call_once(|| EfiSystemTable::new(table));
 }
@@ -163,6 +167,10 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
         let mut cursor_thread = CursorThread::new(&TERMINAL.get().unwrap());
         cursor_thread.run();
     })));
+}
+
+pub fn init_lfb(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
+    LFB.call_once(|| LFB::new(buffer, pitch, width, height, bpp));
 }
 
 pub fn init_keyboard() {
@@ -278,6 +286,10 @@ pub fn ps2_devices() -> &'static PS2 {
 
 pub fn pci_bus() -> &'static PciBus {
     PCI.get().expect("Trying to access PCI bus before initialization!")
+}
+
+pub fn lfb() -> &'static LFB {
+    LFB.get().expect("Trying to access LFB before initialization!")
 }
 
 #[no_mangle]
