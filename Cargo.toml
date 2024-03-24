@@ -6,7 +6,8 @@ members = [
     "os/application/hello",
     "os/application/shell",
     "os/application/uptime",
-    "os/application/date"
+    "os/application/date",
+    "os/application/drawer"
 ]
 
 # [profile.release]

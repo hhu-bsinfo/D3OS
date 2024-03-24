@@ -1,16 +1,15 @@
 [package]
 edition = "2021"
-name = "hello"
+name = "drawer"
 version = "0.1.0"
-authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+authors = ["Artur Herdt"]
 
 [lib]
 crate-type = ["staticlib"]
-path = "src/hello.rs"
+path = "src/drawer.rs"
 
 [dependencies]
 # Local dependencies
 runtime = { path = "../../library/runtime" }
-io = { path = "../../library/io" }
 concurrent = { path = "../../library/concurrent" }
 drawutil = { path = "../../library/drawutil" }

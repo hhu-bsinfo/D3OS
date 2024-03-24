@@ -116,6 +116,7 @@ static TERMINAL: Once<LFBTerminal> = Once::new();
 static PS2: Once<PS2> = Once::new();
 static PCI: Once<PciBus> = Once::new();
 
+//TODO: Consider using a Mutex
 static LFB: Once<LFB> = Once::new();
 
 pub fn init_efi_system_table(table: SystemTable<Runtime>) {

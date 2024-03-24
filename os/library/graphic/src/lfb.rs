@@ -3,7 +3,9 @@ use font8x8::{
     UnicodeFonts, BASIC_FONTS, BLOCK_FONTS, BOX_FONTS, GREEK_FONTS, HIRAGANA_FONTS, LATIN_FONTS,
     MISC_FONTS, SGA_FONTS,
 };
+use libm::Libm;
 
+#[derive(Clone, Copy)]
 pub struct LFB {
     buffer: *mut u8,
     pitch: u32,
@@ -53,6 +55,66 @@ impl LFB {
         self.bpp
     }
 
+    pub fn draw_line(&self, x1: u32, y1: u32, x2: u32, y2: u32, color: Color) {
+        // Check if pixels are outside the framebuffer
+        if x1 >= self.width || y1 >= self.height || x2 >= self.width || y2 >= self.height {
+            return;
+        }
+
+        // Do not draw pixels with alpha = 0
+        if color.alpha == 0 {
+            return;
+        }
+
+        let (min_x, max_x) = if x1 < x2 { (x1 as f32, x2 as f32) } else { (x2 as f32, x1 as f32) };
+        let (min_y, max_y) = if y1 < y2 { (y1 as f32, y2 as f32) } else { (y2 as f32, y1 as f32) };
+        let x_dist = Libm::<f32>::fabs((x2 - x1) as f32);
+        let y_dist = Libm::<f32>::fabs((y2 - y1) as f32);
+        let hypot = Libm::<f32>::hypot(x_dist, y_dist);
+        let x_stepsize = x_dist / hypot;
+        let y_stepsize = y_dist / hypot;
+        let mut x_curr = min_x as f32;
+        let mut y_curr = min_y as f32;
+
+        // Blend if necessary and draw pixel
+        if color.alpha < 255 {
+            while x_curr <= max_x && y_curr <= max_y {
+                let x_u32 = Libm::<f32>::round(x_curr) as u32;
+                let y_u32 = Libm::<f32>::round(y_curr) as u32;
+                unsafe { 
+                    (self.pixel_drawer)(
+                        self.buffer, 
+                        self.pitch, 
+                        x_u32,
+                        y_u32,
+                        self.read_pixel(x_u32, y_u32).blend(color)
+                    ) 
+                };
+
+                x_curr += x_stepsize;
+                y_curr += y_stepsize;
+            }
+        } else {
+            while x_curr <= max_x && y_curr <= max_y {
+                let x_u32 = Libm::<f32>::round(x_curr) as u32;
+                let y_u32 = Libm::<f32>::round(y_curr) as u32;
+                unsafe { 
+                    (self.pixel_drawer)(
+                        self.buffer, 
+                        self.pitch, 
+                        x_u32,
+                        y_u32,
+                        color,
+                    ) 
+                };
+
+                x_curr += x_stepsize;
+                y_curr += y_stepsize;
+            }
+        }
+    }
+
+    #[inline]
     pub fn draw_pixel(&self, x: u32, y: u32, color: Color) {
         // Check if pixel is outside the framebuffer
         if x >= self.width || y >= self.height {
