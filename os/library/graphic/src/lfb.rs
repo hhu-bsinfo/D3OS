@@ -22,6 +22,16 @@ unsafe impl Sync for LFB {}
 pub const CHAR_HEIGHT: u32 = 16;
 pub const CHAR_WIDTH: u32 = 8;
 
+macro_rules! keep_iterating_for_dim {
+    ($stepsize:expr, $curr:expr, $other:expr) => {
+        if $stepsize >= 0.0 {
+            $curr <= $other as f32
+        } else {
+            $curr >= $other as f32
+        }
+    };
+}
+
 impl LFB {
     pub const fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         let pixel_drawer: PixelDrawer = match bpp {
@@ -66,21 +76,15 @@ impl LFB {
             return;
         }
 
-        let (min_x, max_x) = if x1 < x2 { (x1 as f32, x2 as f32) } else { (x2 as f32, x1 as f32) };
-        let (min_y, max_y) = if y1 < y2 { (y1 as f32, y2 as f32) } else { (y2 as f32, y1 as f32) };
-        let x_dist = Libm::<f32>::fabs((x2 - x1) as f32);
-        let y_dist = Libm::<f32>::fabs((y2 - y1) as f32);
+        let (x_dist, y_dist) = (x2 as f32 - x1 as f32, y2 as f32 - y1 as f32);
         let hypot = Libm::<f32>::hypot(x_dist, y_dist);
-        let x_stepsize = x_dist / hypot;
-        let y_stepsize = y_dist / hypot;
-        let mut x_curr = min_x as f32;
-        let mut y_curr = min_y as f32;
+        let (x_stepsize, y_stepsize) = (x_dist / hypot, y_dist / hypot);
+        let (mut x_curr, mut y_curr) = (x1 as f32, y1 as f32);
 
         // Blend if necessary and draw pixel
         if color.alpha < 255 {
-            while x_curr <= max_x && y_curr <= max_y {
-                let x_u32 = Libm::<f32>::round(x_curr) as u32;
-                let y_u32 = Libm::<f32>::round(y_curr) as u32;
+            while keep_iterating_for_dim!(x_stepsize, x_curr, x2) && keep_iterating_for_dim!(y_stepsize, y_curr, y2) {
+                let (x_u32, y_u32) = (Libm::<f32>::round(x_curr) as u32, Libm::<f32>::round(y_curr) as u32);
                 unsafe { 
                     (self.pixel_drawer)(
                         self.buffer, 
@@ -95,9 +99,8 @@ impl LFB {
                 y_curr += y_stepsize;
             }
         } else {
-            while x_curr <= max_x && y_curr <= max_y {
-                let x_u32 = Libm::<f32>::round(x_curr) as u32;
-                let y_u32 = Libm::<f32>::round(y_curr) as u32;
+            while keep_iterating_for_dim!(x_stepsize, x_curr, x2) && keep_iterating_for_dim!(y_stepsize, y_curr, y2) {
+                let (x_u32, y_u32) = (Libm::<f32>::round(x_curr) as u32, Libm::<f32>::round(y_curr) as u32);
                 unsafe { 
                     (self.pixel_drawer)(
                         self.buffer, 

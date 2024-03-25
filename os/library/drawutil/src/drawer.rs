@@ -1,9 +1,8 @@
-use core::mem::size_of;
-
-use syscall::{syscall2, SystemCall};
+use syscall::{syscall1, SystemCall};
 use alloc::vec::Vec;
 
 #[repr(C, align(8))]
+#[derive(Clone, Copy)]
 pub struct Vertex {
     pub x: u32,
     pub y: u32,
@@ -24,6 +23,6 @@ impl Drawer {
 
     pub fn execute(command: DrawerCommand) {
         let command_addr = core::ptr::addr_of!(command) as usize;
-        syscall2(SystemCall::WriteGraphic, command_addr, size_of::<DrawerCommand>());
+        syscall1(SystemCall::WriteGraphic, command_addr);
     }
 }

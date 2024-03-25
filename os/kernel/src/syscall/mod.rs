@@ -164,20 +164,34 @@ pub extern "C" fn sys_set_date(date_ms: usize) -> usize {
 #[no_mangle]
 pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize {
     let enum_val = unsafe { command_ptr.as_ref().unwrap() };
+    let lfb = lfb();
     //TODO: Dep-inject color through command
     let color = Color { red: 255, green: 255, blue: 255, alpha: 255 };
     match enum_val {
         DrawerCommand::CreatePanel => {
             //TODO: Save old LFB state
-            lfb().clear();
+            lfb.clear();
         },
         DrawerCommand::ClosePanel => {
             //TODO: Reinstatiate old LFB state
         }
         DrawerCommand::DrawLine { from, to } => {
-            lfb().draw_line(from.x, from.y, to.x, to.y, color)
+            lfb.draw_line(from.x, from.y, to.x, to.y, color)
         },
-        DrawerCommand::DrawPolygon(vertices) => todo!("No Polygon drawing implemented yet"),
+        DrawerCommand::DrawPolygon(vertices) => {
+            let first_vertex = vertices.first();
+            let mut prev = match first_vertex {
+                Some(unwrapped) => unwrapped,
+                None => return 0usize,
+            };
+            let last_vertex = vertices.last().unwrap();
+            for vertex in &vertices[1..] {
+                lfb.draw_line(prev.x, prev.y, vertex.x, vertex.y, color);
+                prev = vertex;
+            }
+
+            lfb.draw_line(last_vertex.x, last_vertex.y, first_vertex.unwrap().x, first_vertex.unwrap().y, color);
+        },
     };
     return 0usize;
 }
