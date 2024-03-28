@@ -3,6 +3,8 @@ use alloc::rc::Rc;
 use alloc::string::ToString;
 use drawutil::drawer::DrawerCommand;
 use graphic::color::Color;
+use libm::Libm;
+use core::f32::consts::PI;
 use core::ptr;
 use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
@@ -192,6 +194,21 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
 
             lfb.draw_line(last_vertex.x, last_vertex.y, first_vertex.unwrap().x, first_vertex.unwrap().y, color);
         },
+        DrawerCommand::DrawCircle { center, radius } => {
+            let stepsize = PI / 128.0;
+            const TWO_PI: f32 = PI * 2.0;
+            let mut x_curr = 0.0;
+            while x_curr <= TWO_PI {
+                lfb.draw_pixel(
+                    Libm::<f32>::round(Libm::<f32>::sin(x_curr) * (radius.clone() as f32) + (center.x as f32)) as u32, 
+                    Libm::<f32>::round(Libm::<f32>::cos(x_curr) * (radius.clone() as f32) + (center.y as f32)) as u32, 
+                    color
+                );
+
+                x_curr += stepsize;
+            }
+
+        }
     };
     return 0usize;
 }

@@ -10,7 +10,7 @@ use runtime::*;
 #[no_mangle]
 pub fn main() {
     Drawer::execute(DrawerCommand::CreatePanel);
-    draw_polygon();
+    draw_circle();
 }
 
 fn draw_line() {
@@ -26,6 +26,12 @@ fn draw_polygon() {
         Vertex {x: 123, y: 123},
         Vertex {x: 230, y: 80}
     ]);
+
+    Drawer::execute(command);
+}
+
+fn draw_circle() {
+    let command = DrawerCommand::DrawCircle { center: Vertex { x: 400, y: 400 }, radius: 50 };
 
     Drawer::execute(command);
 }

@@ -37,6 +37,7 @@ log = "0.4.20"
 goblin = { version = "0.8.0", default-features = false, features = ["elf32", "elf64", "endian_fd"]}
 tar-no-std = "0.2.0"
 pci_types = "0.6.1"
+libm = "0.2.8"
 
 [build-dependencies]
 built = { version = "0.7.1", features = ["chrono", "git2"] }

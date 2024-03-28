@@ -14,6 +14,7 @@ pub enum DrawerCommand {
     ClosePanel,
     DrawLine { from: Vertex, to: Vertex },
     DrawPolygon(Vec<Vertex>),
+    DrawCircle { center: Vertex, radius: u32 }
 }
 
 pub struct Drawer;
