@@ -157,6 +157,14 @@ impl AddressSpace {
         AddressSpace::unmap_in_table(root_table, pages, depth, free_physical);
     }
 
+    pub fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
+        let depth = self.depth;
+        let root_table_guard = self.root_table.write();
+        let root_table = unsafe { root_table_guard.as_mut().unwrap() };
+
+        AddressSpace::set_flags_in_table(root_table, pages, flags, depth);
+    }
+
     fn copy_table(source: &PageTable, target: &mut PageTable, level: usize) {
         if level > 1 { // On all levels larger than 1, we allocate new page frames
             for (index, target_entry) in target.iter_mut().enumerate() {
@@ -293,6 +301,44 @@ impl AddressSpace {
 
         let table_frame = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(table) as u64)).unwrap();
         unsafe { physical::free(PhysFrameRange { start: table_frame, end: table_frame + 1 }); }
+    }
+
+    fn set_flags_in_table(table: &mut PageTable, mut pages: PageRange, flags: PageTableFlags, level: usize) -> usize {
+        let mut total_edited_pages: usize = 0;
+        let start_index = usize::from(page_table_index(pages.start.start_address(), level));
+
+        if level > 1 { // Calculate next level page table until level == 1
+            for entry in table.iter_mut().skip(start_index) {
+                if entry.is_unused() { // Skip empty entries
+                    continue;
+                }
+
+                let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
+
+                let edited_pages = AddressSpace::set_flags_in_table(next_level_table, pages, flags, level - 1);
+                pages = PageRange { start: pages.start + edited_pages as u64, end: pages.end };
+                total_edited_pages += edited_pages;
+
+                if pages.start >= pages.end {
+                    break;
+                }
+            }
+        } else { // Reached level 1 page table
+            let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
+            let edit_count = min((pages.end - pages.start) as usize, 512 - start_index);
+
+            for (count, entry) in table.iter_mut().skip(start_index).enumerate() {
+                if count >= edit_count {
+                    break;
+                }
+
+                entry.set_flags(flags);
+            }
+
+            return edit_count;
+        }
+
+        return total_edited_pages;
     }
 
     fn translate_in_table(table: &mut PageTable, addr: VirtAddr, level: usize) -> Option<PhysAddr> {
