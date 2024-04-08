@@ -26,6 +26,7 @@ use crate::log::Logger;
 use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use alloc::boxed::Box;
+use graphic::buffered_lfb::BufferedLFB;
 use graphic::lfb::LFB;
 use core::fmt::Arguments;
 use core::panic::PanicInfo;
@@ -116,8 +117,7 @@ static TERMINAL: Once<LFBTerminal> = Once::new();
 static PS2: Once<PS2> = Once::new();
 static PCI: Once<PciBus> = Once::new();
 
-//TODO: Consider using a Mutex
-static LFB: Once<LFB> = Once::new();
+static BUFFERED_LFB: Once<Mutex<BufferedLFB>> = Once::new();
 
 pub fn init_efi_system_table(table: SystemTable<Runtime>) {
     EFI_SYSTEM_TABLE.call_once(|| EfiSystemTable::new(table));
@@ -171,7 +171,11 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
 }
 
 pub fn init_lfb(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
-    LFB.call_once(|| LFB::new(buffer, pitch, width, height, bpp));
+    BUFFERED_LFB.call_once(|| Mutex::new(
+        BufferedLFB::new(
+            LFB::new(buffer, pitch, width, height, bpp)
+        )
+    ));
 }
 
 pub fn init_keyboard() {
@@ -289,8 +293,9 @@ pub fn pci_bus() -> &'static PciBus {
     PCI.get().expect("Trying to access PCI bus before initialization!")
 }
 
-pub fn lfb() -> &'static LFB {
-    LFB.get().expect("Trying to access LFB before initialization!")
+pub fn buffered_lfb() -> &'static Mutex<BufferedLFB> {
+    BUFFERED_LFB.get()
+        .expect("Trying to access buffered LFB before initialization!")
 }
 
 #[no_mangle]

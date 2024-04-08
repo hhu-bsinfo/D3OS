@@ -33,7 +33,7 @@ extern "C" {
     static ___KERNEL_DATA_END__: u64;
 }
 
-const INIT_HEAP_PAGES: usize = 0x400;
+const INIT_HEAP_PAGES: usize = 0x800;
 
 #[no_mangle]
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {

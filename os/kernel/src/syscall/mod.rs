@@ -11,7 +11,7 @@ use core::str::from_utf8;
 use chrono::{Datelike, DateTime, TimeDelta, Timelike};
 use uefi::table::runtime::{Time, TimeParams};
 use x86_64::structures::paging::PageTableFlags;
-use crate::{efi_system_table, initrd, process_manager, scheduler, terminal, timer, lfb};
+use crate::{efi_system_table, initrd, process_manager, scheduler, terminal, timer, buffered_lfb};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::thread::Thread;
@@ -166,7 +166,8 @@ pub extern "C" fn sys_set_date(date_ms: usize) -> usize {
 #[no_mangle]
 pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize {
     let enum_val = unsafe { command_ptr.as_ref().unwrap() };
-    let lfb = lfb();
+    let mut buff_lfb = buffered_lfb().lock();
+    let lfb = buff_lfb.lfb();
     //TODO: Dep-inject color through command
     let color = Color { red: 255, green: 255, blue: 255, alpha: 255 };
     match enum_val {
@@ -210,5 +211,8 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
 
         }
     };
+
+    buff_lfb.flush();
+
     return 0usize;
 }
