@@ -1,5 +1,6 @@
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
+use graphic::color::{self};
 use stream::InputStream;
 use alloc::boxed::Box;
 use log::info;
@@ -7,23 +8,31 @@ use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
 use nolock::queues::{mpmc, DequeueError};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use ps2::{Controller, KeyboardType};
-use ps2::error::{ControllerError, KeyboardError};
+use ps2::error::{ControllerError, KeyboardError, MouseError};
 use spin::Mutex;
-use crate::{apic, interrupt_dispatcher, ps2_devices};
+use crate::{apic, buffered_lfb, interrupt_dispatcher, ps2_devices};
 
 const KEYBOARD_BUFFER_CAPACITY: usize = 128;
 
 pub struct PS2 {
     controller: Mutex<Controller>,
     keyboard: Keyboard,
+    mouse: Mouse,
 }
 
 pub struct Keyboard {
     buffer: (Receiver<u8>, Sender<u8>),
 }
 
+pub struct Mouse;
+
 #[derive(Default)]
 struct KeyboardInterruptHandler;
+
+#[derive(Default)]
+struct MouseInterruptHandler {
+    mouse_state: (u32, u32),
+}
 
 impl Keyboard {
     fn new(buffer_cap: usize) -> Self {
@@ -67,11 +76,40 @@ impl InterruptHandler for KeyboardInterruptHandler {
     }
 }
 
+impl Mouse {
+    fn new() -> Self {
+        Self {}
+    }
+
+    pub fn plugin(&self) {
+        interrupt_dispatcher().assign(InterruptVector::Mouse, Box::new(MouseInterruptHandler::default()));
+        apic().allow(InterruptVector::Mouse);
+    }
+}
+
+impl InterruptHandler for MouseInterruptHandler {
+    fn trigger(&mut self) {
+        if let Some(mut controller) = ps2_devices().controller.try_lock() {
+            if let Ok((_flags, x_delta, y_delta)) = controller.mouse().read_data_packet() {
+                self.mouse_state.0 = self.mouse_state.0.wrapping_add_signed(x_delta.into());
+                self.mouse_state.1 = self.mouse_state.1.wrapping_add_signed(y_delta.wrapping_neg().into());
+                buffered_lfb()
+                    .lock()
+                    .direct_lfb()
+                    .draw_pixel(self.mouse_state.0, self.mouse_state.1, color::WHITE);
+            }
+        } else {
+            panic!("Mouse: Controller is locked during interrupt!");
+        }
+    }
+}
+
 impl PS2 {
     pub fn new() -> Self {
         Self {
             controller: unsafe { Mutex::new(Controller::with_timeout(1000000)) },
             keyboard: Keyboard::new(KEYBOARD_BUFFER_CAPACITY),
+            mouse: Mouse::new(),
         }
     }
 
@@ -101,8 +139,8 @@ impl PS2 {
         }
 
         // Check if keyboard is present
-        let test_result = controller.test_keyboard();
-        if test_result.is_ok() {
+        let keyboard_test_result = controller.test_keyboard();
+        if keyboard_test_result.is_ok() {
             // Enable keyboard
             info!("First port detected");
             controller.enable_keyboard()?;
@@ -112,7 +150,18 @@ impl PS2 {
             info!("First port enabled");
         }
 
-        return test_result;
+        // Check if mouse is present
+        let mouse_test_result = controller.test_mouse();
+        if mouse_test_result.is_ok() {
+            // Enable mouse
+            controller.enable_mouse()?;
+            config.set(ControllerConfigFlags::DISABLE_MOUSE, false);
+            config.set(ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT, true);
+            controller.write_config(config)?;
+            info!("Mouse enabled");
+        }
+
+        return keyboard_test_result.and(mouse_test_result);
     }
 
     pub fn init_keyboard(&mut self) -> Result<(), KeyboardError> {
@@ -149,5 +198,31 @@ impl PS2 {
 
     pub fn keyboard(&self) -> &Keyboard {
         return &self.keyboard;
+    }
+
+    pub fn init_mouse(&mut self) -> Result<(), MouseError> {
+        info!("Initializing mouse");
+        let mut controller = self.controller.lock();
+
+        // Perform self test on mouse
+        controller.mouse().reset_and_self_test()?;
+        info!("Mouse has been reset and self test result is OK");
+        
+        // Setup mouse
+        info!("Enabling mouse");
+        // BUG: When setting the sample_rate, you get an Error-Command: "Resend" back
+        // controller.mouse().set_sample_rate(10)?;
+        match controller.mouse().set_sample_rate(10) {
+            Ok(_) => {},
+            Err(_) => {}
+        };
+        controller.mouse().set_resolution(0u8)?;
+        controller.mouse().set_scaling_one_to_one()?;
+        controller.mouse().set_stream_mode()?;
+        controller.mouse().enable_data_reporting()
+    }
+
+    pub fn mouse(&self) -> &Mouse {
+        return &self.mouse;
     }
 }

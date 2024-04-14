@@ -178,7 +178,7 @@ pub fn init_lfb(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
     ));
 }
 
-pub fn init_keyboard() {
+pub fn init_keyboard_and_mouse() {
     PS2.call_once(|| {
         let mut ps2 = PS2::new();
         match ps2.init_controller() {
@@ -186,7 +186,11 @@ pub fn init_keyboard() {
                 match ps2.init_keyboard() {
                     Ok(_) => {}
                     Err(error) => error!("Keyboard initialization failed: {:?}", error)
-                }
+                };
+                match ps2.init_mouse() {
+                    Ok(_) => {}
+                    Err(error) => error!("Mouse initialization failed: {:?}", error)
+                };
             }
             Err(error) => error!("PS/2 controller initialization failed: {:?}", error)
         }
