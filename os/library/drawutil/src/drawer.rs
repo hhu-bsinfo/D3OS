@@ -8,6 +8,12 @@ pub struct Vertex {
     pub y: u32,
 }
 
+impl Vertex {
+    pub fn new(x: u32, y: u32) -> Vertex {
+        Self { x, y }
+    }
+}
+
 #[repr(C, u8)]
 pub enum DrawerCommand {
     CreatePanel = 0,

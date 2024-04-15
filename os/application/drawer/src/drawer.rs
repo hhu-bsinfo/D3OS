@@ -14,24 +14,24 @@ pub fn main() {
 }
 
 fn draw_line() {
-    let command = DrawerCommand::DrawLine { from: Vertex {x: 150, y: 100}, to: Vertex {x: 400, y: 600} };
+    let command = DrawerCommand::DrawLine { from: Vertex::new(150, 100) , to: Vertex::new(400, 600) };
     Drawer::execute(command);
 }
 
 fn draw_polygon() {
     let command = DrawerCommand::DrawPolygon(vec![
-        Vertex {x: 3, y: 200},
-        Vertex {x: 30, y: 150},
-        Vertex {x: 200, y: 200},
-        Vertex {x: 123, y: 123},
-        Vertex {x: 230, y: 80}
+        Vertex::new(3, 200),
+        Vertex::new(30, 150),
+        Vertex::new(200, 200),
+        Vertex::new(123, 123),
+        Vertex::new(230, 80),
     ]);
 
     Drawer::execute(command);
 }
 
 fn draw_circle() {
-    let command = DrawerCommand::DrawCircle { center: Vertex { x: 400, y: 400 }, radius: 50 };
+    let command = DrawerCommand::DrawCircle { center: Vertex::new(400, 400), radius: 50 };
 
     Drawer::execute(command);
 }
