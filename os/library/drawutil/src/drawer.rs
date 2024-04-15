@@ -34,12 +34,12 @@ impl Drawer {
         syscall1(SystemCall::WriteGraphic, command_addr);
     }
 
-    pub fn draw_line(from: (u32, u32), to: (u32, u32)) {
+    pub fn draw_line(&self, from: (u32, u32), to: (u32, u32)) {
         let command = DrawerCommand::DrawLine { from: Vertex::new(from.0, from.1) , to: Vertex::new(to.0, to.1) };
         Drawer::execute(command);
     }
 
-    pub fn draw_polygon(vertices_as_tuples: Vec<(u32, u32)>) {
+    pub fn draw_polygon(&self, vertices_as_tuples: Vec<(u32, u32)>) {
         let vertices: Vec<Vertex> = vertices_as_tuples
             .into_iter()
             .map(|tuple| Vertex::new(tuple.0, tuple.1))
@@ -49,27 +49,28 @@ impl Drawer {
         Drawer::execute(command);
     }
 
-    pub fn draw_circle(center: (u32, u32), radius: u32) {
+    pub fn draw_circle(&self, center: (u32, u32), radius: u32) {
         let command = DrawerCommand::DrawCircle { center: Vertex::new(center.0, center.1), radius };
 
         Drawer::execute(command);
     }
 
-    pub fn draw_rectangle(upper_left_vertex: (u32, u32), lower_right_vertex: (u32, u32)) {
+    pub fn draw_rectangle(&self, top_left: (u32, u32), bottom_right: (u32, u32)) {
         let command = DrawerCommand::DrawPolygon(vec![
-            Vertex::new(upper_left_vertex.0, upper_left_vertex.1),
-            Vertex::new(lower_right_vertex.0, upper_left_vertex.1),
-            Vertex::new(lower_right_vertex.0, lower_right_vertex.1),
-            Vertex::new(upper_left_vertex.0, lower_right_vertex.1),
+            Vertex::new(top_left.0, top_left.1),
+            Vertex::new(bottom_right.0, top_left.1),
+            Vertex::new(bottom_right.0, bottom_right.1),
+            Vertex::new(top_left.0, bottom_right.1),
         ]);
 
         Drawer::execute(command);
     }
 
-    pub fn draw_square(upper_left_vertex: (u32, u32), side_length: u32) {
+    pub fn draw_square(&self, top_left: (u32, u32), side_length: u32) {
         Drawer::draw_rectangle(
-            upper_left_vertex,
-            (upper_left_vertex.0 + side_length, upper_left_vertex.1 + side_length),
+            self,
+            top_left,
+            (top_left.0 + side_length, top_left.1 + side_length),
         )
     }
 }
