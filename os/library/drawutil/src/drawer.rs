@@ -34,43 +34,38 @@ impl Drawer {
         syscall1(SystemCall::WriteGraphic, command_addr);
     }
 
-    pub fn draw_line(&self, from: (u32, u32), to: (u32, u32)) {
-        let command = DrawerCommand::DrawLine { from: Vertex::new(from.0, from.1) , to: Vertex::new(to.0, to.1) };
+    pub fn draw_line(from: Vertex, to: Vertex) {
+        let command = DrawerCommand::DrawLine { from , to };
         Drawer::execute(command);
     }
 
-    pub fn draw_polygon(&self, vertices_as_tuples: Vec<(u32, u32)>) {
-        let vertices: Vec<Vertex> = vertices_as_tuples
-            .into_iter()
-            .map(|tuple| Vertex::new(tuple.0, tuple.1))
-            .collect();
+    pub fn draw_polygon(vertices: Vec<Vertex>) {
         let command = DrawerCommand::DrawPolygon(vertices);
 
         Drawer::execute(command);
     }
 
-    pub fn draw_circle(&self, center: (u32, u32), radius: u32) {
+    pub fn draw_circle(center: (u32, u32), radius: u32) {
         let command = DrawerCommand::DrawCircle { center: Vertex::new(center.0, center.1), radius };
 
         Drawer::execute(command);
     }
 
-    pub fn draw_rectangle(&self, top_left: (u32, u32), bottom_right: (u32, u32)) {
+    pub fn draw_rectangle(top_left: Vertex, bottom_right: Vertex) {
         let command = DrawerCommand::DrawPolygon(vec![
-            Vertex::new(top_left.0, top_left.1),
-            Vertex::new(bottom_right.0, top_left.1),
-            Vertex::new(bottom_right.0, bottom_right.1),
-            Vertex::new(top_left.0, bottom_right.1),
+            Vertex::new(top_left.x, top_left.y),
+            Vertex::new(bottom_right.x, top_left.y),
+            Vertex::new(bottom_right.x, bottom_right.y),
+            Vertex::new(top_left.x, bottom_right.y),
         ]);
 
         Drawer::execute(command);
     }
 
-    pub fn draw_square(&self, top_left: (u32, u32), side_length: u32) {
+    pub fn draw_square(&self, top_left: Vertex, side_length: u32) {
         Drawer::draw_rectangle(
-            self,
             top_left,
-            (top_left.0 + side_length, top_left.1 + side_length),
+            Vertex::new(top_left.x + side_length, top_left.y + side_length),
         )
     }
 }
