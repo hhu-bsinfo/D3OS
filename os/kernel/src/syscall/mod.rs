@@ -5,6 +5,7 @@ use drawutil::drawer::DrawerCommand;
 use graphic::color::Color;
 use libm::Libm;
 use core::f32::consts::PI;
+use core::mem::size_of;
 use core::ptr;
 use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
@@ -215,4 +216,13 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
     buff_lfb.flush();
 
     return 0usize;
+}
+
+pub extern "C" fn sys_get_graphic_resolution() -> usize {
+    // We need 64bits to transform the information of both width and height.
+    if size_of::<usize>() != 8 {
+        return 0;
+    }
+    let lfb = buffered_lfb().lock().direct_lfb();
+    return ((((lfb.width() as u64) << 32) | lfb.height()) as usize);
 }
