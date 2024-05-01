@@ -8,11 +8,10 @@ use alloc::boxed::Box;
 use drawer::drawer::{Drawer, Vertex};
 #[allow(unused_imports)]
 use runtime::*;
+use io::{print, println};
 
 struct WindowManager {
     workspaces: Vec<Workspace>,
-    root_width: u32,
-    root_height: u32,
 }
 
 struct RectPos {
@@ -27,8 +26,6 @@ struct Workspace {
 
 struct Window {
     pos: RectPos,
-    is_visible: bool,
-    is_focused: bool,
     children: Vec<Box<dyn Container>>,
 }
 
@@ -44,18 +41,16 @@ struct Splitter {
 }
 
 impl RectPos {
-    fn bottom_right(&self) -> Vertex{
+    fn bottom_right(&self) -> Vertex {
         Vertex::new(self.top_left.x + self.width, self.top_left.y + self.height)
     }
 }
 
 impl WindowManager {
     fn new(root_width: u32, root_height: u32) -> WindowManager {
-        let first_workspace = Workspace::new();
+        let first_workspace = Workspace::new(root_width, root_height);
         Self {
             workspaces: vec![first_workspace],
-            root_width,
-            root_height,
         }
     }
 
@@ -67,38 +62,40 @@ impl WindowManager {
 }
 
 impl Workspace {
-    fn new() -> Workspace {
-        let splitter = Splitter::new();
+    fn new(root_width: u32, root_height: u32) -> Workspace {
+        let window = Window::new(RectPos {
+            top_left: Vertex::new(5, 5),
+            width: root_width - 6,
+            height: root_height - 6,
+        });
+
         Self {
-            container_tree: Box::new(splitter)
+            container_tree: Box::new(window),
         }
     }
 }
 
 impl Splitter {
-    fn new() -> Splitter {
-        let children: Vec<Box<dyn Container>> = vec![
-            Box::new(Window::new()),
-            Box::new(Window::new()),
-        ];
+    fn new(pos: RectPos, children: Vec<Box<dyn Container>>, split_direction: SplitDirection) -> Splitter {
         Self {
-            pos: RectPos {
-                top_left: Vertex::new(0, 0),
-                width: 300,
-                height: 300,
-            },
-            split_direction: SplitDirection::Vertical,
+            pos,
+            split_direction,
             children,
         }
+    }
+
+    fn toggle_split_direction(&mut self) {
+        self.split_direction = match self.split_direction {
+            SplitDirection::Horizontal => SplitDirection::Vertical,
+            SplitDirection::Vertical => SplitDirection::Horizontal,
+        };
     }
 }
 
 impl Window {
-    fn new() -> Window {
+    fn new(pos: RectPos) -> Window {
         Self {
-            pos: RectPos { top_left: Vertex::new(0, 0), width: 500, height: 400 },
-            is_visible: true,
-            is_focused: true,
+            pos,
             children: Vec::new(),
         }
     }
@@ -135,14 +132,16 @@ impl Container for Splitter {
 
     fn layout_content(&mut self) {
         let mut top_left = self.pos.top_left;
+        /* TODO: For proper drawing, you might need to differentiate between first/last and in-between
+           content blocks. There you might need to add one-diffs only for in-between elements */
         match self.split_direction {
             SplitDirection::Horizontal => {
                 let child_height = self.pos.height / (self.children.len() as u32);
                 
                 for child in self.children.iter_mut() {
-                    child.set_position(top_left);
-                    child.set_width(self.pos.width);
-                    child.set_height(child_height);
+                    child.set_position(top_left.add_one());
+                    child.set_width(self.pos.width - 1);
+                    child.set_height(child_height - 1);
 
                     top_left.y += child_height;
                 }
@@ -151,9 +150,9 @@ impl Container for Splitter {
                 let child_width = self.pos.width / (self.children.len() as u32);
                 
                 for child in self.children.iter_mut() {
-                    child.set_position(top_left);
-                    child.set_height(self.pos.height);
-                    child.set_width(child_width);
+                    child.set_position(top_left.add_one());
+                    child.set_height(self.pos.height - 1);
+                    child.set_width(child_width - 1);
 
                     top_left.x += child_width;
                 }
@@ -183,8 +182,8 @@ impl Container for Splitter {
 impl Container for Window {
     fn layout_content(&mut self) {
         let pos = &self.pos;
-        let mut _top_left: Vertex = pos.top_left;
-        let mut _bottom_right: Vertex = Vertex::new(_top_left.x + pos.width, _top_left.y + pos.height);
+        let mut top_left = pos.top_left;
+        let mut bottom_right = Vertex::new(top_left.x + pos.width, top_left.y + pos.height);
         // TODO: Add content
     }
     

@@ -17,6 +17,20 @@ impl Vertex {
     pub fn as_tuple(&self) -> (u32, u32) {
         (self.x, self.y)
     }
+
+    pub fn add_one(&self) -> Vertex {
+        Self { 
+            x: self.x + 1, 
+            y: self.y + 1
+        }
+    }
+
+    pub fn sub_one(&self) -> Vertex {
+        Self { 
+            x: self.x - 1, 
+            y: self.y - 1
+        }
+    }
 }
 
 #[repr(C, u8)]
@@ -52,7 +66,7 @@ impl Drawer {
 
     pub fn get_graphic_resolution() -> (u32, u32) {
         let raw_graphic_resolution: usize = syscall0(SystemCall::GetGraphicResolution);
-        return (raw_graphic_resolution as u32, (raw_graphic_resolution >> 32) as u32);
+        return ((raw_graphic_resolution >> 32) as u32, raw_graphic_resolution as u32);
     }
 
     pub fn draw_line(from: Vertex, to: Vertex) {
