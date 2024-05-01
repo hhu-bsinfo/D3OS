@@ -1,7 +1,7 @@
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::ToString;
-use drawutil::drawer::DrawerCommand;
+use drawer::drawer::DrawerCommand;
 use graphic::color::Color;
 use libm::Libm;
 use core::f32::consts::PI;
@@ -172,11 +172,11 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
     //TODO: Dep-inject color through command
     let color = Color { red: 255, green: 255, blue: 255, alpha: 255 };
     match enum_val {
-        DrawerCommand::CreatePanel => {
+        DrawerCommand::CreateContext => {
             //TODO: Save old LFB state
             lfb.clear();
         },
-        DrawerCommand::ClosePanel => {
+        DrawerCommand::DeleteContext => {
             //TODO: Reinstatiate old LFB state
         }
         DrawerCommand::DrawLine { from, to } => {

@@ -1,4 +1,4 @@
-use syscall::{syscall1, SystemCall};
+use syscall::{syscall0, syscall1, SystemCall};
 use alloc::vec::Vec;
 use alloc::vec;
 
@@ -13,12 +13,16 @@ impl Vertex {
     pub fn new(x: u32, y: u32) -> Vertex {
         Self { x, y }
     }
+
+    pub fn as_tuple(&self) -> (u32, u32) {
+        (self.x, self.y)
+    }
 }
 
 #[repr(C, u8)]
 pub enum DrawerCommand {
-    CreatePanel = 0,
-    ClosePanel,
+    CreateContext = 0,
+    DeleteContext,
     DrawLine { from: Vertex, to: Vertex },
     DrawPolygon(Vec<Vertex>),
     DrawCircle { center: Vertex, radius: u32 }
@@ -27,28 +31,45 @@ pub enum DrawerCommand {
 pub struct Drawer;
 
 impl Drawer {
-    pub const fn new() -> Drawer { Drawer }
-
     fn execute(command: DrawerCommand) {
         let command_addr = core::ptr::addr_of!(command) as usize;
         syscall1(SystemCall::WriteGraphic, command_addr);
     }
 
+    /// We save the graphic-state from before and push our new state-block onto the stack
+    /// later we can call [`Drawer::delete_context()`] to remove the state-block
+    pub fn create_context() {
+        let command = DrawerCommand::CreateContext;
+
+        Self::execute(command);
+    }
+
+    pub fn delete_context() {
+        let command = DrawerCommand::DeleteContext;
+
+        Self::execute(command);
+    }
+
+    pub fn get_graphic_resolution() -> (u32, u32) {
+        let raw_graphic_resolution: usize = syscall0(SystemCall::GetGraphicResolution);
+        return (raw_graphic_resolution as u32, (raw_graphic_resolution >> 32) as u32);
+    }
+
     pub fn draw_line(from: Vertex, to: Vertex) {
         let command = DrawerCommand::DrawLine { from , to };
-        Drawer::execute(command);
+        Self::execute(command);
     }
 
     pub fn draw_polygon(vertices: Vec<Vertex>) {
         let command = DrawerCommand::DrawPolygon(vertices);
 
-        Drawer::execute(command);
+        Self::execute(command);
     }
 
-    pub fn draw_circle(center: (u32, u32), radius: u32) {
-        let command = DrawerCommand::DrawCircle { center: Vertex::new(center.0, center.1), radius };
+    pub fn draw_circle(center: Vertex, radius: u32) {
+        let command = DrawerCommand::DrawCircle { center, radius };
 
-        Drawer::execute(command);
+        Self::execute(command);
     }
 
     pub fn draw_rectangle(top_left: Vertex, bottom_right: Vertex) {
@@ -59,11 +80,11 @@ impl Drawer {
             Vertex::new(top_left.x, bottom_right.y),
         ]);
 
-        Drawer::execute(command);
+        Self::execute(command);
     }
 
-    pub fn draw_square(&self, top_left: Vertex, side_length: u32) {
-        Drawer::draw_rectangle(
+    pub fn draw_square(top_left: Vertex, side_length: u32) {
+        Self::draw_rectangle(
             top_left,
             Vertex::new(top_left.x + side_length, top_left.y + side_length),
         )

@@ -14,7 +14,7 @@ path = "src/lib.rs"
 graphic = { path = "../library/graphic" }
 stream = { path = "../library/stream" }
 syscall = { path = "../library/syscall" }
-drawutil = { path = "../library/drawutil" }
+drawer = { path = "../library/drawer" }
 
 # External depencies
 spin = "0.9.8"

@@ -12,4 +12,4 @@ path = "src/window_manager.rs"
 # Local dependencies
 runtime = { path = "../../library/runtime" }
 concurrent = { path = "../../library/concurrent" }
-drawutil = { path = "../../library/drawutil" }
+drawer = { path = "../../library/drawer" }

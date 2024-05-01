@@ -3,7 +3,8 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use drawutil::drawer::Drawer;
+use alloc::boxed::Box;
+use drawer::drawer::{Drawer, Vertex};
 #[allow(unused_imports)]
 use runtime::*;
 
