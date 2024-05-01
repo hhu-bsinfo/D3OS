@@ -218,11 +218,14 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
     return 0usize;
 }
 
+/// w = width, h = height;
+/// Format in bytes: wwwwhhhh
 pub extern "C" fn sys_get_graphic_resolution() -> usize {
     // We need 64bits to transform the information of both width and height.
     if size_of::<usize>() != 8 {
         return 0;
     }
-    let lfb = buffered_lfb().lock().direct_lfb();
-    return ((((lfb.width() as u64) << 32) | lfb.height()) as usize);
+    let buffered_lfb = &mut buffered_lfb().lock();
+    let lfb = buffered_lfb.direct_lfb();
+    return (((lfb.width() as u64) << 32) | (lfb.height() as u64)) as usize;
 }
