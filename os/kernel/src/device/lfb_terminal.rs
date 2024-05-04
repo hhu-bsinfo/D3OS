@@ -12,8 +12,6 @@ use core::cell::RefCell;
 use core::mem::size_of;
 use core::ptr;
 use chrono::TimeDelta;
-use pc_keyboard::layouts::{AnyLayout, De105Key};
-use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::Mutex;
 use crate::{built_info, efi_system_table, process_manager, ps2_devices, scheduler, speaker, timer};
 
@@ -49,7 +47,6 @@ pub struct LFBTerminal {
     cursor: Mutex<CursorState>,
     color: Mutex<ColorState>,
     parser: Mutex<RefCell<Parser>>,
-    decoder: Mutex<Keyboard<AnyLayout, ScancodeSet1>>,
 }
 
 pub struct CursorThread {
@@ -153,31 +150,10 @@ impl OutputStream for LFBTerminal {
 
 impl InputStream for LFBTerminal {
     fn read_byte(&self) -> i16 {
-        let keyboard = ps2_devices().keyboard();
-        let read_byte;
-
-        loop {
-            let mut decoder = self.decoder.lock();
-            let scancode = keyboard.read_byte();
-            if scancode == -1 {
-                panic!("Keyboard stream closed!");
-            }
-
-            if let Ok(Some(event)) = decoder.add_byte(scancode as u8) {
-                if let Some(key) = decoder.process_keyevent(event) {
-                    match key {
-                        DecodedKey::Unicode(c) => {
-                            read_byte = c;
-                            break;
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
+        let read_byte = ps2_devices().keyboard().read_byte();
 
         self.write_byte(read_byte as u8);
-        return read_byte as i16;
+        return read_byte;
     }
 }
 
@@ -199,7 +175,6 @@ impl LFBTerminal {
             cursor: Mutex::new(CursorState::new()),
             color: Mutex::new(ColorState::new()),
             parser: Mutex::new(RefCell::new(Parser::<Utf8Parser>::new())),
-            decoder: Mutex::new(Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore))
         }
     }
 

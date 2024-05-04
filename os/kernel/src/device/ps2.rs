@@ -10,6 +10,8 @@ use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use ps2::{Controller, KeyboardType};
 use ps2::error::{ControllerError, KeyboardError, MouseError};
 use spin::Mutex;
+use pc_keyboard::layouts::{AnyLayout, De105Key};
+use pc_keyboard::{DecodedKey, HandleControl, Keyboard as PcKeyboard, ScancodeSet1};
 use crate::{apic, buffered_lfb, interrupt_dispatcher, ps2_devices};
 
 const KEYBOARD_BUFFER_CAPACITY: usize = 128;
@@ -22,6 +24,7 @@ pub struct PS2 {
 
 pub struct Keyboard {
     buffer: (Receiver<u8>, Sender<u8>),
+    decoder: Mutex<PcKeyboard<AnyLayout, ScancodeSet1>>,
 }
 
 pub struct Mouse;
@@ -38,6 +41,11 @@ impl Keyboard {
     fn new(buffer_cap: usize) -> Self {
         Self {
             buffer: mpmc::bounded::scq::queue(buffer_cap),
+            decoder: Mutex::new(PcKeyboard::new(
+                ScancodeSet1::new(),
+                AnyLayout::De105Key(De105Key),
+                HandleControl::Ignore
+            )),
         }
     }
 
@@ -45,15 +53,39 @@ impl Keyboard {
         interrupt_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardInterruptHandler::default()));
         apic().allow(InterruptVector::Keyboard);
     }
+    
+    fn fetch_scancode_from_buffer(&self) -> i16 {
+        let scancode = loop {
+            match self.buffer.0.try_dequeue() {
+                Ok(code) => break code as i16,
+                Err(DequeueError::Closed) => break -1,
+                Err(_) => {}
+            }
+        };
+
+        if scancode == -1 {
+            panic!("Keyboard stream closed!");
+        }
+
+        return scancode;
+    }
 }
 
 impl InputStream for Keyboard {
     fn read_byte(&self) -> i16 {
         loop {
-            match self.buffer.0.try_dequeue() {
-                Ok(code) => return code as i16,
-                Err(DequeueError::Closed) => return -1,
-                Err(_) => {}
+            let mut decoder = self.decoder.lock();
+            let scancode = self.fetch_scancode_from_buffer();
+
+            if let Ok(Some(event)) = decoder.add_byte(scancode as u8) {
+                if let Some(key) = decoder.process_keyevent(event) {
+                    match key {
+                        DecodedKey::Unicode(c) => {
+                            return c as i16;
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
     }
