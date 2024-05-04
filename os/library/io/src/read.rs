@@ -1,5 +1,8 @@
-use syscall::{syscall0, SystemCall};
+use syscall::{syscall1, SystemCall};
 
-pub fn read() -> char {
-    char::from_u32(syscall0(SystemCall::Read) as u32).unwrap()
+use crate::Application;
+
+pub fn read(application: Application) -> char {
+    let application_addr = core::ptr::addr_of!(application) as usize;
+    char::from_u32(syscall1(SystemCall::Read, application_addr) as u32).unwrap()
 }

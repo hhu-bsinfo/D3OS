@@ -14,6 +14,7 @@ path = "src/lib.rs"
 graphic = { path = "../library/graphic" }
 stream = { path = "../library/stream" }
 syscall = { path = "../library/syscall" }
+io = { path = "../library/io" }
 drawer = { path = "../library/drawer" }
 
 # External depencies

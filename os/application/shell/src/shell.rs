@@ -6,7 +6,7 @@ use alloc::string::String;
 use concurrent::thread;
 #[allow(unused_imports)]
 use runtime::*;
-use io::{print, println};
+use io::{print, println, Application};
 use io::read::read;
 
 #[no_mangle]
@@ -15,7 +15,7 @@ pub fn main() {
     print!("> ");
 
     loop {
-        match read() {
+        match read(Application::Shell) {
             '\n' => {
                 if !command.is_empty() {
                     match thread::start_application(command.as_str()) {

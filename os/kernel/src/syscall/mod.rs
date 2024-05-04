@@ -2,8 +2,10 @@ use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::ToString;
 use drawer::drawer::DrawerCommand;
+use io::Application;
 use graphic::color::Color;
 use libm::Libm;
+use stream::InputStream;
 use core::f32::consts::PI;
 use core::mem::size_of;
 use core::ptr;
@@ -12,7 +14,7 @@ use core::str::from_utf8;
 use chrono::{Datelike, DateTime, TimeDelta, Timelike};
 use uefi::table::runtime::{Time, TimeParams};
 use x86_64::structures::paging::PageTableFlags;
-use crate::{efi_system_table, initrd, process_manager, scheduler, terminal, timer, buffered_lfb};
+use crate::{buffered_lfb, efi_system_table, initrd, process_manager, ps2_devices, scheduler, terminal, timer};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::thread::Thread;
@@ -20,11 +22,16 @@ use crate::process::thread::Thread;
 pub mod syscall_dispatcher;
 
 #[no_mangle]
-pub extern "C" fn sys_read() -> usize {
-    let terminal = terminal();
-    match terminal.read_byte() {
-        -1 => panic!("Input stream closed!"),
-        c => c as usize
+pub extern "C" fn sys_read(application_ptr: *const Application) -> usize {
+    let enum_val = unsafe { application_ptr.as_ref().unwrap() };
+    match enum_val {
+        Application::Shell => {
+            let terminal = terminal();
+            return terminal.read_byte() as usize;
+        },
+        Application::WindowManager => {
+            return ps2_devices().keyboard().read_byte() as usize;
+        },
     }
 }
 
