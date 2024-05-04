@@ -1,5 +1,7 @@
 #![no_std]
 
+mod config;
+
 extern crate alloc;
 
 use alloc::vec;
@@ -9,15 +11,21 @@ use drawer::drawer::{Drawer, Vertex};
 #[allow(unused_imports)]
 use runtime::*;
 use io::{print, println};
+use config as wm_config;
 
 struct WindowManager {
     workspaces: Vec<Workspace>,
 }
 
+#[derive(Clone, Copy)]
 struct RectPos {
     top_left: Vertex,
     width: u32,
     height: u32,
+    /* These inner variables are for convenience and describe the width/height of 
+    the rectangle minus the thickness of the rectangle-lines, normally 1px */
+    inner_width: u32,
+    inner_height: u32,
 }
 
 struct Workspace {
@@ -41,6 +49,10 @@ struct Splitter {
 }
 
 impl RectPos {
+    fn new(top_left: Vertex, width: u32, height: u32) -> RectPos {
+        RectPos { top_left, width, height, inner_width: width - 1, inner_height: height - 1 }
+    }
+
     fn bottom_right(&self) -> Vertex {
         Vertex::new(self.top_left.x + self.width, self.top_left.y + self.height)
     }
@@ -63,11 +75,14 @@ impl WindowManager {
 
 impl Workspace {
     fn new(root_width: u32, root_height: u32) -> Workspace {
-        let window = Window::new(RectPos {
-            top_left: Vertex::new(5, 5),
-            width: root_width - 6,
-            height: root_height - 6,
-        });
+        let dist = wm_config::DIST_SCREEN_WORKSPACE;
+        let window = Window::new(
+            RectPos::new(
+                Vertex::new(dist, dist),
+                root_width - 2*dist,
+                root_height - 2*dist,
+            ),
+        );
 
         Self {
             container_tree: Box::new(window),
@@ -133,15 +148,15 @@ impl Container for Splitter {
     fn layout_content(&mut self) {
         let mut top_left = self.pos.top_left;
         /* TODO: For proper drawing, you might need to differentiate between first/last and in-between
-           content blocks. There you might need to add one-diffs only for in-between elements */
+        content blocks. There you might need to add one-diffs only for in-between elements */
         match self.split_direction {
             SplitDirection::Horizontal => {
-                let child_height = self.pos.height / (self.children.len() as u32);
+                let child_height = self.pos.inner_height / (self.children.len() as u32);
                 
                 for child in self.children.iter_mut() {
-                    child.set_position(top_left.add_one());
-                    child.set_width(self.pos.width - 1);
-                    child.set_height(child_height - 1);
+                    child.set_position(top_left);
+                    child.set_width(self.pos.width);
+                    child.set_height(child_height);
 
                     top_left.y += child_height;
                 }
@@ -150,9 +165,9 @@ impl Container for Splitter {
                 let child_width = self.pos.width / (self.children.len() as u32);
                 
                 for child in self.children.iter_mut() {
-                    child.set_position(top_left.add_one());
-                    child.set_height(self.pos.height - 1);
-                    child.set_width(child_width - 1);
+                    child.set_position(top_left);
+                    child.set_height(self.pos.height);
+                    child.set_width(child_width);
 
                     top_left.x += child_width;
                 }
@@ -181,9 +196,6 @@ impl Container for Splitter {
 
 impl Container for Window {
     fn layout_content(&mut self) {
-        let pos = &self.pos;
-        let mut top_left = pos.top_left;
-        let mut bottom_right = Vertex::new(top_left.x + pos.width, top_left.y + pos.height);
         // TODO: Add content
     }
     
