@@ -3,7 +3,6 @@ use alloc::rc::Rc;
 use alloc::string::ToString;
 use drawer::drawer::DrawerCommand;
 use io::Application;
-use graphic::color::Color;
 use libm::Libm;
 use stream::InputStream;
 use core::f32::consts::PI;
@@ -176,8 +175,6 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
     let enum_val = unsafe { command_ptr.as_ref().unwrap() };
     let mut buff_lfb = buffered_lfb().lock();
     let lfb = buff_lfb.lfb();
-    //TODO: Dep-inject color through command
-    let color = Color { red: 255, green: 255, blue: 255, alpha: 255 };
     match enum_val {
         DrawerCommand::CreateContext => {
             //TODO: Save old LFB state
@@ -186,10 +183,10 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
         DrawerCommand::DeleteContext => {
             //TODO: Reinstatiate old LFB state
         }
-        DrawerCommand::DrawLine { from, to } => {
-            lfb.draw_line(from.x, from.y, to.x, to.y, color)
+        DrawerCommand::DrawLine { from, to, color } => {
+            lfb.draw_line(from.x, from.y, to.x, to.y, color.clone())
         },
-        DrawerCommand::DrawPolygon(vertices) => {
+        DrawerCommand::DrawPolygon(vertices, color) => {
             let first_vertex = vertices.first();
             let mut prev = match first_vertex {
                 Some(unwrapped) => unwrapped,
@@ -197,13 +194,13 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
             };
             let last_vertex = vertices.last().unwrap();
             for vertex in &vertices[1..] {
-                lfb.draw_line(prev.x, prev.y, vertex.x, vertex.y, color);
+                lfb.draw_line(prev.x, prev.y, vertex.x, vertex.y, color.clone());
                 prev = vertex;
             }
 
-            lfb.draw_line(last_vertex.x, last_vertex.y, first_vertex.unwrap().x, first_vertex.unwrap().y, color);
+            lfb.draw_line(last_vertex.x, last_vertex.y, first_vertex.unwrap().x, first_vertex.unwrap().y, color.clone());
         },
-        DrawerCommand::DrawCircle { center, radius } => {
+        DrawerCommand::DrawCircle { center, radius, color } => {
             let stepsize = PI / 128.0;
             const TWO_PI: f32 = PI * 2.0;
             let mut x_curr = 0.0;
@@ -211,7 +208,7 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
                 lfb.draw_pixel(
                     Libm::<f32>::round(Libm::<f32>::sin(x_curr) * (radius.clone() as f32) + (center.x as f32)) as u32, 
                     Libm::<f32>::round(Libm::<f32>::cos(x_curr) * (radius.clone() as f32) + (center.y as f32)) as u32, 
-                    color
+                    color.clone()
                 );
 
                 x_curr += stepsize;

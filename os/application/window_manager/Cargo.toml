@@ -14,3 +14,4 @@ runtime = { path = "../../library/runtime" }
 io = { path = "../../library/io" }
 concurrent = { path = "../../library/concurrent" }
 drawer = { path = "../../library/drawer" }
+graphic = { path = "../../library/graphic" }

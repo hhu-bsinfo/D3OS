@@ -7,3 +7,4 @@ authors = ["Artur Herdt"]
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }
+graphic = { path= "../graphic" }

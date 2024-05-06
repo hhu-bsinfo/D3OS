@@ -10,7 +10,8 @@ use alloc::boxed::Box;
 use drawer::drawer::{Drawer, Vertex};
 #[allow(unused_imports)]
 use runtime::*;
-use io::{print, println};
+use io::{print, println, read::read, Application};
+use graphic::color::{self, WHITE, YELLOW};
 use config as wm_config;
 
 struct WindowManager {
@@ -30,11 +31,13 @@ struct RectPos {
 
 struct Workspace {
     container_tree: Box<dyn Container>,
+    focused: bool,
 }
 
 struct Window {
     pos: RectPos,
     children: Vec<Box<dyn Container>>,
+    focused: bool,
 }
 
 enum SplitDirection {
@@ -45,7 +48,8 @@ enum SplitDirection {
 struct Splitter {
     pos: RectPos,
     split_direction: SplitDirection,
-    children: Vec<Box<dyn Container>>
+    children: Vec<Box<dyn Container>>,
+    focused: bool,
 }
 
 impl RectPos {
@@ -60,7 +64,7 @@ impl RectPos {
 
 impl WindowManager {
     fn new(root_width: u32, root_height: u32) -> WindowManager {
-        let first_workspace = Workspace::new(root_width, root_height);
+        let first_workspace = Workspace::new(root_width, root_height, true);
         Self {
             workspaces: vec![first_workspace],
         }
@@ -70,11 +74,21 @@ impl WindowManager {
         Drawer::create_context();
         self.workspaces[0].container_tree.layout_content();
         self.workspaces[0].container_tree.draw();
+
+        loop {
+            let keyboard_press = read(Application::WindowManager);
+
+            match keyboard_press {
+                ' ' => {
+                },
+                c => {},
+            }
+        }
     }
 }
 
 impl Workspace {
-    fn new(root_width: u32, root_height: u32) -> Workspace {
+    fn new(root_width: u32, root_height: u32, focused: bool) -> Workspace {
         let dist = wm_config::DIST_SCREEN_WORKSPACE;
         let window = Window::new(
             RectPos::new(
@@ -82,10 +96,12 @@ impl Workspace {
                 root_width - 2*dist,
                 root_height - 2*dist,
             ),
+            true,
         );
 
         Self {
             container_tree: Box::new(window),
+            focused,
         }
     }
 }
@@ -96,6 +112,7 @@ impl Splitter {
             pos,
             split_direction,
             children,
+            focused: false,
         }
     }
 
@@ -108,10 +125,11 @@ impl Splitter {
 }
 
 impl Window {
-    fn new(pos: RectPos) -> Window {
+    fn new(pos: RectPos, focused: bool) -> Window {
         Self {
             pos,
             children: Vec::new(),
+            focused,
         }
     }
 }
@@ -216,8 +234,9 @@ impl Container for Window {
     }
     
     fn draw(&self) {
+        let color = if self.is_focused() { YELLOW } else { WHITE };
         let bottom_right = self.pos.bottom_right();
-        Drawer::draw_rectangle(self.pos.top_left, bottom_right);
+        Drawer::draw_rectangle(self.pos.top_left, bottom_right, color);
     }
     
     fn set_position(&mut self, new_pos: Vertex) {
@@ -230,6 +249,41 @@ impl Container for Window {
     
     fn set_height(&mut self, new_height: u32) {
         self.pos.height = new_height;
+    }
+}
+
+trait Focusable {
+    fn is_focused(&self) -> bool;
+    fn toggle_focus(&mut self);
+}
+
+impl Focusable for Workspace {
+    fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    fn toggle_focus(&mut self) {
+        self.focused = !self.focused;
+    }
+}
+
+impl Focusable for Window {
+    fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    fn toggle_focus(&mut self) {
+        self.focused = !self.focused;
+    }
+}
+
+impl Focusable for Splitter {
+    fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    fn toggle_focus(&mut self) {
+        self.focused = !self.focused;
     }
 }
 
