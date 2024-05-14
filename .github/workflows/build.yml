@@ -25,7 +25,7 @@ jobs:
         run: cargo make --no-workspace
 
       - name: Create artifact
-        run: tar -czvf d3os.tar.gz d3os.img run.sh efi/build.sh README.md
+        run: tar -czvf d3os.tar.gz d3os.img run.sh README.md
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
