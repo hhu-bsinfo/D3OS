@@ -179,7 +179,7 @@ impl Thread {
     pub fn kernel_stack_addr(&self) -> VirtAddr {
         let stacks = self.stacks.lock();
         let kernel_stack_addr = VirtAddr::new(stacks.kernel_stack.as_ptr() as u64);
-        return kernel_stack_addr + stacks.kernel_stack.capacity() * 8;
+        return kernel_stack_addr + (stacks.kernel_stack.capacity() * 8) as u64;
     }
 
     fn prepare_kernel_stack(&self) {
