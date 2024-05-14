@@ -368,7 +368,7 @@ impl AddressSpace {
             }
 
             entry.set_addr(frame_addr, flags);
-            frame_addr = frame_addr + PAGE_SIZE;
+            frame_addr = frame_addr + PAGE_SIZE as u64;
         }
 
         return alloc_count;

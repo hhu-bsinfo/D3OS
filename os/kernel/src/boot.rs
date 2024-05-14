@@ -221,7 +221,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Ready shell thread
     scheduler().ready(Thread::new_user_thread(initrd().entries()
-        .find(|entry| entry.filename().as_str() == "shell")
+        .find(|entry| entry.filename().as_str().unwrap() == "shell")
         .expect("Shell application not available!")
         .data()));
 
@@ -241,10 +241,10 @@ fn init_gdt() {
     let mut gdt = gdt().lock();
     let tss = tss().lock();
 
-    gdt.add_entry(Descriptor::kernel_code_segment());
-    gdt.add_entry(Descriptor::kernel_data_segment());
-    gdt.add_entry(Descriptor::user_data_segment());
-    gdt.add_entry(Descriptor::user_code_segment());
+    gdt.append(Descriptor::kernel_code_segment());
+    gdt.append(Descriptor::kernel_data_segment());
+    gdt.append(Descriptor::user_data_segment());
+    gdt.append(Descriptor::user_code_segment());
 
     unsafe {
         // We need to obtain a static reference to the TSS and GDT for the following operations.
@@ -252,7 +252,7 @@ fn init_gdt() {
         // However, since they are hidden behind a Mutex, the borrow checker does not see them with a static lifetime.
         let gdt_ref = ptr::from_ref(gdt.deref()).as_ref().unwrap();
         let tss_ref = ptr::from_ref(tss.deref()).as_ref().unwrap();
-        gdt.add_entry(Descriptor::tss_segment(tss_ref));
+        gdt.append(Descriptor::tss_segment(tss_ref));
         gdt_ref.load();
     }
 

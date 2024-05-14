@@ -1,6 +1,6 @@
 #!/bin/bash
 
-readonly TOWBOOT_VERSION="0.7.1"
+readonly TOWBOOT_VERSION="0.8.1"
 readonly FILE_LIST=("towboot-x64.efi" "towboot.toml" "../kernel.elf" "../initrd.tar")
 readonly IMAGE="../../d3os.img"
 

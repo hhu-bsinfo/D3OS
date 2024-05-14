@@ -76,7 +76,7 @@ pub extern "C" fn sys_thread_exit() {
 #[no_mangle]
 pub extern "C" fn sys_application_start(name_buffer: *const u8, name_length: usize) -> usize {
     let app_name = from_utf8(unsafe { slice_from_raw_parts(name_buffer, name_length).as_ref().unwrap() }).unwrap();
-    match initrd().entries().find(|entry| entry.filename().as_str() == app_name) {
+    match initrd().entries().find(|entry| entry.filename().as_str().unwrap() == app_name) {
         Some(app) => {
             let thread = Thread::new_user_thread(app.data());
             scheduler().ready(Rc::clone(&thread));
@@ -102,7 +102,7 @@ pub extern "C" fn sys_get_date() -> usize {
                 if time.is_valid() {
                     let timezone = match time.time_zone() {
                         Some(timezone) => {
-                            let delta = TimeDelta::minutes(timezone as i64);
+                            let delta = TimeDelta::try_minutes(timezone as i64).expect("Failed to create TimeDelta struct from timezone");
                             if timezone >= 0 {
                                 format!("+{:0>2}:{:0>2}", delta.num_hours(), delta.num_minutes() % 60)
                             } else {
