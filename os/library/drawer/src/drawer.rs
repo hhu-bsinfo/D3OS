@@ -37,7 +37,7 @@ impl Vertex {
 
 #[repr(C, u8)]
 pub enum DrawerCommand {
-    CreateContext = 0,
+    ClearScreen = 0,
     DeleteContext,
     DrawLine { from: Vertex, to: Vertex, color: Color },
     DrawPolygon(Vec<Vertex>, Color),
@@ -52,10 +52,8 @@ impl Drawer {
         syscall1(SystemCall::WriteGraphic, command_addr);
     }
 
-    /// We save the graphic-state from before and push our new state-block onto the stack
-    /// later we can call [`Drawer::delete_context()`] to remove the state-block
-    pub fn create_context() {
-        let command = DrawerCommand::CreateContext;
+    pub fn clear_screen() {
+        let command = DrawerCommand::ClearScreen;
 
         Self::execute(command);
     }

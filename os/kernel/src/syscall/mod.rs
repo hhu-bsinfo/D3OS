@@ -176,8 +176,7 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
     let mut buff_lfb = buffered_lfb().lock();
     let lfb = buff_lfb.lfb();
     match enum_val {
-        DrawerCommand::CreateContext => {
-            //TODO: Save old LFB state
+        DrawerCommand::ClearScreen => {
             lfb.clear();
         },
         DrawerCommand::DeleteContext => {
