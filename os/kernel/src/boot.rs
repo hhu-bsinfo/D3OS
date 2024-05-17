@@ -224,8 +224,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Ready shell thread
     scheduler().ready(Thread::new_user_thread(initrd().entries()
-        .find(|entry| entry.filename().as_str() == "shell")
-        .expect("Shell application not available!")
+        .find(|entry| entry.filename().as_str() == "window_manager")
+        .expect("Window-Manager application not available!")
         .data()));
 
     // Disable terminal logging

@@ -5,10 +5,11 @@ extern crate alloc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::vec;
-use alloc::vec::Vec; 
+use alloc::vec::Vec;
 use drawer::drawer::{Drawer, Vertex};
 use graphic::color;
 use hashbrown::HashMap;
+use io::{read::read, Application};
 use runtime::*;
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -26,7 +27,6 @@ struct Window {
     pos: Vertex,
     width: u32,
     height: u32,
-    split_type: SplitType,
 }
 
 #[derive(Debug)]
@@ -43,15 +43,25 @@ struct Workspace {
 }
 
 impl Workspace {
-    fn new() -> Self {
+    fn new(windows: HashMap<usize, Window>, focused_window_id: Option<usize>) -> Self {
         Self {
-            windows: HashMap::new(),
-            focused_window_id: None,
+            windows,
+            focused_window_id,
         }
     }
 }
 
 impl Window {
+    fn new(id: usize, parent_id: Option<usize>, pos: Vertex, width: u32, height: u32) -> Self {
+        Self {
+            id,
+            parent_id,
+            pos,
+            width,
+            height,
+        }
+    }
+
     fn draw(&self, focused_window_id: Option<usize>) {
         let color = if focused_window_id.is_some_and(|focused| focused == self.id) {
             color::YELLOW
@@ -59,24 +69,68 @@ impl Window {
             color::WHITE
         };
         Drawer::draw_rectangle(
-            Vertex::new(self.pos.x, self.pos.y), 
-            Vertex::new(self.pos.x + self.width, self.pos.y + self.height), 
+            Vertex::new(self.pos.x, self.pos.y),
+            Vertex::new(self.pos.x + self.width, self.pos.y + self.height),
             color,
         );
     }
 }
 
 impl WindowManager {
+    fn generate_id() -> usize {
+        ID_COUNTER.fetch_add(1, Ordering::SeqCst)
+    }
+
     fn new(screen: (u32, u32)) -> Self {
+        let window = Window::new(
+            Self::generate_id(),
+            None,
+            Vertex::new(10, 10),
+            screen.0 - 20,
+            screen.1 - 20,
+        );
+
+        let mut windows = HashMap::new();
+        let window_id = window.id;
+        windows.insert(window_id, window);
+
         Self {
-            workspaces: vec![Workspace::new()],
+            workspaces: vec![Workspace::new(windows, Some(window_id))],
             current_workspace: 0,
             screen,
         }
     }
 
-    fn generate_id(&self) -> usize {
-        ID_COUNTER.fetch_add(1, Ordering::SeqCst)
+    fn run(&mut self) {
+        loop {
+            self.draw();
+            let keyboard_press = read(Application::WindowManager);
+
+            match keyboard_press {
+                'h' => {
+                    let window_id = self.workspaces[self.current_workspace].focused_window_id;
+                    if window_id.is_some() {
+                        self.split_window(window_id.unwrap(), SplitType::Horizontal);
+                    }
+                }
+                'v' => {
+                    let window_id = self.workspaces[self.current_workspace].focused_window_id;
+                    if window_id.is_some() {
+                        self.split_window(window_id.unwrap(), SplitType::Vertical);
+                    }
+                }
+                'a' => {
+                    self.focus_prev_window();
+                }
+                'd' => {
+                    self.focus_next_window();
+                }
+                'p' => {
+                    break;
+                }
+                _ => {}
+            }
+        }
     }
 
     fn switch_workspace(&mut self, workspace_index: usize) {
@@ -86,73 +140,66 @@ impl WindowManager {
     }
 
     fn add_window(&mut self, pos: Vertex, width: u32, height: u32) {
-        let window_id = self.generate_id();
-        let window = Window {
-            id: window_id,
-            parent_id: None,
-            pos,
-            width,
-            height,
-            split_type: SplitType::Horizontal,
-        };
+        let window_id = Self::generate_id();
+        let window = Window::new(window_id, None, pos, width, height);
 
-        self.workspaces[self.current_workspace].windows.insert(window_id, window);
+        self.workspaces[self.current_workspace]
+            .windows
+            .insert(window_id, window);
     }
 
-    fn split_window(&mut self, window_id: usize) {
-        let id = self.generate_id();
-        let workspace = &mut self.workspaces[self.current_workspace];
+    fn split_window(&mut self, window_id: usize, split_type: SplitType) {
+        let id = Self::generate_id();
+        let curr_ws = &mut self.workspaces[self.current_workspace];
 
-        if let Some(window) = workspace.windows.get_mut(&window_id) {
+        if let Some(window) = curr_ws.windows.get_mut(&window_id) {
             let parent_id = window.id;
-            match window.split_type {
+            match split_type {
                 SplitType::Horizontal => {
                     window.height /= 2;
-                    let new_window = Window {
+                    let new_window = Window::new(
                         id,
-                        parent_id: Some(parent_id),
-                        pos: Vertex::new(window.pos.x, window.pos.y + window.height),
-                        width: window.width,
-                        height: window.height,
-                        split_type: SplitType::Horizontal,
-                    };
-                    workspace.windows.insert(new_window.id, new_window);
+                        Some(parent_id),
+                        Vertex::new(window.pos.x, window.pos.y + window.height),
+                        window.width,
+                        window.height,
+                    );
+                    curr_ws.windows.insert(new_window.id, new_window);
                 }
                 SplitType::Vertical => {
                     window.width /= 2;
-                    let new_window = Window {
+                    let new_window = Window::new(
                         id,
-                        parent_id: Some(parent_id),
-                        pos: Vertex::new(window.pos.x + window.width, window.pos.y),
-                        width: window.width,
-                        height: window.height,
-                        split_type: SplitType::Horizontal,
-                    };
-                    workspace.windows.insert(new_window.id, new_window);
+                        Some(parent_id),
+                        Vertex::new(window.pos.x + window.width, window.pos.y),
+                        window.width,
+                        window.height,
+                    );
+                    curr_ws.windows.insert(new_window.id, new_window);
                 }
             }
         }
     }
 
     fn focus_next_window(&mut self) {
-        let workspace = &mut self.workspaces[self.current_workspace];
-        if let Some(current_id) = workspace.focused_window_id {
+        let curr_ws = &mut self.workspaces[self.current_workspace];
+        if let Some(current_id) = curr_ws.focused_window_id {
             // Get the next window id to focus
-            let next_id = (current_id + 1) % workspace.windows.len();
-            workspace.focused_window_id = Some(next_id);
+            let next_id = (current_id + 1) % curr_ws.windows.len();
+            curr_ws.focused_window_id = Some(next_id);
         }
     }
 
     fn focus_prev_window(&mut self) {
-        let workspace = &mut self.workspaces[self.current_workspace];
-        if let Some(current_id) = workspace.focused_window_id {
+        let curr_ws = &mut self.workspaces[self.current_workspace];
+        if let Some(current_id) = curr_ws.focused_window_id {
             // Get the previous window id to focus
             let prev_id = if current_id == 0 {
-                workspace.windows.len() - 1
+                curr_ws.windows.len() - 1
             } else {
                 current_id - 1
             };
-            workspace.focused_window_id = Some(prev_id);
+            curr_ws.focused_window_id = Some(prev_id);
         }
     }
 
@@ -163,21 +210,11 @@ impl WindowManager {
             window.draw(curr_ws.focused_window_id);
         }
     }
-
-    fn run(&self) {
-
-    }
 }
 
 #[no_mangle]
 fn main() {
     let resolution = Drawer::get_graphic_resolution();
     let mut window_manager = WindowManager::new(resolution);
-    // window_manager.add_window(Vertex::new(100, 100), 300, 400);
-
-    window_manager.draw();
-
-    // // Split the first window
-    // window_manager.split_window(0);
-    // window_manager.draw();
+    window_manager.run();
 }
