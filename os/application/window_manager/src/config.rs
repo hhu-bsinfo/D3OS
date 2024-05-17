@@ -1,1 +1,0 @@
-pub const DIST_SCREEN_WORKSPACE: u32 = 20;

@@ -16,4 +16,4 @@ concurrent = { path = "../../library/concurrent" }
 drawer = { path = "../../library/drawer" }
 graphic = { path = "../../library/graphic" }
 
-oorandom = "11.1.3"
+hashbrown = "0.14.5"

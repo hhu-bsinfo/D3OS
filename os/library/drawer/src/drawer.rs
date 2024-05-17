@@ -5,7 +5,7 @@ use alloc::vec;
 use graphic::color::Color;
 
 #[repr(C, align(8))]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Vertex {
     pub x: u32,
     pub y: u32,
