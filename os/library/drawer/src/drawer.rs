@@ -19,20 +19,6 @@ impl Vertex {
     pub fn as_tuple(&self) -> (u32, u32) {
         (self.x, self.y)
     }
-
-    pub fn add_one(&self) -> Vertex {
-        Self { 
-            x: self.x + 1, 
-            y: self.y + 1
-        }
-    }
-
-    pub fn sub_one(&self) -> Vertex {
-        Self { 
-            x: self.x - 1, 
-            y: self.y - 1
-        }
-    }
 }
 
 #[repr(C, u8)]

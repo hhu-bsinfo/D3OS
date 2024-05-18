@@ -206,9 +206,18 @@ impl WindowManager {
     fn draw(&self) {
         Drawer::clear_screen();
         let curr_ws = &self.workspaces[self.current_workspace];
+        let mut focused_window: Option<&Window> = None;
         for (_, window) in curr_ws.windows.iter() {
+            if curr_ws
+                .focused_window_id
+                .is_some_and(|focused_id| focused_id == window.id)
+            {
+                focused_window.insert(window);
+                continue;
+            }
             window.draw(curr_ws.focused_window_id);
         }
+        focused_window.inspect(|wdw| wdw.draw(Some(wdw.id)));
     }
 }
 
