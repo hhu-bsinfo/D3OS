@@ -12,12 +12,19 @@ pub struct Vertex {
 }
 
 impl Vertex {
-    pub fn new(x: u32, y: u32) -> Vertex {
+    pub fn new(x: u32, y: u32) -> Self {
         Self { x, y }
     }
 
     pub fn as_tuple(&self) -> (u32, u32) {
         (self.x, self.y)
+    }
+
+    pub fn add(&self, x_delta: i32, y_delta: i32) -> Self {
+        Self {
+            x: self.x.saturating_add_signed(x_delta),
+            y: self.y.saturating_add_signed(y_delta),
+        }
     }
 }
 
