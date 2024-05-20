@@ -6,10 +6,12 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::vec;
 use alloc::vec::Vec;
+use concurrent::thread::start_application;
 use drawer::drawer::{Drawer, Vertex};
 use graphic::color;
 use hashbrown::HashMap;
 use io::{read::read, Application};
+#[allow(unused_imports)]
 use runtime::*;
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -165,6 +167,8 @@ impl WindowManager {
                         window.height,
                     );
                     curr_ws.windows.insert(new_window.id, new_window);
+
+                    start_application("wm_comp");
                 }
                 SplitType::Vertical => {
                     window.width /= 2;

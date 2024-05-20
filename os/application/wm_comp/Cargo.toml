@@ -1,12 +1,12 @@
 [package]
 edition = "2021"
-name = "window_manager"
+name = "wm_comp"
 version = "0.1.0"
 authors = ["Artur Herdt"]
 
 [lib]
 crate-type = ["staticlib"]
-path = "src/window_manager.rs"
+path = "src/wm_comp.rs"
 
 [dependencies]
 # Local dependencies
@@ -15,7 +15,3 @@ io = { path = "../../library/io" }
 concurrent = { path = "../../library/concurrent" }
 drawer = { path = "../../library/drawer" }
 graphic = { path = "../../library/graphic" }
-
-hashbrown = "0.14.5"
-spin = "0.9.8"
-nolock = { version = "0.4.1", default-features = false, features = ["queues"] }

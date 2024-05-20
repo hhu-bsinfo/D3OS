@@ -8,3 +8,6 @@ authors = ["Artur Herdt"]
 # Local dependencies
 syscall = { path = "../syscall" }
 graphic = { path= "../graphic" }
+
+spin = "0.9.8"
+nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
