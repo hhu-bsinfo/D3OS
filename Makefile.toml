@@ -1,13 +1,44 @@
 [env]
 BOOTLOADER_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/loader"
 INITRD_DIRECTORY = "${BOOTLOADER_DIRECTORY}/initrd"
+OVMF_URL = "https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd"
+LINKER = "ld"
+LINKER_MAC = "x86_64-elf-ld"
+PATH = "${PATH}:~/.cargo/bin"
 
 [tasks.default]
-alias = "towboot"
+alias = "qemu"
+
+# Run tasks
+
+[tasks.debug]
+command = "qemu-system-x86_64"
+args = [ "-S", "-gdb", "tcp::1234", "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
+dependencies = [ "debug-signal-vscode" ]
+
+[tasks.debug.mac]
+args = [ "-S", "-gdb", "tcp::1234", "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
+
+[tasks.debug-signal-vscode]
+command = "echo"
+args = [ "Ready to debug" ]
+dependencies = [ "image", "ovmf" ]
+
+[tasks.qemu]
+command = "qemu-system-x86_64"
+args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
+dependencies = [ "image", "ovmf" ]
+
+[tasks.qemu.mac]
+args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
+
+[tasks.ovmf]
+command = "wget"
+args = [ "-N", "${OVMF_URL}" ]
 
 # Build tasks
 
-[tasks.link_members]
+[tasks.link-members]
 run_task = { name = "link", fork = true }
 dependencies = [ "create-initrd-directory" ]
 
@@ -15,42 +46,31 @@ dependencies = [ "create-initrd-directory" ]
 command = "mkdir"
 args = [ "-p", "${INITRD_DIRECTORY}" ]
 
-[tasks.towboot]
-cwd = "${BOOTLOADER_DIRECTORY}/towboot"
-command = "./build.sh"
-dependencies = [ "link_members", "initrd" ]
-
-[tasks.grub]
-cwd = "${BOOTLOADER_DIRECTORY}/grub"
-command = "grub-mkrescue"
-args = [ "-o", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.iso", "iso/" ]
-dependencies = [ "grub-copy-files" ]
-
-[tasks.grub-copy-files]
-cwd = "${BOOTLOADER_DIRECTORY}"
-command = "cp"
-args = [ "kernel.elf", "initrd.tar", "grub/iso/boot" ]
-dependencies = [ "link_members", "initrd" ]
-
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
 command = "tar"
 args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "shell", "uptime", "date" ]
-dependencies = [ "link_members" ]
+dependencies = [ "link-members" ]
+
+[tasks.image]
+cwd = "${BOOTLOADER_DIRECTORY}"
+command = "towbootctl"
+args = [ "image", "--target", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img", "--", "-config", "towboot.toml"]
+dependencies = [ "link-members", "initrd" ]
 
 # Cleanup tasks
 
 [tasks.clean]
-dependencies = [ "clean_workspace", "clean_members" ]
+dependencies = [ "clean-workspace", "clean-members" ]
 
-[tasks.clean_workspace]
+[tasks.clean-workspace]
 command = "rm"
 args = [ "-rf",
     "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img",
     "${BOOTLOADER_DIRECTORY}/kernel.elf",
     "${BOOTLOADER_DIRECTORY}/initrd.tar",
-    "${BOOTLOADER_DIRECTORY}/grub/iso/boot/kernel.elf",
-    "${BOOTLOADER_DIRECTORY}/grub/iso/boot/initrd.tar"  ]
+    "${INITRD_DIRECTORY}",
+    "RELEASEX64_OVMF.fd" ]
 
-[tasks.clean_members]
+[tasks.clean-members]
 run_task = { name = "clean", fork = true }

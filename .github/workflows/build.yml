@@ -5,30 +5,42 @@ jobs:
   build:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
-      - name: Install Rust
+      - uses: actions/checkout@v4
+
+      - name: Install packages
+        uses: amitie10g/install-package@v1.2.3
+        with:
+          apt: build-essential nasm wget
+
+      - name: Install Rust for x86-64 Linux
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           override: true
           target: x86_64-unknown-linux-gnu
           components: rust-src
+      - name: Install Rust for i686 UEFI
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: i686-unknown-uefi
+      - name: Install Rust for x86_64 UEFI
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-uefi
 
       - name: Install cargo-make
         run: cargo install --no-default-features cargo-make
 
-      - uses: awalsh128/cache-apt-pkgs-action@v1
-        with:
-          packages: make nasm dosfstools mtools zstd unzip wget
+      - name: Install towbootctl
+        run: cargo install --git https://github.com/hhuOS/towboot --features=binary -Z bindeps towbootctl
 
       - name: Build
-        run: cargo make --no-workspace
-
-      - name: Create artifact
-        run: tar -czvf d3os.tar.gz d3os.img run.sh README.md
+        run: cargo make --no-workspace image
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: D3OS
-          path: d3os.tar.gz
+          path: d3os.img
