@@ -2,7 +2,7 @@ name: build
 on: [push]
 
 jobs:
-  build:
+  build-on-linux:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
@@ -10,9 +10,9 @@ jobs:
       - name: Install packages
         uses: amitie10g/install-package@v1.2.3
         with:
-          apt: build-essential nasm wget
+          apt: build-essential nasm
 
-      - name: Install Rust for x86-64 Linux
+      - name: Install Rust for x86_64 Linux
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
@@ -44,3 +44,83 @@ jobs:
         with:
           name: D3OS
           path: d3os.img
+
+  build-on-intel-mac:
+    runs-on: macos-12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install packages
+        uses: amitie10g/install-package@v1.2.3
+        with:
+          brew: x86_64-elf-binutils nasm
+
+      - name: Install Rust for x86_64 MacOS
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          target: x86_64-apple-darwin
+          components: rust-src
+      - name: Install Rust for i686 UEFI
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: i686-unknown-uefi
+      - name: Install Rust for x86_64 UEFI
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-uefi
+
+      - name: Install cargo-make
+        run: cargo install --no-default-features cargo-make
+
+      - name: Install towbootctl
+        run: cargo install --git https://github.com/hhuOS/towboot --features=binary -Z bindeps towbootctl
+
+      - name: Build
+        run: cargo make --no-workspace image
+
+  build-on-apple-silicon-mac:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install packages
+        uses: amitie10g/install-package@v1.2.3
+        with:
+          brew: x86_64-elf-binutils nasm
+
+      - name: Install Rust for AArch64 MacOS
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          target: aarch64-apple-darwin
+          components: rust-src
+      - name: Install Rust for x86_64 MacOS
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-apple-darwin
+          components: rust-src
+      - name: Install Rust for i686 UEFI
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: i686-unknown-uefi
+      - name: Install Rust for x86_64 UEFI
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-uefi
+
+      - name: Install cargo-make
+        run: cargo install --no-default-features cargo-make
+
+      - name: Install towbootctl
+        run: cargo install --git https://github.com/hhuOS/towboot --features=binary -Z bindeps towbootctl
+
+      - name: Build
+        run: cargo make --no-workspace image
