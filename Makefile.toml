@@ -32,6 +32,14 @@ dependencies = [ "image", "ovmf" ]
 [tasks.qemu.mac]
 args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
 
+[tasks.qemu-no-compile]
+command = "qemu-system-x86_64"
+args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
+
+[tasks.qemu-no-compile.mac]
+args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
+
+
 [tasks.ovmf]
 command = "wget"
 args = [ "-N", "${OVMF_URL}" ]
