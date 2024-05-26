@@ -1,1 +1,1 @@
-pub mod test_comp;
+pub(crate) mod button;

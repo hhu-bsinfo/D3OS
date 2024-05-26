@@ -1,21 +1,29 @@
+use alloc::boxed::Box;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::WHITE;
 use hashbrown::HashMap;
 
+use crate::{components::button::Button, WindowManager};
+
 extern crate alloc;
 
-pub(crate) enum Command {
-    DrawRectangle { top_left: Vertex, width: u32, height: u32 },
-    // DrawPolygon,
-    // DrawCircle,
+pub enum Command {
+    DrawRectangle { pos: RectData },
+    CreateButton { 
+        pos: RectData,
+        label: Option<&'static str>,
+        on_click: Box<dyn FnMut() -> ()>
+    }
 }
 
-pub(crate) struct Api {
-    pub(crate) handles: HashMap<usize, HandleData>,
+pub struct Api {
+    pub handles: HashMap<usize, HandleData>,
     screen_dims: (u32, u32),
 }
 
-pub(crate) struct HandleData {
+pub struct HandleData {
+    workspace_index: usize,
+    window_id: usize,
     abs_pos: RectData,
     ratios: (u32, u32),
 }
@@ -28,9 +36,11 @@ impl Api {
         }
     }
 
-    pub(crate) fn register(&mut self, abs_pos: RectData) -> usize {
+    pub fn register(&mut self, workspace_index: usize, window_id: usize, abs_pos: RectData) -> usize {
         let handle = self.handles.len() + 1;
         let handle_data = HandleData {
+            workspace_index,
+            window_id,
             abs_pos,
             ratios: (abs_pos.width / self.screen_dims.0, abs_pos.height / self.screen_dims.1),
         };
@@ -40,11 +50,12 @@ impl Api {
         return handle;
     }
 
-    pub fn draw(&self, handle: usize, command: Command) -> Result<(), &str> {
-        let HandleData { abs_pos, ratios } = self.handles.get(&handle).ok_or("Provided handle not found")?;
+    pub fn execute(&self, handle: usize, command: Command) -> Result<(), &str> {
+        let HandleData { workspace_index, window_id, abs_pos, ratios } = 
+            self.handles.get(&handle).ok_or("Provided handle not found")?;
 
         match command {
-            Command::DrawRectangle { top_left, width, height } => {
+            Command::DrawRectangle { pos: RectData { top_left, width, height } } => {
                 let draw_top_left = Vertex::new(top_left.x * ratios.0 + abs_pos.top_left.x, top_left.y * ratios.1 + abs_pos.top_left.y);
                 let draw_width = width * ratios.0;
                 let draw_height = height * ratios.1;
@@ -55,6 +66,15 @@ impl Api {
                     WHITE,
                 );
             },
+            Command::CreateButton { pos, label, on_click } => {
+                let button = Button::new(
+                    WindowManager::generate_id(),
+                    *window_id,
+                    pos,
+                    label.unwrap_or_default(),
+                    on_click,
+                );
+            }
         }
 
         Ok(())

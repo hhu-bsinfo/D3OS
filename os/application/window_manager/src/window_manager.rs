@@ -18,6 +18,7 @@ use workspace::Workspace;
 
 pub mod api;
 mod components;
+mod apps;
 mod config;
 mod window;
 mod workspace;
@@ -41,7 +42,7 @@ struct WindowManager {
 }
 
 impl WindowManager {
-    fn generate_id() -> usize {
+    pub fn generate_id() -> usize {
         ID_COUNTER.fetch_add(1, Ordering::SeqCst)
     }
 
@@ -128,6 +129,17 @@ impl WindowManager {
         let curr_ws = &mut self.workspaces[self.current_workspace];
         let focused_window_id = curr_ws.focused_window_id;
         curr_ws.insert_window(window, focused_window_id);
+
+        let _handle = unsafe {
+            API.get_mut().unwrap().lock().register(
+                self.current_workspace,
+                window_id,
+                RectData {
+                    top_left: pos,
+                    width,
+                    height,
+            })
+        };
     }
 
     fn split_window(&mut self, window_id: usize, split_type: SplitType) {
@@ -141,28 +153,12 @@ impl WindowManager {
                     let (width, height) = (window.width, window.height);
                     let top_left = Vertex::new(window.pos.x, window.pos.y + window.height);
                     self.add_window(top_left, Some(partner_id), width, height);
-
-                    let handle = unsafe {
-                        API.get_mut().unwrap().lock().register(RectData {
-                            top_left,
-                            width,
-                            height,
-                        })
-                    };
                 }
                 SplitType::Vertical => {
                     window.width /= 2;
                     let (width, height) = (window.width, window.height);
                     let top_left = Vertex::new(window.pos.x + window.width, window.pos.y);
                     self.add_window(top_left, Some(partner_id), width, height);
-
-                    let handle = unsafe {
-                        API.get_mut().unwrap().lock().register(RectData {
-                            top_left,
-                            width,
-                            height,
-                        })
-                    };
                 }
             }
         }
