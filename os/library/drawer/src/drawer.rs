@@ -56,7 +56,8 @@ pub enum DrawerCommand {
     DeleteContext,
     DrawLine { from: Vertex, to: Vertex, color: Color },
     DrawPolygon(Vec<Vertex>, Color),
-    DrawCircle { center: Vertex, radius: u32, color: Color }
+    DrawCircle { center: Vertex, radius: u32, color: Color },
+    DrawString { string_to_draw: &'static str, pos: Vertex, color: Color },
 }
 
 pub struct Drawer;
@@ -97,6 +98,12 @@ impl Drawer {
 
     pub fn draw_circle(center: Vertex, radius: u32, color: Color) {
         let command = DrawerCommand::DrawCircle { center, radius, color };
+
+        Self::execute(command);
+    }
+
+    pub fn draw_string(string_to_draw: &'static str, pos: Vertex, color: Color) {
+        let command = DrawerCommand::DrawString { string_to_draw, pos, color };
 
         Self::execute(command);
     }

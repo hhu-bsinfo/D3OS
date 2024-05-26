@@ -2,6 +2,7 @@ use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::ToString;
 use drawer::drawer::DrawerCommand;
+use graphic::color::BLACK;
 use io::Application;
 use libm::Libm;
 use stream::InputStream;
@@ -212,8 +213,10 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
 
                 x_curr += stepsize;
             }
-
-        }
+        },
+        DrawerCommand::DrawString { string_to_draw, pos, color } => {
+            lfb.draw_string(pos.x, pos.y, color.clone(), BLACK, *string_to_draw);
+        },
     };
 
     buff_lfb.flush();
