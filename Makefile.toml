@@ -35,7 +35,7 @@ dependencies = [ "link_members", "initrd" ]
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
 command = "tar"
-args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "shell", "uptime", "date", "window_manager", "wm_comp" ]
+args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "shell", "uptime", "date", "window_manager" ]
 dependencies = [ "link_members" ]
 
 # Cleanup tasks

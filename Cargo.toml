@@ -8,7 +8,6 @@ members = [
     "os/application/uptime",
     "os/application/date",
     "os/application/window_manager",
-    "os/application/wm_comp"
 ]
 
 # [profile.release]

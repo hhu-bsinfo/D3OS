@@ -32,7 +32,6 @@ enum SplitType {
 #[derive(Debug)]
 struct Window {
     id: usize,
-    parent_id: Option<usize>,
     partner_id: Option<usize>,
     pos: Vertex,
     width: u32,
@@ -64,7 +63,6 @@ impl Workspace {
 impl Window {
     fn new(
         id: usize,
-        parent_id: Option<usize>,
         partner_id: Option<usize>,
         pos: Vertex,
         width: u32,
@@ -72,7 +70,6 @@ impl Window {
     ) -> Self {
         Self {
             id,
-            parent_id,
             partner_id,
             pos,
             width,
@@ -107,7 +104,6 @@ impl WindowManager {
 
         let window = Window::new(
             Self::generate_id(),
-            None,
             None,
             Vertex::new(10, 10),
             screen.0 - 20,
@@ -148,7 +144,14 @@ impl WindowManager {
                 }
                 'd' => {
                     self.focus_next_window();
-                }
+                },
+                //TODO: Add merge functionality
+                'm' => {
+                    let window_id = self.workspaces[self.current_workspace].focused_window_id;
+                    if window_id.is_some() {
+
+                    }
+                },
                 'p' => {
                     break;
                 }
@@ -163,9 +166,9 @@ impl WindowManager {
         }
     }
 
-    fn add_window(&mut self, pos: Vertex, parent_id: Option<usize>, width: u32, height: u32) {
+    fn add_window(&mut self, pos: Vertex, partner_id: Option<usize>, width: u32, height: u32) {
         let window_id = Self::generate_id();
-        let window = Window::new(window_id, None, parent_id, pos, width, height);
+        let window = Window::new(window_id, partner_id, pos, width, height);
 
         self.workspaces[self.current_workspace]
             .windows
@@ -173,17 +176,16 @@ impl WindowManager {
     }
 
     fn split_window(&mut self, window_id: usize, split_type: SplitType) {
-        // let id = Self::generate_id();
         let curr_ws = &mut self.workspaces[self.current_workspace];
 
         if let Some(window) = curr_ws.windows.get_mut(&window_id) {
-            let parent_id = window.id;
+            let partner_id = window.id;
             match split_type {
                 SplitType::Horizontal => {
                     window.height /= 2;
                     let (width, height) = (window.width, window.height);
                     let top_left = Vertex::new(window.pos.x, window.pos.y + window.height);
-                    self.add_window(top_left, Some(parent_id), width, height);
+                    self.add_window(top_left, Some(partner_id), width, height);
 
                     let handle = unsafe {
                         API.get_mut().unwrap().lock().register(RectData {
@@ -197,8 +199,8 @@ impl WindowManager {
                     window.width /= 2;
                     let (width, height) = (window.width, window.height);
                     let top_left = Vertex::new(window.pos.x + window.width, window.pos.y);
-                    self.add_window(top_left, Some(parent_id), width, height);
-
+                    self.add_window(top_left, Some(partner_id), width, height);
+ 
                     let handle = unsafe {
                         API.get_mut().unwrap().lock().register(RectData {
                             top_left,
