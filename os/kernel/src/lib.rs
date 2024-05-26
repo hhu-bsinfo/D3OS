@@ -212,7 +212,7 @@ pub fn init_initrd(module: &ModuleTag) {
         unsafe { memory::physical::reserve(initrd_frames); }
 
         let initrd_bytes = unsafe { core::slice::from_raw_parts(module.start_address() as *const u8, (module.end_address() - module.start_address()) as usize) };
-        TarArchiveRef::new(initrd_bytes)
+        TarArchiveRef::new(initrd_bytes).expect("Failed to create TarArchiveRef from Multiboot2 module")
     });
 }
 

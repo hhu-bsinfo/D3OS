@@ -1,5 +1,7 @@
 #!/bin/bash
 
+readonly CONST_OVMF_URL="https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd"
+
 readonly CONST_QEMU_BIN="qemu-system-x86_64"
 readonly CONST_QEMU_MACHINE_PC="pc"
 readonly CONST_QEMU_CPU="qemu64"
@@ -34,9 +36,10 @@ set_audio_parameters() {
 }
 
 get_ovmf() {
-  cd "efi" || exit 1
-  ./build.sh || exit 1
-  cd ".." || exit 1
+  if [ ! -f "efi/OVMF.fd" ]; then
+    mkdir -p "efi"
+    wget -O efi/OVMF.fd "${CONST_OVMF_URL}"
+  fi
 }
 
 check_file() {

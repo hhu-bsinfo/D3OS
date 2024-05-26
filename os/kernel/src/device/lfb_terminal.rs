@@ -226,7 +226,7 @@ impl LFBTerminal {
         }
 
         // Collect system information
-        let uptime = TimeDelta::milliseconds(timer().read().systime_ms() as i64);
+        let uptime = TimeDelta::try_milliseconds(timer().read().systime_ms() as i64).expect("Failed to create TimeDelta struct from systime");
         let active_process_ids = process_manager().read().active_process_ids();
         let active_thread_ids = scheduler().active_thread_ids();
 

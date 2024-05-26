@@ -201,7 +201,7 @@ fn handle_exception(frame: InterruptStackFrame, index: u8, error: Option<u64>) {
 }
 
 fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>) {
-    let fault_addr = Cr2::read();
+    let fault_addr = Cr2::read().expect("Invalid address in CR2 during page fault");
     let thread = scheduler().current_thread();
 
     // Check if page fault occurred right below the user stack
