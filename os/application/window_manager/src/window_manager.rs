@@ -7,7 +7,6 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use alloc::vec;
 use alloc::vec::Vec;
 use api::Api;
-use components::test_comp::TestComp;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color;
 use hashbrown::HashMap;
@@ -34,6 +33,7 @@ enum SplitType {
 struct Window {
     id: usize,
     parent_id: Option<usize>,
+    partner_id: Option<usize>,
     pos: Vertex,
     width: u32,
     height: u32,
@@ -62,10 +62,18 @@ impl Workspace {
 }
 
 impl Window {
-    fn new(id: usize, parent_id: Option<usize>, pos: Vertex, width: u32, height: u32) -> Self {
+    fn new(
+        id: usize,
+        parent_id: Option<usize>,
+        partner_id: Option<usize>,
+        pos: Vertex,
+        width: u32,
+        height: u32,
+    ) -> Self {
         Self {
             id,
             parent_id,
+            partner_id,
             pos,
             width,
             height,
@@ -92,11 +100,14 @@ impl WindowManager {
     }
 
     fn new(screen: (u32, u32)) -> Self {
-        unsafe { API.call_once(|| Mutex::new(Api::new(screen))); }
+        unsafe {
+            API.call_once(|| Mutex::new(Api::new(screen)));
+        }
         SCREEN.call_once(|| screen);
 
         let window = Window::new(
             Self::generate_id(),
+            None,
             None,
             Vertex::new(10, 10),
             screen.0 - 20,
@@ -152,9 +163,9 @@ impl WindowManager {
         }
     }
 
-    fn add_window(&mut self, pos: Vertex, width: u32, height: u32) {
+    fn add_window(&mut self, pos: Vertex, parent_id: Option<usize>, width: u32, height: u32) {
         let window_id = Self::generate_id();
-        let window = Window::new(window_id, None, pos, width, height);
+        let window = Window::new(window_id, None, parent_id, pos, width, height);
 
         self.workspaces[self.current_workspace]
             .windows
@@ -162,7 +173,7 @@ impl WindowManager {
     }
 
     fn split_window(&mut self, window_id: usize, split_type: SplitType) {
-        let id = Self::generate_id();
+        // let id = Self::generate_id();
         let curr_ws = &mut self.workspaces[self.current_workspace];
 
         if let Some(window) = curr_ws.windows.get_mut(&window_id) {
@@ -170,41 +181,31 @@ impl WindowManager {
             match split_type {
                 SplitType::Horizontal => {
                     window.height /= 2;
+                    let (width, height) = (window.width, window.height);
                     let top_left = Vertex::new(window.pos.x, window.pos.y + window.height);
-                    let new_window = Window::new(
-                        id,
-                        Some(parent_id),
-                        top_left,
-                        window.width,
-                        window.height,
-                    );
-                    
-                    let handle = unsafe { API.get_mut().unwrap().lock().register(RectData {
-                        top_left,
-                        width: window.width,
-                        height: window.height,
-                    }) };
+                    self.add_window(top_left, Some(parent_id), width, height);
 
-                    curr_ws.windows.insert(new_window.id, new_window);
+                    let handle = unsafe {
+                        API.get_mut().unwrap().lock().register(RectData {
+                            top_left,
+                            width,
+                            height,
+                        })
+                    };
                 }
                 SplitType::Vertical => {
                     window.width /= 2;
+                    let (width, height) = (window.width, window.height);
                     let top_left = Vertex::new(window.pos.x + window.width, window.pos.y);
-                    let new_window = Window::new(
-                        id,
-                        Some(parent_id),
-                        top_left,
-                        window.width,
-                        window.height,
-                    );
-                    
-                    let handle = unsafe { API.get_mut().unwrap().lock().register(RectData {
-                        top_left,
-                        width: window.width,
-                        height: window.height,
-                    }) };
+                    self.add_window(top_left, Some(parent_id), width, height);
 
-                    curr_ws.windows.insert(new_window.id, new_window);
+                    let handle = unsafe {
+                        API.get_mut().unwrap().lock().register(RectData {
+                            top_left,
+                            width,
+                            height,
+                        })
+                    };
                 }
             }
         }
@@ -241,7 +242,7 @@ impl WindowManager {
                 .focused_window_id
                 .is_some_and(|focused_id| focused_id == window.id)
             {
-                focused_window.insert(window);
+                let _ = focused_window.insert(window);
                 continue;
             }
             window.draw(curr_ws.focused_window_id);
