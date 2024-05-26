@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::ToString;
@@ -231,4 +232,10 @@ pub extern "C" fn sys_get_graphic_resolution() -> usize {
     let buffered_lfb = &mut buffered_lfb().lock();
     let lfb = buffered_lfb.direct_lfb();
     return (((lfb.width() as u64) << 32) | (lfb.height() as u64)) as usize;
+}
+
+pub extern "C" fn sys_start_wm_application(entry: usize) -> usize {
+    let thread = Thread::new_user_thread_for_curr_process(unsafe { core::mem::transmute(entry as *const ()) });
+    scheduler().ready(Rc::clone(&thread));
+    thread.id()
 }

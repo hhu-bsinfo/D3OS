@@ -6,15 +6,23 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::vec;
 use alloc::vec::Vec;
-use concurrent::thread::start_application;
-use drawer::drawer::{Drawer, Vertex};
+use api::Api;
+use components::test_comp::TestComp;
+use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color;
 use hashbrown::HashMap;
 use io::{read::read, Application};
 #[allow(unused_imports)]
 use runtime::*;
+use spin::{once::Once, Mutex};
+
+pub mod api;
+mod components;
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+pub static SCREEN: Once<(u32, u32)> = Once::new();
+
+static mut API: Once<Mutex<Api>> = Once::new();
 
 #[derive(Debug)]
 enum SplitType {
@@ -84,6 +92,9 @@ impl WindowManager {
     }
 
     fn new(screen: (u32, u32)) -> Self {
+        unsafe { API.call_once(|| Mutex::new(Api::new(screen))); }
+        SCREEN.call_once(|| screen);
+
         let window = Window::new(
             Self::generate_id(),
             None,
@@ -159,26 +170,40 @@ impl WindowManager {
             match split_type {
                 SplitType::Horizontal => {
                     window.height /= 2;
+                    let top_left = Vertex::new(window.pos.x, window.pos.y + window.height);
                     let new_window = Window::new(
                         id,
                         Some(parent_id),
-                        Vertex::new(window.pos.x, window.pos.y + window.height),
+                        top_left,
                         window.width,
                         window.height,
                     );
-                    curr_ws.windows.insert(new_window.id, new_window);
+                    
+                    let handle = unsafe { API.get_mut().unwrap().lock().register(RectData {
+                        top_left,
+                        width: window.width,
+                        height: window.height,
+                    }) };
 
-                    start_application("wm_comp");
+                    curr_ws.windows.insert(new_window.id, new_window);
                 }
                 SplitType::Vertical => {
                     window.width /= 2;
+                    let top_left = Vertex::new(window.pos.x + window.width, window.pos.y);
                     let new_window = Window::new(
                         id,
                         Some(parent_id),
-                        Vertex::new(window.pos.x + window.width, window.pos.y),
+                        top_left,
                         window.width,
                         window.height,
                     );
+                    
+                    let handle = unsafe { API.get_mut().unwrap().lock().register(RectData {
+                        top_left,
+                        width: window.width,
+                        height: window.height,
+                    }) };
+
                     curr_ws.windows.insert(new_window.id, new_window);
                 }
             }

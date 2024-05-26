@@ -1,3 +1,5 @@
+use core::ops::Add;
+
 use syscall::{syscall0, syscall1, SystemCall};
 use alloc::vec::Vec;
 use alloc::vec;
@@ -5,10 +7,30 @@ use alloc::vec;
 use graphic::color::Color;
 
 #[repr(C, align(8))]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vertex {
     pub x: u32,
     pub y: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RectData {
+    pub top_left: Vertex,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Add for Vertex {
+    type Output = Self;
+    
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            x: self.x.saturating_add(rhs.x),
+            y: self.y.saturating_add(rhs.y),
+        }
+    }
+
+    
 }
 
 impl Vertex {
