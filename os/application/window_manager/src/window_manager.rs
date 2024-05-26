@@ -9,7 +9,6 @@ use alloc::vec::Vec;
 use api::Api;
 use config::DIST_TO_SCREEN_EDGE;
 use drawer::drawer::{Drawer, RectData, Vertex};
-use hashbrown::HashMap;
 use io::{read::read, Application};
 #[allow(unused_imports)]
 use runtime::*;
@@ -18,10 +17,10 @@ use window::Window;
 use workspace::Workspace;
 
 pub mod api;
-mod window;
-mod workspace;
 mod components;
 mod config;
+mod window;
+mod workspace;
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 pub static SCREEN: Once<(u32, u32)> = Once::new();
@@ -60,12 +59,13 @@ impl WindowManager {
             screen.1 - DIST_TO_SCREEN_EDGE * 2,
         );
 
-        let mut windows = HashMap::new();
         let window_id = window.id;
-        windows.insert(window_id, window);
 
         Self {
-            workspaces: vec![Workspace::new(windows, Some(window_id))],
+            workspaces: vec![Workspace::new_with_single_window(
+                (window_id, window),
+                Some(window_id),
+            )],
             current_workspace: 0,
             screen,
         }
@@ -99,17 +99,14 @@ impl WindowManager {
                     }
                 }
                 'a' => {
-                    self.focus_prev_window();
+                    self.workspaces[self.current_workspace].focus_prev_window();
                 }
                 'd' => {
-                    self.focus_next_window();
+                    self.workspaces[self.current_workspace].focus_next_window();
                 }
                 //TODO: Add merge functionality. Make it buddy-style merging when both buddies finished
                 // running their application
-                'm' => {
-                    let window_id = self.workspaces[self.current_workspace].focused_window_id;
-                    if window_id.is_some() {}
-                }
+                'm' => {}
                 'p' => {
                     break;
                 }
@@ -128,9 +125,9 @@ impl WindowManager {
         let window_id = Self::generate_id();
         let window = Window::new(window_id, partner_id, pos, width, height);
 
-        self.workspaces[self.current_workspace]
-            .windows
-            .insert(window_id, window);
+        let curr_ws = &mut self.workspaces[self.current_workspace];
+        let focused_window_id = curr_ws.focused_window_id;
+        curr_ws.insert_window(window, focused_window_id);
     }
 
     fn split_window(&mut self, window_id: usize, split_type: SplitType) {
@@ -201,15 +198,12 @@ impl WindowManager {
             SCREEN.get().unwrap().0 - DIST_TO_SCREEN_EDGE * 2,
             SCREEN.get().unwrap().1 - DIST_TO_SCREEN_EDGE * 2,
         );
-        let mut windows = HashMap::new();
         let window_id = window.id;
-        windows.insert(window_id, window);
 
         self.current_workspace += 1;
-        self.workspaces.insert(
-            self.current_workspace,
-            Workspace::new(windows, Some(window_id)),
-        );
+        let workspace = Workspace::new_with_single_window((window_id, window), Some(window_id));
+
+        self.workspaces.insert(self.current_workspace, workspace);
     }
 
     fn switch_prev_workspace(&mut self) {
