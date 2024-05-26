@@ -7,6 +7,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use alloc::vec;
 use alloc::vec::Vec;
 use api::Api;
+use config::DIST_TO_SCREEN_EDGE;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color;
 use hashbrown::HashMap;
@@ -17,6 +18,7 @@ use spin::{once::Once, Mutex};
 
 pub mod api;
 mod components;
+mod config;
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 pub static SCREEN: Once<(u32, u32)> = Once::new();
@@ -61,13 +63,7 @@ impl Workspace {
 }
 
 impl Window {
-    fn new(
-        id: usize,
-        partner_id: Option<usize>,
-        pos: Vertex,
-        width: u32,
-        height: u32,
-    ) -> Self {
+    fn new(id: usize, partner_id: Option<usize>, pos: Vertex, width: u32, height: u32) -> Self {
         Self {
             id,
             partner_id,
@@ -105,9 +101,9 @@ impl WindowManager {
         let window = Window::new(
             Self::generate_id(),
             None,
-            Vertex::new(10, 10),
-            screen.0 - 20,
-            screen.1 - 20,
+            Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
+            screen.0 - DIST_TO_SCREEN_EDGE * 2,
+            screen.1 - DIST_TO_SCREEN_EDGE * 2,
         );
 
         let mut windows = HashMap::new();
@@ -127,6 +123,15 @@ impl WindowManager {
             let keyboard_press = read(Application::WindowManager);
 
             match keyboard_press {
+                'g' => {
+                    self.create_new_workspace();
+                }
+                'q' => {
+                    self.switch_prev_workspace();
+                }
+                'e' => {
+                    self.switch_next_workspace();
+                }
                 'h' => {
                     let window_id = self.workspaces[self.current_workspace].focused_window_id;
                     if window_id.is_some() {
@@ -144,14 +149,12 @@ impl WindowManager {
                 }
                 'd' => {
                     self.focus_next_window();
-                },
+                }
                 //TODO: Add merge functionality
                 'm' => {
                     let window_id = self.workspaces[self.current_workspace].focused_window_id;
-                    if window_id.is_some() {
-
-                    }
-                },
+                    if window_id.is_some() {}
+                }
                 'p' => {
                     break;
                 }
@@ -200,7 +203,7 @@ impl WindowManager {
                     let (width, height) = (window.width, window.height);
                     let top_left = Vertex::new(window.pos.x + window.width, window.pos.y);
                     self.add_window(top_left, Some(partner_id), width, height);
- 
+
                     let handle = unsafe {
                         API.get_mut().unwrap().lock().register(RectData {
                             top_left,
@@ -233,6 +236,33 @@ impl WindowManager {
             };
             curr_ws.focused_window_id = Some(prev_id);
         }
+    }
+
+    fn create_new_workspace(&mut self) {
+        let window = Window::new(
+            Self::generate_id(),
+            None,
+            Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
+            SCREEN.get().unwrap().0 - DIST_TO_SCREEN_EDGE * 2,
+            SCREEN.get().unwrap().1 - DIST_TO_SCREEN_EDGE * 2,
+        );
+        let mut windows = HashMap::new();
+        let window_id = window.id;
+        windows.insert(window_id, window);
+
+        self.current_workspace += 1;
+        self.workspaces.insert(
+            self.current_workspace,
+            Workspace::new(windows, Some(window_id)),
+        );
+    }
+
+    fn switch_prev_workspace(&mut self) {
+        self.current_workspace = self.current_workspace.saturating_sub(1);
+    }
+
+    fn switch_next_workspace(&mut self) {
+        self.current_workspace = (self.current_workspace + 1).min(self.workspaces.len() - 1);
     }
 
     fn draw(&self) {

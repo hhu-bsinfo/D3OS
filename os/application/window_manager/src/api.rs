@@ -15,7 +15,7 @@ pub(crate) struct Api {
     screen_dims: (u32, u32),
 }
 
-struct HandleData {
+pub(crate) struct HandleData {
     abs_pos: RectData,
     ratios: (u32, u32),
 }

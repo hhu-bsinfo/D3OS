@@ -1,0 +1,1 @@
+pub static DIST_TO_SCREEN_EDGE: u32 = 10;
