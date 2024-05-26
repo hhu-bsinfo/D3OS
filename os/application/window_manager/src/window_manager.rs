@@ -9,14 +9,17 @@ use alloc::vec::Vec;
 use api::Api;
 use config::DIST_TO_SCREEN_EDGE;
 use drawer::drawer::{Drawer, RectData, Vertex};
-use graphic::color;
 use hashbrown::HashMap;
 use io::{read::read, Application};
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex};
+use window::Window;
+use workspace::Workspace;
 
 pub mod api;
+mod window;
+mod workspace;
 mod components;
 mod config;
 
@@ -32,59 +35,10 @@ enum SplitType {
 }
 
 #[derive(Debug)]
-struct Window {
-    id: usize,
-    partner_id: Option<usize>,
-    pos: Vertex,
-    width: u32,
-    height: u32,
-}
-
-#[derive(Debug)]
 struct WindowManager {
     workspaces: Vec<Workspace>,
     current_workspace: usize,
     screen: (u32, u32),
-}
-
-#[derive(Debug)]
-struct Workspace {
-    windows: HashMap<usize, Window>,
-    focused_window_id: Option<usize>,
-}
-
-impl Workspace {
-    fn new(windows: HashMap<usize, Window>, focused_window_id: Option<usize>) -> Self {
-        Self {
-            windows,
-            focused_window_id,
-        }
-    }
-}
-
-impl Window {
-    fn new(id: usize, partner_id: Option<usize>, pos: Vertex, width: u32, height: u32) -> Self {
-        Self {
-            id,
-            partner_id,
-            pos,
-            width,
-            height,
-        }
-    }
-
-    fn draw(&self, focused_window_id: Option<usize>) {
-        let color = if focused_window_id.is_some_and(|focused| focused == self.id) {
-            color::YELLOW
-        } else {
-            color::WHITE
-        };
-        Drawer::draw_rectangle(
-            Vertex::new(self.pos.x, self.pos.y),
-            Vertex::new(self.pos.x + self.width, self.pos.y + self.height),
-            color,
-        );
-    }
 }
 
 impl WindowManager {
@@ -150,7 +104,8 @@ impl WindowManager {
                 'd' => {
                     self.focus_next_window();
                 }
-                //TODO: Add merge functionality
+                //TODO: Add merge functionality. Make it buddy-style merging when both buddies finished
+                // running their application
                 'm' => {
                     let window_id = self.workspaces[self.current_workspace].focused_window_id;
                     if window_id.is_some() {}
