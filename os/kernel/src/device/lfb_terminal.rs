@@ -114,10 +114,11 @@ impl CursorThread {
             display.lfb.direct_lfb().draw_char(cursor.pos.0 as u32 * lfb::CHAR_WIDTH, cursor.pos.1 as u32 * lfb::CHAR_HEIGHT, character.fg_color, character.bg_color, if self.visible { character.value } else { CURSOR });
             self.visible = !self.visible;
 
-            if sleep_counter >= 1000 {
-                LFBTerminal::draw_status_bar(&mut display);
-                sleep_counter = 0;
-            }
+            // Disabled to have better view of the new and cool window-manager ;) 
+            //if sleep_counter >= 1000 {
+            //    LFBTerminal::draw_status_bar(&mut display);
+            //    sleep_counter = 0;
+            //}
         }
     }
 }
