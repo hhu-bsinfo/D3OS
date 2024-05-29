@@ -7,8 +7,8 @@ use core::ptr;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use smallmap::Map;
-use spin::Mutex;
-use crate::{apic, scheduler, timer, tss};
+use spin::{Mutex, MutexGuard};
+use crate::{allocator, apic, scheduler, timer, tss};
 
 static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -49,11 +49,11 @@ impl Scheduler {
     }
 
     pub fn set_init(&self) {
-        self.state.lock().initialized = true;
+        self.get_ready_state().initialized = true;
     }
 
     pub fn active_thread_ids(&self) -> Vec<usize> {
-        let state = self.state.lock();
+        let state = self.get_ready_state();
         let sleep_list = self.sleep_list.lock();
 
         state.ready_queue.iter().map(|thread| thread.id()).collect::<Vec<usize>>()
@@ -61,12 +61,12 @@ impl Scheduler {
     }
 
     pub fn current_thread(&self) -> Rc<Thread> {
-        let state = self.state.lock();
+        let state = self.get_ready_state();
         return Scheduler::current(&state);
     }
 
     pub fn start(&self) {
-        let mut state = self.state.lock();
+        let mut state = self.get_ready_state();
         state.current_thread = state.ready_queue.pop_back();
 
         unsafe { Thread::start_first(state.current_thread.as_ref().expect("Scheduler: Failed to dequeue first thread!").as_ref()); }
@@ -74,15 +74,33 @@ impl Scheduler {
 
     pub fn ready(&self, thread: Rc<Thread>) {
         let id = thread.id();
-        let mut state = self.state.lock();
-        let mut join_map = self.join_map.lock();
+        let mut join_map;
+        let mut state;
+
+        // If we get the lock on 'self.state' but not on 'self.join_map' the system hangs.
+        // The scheduler is not able to switch threads anymore, because of 'self.state' is locked,
+        // and we will never be able to get the lock on 'self.join_map'.
+        // To solve this, we need to release the lock on 'self.state' in case we do not get
+        // the lock on 'self.join_map' and let the scheduler switch threads until we get both locks.
+        loop {
+            let state_mutex = self.get_ready_state();
+            let join_map_option = self.join_map.try_lock();
+
+            if join_map_option.is_some() {
+                state = state_mutex;
+                join_map = join_map_option.unwrap();
+                break;
+            } else {
+                self.switch_thread_no_interrupt();
+            }
+        }
 
         state.ready_queue.push_front(thread);
         join_map.insert(id, Vec::new());
     }
 
     pub fn sleep(&self, ms: usize) {
-        let mut state = self.state.lock();
+        let mut state = self.get_ready_state();
         let thread = Scheduler::current(&state);
         let wakeup_time = timer().read().systime_ms() + ms;
 
@@ -94,7 +112,7 @@ impl Scheduler {
         self.block(&mut state);
     }
 
-    pub fn switch_thread(&self) {
+    fn switch_thread(&self, interrupt: bool) {
         if let Some(mut state) = self.state.try_lock() {
             if !state.initialized {
                 return;
@@ -121,13 +139,24 @@ impl Scheduler {
             state.current_thread = Some(next);
             state.ready_queue.push_front(current);
 
-            apic().end_of_interrupt();
+            if interrupt {
+                apic().end_of_interrupt();
+            }
+
             unsafe { Thread::switch(current_ptr, next_ptr); }
         }
     }
 
+    pub fn switch_thread_no_interrupt(&self) {
+        self.switch_thread(false);
+    }
+
+    pub fn switch_thread_from_interrupt(&self) {
+        self.switch_thread(true);
+    }
+
     pub fn join(&self, thread_id: usize) {
-        let mut state = self.state.lock();
+        let mut state = self.get_ready_state();
         let thread = Scheduler::current(&state);
 
         { // Execute in own block, so that the lock is released automatically (block() does not return)
@@ -140,13 +169,29 @@ impl Scheduler {
     }
 
     pub fn exit(&self) {
-        let mut state = self.state.lock();
-        let current = Scheduler::current(&state);
+        let mut state;
+        let current;
 
         { // Execute in own block, so that join_map is released automatically when it is not needed anymore
-            let mut join_map = self.join_map.lock();
-            let join_list = join_map.get_mut(&current.id()).expect(format!("Scheduler: Missing join_map entry for thread id {}!", current.id()).as_str());
+            let mut join_map;
 
+            // See 'ready()' for comments on this loop
+            loop {
+                let state_mutex = self.get_ready_state();
+                let join_map_option = self.join_map.try_lock();
+
+                if join_map_option.is_some() {
+                    state = state_mutex;
+                    join_map = join_map_option.unwrap();
+                    break;
+                } else {
+                    self.switch_thread_no_interrupt();
+                }
+            }
+
+            current = Scheduler::current(&state);
+
+            let join_list = join_map.get_mut(&current.id()).expect(format!("Scheduler: Missing join_map entry for thread id {}!", current.id()).as_str());
             for thread in join_list {
                 state.ready_queue.push_front(Rc::clone(thread));
             }
@@ -207,5 +252,24 @@ impl Scheduler {
                 return true;
             });
         }
+    }
+
+    fn get_ready_state(&self) -> MutexGuard<ReadyState> {
+        let state;
+
+        // We need to make sure, that both the kernel memory manager and the ready queue are currently not locked.
+        // Otherwise, a deadlock may occur: Since we are holding the ready queue lock,
+        // the scheduler won't switch threads anymore, and none of the locks will ever be released
+        loop {
+            let state_tmp = self.state.lock();
+            if allocator().is_locked() {
+                continue;
+            }
+            
+            state = state_tmp;
+            break;
+        }
+
+        return state;
     }
 }
