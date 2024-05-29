@@ -7,7 +7,7 @@
             "type": "shell",
             "isBackground": false,
             "command": "cargo",
-            "args": [ "make", "clean" ],
+            "args": [ "make", "--no-workspace", "clean" ],
             "problemMatcher": []
         },
         {
@@ -16,7 +16,7 @@
             "type": "shell",
             "isBackground": false,
             "command": "cargo",
-            "args": [ "make", "--no-workspace", "--profile", "development" ],
+            "args": [ "make", "--no-workspace", "--profile", "development", "image" ],
             "problemMatcher": []
         },
         {
@@ -50,8 +50,7 @@
                       "endsPattern": "Ready to debug",
                     }
                   }
-            ],
-            "dependsOn": "build"
+            ]
         }
     ]
 }

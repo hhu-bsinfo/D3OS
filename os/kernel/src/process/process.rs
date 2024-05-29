@@ -1,5 +1,6 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::cmp::Ordering;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use spin::RwLock;
@@ -117,12 +118,26 @@ impl Process {
         }
     }
 
-    pub fn find_vma(&self, typ: VmaType) -> Option<VirtualMemoryArea> {
+    pub fn find_vmas(&self, typ: VmaType) -> Vec<VirtualMemoryArea> {
+        let mut found = Vec::<VirtualMemoryArea>::new();
         let areas = self.memory_areas.read();
-        match areas.iter().find(|area| area.typ() == typ) {
-            Some(area) => Some(*area),
-            None => None
+        for area in areas.iter() {
+            if area.typ() == typ {
+                found.push(*area);
+            }
         }
+
+        found.sort_by(|first, second| {
+            return if first.start().as_u64() < second.start().as_u64() {
+                Ordering::Less
+            } else if first.start().as_u64() < second.start().as_u64() {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        });
+
+        return found;
     }
 
     pub fn update_vma(&self, vma: VirtualMemoryArea, update: impl Fn(&mut VirtualMemoryArea)) {

@@ -2,7 +2,7 @@
 
 use core::panic::PanicInfo;
 use linked_list_allocator::LockedHeap;
-use concurrent::thread;
+use concurrent::{process, thread};
 use io::{print, println};
 use syscall::{syscall1, SystemCall};
 
@@ -27,5 +27,5 @@ extern "C" fn entry() {
     unsafe { ALLOCATOR.lock().init(heap_start, HEAP_SIZE); }
 
     unsafe { main(); }
-    thread::exit();
+    process::exit();
 }

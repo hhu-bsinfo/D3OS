@@ -7,6 +7,7 @@ use core::str::from_utf8;
 use chrono::{Datelike, DateTime, TimeDelta, Timelike};
 use uefi::table::runtime::{Time, TimeParams};
 use x86_64::structures::paging::PageTableFlags;
+use x86_64::VirtAddr;
 use crate::{efi_system_table, initrd, process_manager, scheduler, terminal, timer};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
@@ -33,7 +34,8 @@ pub extern "C" fn sys_write(buffer: *const u8, length: usize) {
 #[no_mangle]
 pub extern "C" fn sys_map_user_heap(size: usize) -> usize {
     let process = process_manager().read().current_process();
-    let code_area = process.find_vma(VmaType::Code).expect("Process does not have code area!");
+    let code_areas = process.find_vmas(VmaType::Code);
+    let code_area = code_areas.get(0).expect("Process does not have code area!");
     let heap_start = code_area.end().align_up(PAGE_SIZE as u64);
     let heap_area = VirtualMemoryArea::from_address(heap_start, size, VmaType::Heap);
 
@@ -46,6 +48,22 @@ pub extern "C" fn sys_map_user_heap(size: usize) -> usize {
 #[no_mangle]
 pub extern "C" fn sys_process_id() -> usize {
     process_manager().read().current_process().id()
+}
+
+#[no_mangle]
+pub extern "C" fn sys_process_exit() {
+    scheduler().current_thread().process().exit();
+    scheduler().exit();
+}
+
+#[no_mangle]
+#[allow(improper_ctypes_definitions)] // 'entry' takes no arguments and has no return value, so we just assume that the "C" and "Rust" ABIs act the same way in this case
+pub extern "C" fn sys_thread_create(kickoff_addr: u64, entry: fn()) -> usize {
+    let thread = Thread::new_user_thread(process_manager().read().current_process(), VirtAddr::new(kickoff_addr), entry);
+    let id = thread.id();
+
+    scheduler().ready(thread);
+    return id;
 }
 
 #[no_mangle]
@@ -74,11 +92,11 @@ pub extern "C" fn sys_thread_exit() {
 }
 
 #[no_mangle]
-pub extern "C" fn sys_application_start(name_buffer: *const u8, name_length: usize) -> usize {
+pub extern "C" fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize) -> usize {
     let app_name = from_utf8(unsafe { slice_from_raw_parts(name_buffer, name_length).as_ref().unwrap() }).unwrap();
     match initrd().entries().find(|entry| entry.filename().as_str().unwrap() == app_name) {
         Some(app) => {
-            let thread = Thread::new_user_thread(app.data());
+            let thread = Thread::load_application(app.data());
             scheduler().ready(Rc::clone(&thread));
             thread.id()
         }
