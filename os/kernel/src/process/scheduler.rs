@@ -161,8 +161,13 @@ impl Scheduler {
 
         { // Execute in own block, so that the lock is released automatically (block() does not return)
             let mut join_map = self.join_map.lock();
-            let join_list = join_map.get_mut(&thread_id).expect(format!("Scheduler: Missing join_map entry for thread id {}!", thread_id).as_str());
-            join_list.push(thread);
+            let join_list = join_map.get_mut(&thread_id);
+            if join_list.is_some() {
+                join_list.unwrap().push(thread);
+            } else {
+                // Joining on a non-existent thread has no effect (i.e. the thread has already finished running)
+                return;
+            }
         }
 
         self.block(&mut state);
@@ -197,10 +202,6 @@ impl Scheduler {
             }
 
             join_map.remove(&current.id());
-        }
-
-        if !current.is_kernel_thread() {
-            current.process().exit();
         }
 
         drop(current); // Decrease Rc manually, because block() does not return

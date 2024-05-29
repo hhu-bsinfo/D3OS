@@ -12,5 +12,5 @@ pub fn main() {
     let process = process::current();
     let thread = thread::current();
 
-    println!("Hello from Thread [{}] in Process [{}]!", process.id(), thread.id());
+    println!("Hello from Thread [{}] in Process [{}]!", thread.id(), process.id());
 }

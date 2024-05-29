@@ -24,7 +24,6 @@ use crate::interrupt::interrupt_dispatcher::InterruptDispatcher;
 use crate::log::Logger;
 use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
-use alloc::boxed::Box;
 use core::fmt::Arguments;
 use core::panic::PanicInfo;
 use ::log::{error, Level, Log, Record};
@@ -159,10 +158,10 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
     terminal.clear();
     TERMINAL.call_once(|| terminal);
 
-    scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
+    scheduler().ready(Thread::new_kernel_thread(|| {
         let mut cursor_thread = CursorThread::new(&TERMINAL.get().unwrap());
         cursor_thread.run();
-    })));
+    }));
 }
 
 pub fn init_keyboard() {
