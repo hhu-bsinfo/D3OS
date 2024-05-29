@@ -55,7 +55,7 @@ pub extern "C" fn sys_thread_id() -> usize {
 
 #[no_mangle]
 pub extern "C" fn sys_thread_switch() {
-    scheduler().switch_thread();
+    scheduler().switch_thread_no_interrupt();
 }
 
 #[no_mangle]

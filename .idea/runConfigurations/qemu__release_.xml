@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="release" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+  <configuration default="false" name="qemu (release)" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
     <option name="command" value="make --no-workspace --profile production" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />

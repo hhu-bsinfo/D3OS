@@ -29,6 +29,10 @@ impl KernelAllocator {
     pub fn is_initialized(&self) -> bool {
         return self.heap.lock().size() > 0;
     }
+
+    pub fn is_locked(&self) -> bool {
+        self.heap.is_locked()
+    }
 }
 
 unsafe impl Allocator for KernelAllocator {
