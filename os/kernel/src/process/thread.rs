@@ -18,7 +18,7 @@ use crate::memory::alloc::StackAllocator;
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::process::Process;
 
-pub const MAIN_USER_STACK_END: usize = 0x400000000000;
+pub const MAIN_USER_STACK_START: usize = 0x400000000000;
 pub const MAX_USER_STACK_SIZE: usize = 0x40000000;
 const KERNEL_STACK_PAGES: usize = 64;
 
@@ -84,7 +84,7 @@ impl Thread {
             });
 
         let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in((KERNEL_STACK_PAGES * PAGE_SIZE) / 8, StackAllocator::new());
-        let user_stack_end = Page::from_start_address(VirtAddr::new(MAIN_USER_STACK_END as u64)).unwrap();
+        let user_stack_end = Page::from_start_address(VirtAddr::new((MAIN_USER_STACK_START + MAX_USER_STACK_SIZE) as u64)).unwrap();
         let user_stack_pages = PageRange { start: user_stack_end - 1, end: user_stack_end };
         let user_stack = unsafe { Vec::from_raw_parts_in(user_stack_pages.start.start_address().as_u64() as *mut u64, 0, PAGE_SIZE / 8, StackAllocator::new()) };
         address_space.map(user_stack_pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
@@ -107,7 +107,7 @@ impl Thread {
 
         let stack_vmas = parent.find_vmas(VmaType::Stack);
         let highest_stack_vma = stack_vmas.last().expect("Trying to create a user thread, before the main thread has been created!");
-        let user_stack_end = Page::<Size4KiB>::from_start_address(highest_stack_vma.start() + MAX_USER_STACK_SIZE as u64).unwrap();
+        let user_stack_end = Page::<Size4KiB>::from_start_address(highest_stack_vma.end() + MAX_USER_STACK_SIZE as u64).unwrap();
         let user_stack_pages = PageRange { start: user_stack_end - 1, end: user_stack_end };
         let user_stack = unsafe { Vec::from_raw_parts_in(user_stack_pages.start.start_address().as_u64() as *mut u64, 0, PAGE_SIZE / 8, StackAllocator::new()) };
         parent.address_space().map(user_stack_pages, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
@@ -175,11 +175,17 @@ impl Thread {
         let mut stacks = self.stacks.lock();
 
         // Grow stack area -> Allocate one page right below the stack
-        self.process.find_vmas(VmaType::Stack).get(0).unwrap().grow_downwards(1);
+        self.process.find_vmas(VmaType::Stack).iter().find(|vma| {
+            vma.start().as_u64() == stacks.user_stack.as_ptr() as u64
+        }).expect("Failed to find VMA for growing stack").grow_downwards(1);
 
         // Adapt stack Vec to new start address
         let user_stack_capacity = stacks.user_stack.capacity() + (PAGE_SIZE / 8);
-        let user_stack_start = MAIN_USER_STACK_END - (user_stack_capacity * 8);
+        if user_stack_capacity > MAX_USER_STACK_SIZE / 8 {
+            panic!("Stack overflow!");
+        }
+        
+        let user_stack_start = stacks.user_stack.as_ptr() as usize - PAGE_SIZE;
         stacks.user_stack = unsafe { Vec::from_raw_parts_in(user_stack_start as *mut u64, 0, user_stack_capacity, StackAllocator::new()) };
     }
 
