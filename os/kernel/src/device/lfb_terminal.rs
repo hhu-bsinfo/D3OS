@@ -101,11 +101,11 @@ impl CursorThread {
     }
 
     pub fn run(&mut self) {
-        let mut sleep_counter = 0usize;
+        // let mut sleep_counter = 0usize;
 
         loop {
             scheduler().sleep(CURSOR_UPDATE_INTERVAL);
-            sleep_counter += CURSOR_UPDATE_INTERVAL;
+            // sleep_counter += CURSOR_UPDATE_INTERVAL;
 
             let mut display = self.terminal.display.lock();
             let cursor = self.terminal.cursor.lock();

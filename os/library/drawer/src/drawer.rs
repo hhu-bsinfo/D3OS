@@ -1,5 +1,6 @@
 use core::ops::Add;
 
+use alloc::string::String;
 use syscall::{syscall0, syscall1, SystemCall};
 use alloc::vec::Vec;
 use alloc::vec;
@@ -53,11 +54,11 @@ impl Vertex {
 #[repr(C, u8)]
 pub enum DrawerCommand {
     ClearScreen = 0,
-    DeleteContext,
     DrawLine { from: Vertex, to: Vertex, color: Color },
     DrawPolygon(Vec<Vertex>, Color),
     DrawCircle { center: Vertex, radius: u32, color: Color },
-    DrawString { string_to_draw: &'static str, pos: Vertex, color: Color },
+    DrawChar { char_to_draw: char, pos: Vertex, color: Color },
+    DrawString { string_to_draw: String, pos: Vertex, color: Color },
 }
 
 pub struct Drawer;
@@ -70,12 +71,6 @@ impl Drawer {
 
     pub fn clear_screen() {
         let command = DrawerCommand::ClearScreen;
-
-        Self::execute(command);
-    }
-
-    pub fn delete_context() {
-        let command = DrawerCommand::DeleteContext;
 
         Self::execute(command);
     }
@@ -102,7 +97,13 @@ impl Drawer {
         Self::execute(command);
     }
 
-    pub fn draw_string(string_to_draw: &'static str, pos: Vertex, color: Color) {
+    pub fn draw_char(char_to_draw: char, pos: Vertex, color: Color) {
+        let command = DrawerCommand::DrawChar { char_to_draw, pos, color };
+
+        Self::execute(command);
+    }
+
+    pub fn draw_string(string_to_draw: String, pos: Vertex, color: Color) {
         let command = DrawerCommand::DrawString { string_to_draw, pos, color };
 
         Self::execute(command);

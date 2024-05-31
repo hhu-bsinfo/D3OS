@@ -180,9 +180,6 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
         DrawerCommand::ClearScreen => {
             lfb.clear();
         },
-        DrawerCommand::DeleteContext => {
-            //TODO: Reinstatiate old LFB state
-        }
         DrawerCommand::DrawLine { from, to, color } => {
             lfb.draw_line(from.x, from.y, to.x, to.y, color.clone())
         },
@@ -215,8 +212,11 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
             }
         },
         DrawerCommand::DrawString { string_to_draw, pos, color } => {
-            lfb.draw_string(pos.x, pos.y, color.clone(), BLACK, *string_to_draw);
+            lfb.draw_string(pos.x, pos.y, color.clone(), BLACK, string_to_draw);
         },
+        DrawerCommand::DrawChar { char_to_draw, pos, color } => {
+            lfb.draw_char(pos.x, pos.y, color.clone(), BLACK, *char_to_draw);
+        }
     };
 
     buff_lfb.flush();
