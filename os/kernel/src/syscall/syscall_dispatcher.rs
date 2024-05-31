@@ -4,7 +4,24 @@ use x86_64::registers::model_specific::{LStar, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 use syscall::NUM_SYSCALLS;
-use crate::syscall::{sys_write, sys_thread_exit, sys_thread_sleep, sys_thread_switch, sys_process_id, sys_thread_id, sys_read, sys_map_user_heap, sys_thread_join, sys_application_start, sys_get_system_time, sys_get_date, sys_set_date, sys_write_graphic, sys_get_graphic_resolution};
+use crate::syscall::{
+    sys_write,
+    sys_thread_exit,
+    sys_thread_sleep,
+    sys_thread_switch,
+    sys_process_id,
+    sys_thread_id, sys_read,
+    sys_map_user_heap,
+    sys_thread_join,
+    sys_process_execute_binary,
+    sys_get_system_time,
+    sys_get_date,
+    sys_set_date,
+    sys_thread_create,
+    sys_process_exit,
+    sys_write_graphic,
+    sys_get_graphic_resolution,
+};
 
 
 pub fn init() {
@@ -44,13 +61,15 @@ impl SyscallTable {
                 sys_read as *const _,
                 sys_write as *const _,
                 sys_map_user_heap as *const _,
+                sys_process_execute_binary as *const _,
                 sys_process_id as *const _,
+                sys_process_exit as *const _,
+                sys_thread_create as *const _,
                 sys_thread_id as *const _,
                 sys_thread_switch as *const _,
                 sys_thread_sleep as *const _,
                 sys_thread_join as *const _,
                 sys_thread_exit as *const _,
-                sys_application_start as *const _,
                 sys_get_system_time as *const _,
                 sys_get_date as *const _,
                 sys_set_date as *const _,

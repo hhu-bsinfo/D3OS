@@ -1,4 +1,3 @@
-use alloc::boxed::Box;
 use crate::interrupt::interrupt_dispatcher;
 use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
@@ -215,17 +214,17 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     init_initrd(initrd_tag);
 
     // Ready process cleanup thread
-    scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
+    scheduler().ready(Thread::new_kernel_thread(|| {
         loop {
             scheduler().sleep(100);
             process_manager().write().drop_exited_process();
         }
-    })));
+    }));
 
-    // Ready shell thread
-    scheduler().ready(Thread::new_user_thread(initrd().entries()
+    // Ready window-manager thread
+    scheduler().ready(Thread::load_application(initrd().entries()
         .find(|entry| entry.filename().as_str().unwrap() == "window_manager")
-        .expect("Window-Manager application not available!")
+        .expect("Window-manager application not available!")
         .data()));
 
     // Disable terminal logging

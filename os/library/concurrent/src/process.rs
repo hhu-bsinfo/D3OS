@@ -18,3 +18,7 @@ pub fn current() -> Process {
     let id = syscall0(SystemCall::ProcessId);
     Process::new(id)
 }
+
+pub fn exit() {
+    syscall0(SystemCall::ProcessExit);
+}

@@ -164,10 +164,10 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
     terminal.clear();
     TERMINAL.call_once(|| terminal);
 
-    scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
+    scheduler().ready(Thread::new_kernel_thread(|| {
         let mut cursor_thread = CursorThread::new(&TERMINAL.get().unwrap());
         cursor_thread.run();
-    })));
+    }));
 }
 
 pub fn init_lfb(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {

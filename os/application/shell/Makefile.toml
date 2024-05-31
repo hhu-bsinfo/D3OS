@@ -26,9 +26,12 @@ command = "cargo"
 args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
 
 [tasks.link]
-command = "ld"
+command = "${LINKER}"
 args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${APPLICATION}", "${RUST_OBJECT}" ]
 dependencies = [ "compile" ]
+
+[tasks.link.mac]
+command = "${LINKER_MAC}"
 
 # Cleanup tasks
 

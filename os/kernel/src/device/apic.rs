@@ -30,7 +30,7 @@ struct ApicTimerInterruptHandler {}
 
 impl InterruptHandler for ApicTimerInterruptHandler {
     fn trigger(&mut self) {
-        scheduler().switch_thread();
+        scheduler().switch_thread_from_interrupt();
     }
 }
 

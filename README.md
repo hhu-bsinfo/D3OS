@@ -1,42 +1,54 @@
 # D3OS
 A new research operating system, developed by the [operating systems group](https://www.cs.hhu.de/en/research-groups/operating-systems.html) of the department of computer science at [Heinrich Heine University Düsseldorf](https://www.hhu.de)
 
+<p align="center">
+  <a href="https://www.uni-duesseldorf.de/home/en/home.html"><img src="media/hhu.svg" width=300></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/hhu-bsinfo/D3OS/actions/workflows/build.yml"><img src="https://github.com/hhu-bsinfo/D3OS/actions/workflows/build.yml/badge.svg"></a>
+  <img src="https://img.shields.io/badge/Rust-2021-blue.svg">
+  <img src="https://img.shields.io/badge/license-GPLv3-orange.svg">
+</p>
+
 ## Requirements
 
 For building D3OS, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/).
 
-`rustup toolchain install nightly`
-
-And activate it for the current folder with:
-
-`rustup override set nightly`
+```
+rustup toolchain install nightly
+rustup override set nightly
+```
 
 To run the build commands _cargo-make_ is required. Install it with:
 
-`cargo install --no-default-features cargo-make`
+```
+cargo install --no-default-features cargo-make
+```
 
 Further the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
 
-`apt install build-essential nasm mtools fdisk zstd`
+```
+apt install build-essential nasm wget qemu-system-x86_64
+```
 
-To run the final OS image _QEMU_ is required:
+D3OS depends on the rust-based bootloader [towboot](https://github.com/hhuOS/towboot), which provides the `towbootctl` utility for creating bootable images. Install it with: 
 
-`apt install qemu-system-x86_64`
+```
+rustup target install i686-unknown-uefi x86_64-unknown-uefi
+cargo install --git https://github.com/hhuOS/towboot --features=binary -Z bindeps towbootctl
+```
 
-## Build
+## Build and Run
 
-For a full build run: 
+To build D3OS and run it in QEMU, just execute: 
 
-`cargo make --no-workspace`
+```
+cargo make --no-workspace
+```
 
-This will produce _d3os.img_.
+To only build the bootable image _d3os.img_, run:
 
-## Run
-
-To run the image, build it first and then use:
-
-`./run.sh`
-
-This will execute the operating system with _QEMU_.
-
-For more information see `run.sh --help`.
+```
+cargo make --no-workspace image
+```

@@ -18,6 +18,16 @@ impl Thread {
     }
 }
 
+fn kickoff_user_thread(entry: fn()) {
+    entry();
+    exit();
+}
+
+pub fn create(entry: fn()) -> Thread {
+    let id = syscall2(SystemCall::ThreadCreate, kickoff_user_thread as usize, entry as usize);
+    Thread::new(id)
+}
+
 pub fn current() -> Thread {
     let id = syscall0(SystemCall::ThreadId);
     Thread::new(id)
@@ -39,7 +49,7 @@ pub fn exit() -> ! {
 }
 
 pub fn start_application(name: &str) -> Option<Thread> {
-    match syscall2(SystemCall::ApplicationStart, name.as_bytes().as_ptr() as usize, name.len()) {
+    match syscall2(SystemCall::ProcessExecuteBinary, name.as_bytes().as_ptr() as usize, name.len()) {
         0 => None,
         id => Some(Thread::new(id))
     }

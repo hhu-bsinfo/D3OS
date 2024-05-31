@@ -14,7 +14,7 @@ pub struct AddressSpace {
     depth: usize
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub struct VirtualMemoryArea {
     range: PageRange,
     typ: VmaType

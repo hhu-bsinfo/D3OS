@@ -7,7 +7,7 @@
             "type": "shell",
             "isBackground": false,
             "command": "cargo",
-            "args": [ "make", "clean" ],
+            "args": [ "make", "--no-workspace", "clean" ],
             "problemMatcher": []
         },
         {
@@ -16,7 +16,7 @@
             "type": "shell",
             "isBackground": false,
             "command": "cargo",
-            "args": [ "make", "--no-workspace", "--profile", "development" ],
+            "args": [ "make", "--no-workspace", "--profile", "development", "image" ],
             "problemMatcher": []
         },
         {
@@ -32,8 +32,8 @@
             "label": "qemu-gdb",
             "type": "shell",
             "isBackground": true,
-            "command": "${workspaceRoot}/run.sh",
-            "args": ["--debug", "vscode"],
+            "command": "cargo",
+            "args": [ "make", "--no-workspace", "--profile", "development", "debug" ],
             "problemMatcher": [
                 {
                     "pattern": [
@@ -47,11 +47,10 @@
                     "background": {
                       "activeOnStart": true,
                       "beginsPattern": ".",
-                      "endsPattern": "Debugging with VSCode...",
+                      "endsPattern": "Ready to debug",
                     }
                   }
-            ],
-            "dependsOn": "build"
+            ]
         }
     ]
 }
