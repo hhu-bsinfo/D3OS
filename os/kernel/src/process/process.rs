@@ -68,12 +68,28 @@ impl ProcessManager {
         }
     }
 
-    pub fn exit(&mut self, id: usize) {
+    pub fn exit(&mut self, process_id: usize) {
         let index = self.active_processes.iter()
-            .position(|process| process.id == id)
+            .position(|process| process.id == process_id)
             .expect("Process: Trying to exit a non-existent process!");
 
         let process = Arc::clone(&self.active_processes[index]);
+        process.kill_all_threads_but_current();
+
+        self.active_processes.swap_remove(index);
+        self.exited_processes.push(process);
+    }
+
+    pub fn kill(&mut self, process_id: usize) {
+        let index = self.active_processes.iter()
+            .position(|process| process.id == process_id)
+            .expect("Process: Trying to kill a non-existent process!");
+
+        let process = Arc::clone(&self.active_processes[index]);
+        for thread_id in process.thread_ids() {
+            scheduler().kill(thread_id);
+        }
+
         self.active_processes.swap_remove(index);
         self.exited_processes.push(process);
     }
@@ -150,5 +166,18 @@ impl Process {
 
     pub fn exit(&self) {
         process_manager().write().exit(self.id);
+    }
+
+    pub fn thread_ids(&self) -> Vec<usize> {
+        scheduler().active_thread_ids().iter()
+            .filter(|&&thread_id| {
+                scheduler().thread(thread_id).is_some_and(|thread| thread.process().id() == self.id)
+            }).copied().collect()
+    }
+
+    fn kill_all_threads_but_current(&self) {
+        self.thread_ids().iter()
+            .filter(|&&thread_id| thread_id != scheduler().current_thread().id())
+            .for_each(|&thread_id| scheduler().kill(thread_id));
     }
 }
