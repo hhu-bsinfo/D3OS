@@ -25,7 +25,6 @@ use crate::interrupt::interrupt_dispatcher::InterruptDispatcher;
 use crate::log::Logger;
 use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
-use alloc::boxed::Box;
 use graphic::buffered_lfb::BufferedLFB;
 use graphic::lfb::LFB;
 use core::fmt::Arguments;

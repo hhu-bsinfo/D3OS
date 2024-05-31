@@ -22,12 +22,12 @@ args = [ "-S", "-gdb", "tcp::1234", "-machine", "q35,pcspk-audiodev=audio0", "-m
 [tasks.debug-signal-vscode]
 command = "echo"
 args = [ "Ready to debug" ]
-dependencies = [ "image", "ovmf" ]
+dependencies = [ "image" ]
 
 [tasks.qemu]
 command = "qemu-system-x86_64"
 args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
-dependencies = [ "image", "ovmf" ]
+dependencies = [ "image" ]
 
 [tasks.qemu.mac]
 args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
