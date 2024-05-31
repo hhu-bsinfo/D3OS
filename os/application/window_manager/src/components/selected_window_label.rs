@@ -5,25 +5,25 @@ use graphic::color::Color;
 
 use super::component::Component;
 
-/**
-Since [`draw_string()`](drawer::drawer::Drawer) uses the 8x8-font impl on kernel-side,
-we cannot specify a size to the characters until we implemented font-handling ourselves
-(which I reeeaaaaaaally don't want to do)
-*/
-#[derive(Debug)]
-pub struct Label {
+pub struct SelectedWorkspaceLabel {
     pub id: usize,
     pub pos: Vertex,
     pub text: String,
+    pub tied_workspace: usize,
 }
 
-impl Label {
-    pub fn new(id: usize, pos: Vertex, text: String) -> Self {
-        Self { id, pos, text }
+impl SelectedWorkspaceLabel {
+    pub fn new(id: usize, pos: Vertex, text: String, tied_workspace: usize) -> Self {
+        Self {
+            id,
+            pos,
+            text,
+            tied_workspace,
+        }
     }
 }
 
-impl Component for Label {
+impl Component for SelectedWorkspaceLabel {
     fn id(&self) -> usize {
         self.id
     }

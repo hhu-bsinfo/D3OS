@@ -6,7 +6,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::{boxed::Box, string::ToString, vec::Vec};
 use api::Api;
-use components::{component::Component, label::Label};
+use components::{component::Component, selected_window_label::SelectedWorkspaceLabel};
 use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::{
@@ -120,11 +120,6 @@ impl WindowManager {
             self.screen.0 - DIST_TO_SCREEN_EDGE * 2,
             HEIGHT_WORKSPACE_SELECTION_LABEL_WDW,
         );
-        Drawer::draw_char(
-            '1',
-            Vertex::new(DIST_TO_SCREEN_EDGE + 1, DIST_TO_SCREEN_EDGE + 1),
-            WHITE,
-        );
     }
 
     fn switch_workspace(&mut self, workspace_index: usize) {
@@ -157,7 +152,7 @@ impl WindowManager {
             let focused_window_id = curr_ws.focused_window_id;
             curr_ws.insert_focusable_window(Box::new(window), focused_window_id);
         } else {
-            curr_ws.insert_unfocusable_window(Box::new(window));
+            curr_ws.insert_component(Box::new(window));
         }
 
         let _handle = unsafe {
@@ -219,6 +214,10 @@ impl WindowManager {
     }
 
     fn create_new_workspace(&mut self, is_initial: bool) {
+        if self.workspaces.len() == 9 {
+            return;
+        }
+
         let window = Window::new(
             Self::generate_id(),
             Vertex::new(
@@ -233,20 +232,25 @@ impl WindowManager {
         if !is_initial {
             self.current_workspace += 1;
         }
-        let mut workspace =
+
+        let workspace =
             Workspace::new_with_single_window((window_id, Box::new(window)), Some(window_id));
 
-        let workspaces_len = (self.workspaces.len() + 1) as u32;
+        let new_workspace_len = (self.workspaces.len() + 1) as u32;
 
-        let workspace_selection_label = Label::new(
+        let workspace_selection_label = SelectedWorkspaceLabel::new(
             Self::generate_id(),
             Vertex::new(
-                DIST_TO_SCREEN_EDGE + workspaces_len * CHAR_WIDTH,
+                DIST_TO_SCREEN_EDGE + new_workspace_len * CHAR_WIDTH,
                 DIST_TO_SCREEN_EDGE + CHAR_HEIGHT,
             ),
-            char::from_digit(workspaces_len, 10).unwrap().to_string(),
+            char::from_digit(new_workspace_len, 10).unwrap().to_string(),
+            (new_workspace_len - 1) as usize,
         );
-        workspace.insert_label(Box::new(workspace_selection_label));
+        self.global_components.insert(
+            workspace_selection_label.id,
+            Box::new(workspace_selection_label),
+        );
 
         self.workspaces.insert(self.current_workspace, workspace);
     }
@@ -261,33 +265,34 @@ impl WindowManager {
 
     fn draw(&self) {
         Drawer::clear_screen();
-        // Redraw global windows
+        let curr_ws = &self.workspaces[self.current_workspace];
+        // Redraw global components
         for (_, component) in self.global_components.iter() {
-            component.draw(WHITE);
+            match component.as_any().downcast_ref::<SelectedWorkspaceLabel>() {
+                Some(selected_window_label) => {
+                    if self.current_workspace == selected_window_label.tied_workspace {
+                        component.draw(YELLOW);
+                        continue;
+                    }
+                    component.draw(WHITE);
+                }
+                None => component.draw(WHITE),
+            }
         }
         // Redraw workspace components
-        let curr_ws = &self.workspaces[self.current_workspace];
-        // Redraw windows
-        let mut focused_window: Option<&Window> = None;
+        let mut focused_components: Vec<&Box<dyn Component>> = Vec::new();
         for (_, component) in curr_ws.components.iter() {
-            if let Some(window) = component.as_any().downcast_ref::<Window>() {
-                if curr_ws
-                    .focused_window_id
-                    .is_some_and(|focused_id| focused_id == window.id)
-                {
-                    let _ = focused_window.insert(window);
-                    continue;
-                }
+            if curr_ws
+                .focused_window_id
+                .is_some_and(|focused_id| focused_id == component.id())
+            {
+                focused_components.push(component);
+                continue;
             }
-            if let Some(window) = component.as_any().downcast_ref::<Window>() {
-                component.draw(WHITE);
-            }
+            component.draw(WHITE);
         }
         // We draw the focused window last to prevent drawing over diff-colored edges
-        if let Some(window) = focused_window {
-            window.draw(YELLOW);
-        };
-        // TODO: Redraw labels
+        focused_components.iter().for_each(|comp| comp.draw(YELLOW));
     }
 }
 

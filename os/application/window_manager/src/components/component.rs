@@ -3,6 +3,8 @@ use core::any::Any;
 use graphic::color::Color;
 
 pub trait Component: Any {
+    fn id(&self) -> usize;
+
     fn draw(&self, color: Color);
 
     // Add a method to allow downcasting to immutable ref

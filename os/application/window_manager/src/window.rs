@@ -24,6 +24,10 @@ impl Window {
 }
 
 impl Component for Window {
+    fn id(&self) -> usize {
+        self.id
+    }
+
     fn draw(&self, color: Color) {
         Drawer::draw_rectangle(
             Vertex::new(self.pos.x, self.pos.y),
