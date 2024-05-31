@@ -4,7 +4,7 @@ extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use alloc::{boxed::Box, string::ToString, vec::Vec};
+use alloc::{borrow::ToOwned, boxed::Box, string::ToString, vec::Vec};
 use api::Api;
 use components::{component::Component, selected_window_label::SelectedWorkspaceLabel};
 use config::*;
@@ -30,10 +30,12 @@ mod workspace;
 
 /// Ids are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+/// Global screen resolution, initialized in [`WindowManager::init()`]
 pub static SCREEN: Once<(u32, u32)> = Once::new();
 
 static mut API: Once<Mutex<Api>> = Once::new();
 
+// Screen-split types
 enum SplitType {
     Horizontal,
     Vertical,
@@ -41,8 +43,9 @@ enum SplitType {
 
 struct WindowManager {
     workspaces: Vec<Workspace>,
+    // Currently selected workspace
     current_workspace: usize,
-    screen: (u32, u32),
+    // Global windows are not tied to workspaces, they exist once and persist through workspace-switches
     global_components: HashMap<usize, Box<dyn Component>>,
 }
 
@@ -51,22 +54,26 @@ impl WindowManager {
         ID_COUNTER.fetch_add(1, Ordering::SeqCst)
     }
 
+    fn get_screen_res() -> (u32, u32) {
+        SCREEN.get().expect("Screen-resolution accessed before init").to_owned()
+    }
+
     fn new(screen: (u32, u32)) -> Self {
+        SCREEN.call_once(|| screen);
+
         Self {
             workspaces: Vec::new(),
             current_workspace: 0,
-            screen,
             global_components: HashMap::new(),
         }
     }
 
     fn init(&mut self) {
         unsafe {
-            API.call_once(|| Mutex::new(Api::new(self.screen)));
+            API.call_once(|| Mutex::new(Api::new(Self::get_screen_res())));
         }
-        SCREEN.call_once(|| self.screen);
 
-        self.create_workspace_selection_label();
+        self.create_workspace_selection_labels_window();
         self.create_new_workspace(true);
     }
 
@@ -114,10 +121,11 @@ impl WindowManager {
         }
     }
 
-    fn create_workspace_selection_label(&mut self) {
+    // This contains the numerical labels which show what workspace you are currently on
+    fn create_workspace_selection_labels_window(&mut self) {
         self.add_global_window(
             Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
-            self.screen.0 - DIST_TO_SCREEN_EDGE * 2,
+            SCREEN.get().unwrap().0 - DIST_TO_SCREEN_EDGE * 2,
             HEIGHT_WORKSPACE_SELECTION_LABEL_WDW,
         );
     }
@@ -128,7 +136,6 @@ impl WindowManager {
         }
     }
 
-    /// Global windows are not tied to workspaces, they exist once and persist through workspace-switches
     fn add_global_window(&mut self, pos: Vertex, width: u32, height: u32) {
         let window_id = Self::generate_id();
         let window = Window::new(window_id, pos, width, height);
@@ -218,14 +225,16 @@ impl WindowManager {
             return;
         }
 
+        let screen_res = Self::get_screen_res();
         let window = Window::new(
             Self::generate_id(),
             Vertex::new(
                 DIST_TO_SCREEN_EDGE,
                 DIST_TO_SCREEN_EDGE + HEIGHT_WORKSPACE_SELECTION_LABEL_WDW,
             ),
-            self.screen.0 - DIST_TO_SCREEN_EDGE * 2,
-            self.screen.1 - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WDW),
+            screen_res.0 - DIST_TO_SCREEN_EDGE * 2,
+            screen_res.1
+                - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WDW),
         );
         let window_id = window.id;
 
@@ -247,6 +256,7 @@ impl WindowManager {
             char::from_digit(new_workspace_len, 10).unwrap().to_string(),
             (new_workspace_len - 1) as usize,
         );
+
         self.global_components.insert(
             workspace_selection_label.id,
             Box::new(workspace_selection_label),
