@@ -24,7 +24,7 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use crate::{allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard_and_mouse, init_lfb, init_pci, init_serial_port, init_terminal, initrd, logger, memory, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
+use crate::{allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard_and_mouse, init_lfb, init_pci, init_serial_port, initrd, logger, memory, process_manager, ps2_devices, scheduler, serial_port, timer, tss};
 use crate::memory::MemorySpace;
 
 extern "C" {
@@ -123,12 +123,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     init_lfb(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
-    init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
-    logger().lock().register(terminal());
-
     info!("Welcome to D3OS!");
     let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
-    let git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("Unknown");
     let build_date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
         Ok(date_time) => date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -226,13 +222,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         .find(|entry| entry.filename().as_str().unwrap() == "window_manager")
         .expect("Window-manager application not available!")
         .data()));
-
-    // Disable terminal logging
-    logger().lock().remove(terminal());
-    terminal().clear();
-
-    println!(include_str!("banner.txt"), version, git_ref.rsplit("/").next().unwrap_or(git_ref), git_commit, build_date,
-             built_info::RUSTC_VERSION.split_once("(").unwrap_or((built_info::RUSTC_VERSION, "")).0.trim(), bootloader_name);
 
     info!("Starting scheduler");
     apic().start_timer(10);
