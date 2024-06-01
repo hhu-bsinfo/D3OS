@@ -6,7 +6,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::{borrow::ToOwned, boxed::Box, string::ToString, vec::Vec};
 use api::Api;
-use components::{component::Component, selected_window_label::SelectedWorkspaceLabel};
+use components::{component::Component, selected_window_label::SelectedWorkspaceLabel, window::Window};
 use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::{
@@ -18,14 +18,12 @@ use io::{read::read, Application};
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex};
-use window::Window;
 use workspace::Workspace;
 
 pub mod api;
 mod apps;
 mod components;
 mod config;
-mod window;
 mod workspace;
 
 /// Ids are unique across all components

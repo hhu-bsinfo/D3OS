@@ -1,5 +1,4 @@
-use crate::components::component::Component;
-use crate::window::Window;
+use crate::components::{component::Component, window::Window};
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
