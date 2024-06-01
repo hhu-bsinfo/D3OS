@@ -13,19 +13,24 @@ we cannot specify a size to the characters until we implemented font-handling ou
 #[derive(Debug)]
 pub struct Label {
     pub id: usize,
+    pub workspace_index: usize,
     pub pos: Vertex,
     pub text: String,
 }
 
 impl Label {
-    pub fn new(id: usize, pos: Vertex, text: String) -> Self {
-        Self { id, pos, text }
+    pub fn new(id: usize, workspace_index: usize, pos: Vertex, text: String) -> Self {
+        Self { id, workspace_index, pos, text }
     }
 }
 
 impl Component for Label {
     fn id(&self) -> usize {
         self.id
+    }
+
+    fn workspace_index(&self) -> usize {
+        self.workspace_index
     }
 
     fn draw(&self, color: Color) {

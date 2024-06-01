@@ -6,7 +6,9 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::{borrow::ToOwned, boxed::Box, string::ToString, vec::Vec};
 use api::Api;
-use components::{component::Component, selected_window_label::SelectedWorkspaceLabel, window::Window};
+use components::{
+    component::Component, selected_window_label::SelectedWorkspaceLabel, window::Window,
+};
 use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::{
@@ -15,9 +17,10 @@ use graphic::{
 };
 use hashbrown::HashMap;
 use io::{read::read, Application};
+use nolock::queues::mpsc::jiffy::{self, Receiver, Sender};
 #[allow(unused_imports)]
 use runtime::*;
-use spin::{once::Once, Mutex};
+use spin::{once::Once, Mutex, MutexGuard};
 use workspace::Workspace;
 
 pub mod api;
@@ -26,10 +29,10 @@ mod components;
 mod config;
 mod workspace;
 
-/// Ids are unique across all components
-static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+// Ids are unique across all components
+static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 /// Global screen resolution, initialized in [`WindowManager::init()`]
-pub static SCREEN: Once<(u32, u32)> = Once::new();
+static SCREEN: Once<(u32, u32)> = Once::new();
 
 static mut API: Once<Mutex<Api>> = Once::new();
 
@@ -45,6 +48,8 @@ struct WindowManager {
     current_workspace: usize,
     // Global windows are not tied to workspaces, they exist once and persist through workspace-switches
     global_components: HashMap<usize, Box<dyn Component>>,
+    // Receiver end of queue with API. Components created in API are transmitted this way
+    receiver_api: Receiver<Box<dyn Component>>,
 }
 
 impl WindowManager {
@@ -53,22 +58,35 @@ impl WindowManager {
     }
 
     fn get_screen_res() -> (u32, u32) {
-        SCREEN.get().expect("Screen-resolution accessed before init").to_owned()
+        SCREEN
+            .get()
+            .expect("Screen-resolution accessed before init")
+            .to_owned()
     }
 
-    fn new(screen: (u32, u32)) -> Self {
+    fn get_api() -> MutexGuard<'static, Api> {
+        unsafe { API.get_mut().expect("API accessed before init").lock() }
+    }
+
+    fn new(screen: (u32, u32)) -> (Self, Sender<Box<dyn Component>>) {
         SCREEN.call_once(|| screen);
 
-        Self {
-            workspaces: Vec::new(),
-            current_workspace: 0,
-            global_components: HashMap::new(),
-        }
+        let (rx, tx) = jiffy::queue::<Box<dyn Component>>();
+
+        (
+            Self {
+                workspaces: Vec::new(),
+                current_workspace: 0,
+                global_components: HashMap::new(),
+                receiver_api: rx,
+            },
+            tx,
+        )
     }
 
-    fn init(&mut self) {
+    fn init(&mut self, tx: Sender<Box<dyn Component>>) {
         unsafe {
-            API.call_once(|| Mutex::new(Api::new(Self::get_screen_res())));
+            API.call_once(|| Mutex::new(Api::new(Self::get_screen_res(), tx)));
         }
 
         self.create_workspace_selection_labels_window();
@@ -78,10 +96,11 @@ impl WindowManager {
     fn run(&mut self) {
         loop {
             self.draw();
+
             let keyboard_press = read(Application::WindowManager);
 
             match keyboard_press {
-                'g' => {
+                'c' => {
                     self.create_new_workspace(false);
                 }
                 'q' => {
@@ -91,15 +110,17 @@ impl WindowManager {
                     self.switch_next_workspace();
                 }
                 'h' => {
-                    let window_id = self.workspaces[self.current_workspace].focused_window_id;
-                    if window_id.is_some() {
-                        self.split_window(window_id.unwrap(), SplitType::Horizontal);
+                    if let Some(window_id) =
+                        self.workspaces[self.current_workspace].focused_window_id
+                    {
+                        self.split_window(window_id, SplitType::Horizontal);
                     }
                 }
                 'v' => {
-                    let window_id = self.workspaces[self.current_workspace].focused_window_id;
-                    if window_id.is_some() {
-                        self.split_window(window_id.unwrap(), SplitType::Vertical);
+                    if let Some(window_id) =
+                        self.workspaces[self.current_workspace].focused_window_id
+                    {
+                        self.split_window(window_id, SplitType::Vertical);
                     }
                 }
                 'a' => {
@@ -115,6 +136,12 @@ impl WindowManager {
                     break;
                 }
                 _ => {}
+            }
+
+            // Add all new components to corresponding workspace
+            while let Ok(new_comp) = self.receiver_api.try_dequeue() {
+                let workspace_index = new_comp.workspace_index();
+                self.workspaces[workspace_index].insert_component(new_comp);
             }
         }
     }
@@ -136,7 +163,7 @@ impl WindowManager {
 
     fn add_global_window(&mut self, pos: Vertex, width: u32, height: u32) {
         let window_id = Self::generate_id();
-        let window = Window::new(window_id, pos, width, height);
+        let window = Window::new(window_id, 0, pos, width, height);
 
         self.global_components.insert(window_id, Box::new(window));
     }
@@ -149,7 +176,7 @@ impl WindowManager {
         is_focusable: bool,
     ) {
         let window_id = Self::generate_id();
-        let window = Window::new(window_id, pos, width, height);
+        let window = Window::new(window_id, self.current_workspace, pos, width, height);
 
         let curr_ws = &mut self.workspaces[self.current_workspace];
 
@@ -160,17 +187,15 @@ impl WindowManager {
             curr_ws.insert_component(Box::new(window));
         }
 
-        let _handle = unsafe {
-            API.get_mut().unwrap().lock().register(
-                self.current_workspace,
-                window_id,
-                RectData {
-                    top_left: pos,
-                    width,
-                    height,
-                },
-            )
-        };
+        let _ = Self::get_api().register(
+            self.current_workspace,
+            window_id,
+            RectData {
+                top_left: pos,
+                width,
+                height,
+            },
+        );
     }
 
     fn split_window(&mut self, window_id: usize, split_type: SplitType) {
@@ -223,22 +248,22 @@ impl WindowManager {
             return;
         }
 
+        if !is_initial {
+            self.current_workspace += 1;
+        }
+
         let screen_res = Self::get_screen_res();
         let window = Window::new(
             Self::generate_id(),
+            self.current_workspace,
             Vertex::new(
                 DIST_TO_SCREEN_EDGE,
                 DIST_TO_SCREEN_EDGE + HEIGHT_WORKSPACE_SELECTION_LABEL_WDW,
             ),
             screen_res.0 - DIST_TO_SCREEN_EDGE * 2,
-            screen_res.1
-                - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WDW),
+            screen_res.1 - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WDW),
         );
         let window_id = window.id;
-
-        if !is_initial {
-            self.current_workspace += 1;
-        }
 
         let workspace =
             Workspace::new_with_single_window((window_id, Box::new(window)), Some(window_id));
@@ -247,6 +272,7 @@ impl WindowManager {
 
         let workspace_selection_label = SelectedWorkspaceLabel::new(
             Self::generate_id(),
+            0,
             Vertex::new(
                 DIST_TO_SCREEN_EDGE + new_workspace_len * CHAR_WIDTH,
                 DIST_TO_SCREEN_EDGE + CHAR_HEIGHT,
@@ -268,7 +294,7 @@ impl WindowManager {
     }
 
     fn switch_next_workspace(&mut self) {
-        self.current_workspace = (self.current_workspace + 1).min(self.workspaces.len() - 1);
+        self.current_workspace = (self.current_workspace + 1) % self.workspaces.len();
     }
 
     fn draw(&self) {
@@ -307,7 +333,7 @@ impl WindowManager {
 #[no_mangle]
 fn main() {
     let resolution = Drawer::get_graphic_resolution();
-    let mut window_manager = WindowManager::new(resolution);
-    window_manager.init();
+    let (mut window_manager, tx) = WindowManager::new(resolution);
+    window_manager.init(tx);
     window_manager.run();
 }

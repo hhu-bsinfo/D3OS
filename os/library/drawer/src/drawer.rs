@@ -1,9 +1,10 @@
+use core::marker::PhantomData;
 use core::ops::Add;
 
 use alloc::string::String;
-use syscall::{syscall0, syscall1, SystemCall};
-use alloc::vec::Vec;
 use alloc::vec;
+use alloc::vec::Vec;
+use syscall::{syscall0, syscall1, SystemCall};
 
 use graphic::color::Color;
 
@@ -12,9 +13,10 @@ use graphic::color::Color;
 pub struct Vertex {
     pub x: u32,
     pub y: u32,
+    private: PhantomData<()>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RectData {
     pub top_left: Vertex,
     pub width: u32,
@@ -23,30 +25,42 @@ pub struct RectData {
 
 impl Add for Vertex {
     type Output = Self;
-    
+
     fn add(self, rhs: Self) -> Self::Output {
         Self {
             x: self.x.saturating_add(rhs.x),
             y: self.y.saturating_add(rhs.y),
+            private: PhantomData::default(),
         }
     }
-
-    
 }
 
 impl Vertex {
     pub fn new(x: u32, y: u32) -> Self {
-        Self { x, y }
+        Self {
+            x,
+            y,
+            private: PhantomData::default(),
+        }
     }
 
     pub fn as_tuple(&self) -> (u32, u32) {
         (self.x, self.y)
     }
 
-    pub fn add(&self, x_delta: i32, y_delta: i32) -> Self {
+    pub fn add(&self, x_delta: u32, y_delta: u32) -> Self {
         Self {
-            x: self.x.saturating_add_signed(x_delta),
-            y: self.y.saturating_add_signed(y_delta),
+            x: self.x.saturating_add(x_delta),
+            y: self.y.saturating_add(y_delta),
+            private: PhantomData::default(),
+        }
+    }
+
+    pub fn sub(&self, x_delta: u32, y_delta: u32) -> Self {
+        Self {
+            x: self.x.saturating_sub(x_delta),
+            y: self.y.saturating_sub(y_delta),
+            private: PhantomData::default(),
         }
     }
 }
@@ -54,11 +68,27 @@ impl Vertex {
 #[repr(C, u8)]
 pub enum DrawerCommand {
     ClearScreen = 0,
-    DrawLine { from: Vertex, to: Vertex, color: Color },
+    DrawLine {
+        from: Vertex,
+        to: Vertex,
+        color: Color,
+    },
     DrawPolygon(Vec<Vertex>, Color),
-    DrawCircle { center: Vertex, radius: u32, color: Color },
-    DrawChar { char_to_draw: char, pos: Vertex, color: Color },
-    DrawString { string_to_draw: String, pos: Vertex, color: Color },
+    DrawCircle {
+        center: Vertex,
+        radius: u32,
+        color: Color,
+    },
+    DrawChar {
+        char_to_draw: char,
+        pos: Vertex,
+        color: Color,
+    },
+    DrawString {
+        string_to_draw: String,
+        pos: Vertex,
+        color: Color,
+    },
 }
 
 pub struct Drawer;
@@ -77,11 +107,14 @@ impl Drawer {
 
     pub fn get_graphic_resolution() -> (u32, u32) {
         let raw_graphic_resolution: usize = syscall0(SystemCall::GetGraphicResolution);
-        return ((raw_graphic_resolution >> 32) as u32, raw_graphic_resolution as u32);
+        return (
+            (raw_graphic_resolution >> 32) as u32,
+            raw_graphic_resolution as u32,
+        );
     }
 
     pub fn draw_line(from: Vertex, to: Vertex, color: Color) {
-        let command = DrawerCommand::DrawLine { from , to, color };
+        let command = DrawerCommand::DrawLine { from, to, color };
         Self::execute(command);
     }
 
@@ -92,31 +125,45 @@ impl Drawer {
     }
 
     pub fn draw_circle(center: Vertex, radius: u32, color: Color) {
-        let command = DrawerCommand::DrawCircle { center, radius, color };
+        let command = DrawerCommand::DrawCircle {
+            center,
+            radius,
+            color,
+        };
 
         Self::execute(command);
     }
 
     pub fn draw_char(char_to_draw: char, pos: Vertex, color: Color) {
-        let command = DrawerCommand::DrawChar { char_to_draw, pos, color };
+        let command = DrawerCommand::DrawChar {
+            char_to_draw,
+            pos,
+            color,
+        };
 
         Self::execute(command);
     }
 
     pub fn draw_string(string_to_draw: String, pos: Vertex, color: Color) {
-        let command = DrawerCommand::DrawString { string_to_draw, pos, color };
+        let command = DrawerCommand::DrawString {
+            string_to_draw,
+            pos,
+            color,
+        };
 
         Self::execute(command);
     }
 
     pub fn draw_rectangle(top_left: Vertex, bottom_right: Vertex, color: Color) {
-        let command = DrawerCommand::DrawPolygon(vec![
-            Vertex::new(top_left.x, top_left.y),
-            Vertex::new(bottom_right.x, top_left.y),
-            Vertex::new(bottom_right.x, bottom_right.y),
-            Vertex::new(top_left.x, bottom_right.y),
-        ],
-        color);
+        let command = DrawerCommand::DrawPolygon(
+            vec![
+                Vertex::new(top_left.x, top_left.y),
+                Vertex::new(bottom_right.x, top_left.y),
+                Vertex::new(bottom_right.x, bottom_right.y),
+                Vertex::new(top_left.x, bottom_right.y),
+            ],
+            color,
+        );
 
         Self::execute(command);
     }

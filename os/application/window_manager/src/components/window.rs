@@ -4,18 +4,19 @@ use graphic::color::Color;
 
 use crate::components::component::Component;
 
-#[derive(Debug)]
-pub(crate) struct Window {
-    pub(crate) id: usize,
-    pub(crate) pos: Vertex,
-    pub(crate) width: u32,
-    pub(crate) height: u32,
+pub struct Window {
+    pub id: usize,
+    pub workspace_index: usize,
+    pub pos: Vertex,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Window {
-    pub(crate) fn new(id: usize, pos: Vertex, width: u32, height: u32) -> Self {
+    pub fn new(id: usize, workspace_index: usize, pos: Vertex, width: u32, height: u32) -> Self {
         Self {
             id,
+            workspace_index,
             pos,
             width,
             height,
@@ -26,6 +27,10 @@ impl Window {
 impl Component for Window {
     fn id(&self) -> usize {
         self.id
+    }
+
+    fn workspace_index(&self) -> usize {
+        self.workspace_index
     }
 
     fn draw(&self, color: Color) {

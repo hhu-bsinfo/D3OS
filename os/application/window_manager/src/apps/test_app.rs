@@ -1,33 +1,33 @@
-use alloc::boxed::Box;
+use core::cell::Cell;
+
+use alloc::{boxed::Box, rc::Rc};
 use drawer::drawer::{RectData, Vertex};
 
-use crate::{api::Command, API};
+use crate::{api::Command, WindowManager};
 
-pub struct TestComp {
-    handle: usize,
-}
+use super::runnable::Runnable;
 
-impl TestComp {
-    pub fn new(handle: usize) -> Self {
-        Self {
-            handle,
-        }
-    }
+pub struct TestApp;
 
-    pub fn run(&mut self) {
-        let api = unsafe { API.get_mut().unwrap().lock() };
-        let mut qwe = 0;
+impl Runnable for TestApp {
+    fn run() {
+        let handle = concurrent::thread::current().id();
+        let api = WindowManager::get_api();
+        let qwe = Rc::new(Cell::new('0'));
+        let qwe2 = Rc::clone(&qwe);
         api.execute(
-            self.handle, 
-            Command::CreateButton { 
+            handle, 
+            Command::CreateButton {
                 pos: RectData { 
-                    top_left: Vertex::new(20, 20),
-                    width: 40,
-                    height: 30,
+                    top_left: Vertex::new(400, 400),
+                    width: 200,
+                    height: 100,
                 }, 
-                label: Some("FELS"),
-                //TODO: Figure out how to include closures, think of gtk-rs
-                on_click: Box::new(move || { qwe += 1; }),
+                label: Some('0'),
+                on_click: Box::new(move || {
+                    let old = qwe2.get().to_digit(10).unwrap();
+                    qwe2.set(char::from_digit(old + 1, 10).unwrap());
+                }),
             },
         );
     }
