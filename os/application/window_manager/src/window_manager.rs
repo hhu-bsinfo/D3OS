@@ -7,8 +7,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use alloc::{borrow::ToOwned, boxed::Box, string::ToString, vec::Vec};
 use api::Api;
 use components::{
-    component::Component, selected_window_label::SelectedWorkspaceLabel,
-    window::Window,
+    component::Component, selected_window_label::SelectedWorkspaceLabel, window::Window,
 };
 use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
@@ -152,7 +151,7 @@ impl WindowManager {
         self.add_global_window(
             Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
             SCREEN.get().unwrap().0 - DIST_TO_SCREEN_EDGE * 2,
-            HEIGHT_WORKSPACE_SELECTION_LABEL_WDW,
+            HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
         );
     }
 
@@ -259,10 +258,10 @@ impl WindowManager {
             self.current_workspace,
             Vertex::new(
                 DIST_TO_SCREEN_EDGE,
-                DIST_TO_SCREEN_EDGE + HEIGHT_WORKSPACE_SELECTION_LABEL_WDW,
+                DIST_TO_SCREEN_EDGE + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
             ),
             screen_res.0 - DIST_TO_SCREEN_EDGE * 2,
-            screen_res.1 - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WDW),
+            screen_res.1 - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW),
         );
         let window_id = window.id;
 
@@ -275,7 +274,9 @@ impl WindowManager {
             Self::generate_id(),
             0,
             Vertex::new(
-                DIST_TO_SCREEN_EDGE + new_workspace_len * CHAR_WIDTH,
+                DIST_TO_SCREEN_EDGE
+                    + new_workspace_len * CHAR_WIDTH
+                    + SELECTED_WINDOW_LABEL_SPACING * (new_workspace_len - 1),
                 DIST_TO_SCREEN_EDGE + CHAR_HEIGHT,
             ),
             char::from_digit(new_workspace_len, 10).unwrap().to_string(),

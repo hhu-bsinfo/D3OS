@@ -4,11 +4,11 @@ use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::WHITE;
 use hashbrown::HashMap;
 use nolock::queues::mpsc::jiffy::Sender;
-use spin::Mutex;
+use spin::{Mutex, RwLock};
 
 use crate::{
-    apps::{runnable::Runnable, test_app::TestApp},
-    components::{button::Button, component::Component},
+    apps::{clock::Clock, runnable::Runnable},
+    components::{button::Button, component::Component, dynamic_label::DynamicLabel},
     WindowManager,
 };
 
@@ -22,6 +22,11 @@ pub enum Command {
         pos: RectData,
         label: Option<Rc<Mutex<String>>>,
         on_click: Box<dyn Fn() -> ()>,
+    },
+    CreateDynamicLabel {
+        pos: RectData,
+        text: Rc<RwLock<String>>,
+        on_create: Option<Box<dyn Fn() -> ()>>,
     },
 }
 
@@ -53,7 +58,7 @@ impl Api {
         window_id: usize,
         abs_pos: RectData,
     ) -> usize {
-        let handle = thread::create(TestApp::run).id();
+        let handle = thread::create(Clock::run).id();
         let handle_data = HandleData {
             workspace_index,
             window_id,
@@ -99,7 +104,25 @@ impl Api {
                     label,
                     on_click,
                 );
+
                 self.add_component(Box::new(button));
+            }
+            Command::CreateDynamicLabel {
+                pos,
+                text,
+                on_create,
+            } => {
+                let scaled_pos = self.scale_to_window(pos, handle_data);
+
+                let label = DynamicLabel::new(
+                    WindowManager::generate_id(),
+                    handle_data.workspace_index,
+                    scaled_pos.top_left,
+                    text,
+                    on_create,
+                );
+
+                self.add_component(Box::new(label));
             }
         }
 
@@ -118,10 +141,7 @@ impl Api {
             height,
         }: RectData,
         HandleData {
-            workspace_index: _,
-            window_id: _,
-            abs_pos,
-            ratios,
+            abs_pos, ratios, ..
         }: &HandleData,
     ) -> RectData {
         RectData {

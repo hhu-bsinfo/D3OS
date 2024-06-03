@@ -1,4 +1,8 @@
-use alloc::{boxed::Box, rc::Rc, string::{String, ToString}};
+use alloc::{
+    boxed::Box,
+    rc::Rc,
+    string::{String, ToString},
+};
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::lfb::{CHAR_HEIGHT, CHAR_WIDTH};
 use spin::Mutex;
@@ -9,6 +13,7 @@ pub struct Button {
     pub comp_id: usize,
     pub workspace_index: usize,
     pub pos: RectData,
+    // TODO: Consider using Arc instead of Rc, just in case
     pub label: Option<Rc<Mutex<String>>>,
     pub on_click: Box<dyn Fn() -> ()>,
 }
