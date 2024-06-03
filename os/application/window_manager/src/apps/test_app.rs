@@ -1,7 +1,10 @@
-use core::cell::Cell;
-
-use alloc::{boxed::Box, rc::Rc, string::String};
+use alloc::{
+    boxed::Box,
+    rc::Rc,
+    string::{String, ToString},
+};
 use drawer::drawer::{RectData, Vertex};
+use spin::Mutex;
 
 use crate::{api::Command, WindowManager};
 
@@ -13,7 +16,7 @@ impl Runnable for TestApp {
     fn run() {
         let handle = concurrent::thread::current().id();
         let api = WindowManager::get_api();
-        let qwe = Rc::new(Cell::new('0'));
+        let qwe = Rc::new(Mutex::new(String::from("0")));
         let qwe2 = Rc::clone(&qwe);
         api.execute(
             handle,
@@ -23,10 +26,11 @@ impl Runnable for TestApp {
                     width: 200,
                     height: 100,
                 },
-                label: Some(String::from("Hello")),
+                label: Some(qwe),
                 on_click: Box::new(move || {
-                    let old = qwe2.get().to_digit(10).unwrap();
-                    qwe2.set(char::from_digit(old + 1, 10).unwrap());
+                    let mut value = qwe2.lock();
+                    let old = (*value).parse::<usize>().unwrap();
+                    *value = (old + 1).to_string();
                 }),
             },
         );

@@ -1,9 +1,10 @@
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, rc::Rc, string::String};
 use concurrent::thread;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::WHITE;
 use hashbrown::HashMap;
 use nolock::queues::mpsc::jiffy::Sender;
+use spin::Mutex;
 
 use crate::{
     apps::{runnable::Runnable, test_app::TestApp},
@@ -19,7 +20,7 @@ pub enum Command {
     },
     CreateButton {
         pos: RectData,
-        label: Option<String>,
+        label: Option<Rc<Mutex<String>>>,
         on_click: Box<dyn Fn() -> ()>,
     },
 }

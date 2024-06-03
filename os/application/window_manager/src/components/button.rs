@@ -1,6 +1,7 @@
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, rc::Rc, string::{String, ToString}};
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::lfb::{CHAR_HEIGHT, CHAR_WIDTH};
+use spin::Mutex;
 
 use super::component::Component;
 
@@ -8,7 +9,7 @@ pub struct Button {
     pub comp_id: usize,
     pub workspace_index: usize,
     pub pos: RectData,
-    pub label: Option<String>,
+    pub label: Option<Rc<Mutex<String>>>,
     pub on_click: Box<dyn Fn() -> ()>,
 }
 
@@ -17,7 +18,7 @@ impl Button {
         comp_id: usize,
         workspace_index: usize,
         pos: RectData,
-        label: Option<String>,
+        label: Option<Rc<Mutex<String>>>,
         on_click: Box<dyn Fn() -> ()>,
     ) -> Self {
         Self {
@@ -59,10 +60,11 @@ impl Component for Button {
             height,
         } = self.pos;
         Drawer::draw_rectangle(top_left, top_left.add(width, height), color);
-        if let Some(label) = self.label.clone() {
-            let label_pos = self.calc_label_pos(&label);
+        if let Some(label_mutex) = &self.label {
+            let label = &label_mutex.lock();
+            let label_pos = self.calc_label_pos(label);
 
-            Drawer::draw_string(label, label_pos, color);
+            Drawer::draw_string(label.to_string(), label_pos, color);
         }
     }
 

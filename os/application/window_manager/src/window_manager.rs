@@ -7,7 +7,8 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use alloc::{borrow::ToOwned, boxed::Box, string::ToString, vec::Vec};
 use api::Api;
 use components::{
-    component::Component, selected_window_label::SelectedWorkspaceLabel, window::Window,
+    component::Component, selected_window_label::SelectedWorkspaceLabel,
+    window::Window,
 };
 use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
