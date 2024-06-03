@@ -1,4 +1,4 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::String};
 use concurrent::thread;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::WHITE;
@@ -19,7 +19,7 @@ pub enum Command {
     },
     CreateButton {
         pos: RectData,
-        label: Option<char>,
+        label: Option<String>,
         on_click: Box<dyn Fn() -> ()>,
     },
 }
@@ -95,7 +95,7 @@ impl Api {
                     WindowManager::generate_id(),
                     handle_data.workspace_index,
                     scaled_pos,
-                    label.unwrap_or('2'),
+                    label,
                     on_click,
                 );
                 self.add_component(Box::new(button));
