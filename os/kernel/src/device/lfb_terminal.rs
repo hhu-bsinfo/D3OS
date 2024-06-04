@@ -81,7 +81,7 @@ impl DisplayState {
     pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         let raw_lfb = LFB::new(buffer, pitch, width, height, bpp);
         let mut lfb = BufferedLFB::new(raw_lfb);
-        let size = ((width / lfb::CHAR_WIDTH) as u16, (height / lfb::CHAR_HEIGHT) as u16);
+        let size = ((width / lfb::DEFAULT_CHAR_WIDTH) as u16, (height / lfb::DEFAULT_CHAR_HEIGHT) as u16);
 
         let mut char_buffer = Vec::with_capacity(size.0 as usize * size.1 as usize * size_of::<Character>());
         for _ in 0..char_buffer.capacity() {
@@ -114,7 +114,7 @@ impl CursorThread {
             let cursor = self.terminal.cursor.lock();
             let character = display.char_buffer[(cursor.pos.1 * display.size.0 + cursor.pos.0) as usize];
 
-            display.lfb.direct_lfb().draw_char(cursor.pos.0 as u32 * lfb::CHAR_WIDTH, cursor.pos.1 as u32 * lfb::CHAR_HEIGHT, character.fg_color, character.bg_color, if self.visible { character.value } else { CURSOR });
+            display.lfb.direct_lfb().draw_char(cursor.pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, cursor.pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, character.fg_color, character.bg_color, if self.visible { character.value } else { CURSOR });
             self.visible = !self.visible;
 
             if sleep_counter >= 1000 {
@@ -238,14 +238,14 @@ impl LFBTerminal {
     }
 
     fn print_char_at(display: &mut DisplayState, color: &mut ColorState, c: char, pos: (u16, u16)) -> bool {
-        display.lfb.lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color.fg_color, color.bg_color, c)
-            && display.lfb.direct_lfb().draw_char(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color.fg_color, color.bg_color, c)
+        display.lfb.lfb().draw_char(pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, color.fg_color, color.bg_color, c)
+            && display.lfb.direct_lfb().draw_char(pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, color.fg_color, color.bg_color, c)
     }
 
     fn draw_status_bar(display: &mut DisplayState) {
         // Draw background
-        for i in 0..display.size.0 as u32 * lfb::CHAR_WIDTH {
-            for j in 0..lfb::CHAR_HEIGHT {
+        for i in 0..display.size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH {
+            for j in 0..lfb::DEFAULT_CHAR_HEIGHT {
                 display.lfb.lfb().draw_pixel(i, j, color::HHU_GREEN);
             }
         }
@@ -271,11 +271,11 @@ impl LFBTerminal {
 
             if let Ok(date) = runtime_services.get_time() {
                 let date_str = format!("{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
-                display.lfb.lfb().draw_string((display.size.0 as u32 - date_str.len() as u32) * lfb::CHAR_WIDTH, 0, color::HHU_BLUE, color::INVISIBLE, &date_str);
+                display.lfb.lfb().draw_string((display.size.0 as u32 - date_str.len() as u32) * lfb::DEFAULT_CHAR_WIDTH, 0, color::HHU_BLUE, color::INVISIBLE, &date_str);
             }
         }
 
-        display.lfb.flush_lines(0, lfb::CHAR_HEIGHT);
+        display.lfb.flush_lines(0, lfb::DEFAULT_CHAR_HEIGHT);
     }
 
     fn scroll_up(display: &mut DisplayState, color: &mut ColorState) {
@@ -293,8 +293,8 @@ impl LFBTerminal {
         });
 
         let size = display.size;
-        display.lfb.lfb().scroll_up(lfb::CHAR_HEIGHT);
-        display.lfb.lfb().fill_rect(0, (size.1 - 1) as u32 * lfb::CHAR_HEIGHT, size.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
+        display.lfb.lfb().scroll_up(lfb::DEFAULT_CHAR_HEIGHT);
+        display.lfb.lfb().fill_rect(0, (size.1 - 1) as u32 * lfb::DEFAULT_CHAR_HEIGHT, size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, lfb::DEFAULT_CHAR_HEIGHT, color.bg_color);
 
         LFBTerminal::draw_status_bar(display);
         display.lfb.flush();
@@ -330,7 +330,7 @@ impl LFBTerminal {
     fn clear_screen(display: &mut DisplayState, color: &mut ColorState) {
         // Clear screen
         let size = display.size;
-        display.lfb.lfb().fill_rect(0, 0, size.0 as u32 * lfb::CHAR_WIDTH, size.1 as u32 * lfb::CHAR_HEIGHT, color.bg_color);
+        display.lfb.lfb().fill_rect(0, 0, size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, size.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, color.bg_color);
 
         // Clear character buffer
         display.char_buffer.iter_mut().for_each(|item| {
@@ -348,10 +348,10 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear from start of line to cursor
-        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::CHAR_HEIGHT, pos.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
+        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, lfb::DEFAULT_CHAR_HEIGHT, color.bg_color);
 
         // Clear from start of screen to line before cursor
-        display.lfb.lfb().fill_rect(0, 0, size.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, color.bg_color);
+        display.lfb.lfb().fill_rect(0, 0, size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, color.bg_color);
 
         // Clear character buffer from beginning of screen to cursor
         display.char_buffer.iter_mut().enumerate()
@@ -371,10 +371,10 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear from cursor to end of line
-        display.lfb.lfb().fill_rect(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, (size.0 - pos.0) as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
+        display.lfb.lfb().fill_rect(pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, (size.0 - pos.0) as u32 * lfb::DEFAULT_CHAR_WIDTH, lfb::DEFAULT_CHAR_HEIGHT, color.bg_color);
 
         // Clear from next line to end of screen
-        display.lfb.lfb().fill_rect(0, (pos.1 + 1) as u32 * lfb::CHAR_HEIGHT, size.0 as u32 * lfb::CHAR_WIDTH, (size.1 - pos.1 - 1) as u32 * lfb::CHAR_HEIGHT, color.bg_color);
+        display.lfb.lfb().fill_rect(0, (pos.1 + 1) as u32 * lfb::DEFAULT_CHAR_HEIGHT, size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, (size.1 - pos.1 - 1) as u32 * lfb::DEFAULT_CHAR_HEIGHT, color.bg_color);
 
         // Clear character buffer from cursor to end of screen
         display.char_buffer.iter_mut().skip((pos.1 * size.0 + pos.0) as usize)
@@ -393,7 +393,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::CHAR_HEIGHT, size.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
+        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, lfb::DEFAULT_CHAR_HEIGHT, color.bg_color);
         // Clear line in character buffer
         display.char_buffer.iter_mut().skip((pos.1 * size.0) as usize).enumerate()
             .filter(|item| item.0 < size.0 as usize)
@@ -414,7 +414,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::CHAR_HEIGHT, pos.0 as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
+        display.lfb.lfb().fill_rect(0, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, lfb::DEFAULT_CHAR_HEIGHT, color.bg_color);
 
         // Clear line in character buffer
         display.char_buffer.iter_mut().skip((pos.1 * size.0) as usize).enumerate()
@@ -436,7 +436,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.lfb.lfb().fill_rect(pos.0 as u32 * lfb::CHAR_WIDTH, pos.1 as u32 * lfb::CHAR_HEIGHT, (size.0 - pos.0) as u32 * lfb::CHAR_WIDTH, lfb::CHAR_HEIGHT, color.bg_color);
+        display.lfb.lfb().fill_rect(pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, (size.0 - pos.0) as u32 * lfb::DEFAULT_CHAR_WIDTH, lfb::DEFAULT_CHAR_HEIGHT, color.bg_color);
 
         // Clear line in character buffer
         display.char_buffer.iter_mut().skip((pos.1 * size.0 + pos.0) as usize).enumerate()
