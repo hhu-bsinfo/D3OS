@@ -17,8 +17,8 @@ pub struct LFB {
 unsafe impl Send for LFB {}
 unsafe impl Sync for LFB {}
 
-pub const CHAR_HEIGHT: u32 = 16;
-pub const CHAR_WIDTH: u32 = 8;
+pub const DEFAULT_CHAR_WIDTH: u32 = 8;
+pub const DEFAULT_CHAR_HEIGHT: u32 = 16;
 
 impl LFB {
     pub const fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
@@ -97,6 +97,10 @@ impl LFB {
     }
 
     pub fn draw_char(&self, x: u32, y: u32, fg_color: Color, bg_color: Color, c: char) -> bool {
+        self.draw_char_scaled(x, y, 1, 2, fg_color, bg_color, c)
+    }
+
+    pub fn draw_char_scaled(&self, x: u32, y: u32, x_scale: u32, y_scale: u32, fg_color: Color, bg_color: Color, c: char) -> bool {
         let mut glyph = BASIC_FONTS.get(c);
         if glyph.is_none() {
             glyph = LATIN_FONTS.get(c);
@@ -131,13 +135,17 @@ impl LFB {
                         _ => fg_color,
                     };
 
-                    self.draw_pixel(x + x_offset, y + y_offset, color);
-                    self.draw_pixel(x + x_offset, y + y_offset + 1, color);
-                    x_offset += 1;
+                    for i in 0..x_scale {
+                        for j in 0..y_scale {
+                            self.draw_pixel(x + x_offset + i, y + y_offset + j, color);
+                        }
+                    }
+
+                    x_offset += x_scale;
                 }
 
                 x_offset = 0;
-                y_offset += 2;
+                y_offset += y_scale;
             }
 
             return true;
@@ -147,8 +155,12 @@ impl LFB {
     }
 
     pub fn draw_string(&self, x: u32, y: u32, fg_color: Color, bg_color: Color, string: &str) {
+        self.draw_string_scaled(x, y, 1, 2, fg_color, bg_color, string);
+    }
+
+    pub fn draw_string_scaled(&self, x: u32, y: u32, x_scale: u32, y_scale: u32, fg_color: Color, bg_color: Color, string: &str) {
         for c in string.chars().enumerate() {
-            self.draw_char(x + (c.0 as u32 * CHAR_WIDTH), y, fg_color, bg_color, c.1);
+            self.draw_char_scaled(x + (c.0 as u32 * (8 * x_scale)), y, x_scale, y_scale, fg_color, bg_color, c.1);
         }
     }
 
