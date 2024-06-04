@@ -1,8 +1,5 @@
+use unifont::get_glyph;
 use crate::color::Color;
-use font8x8::{
-    UnicodeFonts, BASIC_FONTS, BLOCK_FONTS, BOX_FONTS, GREEK_FONTS, HIRAGANA_FONTS, LATIN_FONTS,
-    MISC_FONTS, SGA_FONTS,
-};
 
 pub struct LFB {
     buffer: *mut u8,
@@ -97,65 +94,48 @@ impl LFB {
     }
 
     pub fn draw_char(&self, x: u32, y: u32, fg_color: Color, bg_color: Color, c: char) -> bool {
-        self.draw_char_scaled(x, y, 1, 2, fg_color, bg_color, c)
+        self.draw_char_scaled(x, y, 1, 1, fg_color, bg_color, c)
     }
 
     pub fn draw_char_scaled(&self, x: u32, y: u32, x_scale: u32, y_scale: u32, fg_color: Color, bg_color: Color, c: char) -> bool {
-        let mut glyph = BASIC_FONTS.get(c);
-        if glyph.is_none() {
-            glyph = LATIN_FONTS.get(c);
-            if glyph.is_none() {
-                glyph = BLOCK_FONTS.get(c);
-                if glyph.is_none() {
-                    glyph = BOX_FONTS.get(c);
-                    if glyph.is_none() {
-                        glyph = MISC_FONTS.get(c);
-                        if glyph.is_none() {
-                            glyph = GREEK_FONTS.get(c);
-                            if glyph.is_none() {
-                                glyph = HIRAGANA_FONTS.get(c);
-                                if glyph.is_none() {
-                                    glyph = SGA_FONTS.get(c);
+        return match get_glyph(c) {
+            Some(glyph) => {
+                if glyph.is_fullwidth() {
+                    // TODO: Support full width glyphs
+                    self.draw_char_scaled(x, y, x_scale, y_scale, fg_color, bg_color, ' ');
+                } else {
+                    let mut x_offset = 0;
+                    let mut y_offset = 0;
+
+                    for row in 0..DEFAULT_CHAR_HEIGHT {
+                        for col in 0..glyph.get_width() as u32 {
+                            let color = match glyph.get_pixel(col as usize, row as usize) {
+                                true => fg_color,
+                                false => bg_color
+                            };
+
+                            for i in 0..x_scale {
+                                for j in 0..y_scale {
+                                    self.draw_pixel(x + x_offset + i, y + y_offset + j, color);
                                 }
                             }
+
+                            x_offset += x_scale;
                         }
+
+                        x_offset = 0;
+                        y_offset += y_scale;
                     }
                 }
-            }
+
+                true
+            },
+            None => false
         }
-
-        if let Some(bitmap) = glyph {
-            let mut x_offset = 0;
-            let mut y_offset = 0;
-
-            for row in &bitmap {
-                for col in 0..8 {
-                    let color = match *row & 1 << col {
-                        0 => bg_color,
-                        _ => fg_color,
-                    };
-
-                    for i in 0..x_scale {
-                        for j in 0..y_scale {
-                            self.draw_pixel(x + x_offset + i, y + y_offset + j, color);
-                        }
-                    }
-
-                    x_offset += x_scale;
-                }
-
-                x_offset = 0;
-                y_offset += y_scale;
-            }
-
-            return true;
-        }
-
-        return false;
     }
 
     pub fn draw_string(&self, x: u32, y: u32, fg_color: Color, bg_color: Color, string: &str) {
-        self.draw_string_scaled(x, y, 1, 2, fg_color, bg_color, string);
+        self.draw_string_scaled(x, y, 1, 1, fg_color, bg_color, string);
     }
 
     pub fn draw_string_scaled(&self, x: u32, y: u32, x_scale: u32, y_scale: u32, fg_color: Color, bg_color: Color, string: &str) {
