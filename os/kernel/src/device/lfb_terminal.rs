@@ -2,7 +2,7 @@ use alloc::format;
 use crate::device::terminal::Terminal;
 use graphic::ansi::COLOR_TABLE_256;
 use graphic::buffered_lfb::BufferedLFB;
-use graphic::color::Color;
+use graphic::color::{Color, INVISIBLE};
 use graphic::lfb::LFB;
 use graphic::{color, lfb};
 use stream::{InputStream, OutputStream};
@@ -114,7 +114,15 @@ impl CursorThread {
             let cursor = self.terminal.cursor.lock();
             let character = display.char_buffer[(cursor.pos.1 * display.size.0 + cursor.pos.0) as usize];
 
-            display.lfb.direct_lfb().draw_char(cursor.pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, cursor.pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, character.fg_color, character.bg_color, if self.visible { character.value } else { CURSOR });
+            let draw_character = match self.visible {
+                true => match character.value {
+                    '\0' => ' ',
+                    value => value
+                }
+                false => CURSOR
+            };
+
+            display.lfb.direct_lfb().draw_char(cursor.pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, cursor.pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, character.fg_color, character.bg_color, draw_character);
             self.visible = !self.visible;
 
             if sleep_counter >= 1000 {
@@ -214,11 +222,29 @@ impl LFBTerminal {
             cursor.pos.0 = 0;
             cursor.pos.1 += 1;
         } else {
-            if LFBTerminal::print_char_at(&mut display, &mut color, c, cursor.pos) {
+            let char_width = LFBTerminal::print_char_at(&mut display, &mut color, c, cursor.pos);
+            if char_width > 0 {
                 let index = (cursor.pos.1 * display.size.0 + cursor.pos.0) as usize;
+                let char_columns = (char_width / lfb::DEFAULT_CHAR_WIDTH + (if char_width % lfb::DEFAULT_CHAR_WIDTH == 0 { 0 } else { 1 })) as u16;
+
+                // Set character in character buffer
                 display.char_buffer[index] = Character { value: c, fg_color: color.fg_color, bg_color: color.bg_color };
 
-                cursor.pos.0 += 1;
+                // Null out following, if glyph is larger than one column
+                for i in 1..char_columns {
+                    if cursor.pos.0 + i >= display.size.0 {
+                        break;
+                    }
+
+                    display.char_buffer[index + i as usize] = Character { value: '\0', fg_color: INVISIBLE, bg_color: INVISIBLE };
+                }
+
+                if cursor.pos.0 + char_columns >= display.size.0 {
+                    let row = cursor.pos.1;
+                    LFBTerminal::position(&mut display, &mut cursor, &mut color, (0, row + 1));
+                } else {
+                    cursor.pos.0 += char_columns;
+                }
             }
         }
 
@@ -237,9 +263,9 @@ impl LFBTerminal {
         }
     }
 
-    fn print_char_at(display: &mut DisplayState, color: &mut ColorState, c: char, pos: (u16, u16)) -> bool {
-        display.lfb.lfb().draw_char(pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, color.fg_color, color.bg_color, c)
-            && display.lfb.direct_lfb().draw_char(pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, color.fg_color, color.bg_color, c)
+    fn print_char_at(display: &mut DisplayState, color: &mut ColorState, c: char, pos: (u16, u16)) -> u32 {
+        display.lfb.lfb().draw_char(pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, color.fg_color, color.bg_color, c);
+        display.lfb.direct_lfb().draw_char(pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, color.fg_color, color.bg_color, c)
     }
 
     fn draw_status_bar(display: &mut DisplayState) {
