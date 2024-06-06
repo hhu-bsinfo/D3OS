@@ -13,7 +13,7 @@ use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::{
     color::{WHITE, YELLOW},
-    lfb::{CHAR_HEIGHT, CHAR_WIDTH},
+    lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
 use hashbrown::HashMap;
 use io::{read::read, Application};
@@ -275,9 +275,9 @@ impl WindowManager {
             0,
             Vertex::new(
                 DIST_TO_SCREEN_EDGE
-                    + new_workspace_len * CHAR_WIDTH
+                    + new_workspace_len * DEFAULT_CHAR_WIDTH
                     + SELECTED_WINDOW_LABEL_SPACING * (new_workspace_len - 1),
-                DIST_TO_SCREEN_EDGE + CHAR_HEIGHT,
+                DIST_TO_SCREEN_EDGE + DEFAULT_CHAR_HEIGHT,
             ),
             char::from_digit(new_workspace_len, 10).unwrap().to_string(),
             (new_workspace_len - 1) as usize,

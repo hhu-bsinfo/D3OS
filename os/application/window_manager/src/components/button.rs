@@ -4,7 +4,7 @@ use alloc::{
     string::{String, ToString},
 };
 use drawer::drawer::{Drawer, RectData, Vertex};
-use graphic::lfb::{CHAR_HEIGHT, CHAR_WIDTH};
+use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use spin::Mutex;
 
 use super::component::Component;
@@ -43,8 +43,8 @@ impl Button {
         } = self.pos;
 
         top_left.add(
-            width.saturating_sub(CHAR_WIDTH * (label.chars().count() as u32)) / 2,
-            height.saturating_sub(CHAR_HEIGHT) / 2,
+            width.saturating_sub(DEFAULT_CHAR_WIDTH * (label.chars().count() as u32)) / 2,
+            height.saturating_sub(DEFAULT_CHAR_HEIGHT) / 2,
         )
     }
 }
