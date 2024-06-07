@@ -73,7 +73,10 @@ pub enum DrawerCommand {
         to: Vertex,
         color: Color,
     },
-    DrawPolygon(Vec<Vertex>, Color),
+    DrawPolygon {
+        vertices: Vec<Vertex>,
+        color: Color,
+    },
     DrawCircle {
         center: Vertex,
         radius: u32,
@@ -119,7 +122,7 @@ impl Drawer {
     }
 
     pub fn draw_polygon(vertices: Vec<Vertex>, color: Color) {
-        let command = DrawerCommand::DrawPolygon(vertices, color);
+        let command = DrawerCommand::DrawPolygon { vertices, color };
 
         Self::execute(command);
     }
@@ -155,15 +158,15 @@ impl Drawer {
     }
 
     pub fn draw_rectangle(top_left: Vertex, bottom_right: Vertex, color: Color) {
-        let command = DrawerCommand::DrawPolygon(
-            vec![
+        let command = DrawerCommand::DrawPolygon {
+            vertices: vec![
                 Vertex::new(top_left.x, top_left.y),
                 Vertex::new(bottom_right.x, top_left.y),
                 Vertex::new(bottom_right.x, bottom_right.y),
                 Vertex::new(top_left.x, bottom_right.y),
             ],
             color,
-        );
+        };
 
         Self::execute(command);
     }
