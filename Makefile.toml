@@ -60,6 +60,10 @@ command = "tar"
 args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "shell", "uptime", "date" ]
 dependencies = [ "link-members" ]
 
+[tasks.initrd.mac]
+cwd = "${INITRD_DIRECTORY}"
+command = "gtar"
+
 [tasks.image]
 cwd = "${BOOTLOADER_DIRECTORY}"
 command = "towbootctl"
