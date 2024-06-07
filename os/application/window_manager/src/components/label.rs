@@ -38,7 +38,7 @@ impl Component for Label {
         Drawer::draw_string(self.text.to_string(), self.pos, color);
     }
 
-    fn interact(&self, interaction: Interaction) {}
+    fn interact(&self, _interaction: Interaction) {}
 
     fn as_any(&self) -> &dyn Any {
         self

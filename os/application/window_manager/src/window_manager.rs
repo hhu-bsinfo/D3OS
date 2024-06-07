@@ -119,32 +119,32 @@ impl WindowManager {
                 }
                 'h' => {
                     self.split_window(
-                        self.workspaces[self.current_workspace].focused_window_id,
+                        self.get_current_workspace().focused_window_id,
                         SplitType::Horizontal,
                     );
                 }
                 'v' => {
                     self.split_window(
-                        self.workspaces[self.current_workspace].focused_window_id,
+                        self.get_current_workspace().focused_window_id,
                         SplitType::Vertical,
                     );
                 }
                 'w' => {
-                    self.workspaces[self.current_workspace].focus_next_component();
+                    self.get_current_workspace_mut().focus_next_component();
                 }
                 's' => {
-                    self.workspaces[self.current_workspace].focus_prev_component();
+                    self.get_current_workspace_mut().focus_prev_component();
                 }
                 'f' => {
-                    self.workspaces[self.current_workspace]
+                    self.get_current_workspace()
                         .get_focused_window()
                         .interact_with_focused_component(Interaction::Press);
                 }
                 'a' => {
-                    self.workspaces[self.current_workspace].focus_prev_window();
+                    self.get_current_workspace_mut().focus_prev_window();
                 }
                 'd' => {
-                    self.workspaces[self.current_workspace].focus_next_window();
+                    self.get_current_workspace_mut().focus_next_window();
                 }
                 //TODO: Add merge functionality. Make it buddy-style merging when both buddies finished
                 // running their application
@@ -175,7 +175,7 @@ impl WindowManager {
         let window_id = Self::generate_id();
         let window = Window::new(window_id, self.current_workspace, rect_data);
 
-        let curr_ws = &mut self.workspaces[self.current_workspace];
+        let curr_ws = self.get_current_workspace_mut();
 
         if is_focusable {
             let focused_window_id = curr_ws.focused_window_id;
@@ -188,7 +188,7 @@ impl WindowManager {
     }
 
     fn split_window(&mut self, window_id: usize, split_type: SplitType) {
-        let curr_ws = &mut self.workspaces[self.current_workspace];
+        let curr_ws = self.get_current_workspace_mut();
 
         if let Some(window) = curr_ws.windows.get_mut(&window_id) {
             let RectData {
@@ -277,9 +277,17 @@ impl WindowManager {
         self.current_workspace = (self.current_workspace + 1) % self.workspaces.len();
     }
 
+    fn get_current_workspace(&self) -> &Workspace {
+        &self.workspaces[self.current_workspace]
+    }
+
+    fn get_current_workspace_mut(&mut self) -> &mut Workspace {
+        &mut self.workspaces[self.current_workspace]
+    }
+
     fn draw(&self) {
         Drawer::clear_screen();
-        let curr_ws = &self.workspaces[self.current_workspace];
+        let curr_ws = self.get_current_workspace();
 
         // Redraw everything related to workspace-selection-labels
         self.workspace_selection_labels_window

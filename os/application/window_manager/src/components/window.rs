@@ -5,9 +5,7 @@ use hashbrown::HashMap;
 
 use crate::{components::component::Component, WindowManager};
 
-use super::{
-    button::Button, component::Interaction, selected_window_label::SelectedWorkspaceLabel,
-};
+use super::{component::Interaction, selected_window_label::SelectedWorkspaceLabel};
 
 pub struct Window {
     pub id: usize,
