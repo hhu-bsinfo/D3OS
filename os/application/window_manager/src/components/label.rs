@@ -3,7 +3,7 @@ use core::any::Any;
 use drawer::drawer::{Drawer, Vertex};
 use graphic::color::Color;
 
-use super::component::Component;
+use super::component::{Component, Interaction};
 
 /**
 Since [`draw_string()`](drawer::drawer::Drawer) uses the 8x8-font impl on kernel-side,
@@ -37,6 +37,8 @@ impl Component for Label {
     fn draw(&self, color: Color) {
         Drawer::draw_string(self.text.to_string(), self.pos, color);
     }
+
+    fn interact(&self, interaction: Interaction) {}
 
     fn as_any(&self) -> &dyn Any {
         self

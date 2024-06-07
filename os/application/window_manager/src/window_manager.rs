@@ -6,7 +6,9 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::{borrow::ToOwned, boxed::Box, string::ToString, vec::Vec};
 use api::{Api, DispatchData};
-use components::{selected_window_label::SelectedWorkspaceLabel, window::Window};
+use components::{
+    component::Interaction, selected_window_label::SelectedWorkspaceLabel, window::Window,
+};
 use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::{
@@ -127,12 +129,16 @@ impl WindowManager {
                         SplitType::Vertical,
                     );
                 }
-                // Select next focused component
                 'w' => {
                     self.workspaces[self.current_workspace].focus_next_component();
                 }
                 's' => {
                     self.workspaces[self.current_workspace].focus_prev_component();
+                }
+                'f' => {
+                    self.workspaces[self.current_workspace]
+                        .get_focused_window()
+                        .interact_with_focused_component(Interaction::Press);
                 }
                 'a' => {
                     self.workspaces[self.current_workspace].focus_prev_window();

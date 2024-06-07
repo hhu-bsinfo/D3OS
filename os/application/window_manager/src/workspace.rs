@@ -84,4 +84,12 @@ impl Workspace {
         let focused_window = self.windows.get_mut(&self.focused_window_id).unwrap();
         focused_window.focus_prev_component();
     }
+
+    pub fn get_focused_window(&self) -> &Window {
+        self.windows.get(&self.focused_window_id).unwrap()
+    }
+
+    pub fn get_focused_window_mut(&mut self) -> &mut Window {
+        self.windows.get_mut(&self.focused_window_id).unwrap()
+    }
 }

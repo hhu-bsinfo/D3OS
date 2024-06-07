@@ -7,7 +7,7 @@ use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use spin::Mutex;
 
-use super::component::Component;
+use super::component::{Component, Interaction};
 
 pub struct Button {
     pub comp_id: usize,
@@ -66,6 +66,14 @@ impl Component for Button {
             let label_pos = self.calc_label_pos(label);
 
             Drawer::draw_string(label.to_string(), label_pos, color);
+        }
+    }
+
+    fn interact(&self, interaction: Interaction) {
+        match interaction {
+            Interaction::Press => {
+                (self.on_click)();
+            }
         }
     }
 

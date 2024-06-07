@@ -5,15 +5,17 @@ use hashbrown::HashMap;
 
 use crate::{components::component::Component, WindowManager};
 
-use super::selected_window_label::SelectedWorkspaceLabel;
+use super::{
+    button::Button, component::Interaction, selected_window_label::SelectedWorkspaceLabel,
+};
 
 pub struct Window {
     pub id: usize,
-    pub workspace_index: usize,
-    pub components: HashMap<usize, Box<dyn Component>>,
-    // focusable components are stored additionally in ordered fashion in here
-    pub component_orderer: Vec<usize>,
     pub rect_data: RectData,
+    workspace_index: usize,
+    components: HashMap<usize, Box<dyn Component>>,
+    // focusable components are stored additionally in ordered fashion in here
+    component_orderer: Vec<usize>,
     focused_component_id: Option<usize>,
 }
 
@@ -40,6 +42,13 @@ impl Window {
             if self.component_orderer.len() == 1 {
                 self.focused_component_id = Some(id);
             }
+        }
+    }
+
+    pub fn interact_with_focused_component(&self, interaction: Interaction) {
+        if let Some(focused_component_id) = &self.focused_component_id {
+            let focused_component = self.components.get(focused_component_id).unwrap();
+            focused_component.interact(interaction);
         }
     }
 
