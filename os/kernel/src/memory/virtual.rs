@@ -170,6 +170,7 @@ impl AddressSpace {
             for (index, target_entry) in target.iter_mut().enumerate() {
                 let source_entry = &source[index];
                 if source_entry.is_unused() { // Skip empty entries
+                    target_entry.set_unused();
                     continue;
                 }
 

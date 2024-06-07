@@ -205,7 +205,7 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
     let thread = scheduler().current_thread();
 
     // Check if page fault occurred right below the user stack
-    if !thread.stacks_locked() && fault_addr > (thread.user_stack_start() - PAGE_SIZE as u64) && fault_addr < thread.user_stack_start() {
+    if !thread.is_kernel_thread() && !thread.stacks_locked() && fault_addr > (thread.user_stack_start() - PAGE_SIZE as u64) && fault_addr < thread.user_stack_start() {
         thread.grow_user_stack(); // Grow stack by one page
     } else {
         panic!("Page Fault!\nError code: [{:?}]\nAddress: [0x{:0>16x}]\n{:?}", error, fault_addr, frame);
