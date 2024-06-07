@@ -1,34 +1,33 @@
 use crate::components::{component::Component, window::Window};
-use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 use hashbrown::HashMap;
 
 pub struct Workspace {
-    pub components: HashMap<usize, Box<dyn Component>>,
+    pub windows: HashMap<usize, Window>,
     pub focused_window_id: Option<usize>,
     pub window_orderer: Vec<usize>,
 }
 
 impl Workspace {
     pub fn new_with_single_window(
-        window: (usize, Box<Window>),
+        window: (usize, Window),
         focused_window_id: Option<usize>,
     ) -> Self {
         let window_orderer = vec![window.0];
-        let mut windows: HashMap<usize, Box<dyn Component>> = HashMap::new();
+        let mut windows: HashMap<usize, Window> = HashMap::new();
         windows.insert(window.0, window.1);
 
         Self {
-            components: windows,
+            windows,
             focused_window_id,
             window_orderer,
         }
     }
 
-    pub fn insert_focusable_window(&mut self, window: Box<Window>, after: Option<usize>) {
+    pub fn insert_focusable_window(&mut self, window: Window, after: Option<usize>) {
         let new_window_id = window.id;
-        self.components.insert(new_window_id, window);
+        self.windows.insert(new_window_id, window);
         match after {
             Some(after_window_id) => {
                 if let Some(index) = self
@@ -45,11 +44,6 @@ impl Workspace {
             }
             None => self.window_orderer.push(new_window_id),
         }
-    }
-
-    pub fn insert_unfocusable_window(&mut self, window: Box<Window>) {
-        let new_window_id = window.id;
-        self.components.insert(new_window_id, window);
     }
 
     pub fn focus_next_window(&mut self) {
@@ -81,7 +75,7 @@ impl Workspace {
         }
     }
 
-    pub fn insert_component(&mut self, component: Box<dyn Component>) {
-        self.components.insert(component.id(), component);
+    pub fn insert_unfocusable_window(&mut self, new_window: Window) {
+        self.windows.insert(new_window.id(), new_window);
     }
 }

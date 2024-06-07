@@ -8,7 +8,9 @@ use spin::{Mutex, RwLock};
 
 use crate::{
     apps::{clock::Clock, runnable::Runnable},
-    components::{button::Button, component::Component, dynamic_label::DynamicLabel},
+    components::{
+        button::Button, component::Component, dynamic_label::DynamicLabel,
+    },
     WindowManager,
 };
 
@@ -33,7 +35,7 @@ pub enum Command {
 pub struct Api {
     pub handles: HashMap<usize, HandleData>,
     screen_dims: (u32, u32),
-    tx_wm: Sender<Box<dyn Component>>,
+    tx_components: Sender<DispatchData>,
 }
 
 pub struct HandleData {
@@ -43,12 +45,18 @@ pub struct HandleData {
     ratios: (f64, f64),
 }
 
+pub struct DispatchData {
+    pub workspace_index: usize,
+    pub window_id: usize,
+    pub component: Box<dyn Component>,
+}
+
 impl Api {
-    pub fn new(screen_dims: (u32, u32), tx_wm: Sender<Box<dyn Component>>) -> Self {
+    pub fn new(screen_dims: (u32, u32), tx_components: Sender<DispatchData>) -> Self {
         Self {
             handles: HashMap::new(),
             screen_dims,
-            tx_wm,
+            tx_components,
         }
     }
 
@@ -105,7 +113,13 @@ impl Api {
                     on_click,
                 );
 
-                self.add_component(Box::new(button));
+                let dispatch_data = DispatchData {
+                    workspace_index: handle_data.workspace_index,
+                    window_id: handle_data.window_id,
+                    component: Box::new(button),
+                };
+
+                self.add_component(dispatch_data);
             }
             Command::CreateDynamicLabel {
                 pos,
@@ -122,15 +136,21 @@ impl Api {
                     on_create,
                 );
 
-                self.add_component(Box::new(label));
+                let dispatch_data = DispatchData {
+                    workspace_index: handle_data.workspace_index,
+                    window_id: handle_data.window_id,
+                    component: Box::new(label),
+                };
+
+                self.add_component(dispatch_data);
             }
         }
 
         Ok(())
     }
 
-    fn add_component(&self, component: Box<dyn Component>) {
-        self.tx_wm.enqueue(component);
+    fn add_component(&self, dispatch_data: DispatchData) {
+        self.tx_components.enqueue(dispatch_data);
     }
 
     fn scale_to_window(
