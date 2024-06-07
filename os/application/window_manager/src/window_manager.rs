@@ -6,9 +6,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::{borrow::ToOwned, boxed::Box, string::ToString, vec::Vec};
 use api::{Api, DispatchData};
-use components::{
-    component::Component, selected_window_label::SelectedWorkspaceLabel, window::Window,
-};
+use components::{selected_window_label::SelectedWorkspaceLabel, window::Window};
 use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::{
@@ -118,21 +116,24 @@ impl WindowManager {
                     self.switch_next_workspace();
                 }
                 'h' => {
-                    if let Some(window_id) =
-                        self.workspaces[self.current_workspace].focused_window_id
-                    {
-                        self.split_window(window_id, SplitType::Horizontal);
-                    }
+                    self.split_window(
+                        self.workspaces[self.current_workspace].focused_window_id,
+                        SplitType::Horizontal,
+                    );
                 }
                 'v' => {
-                    if let Some(window_id) =
-                        self.workspaces[self.current_workspace].focused_window_id
-                    {
-                        self.split_window(window_id, SplitType::Vertical);
-                    }
+                    self.split_window(
+                        self.workspaces[self.current_workspace].focused_window_id,
+                        SplitType::Vertical,
+                    );
                 }
                 // Select next focused component
-                'w' => {}
+                'w' => {
+                    self.workspaces[self.current_workspace].focus_next_component();
+                }
+                's' => {
+                    self.workspaces[self.current_workspace].focus_prev_component();
+                }
                 'a' => {
                     self.workspaces[self.current_workspace].focus_prev_window();
                 }
@@ -148,19 +149,17 @@ impl WindowManager {
                 _ => {}
             }
 
-            // Add all new components to corresponding workspace
+            // Add all new components from queue to corresponding workspace
             while let Ok(DispatchData {
                 workspace_index,
                 window_id,
                 component,
             }) = self.receiver_api_components.try_dequeue()
             {
-                let workspace = &mut self.workspaces[workspace_index];
-                let window = &mut workspace.windows.get_mut(&window_id);
+                let curr_ws = &mut self.workspaces[workspace_index];
+                let window = &mut curr_ws.windows.get_mut(&window_id);
                 if let Some(window) = window {
-                    if let Some(window) = window.as_any_mut().downcast_mut::<Window>() {
-                        window.insert_component(component, true);
-                    }
+                    window.insert_component(component, true);
                 }
             }
         }
@@ -174,7 +173,7 @@ impl WindowManager {
 
         if is_focusable {
             let focused_window_id = curr_ws.focused_window_id;
-            curr_ws.insert_focusable_window(window, focused_window_id);
+            curr_ws.insert_focusable_window(window, Some(focused_window_id));
         } else {
             curr_ws.insert_unfocusable_window(window);
         }
@@ -185,34 +184,32 @@ impl WindowManager {
     fn split_window(&mut self, window_id: usize, split_type: SplitType) {
         let curr_ws = &mut self.workspaces[self.current_workspace];
 
-        if let Some(component) = curr_ws.windows.get_mut(&window_id) {
-            if let Some(window) = component.as_any_mut().downcast_mut::<Window>() {
-                let RectData {
-                    top_left: old_top_left,
-                    width: old_width,
-                    height: old_height,
-                } = window.rect_data;
-                match split_type {
-                    SplitType::Horizontal => {
-                        window.rect_data.height /= 2;
-                        let new_top_left = old_top_left.add(0, window.rect_data.height);
-                        let new_rect_data = RectData {
-                            top_left: new_top_left,
-                            width: old_width,
-                            height: window.rect_data.height,
-                        };
-                        self.add_window_to_workspace(new_rect_data, true);
-                    }
-                    SplitType::Vertical => {
-                        window.rect_data.width /= 2;
-                        let new_top_left = old_top_left.add(window.rect_data.width, 0);
-                        let new_rect_data = RectData {
-                            top_left: new_top_left,
-                            width: window.rect_data.width,
-                            height: old_height,
-                        };
-                        self.add_window_to_workspace(new_rect_data, true);
-                    }
+        if let Some(window) = curr_ws.windows.get_mut(&window_id) {
+            let RectData {
+                top_left: old_top_left,
+                width: old_width,
+                height: old_height,
+            } = window.rect_data;
+            match split_type {
+                SplitType::Horizontal => {
+                    window.rect_data.height /= 2;
+                    let new_top_left = old_top_left.add(0, window.rect_data.height);
+                    let new_rect_data = RectData {
+                        top_left: new_top_left,
+                        width: old_width,
+                        height: window.rect_data.height,
+                    };
+                    self.add_window_to_workspace(new_rect_data, true);
+                }
+                SplitType::Vertical => {
+                    window.rect_data.width /= 2;
+                    let new_top_left = old_top_left.add(window.rect_data.width, 0);
+                    let new_rect_data = RectData {
+                        top_left: new_top_left,
+                        width: window.rect_data.width,
+                        height: old_height,
+                    };
+                    self.add_window_to_workspace(new_rect_data, true);
                 }
             }
         }
@@ -261,7 +258,7 @@ impl WindowManager {
         self.workspace_selection_labels_window
             .insert_component(Box::new(workspace_selection_label), false);
 
-        let workspace = Workspace::new_with_single_window((window_id, window), Some(window_id));
+        let workspace = Workspace::new_with_single_window((window_id, window), window_id);
 
         self.workspaces.insert(self.current_workspace, workspace);
     }
@@ -279,19 +276,22 @@ impl WindowManager {
         let curr_ws = &self.workspaces[self.current_workspace];
 
         // Redraw everything related to workspace-selection-labels
-        self.workspace_selection_labels_window.draw(WHITE);
+        self.workspace_selection_labels_window
+            .draw(WHITE, curr_ws.focused_window_id);
         self.workspace_selection_labels_window
             .draw_selected_workspace_labels(self.current_workspace);
 
         // Redraw workspace windows
-        for (_, window) in curr_ws.windows.iter() {
-            window.draw(WHITE);
+        for window in curr_ws.windows.values() {
+            window.draw(WHITE, curr_ws.focused_window_id);
         }
 
         // Redraw focused element so yellow color is on top
-        if let Some(focused_window_id) = &curr_ws.focused_window_id {
-            curr_ws.windows.get(focused_window_id).unwrap().draw(YELLOW);
-        }
+        curr_ws
+            .windows
+            .get(&curr_ws.focused_window_id)
+            .unwrap()
+            .draw(YELLOW, curr_ws.focused_window_id);
     }
 }
 

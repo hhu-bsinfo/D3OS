@@ -1,5 +1,4 @@
 use alloc::{boxed::Box, vec::Vec};
-use core::any::Any;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::{Color, WHITE, YELLOW};
 use hashbrown::HashMap;
@@ -12,8 +11,10 @@ pub struct Window {
     pub id: usize,
     pub workspace_index: usize,
     pub components: HashMap<usize, Box<dyn Component>>,
+    // focusable components are stored additionally in ordered fashion in here
     pub component_orderer: Vec<usize>,
     pub rect_data: RectData,
+    focused_component_id: Option<usize>,
 }
 
 impl Window {
@@ -24,6 +25,7 @@ impl Window {
             components: HashMap::new(),
             component_orderer: Vec::new(),
             rect_data,
+            focused_component_id: None,
         }
     }
 
@@ -33,6 +35,11 @@ impl Window {
 
         if is_focusable {
             self.component_orderer.push(id);
+
+            // Focus new (focusable) component, if it is the first one in the window
+            if self.component_orderer.len() == 1 {
+                self.focused_component_id = Some(id);
+            }
         }
     }
 
@@ -61,18 +68,40 @@ impl Window {
             label.draw(color);
         }
     }
-}
 
-impl Component for Window {
-    fn id(&self) -> usize {
-        self.id
+    pub fn focus_next_component(&mut self) {
+        if let Some(focused_component_id) = self.focused_component_id {
+            let index = self
+                .component_orderer
+                .iter()
+                .position(|comp| *comp == focused_component_id)
+                .unwrap();
+
+            let next_index = (index + 1) % self.component_orderer.len();
+
+            self.focused_component_id = Some(self.component_orderer[next_index]);
+        }
     }
 
-    fn workspace_index(&self) -> usize {
-        self.workspace_index
+    pub fn focus_prev_component(&mut self) {
+        if let Some(focused_component_id) = self.focused_component_id {
+            let index = self
+                .component_orderer
+                .iter()
+                .position(|comp| *comp == focused_component_id)
+                .unwrap();
+
+            let prev_index = if index == 0 {
+                self.component_orderer.len() - 1
+            } else {
+                index - 1
+            };
+
+            self.focused_component_id = Some(self.component_orderer[prev_index]);
+        }
     }
 
-    fn draw(&self, color: Color) {
+    pub fn draw(&self, color: Color, focused_window_id: usize) {
         let RectData {
             top_left,
             width,
@@ -83,16 +112,18 @@ impl Component for Window {
             Vertex::new(top_left.x + width, top_left.y + height),
             color,
         );
-        for (_, component) in self.components.iter() {
+
+        for component in self.components.values() {
             component.draw(WHITE);
         }
-    }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
+        if self.id == focused_window_id {
+            if let Some(focused_component_id) = self.focused_component_id {
+                self.components
+                    .get(&focused_component_id)
+                    .unwrap()
+                    .draw(YELLOW);
+            }
+        }
     }
 }

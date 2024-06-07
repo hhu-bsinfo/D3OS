@@ -14,7 +14,13 @@ pub struct SelectedWorkspaceLabel {
 }
 
 impl SelectedWorkspaceLabel {
-    pub fn new(id: usize, workspace_index: usize, pos: Vertex, text: String, tied_workspace: usize) -> Self {
+    pub fn new(
+        id: usize,
+        workspace_index: usize,
+        pos: Vertex,
+        text: String,
+        tied_workspace: usize,
+    ) -> Self {
         Self {
             id,
             workspace_index,
@@ -28,10 +34,6 @@ impl SelectedWorkspaceLabel {
 impl Component for SelectedWorkspaceLabel {
     fn id(&self) -> usize {
         self.id
-    }
-
-    fn workspace_index(&self) -> usize {
-        self.workspace_index
     }
 
     fn draw(&self, color: Color) {

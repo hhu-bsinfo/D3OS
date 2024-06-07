@@ -1,19 +1,17 @@
-use crate::components::{component::Component, window::Window};
+use crate::components::window::Window;
 use alloc::vec;
 use alloc::vec::Vec;
 use hashbrown::HashMap;
 
 pub struct Workspace {
     pub windows: HashMap<usize, Window>,
-    pub focused_window_id: Option<usize>,
+    pub focused_window_id: usize,
+    // focusable windows are stored additionally in ordered fashion in here
     pub window_orderer: Vec<usize>,
 }
 
 impl Workspace {
-    pub fn new_with_single_window(
-        window: (usize, Window),
-        focused_window_id: Option<usize>,
-    ) -> Self {
+    pub fn new_with_single_window(window: (usize, Window), focused_window_id: usize) -> Self {
         let window_orderer = vec![window.0];
         let mut windows: HashMap<usize, Window> = HashMap::new();
         windows.insert(window.0, window.1);
@@ -47,35 +45,43 @@ impl Workspace {
     }
 
     pub fn focus_next_window(&mut self) {
-        if let Some(focused_window_id) = self.focused_window_id {
-            let index = self
-                .window_orderer
-                .iter()
-                .position(|id| *id == focused_window_id)
-                .unwrap();
-            let next_index = (index + 1) % self.window_orderer.len();
-            self.focused_window_id = Some(self.window_orderer[next_index]);
-        }
+        let index = self
+            .window_orderer
+            .iter()
+            .position(|id| *id == self.focused_window_id)
+            .unwrap();
+        let next_index = (index + 1) % self.window_orderer.len();
+        self.focused_window_id = self.window_orderer[next_index];
     }
 
     pub fn focus_prev_window(&mut self) {
-        if let Some(focused_window_id) = self.focused_window_id {
-            let index = self
-                .window_orderer
-                .iter()
-                .position(|id| *id == focused_window_id)
-                .unwrap();
-            let prev_index = if index == 0 {
-                self.window_orderer.len() - 1
-            } else {
-                index - 1
-            };
+        let index = self
+            .window_orderer
+            .iter()
+            .position(|id| *id == self.focused_window_id)
+            .unwrap();
+        let prev_index = if index == 0 {
+            self.window_orderer.len() - 1
+        } else {
+            index - 1
+        };
 
-            self.focused_window_id = Some(self.window_orderer[prev_index]);
-        }
+        self.focused_window_id = self.window_orderer[prev_index];
     }
 
     pub fn insert_unfocusable_window(&mut self, new_window: Window) {
-        self.windows.insert(new_window.id(), new_window);
+        self.windows.insert(new_window.id, new_window);
+    }
+
+    /// Moves focus to the next component in currently focused window
+    pub fn focus_next_component(&mut self) {
+        let focused_window = self.windows.get_mut(&self.focused_window_id).unwrap();
+        focused_window.focus_next_component();
+    }
+
+    /// Moves focus to the previous component in currently focused window
+    pub fn focus_prev_component(&mut self) {
+        let focused_window = self.windows.get_mut(&self.focused_window_id).unwrap();
+        focused_window.focus_prev_component();
     }
 }

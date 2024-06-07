@@ -54,10 +54,6 @@ impl Component for Button {
         self.comp_id
     }
 
-    fn workspace_index(&self) -> usize {
-        self.workspace_index
-    }
-
     fn draw(&self, color: graphic::color::Color) {
         let RectData {
             top_left,

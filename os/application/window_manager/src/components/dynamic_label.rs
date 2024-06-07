@@ -46,10 +46,6 @@ impl Component for DynamicLabel {
         self.id
     }
 
-    fn workspace_index(&self) -> usize {
-        self.workspace_index
-    }
-
     fn draw(&self, color: Color) {
         let text = self.text.read();
         Drawer::draw_string(text.deref().clone(), self.pos, color);
