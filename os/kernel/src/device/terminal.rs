@@ -1,8 +1,8 @@
-use stream::{InputStream, OutputStream};
+use crate::terminal;
 use core::fmt::Write;
 use core::ops::Deref;
 use core::{fmt, ptr};
-use crate::terminal;
+use stream::{InputStream, OutputStream};
 
 pub trait Terminal: OutputStream + InputStream {
     fn clear(&self);
@@ -16,20 +16,6 @@ impl Write for dyn Terminal {
         self.deref().write_str(s);
         return Ok(());
     }
-}
-
-// Provide macros like in the 'io' module of Rust
-// The $crate variable ensures that the macro also works
-// from outside the 'std' crate.
-macro_rules! print {
-    ($($arg:tt)*) => ({
-        $crate::device::terminal::print(format_args!($($arg)*));
-    });
-}
-
-macro_rules! println {
-    ($fmt:expr) => (print!(concat!($fmt, "\n")));
-    ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
 }
 
 // Helper function of print macros (must be public)
