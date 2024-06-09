@@ -1,7 +1,6 @@
 use alloc::{boxed::Box, rc::Rc, string::String};
 use concurrent::thread;
-use drawer::drawer::{Drawer, RectData, Vertex};
-use graphic::color::WHITE;
+use drawer::drawer::{RectData, Vertex};
 use hashbrown::HashMap;
 use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::{Mutex, RwLock};
@@ -15,9 +14,6 @@ use crate::{
 extern crate alloc;
 
 pub enum Command {
-    DrawRectangle {
-        pos: RectData,
-    },
     CreateButton {
         pos: RectData,
         label: Option<Rc<Mutex<String>>>,
@@ -40,6 +36,11 @@ pub struct Receivers {
     pub rx_on_loop_iter: Receiver<NewLoopIterFunData>,
 }
 
+/**
+Api offers an interface between the window-manager and external programs that request
+a service from the window-manager, like creating components or subscribing callback-functions to be
+executed in the main-loop.
+*/
 pub struct Api {
     handles: HashMap<usize, HandleData>,
     screen_dims: (u32, u32),
@@ -116,15 +117,6 @@ impl Api {
         };
 
         match command {
-            Command::DrawRectangle { pos } => {
-                let RectData {
-                    top_left,
-                    width,
-                    height,
-                } = self.scale_to_window(pos, handle_data);
-
-                Drawer::draw_rectangle(top_left, top_left + Vertex::new(width, height), WHITE);
-            }
             Command::CreateButton {
                 pos,
                 label,

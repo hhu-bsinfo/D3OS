@@ -2,8 +2,14 @@ use alloc::vec;
 use alloc::vec::Vec;
 use hashbrown::HashMap;
 
+use crate::components::component::Interaction;
 use crate::window::Window;
 
+/**
+A workspace is a unit of one screen, containing windows. You can switch between workspaces
+and they will retain their state and even continue execution of their threads, but not draw
+anything to the screen while not selected of course.
+*/
 pub struct Workspace {
     pub windows: HashMap<usize, Window>,
     pub focused_window_id: usize,
@@ -84,20 +90,19 @@ impl Workspace {
 
     /// Moves focus to the next component in currently focused window
     pub fn focus_next_component(&mut self) {
-        let focused_window = self.windows.get_mut(&self.focused_window_id).unwrap();
+        let focused_window = self.get_focused_window_mut();
         focused_window.focus_next_component();
     }
 
     /// Moves focus to the previous component in currently focused window
     pub fn focus_prev_component(&mut self) {
-        let focused_window = self.windows.get_mut(&self.focused_window_id).unwrap();
+        let focused_window = self.get_focused_window_mut();
         focused_window.focus_prev_component();
     }
 
-    pub fn soil_windows(&mut self) {
-        for window in self.windows.values_mut() {
-            window.is_dirty = true;
-        }
+    pub fn interact_with_focused_component(&mut self, interaction: Interaction) {
+        let focused_window = self.get_focused_window_mut();
+        focused_window.interact_with_focused_component(interaction);
     }
 
     pub fn get_focused_window(&self) -> &Window {

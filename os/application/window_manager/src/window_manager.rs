@@ -2,10 +2,7 @@
 
 extern crate alloc;
 
-use core::{
-    ops::ControlFlow,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::{
     borrow::ToOwned,
@@ -52,7 +49,7 @@ struct WindowManager {
     workspaces: Vec<Workspace>,
     /// Currently selected workspace
     current_workspace: usize,
-    /// Global windows are not tied to workspaces, they exist once and persist through workspace-switches
+    /// This window not tied to workspaces, it exists once and persists through workspace-switches
     workspace_selection_labels_window: WorkspaceSelectionLabelsWindow,
     /// Receivers from queues connected with API
     receivers: Receivers,
@@ -155,11 +152,12 @@ impl WindowManager {
         }
     }
 
-    fn process_keyboard_input(&mut self) -> ControlFlow<()> {
+    fn process_keyboard_input(&mut self) {
         let read_option = try_read(Application::WindowManager);
 
         if let Some(keyboard_press) = read_option {
             match keyboard_press {
+                '<' => {}
                 'c' => {
                     self.create_new_workspace(false);
                 }
@@ -189,7 +187,6 @@ impl WindowManager {
                 }
                 'f' => {
                     self.get_current_workspace_mut()
-                        .get_focused_window_mut()
                         .interact_with_focused_component(Interaction::Press);
                 }
                 'a' => {
@@ -204,7 +201,6 @@ impl WindowManager {
                 _ => {}
             }
         }
-        ControlFlow::Continue(())
     }
 
     fn add_new_components_from_api(&mut self) {
@@ -362,7 +358,7 @@ impl WindowManager {
     fn draw(&mut self) {
         let is_dirty = self.is_dirty;
 
-        if self.is_dirty {
+        if is_dirty {
             Drawer::full_clear_screen();
         }
 
