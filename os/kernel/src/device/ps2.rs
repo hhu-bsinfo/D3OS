@@ -73,20 +73,32 @@ impl Keyboard {
         return scancode;
     }
 
+    pub fn try_fetch_scancode_from_buffer(&self) -> Option<i16> {
+        let scancode = match self.buffer.0.try_dequeue() {
+            Ok(code) => Some(code as i16),
+            Err(DequeueError::Closed) => Some(-1),
+            Err(_) => None,
+        };
+
+        if scancode.is_some_and(|code| code == -1) {
+            panic!("Keyboard stream closed!");
+        }
+
+        return scancode;
+    }
+
     pub fn try_read_byte(&self) -> Option<i16> {
         let mut decoder = self.decoder.lock();
-        let scancode = self.fetch_scancode_from_buffer();
+        let scancode = self.try_fetch_scancode_from_buffer()?;
 
         match decoder.add_byte(scancode as u8) {
-            Ok(Some(event)) => match decoder.process_keyevent(event) {
-                Some(key) => {
-                    return match key {
-                        DecodedKey::Unicode(c) => Some(c as i16),
-                        _ => None,
-                    }
-                }
-                None => return None,
-            },
+            Ok(Some(event)) => {
+                let key = decoder.process_keyevent(event)?;
+                return match key {
+                    DecodedKey::Unicode(c) => Some(c as i16),
+                    _ => None,
+                };
+            }
             Ok(None) | Err(_) => return None,
         }
     }
