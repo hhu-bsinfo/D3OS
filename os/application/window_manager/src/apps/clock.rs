@@ -1,5 +1,4 @@
 use alloc::{boxed::Box, rc::Rc, string::ToString};
-use concurrent::thread::sleep;
 use drawer::drawer::{RectData, Vertex};
 use spin::rwlock::RwLock;
 use time::date;
@@ -26,10 +25,7 @@ impl Runnable for Clock {
                     height: 100,
                 },
                 text: text_rc,
-                // This does not work, until we find a way to capture the environment when creating
-                // a new thread
-                on_create: Some(Box::new(move || loop {
-                    sleep(1000);
+                on_loop_iter: Some(Box::new(move || {
                     let mut date_val = on_create_rc.write();
                     *date_val = date().format("%Y-%m-%d %H:%M:%S").to_string();
                 })),

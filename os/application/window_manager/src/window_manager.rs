@@ -2,26 +2,26 @@
 
 extern crate alloc;
 
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{
+    ops::ControlFlow,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use alloc::{
     borrow::ToOwned,
-    boxed::Box,
     string::{String, ToString},
     vec::Vec,
 };
-use api::{Api, DispatchData};
+use api::{Api, NewCompData, NewLoopIterFunData, Receivers, Senders, WindowData};
 use components::{
     component::Interaction, selected_window_label::SelectedWorkspaceLabel, window::Window,
+    workspace_selection_labels_window::WorkspaceSelectionLabelsWindow,
 };
 use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
-use graphic::{
-    color::{WHITE, YELLOW},
-    lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
-};
+use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use io::{read::try_read, Application};
-use nolock::queues::mpsc::jiffy::{self, Receiver, Sender};
+use nolock::queues::mpsc::jiffy;
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
@@ -51,9 +51,11 @@ struct WindowManager {
     /// Currently selected workspace
     current_workspace: usize,
     /// Global windows are not tied to workspaces, they exist once and persist through workspace-switches
-    workspace_selection_labels_window: Window,
-    /// Receiver end of API-queue. Components created in API are transmitted this way
-    receiver_api_components: Receiver<DispatchData>,
+    workspace_selection_labels_window: WorkspaceSelectionLabelsWindow,
+    /// Receivers from queues connected with API
+    receivers: Receivers,
+    /// List of closures to call on each loop-iteration, sent from API
+    on_loop_iter_funs: Vec<NewLoopIterFunData>,
     /// Determines if a full redraw is required in the next loop-iteration
     is_dirty: bool,
 }
@@ -74,36 +76,44 @@ impl WindowManager {
         unsafe { API.get_mut().expect("API accessed before init").lock() }
     }
 
-    fn new(screen: (u32, u32)) -> (Self, Sender<DispatchData>) {
+    fn new(screen: (u32, u32)) -> (Self, Senders) {
         SCREEN.call_once(|| screen);
 
-        let (rx_components, tx_components) = jiffy::queue::<DispatchData>();
+        let (rx_components, tx_components) = jiffy::queue::<NewCompData>();
+        let (rx_on_loop_iter, tx_on_loop_iter) = jiffy::queue::<NewLoopIterFunData>();
 
-        let workspace_selection_labels_window = Window::new(
-            Self::generate_id(),
-            0,
-            RectData {
-                top_left: Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
-                width: SCREEN.get().unwrap().0 - DIST_TO_SCREEN_EDGE * 2,
-                height: HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
-            },
-        );
+        let senders = Senders {
+            tx_components,
+            tx_on_loop_iter,
+        };
+
+        let receivers = Receivers {
+            rx_components,
+            rx_on_loop_iter,
+        };
+
+        let workspace_selection_labels_window = WorkspaceSelectionLabelsWindow::new(RectData {
+            top_left: Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
+            width: SCREEN.get().unwrap().0 - DIST_TO_SCREEN_EDGE * 2,
+            height: HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
+        });
 
         (
             Self {
                 workspaces: Vec::new(),
                 current_workspace: 0,
                 workspace_selection_labels_window,
-                receiver_api_components: rx_components,
+                receivers,
                 is_dirty: true,
+                on_loop_iter_funs: Vec::new(),
             },
-            tx_components,
+            senders,
         )
     }
 
-    fn init(&mut self, tx_components: Sender<DispatchData>) {
+    fn init(&mut self, senders: Senders) {
         unsafe {
-            API.call_once(|| Mutex::new(Api::new(Self::get_screen_res(), tx_components)));
+            API.call_once(|| Mutex::new(Api::new(Self::get_screen_res(), senders)));
         }
 
         self.create_new_workspace(true);
@@ -111,75 +121,104 @@ impl WindowManager {
 
     fn run(&mut self) {
         loop {
-            self.draw(self.is_dirty);
-            if self.is_dirty {
-                self.is_dirty = false;
+            self.draw();
+
+            self.process_keyboard_input();
+
+            self.add_new_components_from_api();
+
+            self.add_new_closures_from_api();
+
+            self.call_on_loop_iter_functions();
+        }
+    }
+
+    fn call_on_loop_iter_functions(&mut self) {
+        for NewLoopIterFunData { window_data, fun } in self.on_loop_iter_funs.iter() {
+            (*fun)();
+
+            let window = self.workspaces[window_data.workspace_index]
+                .windows
+                .get_mut(&window_data.window_id);
+
+            if let Some(window) = window {
+                window.is_dirty = true;
             }
+        }
+    }
 
-            let read_option = try_read(Application::WindowManager);
+    fn add_new_closures_from_api(&mut self) {
+        while let Ok(data) = self.receivers.rx_on_loop_iter.try_dequeue() {
+            self.on_loop_iter_funs.push(data);
+        }
+    }
 
-            if let Some(keyboard_press) = read_option {
-                match keyboard_press {
-                    'c' => {
-                        self.create_new_workspace(false);
-                    }
-                    'q' => {
-                        self.switch_prev_workspace();
-                    }
-                    'e' => {
-                        self.switch_next_workspace();
-                    }
-                    'h' => {
-                        self.split_window(
-                            self.get_current_workspace().focused_window_id,
-                            SplitType::Horizontal,
-                        );
-                    }
-                    'v' => {
-                        self.split_window(
-                            self.get_current_workspace().focused_window_id,
-                            SplitType::Vertical,
-                        );
-                    }
-                    'w' => {
-                        self.get_current_workspace_mut().focus_next_component();
-                    }
-                    's' => {
-                        self.get_current_workspace_mut().focus_prev_component();
-                    }
-                    'f' => {
-                        self.get_current_workspace_mut()
-                            .get_focused_window_mut()
-                            .interact_with_focused_component(Interaction::Press);
-                    }
-                    'a' => {
-                        self.get_current_workspace_mut().focus_prev_window();
-                    }
-                    'd' => {
-                        self.get_current_workspace_mut().focus_next_window();
-                    }
-                    //TODO: Add merge functionality. Make it buddy-style merging when both buddies finished
-                    // running their application
-                    'm' => {}
-                    'p' => {
-                        break;
-                    }
-                    _ => {}
+    fn process_keyboard_input(&mut self) -> ControlFlow<()> {
+        let read_option = try_read(Application::WindowManager);
+
+        if let Some(keyboard_press) = read_option {
+            match keyboard_press {
+                'c' => {
+                    self.create_new_workspace(false);
                 }
+                'q' => {
+                    self.switch_prev_workspace();
+                }
+                'e' => {
+                    self.switch_next_workspace();
+                }
+                'h' => {
+                    self.split_window(
+                        self.get_current_workspace().focused_window_id,
+                        SplitType::Horizontal,
+                    );
+                }
+                'v' => {
+                    self.split_window(
+                        self.get_current_workspace().focused_window_id,
+                        SplitType::Vertical,
+                    );
+                }
+                'w' => {
+                    self.get_current_workspace_mut().focus_next_component();
+                }
+                's' => {
+                    self.get_current_workspace_mut().focus_prev_component();
+                }
+                'f' => {
+                    self.get_current_workspace_mut()
+                        .get_focused_window_mut()
+                        .interact_with_focused_component(Interaction::Press);
+                }
+                'a' => {
+                    self.get_current_workspace_mut().focus_prev_window();
+                }
+                'd' => {
+                    self.get_current_workspace_mut().focus_next_window();
+                }
+                //TODO: Add merge functionality. Make it buddy-style merging when both buddies finished
+                // running their application
+                'm' => {}
+                _ => {}
             }
+        }
+        ControlFlow::Continue(())
+    }
 
-            // Add all new components from queue to corresponding workspace
-            while let Ok(DispatchData {
-                workspace_index,
-                window_id,
-                component,
-            }) = self.receiver_api_components.try_dequeue()
-            {
-                let curr_ws = &mut self.workspaces[workspace_index];
-                let window = &mut curr_ws.windows.get_mut(&window_id);
-                if let Some(window) = window {
-                    window.insert_component(component, true);
-                }
+    fn add_new_components_from_api(&mut self) {
+        while let Ok(NewCompData {
+            window_data:
+                WindowData {
+                    workspace_index,
+                    window_id,
+                },
+            component,
+        }) = self.receivers.rx_components.try_dequeue()
+        {
+            let curr_ws = &mut self.workspaces[workspace_index];
+            let window = &mut curr_ws.windows.get_mut(&window_id);
+            if let Some(window) = window {
+                window.insert_component(component, true);
             }
         }
     }
@@ -196,6 +235,8 @@ impl WindowManager {
         } else {
             curr_ws.insert_unfocusable_window(window);
         }
+
+        self.is_dirty = true;
 
         let _ = Self::get_api().register(
             self.current_workspace,
@@ -280,11 +321,22 @@ impl WindowManager {
         );
 
         self.workspace_selection_labels_window
-            .insert_component(Box::new(workspace_selection_label), false);
+            .insert_label(workspace_selection_label);
 
         let workspace = Workspace::new_with_single_window((window_id, window), window_id);
 
         self.workspaces.insert(self.current_workspace, workspace);
+
+        let _ = Self::get_api().register(
+            self.current_workspace,
+            window_id,
+            RectData {
+                top_left: Vertex::new(100, 100),
+                width: 300,
+                height: 50,
+            },
+            String::from("clock"),
+        );
     }
 
     fn switch_prev_workspace(&mut self) {
@@ -305,38 +357,33 @@ impl WindowManager {
         &mut self.workspaces[self.current_workspace]
     }
 
-    fn draw(&mut self, full: bool) {
-        if full {
+    fn draw(&mut self) {
+        let is_dirty = self.is_dirty;
+
+        if self.is_dirty {
             Drawer::full_clear_screen();
         }
 
         let focused_window_id = self.get_current_workspace().focused_window_id;
 
-        // Redraw everything related to workspace-selection-labels
+        // // Redraw everything related to workspace-selection-labels
         self.workspace_selection_labels_window
-            .draw(WHITE, focused_window_id, true);
-        self.workspace_selection_labels_window
-            .draw_selected_workspace_labels(self.current_workspace);
+            .draw(self.current_workspace, is_dirty);
 
         let curr_ws = self.get_current_workspace_mut();
         // Redraw workspace windows
         for window in curr_ws.windows.values_mut() {
-            window.draw(WHITE, focused_window_id, full);
+            window.draw(focused_window_id, is_dirty);
         }
 
-        // Redraw focused element so yellow color is on top
-        curr_ws
-            .windows
-            .get_mut(&curr_ws.focused_window_id)
-            .unwrap()
-            .draw(YELLOW, focused_window_id, full);
+        self.is_dirty = false;
     }
 }
 
 #[no_mangle]
 fn main() {
     let resolution = Drawer::get_graphic_resolution();
-    let (mut window_manager, tx_components) = WindowManager::new(resolution);
-    window_manager.init(tx_components);
+    let (mut window_manager, senders) = WindowManager::new(resolution);
+    window_manager.init(senders);
     window_manager.run();
 }

@@ -27,9 +27,8 @@ use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use graphic::buffered_lfb::BufferedLFB;
 use graphic::lfb::LFB;
-use core::fmt::Arguments;
 use core::panic::PanicInfo;
-use ::log::{error, Level, Log, Record};
+use ::log::error;
 use acpi::AcpiTables;
 use multiboot2::ModuleTag;
 use spin::{Mutex, Once, RwLock};
@@ -63,20 +62,7 @@ pub mod built_info {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if terminal_initialized() {
-        println!("Panic: {}", info);
-    } else {
-        let record = Record::builder()
-            .level(Level::Error)
-            .file(Some("panic"))
-            .args(*info.message().unwrap_or(&Arguments::new_const(&["A panic occurred!"])))
-            .build();
-
-        unsafe { logger().force_unlock() };
-        let log = logger().lock();
-        unsafe { logger().force_unlock() }; // log() also calls logger().lock()
-        log.log(&record);
-    }
+    error!("{}", info.message().unwrap());
 
     loop {}
 }

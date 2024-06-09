@@ -1,11 +1,11 @@
 use alloc::{boxed::Box, vec::Vec};
 use drawer::drawer::{Drawer, RectData, Vertex};
-use graphic::color::{Color, WHITE, YELLOW};
+use graphic::color::{WHITE, YELLOW};
 use hashbrown::HashMap;
 
 use crate::{components::component::Component, WindowManager};
 
-use super::{component::Interaction, selected_window_label::SelectedWorkspaceLabel};
+use super::component::Interaction;
 
 pub struct Window {
     pub id: usize,
@@ -57,32 +57,6 @@ impl Window {
         self.is_dirty = true;
     }
 
-    // LOW_PRIO_TODO: Find a better way to access this singleton of a label in its singleton of a window
-    /**
-    Draws the number-labels that indicate how many workspaces there are and which
-    you are currently on
-    */
-    pub fn draw_selected_workspace_labels(&self, current_workspace: usize) {
-        let filtered_iter = self
-            .components
-            .values()
-            .filter(|comp| comp.as_any().is::<SelectedWorkspaceLabel>());
-
-        for label in filtered_iter {
-            let label = label
-                .as_any()
-                .downcast_ref::<SelectedWorkspaceLabel>()
-                .unwrap();
-            let color = if current_workspace == label.tied_workspace {
-                YELLOW
-            } else {
-                WHITE
-            };
-
-            label.draw(color);
-        }
-    }
-
     pub fn focus_next_component(&mut self) {
         if let Some(focused_component_id) = self.focused_component_id {
             let index = self
@@ -119,7 +93,7 @@ impl Window {
         self.is_dirty = true;
     }
 
-    pub fn draw(&mut self, color: Color, focused_window_id: usize, full: bool) {
+    pub fn draw(&mut self, focused_window_id: usize, full: bool) {
         if full {
             self.is_dirty = true;
         }
@@ -128,18 +102,28 @@ impl Window {
             return;
         }
 
-        Drawer::partial_clear_screen(self.rect_data);
-
         let RectData {
             top_left,
             width,
             height,
         } = self.rect_data;
-        Drawer::draw_rectangle(
-            Vertex::new(top_left.x, top_left.y),
-            Vertex::new(top_left.x + width, top_left.y + height),
-            color,
-        );
+
+        if full {
+            Drawer::partial_clear_screen(self.rect_data);
+
+            Drawer::draw_rectangle(
+                Vertex::new(top_left.x, top_left.y),
+                Vertex::new(top_left.x + width, top_left.y + height),
+                WHITE,
+            );
+        } else {
+            // Clear everything except the border
+            Drawer::partial_clear_screen(RectData {
+                top_left: top_left.add(1, 1),
+                width: width - 2,
+                height: height - 2,
+            });
+        }
 
         for component in self.components.values() {
             component.draw(WHITE);

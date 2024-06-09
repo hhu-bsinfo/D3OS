@@ -1,6 +1,6 @@
 use core::{any::Any, ops::Deref};
 
-use alloc::{boxed::Box, rc::Rc, string::String};
+use alloc::{rc::Rc, string::String};
 use drawer::drawer::{Drawer, Vertex};
 use graphic::color::Color;
 use spin::RwLock;
@@ -8,35 +8,20 @@ use spin::RwLock;
 use super::component::{Component, Interaction};
 
 /// Dynamic Labels are characterized by their text being modifiable, unlike [`Label`](`crate::components::label::Label`)
-/// These do not work, until we have support for creating threads with the type `Fn() -> ()`
 pub struct DynamicLabel {
     pub id: usize,
     pub workspace_index: usize,
     pub pos: Vertex,
     pub text: Rc<RwLock<String>>,
-    pub on_create: Option<Box<dyn Fn() -> ()>>,
 }
 
 impl DynamicLabel {
-    pub fn new(
-        id: usize,
-        workspace_index: usize,
-        pos: Vertex,
-        text: Rc<RwLock<String>>,
-        on_create: Option<Box<dyn Fn() -> ()>>,
-    ) -> Self {
+    pub fn new(id: usize, workspace_index: usize, pos: Vertex, text: Rc<RwLock<String>>) -> Self {
         Self {
             id,
             workspace_index,
             pos,
             text,
-            on_create,
-        }
-    }
-
-    pub fn call_on_create(&self) {
-        if let Some(fun) = &self.on_create {
-            fun();
         }
     }
 }

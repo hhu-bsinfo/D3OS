@@ -3,7 +3,7 @@ use concurrent::thread;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::WHITE;
 use hashbrown::HashMap;
-use nolock::queues::mpsc::jiffy::Sender;
+use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::{Mutex, RwLock};
 
 use crate::{
@@ -26,16 +26,27 @@ pub enum Command {
     CreateDynamicLabel {
         pos: RectData,
         text: Rc<RwLock<String>>,
-        on_create: Option<Box<dyn Fn() -> ()>>,
+        on_loop_iter: Option<Box<dyn Fn() -> ()>>,
     },
 }
 
-pub struct Api {
-    pub handles: HashMap<usize, HandleData>,
-    screen_dims: (u32, u32),
-    tx_components: Sender<DispatchData>,
+pub struct Senders {
+    pub tx_components: Sender<NewCompData>,
+    pub tx_on_loop_iter: Sender<NewLoopIterFunData>,
 }
 
+pub struct Receivers {
+    pub rx_components: Receiver<NewCompData>,
+    pub rx_on_loop_iter: Receiver<NewLoopIterFunData>,
+}
+
+pub struct Api {
+    handles: HashMap<usize, HandleData>,
+    screen_dims: (u32, u32),
+    senders: Senders,
+}
+
+/// All information saved for a single handle
 pub struct HandleData {
     workspace_index: usize,
     window_id: usize,
@@ -43,18 +54,28 @@ pub struct HandleData {
     ratios: (f64, f64),
 }
 
-pub struct DispatchData {
+#[derive(Clone, Copy)]
+pub struct WindowData {
     pub workspace_index: usize,
     pub window_id: usize,
+}
+
+pub struct NewCompData {
+    pub window_data: WindowData,
     pub component: Box<dyn Component>,
 }
 
+pub struct NewLoopIterFunData {
+    pub window_data: WindowData,
+    pub fun: Box<dyn Fn() -> ()>,
+}
+
 impl Api {
-    pub fn new(screen_dims: (u32, u32), tx_components: Sender<DispatchData>) -> Self {
+    pub fn new(screen_dims: (u32, u32), senders: Senders) -> Self {
         Self {
             handles: HashMap::new(),
             screen_dims,
-            tx_components,
+            senders,
         }
     }
 
@@ -89,6 +110,11 @@ impl Api {
             .get(&handle)
             .ok_or("Provided handle not found")?;
 
+        let window_data = WindowData {
+            workspace_index: handle_data.workspace_index,
+            window_id: handle_data.window_id,
+        };
+
         match command {
             Command::DrawRectangle { pos } => {
                 let RectData {
@@ -114,9 +140,8 @@ impl Api {
                     on_click,
                 );
 
-                let dispatch_data = DispatchData {
-                    workspace_index: handle_data.workspace_index,
-                    window_id: handle_data.window_id,
+                let dispatch_data = NewCompData {
+                    window_data,
                     component: Box::new(button),
                 };
 
@@ -125,7 +150,7 @@ impl Api {
             Command::CreateDynamicLabel {
                 pos,
                 text,
-                on_create,
+                on_loop_iter,
             } => {
                 let scaled_pos = self.scale_to_window(pos, handle_data);
 
@@ -134,16 +159,19 @@ impl Api {
                     handle_data.workspace_index,
                     scaled_pos.top_left,
                     text,
-                    on_create,
                 );
 
-                let dispatch_data = DispatchData {
-                    workspace_index: handle_data.workspace_index,
-                    window_id: handle_data.window_id,
+                let dispatch_data = NewCompData {
+                    window_data,
                     component: Box::new(label),
                 };
 
                 self.add_component(dispatch_data);
+
+                if let Some(fun) = on_loop_iter {
+                    let data = NewLoopIterFunData { window_data, fun };
+                    self.add_on_loop_iter_fun(data);
+                }
             }
         }
 
@@ -158,8 +186,12 @@ impl Api {
         }
     }
 
-    fn add_component(&self, dispatch_data: DispatchData) {
-        self.tx_components.enqueue(dispatch_data);
+    fn add_component(&self, dispatch_data: NewCompData) {
+        self.senders.tx_components.enqueue(dispatch_data);
+    }
+
+    fn add_on_loop_iter_fun(&self, fun: NewLoopIterFunData) {
+        self.senders.tx_on_loop_iter.enqueue(fun);
     }
 
     fn scale_to_window(
