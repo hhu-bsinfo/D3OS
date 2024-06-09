@@ -10,10 +10,7 @@ use alloc::{
     vec::Vec,
 };
 use api::{Api, NewCompData, NewLoopIterFunData, Receivers, Senders, WindowData};
-use components::{
-    component::Interaction, selected_window_label::SelectedWorkspaceLabel,
-    workspace_selection_labels_window::WorkspaceSelectionLabelsWindow,
-};
+use components::{component::Interaction, selected_window_label::SelectedWorkspaceLabel};
 use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
@@ -22,14 +19,15 @@ use nolock::queues::mpsc::jiffy;
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
-use window::Window;
+use windows::app_window::AppWindow;
+use windows::workspace_selection_labels_window::WorkspaceSelectionLabelsWindow;
 use workspace::Workspace;
 
 pub mod api;
 mod apps;
 mod components;
 mod config;
-mod window;
+mod windows;
 mod workspace;
 
 // Ids are unique across all components
@@ -223,7 +221,7 @@ impl WindowManager {
 
     fn add_window_to_workspace(&mut self, rect_data: RectData, is_focusable: bool) {
         let window_id = Self::generate_id();
-        let window = Window::new(window_id, self.current_workspace, rect_data);
+        let window = AppWindow::new(window_id, self.current_workspace, rect_data);
 
         let curr_ws = self.get_current_workspace_mut();
 
@@ -288,7 +286,7 @@ impl WindowManager {
         }
 
         let screen_res = Self::get_screen_res();
-        let window = Window::new(
+        let window = AppWindow::new(
             Self::generate_id(),
             self.current_workspace,
             RectData {

@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::{WHITE, YELLOW};
 
-use super::{component::Component, selected_window_label::SelectedWorkspaceLabel};
+use crate::components::{component::Component, selected_window_label::SelectedWorkspaceLabel};
 
 pub struct WorkspaceSelectionLabelsWindow {
     rect_data: RectData,

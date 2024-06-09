@@ -8,7 +8,8 @@ use crate::{
     WindowManager,
 };
 
-pub struct Window {
+/// This is the window used in workspaces to contains components from different apps
+pub struct AppWindow {
     pub id: usize,
     pub rect_data: RectData,
     // Indicates whether redrawing of this window is required in next loop-iteration
@@ -21,7 +22,7 @@ pub struct Window {
     focused_component_id: Option<usize>,
 }
 
-impl Window {
+impl AppWindow {
     pub fn new(id: usize, workspace_index: usize, rect_data: RectData) -> Self {
         Self {
             id,

@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use hashbrown::HashMap;
 
 use crate::components::component::Interaction;
-use crate::window::Window;
+use crate::windows::app_window::AppWindow;
 
 /**
 A workspace is a unit of one screen, containing windows. You can switch between workspaces
@@ -11,16 +11,16 @@ and they will retain their state and even continue execution of their threads, b
 anything to the screen while not selected of course.
 */
 pub struct Workspace {
-    pub windows: HashMap<usize, Window>,
+    pub windows: HashMap<usize, AppWindow>,
     pub focused_window_id: usize,
     // focusable windows are stored additionally in ordered fashion in here
     pub window_orderer: Vec<usize>,
 }
 
 impl Workspace {
-    pub fn new_with_single_window(window: (usize, Window), focused_window_id: usize) -> Self {
+    pub fn new_with_single_window(window: (usize, AppWindow), focused_window_id: usize) -> Self {
         let window_orderer = vec![window.0];
-        let mut windows: HashMap<usize, Window> = HashMap::new();
+        let mut windows: HashMap<usize, AppWindow> = HashMap::new();
         windows.insert(window.0, window.1);
 
         Self {
@@ -30,7 +30,7 @@ impl Workspace {
         }
     }
 
-    pub fn insert_focusable_window(&mut self, window: Window, after: Option<usize>) {
+    pub fn insert_focusable_window(&mut self, window: AppWindow, after: Option<usize>) {
         let new_window_id = window.id;
         self.windows.insert(new_window_id, window);
         match after {
@@ -51,7 +51,7 @@ impl Workspace {
         }
     }
 
-    pub fn insert_unfocusable_window(&mut self, new_window: Window) {
+    pub fn insert_unfocusable_window(&mut self, new_window: AppWindow) {
         self.windows.insert(new_window.id, new_window);
     }
 
@@ -105,11 +105,11 @@ impl Workspace {
         focused_window.interact_with_focused_component(interaction);
     }
 
-    pub fn get_focused_window(&self) -> &Window {
+    pub fn get_focused_window(&self) -> &AppWindow {
         self.windows.get(&self.focused_window_id).unwrap()
     }
 
-    pub fn get_focused_window_mut(&mut self) -> &mut Window {
+    pub fn get_focused_window_mut(&mut self) -> &mut AppWindow {
         self.windows.get_mut(&self.focused_window_id).unwrap()
     }
 }
