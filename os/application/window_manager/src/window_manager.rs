@@ -4,7 +4,12 @@ extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use alloc::{borrow::ToOwned, boxed::Box, string::ToString, vec::Vec};
+use alloc::{
+    borrow::ToOwned,
+    boxed::Box,
+    string::{String, ToString},
+    vec::Vec,
+};
 use api::{Api, DispatchData};
 use components::{
     component::Interaction, selected_window_label::SelectedWorkspaceLabel, window::Window,
@@ -192,7 +197,12 @@ impl WindowManager {
             curr_ws.insert_unfocusable_window(window);
         }
 
-        let _ = Self::get_api().register(self.current_workspace, window_id, rect_data);
+        let _ = Self::get_api().register(
+            self.current_workspace,
+            window_id,
+            rect_data,
+            String::from("test_app"),
+        );
     }
 
     fn split_window(&mut self, window_id: usize, split_type: SplitType) {

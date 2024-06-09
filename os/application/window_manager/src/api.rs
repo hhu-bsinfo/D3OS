@@ -7,7 +7,7 @@ use nolock::queues::mpsc::jiffy::Sender;
 use spin::{Mutex, RwLock};
 
 use crate::{
-    apps::{self, runnable::Runnable},
+    apps::{clock::Clock, runnable::Runnable, test_app::TestApp},
     components::{button::Button, component::Component, dynamic_label::DynamicLabel},
     WindowManager,
 };
@@ -63,9 +63,11 @@ impl Api {
         workspace_index: usize,
         window_id: usize,
         abs_pos: RectData,
-    ) -> usize {
-        // TODO: Make selected Runnable app dynamic
-        let handle = thread::create(apps::test_app::TestApp::run).id();
+        app_string: String,
+    ) -> Option<usize> {
+        let app_fn_ptr = self.map_app_string_to_fn(app_string)?;
+
+        let handle = thread::create(app_fn_ptr).id();
         let handle_data = HandleData {
             workspace_index,
             window_id,
@@ -78,7 +80,7 @@ impl Api {
 
         self.handles.insert(handle, handle_data);
 
-        return handle;
+        return Some(handle);
     }
 
     pub fn execute(&self, handle: usize, command: Command) -> Result<(), &str> {
@@ -146,6 +148,14 @@ impl Api {
         }
 
         Ok(())
+    }
+
+    fn map_app_string_to_fn(&self, app_string: String) -> Option<fn()> {
+        match app_string.as_str() {
+            "clock" => Some(Clock::run),
+            "test_app" => Some(TestApp::run),
+            _ => None,
+        }
     }
 
     fn add_component(&self, dispatch_data: DispatchData) {
