@@ -15,7 +15,7 @@ use graphic::{
     color::{WHITE, YELLOW},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
-use io::{read::read, Application};
+use io::{read::try_read, Application};
 use nolock::queues::mpsc::jiffy::{self, Receiver, Sender};
 #[allow(unused_imports)]
 use runtime::*;
@@ -43,12 +43,14 @@ enum SplitType {
 
 struct WindowManager {
     workspaces: Vec<Workspace>,
-    // Currently selected workspace
+    /// Currently selected workspace
     current_workspace: usize,
-    // Global windows are not tied to workspaces, they exist once and persist through workspace-switches
+    /// Global windows are not tied to workspaces, they exist once and persist through workspace-switches
     workspace_selection_labels_window: Window,
-    // Receiver end of queue with API. Components created in API are transmitted this way
+    /// Receiver end of API-queue. Components created in API are transmitted this way
     receiver_api_components: Receiver<DispatchData>,
+    /// Determines if a full redraw is required in the next loop-iteration
+    is_dirty: bool,
 }
 
 impl WindowManager {
@@ -88,6 +90,7 @@ impl WindowManager {
                 current_workspace: 0,
                 workspace_selection_labels_window,
                 receiver_api_components: rx_components,
+                is_dirty: true,
             },
             tx_components,
         )
@@ -103,56 +106,61 @@ impl WindowManager {
 
     fn run(&mut self) {
         loop {
-            self.draw();
+            self.draw(self.is_dirty);
+            if self.is_dirty {
+                self.is_dirty = false;
+            }
 
-            let keyboard_press = read(Application::WindowManager);
+            let read_option = try_read(Application::WindowManager);
 
-            match keyboard_press {
-                'c' => {
-                    self.create_new_workspace(false);
+            if let Some(keyboard_press) = read_option {
+                match keyboard_press {
+                    'c' => {
+                        self.create_new_workspace(false);
+                    }
+                    'q' => {
+                        self.switch_prev_workspace();
+                    }
+                    'e' => {
+                        self.switch_next_workspace();
+                    }
+                    'h' => {
+                        self.split_window(
+                            self.get_current_workspace().focused_window_id,
+                            SplitType::Horizontal,
+                        );
+                    }
+                    'v' => {
+                        self.split_window(
+                            self.get_current_workspace().focused_window_id,
+                            SplitType::Vertical,
+                        );
+                    }
+                    'w' => {
+                        self.get_current_workspace_mut().focus_next_component();
+                    }
+                    's' => {
+                        self.get_current_workspace_mut().focus_prev_component();
+                    }
+                    'f' => {
+                        self.get_current_workspace_mut()
+                            .get_focused_window_mut()
+                            .interact_with_focused_component(Interaction::Press);
+                    }
+                    'a' => {
+                        self.get_current_workspace_mut().focus_prev_window();
+                    }
+                    'd' => {
+                        self.get_current_workspace_mut().focus_next_window();
+                    }
+                    //TODO: Add merge functionality. Make it buddy-style merging when both buddies finished
+                    // running their application
+                    'm' => {}
+                    'p' => {
+                        break;
+                    }
+                    _ => {}
                 }
-                'q' => {
-                    self.switch_prev_workspace();
-                }
-                'e' => {
-                    self.switch_next_workspace();
-                }
-                'h' => {
-                    self.split_window(
-                        self.get_current_workspace().focused_window_id,
-                        SplitType::Horizontal,
-                    );
-                }
-                'v' => {
-                    self.split_window(
-                        self.get_current_workspace().focused_window_id,
-                        SplitType::Vertical,
-                    );
-                }
-                'w' => {
-                    self.get_current_workspace_mut().focus_next_component();
-                }
-                's' => {
-                    self.get_current_workspace_mut().focus_prev_component();
-                }
-                'f' => {
-                    self.get_current_workspace()
-                        .get_focused_window()
-                        .interact_with_focused_component(Interaction::Press);
-                }
-                'a' => {
-                    self.get_current_workspace_mut().focus_prev_window();
-                }
-                'd' => {
-                    self.get_current_workspace_mut().focus_next_window();
-                }
-                //TODO: Add merge functionality. Make it buddy-style merging when both buddies finished
-                // running their application
-                'm' => {}
-                'p' => {
-                    break;
-                }
-                _ => {}
             }
 
             // Add all new components from queue to corresponding workspace
@@ -271,10 +279,12 @@ impl WindowManager {
 
     fn switch_prev_workspace(&mut self) {
         self.current_workspace = self.current_workspace.saturating_sub(1);
+        self.is_dirty = true;
     }
 
     fn switch_next_workspace(&mut self) {
         self.current_workspace = (self.current_workspace + 1) % self.workspaces.len();
+        self.is_dirty = true;
     }
 
     fn get_current_workspace(&self) -> &Workspace {
@@ -285,27 +295,31 @@ impl WindowManager {
         &mut self.workspaces[self.current_workspace]
     }
 
-    fn draw(&self) {
-        Drawer::clear_screen();
-        let curr_ws = self.get_current_workspace();
+    fn draw(&mut self, full: bool) {
+        if full {
+            Drawer::full_clear_screen();
+        }
+
+        let focused_window_id = self.get_current_workspace().focused_window_id;
 
         // Redraw everything related to workspace-selection-labels
         self.workspace_selection_labels_window
-            .draw(WHITE, curr_ws.focused_window_id);
+            .draw(WHITE, focused_window_id, true);
         self.workspace_selection_labels_window
             .draw_selected_workspace_labels(self.current_workspace);
 
+        let curr_ws = self.get_current_workspace_mut();
         // Redraw workspace windows
-        for window in curr_ws.windows.values() {
-            window.draw(WHITE, curr_ws.focused_window_id);
+        for window in curr_ws.windows.values_mut() {
+            window.draw(WHITE, focused_window_id, full);
         }
 
         // Redraw focused element so yellow color is on top
         curr_ws
             .windows
-            .get(&curr_ws.focused_window_id)
+            .get_mut(&curr_ws.focused_window_id)
             .unwrap()
-            .draw(YELLOW, curr_ws.focused_window_id);
+            .draw(YELLOW, focused_window_id, full);
     }
 }
 

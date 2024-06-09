@@ -1,18 +1,18 @@
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use graphic::color::{self};
-use stream::InputStream;
+use crate::{apic, buffered_lfb, interrupt_dispatcher, ps2_devices};
 use alloc::boxed::Box;
+use graphic::color::{self};
 use log::info;
 use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
 use nolock::queues::{mpmc, DequeueError};
-use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
-use ps2::{Controller, KeyboardType};
-use ps2::error::{ControllerError, KeyboardError, MouseError};
-use spin::Mutex;
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard as PcKeyboard, ScancodeSet1};
-use crate::{apic, buffered_lfb, interrupt_dispatcher, ps2_devices};
+use ps2::error::{ControllerError, KeyboardError, MouseError};
+use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
+use ps2::{Controller, KeyboardType};
+use spin::Mutex;
+use stream::InputStream;
 
 const KEYBOARD_BUFFER_CAPACITY: usize = 128;
 
@@ -44,16 +44,19 @@ impl Keyboard {
             decoder: Mutex::new(PcKeyboard::new(
                 ScancodeSet1::new(),
                 AnyLayout::De105Key(De105Key),
-                HandleControl::Ignore
+                HandleControl::Ignore,
             )),
         }
     }
 
     pub fn plugin(&self) {
-        interrupt_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardInterruptHandler::default()));
+        interrupt_dispatcher().assign(
+            InterruptVector::Keyboard,
+            Box::new(KeyboardInterruptHandler::default()),
+        );
         apic().allow(InterruptVector::Keyboard);
     }
-    
+
     fn fetch_scancode_from_buffer(&self) -> i16 {
         let scancode = loop {
             match self.buffer.0.try_dequeue() {
@@ -68,6 +71,24 @@ impl Keyboard {
         }
 
         return scancode;
+    }
+
+    pub fn try_read_byte(&self) -> Option<i16> {
+        let mut decoder = self.decoder.lock();
+        let scancode = self.fetch_scancode_from_buffer();
+
+        match decoder.add_byte(scancode as u8) {
+            Ok(Some(event)) => match decoder.process_keyevent(event) {
+                Some(key) => {
+                    return match key {
+                        DecodedKey::Unicode(c) => Some(c as i16),
+                        _ => None,
+                    }
+                }
+                None => return None,
+            },
+            Ok(None) | Err(_) => return None,
+        }
     }
 }
 
@@ -114,7 +135,10 @@ impl Mouse {
     }
 
     pub fn plugin(&self) {
-        interrupt_dispatcher().assign(InterruptVector::Mouse, Box::new(MouseInterruptHandler::default()));
+        interrupt_dispatcher().assign(
+            InterruptVector::Mouse,
+            Box::new(MouseInterruptHandler::default()),
+        );
         apic().allow(InterruptVector::Mouse);
     }
 }
@@ -124,11 +148,15 @@ impl InterruptHandler for MouseInterruptHandler {
         if let Some(mut controller) = ps2_devices().controller.try_lock() {
             if let Ok((_flags, x_delta, y_delta)) = controller.mouse().read_data_packet() {
                 self.mouse_state.0 = self.mouse_state.0.wrapping_add_signed(x_delta.into());
-                self.mouse_state.1 = self.mouse_state.1.wrapping_add_signed(y_delta.wrapping_neg().into());
-                buffered_lfb()
-                    .lock()
-                    .direct_lfb()
-                    .draw_pixel(self.mouse_state.0, self.mouse_state.1, color::WHITE);
+                self.mouse_state.1 = self
+                    .mouse_state
+                    .1
+                    .wrapping_add_signed(y_delta.wrapping_neg().into());
+                buffered_lfb().lock().direct_lfb().draw_pixel(
+                    self.mouse_state.0,
+                    self.mouse_state.1,
+                    color::WHITE,
+                );
             }
         } else {
             panic!("Mouse: Controller is locked during interrupt!");
@@ -158,7 +186,12 @@ impl PS2 {
 
         // Disable interrupts and translation
         let mut config = controller.read_config()?;
-        config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT | ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT | ControllerConfigFlags::ENABLE_TRANSLATE, false);
+        config.set(
+            ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT
+                | ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT
+                | ControllerConfigFlags::ENABLE_TRANSLATE,
+            false,
+        );
         controller.write_config(config)?;
 
         // Perform self test on controller
@@ -210,7 +243,9 @@ impl PS2 {
         info!("Detected keyboard type [{:?}]", kb_type);
 
         match kb_type {
-            KeyboardType::ATWithTranslation | KeyboardType::MF2WithTranslation | KeyboardType::ThinkPadWithTranslation => {
+            KeyboardType::ATWithTranslation
+            | KeyboardType::MF2WithTranslation
+            | KeyboardType::ThinkPadWithTranslation => {
                 info!("Enabling keyboard translation");
                 let mut config = controller.read_config()?;
                 config.set(ControllerConfigFlags::ENABLE_TRANSLATE, true);
@@ -239,13 +274,13 @@ impl PS2 {
         // Perform self test on mouse
         controller.mouse().reset_and_self_test()?;
         info!("Mouse has been reset and self test result is OK");
-        
+
         // Setup mouse
         info!("Enabling mouse");
         // BUG: When setting the sample_rate, you get an Error-Command: "Resend" back
         // controller.mouse().set_sample_rate(10)?;
         match controller.mouse().set_sample_rate(10) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(_) => {}
         };
         controller.mouse().set_resolution(0u8)?;

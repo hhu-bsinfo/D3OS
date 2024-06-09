@@ -10,6 +10,9 @@ use super::{component::Interaction, selected_window_label::SelectedWorkspaceLabe
 pub struct Window {
     pub id: usize,
     pub rect_data: RectData,
+    // Indicates whether redrawing of this window is required in next loop-iteration
+    pub is_dirty: bool,
+    // The workspace this window belongs to
     workspace_index: usize,
     components: HashMap<usize, Box<dyn Component>>,
     // focusable components are stored additionally in ordered fashion in here
@@ -21,6 +24,7 @@ impl Window {
     pub fn new(id: usize, workspace_index: usize, rect_data: RectData) -> Self {
         Self {
             id,
+            is_dirty: true,
             workspace_index,
             components: HashMap::new(),
             component_orderer: Vec::new(),
@@ -41,13 +45,16 @@ impl Window {
                 self.focused_component_id = Some(id);
             }
         }
+
+        self.is_dirty = true;
     }
 
-    pub fn interact_with_focused_component(&self, interaction: Interaction) {
+    pub fn interact_with_focused_component(&mut self, interaction: Interaction) {
         if let Some(focused_component_id) = &self.focused_component_id {
             let focused_component = self.components.get(focused_component_id).unwrap();
             focused_component.interact(interaction);
         }
+        self.is_dirty = true;
     }
 
     // LOW_PRIO_TODO: Find a better way to access this singleton of a label in its singleton of a window
@@ -88,6 +95,8 @@ impl Window {
 
             self.focused_component_id = Some(self.component_orderer[next_index]);
         }
+
+        self.is_dirty = true;
     }
 
     pub fn focus_prev_component(&mut self) {
@@ -106,9 +115,21 @@ impl Window {
 
             self.focused_component_id = Some(self.component_orderer[prev_index]);
         }
+
+        self.is_dirty = true;
     }
 
-    pub fn draw(&self, color: Color, focused_window_id: usize) {
+    pub fn draw(&mut self, color: Color, focused_window_id: usize, full: bool) {
+        if full {
+            self.is_dirty = true;
+        }
+
+        if !self.is_dirty {
+            return;
+        }
+
+        Drawer::partial_clear_screen(self.rect_data);
+
         let RectData {
             top_left,
             width,
@@ -132,5 +153,7 @@ impl Window {
                     .draw(YELLOW);
             }
         }
+
+        self.is_dirty = false;
     }
 }

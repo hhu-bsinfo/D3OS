@@ -26,7 +26,7 @@ use x86_64::VirtAddr;
 pub mod syscall_dispatcher;
 
 #[no_mangle]
-pub extern "C" fn sys_read(application_ptr: *const Application) -> usize {
+pub extern "C" fn sys_read(application_ptr: *const Application, blocking: usize) -> usize {
     let enum_val = unsafe { application_ptr.as_ref().unwrap() };
     match enum_val {
         Application::Shell => {
@@ -34,7 +34,11 @@ pub extern "C" fn sys_read(application_ptr: *const Application) -> usize {
             return terminal.read_byte() as usize;
         }
         Application::WindowManager => {
-            return ps2_devices().keyboard().read_byte() as usize;
+            if blocking != 0 {
+                return ps2_devices().keyboard().read_byte() as usize;
+            }
+
+            return ps2_devices().keyboard().try_read_byte().unwrap_or(0) as usize;
         }
     }
 }
@@ -240,7 +244,7 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
     let mut buff_lfb = buffered_lfb().lock();
     let lfb = buff_lfb.lfb();
     match enum_val {
-        DrawerCommand::ClearScreen => {
+        DrawerCommand::FullClearScreen => {
             lfb.clear();
         }
         DrawerCommand::DrawLine { from, to, color } => {
@@ -301,6 +305,15 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
             color,
         } => {
             lfb.draw_char(pos.x, pos.y, color.clone(), BLACK, *char_to_draw);
+        }
+        DrawerCommand::PartialClearScreen { part_of_screen } => {
+            lfb.fill_rect(
+                part_of_screen.top_left.x,
+                part_of_screen.top_left.y,
+                part_of_screen.width,
+                part_of_screen.height,
+                BLACK,
+            );
         }
     };
 

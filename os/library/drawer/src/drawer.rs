@@ -67,7 +67,10 @@ impl Vertex {
 
 #[repr(C, u8)]
 pub enum DrawerCommand {
-    ClearScreen = 0,
+    FullClearScreen = 0,
+    PartialClearScreen {
+        part_of_screen: RectData,
+    },
     DrawLine {
         from: Vertex,
         to: Vertex,
@@ -102,8 +105,14 @@ impl Drawer {
         syscall1(SystemCall::WriteGraphic, command_addr);
     }
 
-    pub fn clear_screen() {
-        let command = DrawerCommand::ClearScreen;
+    pub fn full_clear_screen() {
+        let command = DrawerCommand::FullClearScreen;
+
+        Self::execute(command);
+    }
+
+    pub fn partial_clear_screen(part_of_screen: RectData) {
+        let command = DrawerCommand::PartialClearScreen { part_of_screen };
 
         Self::execute(command);
     }

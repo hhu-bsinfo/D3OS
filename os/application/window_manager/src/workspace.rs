@@ -44,7 +44,13 @@ impl Workspace {
         }
     }
 
+    pub fn insert_unfocusable_window(&mut self, new_window: Window) {
+        self.windows.insert(new_window.id, new_window);
+    }
+
     pub fn focus_next_window(&mut self) {
+        self.get_focused_window_mut().is_dirty = true;
+
         let index = self
             .window_orderer
             .iter()
@@ -52,9 +58,13 @@ impl Workspace {
             .unwrap();
         let next_index = (index + 1) % self.window_orderer.len();
         self.focused_window_id = self.window_orderer[next_index];
+
+        self.get_focused_window_mut().is_dirty = true;
     }
 
     pub fn focus_prev_window(&mut self) {
+        self.get_focused_window_mut().is_dirty = true;
+
         let index = self
             .window_orderer
             .iter()
@@ -67,10 +77,8 @@ impl Workspace {
         };
 
         self.focused_window_id = self.window_orderer[prev_index];
-    }
 
-    pub fn insert_unfocusable_window(&mut self, new_window: Window) {
-        self.windows.insert(new_window.id, new_window);
+        self.get_focused_window_mut().is_dirty = true;
     }
 
     /// Moves focus to the next component in currently focused window
@@ -83,6 +91,12 @@ impl Workspace {
     pub fn focus_prev_component(&mut self) {
         let focused_window = self.windows.get_mut(&self.focused_window_id).unwrap();
         focused_window.focus_prev_component();
+    }
+
+    pub fn soil_windows(&mut self) {
+        for window in self.windows.values_mut() {
+            window.is_dirty = true;
+        }
     }
 
     pub fn get_focused_window(&self) -> &Window {
