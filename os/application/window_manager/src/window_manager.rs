@@ -19,8 +19,10 @@ use nolock::queues::mpsc::jiffy;
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
-use windows::app_window::AppWindow;
-use windows::workspace_selection_labels_window::WorkspaceSelectionLabelsWindow;
+use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
+use windows::{
+    command_line_window, workspace_selection_labels_window::WorkspaceSelectionLabelsWindow,
+};
 use workspace::Workspace;
 
 pub mod api;
@@ -38,6 +40,7 @@ static SCREEN: Once<(u32, u32)> = Once::new();
 static mut API: Once<Mutex<Api>> = Once::new();
 
 // Screen-split types
+#[derive(Clone, Copy)]
 enum SplitType {
     Horizontal,
     Vertical,
@@ -49,6 +52,7 @@ struct WindowManager {
     current_workspace: usize,
     /// This window not tied to workspaces, it exists once and persists through workspace-switches
     workspace_selection_labels_window: WorkspaceSelectionLabelsWindow,
+    command_line_window: CommandLineWindow,
     /// Receivers from queues connected with API
     receivers: Receivers,
     /// List of closures to call on each loop-iteration, sent from API
@@ -91,8 +95,18 @@ impl WindowManager {
 
         let workspace_selection_labels_window = WorkspaceSelectionLabelsWindow::new(RectData {
             top_left: Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
-            width: SCREEN.get().unwrap().0 - DIST_TO_SCREEN_EDGE * 2,
+            width: screen.0 - DIST_TO_SCREEN_EDGE * 2,
             height: HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
+        });
+
+        let command_line_window_height = DEFAULT_CHAR_HEIGHT + COMMAND_LINE_WINDOW_Y_PADDING * 2;
+        let command_line_window = CommandLineWindow::new(RectData {
+            top_left: Vertex::new(
+                DIST_TO_SCREEN_EDGE,
+                screen.1 - DIST_TO_SCREEN_EDGE - command_line_window_height,
+            ),
+            width: screen.0 - DIST_TO_SCREEN_EDGE * 2,
+            height: command_line_window_height,
         });
 
         (
@@ -100,6 +114,7 @@ impl WindowManager {
                 workspaces: Vec::new(),
                 current_workspace: 0,
                 workspace_selection_labels_window,
+                command_line_window,
                 receivers,
                 is_dirty: true,
                 on_loop_iter_funs: Vec::new(),
@@ -154,50 +169,72 @@ impl WindowManager {
         let read_option = try_read(Application::WindowManager);
 
         if let Some(keyboard_press) = read_option {
-            match keyboard_press {
-                '<' => {}
-                'c' => {
-                    self.create_new_workspace(false);
+            if self.command_line_window.enter_app_mode {
+                self.process_enter_app_mode(keyboard_press);
+            } else {
+                match keyboard_press {
+                    'c' => {
+                        self.create_new_workspace(false);
+                    }
+                    'q' => {
+                        self.switch_prev_workspace();
+                    }
+                    'e' => {
+                        self.switch_next_workspace();
+                    }
+                    'h' => {
+                        self.command_line_window
+                            .activate_enter_app_mode(SplitType::Horizontal);
+                    }
+                    'v' => {
+                        self.command_line_window
+                            .activate_enter_app_mode(SplitType::Vertical);
+                    }
+                    'w' => {
+                        self.get_current_workspace_mut().focus_next_component();
+                    }
+                    's' => {
+                        self.get_current_workspace_mut().focus_prev_component();
+                    }
+                    'f' => {
+                        self.get_current_workspace_mut()
+                            .interact_with_focused_component(Interaction::Press);
+                    }
+                    'a' => {
+                        self.get_current_workspace_mut().focus_prev_window();
+                    }
+                    'd' => {
+                        self.get_current_workspace_mut().focus_next_window();
+                    }
+                    //TODO: Add merge functionality. Make it buddy-style merging when both buddies finished
+                    // running their application
+                    'm' => {}
+                    _ => {}
                 }
-                'q' => {
-                    self.switch_prev_workspace();
-                }
-                'e' => {
-                    self.switch_next_workspace();
-                }
-                'h' => {
-                    self.split_window(
-                        self.get_current_workspace().focused_window_id,
-                        SplitType::Horizontal,
-                    );
-                }
-                'v' => {
-                    self.split_window(
-                        self.get_current_workspace().focused_window_id,
-                        SplitType::Vertical,
-                    );
-                }
-                'w' => {
-                    self.get_current_workspace_mut().focus_next_component();
-                }
-                's' => {
-                    self.get_current_workspace_mut().focus_prev_component();
-                }
-                'f' => {
-                    self.get_current_workspace_mut()
-                        .interact_with_focused_component(Interaction::Press);
-                }
-                'a' => {
-                    self.get_current_workspace_mut().focus_prev_window();
-                }
-                'd' => {
-                    self.get_current_workspace_mut().focus_next_window();
-                }
-                //TODO: Add merge functionality. Make it buddy-style merging when both buddies finished
-                // running their application
-                'm' => {}
-                _ => {}
             }
+        }
+    }
+
+    fn process_enter_app_mode(&mut self, keyboard_press: char) {
+        match keyboard_press {
+            '\n' => {
+                if !self.command_line_window.command.is_empty()
+                    && Self::get_api().is_app_name_valid(&self.command_line_window.command)
+                {
+                    let command = self.command_line_window.command.to_owned();
+                    self.split_window(
+                        self.get_current_workspace().focused_window_id,
+                        self.command_line_window.split_type,
+                        command.as_str(),
+                    );
+                }
+
+                self.command_line_window.deactivate_enter_app_mode();
+                self.is_dirty = true;
+            }
+            // Backspace
+            '\u{0008}' => self.command_line_window.pop_char(),
+            c => self.command_line_window.push_char(c),
         }
     }
 
@@ -219,7 +256,7 @@ impl WindowManager {
         }
     }
 
-    fn add_window_to_workspace(&mut self, rect_data: RectData, is_focusable: bool) {
+    fn add_window_to_workspace(&mut self, rect_data: RectData, app_name: &str, is_focusable: bool) {
         let window_id = Self::generate_id();
         let window = AppWindow::new(window_id, self.current_workspace, rect_data);
 
@@ -234,15 +271,10 @@ impl WindowManager {
 
         self.is_dirty = true;
 
-        let _ = Self::get_api().register(
-            self.current_workspace,
-            window_id,
-            rect_data,
-            String::from("test_app"),
-        );
+        let _ = Self::get_api().register(self.current_workspace, window_id, rect_data, app_name);
     }
 
-    fn split_window(&mut self, window_id: usize, split_type: SplitType) {
+    fn split_window(&mut self, window_id: usize, split_type: SplitType, app_name: &str) {
         let curr_ws = self.get_current_workspace_mut();
 
         if let Some(window) = curr_ws.windows.get_mut(&window_id) {
@@ -260,7 +292,7 @@ impl WindowManager {
                         width: old_width,
                         height: window.rect_data.height,
                     };
-                    self.add_window_to_workspace(new_rect_data, true);
+                    self.add_window_to_workspace(new_rect_data, app_name, true);
                 }
                 SplitType::Vertical => {
                     window.rect_data.width /= 2;
@@ -270,7 +302,7 @@ impl WindowManager {
                         width: window.rect_data.width,
                         height: old_height,
                     };
-                    self.add_window_to_workspace(new_rect_data, true);
+                    self.add_window_to_workspace(new_rect_data, app_name, true);
                 }
             }
         }
@@ -331,7 +363,7 @@ impl WindowManager {
                 width: 300,
                 height: 50,
             },
-            String::from("clock"),
+            "clock",
         );
     }
 
@@ -371,6 +403,10 @@ impl WindowManager {
         for window in curr_ws.windows.values_mut() {
             window.draw(focused_window_id, is_dirty);
         }
+
+        /* Redraw command line window. IMPORTANT: This needs to be drawn AFTER
+        workspace-windows, since this is floating above them */
+        self.command_line_window.draw();
 
         self.is_dirty = false;
     }

@@ -85,7 +85,7 @@ impl Api {
         workspace_index: usize,
         window_id: usize,
         abs_pos: RectData,
-        app_string: String,
+        app_string: &str,
     ) -> Option<usize> {
         let app_fn_ptr = self.map_app_string_to_fn(app_string)?;
 
@@ -170,8 +170,12 @@ impl Api {
         Ok(())
     }
 
-    fn map_app_string_to_fn(&self, app_string: String) -> Option<fn()> {
-        match app_string.as_str() {
+    pub fn is_app_name_valid(&self, app_string: &str) -> bool {
+        self.map_app_string_to_fn(app_string).is_some()
+    }
+
+    fn map_app_string_to_fn(&self, app_string: &str) -> Option<fn()> {
+        match app_string {
             "clock" => Some(Clock::run),
             "test_app" => Some(TestApp::run),
             _ => None,
