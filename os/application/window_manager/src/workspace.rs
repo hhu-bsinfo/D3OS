@@ -1,7 +1,8 @@
-use crate::components::window::Window;
 use alloc::vec;
 use alloc::vec::Vec;
 use hashbrown::HashMap;
+
+use crate::window::Window;
 
 pub struct Workspace {
     pub windows: HashMap<usize, Window>,

@@ -14,7 +14,7 @@ use alloc::{
 };
 use api::{Api, NewCompData, NewLoopIterFunData, Receivers, Senders, WindowData};
 use components::{
-    component::Interaction, selected_window_label::SelectedWorkspaceLabel, window::Window,
+    component::Interaction, selected_window_label::SelectedWorkspaceLabel,
     workspace_selection_labels_window::WorkspaceSelectionLabelsWindow,
 };
 use config::*;
@@ -25,12 +25,14 @@ use nolock::queues::mpsc::jiffy;
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
+use window::Window;
 use workspace::Workspace;
 
 pub mod api;
 mod apps;
 mod components;
 mod config;
+mod window;
 mod workspace;
 
 // Ids are unique across all components

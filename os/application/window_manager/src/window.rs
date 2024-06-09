@@ -3,9 +3,10 @@ use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::{WHITE, YELLOW};
 use hashbrown::HashMap;
 
-use crate::{components::component::Component, WindowManager};
-
-use super::component::Interaction;
+use crate::{
+    components::component::{Component, Interaction},
+    WindowManager,
+};
 
 pub struct Window {
     pub id: usize,
