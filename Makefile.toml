@@ -13,11 +13,11 @@ alias = "qemu"
 
 [tasks.debug]
 command = "qemu-system-x86_64"
-args = [ "-S", "-gdb", "tcp::1234", "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
+args = [ "-S", "-gdb", "tcp::1234", "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-serial", "stdio", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
 dependencies = [ "debug-signal-vscode" ]
 
 [tasks.debug.mac]
-args = [ "-S", "-gdb", "tcp::1234", "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
+args = [ "-S", "-gdb", "tcp::1234", "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-serial", "stdio", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
 
 [tasks.debug-signal-vscode]
 command = "echo"
@@ -26,11 +26,11 @@ dependencies = [ "image", "ovmf" ]
 
 [tasks.qemu]
 command = "qemu-system-x86_64"
-args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
+args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-serial", "stdio", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
 dependencies = [ "image", "ovmf" ]
 
 [tasks.qemu.mac]
-args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
+args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-serial", "stdio", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
 
 [tasks.qemu-no-compile]
 command = "qemu-system-x86_64"
