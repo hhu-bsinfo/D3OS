@@ -29,6 +29,7 @@ impl Runnable for Clock {
                     let mut date_val = on_create_rc.write();
                     *date_val = date().format("%Y-%m-%d %H:%M:%S").to_string();
                 })),
+                font_size: Some(8),
             },
         );
     }

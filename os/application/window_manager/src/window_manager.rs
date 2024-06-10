@@ -4,11 +4,7 @@ extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use alloc::{
-    borrow::ToOwned,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{borrow::ToOwned, string::ToString, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFunData, Receivers, Senders, WindowData, DEFAULT_APP};
 use components::{component::Interaction, selected_window_label::SelectedWorkspaceLabel};
 use config::*;
@@ -19,10 +15,8 @@ use nolock::queues::mpsc::jiffy;
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
+use windows::workspace_selection_labels_window::WorkspaceSelectionLabelsWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
-use windows::{
-    command_line_window, workspace_selection_labels_window::WorkspaceSelectionLabelsWindow,
-};
 use workspace::Workspace;
 
 pub mod api;
@@ -384,6 +378,7 @@ impl WindowManager {
         &mut self.workspaces[self.current_workspace]
     }
 
+    //TODO: Re-add focused-border around focused window
     fn draw(&mut self) {
         // In enter_app_mode, we freeze everything else and only redraw the command-line-window
         if self.command_line_window.enter_app_mode {

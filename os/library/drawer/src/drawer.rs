@@ -89,11 +89,13 @@ pub enum DrawerCommand {
         char_to_draw: char,
         pos: Vertex,
         color: Color,
+        scale: (u32, u32),
     },
     DrawString {
         string_to_draw: String,
         pos: Vertex,
         color: Color,
+        scale: (u32, u32),
     },
 }
 
@@ -146,21 +148,23 @@ impl Drawer {
         Self::execute(command);
     }
 
-    pub fn draw_char(char_to_draw: char, pos: Vertex, color: Color) {
+    pub fn draw_char(char_to_draw: char, pos: Vertex, color: Color, scale: (u32, u32)) {
         let command = DrawerCommand::DrawChar {
             char_to_draw,
             pos,
             color,
+            scale,
         };
 
         Self::execute(command);
     }
 
-    pub fn draw_string(string_to_draw: String, pos: Vertex, color: Color) {
+    pub fn draw_string(string_to_draw: String, pos: Vertex, color: Color, scale: (u32, u32)) {
         let command = DrawerCommand::DrawString {
             string_to_draw,
             pos,
             color,
+            scale,
         };
 
         Self::execute(command);

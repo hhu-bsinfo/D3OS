@@ -7,12 +7,13 @@ use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use spin::Mutex;
 
+use crate::DEFAULT_FONT_SCALE;
+
 use super::component::{Component, Interaction};
 
 pub struct Button {
     pub workspace_index: usize,
     pub pos: RectData,
-    // TODO: Consider using Arc instead of Rc, just in case
     pub label: Option<Rc<Mutex<String>>>,
     pub on_click: Box<dyn Fn() -> ()>,
 }
@@ -58,7 +59,7 @@ impl Component for Button {
             let label = &label_mutex.lock();
             let label_pos = self.calc_label_pos(label);
 
-            Drawer::draw_string(label.to_string(), label_pos, color);
+            Drawer::draw_string(label.to_string(), label_pos, color, DEFAULT_FONT_SCALE);
         }
     }
 

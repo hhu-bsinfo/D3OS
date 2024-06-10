@@ -8,13 +8,22 @@ use spin::{Mutex, RwLock};
 use crate::{
     apps::{clock::Clock, runnable::Runnable, test_app::TestApp},
     components::{button::Button, component::Component, dynamic_label::DynamicLabel},
-    WindowManager,
 };
 
 extern crate alloc;
 
 /// Default app to be used on startup of a new workspace
 pub static DEFAULT_APP: &str = "clock";
+
+enum FontScalingStrategy {
+    /// We merely scale x and y values of the font
+    WidthAndHeight,
+    /**
+    We scale by the smaller one of x and y and change
+    the other in a way to keep the x/y ratio
+    */
+    RespectRatio,
+}
 
 pub enum Command {
     CreateButton {
@@ -25,8 +34,9 @@ pub enum Command {
     CreateDynamicLabel {
         pos: RectData,
         text: Rc<RwLock<String>>,
-        // Function to be called on each window-manager main-loop iteration
+        /// Function to be called on each window-manager main-loop iteration
         on_loop_iter: Option<Box<dyn Fn() -> ()>>,
+        font_size: Option<u32>,
     },
 }
 
@@ -55,6 +65,7 @@ pub struct Api {
 pub struct HandleData {
     workspace_index: usize,
     window_id: usize,
+    /// absolute position on the screen
     abs_pos: RectData,
     ratios: (f64, f64),
 }
@@ -126,7 +137,7 @@ impl Api {
                 label,
                 on_click,
             } => {
-                let scaled_pos = self.scale_to_window(pos, handle_data);
+                let scaled_pos = self.scale_rect_to_window(pos, handle_data);
 
                 let button = Button::new(handle_data.workspace_index, scaled_pos, label, on_click);
 
@@ -141,11 +152,23 @@ impl Api {
                 pos,
                 text,
                 on_loop_iter,
+                font_size,
             } => {
-                let scaled_pos = self.scale_to_window(pos, handle_data);
+                let scaled_pos = self.scale_rect_to_window(pos, handle_data);
+                let scaled_font_size = font_size.map(|original_size| {
+                    self.scale_font_to_window(
+                        original_size,
+                        &handle_data.ratios,
+                        FontScalingStrategy::RespectRatio,
+                    )
+                });
 
-                let label =
-                    DynamicLabel::new(handle_data.workspace_index, scaled_pos.top_left, text);
+                let label = DynamicLabel::new(
+                    handle_data.workspace_index,
+                    scaled_pos.top_left,
+                    text,
+                    scaled_font_size,
+                );
 
                 let dispatch_data = NewCompData {
                     window_data,
@@ -184,7 +207,7 @@ impl Api {
         self.senders.tx_on_loop_iter.enqueue(fun);
     }
 
-    fn scale_to_window(
+    fn scale_rect_to_window(
         &self,
         RectData {
             top_left,
@@ -202,6 +225,31 @@ impl Api {
             ),
             width: (f64::from(width) * ratios.0) as u32,
             height: (f64::from(height) * ratios.1) as u32,
+        }
+    }
+
+    #[allow(unused_variables, unreachable_code)]
+    fn scale_font_to_window(
+        &self,
+        original_font_size: u32,
+        ratios: &(f64, f64),
+        strategy: FontScalingStrategy,
+    ) -> (u32, u32) {
+        /* TODO: Fix font scaling not working properly. It scaled fonts up, instead of down.
+        A working user-mode debugger would really be helpful right now, huh? */
+        return (1, 1);
+        let float_font_size = f64::from(original_font_size);
+        match strategy {
+            FontScalingStrategy::WidthAndHeight => (
+                ((float_font_size * ratios.0) as u32).max(1),
+                ((float_font_size * ratios.1) as u32).max(1),
+            ),
+            FontScalingStrategy::RespectRatio => {
+                let min_ratio = ratios.0.min(ratios.1);
+                let new_font = ((float_font_size * min_ratio) as u32).max(1);
+
+                (new_font, new_font)
+            }
         }
     }
 }

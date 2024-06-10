@@ -1,7 +1,8 @@
 use alloc::string::{String, ToString};
-use core::any::Any;
 use drawer::drawer::{Drawer, Vertex};
 use graphic::color::Color;
+
+use crate::DEFAULT_FONT_SCALE;
 
 use super::component::{Component, Interaction};
 
@@ -15,7 +16,7 @@ pub struct Label {
     pub workspace_index: usize,
     pub pos: Vertex,
     pub text: String,
-    pub font_size: usize,
+    pub font_scale: (u32, u32),
 }
 
 impl Label {
@@ -23,20 +24,20 @@ impl Label {
         workspace_index: usize,
         pos: Vertex,
         text: String,
-        font_size: Option<usize>,
+        font_scale: Option<(u32, u32)>,
     ) -> Self {
         Self {
             workspace_index,
             pos,
             text,
-            font_size: font_size.unwrap_or(1),
+            font_scale: font_scale.unwrap_or(DEFAULT_FONT_SCALE),
         }
     }
 }
 
 impl Component for Label {
     fn draw(&self, color: Color) {
-        Drawer::draw_string(self.text.to_string(), self.pos, color);
+        Drawer::draw_string(self.text.to_string(), self.pos, color, self.font_scale);
     }
 
     fn interact(&self, _interaction: Interaction) {}

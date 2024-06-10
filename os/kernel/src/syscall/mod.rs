@@ -296,15 +296,33 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
             string_to_draw,
             pos,
             color,
+            scale,
         } => {
-            lfb.draw_string(pos.x, pos.y, color.clone(), BLACK, string_to_draw);
+            lfb.draw_string_scaled(
+                pos.x,
+                pos.y,
+                scale.0,
+                scale.1,
+                color.clone(),
+                BLACK,
+                string_to_draw,
+            );
         }
         DrawerCommand::DrawChar {
             char_to_draw,
             pos,
             color,
+            scale,
         } => {
-            lfb.draw_char(pos.x, pos.y, color.clone(), BLACK, *char_to_draw);
+            lfb.draw_char_scaled(
+                pos.x,
+                pos.y,
+                scale.0,
+                scale.1,
+                color.clone(),
+                BLACK,
+                *char_to_draw,
+            );
         }
         DrawerCommand::PartialClearScreen { part_of_screen } => {
             lfb.fill_rect(

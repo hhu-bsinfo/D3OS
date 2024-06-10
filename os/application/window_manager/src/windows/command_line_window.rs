@@ -1,9 +1,8 @@
 use alloc::string::String;
-use concurrent::process::exit;
 use drawer::drawer::{Drawer, RectData};
 use graphic::color::{CYAN, WHITE};
 
-use crate::SplitType;
+use crate::{SplitType, DEFAULT_FONT_SCALE};
 
 /**
 This is the window used to contain the command-line, which in turn is used
@@ -61,6 +60,11 @@ impl CommandLineWindow {
         } = self.rect_data;
 
         Drawer::draw_rectangle(top_left, top_left.add(width, height), CYAN);
-        Drawer::draw_string(self.command.clone(), top_left.add(2, 2), WHITE);
+        Drawer::draw_string(
+            self.command.clone(),
+            top_left.add(2, 2),
+            WHITE,
+            DEFAULT_FONT_SCALE,
+        );
     }
 }

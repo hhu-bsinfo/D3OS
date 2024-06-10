@@ -1,7 +1,8 @@
 use alloc::string::{String, ToString};
-use core::any::Any;
 use drawer::drawer::{Drawer, Vertex};
 use graphic::color::Color;
+
+use crate::DEFAULT_FONT_SCALE;
 
 use super::component::{Component, Interaction};
 
@@ -25,7 +26,7 @@ impl SelectedWorkspaceLabel {
 
 impl Component for SelectedWorkspaceLabel {
     fn draw(&self, color: Color) {
-        Drawer::draw_string(self.text.to_string(), self.pos, color);
+        Drawer::draw_string(self.text.to_string(), self.pos, color, DEFAULT_FONT_SCALE);
     }
 
     fn interact(&self, _interaction: Interaction) {}
