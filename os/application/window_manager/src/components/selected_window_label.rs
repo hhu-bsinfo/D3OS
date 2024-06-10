@@ -29,12 +29,4 @@ impl Component for SelectedWorkspaceLabel {
     }
 
     fn interact(&self, _interaction: Interaction) {}
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
 }

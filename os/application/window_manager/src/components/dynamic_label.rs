@@ -27,16 +27,13 @@ impl DynamicLabel {
 impl Component for DynamicLabel {
     fn draw(&self, color: Color) {
         let text = self.text.read();
-        Drawer::draw_string(text.deref().clone(), self.pos, color);
+        Drawer::draw_string(
+            text.deref().clone(),
+            self.pos,
+            color,
+            (self.font_size, self.font_size),
+        );
     }
 
     fn interact(&self, _interaction: Interaction) {}
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
 }
