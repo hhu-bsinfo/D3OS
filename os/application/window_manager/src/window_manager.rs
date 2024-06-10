@@ -386,6 +386,12 @@ impl WindowManager {
     }
 
     fn draw(&mut self) {
+        // In enter_app_mode, we freeze everything else and only redraw the command-line-window
+        if self.command_line_window.enter_app_mode {
+            self.command_line_window.draw();
+            return;
+        }
+
         let is_dirty = self.is_dirty;
 
         if is_dirty {
