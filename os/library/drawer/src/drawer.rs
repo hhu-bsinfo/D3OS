@@ -85,6 +85,10 @@ pub enum DrawerCommand {
         radius: u32,
         color: Color,
     },
+    DrawFilledRectangle {
+        rect_data: RectData,
+        color: Color,
+    },
     DrawFilledTriangle {
         vertices: [Vertex; 3],
         color: Color,
@@ -148,6 +152,12 @@ impl Drawer {
             radius,
             color,
         };
+
+        Self::execute(command);
+    }
+
+    pub fn draw_filled_rectangle(rect_data: RectData, color: Color) {
+        let command = DrawerCommand::DrawFilledRectangle { rect_data, color };
 
         Self::execute(command);
     }

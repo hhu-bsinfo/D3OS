@@ -378,7 +378,6 @@ impl WindowManager {
         &mut self.workspaces[self.current_workspace]
     }
 
-    //TODO: Re-add focused-border around focused window
     fn draw(&mut self) {
         // In enter_app_mode, we freeze everything else and only redraw the command-line-window
         if self.command_line_window.enter_app_mode {

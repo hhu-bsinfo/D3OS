@@ -14,7 +14,7 @@ use core::mem::size_of;
 use core::ptr;
 use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
-use drawer::drawer::DrawerCommand;
+use drawer::drawer::{DrawerCommand, RectData};
 use graphic::color::BLACK;
 use io::Application;
 use libm::Libm;
@@ -270,10 +270,22 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
                 color.clone(),
             );
         }
+        DrawerCommand::DrawFilledRectangle {
+            rect_data:
+                RectData {
+                    top_left,
+                    width,
+                    height,
+                },
+            color,
+        } => {
+            lfb.fill_rect(top_left.x, top_left.y, *width, *height, *color);
+        }
         DrawerCommand::DrawFilledTriangle { vertices, color } => {
             let tuples = vertices.map(|vertex| vertex.as_tuple());
             lfb.fill_triangle((tuples[0], tuples[1], tuples[2]), *color)
         }
+
         DrawerCommand::DrawCircle {
             center,
             radius,
