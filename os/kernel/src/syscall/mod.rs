@@ -270,6 +270,10 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
                 color.clone(),
             );
         }
+        DrawerCommand::DrawFilledTriangle { vertices, color } => {
+            let tuples = vertices.map(|vertex| vertex.as_tuple());
+            lfb.fill_triangle((tuples[0], tuples[1], tuples[2]), *color)
+        }
         DrawerCommand::DrawCircle {
             center,
             radius,

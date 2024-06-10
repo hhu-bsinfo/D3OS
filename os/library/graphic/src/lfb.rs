@@ -1,6 +1,6 @@
-use unifont::get_glyph;
 use crate::color::Color;
 use libm::Libm;
+use unifont::get_glyph;
 
 #[derive(Clone, Copy)]
 pub struct LFB {
@@ -39,7 +39,14 @@ impl LFB {
             _ => draw_pixel_stub,
         };
 
-        Self { buffer, pitch, width, height, bpp, pixel_drawer }
+        Self {
+            buffer,
+            pitch,
+            width,
+            height,
+            bpp,
+            pixel_drawer,
+        }
     }
 
     pub const fn buffer(&self) -> *mut u8 {
@@ -80,33 +87,35 @@ impl LFB {
 
         // Blend if necessary and draw pixel
         if color.alpha < 255 {
-            while keep_iterating_for_dim!(x_stepsize, x_curr, x2) && keep_iterating_for_dim!(y_stepsize, y_curr, y2) {
-                let (x_u32, y_u32) = (Libm::<f32>::round(x_curr) as u32, Libm::<f32>::round(y_curr) as u32);
-                unsafe { 
+            while keep_iterating_for_dim!(x_stepsize, x_curr, x2)
+                && keep_iterating_for_dim!(y_stepsize, y_curr, y2)
+            {
+                let (x_u32, y_u32) = (
+                    Libm::<f32>::round(x_curr) as u32,
+                    Libm::<f32>::round(y_curr) as u32,
+                );
+                unsafe {
                     (self.pixel_drawer)(
-                        self.buffer, 
-                        self.pitch, 
+                        self.buffer,
+                        self.pitch,
                         x_u32,
                         y_u32,
-                        self.read_pixel(x_u32, y_u32).blend(color)
-                    ) 
+                        self.read_pixel(x_u32, y_u32).blend(color),
+                    )
                 };
 
                 x_curr += x_stepsize;
                 y_curr += y_stepsize;
             }
         } else {
-            while keep_iterating_for_dim!(x_stepsize, x_curr, x2) && keep_iterating_for_dim!(y_stepsize, y_curr, y2) {
-                let (x_u32, y_u32) = (Libm::<f32>::round(x_curr) as u32, Libm::<f32>::round(y_curr) as u32);
-                unsafe { 
-                    (self.pixel_drawer)(
-                        self.buffer, 
-                        self.pitch, 
-                        x_u32,
-                        y_u32,
-                        color,
-                    ) 
-                };
+            while keep_iterating_for_dim!(x_stepsize, x_curr, x2)
+                && keep_iterating_for_dim!(y_stepsize, y_curr, y2)
+            {
+                let (x_u32, y_u32) = (
+                    Libm::<f32>::round(x_curr) as u32,
+                    Libm::<f32>::round(y_curr) as u32,
+                );
+                unsafe { (self.pixel_drawer)(self.buffer, self.pitch, x_u32, y_u32, color) };
 
                 x_curr += x_stepsize;
                 y_curr += y_stepsize;
@@ -128,7 +137,15 @@ impl LFB {
 
         // Blend if necessary and draw pixel
         if color.alpha < 255 {
-            unsafe { (self.pixel_drawer)(self.buffer, self.pitch, x, y, self.read_pixel(x, y).blend(color)) };
+            unsafe {
+                (self.pixel_drawer)(
+                    self.buffer,
+                    self.pitch,
+                    x,
+                    y,
+                    self.read_pixel(x, y).blend(color),
+                )
+            };
         } else {
             unsafe { (self.pixel_drawer)(self.buffer, self.pitch, x, y, color) };
         }
@@ -142,7 +159,10 @@ impl LFB {
         let bpp = if self.bpp == 15 { 16 } else { self.bpp() };
 
         unsafe {
-            let ptr = self.buffer.offset(((x * (bpp / 8) as u32) + y * self.pitch) as isize) as *const u32;
+            let ptr = self
+                .buffer
+                .offset(((x * (bpp / 8) as u32) + y * self.pitch) as isize)
+                as *const u32;
             Color::from_rgb(ptr.read(), self.bpp)
         }
     }
@@ -162,7 +182,16 @@ impl LFB {
         self.draw_char_scaled(x, y, 1, 1, fg_color, bg_color, c)
     }
 
-    pub fn draw_char_scaled(&self, x: u32, y: u32, x_scale: u32, y_scale: u32, fg_color: Color, bg_color: Color, c: char) -> u32 {
+    pub fn draw_char_scaled(
+        &self,
+        x: u32,
+        y: u32,
+        x_scale: u32,
+        y_scale: u32,
+        fg_color: Color,
+        bg_color: Color,
+        c: char,
+    ) -> u32 {
         return match get_glyph(c) {
             Some(glyph) => {
                 let mut x_offset = 0;
@@ -172,7 +201,7 @@ impl LFB {
                     for col in 0..glyph.get_width() as u32 {
                         let color = match glyph.get_pixel(col as usize, row as usize) {
                             true => fg_color,
-                            false => bg_color
+                            false => bg_color,
                         };
 
                         for i in 0..x_scale {
@@ -189,34 +218,140 @@ impl LFB {
                 }
 
                 glyph.get_width() as u32
-            },
-            None => 0
-        }
+            }
+            None => 0,
+        };
     }
 
     pub fn draw_string(&self, x: u32, y: u32, fg_color: Color, bg_color: Color, string: &str) {
         self.draw_string_scaled(x, y, 1, 1, fg_color, bg_color, string);
     }
 
-    pub fn draw_string_scaled(&self, x: u32, y: u32, x_scale: u32, y_scale: u32, fg_color: Color, bg_color: Color, string: &str) {
+    pub fn draw_string_scaled(
+        &self,
+        x: u32,
+        y: u32,
+        x_scale: u32,
+        y_scale: u32,
+        fg_color: Color,
+        bg_color: Color,
+        string: &str,
+    ) {
         for c in string.chars().enumerate() {
-            self.draw_char_scaled(x + (c.0 as u32 * (8 * x_scale)), y, x_scale, y_scale, fg_color, bg_color, c.1);
+            self.draw_char_scaled(
+                x + (c.0 as u32 * (8 * x_scale)),
+                y,
+                x_scale,
+                y_scale,
+                fg_color,
+                bg_color,
+                c.1,
+            );
         }
     }
 
     pub fn clear(&self) {
         unsafe {
-            self.buffer.write_bytes(0, (self.pitch * self.height) as usize);
+            self.buffer
+                .write_bytes(0, (self.pitch * self.height) as usize);
         }
     }
 
     pub fn scroll_up(&self, lines: u32) {
         unsafe {
             // Move screen buffer upwards by the given amount of lines
-            self.buffer.copy_from(self.buffer.offset((self.pitch * lines) as isize), (self.pitch * (self.height - lines)) as usize);
+            self.buffer.copy_from(
+                self.buffer.offset((self.pitch * lines) as isize),
+                (self.pitch * (self.height - lines)) as usize,
+            );
 
             // Clear lower part of the screen
-            self.buffer.offset((self.pitch * (self.height - lines)) as isize).write_bytes(0, (self.pitch * lines) as usize);
+            self.buffer
+                .offset((self.pitch * (self.height - lines)) as isize)
+                .write_bytes(0, (self.pitch * lines) as usize);
+        }
+    }
+
+    pub fn fill_triangle(
+        &self,
+        ((mut x1, mut y1), (mut x2, mut y2), (mut x3, mut y3)): (
+            (u32, u32),
+            (u32, u32),
+            (u32, u32),
+        ),
+        color: Color,
+    ) {
+        // Sort vertices by y-coordinate ascending (y1 <= y2 <= y3)
+        if y1 > y2 {
+            core::mem::swap(&mut x1, &mut x2);
+            core::mem::swap(&mut y1, &mut y2);
+        }
+        if y1 > y3 {
+            core::mem::swap(&mut x1, &mut x3);
+            core::mem::swap(&mut y1, &mut y3);
+        }
+        if y2 > y3 {
+            core::mem::swap(&mut x2, &mut x3);
+            core::mem::swap(&mut y2, &mut y3);
+        }
+
+        // Calculate slopes
+        let dx1 = if y2 != y1 {
+            (x2 as f32 - x1 as f32) / (y2 as f32 - y1 as f32)
+        } else {
+            0.0
+        };
+        let dx2 = if y3 != y1 {
+            (x3 as f32 - x1 as f32) / (y3 as f32 - y1 as f32)
+        } else {
+            0.0
+        };
+        let dx3 = if y3 != y2 {
+            (x3 as f32 - x2 as f32) / (y3 as f32 - y2 as f32)
+        } else {
+            0.0
+        };
+
+        // Draw lower part of the triangle
+        let mut start_x = x1 as f32;
+        let mut end_x = x1 as f32;
+        for y in y1..=y2 {
+            self.draw_horizontal_line(start_x, end_x, y, color);
+            start_x += dx1;
+            end_x += dx2;
+        }
+
+        // Draw upper part of the triangle
+        start_x = x2 as f32;
+        end_x = x1 as f32 + dx2 * (y2 as f32 - y1 as f32);
+        for y in y2..=y3 {
+            self.draw_horizontal_line(start_x, end_x, y, color);
+            start_x += dx3;
+            end_x += dx2;
+        }
+    }
+
+    fn draw_horizontal_line(&self, start_x: f32, end_x: f32, y: u32, color: Color) {
+        if y >= self.height {
+            return; // y is out of bounds
+        }
+
+        let mut start_x = Libm::<f32>::round(start_x) as u32;
+        let mut end_x = Libm::<f32>::round(end_x) as u32;
+
+        if start_x > end_x {
+            core::mem::swap(&mut start_x, &mut end_x);
+        }
+
+        start_x = core::cmp::max(0, core::cmp::min(self.width - 1, start_x));
+        end_x = core::cmp::max(0, core::cmp::min(self.width - 1, end_x));
+
+        for x in start_x..=end_x {
+            if x < self.width && y < self.height {
+                unsafe {
+                    (self.pixel_drawer)(self.buffer, self.pitch, x, y, color);
+                }
+            }
         }
     }
 }

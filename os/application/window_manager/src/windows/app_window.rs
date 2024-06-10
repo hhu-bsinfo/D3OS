@@ -104,6 +104,8 @@ impl AppWindow {
             return;
         }
 
+        let is_focused = self.id == focused_window_id;
+
         let RectData {
             top_left,
             width,
@@ -131,7 +133,9 @@ impl AppWindow {
             component.draw(WHITE);
         }
 
-        if self.id == focused_window_id {
+        if is_focused {
+            self.draw_is_focused_indicator();
+
             if let Some(focused_component_id) = self.focused_component_id {
                 self.components
                     .get(&focused_component_id)
@@ -141,5 +145,11 @@ impl AppWindow {
         }
 
         self.is_dirty = false;
+    }
+
+    fn draw_is_focused_indicator(&self) {
+        let top_left = self.rect_data.top_left;
+        let vertices = [top_left.add(1, 1), top_left.add(10, 1), top_left.add(1, 10)];
+        Drawer::draw_filled_triangle(vertices, YELLOW);
     }
 }
