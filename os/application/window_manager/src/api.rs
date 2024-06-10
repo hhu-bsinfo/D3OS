@@ -13,6 +13,9 @@ use crate::{
 
 extern crate alloc;
 
+/// Default app to be used on startup of a new workspace
+pub static DEFAULT_APP: &str = "clock";
+
 pub enum Command {
     CreateButton {
         pos: RectData,

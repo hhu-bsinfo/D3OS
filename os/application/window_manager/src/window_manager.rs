@@ -9,7 +9,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use api::{Api, NewCompData, NewLoopIterFunData, Receivers, Senders, WindowData};
+use api::{Api, NewCompData, NewLoopIterFunData, Receivers, Senders, WindowData, DEFAULT_APP};
 use components::{component::Interaction, selected_window_label::SelectedWorkspaceLabel};
 use config::*;
 use drawer::drawer::{Drawer, RectData, Vertex};
@@ -363,7 +363,7 @@ impl WindowManager {
                 width: 300,
                 height: 50,
             },
-            "clock",
+            DEFAULT_APP,
         );
     }
 
