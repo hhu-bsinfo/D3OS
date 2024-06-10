@@ -25,6 +25,7 @@ pub enum Command {
     CreateDynamicLabel {
         pos: RectData,
         text: Rc<RwLock<String>>,
+        // Function to be called on each window-manager main-loop iteration
         on_loop_iter: Option<Box<dyn Fn() -> ()>>,
     },
 }
@@ -127,13 +128,7 @@ impl Api {
             } => {
                 let scaled_pos = self.scale_to_window(pos, handle_data);
 
-                let button = Button::new(
-                    WindowManager::generate_id(),
-                    handle_data.workspace_index,
-                    scaled_pos,
-                    label,
-                    on_click,
-                );
+                let button = Button::new(handle_data.workspace_index, scaled_pos, label, on_click);
 
                 let dispatch_data = NewCompData {
                     window_data,
@@ -149,12 +144,8 @@ impl Api {
             } => {
                 let scaled_pos = self.scale_to_window(pos, handle_data);
 
-                let label = DynamicLabel::new(
-                    WindowManager::generate_id(),
-                    handle_data.workspace_index,
-                    scaled_pos.top_left,
-                    text,
-                );
+                let label =
+                    DynamicLabel::new(handle_data.workspace_index, scaled_pos.top_left, text);
 
                 let dispatch_data = NewCompData {
                     window_data,

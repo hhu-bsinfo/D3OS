@@ -336,7 +336,6 @@ impl WindowManager {
         let new_workspace_len = (self.workspaces.len() + 1) as u32;
 
         let workspace_selection_label = SelectedWorkspaceLabel::new(
-            Self::generate_id(),
             0,
             Vertex::new(
                 DIST_TO_SCREEN_EDGE

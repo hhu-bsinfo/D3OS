@@ -12,28 +12,29 @@ we cannot specify a size to the characters until we implemented font-handling ou
 */
 #[derive(Debug)]
 pub struct Label {
-    pub id: usize,
     pub workspace_index: usize,
     pub pos: Vertex,
     pub text: String,
+    pub font_size: usize,
 }
 
 impl Label {
-    pub fn new(id: usize, workspace_index: usize, pos: Vertex, text: String) -> Self {
+    pub fn new(
+        workspace_index: usize,
+        pos: Vertex,
+        text: String,
+        font_size: Option<usize>,
+    ) -> Self {
         Self {
-            id,
             workspace_index,
             pos,
             text,
+            font_size: font_size.unwrap_or(1),
         }
     }
 }
 
 impl Component for Label {
-    fn id(&self) -> usize {
-        self.id
-    }
-
     fn draw(&self, color: Color) {
         Drawer::draw_string(self.text.to_string(), self.pos, color);
     }

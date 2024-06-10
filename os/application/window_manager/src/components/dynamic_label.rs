@@ -9,16 +9,14 @@ use super::component::{Component, Interaction};
 
 /// Dynamic Labels are characterized by their text being modifiable, unlike [`Label`](`crate::components::label::Label`)
 pub struct DynamicLabel {
-    pub id: usize,
     pub workspace_index: usize,
     pub pos: Vertex,
     pub text: Rc<RwLock<String>>,
 }
 
 impl DynamicLabel {
-    pub fn new(id: usize, workspace_index: usize, pos: Vertex, text: Rc<RwLock<String>>) -> Self {
+    pub fn new(workspace_index: usize, pos: Vertex, text: Rc<RwLock<String>>) -> Self {
         Self {
-            id,
             workspace_index,
             pos,
             text,
@@ -27,10 +25,6 @@ impl DynamicLabel {
 }
 
 impl Component for DynamicLabel {
-    fn id(&self) -> usize {
-        self.id
-    }
-
     fn draw(&self, color: Color) {
         let text = self.text.read();
         Drawer::draw_string(text.deref().clone(), self.pos, color);

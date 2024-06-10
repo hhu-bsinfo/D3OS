@@ -10,7 +10,6 @@ use spin::Mutex;
 use super::component::{Component, Interaction};
 
 pub struct Button {
-    pub comp_id: usize,
     pub workspace_index: usize,
     pub pos: RectData,
     // TODO: Consider using Arc instead of Rc, just in case
@@ -20,14 +19,12 @@ pub struct Button {
 
 impl Button {
     pub fn new(
-        comp_id: usize,
         workspace_index: usize,
         pos: RectData,
         label: Option<Rc<Mutex<String>>>,
         on_click: Box<dyn Fn() -> ()>,
     ) -> Self {
         Self {
-            comp_id,
             workspace_index,
             pos,
             label,
@@ -50,10 +47,6 @@ impl Button {
 }
 
 impl Component for Button {
-    fn id(&self) -> usize {
-        self.comp_id
-    }
-
     fn draw(&self, color: graphic::color::Color) {
         let RectData {
             top_left,
