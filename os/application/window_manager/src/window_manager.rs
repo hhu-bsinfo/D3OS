@@ -404,10 +404,6 @@ impl WindowManager {
             window.draw(focused_window_id, is_dirty);
         }
 
-        /* Redraw command line window. IMPORTANT: This needs to be drawn AFTER
-        workspace-windows, since this is floating above them */
-        self.command_line_window.draw();
-
         self.is_dirty = false;
     }
 }

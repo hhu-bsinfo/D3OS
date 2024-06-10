@@ -12,7 +12,6 @@ pub struct CommandLineWindow {
     /// If true, all keyboard input is redirected to typing in the name of the app
     pub enter_app_mode: bool,
     pub command: String,
-    pub is_visible: bool,
     pub split_type: SplitType,
     rect_data: RectData,
 }
@@ -23,7 +22,6 @@ impl CommandLineWindow {
             rect_data,
             enter_app_mode: false,
             command: String::with_capacity(16),
-            is_visible: false,
             split_type: SplitType::Horizontal,
         }
     }
@@ -31,13 +29,11 @@ impl CommandLineWindow {
     pub fn activate_enter_app_mode(&mut self, split_type: SplitType) {
         self.enter_app_mode = true;
         self.split_type = split_type;
-        self.is_visible = true;
         self.command.clear();
     }
 
     pub fn deactivate_enter_app_mode(&mut self) {
         self.enter_app_mode = false;
-        self.is_visible = false;
     }
 
     pub fn push_char(&mut self, new_char: char) {
@@ -49,7 +45,7 @@ impl CommandLineWindow {
     }
 
     pub fn draw(&mut self) {
-        if !self.is_visible {
+        if !self.enter_app_mode {
             return;
         }
 
