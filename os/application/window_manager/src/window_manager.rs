@@ -7,7 +7,10 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use alloc::{borrow::ToOwned, string::ToString, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFunData, Receivers, Senders, WindowData, DEFAULT_APP};
 use components::{component::Interaction, selected_window_label::SelectedWorkspaceLabel};
-use config::*;
+use configs::general::{COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE};
+use configs::workspace_selection_labels_window::{
+    HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW, WORKSPACE_SELECTION_LABEL_FONT_SCALE,
+};
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use io::{read::try_read, Application};
@@ -22,7 +25,7 @@ use workspace::Workspace;
 pub mod api;
 mod apps;
 mod components;
-mod config;
+mod configs;
 mod windows;
 mod workspace;
 
@@ -327,15 +330,18 @@ impl WindowManager {
         );
         let window_id = window.id;
 
+        let old_workspace_len = self.workspaces.len() as u32;
         let new_workspace_len = (self.workspaces.len() + 1) as u32;
 
         let workspace_selection_label = SelectedWorkspaceLabel::new(
             0,
             Vertex::new(
                 DIST_TO_SCREEN_EDGE
-                    + new_workspace_len * DEFAULT_CHAR_WIDTH
-                    + SELECTED_WINDOW_LABEL_SPACING * (new_workspace_len - 1),
-                DIST_TO_SCREEN_EDGE + DEFAULT_CHAR_HEIGHT,
+                    + 1
+                    + old_workspace_len
+                        * DEFAULT_CHAR_WIDTH
+                        * WORKSPACE_SELECTION_LABEL_FONT_SCALE.0,
+                DIST_TO_SCREEN_EDGE + 1,
             ),
             char::from_digit(new_workspace_len, 10).unwrap().to_string(),
             (new_workspace_len - 1) as usize,

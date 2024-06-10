@@ -4,10 +4,13 @@ use alloc::{
     string::{String, ToString},
 };
 use drawer::drawer::{Drawer, RectData, Vertex};
-use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
+use graphic::{
+    color::Color,
+    lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
+};
 use spin::Mutex;
 
-use crate::DEFAULT_FONT_SCALE;
+use crate::configs::general::DEFAULT_FONT_SCALE;
 
 use super::component::{Component, Interaction};
 
@@ -48,18 +51,24 @@ impl Button {
 }
 
 impl Component for Button {
-    fn draw(&self, color: graphic::color::Color) {
+    fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
         let RectData {
             top_left,
             width,
             height,
         } = self.pos;
-        Drawer::draw_rectangle(top_left, top_left.add(width, height), color);
+        Drawer::draw_rectangle(top_left, top_left.add(width, height), fg_color);
         if let Some(label_mutex) = &self.label {
             let label = &label_mutex.lock();
             let label_pos = self.calc_label_pos(label);
 
-            Drawer::draw_string(label.to_string(), label_pos, color, DEFAULT_FONT_SCALE);
+            Drawer::draw_string(
+                label.to_string(),
+                label_pos,
+                fg_color,
+                bg_color,
+                DEFAULT_FONT_SCALE,
+            );
         }
     }
 

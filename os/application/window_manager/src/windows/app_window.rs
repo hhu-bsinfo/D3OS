@@ -1,10 +1,14 @@
 use alloc::{boxed::Box, vec::Vec};
 use drawer::drawer::{Drawer, RectData, Vertex};
-use graphic::color::{WHITE, YELLOW};
+use graphic::color::WHITE;
 use hashbrown::HashMap;
 
 use crate::{
     components::component::{Component, Interaction},
+    configs::{
+        app_window::{FOCUSED_INDICATOR_COLOR, FOCUSED_INDICATOR_LENGTH},
+        general::FOCUSED_FG_COLOR,
+    },
     WindowManager,
 };
 
@@ -130,7 +134,7 @@ impl AppWindow {
         }
 
         for component in self.components.values() {
-            component.draw(WHITE);
+            component.draw(WHITE, None);
         }
 
         if is_focused {
@@ -140,7 +144,7 @@ impl AppWindow {
                 self.components
                     .get(&focused_component_id)
                     .unwrap()
-                    .draw(YELLOW);
+                    .draw(FOCUSED_FG_COLOR, None);
             }
         }
 
@@ -149,7 +153,12 @@ impl AppWindow {
 
     fn draw_is_focused_indicator(&self) {
         let top_left = self.rect_data.top_left;
-        let vertices = [top_left.add(1, 1), top_left.add(10, 1), top_left.add(1, 10)];
-        Drawer::draw_filled_triangle(vertices, YELLOW);
+        let side_length = FOCUSED_INDICATOR_LENGTH;
+        let vertices = [
+            top_left.add(1, 1),
+            top_left.add(side_length, 1),
+            top_left.add(1, side_length),
+        ];
+        Drawer::draw_filled_triangle(vertices, FOCUSED_INDICATOR_COLOR);
     }
 }

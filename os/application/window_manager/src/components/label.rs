@@ -2,7 +2,7 @@ use alloc::string::{String, ToString};
 use drawer::drawer::{Drawer, Vertex};
 use graphic::color::Color;
 
-use crate::DEFAULT_FONT_SCALE;
+use crate::configs::general::DEFAULT_FONT_SCALE;
 
 use super::component::{Component, Interaction};
 
@@ -36,8 +36,14 @@ impl Label {
 }
 
 impl Component for Label {
-    fn draw(&self, color: Color) {
-        Drawer::draw_string(self.text.to_string(), self.pos, color, self.font_scale);
+    fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
+        Drawer::draw_string(
+            self.text.to_string(),
+            self.pos,
+            fg_color,
+            bg_color,
+            self.font_scale,
+        );
     }
 
     fn interact(&self, _interaction: Interaction) {}

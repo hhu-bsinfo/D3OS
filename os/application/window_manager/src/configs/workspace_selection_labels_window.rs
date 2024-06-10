@@ -1,0 +1,11 @@
+use graphic::{
+    color::{Color, BLUE, WHITE},
+    lfb::DEFAULT_CHAR_HEIGHT,
+};
+
+pub static FG_COLOR: Color = WHITE;
+pub static UNFOCUSED_BG_COLOR: Color = BLUE;
+
+pub static WORKSPACE_SELECTION_LABEL_FONT_SCALE: (u32, u32) = (2, 2);
+pub static HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW: u32 =
+    DEFAULT_CHAR_HEIGHT * WORKSPACE_SELECTION_LABEL_FONT_SCALE.1 + 2;

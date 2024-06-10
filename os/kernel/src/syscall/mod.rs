@@ -311,7 +311,8 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
         DrawerCommand::DrawString {
             string_to_draw,
             pos,
-            color,
+            fg_color,
+            bg_color,
             scale,
         } => {
             lfb.draw_string_scaled(
@@ -319,8 +320,8 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
                 pos.y,
                 scale.0,
                 scale.1,
-                color.clone(),
-                BLACK,
+                fg_color.clone(),
+                bg_color.clone(),
                 string_to_draw,
             );
         }

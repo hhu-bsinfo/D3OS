@@ -5,7 +5,7 @@ use drawer::drawer::{Drawer, Vertex};
 use graphic::color::Color;
 use spin::RwLock;
 
-use crate::DEFAULT_FONT_SCALE;
+use crate::configs::general::DEFAULT_FONT_SCALE;
 
 use super::component::{Component, Interaction};
 
@@ -34,9 +34,15 @@ impl DynamicLabel {
 }
 
 impl Component for DynamicLabel {
-    fn draw(&self, color: Color) {
+    fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
         let text = self.text.read();
-        Drawer::draw_string(text.deref().clone(), self.pos, color, self.font_scale);
+        Drawer::draw_string(
+            text.deref().clone(),
+            self.pos,
+            fg_color,
+            bg_color,
+            self.font_scale,
+        );
     }
 
     fn interact(&self, _interaction: Interaction) {}

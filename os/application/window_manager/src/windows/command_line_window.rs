@@ -2,7 +2,7 @@ use alloc::string::String;
 use drawer::drawer::{Drawer, RectData};
 use graphic::color::{CYAN, WHITE};
 
-use crate::{SplitType, DEFAULT_FONT_SCALE};
+use crate::{configs::general::DEFAULT_FONT_SCALE, SplitType};
 
 /**
 This is the window used to contain the command-line, which in turn is used
@@ -60,6 +60,7 @@ impl CommandLineWindow {
             self.command.clone(),
             top_left.add(2, 2),
             WHITE,
+            None,
             DEFAULT_FONT_SCALE,
         );
     }

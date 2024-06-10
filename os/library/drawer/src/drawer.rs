@@ -6,7 +6,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use syscall::{syscall0, syscall1, SystemCall};
 
-use graphic::color::Color;
+use graphic::color::{Color, INVISIBLE};
 
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -102,7 +102,8 @@ pub enum DrawerCommand {
     DrawString {
         string_to_draw: String,
         pos: Vertex,
-        color: Color,
+        fg_color: Color,
+        bg_color: Color,
         scale: (u32, u32),
     },
 }
@@ -179,11 +180,18 @@ impl Drawer {
         Self::execute(command);
     }
 
-    pub fn draw_string(string_to_draw: String, pos: Vertex, color: Color, scale: (u32, u32)) {
+    pub fn draw_string(
+        string_to_draw: String,
+        pos: Vertex,
+        fg_color: Color,
+        bg_color: Option<Color>,
+        scale: (u32, u32),
+    ) {
         let command = DrawerCommand::DrawString {
             string_to_draw,
             pos,
-            color,
+            fg_color,
+            bg_color: bg_color.unwrap_or(INVISIBLE),
             scale,
         };
 

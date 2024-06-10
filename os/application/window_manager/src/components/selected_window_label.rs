@@ -2,7 +2,7 @@ use alloc::string::{String, ToString};
 use drawer::drawer::{Drawer, Vertex};
 use graphic::color::Color;
 
-use crate::DEFAULT_FONT_SCALE;
+use crate::configs::workspace_selection_labels_window::WORKSPACE_SELECTION_LABEL_FONT_SCALE;
 
 use super::component::{Component, Interaction};
 
@@ -25,8 +25,14 @@ impl SelectedWorkspaceLabel {
 }
 
 impl Component for SelectedWorkspaceLabel {
-    fn draw(&self, color: Color) {
-        Drawer::draw_string(self.text.to_string(), self.pos, color, DEFAULT_FONT_SCALE);
+    fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
+        Drawer::draw_string(
+            self.text.to_string(),
+            self.pos,
+            fg_color,
+            bg_color,
+            WORKSPACE_SELECTION_LABEL_FONT_SCALE,
+        );
     }
 
     fn interact(&self, _interaction: Interaction) {}

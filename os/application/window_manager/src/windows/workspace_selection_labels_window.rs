@@ -1,6 +1,7 @@
+use crate::configs::{general::FOCUSED_BG_COLOR, workspace_selection_labels_window};
 use alloc::vec::Vec;
 use drawer::drawer::{Drawer, RectData, Vertex};
-use graphic::color::{WHITE, YELLOW};
+use graphic::color::WHITE;
 
 use crate::components::{component::Component, selected_window_label::SelectedWorkspaceLabel};
 
@@ -45,13 +46,13 @@ impl WorkspaceSelectionLabelsWindow {
         }
 
         for label in self.labels.iter() {
-            let color = if label.tied_workspace == current_workspace {
-                YELLOW
+            let bg_color = if label.tied_workspace == current_workspace {
+                FOCUSED_BG_COLOR
             } else {
-                WHITE
+                workspace_selection_labels_window::UNFOCUSED_BG_COLOR
             };
 
-            label.draw(color);
+            label.draw(workspace_selection_labels_window::FG_COLOR, Some(bg_color));
         }
     }
 }
