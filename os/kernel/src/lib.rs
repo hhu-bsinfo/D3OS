@@ -46,10 +46,11 @@ use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::tss::TaskStateSegment;
-use x86_64::{PhysAddr, VirtAddr};
+use x86_64::PhysAddr;
 use crate::device::pci::PciBus;
 use crate::memory::PAGE_SIZE;
 use crate::process::process::ProcessManager;
+use crate::syscall::syscall_dispatcher::CoreLocalStorage;
 
 extern crate alloc;
 
@@ -103,6 +104,7 @@ impl EfiSystemTable {
 static GDT: Mutex<GlobalDescriptorTable> = Mutex::new(GlobalDescriptorTable::new());
 static TSS: Mutex<TaskStateSegment> = Mutex::new(TaskStateSegment::new());
 static IDT: Mutex<InterruptDescriptorTable> = Mutex::new(InterruptDescriptorTable::new());
+static CORE_LOCAL_STORAGE: Mutex<CoreLocalStorage> = Mutex::new(CoreLocalStorage::new());
 static EFI_SYSTEM_TABLE: Once<EfiSystemTable> = Once::new();
 static ACPI_TABLES: Once<Mutex<AcpiTables<AcpiHandler>>> = Once::new();
 static INIT_RAMDISK: Once<TarArchiveRef> = Once::new();
@@ -223,6 +225,10 @@ pub fn idt() -> &'static Mutex<InterruptDescriptorTable> {
     &IDT
 }
 
+pub fn core_local_storage() -> &'static Mutex<CoreLocalStorage> {
+    &CORE_LOCAL_STORAGE
+}
+
 pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
     ACPI_TABLES.get().expect("Trying to access ACPI tables before initialization!")
 }
@@ -286,14 +292,4 @@ pub fn ps2_devices() -> &'static PS2 {
 
 pub fn pci_bus() -> &'static PciBus {
     PCI.get().expect("Trying to access PCI bus before initialization!")
-}
-
-#[no_mangle]
-pub extern "C" fn tss_set_rsp0(rsp0: u64) {
-    tss().lock().privilege_stack_table[0] = VirtAddr::new(rsp0);
-}
-
-#[no_mangle]
-pub extern "C" fn tss_get_rsp0() -> u64 {
-    tss().lock().privilege_stack_table[0].as_u64()
 }

@@ -1,11 +1,30 @@
 use core::arch::asm;
+use core::mem::size_of;
+use core::ops::Deref;
+use core::ptr;
 use x86_64::registers::control::{Efer, EferFlags};
-use x86_64::registers::model_specific::{LStar, Star};
+use x86_64::registers::model_specific::{KernelGsBase, LStar, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 use syscall::NUM_SYSCALLS;
+use crate::{core_local_storage, tss};
 use crate::syscall::{sys_write, sys_thread_exit, sys_thread_sleep, sys_thread_switch, sys_process_id, sys_thread_id, sys_read, sys_map_user_heap, sys_thread_join, sys_process_execute_binary, sys_get_system_time, sys_get_date, sys_set_date, sys_thread_create, sys_process_exit};
 
+pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
+pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
+
+
+#[repr(C, packed)]
+pub struct CoreLocalStorage {
+    tss_rsp0_ptr: VirtAddr,
+    user_rsp: VirtAddr,
+}
+
+impl CoreLocalStorage {
+    pub const fn new() -> Self {
+        Self { tss_rsp0_ptr: VirtAddr::zero(), user_rsp: VirtAddr::zero() }
+    }
+}
 
 pub fn init() {
     // Enable system call extensions
@@ -26,6 +45,11 @@ pub fn init() {
 
     // Set rip for syscall
     LStar::write(VirtAddr::new(syscall_handler as u64));
+
+    // Initialize core local storage (accessible via 'swapgs')
+    let mut core_local_storage = core_local_storage().lock();
+    core_local_storage.tss_rsp0_ptr = VirtAddr::new(ptr::from_ref(tss().lock().deref()) as u64 + size_of::<u32>() as u64);
+    KernelGsBase::write(VirtAddr::new(ptr::from_ref(core_local_storage.deref()) as u64));
 }
 
 #[no_mangle]
@@ -75,7 +99,15 @@ unsafe extern "C" fn syscall_handler() {
     // Disable interrupts until we have switched to kernel stack
     "cli",
 
-    // Save registers (except rax, which is used for system call ID and return value)
+    // Switch to kernel stack
+    "swapgs", // Setup core local storage access via gs base
+    "mov gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}], rsp", // Temporarily store user rip in core local storage
+    "mov rsp, gs:[{CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX}]", // Load pointer to rsp0 entry of tss from core local storage
+    "mov rsp, [rsp]", // Dereference rsp0 pointer to switch to kernel stack
+    "push gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}]", // Store user rip on kernel stack (core local storage might be overwritten, when a thread switch occurs during system call execution)
+    "swapgs", // Restore gs base
+
+    // Store registers (except rax, which is used for system call ID and return value)
     "push rbx",
     "push rcx", // Contains rip for returning to ring 3
     "push rdx",
@@ -90,33 +122,15 @@ unsafe extern "C" fn syscall_handler() {
     "push r14",
     "push r15",
 
-    // Switch to kernel stack and enable interrupts
-    "mov r15, rax", // Save system call ID in r15
-    "mov r14, rdi", // Save first parameter in r14
-    "mov r13, rsi", // Save second parameter in r13
-    "mov r12, rdx", // Save third parameter in r12
-    "call tss_get_rsp0", // Get kernel rsp (returned in rax)
-    "mov rbx, rax", // Save kernel rsp in rbx
-    "mov rcx, rsp", // Save user rsp in rcx
-    "mov rdx, r12", // Restore third parameter
-    "mov rsi, r13", // Restore second parameter
-    "mov rdi, r14", // Restore first parameter
-    "mov rax, r15", // Restore system call ID
-    "mov rsp, rbx", // Switch to kernel stack
-    "push rcx", // Save user rsp on stack
+    // Enable interrupts (we are now on the kernel stack and can handle them properly)
     "sti",
 
     // Check if system call ID is in bounds
-    "cmp rax, {}",
+    "cmp rax, {NUM_SYSCALLS}",
     "jge syscall_abort", // Panics and does not return
 
     // Call system call handler, corresponding to ID (in rax)
     "call syscall_disp",
-
-    // Switch to user stack (user rsp is last value on stack)
-    // Disable interrupts, since we are still in Ring 0 and no interrupt handler should be called with the user stack
-    "cli",
-    "pop rsp",
 
     // Restore registers
     "pop r15",
@@ -133,10 +147,16 @@ unsafe extern "C" fn syscall_handler() {
     "pop rcx", // Contains rip for returning to ring 3
     "pop rbx",
 
+    // Switch back to user stack
+    "cli", // Disable interrupts, since we are still in Ring 0 and no interrupt handler should be called with the user stack
+    "pop rsp", // Restore rsp from kernel stack,
+
     // Return to Ring 3
-    // Interrupts will be enabled automatically, because eflags gets restored from r11
+    // Interrupts will be enabled automatically, because eflags is restored from r11
     "sysretq",
-    const NUM_SYSCALLS,
+    NUM_SYSCALLS = const NUM_SYSCALLS,
+    CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX,
+    CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX,
     options(noreturn)
     );
 }
