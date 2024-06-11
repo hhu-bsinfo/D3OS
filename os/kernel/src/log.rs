@@ -1,3 +1,12 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: log                                                             ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: Logger implementation. Support one or several output streams.   ║
+   ║         Messages are dumped on each output stream.                      ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, HHU                                             ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 use crate::device::serial;
 use crate::device::serial::ComPort;
 use crate::device::serial::SerialPort;
