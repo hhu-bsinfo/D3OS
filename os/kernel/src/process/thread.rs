@@ -17,6 +17,7 @@ use crate::{memory, process_manager, scheduler, tss};
 use crate::memory::alloc::StackAllocator;
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::process::Process;
+use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
 
 pub const MAIN_USER_STACK_START: usize = 0x400000000000;
 pub const MAX_USER_STACK_SIZE: usize = 0x40000000;
@@ -344,17 +345,11 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
     // Save stack pointer in 'current_rsp0' (first parameter)
     "mov [rdi], rsp",
 
-    // Store rsi and rcx in r12 and r13, as they might be overwritten by the following function call
-    "mov r12, rsi",
-    "mov r13, rcx",
-
     // Set rsp0 of kernel stack in tss (third parameter 'next_rsp0_end')
-    "mov rdi, rdx",
-    "call tss_set_rsp0",
-
-    // Restore rsi and rcx
-    "mov rcx, r13",
-    "mov rsi, r12",
+    "swapgs", // Setup core local storage access via gs base
+    "mov rax,gs:[{CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX}]", // Load pointer to rsp0 entry of tss into rax
+    "mov [rax],rdx", // Set rsp0 entry in tss to 'next_rsp0_end' (third parameter)
+    "swapgs", // Restore gs base
 
     // Switch address space (fourth parameter 'next_cr3')
     "mov cr3, rcx",
@@ -380,6 +375,7 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
 
     "call unlock_scheduler",
     "ret", // Return to next thread
+    CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX,
     options(noreturn)
     )
 }
