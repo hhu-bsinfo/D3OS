@@ -1,3 +1,12 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: lib                                                             ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: Main rust file of OS. Includes the panic handler as well as all ║
+   ║         globals with init functions.                                    ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, HHU                                             ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]
 #![feature(const_mut_refs)]
