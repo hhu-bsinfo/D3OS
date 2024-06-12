@@ -40,7 +40,7 @@ impl ConfigurationSpace {
             | (address.function() as u32) << 8
             | (offset & 0xfc) as u32;
 
-        ports.address_port.write(address_raw);
+        unsafe { ports.address_port.write(address_raw);  }
     }
 }
 
@@ -52,15 +52,19 @@ impl ConfigRegionAccess for ConfigurationSpace {
     unsafe fn read(&self, address: PciAddress, offset: u16) -> u32 {
         let mut ports = self.ports.lock();
 
-        Self::prepare_access(&mut ports, address, offset);
-        return ports.data_port.read();
+        unsafe {
+            Self::prepare_access(&mut ports, address, offset);
+            return ports.data_port.read();
+        }
     }
 
     unsafe fn write(&self, address: PciAddress, offset: u16, value: u32) {
         let mut ports = self.ports.lock();
 
-        Self::prepare_access(&mut ports, address, offset);
-        ports.data_port.write(value);
+        unsafe {
+            Self::prepare_access(&mut ports, address, offset);
+            ports.data_port.write(value);
+        }
     }
 }
 

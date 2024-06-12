@@ -40,7 +40,7 @@ unsafe impl Sync for Scheduler {}
 /// Called from assembly code, after the thread has been switched
 #[no_mangle]
 pub unsafe extern "C" fn unlock_scheduler() {
-    scheduler().ready_state.force_unlock();
+    unsafe { scheduler().ready_state.force_unlock(); }
 }
 
 impl Scheduler {

@@ -23,7 +23,8 @@ impl KernelAllocator {
     }
 
     pub unsafe fn init(&self, frames: &PhysFrameRange) {
-        self.heap.lock().init(frames.start.start_address().as_u64() as *mut u8, (frames.end - frames.start) as usize * PAGE_SIZE);
+        let mut heap = self.heap.lock();
+        unsafe { heap.init(frames.start.start_address().as_u64() as *mut u8, (frames.end - frames.start) as usize * PAGE_SIZE); }
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -49,7 +50,8 @@ unsafe impl Allocator for KernelAllocator {
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         if layout.size() != 0 {
-            self.heap.lock().deallocate(ptr, layout);
+            let mut heap = self.heap.lock();
+            unsafe { heap.deallocate(ptr, layout); }
         }
     }
 }
@@ -63,7 +65,8 @@ unsafe impl GlobalAlloc for KernelAllocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.heap.lock().deallocate(NonNull::new_unchecked(ptr), layout);
+        let mut heap = self.heap.lock();
+        unsafe { heap.deallocate(NonNull::new_unchecked(ptr), layout); }
     }
 }
 
@@ -92,14 +95,14 @@ unsafe impl Allocator for StackAllocator {
             assert_eq!(layout.size() % PAGE_SIZE, 0);
 
             let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64)).unwrap();
-            physical::free(PhysFrameRange { start, end: start + (layout.size() / PAGE_SIZE) as u64 });
+            unsafe { physical::free(PhysFrameRange { start, end: start + (layout.size() / PAGE_SIZE) as u64 }); }
         }
     }
 }
 
 impl acpi::AcpiHandler for AcpiHandler {
     unsafe fn map_physical_region<T>(&self, physical_address: usize, size: usize) -> PhysicalMapping<Self, T> {
-        PhysicalMapping::new(physical_address, NonNull::new(physical_address as *mut T).unwrap(), size, size, AcpiHandler)
+        unsafe { PhysicalMapping::new(physical_address, NonNull::new(physical_address as *mut T).unwrap(), size, size, AcpiHandler) }
     }
 
     fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {}
