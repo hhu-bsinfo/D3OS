@@ -37,10 +37,7 @@ pub fn init() {
     let ss_sysret = SegmentSelector::new(3, PrivilegeLevel::Ring3);
 
     if let Err(err) = Star::write(cs_sysret, ss_sysret, cs_syscall, ss_syscall) {
-        panic!(
-            "System Call: Failed to initialize STAR register (Error: {})",
-            err
-        )
+        panic!("System Call: Failed to initialize STAR register (Error: {})", err)
     }
 
     // Set rip for syscall
@@ -90,6 +87,7 @@ unsafe impl Sync for SyscallTable {}
 
 #[naked]
 #[no_mangle]
+#[allow(unsafe_op_in_unsafe_fn)]
 // This functions does not take any parameters per its declaration,
 // but in reality, it takes at least the system call ID in rax
 // and may take additional parameters for the system call in rdi, rsi and rdx.
@@ -161,8 +159,9 @@ unsafe extern "C" fn syscall_handler() {
     );
 }
 
-#[no_mangle]
 #[naked]
+#[no_mangle]
+#[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" fn syscall_disp() {
     asm!(
     "call [{SYSCALL_TABLE} + 8 * rax]",
@@ -171,13 +170,16 @@ unsafe extern "C" fn syscall_disp() {
     options(noreturn)
     );
 }
+
 #[no_mangle]
 unsafe extern "C" fn syscall_abort() {
     let syscall_number: u64;
 
-    asm!(
-    "mov {}, rax", out(reg) syscall_number
-    );
+    unsafe {
+        asm!(
+        "mov {}, rax", out(reg) syscall_number
+        );
+    }
 
     panic!("System call with id [{}] does not exist!", syscall_number);
 }

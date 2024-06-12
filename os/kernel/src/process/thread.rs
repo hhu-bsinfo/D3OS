@@ -147,15 +147,15 @@ impl Thread {
     }
 
     pub unsafe fn start_first(thread_ptr: *const Thread) {
-        let thread = thread_ptr.as_ref().unwrap();
+        let thread = unsafe { thread_ptr.as_ref().unwrap() };
         let old_rsp0 = thread.stacks.lock().old_rsp0;
 
-        thread_kernel_start(old_rsp0.as_u64());
+        unsafe { thread_kernel_start(old_rsp0.as_u64()); }
     }
 
     pub unsafe fn switch(current_ptr: *const Thread, next_ptr: *const Thread) {
-        let current = current_ptr.as_ref().unwrap();
-        let next = next_ptr.as_ref().unwrap();
+        let current = unsafe { current_ptr.as_ref().unwrap() };
+        let next = unsafe { next_ptr.as_ref().unwrap() };
         let current_rsp0 = ptr::from_ref(&current.stacks.lock().old_rsp0) as *mut u64;
         let next_rsp0 = next.stacks.lock().old_rsp0.as_u64();
         let next_rsp0_end = next.kernel_stack_addr().as_u64();
@@ -274,17 +274,12 @@ impl Thread {
             old_rsp0 = stacks.old_rsp0.as_u64();
         }
 
-        unsafe {
-            asm!(
-            "mov rsi, {}",
-            in(reg) self.entry
-            );
-            thread_user_start(old_rsp0);
-        }
+        unsafe { thread_user_start(old_rsp0, self.entry); }
     }
 }
 
 #[naked]
+#[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
     asm!(
     "mov rsp, rdi", // First parameter -> load 'old_rsp0'
@@ -312,7 +307,9 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
 }
 
 #[naked]
-unsafe extern "C" fn thread_user_start(old_rsp0: u64) {
+#[allow(unsafe_op_in_unsafe_fn)]
+#[allow(improper_ctypes_definitions)] // 'entry' takes no arguments and has no return value, so we just assume that the "C" and "Rust" ABIs act the same way in this case
+unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
     asm!(
     "mov rsp, rdi", // Load 'old_rsp' (first parameter)
     "mov rdi, rsi", // Second parameter becomes first parameter for 'kickoff_user_thread()'
@@ -322,6 +319,7 @@ unsafe extern "C" fn thread_user_start(old_rsp0: u64) {
 }
 
 #[naked]
+#[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_rsp0_end: u64, next_cr3: u64) {
     asm!(
     // Save registers of current thread

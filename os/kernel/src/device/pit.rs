@@ -96,6 +96,7 @@ impl Timer {
 
 /// Used to calibrate the APIC timer.
 #[naked]
+#[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe extern "C" fn early_delay_50ms() {
     asm!(
     "mov al, 0x30", // Channel 0, mode 0, low-/high byte access mode
