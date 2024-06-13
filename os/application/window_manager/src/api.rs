@@ -95,13 +95,15 @@ impl Api {
         }
     }
 
+    /* Returning `Result<(), &str>` would make more sense, but
+    I get a dumb borrow-checker error when I do so, thus we using `Option<()>` */
     pub fn register(
         &mut self,
         workspace_index: usize,
         window_id: usize,
         abs_pos: RectData,
         app_string: &str,
-    ) -> Option<usize> {
+    ) -> Option<()> {
         let app_fn_ptr = self.map_app_string_to_fn(app_string)?;
 
         let handle = thread::create(app_fn_ptr).id();
@@ -117,7 +119,7 @@ impl Api {
 
         self.handles.insert(handle, handle_data);
 
-        return Some(handle);
+        Some(())
     }
 
     pub fn execute(&self, handle: usize, command: Command) -> Result<(), &str> {
