@@ -87,7 +87,8 @@ pub enum DrawerCommand {
     },
     DrawFilledRectangle {
         rect_data: RectData,
-        color: Color,
+        inner_color: Color,
+        border_color: Option<Color>,
     },
     DrawFilledTriangle {
         vertices: [Vertex; 3],
@@ -157,8 +158,16 @@ impl Drawer {
         Self::execute(command);
     }
 
-    pub fn draw_filled_rectangle(rect_data: RectData, color: Color) {
-        let command = DrawerCommand::DrawFilledRectangle { rect_data, color };
+    pub fn draw_filled_rectangle(
+        rect_data: RectData,
+        inner_color: Color,
+        border_color: Option<Color>,
+    ) {
+        let command = DrawerCommand::DrawFilledRectangle {
+            rect_data,
+            inner_color,
+            border_color,
+        };
 
         Self::execute(command);
     }

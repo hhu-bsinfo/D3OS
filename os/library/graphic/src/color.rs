@@ -46,6 +46,7 @@ pub const WHITE: Color = Color { red: 170, green: 170, blue: 170, alpha: 255, };
 // Arbitrary colors
 pub const HHU_BLUE: Color = Color { red: 0, green: 106, blue: 179, alpha: 255 };
 pub const HHU_GREEN: Color = Color { red: 140, green: 177, blue: 16, alpha: 255 };
+pub const GREY: Color = Color { red: 32, green: 32, blue: 32, alpha: 255 };
 
 impl Color {
     pub const fn from_rgb(rgb: u32, bpp: u8) -> Color {

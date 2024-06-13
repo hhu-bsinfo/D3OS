@@ -277,9 +277,26 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
                     width,
                     height,
                 },
-            color,
+            inner_color,
+            border_color,
         } => {
-            lfb.fill_rect(top_left.x, top_left.y, *width, *height, *color);
+            match border_color {
+                Some(border_color) => {
+                    let border_width = 3;
+                    lfb.fill_rect(top_left.x, top_left.y, *width, *height, *border_color);
+                    //LOW_PRIO_TODO: Make it more efficient by calculating the borders individually
+                    lfb.fill_rect(
+                        top_left.x + border_width,
+                        top_left.y + border_width,
+                        *width - 2 * border_width,
+                        *height - 2 * border_width,
+                        *inner_color,
+                    );
+                }
+                None => {
+                    lfb.fill_rect(top_left.x, top_left.y, *width, *height, *inner_color);
+                }
+            }
         }
         DrawerCommand::DrawFilledTriangle { vertices, color } => {
             let tuples = vertices.map(|vertex| vertex.as_tuple());

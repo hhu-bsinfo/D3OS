@@ -10,7 +10,7 @@ use graphic::{
 };
 use spin::Mutex;
 
-use crate::configs::general::DEFAULT_FONT_SCALE;
+use crate::configs::{components::BUTTON_BG_COLOR, general::DEFAULT_FONT_SCALE};
 
 use super::component::{Component, Interaction};
 
@@ -52,12 +52,7 @@ impl Button {
 
 impl Component for Button {
     fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
-        let RectData {
-            top_left,
-            width,
-            height,
-        } = self.pos;
-        Drawer::draw_rectangle(top_left, top_left.add(width, height), fg_color);
+        Drawer::draw_filled_rectangle(self.pos, BUTTON_BG_COLOR, Some(fg_color));
         if let Some(label_mutex) = &self.label {
             let label = &label_mutex.lock();
             let label_pos = self.calc_label_pos(label);
