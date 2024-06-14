@@ -1,5 +1,5 @@
-use core::marker::PhantomData;
 use core::ops::Add;
+use core::{marker::PhantomData, ops::AddAssign};
 
 use alloc::string::String;
 use alloc::vec;
@@ -35,6 +35,13 @@ impl Add for Vertex {
     }
 }
 
+impl AddAssign for Vertex {
+    fn add_assign(&mut self, rhs: Self) {
+        self.x += rhs.x;
+        self.y += rhs.y;
+    }
+}
+
 impl Vertex {
     pub fn new(x: u32, y: u32) -> Self {
         Self {
@@ -61,6 +68,33 @@ impl Vertex {
             x: self.x.saturating_sub(x_delta),
             y: self.y.saturating_sub(y_delta),
             private: PhantomData::default(),
+        }
+    }
+}
+
+impl RectData {
+    /// Scale this RectData to fit into the new window size
+    pub fn scale(&self, old_window: &RectData, new_window: &RectData) -> RectData {
+        // Calculate scale factors
+        let scale_x = f64::from(new_window.width) / f64::from(old_window.width);
+        let scale_y = f64::from(new_window.height) / f64::from(old_window.height);
+
+        // Scale top-left position
+        let new_top_left_x = (f64::from(self.top_left.x) * scale_x) as u32;
+        let new_top_left_y = (f64::from(self.top_left.y) * scale_y) as u32;
+
+        // Scale width and height
+        let new_width = (f64::from(self.width) * scale_x) as u32;
+        let new_height = (f64::from(self.height) * scale_y) as u32;
+
+        RectData {
+            top_left: Vertex {
+                x: new_top_left_x,
+                y: new_top_left_y,
+                private: PhantomData,
+            },
+            width: new_width,
+            height: new_height,
         }
     }
 }

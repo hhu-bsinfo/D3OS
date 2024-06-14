@@ -1,7 +1,7 @@
 use core::ops::Deref;
 
 use alloc::{rc::Rc, string::String};
-use drawer::drawer::{Drawer, Vertex};
+use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::Color;
 use spin::RwLock;
 
@@ -46,4 +46,14 @@ impl Component for DynamicLabel {
     }
 
     fn interact(&self, _interaction: Interaction) {}
+
+    fn rescale(
+        &mut self,
+        _old_window: &RectData,
+        _new_window: &RectData,
+        translate_by: (i32, i32),
+    ) {
+        self.pos.x.saturating_add_signed(translate_by.0);
+        self.pos.y.saturating_add_signed(translate_by.1);
+    }
 }

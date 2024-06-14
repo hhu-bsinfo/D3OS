@@ -181,7 +181,7 @@ impl Api {
 
                 if let Some(fun) = on_loop_iter {
                     let data = NewLoopIterFunData { window_data, fun };
-                    self.add_on_loop_iter_fun(data);
+                    self.add_on_loop_iter_fn(data);
                 }
             }
         }
@@ -205,7 +205,7 @@ impl Api {
         self.senders.tx_components.enqueue(dispatch_data);
     }
 
-    fn add_on_loop_iter_fun(&self, fun: NewLoopIterFunData) {
+    fn add_on_loop_iter_fn(&self, fun: NewLoopIterFunData) {
         self.senders.tx_on_loop_iter.enqueue(fun);
     }
 

@@ -74,4 +74,10 @@ impl Component for Button {
             }
         }
     }
+
+    fn rescale(&mut self, old_window: &RectData, new_window: &RectData, translate_by: (i32, i32)) {
+        self.pos = self.pos.scale(old_window, new_window);
+        self.pos.top_left.x.saturating_add_signed(translate_by.0);
+        self.pos.top_left.y.saturating_add_signed(translate_by.1);
+    }
 }

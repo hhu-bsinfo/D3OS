@@ -1,5 +1,5 @@
 use alloc::string::{String, ToString};
-use drawer::drawer::{Drawer, Vertex};
+use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::Color;
 
 use crate::configs::workspace_selection_labels_window::WORKSPACE_SELECTION_LABEL_FONT_SCALE;
@@ -36,4 +36,14 @@ impl Component for SelectedWorkspaceLabel {
     }
 
     fn interact(&self, _interaction: Interaction) {}
+
+    fn rescale(
+        &mut self,
+        _old_window: &RectData,
+        _new_window: &RectData,
+        translate_by: (i32, i32),
+    ) {
+        self.pos.x.saturating_add_signed(translate_by.0);
+        self.pos.y.saturating_add_signed(translate_by.1);
+    }
 }

@@ -99,6 +99,17 @@ impl AppWindow {
         self.is_dirty = true;
     }
 
+    pub fn rescale_components(
+        &mut self,
+        old_window: RectData,
+        new_window: RectData,
+        translate_by: (i32, i32),
+    ) {
+        self.components
+            .values_mut()
+            .for_each(|component| component.rescale(&old_window, &new_window, translate_by))
+    }
+
     pub fn draw(&mut self, focused_window_id: usize, full: bool) {
         if full {
             self.is_dirty = true;

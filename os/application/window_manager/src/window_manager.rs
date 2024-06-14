@@ -275,7 +275,7 @@ impl WindowManager {
         let curr_ws = self.get_current_workspace_mut();
 
         if let Some(window) = curr_ws.windows.get_mut(&window_id) {
-            let RectData {
+            let old_rect @ RectData {
                 top_left: old_top_left,
                 width: old_width,
                 height: old_height,
@@ -289,6 +289,18 @@ impl WindowManager {
                         width: old_width,
                         height: window.rect_data.height,
                     };
+
+                    // Rescale components for old window
+                    window.rescale_components(
+                        old_rect,
+                        window.rect_data.clone(),
+                        (
+                            0,
+                            i32::try_from(window.rect_data.height)
+                                .expect("Failed to cast from u32 to i32"),
+                        ),
+                    );
+
                     self.add_window_to_workspace(new_rect_data, app_name, true);
                 }
                 SplitType::Vertical => {
@@ -299,6 +311,18 @@ impl WindowManager {
                         width: window.rect_data.width,
                         height: old_height,
                     };
+
+                    // Rescale components for old window
+                    window.rescale_components(
+                        old_rect,
+                        window.rect_data.clone(),
+                        (
+                            i32::try_from(window.rect_data.width)
+                                .expect("Failed to cast from u32 to i32"),
+                            0,
+                        ),
+                    );
+
                     self.add_window_to_workspace(new_rect_data, app_name, true);
                 }
             }
