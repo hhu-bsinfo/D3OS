@@ -38,7 +38,7 @@ const INIT_HEAP_PAGES: usize = 0x800;
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
     // Initialize logger
     if logger().lock().init().is_err() {
-        panic!("Failed to initialize loggerr!")
+        panic!("Failed to initialize logger!")
     }
 
     // Log messages and panics are now working, but cannot use format string until the heap is initialized later on

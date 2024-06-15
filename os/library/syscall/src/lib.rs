@@ -1,7 +1,7 @@
 #![no_std]
 
+use crate::SystemCall::LogSerial;
 use core::arch::asm;
-use crate::SystemCall::GetGraphicResolution;
 
 #[repr(usize)]
 #[allow(dead_code)]
@@ -23,9 +23,10 @@ pub enum SystemCall {
     SetDate,
     WriteGraphic,
     GetGraphicResolution,
+    LogSerial,
 }
 
-pub const NUM_SYSCALLS: usize = GetGraphicResolution as usize + 1;
+pub const NUM_SYSCALLS: usize = LogSerial as usize + 1;
 
 #[inline(always)]
 pub fn syscall0(call: SystemCall) -> usize {

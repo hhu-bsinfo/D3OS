@@ -1,28 +1,15 @@
+use crate::syscall::{
+    sys_get_date, sys_get_graphic_resolution, sys_get_system_time, sys_log_serial,
+    sys_map_user_heap, sys_process_execute_binary, sys_process_exit, sys_process_id, sys_read,
+    sys_set_date, sys_thread_create, sys_thread_exit, sys_thread_id, sys_thread_join,
+    sys_thread_sleep, sys_thread_switch, sys_write, sys_write_graphic,
+};
 use core::arch::asm;
+use syscall::NUM_SYSCALLS;
 use x86_64::registers::control::{Efer, EferFlags};
 use x86_64::registers::model_specific::{LStar, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
-use syscall::NUM_SYSCALLS;
-use crate::syscall::{
-    sys_write,
-    sys_thread_exit,
-    sys_thread_sleep,
-    sys_thread_switch,
-    sys_process_id,
-    sys_thread_id, sys_read,
-    sys_map_user_heap,
-    sys_thread_join,
-    sys_process_execute_binary,
-    sys_get_system_time,
-    sys_get_date,
-    sys_set_date,
-    sys_thread_create,
-    sys_process_exit,
-    sys_write_graphic,
-    sys_get_graphic_resolution,
-};
-
 
 pub fn init() {
     // Enable system call extensions
@@ -75,6 +62,7 @@ impl SyscallTable {
                 sys_set_date as *const _,
                 sys_write_graphic as *const _,
                 sys_get_graphic_resolution as *const _,
+                sys_log_serial as *const _,
             ],
         }
     }

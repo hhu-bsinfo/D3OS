@@ -18,6 +18,7 @@ use drawer::drawer::{DrawerCommand, RectData};
 use graphic::color::BLACK;
 use io::Application;
 use libm::Libm;
+use log::debug;
 use stream::InputStream;
 use uefi::table::runtime::{Time, TimeParams};
 use x86_64::structures::paging::PageTableFlags;
@@ -239,7 +240,7 @@ pub extern "C" fn sys_set_date(date_ms: usize) -> usize {
 }
 
 #[no_mangle]
-pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize {
+pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
     let enum_val = unsafe { command_ptr.as_ref().unwrap() };
     let mut buff_lfb = buffered_lfb().lock();
     let lfb = buff_lfb.lfb();
@@ -254,7 +255,7 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
             let first_vertex = vertices.first();
             let mut prev = match first_vertex {
                 Some(unwrapped) => unwrapped,
-                None => return 0usize,
+                None => return,
             };
             let last_vertex = vertices.last().unwrap();
             for vertex in &vertices[1..] {
@@ -370,8 +371,6 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) -> usize 
     };
 
     buff_lfb.flush();
-
-    return 0usize;
 }
 
 /// w = width, h = height;
@@ -384,4 +383,15 @@ pub extern "C" fn sys_get_graphic_resolution() -> usize {
     let buffered_lfb = &mut buffered_lfb().lock();
     let lfb = buffered_lfb.direct_lfb();
     return (((lfb.width() as u64) << 32) | (lfb.height() as u64)) as usize;
+}
+
+pub extern "C" fn sys_log_serial(string_addr: *const u8, string_len: usize) {
+    let log_string = from_utf8(unsafe {
+        slice_from_raw_parts(string_addr, string_len)
+            .as_ref()
+            .unwrap()
+    })
+    .unwrap();
+
+    debug!("{}", log_string);
 }
