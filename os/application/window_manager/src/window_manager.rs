@@ -253,18 +253,14 @@ impl WindowManager {
         }
     }
 
-    fn add_window_to_workspace(&mut self, rect_data: RectData, app_name: &str, is_focusable: bool) {
+    fn add_window_to_workspace(&mut self, rect_data: RectData, app_name: &str) {
         let window_id = Self::generate_id();
         let window = AppWindow::new(window_id, self.current_workspace, rect_data);
 
         let curr_ws = self.get_current_workspace_mut();
 
-        if is_focusable {
-            let focused_window_id = curr_ws.focused_window_id;
-            curr_ws.insert_focusable_window(window, Some(focused_window_id));
-        } else {
-            curr_ws.insert_unfocusable_window(window);
-        }
+        let focused_window_id = curr_ws.focused_window_id;
+        curr_ws.insert_window(window, Some(focused_window_id));
 
         self.is_dirty = true;
 
@@ -301,7 +297,7 @@ impl WindowManager {
                         ),
                     );
 
-                    self.add_window_to_workspace(new_rect_data, app_name, true);
+                    self.add_window_to_workspace(new_rect_data, app_name);
                 }
                 SplitType::Vertical => {
                     window.rect_data.width /= 2;
@@ -323,7 +319,7 @@ impl WindowManager {
                         ),
                     );
 
-                    self.add_window_to_workspace(new_rect_data, app_name, true);
+                    self.add_window_to_workspace(new_rect_data, app_name);
                 }
             }
         }

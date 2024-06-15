@@ -13,7 +13,7 @@ anything to the screen while not selected of course.
 pub struct Workspace {
     pub windows: HashMap<usize, AppWindow>,
     pub focused_window_id: usize,
-    // focusable windows are stored additionally in ordered fashion in here
+    // Windows are stored additionally in ordered fashion in here
     pub window_orderer: Vec<usize>,
 }
 
@@ -30,7 +30,7 @@ impl Workspace {
         }
     }
 
-    pub fn insert_focusable_window(&mut self, window: AppWindow, after: Option<usize>) {
+    pub fn insert_window(&mut self, window: AppWindow, after: Option<usize>) {
         let new_window_id = window.id;
         self.windows.insert(new_window_id, window);
         match after {
@@ -49,10 +49,6 @@ impl Workspace {
             }
             None => self.window_orderer.push(new_window_id),
         }
-    }
-
-    pub fn insert_unfocusable_window(&mut self, new_window: AppWindow) {
-        self.windows.insert(new_window.id, new_window);
     }
 
     pub fn focus_next_window(&mut self) {
