@@ -203,9 +203,12 @@ impl WindowManager {
                     'd' => {
                         self.get_current_workspace_mut().focus_next_window();
                     }
-                    //TODO: Add merge functionality. Make it buddy-style merging when both buddies finished
-                    // running their application
-                    'm' => {}
+                    'm' => {
+                        // BUG: Doesn't work properly yet. Sadly, it would take a great deal of work to consider
+                        // all different cases that could occur when closing a window. Yeeeaaaah, we are shelving it for now.
+                        self.get_current_workspace_mut().close_focused_window();
+                        self.is_dirty = true;
+                    }
                     _ => {}
                 }
             }
@@ -253,11 +256,17 @@ impl WindowManager {
         }
     }
 
-    fn add_window_to_workspace(&mut self, rect_data: RectData, app_name: &str) {
+    fn add_window_to_workspace(
+        &mut self,
+        rect_data: RectData,
+        app_name: &str,
+        buddy_window: Option<usize>,
+    ) {
         let window_id = Self::generate_id();
-        let window = AppWindow::new(window_id, self.current_workspace, rect_data);
+        let window = AppWindow::new(window_id, self.current_workspace, rect_data, buddy_window);
 
         let curr_ws = self.get_current_workspace_mut();
+        curr_ws.get_focused_window_mut().buddy_window_id = Some(window_id);
 
         let focused_window_id = curr_ws.focused_window_id;
         curr_ws.insert_window(window, Some(focused_window_id));
@@ -287,17 +296,9 @@ impl WindowManager {
                     };
 
                     // Rescale components for old window
-                    window.rescale_components(
-                        old_rect,
-                        window.rect_data.clone(),
-                        (
-                            0,
-                            i32::try_from(window.rect_data.height)
-                                .expect("Failed to cast from u32 to i32"),
-                        ),
-                    );
+                    window.rescale_components(old_rect, window.rect_data.clone());
 
-                    self.add_window_to_workspace(new_rect_data, app_name);
+                    self.add_window_to_workspace(new_rect_data, app_name, Some(window_id));
                 }
                 SplitType::Vertical => {
                     window.rect_data.width /= 2;
@@ -309,17 +310,9 @@ impl WindowManager {
                     };
 
                     // Rescale components for old window
-                    window.rescale_components(
-                        old_rect,
-                        window.rect_data.clone(),
-                        (
-                            i32::try_from(window.rect_data.width)
-                                .expect("Failed to cast from u32 to i32"),
-                            0,
-                        ),
-                    );
+                    window.rescale_components(old_rect, window.rect_data.clone());
 
-                    self.add_window_to_workspace(new_rect_data, app_name);
+                    self.add_window_to_workspace(new_rect_data, app_name, Some(window_id));
                 }
             }
         }
@@ -347,6 +340,8 @@ impl WindowManager {
                 height: screen_res.1
                     - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW),
             },
+            // The first window is standalone and doesn't have a buddy :(
+            None,
         );
         let window_id = window.id;
 

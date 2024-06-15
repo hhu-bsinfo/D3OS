@@ -13,5 +13,5 @@ pub trait Component {
     fn interact(&self, interaction: Interaction);
 
     /// Defines how rescaling the component-geometry works after the containing window has been resized
-    fn rescale(&mut self, old_window: &RectData, new_window: &RectData, translate_by: (i32, i32));
+    fn rescale(&mut self, old_window: &RectData, new_window: &RectData);
 }

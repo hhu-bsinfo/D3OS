@@ -18,6 +18,8 @@ pub struct AppWindow {
     pub rect_data: RectData,
     /// Indicates whether redrawing of this window is required in next loop-iteration
     pub is_dirty: bool,
+    /// The buddy of this window, used to decide how closing this window works
+    pub buddy_window_id: Option<usize>,
     /// The workspace this window belongs to
     workspace_index: usize,
     components: HashMap<usize, Box<dyn Component>>,
@@ -27,7 +29,12 @@ pub struct AppWindow {
 }
 
 impl AppWindow {
-    pub fn new(id: usize, workspace_index: usize, rect_data: RectData) -> Self {
+    pub fn new(
+        id: usize,
+        workspace_index: usize,
+        rect_data: RectData,
+        buddy_window: Option<usize>,
+    ) -> Self {
         Self {
             id,
             is_dirty: true,
@@ -36,6 +43,7 @@ impl AppWindow {
             component_orderer: Vec::new(),
             rect_data,
             focused_component_id: None,
+            buddy_window_id: buddy_window,
         }
     }
 
@@ -99,15 +107,62 @@ impl AppWindow {
         self.is_dirty = true;
     }
 
-    pub fn rescale_components(
-        &mut self,
-        old_window: RectData,
-        new_window: RectData,
-        translate_by: (i32, i32),
-    ) {
+    pub fn rescale_components(&mut self, old_window: RectData, new_window: RectData) {
         self.components
             .values_mut()
-            .for_each(|component| component.rescale(&old_window, &new_window, translate_by))
+            .for_each(|component| component.rescale(&old_window, &new_window))
+    }
+
+    pub fn is_elligible_for_merging(&self, other_window: &AppWindow) -> bool {
+        &self.rect_data.width == &other_window.rect_data.width
+            && &self.rect_data.height == &other_window.rect_data.height
+    }
+
+    pub fn merge(&mut self, other_window: &AppWindow) {
+        let old_rect @ RectData {
+            top_left: old_top_left,
+            width: old_width,
+            height: old_height,
+        } = self.rect_data;
+        let other_top_left = other_window.rect_data.top_left;
+        let mut new_top_left = old_top_left;
+        let mut new_width = old_width;
+        let mut new_height = old_height;
+
+        // We have a vertical splittype, the € mark the different top_left.x coords
+        // €########€#########      ###################
+        // #        |        #      #                 #
+        // #        |        #      #                 #
+        // #        |        # ===> #                 #
+        // #        |        #      #                 #
+        // #        |        #      #                 #
+        // ###################      ###################
+        if old_top_left.x != other_top_left.x {
+            assert_eq!(old_top_left.y, other_top_left.y);
+            new_top_left = Vertex::new(u32::min(old_top_left.x, other_top_left.x), old_top_left.y);
+            new_width = old_width * 2;
+        }
+        // We have a horizontal splittype, the € mark the different top_left.y coords
+        // €##################      ###################
+        // #                 #      #                 #
+        // #                 #      #                 #
+        // €-----------------# ===> #                 #
+        // #                 #      #                 #
+        // #                 #      #                 #
+        // ###################      ###################
+        else if old_top_left.y != other_top_left.y {
+            assert_eq!(old_top_left.x, other_top_left.x);
+            new_top_left = Vertex::new(old_top_left.x, u32::min(old_top_left.y, other_top_left.y));
+            new_height = old_height * 2;
+        }
+
+        self.rect_data = RectData {
+            top_left: new_top_left,
+            width: new_width,
+            height: new_height,
+        };
+
+        self.rescale_components(old_rect, self.rect_data)
     }
 
     pub fn draw(&mut self, focused_window_id: usize, full: bool) {

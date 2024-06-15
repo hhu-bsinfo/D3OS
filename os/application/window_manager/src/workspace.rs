@@ -101,6 +101,32 @@ impl Workspace {
         focused_window.interact_with_focused_component(interaction);
     }
 
+    pub fn close_focused_window(&mut self) {
+        let to_be_deleted_window = self.windows.remove(&self.focused_window_id).unwrap();
+
+        if let Some(buddy_id) = to_be_deleted_window.buddy_window_id {
+            let buddy_window = self.windows.get_mut(&buddy_id).unwrap();
+            if buddy_window.is_elligible_for_merging(&to_be_deleted_window) {
+                buddy_window.merge(&to_be_deleted_window)
+            }
+        }
+
+        let index = self
+            .window_orderer
+            .iter()
+            .position(|id| *id == self.focused_window_id)
+            .unwrap();
+        let next_index = (index + 1) % self.window_orderer.len();
+        self.focused_window_id = self.window_orderer[next_index];
+
+        self.window_orderer.remove(
+            self.window_orderer
+                .iter()
+                .position(|window_id| *window_id == to_be_deleted_window.id)
+                .unwrap(),
+        );
+    }
+
     pub fn get_focused_window(&self) -> &AppWindow {
         self.windows.get(&self.focused_window_id).unwrap()
     }

@@ -70,6 +70,22 @@ impl Vertex {
             private: PhantomData::default(),
         }
     }
+
+    pub fn scale_by_rect_ratio(&self, old_window: &RectData, new_window: &RectData) -> Self {
+        // Calculate scale factors
+        let scale_x = f64::from(new_window.width) / f64::from(old_window.width);
+        let scale_y = f64::from(new_window.height) / f64::from(old_window.height);
+
+        // Scale top-left position
+        let new_x = (f64::from(self.x) * scale_x) as u32;
+        let new_y = (f64::from(self.y) * scale_y) as u32;
+
+        Self {
+            x: new_x,
+            y: new_y,
+            private: PhantomData::default(),
+        }
+    }
 }
 
 impl RectData {

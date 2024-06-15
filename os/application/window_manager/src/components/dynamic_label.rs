@@ -47,13 +47,7 @@ impl Component for DynamicLabel {
 
     fn interact(&self, _interaction: Interaction) {}
 
-    fn rescale(
-        &mut self,
-        _old_window: &RectData,
-        _new_window: &RectData,
-        translate_by: (i32, i32),
-    ) {
-        self.pos.x.saturating_add_signed(translate_by.0);
-        self.pos.y.saturating_add_signed(translate_by.1);
+    fn rescale(&mut self, old_window: &RectData, new_window: &RectData) {
+        self.pos.scale_by_rect_ratio(old_window, new_window);
     }
 }

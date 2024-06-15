@@ -1,5 +1,5 @@
 use alloc::string::{String, ToString};
-use drawer::drawer::{Drawer, Vertex};
+use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::Color;
 
 use crate::configs::general::DEFAULT_FONT_SCALE;
@@ -48,13 +48,7 @@ impl Component for Label {
 
     fn interact(&self, _interaction: Interaction) {}
 
-    fn rescale(
-        &mut self,
-        _old_window: &drawer::drawer::RectData,
-        _new_window: &drawer::drawer::RectData,
-        translate_by: (i32, i32),
-    ) {
-        self.pos.x.saturating_add_signed(translate_by.0);
-        self.pos.y.saturating_add_signed(translate_by.1);
+    fn rescale(&mut self, old_window: &RectData, new_window: &RectData) {
+        self.pos.scale_by_rect_ratio(old_window, new_window);
     }
 }
