@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(linked_list_cursors)]
 
 extern crate alloc;
 
@@ -26,6 +27,7 @@ pub mod api;
 mod apps;
 mod components;
 mod configs;
+mod utils;
 mod windows;
 mod workspace;
 

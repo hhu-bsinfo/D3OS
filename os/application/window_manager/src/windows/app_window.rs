@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, collections::LinkedList};
 use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::WHITE;
 use hashbrown::HashMap;
@@ -9,6 +9,7 @@ use crate::{
         app_window::{FOCUSED_INDICATOR_COLOR, FOCUSED_INDICATOR_LENGTH},
         general::FOCUSED_FG_COLOR,
     },
+    utils::get_element_cursor_from_orderer,
     WindowManager,
 };
 
@@ -24,7 +25,7 @@ pub struct AppWindow {
     workspace_index: usize,
     components: HashMap<usize, Box<dyn Component>>,
     /// focusable components are stored additionally in ordered fashion in here
-    component_orderer: Vec<usize>,
+    component_orderer: LinkedList<usize>,
     focused_component_id: Option<usize>,
 }
 
@@ -40,7 +41,7 @@ impl AppWindow {
             is_dirty: true,
             workspace_index,
             components: HashMap::new(),
-            component_orderer: Vec::new(),
+            component_orderer: LinkedList::new(),
             rect_data,
             focused_component_id: None,
             buddy_window_id: buddy_window,
@@ -52,7 +53,7 @@ impl AppWindow {
         self.components.insert(id, new_component);
 
         if is_focusable {
-            self.component_orderer.push(id);
+            self.component_orderer.push_back(id);
 
             // Focus new (focusable) component, if it is the first one in the window
             if self.component_orderer.len() == 1 {
@@ -73,38 +74,34 @@ impl AppWindow {
 
     pub fn focus_next_component(&mut self) {
         if let Some(focused_component_id) = self.focused_component_id {
-            let index = self
-                .component_orderer
-                .iter()
-                .position(|comp| *comp == focused_component_id)
-                .unwrap();
+            let mut cursor =
+                get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id)
+                    .unwrap();
+            cursor.move_next();
 
-            let next_index = (index + 1) % self.component_orderer.len();
+            self.focused_component_id = match cursor.current() {
+                Some(next_focused_el) => Some(next_focused_el.clone()),
+                None => Some(cursor.peek_next().unwrap().clone()),
+            };
 
-            self.focused_component_id = Some(self.component_orderer[next_index]);
+            self.is_dirty = true;
         }
-
-        self.is_dirty = true;
     }
 
     pub fn focus_prev_component(&mut self) {
         if let Some(focused_component_id) = self.focused_component_id {
-            let index = self
-                .component_orderer
-                .iter()
-                .position(|comp| *comp == focused_component_id)
-                .unwrap();
+            let mut cursor =
+                get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id)
+                    .unwrap();
+            cursor.move_prev();
 
-            let prev_index = if index == 0 {
-                self.component_orderer.len() - 1
-            } else {
-                index - 1
+            self.focused_component_id = match cursor.current() {
+                Some(next_focused_el) => Some(next_focused_el.clone()),
+                None => Some(cursor.peek_prev().unwrap().clone()),
             };
 
-            self.focused_component_id = Some(self.component_orderer[prev_index]);
+            self.is_dirty = true;
         }
-
-        self.is_dirty = true;
     }
 
     pub fn rescale_components(&mut self, old_window: RectData, new_window: RectData) {

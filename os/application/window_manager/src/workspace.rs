@@ -1,8 +1,8 @@
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::collections::LinkedList;
 use hashbrown::HashMap;
 
 use crate::components::component::Interaction;
+use crate::utils::get_element_cursor_from_orderer;
 use crate::windows::app_window::AppWindow;
 
 /**
@@ -14,12 +14,14 @@ pub struct Workspace {
     pub windows: HashMap<usize, AppWindow>,
     pub focused_window_id: usize,
     // Windows are stored additionally in ordered fashion in here
-    pub window_orderer: Vec<usize>,
+    pub window_orderer: LinkedList<usize>,
 }
 
 impl Workspace {
     pub fn new_with_single_window(window: (usize, AppWindow), focused_window_id: usize) -> Self {
-        let window_orderer = vec![window.0];
+        let mut window_orderer = LinkedList::new();
+        window_orderer.push_back(window.0);
+
         let mut windows: HashMap<usize, AppWindow> = HashMap::new();
         windows.insert(window.0, window.1);
 
@@ -35,32 +37,28 @@ impl Workspace {
         self.windows.insert(new_window_id, window);
         match after {
             Some(after_window_id) => {
-                if let Some(index) = self
-                    .window_orderer
-                    .iter()
-                    .position(|x| *x == after_window_id)
-                {
-                    if index == self.window_orderer.len() - 1 {
-                        self.window_orderer.push(new_window_id);
-                        return;
-                    }
-                    self.window_orderer.insert(index + 1, new_window_id);
-                }
+                let mut cursor =
+                    get_element_cursor_from_orderer(&mut self.window_orderer, after_window_id)
+                        .unwrap();
+                cursor.move_next();
+                cursor.insert_before(new_window_id);
             }
-            None => self.window_orderer.push(new_window_id),
+            None => self.window_orderer.push_back(new_window_id),
         }
     }
 
     pub fn focus_next_window(&mut self) {
         self.get_focused_window_mut().is_dirty = true;
 
-        let index = self
-            .window_orderer
-            .iter()
-            .position(|id| *id == self.focused_window_id)
-            .unwrap();
-        let next_index = (index + 1) % self.window_orderer.len();
-        self.focused_window_id = self.window_orderer[next_index];
+        let mut cursor =
+            get_element_cursor_from_orderer(&mut self.window_orderer, self.focused_window_id)
+                .unwrap();
+        cursor.move_next();
+
+        self.focused_window_id = match cursor.current() {
+            Some(next_focused_el) => next_focused_el.clone(),
+            None => cursor.peek_next().unwrap().clone(),
+        };
 
         self.get_focused_window_mut().is_dirty = true;
     }
@@ -68,18 +66,15 @@ impl Workspace {
     pub fn focus_prev_window(&mut self) {
         self.get_focused_window_mut().is_dirty = true;
 
-        let index = self
-            .window_orderer
-            .iter()
-            .position(|id| *id == self.focused_window_id)
-            .unwrap();
-        let prev_index = if index == 0 {
-            self.window_orderer.len() - 1
-        } else {
-            index - 1
-        };
+        let mut cursor =
+            get_element_cursor_from_orderer(&mut self.window_orderer, self.focused_window_id)
+                .unwrap();
+        cursor.move_prev();
 
-        self.focused_window_id = self.window_orderer[prev_index];
+        self.focused_window_id = match cursor.current() {
+            Some(next_focused_el) => next_focused_el.clone(),
+            None => cursor.peek_prev().unwrap().clone(),
+        };
 
         self.get_focused_window_mut().is_dirty = true;
     }
@@ -111,20 +106,20 @@ impl Workspace {
             }
         }
 
-        let index = self
-            .window_orderer
-            .iter()
-            .position(|id| *id == self.focused_window_id)
-            .unwrap();
-        let next_index = (index + 1) % self.window_orderer.len();
-        self.focused_window_id = self.window_orderer[next_index];
+        let mut cursor =
+            get_element_cursor_from_orderer(&mut self.window_orderer, self.focused_window_id)
+                .unwrap();
+        cursor.move_next();
 
-        self.window_orderer.remove(
-            self.window_orderer
-                .iter()
-                .position(|window_id| *window_id == to_be_deleted_window.id)
-                .unwrap(),
-        );
+        let new_focused_window_id = match cursor.current() {
+            Some(next_focused_el) => next_focused_el.clone(),
+            None => cursor.peek_next().unwrap().clone(),
+        };
+
+        cursor.move_prev();
+        cursor.remove_current();
+
+        self.focused_window_id = new_focused_window_id;
     }
 
     pub fn get_focused_window(&self) -> &AppWindow {
