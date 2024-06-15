@@ -12,5 +12,6 @@ pub trait Component {
     /// Dictates if/how a component should react to different interactions
     fn interact(&self, interaction: Interaction);
 
+    /// Defines how rescaling the component-geometry works after the containing window has been resized
     fn rescale(&mut self, old_window: &RectData, new_window: &RectData, translate_by: (i32, i32));
 }

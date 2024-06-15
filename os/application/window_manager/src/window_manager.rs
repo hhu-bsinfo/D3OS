@@ -5,7 +5,7 @@ extern crate alloc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::{borrow::ToOwned, string::ToString, vec::Vec};
-use api::{Api, NewCompData, NewLoopIterFunData, Receivers, Senders, WindowData, DEFAULT_APP};
+use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
 use components::{component::Interaction, selected_window_label::SelectedWorkspaceLabel};
 use configs::general::{COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE};
 use configs::workspace_selection_labels_window::{
@@ -53,7 +53,7 @@ struct WindowManager {
     /// Receivers from queues connected with API
     receivers: Receivers,
     /// List of closures to call on each loop-iteration, sent from API
-    on_loop_iter_funs: Vec<NewLoopIterFunData>,
+    on_loop_iter_fns: Vec<NewLoopIterFnData>,
     /// Determines if a full redraw is required in the next loop-iteration
     is_dirty: bool,
 }
@@ -78,7 +78,7 @@ impl WindowManager {
         SCREEN.call_once(|| screen);
 
         let (rx_components, tx_components) = jiffy::queue::<NewCompData>();
-        let (rx_on_loop_iter, tx_on_loop_iter) = jiffy::queue::<NewLoopIterFunData>();
+        let (rx_on_loop_iter, tx_on_loop_iter) = jiffy::queue::<NewLoopIterFnData>();
 
         let senders = Senders {
             tx_components,
@@ -114,7 +114,7 @@ impl WindowManager {
                 command_line_window,
                 receivers,
                 is_dirty: true,
-                on_loop_iter_funs: Vec::new(),
+                on_loop_iter_fns: Vec::new(),
             },
             senders,
         )
@@ -138,12 +138,12 @@ impl WindowManager {
 
             self.add_new_closures_from_api();
 
-            self.call_on_loop_iter_functions();
+            self.call_on_loop_iter_fns();
         }
     }
 
-    fn call_on_loop_iter_functions(&mut self) {
-        for NewLoopIterFunData { window_data, fun } in self.on_loop_iter_funs.iter() {
+    fn call_on_loop_iter_fns(&mut self) {
+        for NewLoopIterFnData { window_data, fun } in self.on_loop_iter_fns.iter() {
             (*fun)();
 
             let window = self.workspaces[window_data.workspace_index]
@@ -158,7 +158,7 @@ impl WindowManager {
 
     fn add_new_closures_from_api(&mut self) {
         while let Ok(data) = self.receivers.rx_on_loop_iter.try_dequeue() {
-            self.on_loop_iter_funs.push(data);
+            self.on_loop_iter_fns.push(data);
         }
     }
 

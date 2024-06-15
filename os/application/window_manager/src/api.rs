@@ -42,12 +42,12 @@ pub enum Command {
 
 pub struct Senders {
     pub tx_components: Sender<NewCompData>,
-    pub tx_on_loop_iter: Sender<NewLoopIterFunData>,
+    pub tx_on_loop_iter: Sender<NewLoopIterFnData>,
 }
 
 pub struct Receivers {
     pub rx_components: Receiver<NewCompData>,
-    pub rx_on_loop_iter: Receiver<NewLoopIterFunData>,
+    pub rx_on_loop_iter: Receiver<NewLoopIterFnData>,
 }
 
 /**
@@ -81,7 +81,7 @@ pub struct NewCompData {
     pub component: Box<dyn Component>,
 }
 
-pub struct NewLoopIterFunData {
+pub struct NewLoopIterFnData {
     pub window_data: WindowData,
     pub fun: Box<dyn Fn() -> ()>,
 }
@@ -180,7 +180,7 @@ impl Api {
                 self.add_component(dispatch_data);
 
                 if let Some(fun) = on_loop_iter {
-                    let data = NewLoopIterFunData { window_data, fun };
+                    let data = NewLoopIterFnData { window_data, fun };
                     self.add_on_loop_iter_fn(data);
                 }
             }
@@ -205,7 +205,7 @@ impl Api {
         self.senders.tx_components.enqueue(dispatch_data);
     }
 
-    fn add_on_loop_iter_fn(&self, fun: NewLoopIterFunData) {
+    fn add_on_loop_iter_fn(&self, fun: NewLoopIterFnData) {
         self.senders.tx_on_loop_iter.enqueue(fun);
     }
 
