@@ -16,12 +16,12 @@ use crate::{
 pub struct AppWindow {
     pub id: usize,
     pub rect_data: RectData,
-    // Indicates whether redrawing of this window is required in next loop-iteration
+    /// Indicates whether redrawing of this window is required in next loop-iteration
     pub is_dirty: bool,
-    // The workspace this window belongs to
+    /// The workspace this window belongs to
     workspace_index: usize,
     components: HashMap<usize, Box<dyn Component>>,
-    // focusable components are stored additionally in ordered fashion in here
+    /// focusable components are stored additionally in ordered fashion in here
     component_orderer: Vec<usize>,
     focused_component_id: Option<usize>,
 }

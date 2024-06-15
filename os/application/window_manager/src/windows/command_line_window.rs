@@ -44,6 +44,8 @@ impl CommandLineWindow {
         self.command.pop();
     }
 
+    /* BUG: For some reason, removing chars does not appear in the drawing, even though
+    the next pushed character after removing one appears in the correct space */
     pub fn draw(&mut self) {
         if !self.enter_app_mode {
             return;
