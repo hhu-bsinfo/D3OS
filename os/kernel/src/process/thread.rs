@@ -1,3 +1,11 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: thread                                                          ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: Implementation of threads.                                      ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, HHU                                             ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 use crate::process::scheduler;
 use alloc::rc::Rc;
 use alloc::sync::Arc;
@@ -19,14 +27,18 @@ use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::process::Process;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
 
-pub const MAIN_USER_STACK_START: usize = 0x400000000000;
-pub const MAX_USER_STACK_SIZE: usize = 0x40000000;
-const KERNEL_STACK_PAGES: usize = 64;
+use crate::consts::MAIN_USER_STACK_START;
+use crate::consts::MAX_USER_STACK_SIZE;
+use crate::consts::KERNEL_STACK_PAGES;
 
+
+/**
+ Description: Each thread has a user and kernel stack.
+*/
 struct Stacks {
     kernel_stack: Vec<u64, StackAllocator>,
     user_stack: Vec<u64, StackAllocator>,
-    old_rsp0: VirtAddr
+    old_rsp0: VirtAddr  // used for thread switching; rsp3 is stored in TSS
 }
 
 pub struct Thread {
