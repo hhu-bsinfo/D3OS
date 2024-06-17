@@ -53,7 +53,7 @@ pub struct Receivers {
 }
 
 /**
-Api offers an interface between the window-manager and external programs that request
+API offers an interface between the window-manager and external programs that request
 a service from the window-manager, like creating components or subscribing callback-functions to be
 executed in the main-loop.
 */

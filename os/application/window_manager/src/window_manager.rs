@@ -178,7 +178,6 @@ impl WindowManager {
                         self.switch_prev_workspace();
                     }
                     'o' => {
-                        self.is_dirty = true;
                         self.get_current_workspace_mut()
                             .move_focused_window_forward();
                     }

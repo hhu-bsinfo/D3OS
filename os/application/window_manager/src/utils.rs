@@ -7,13 +7,13 @@ pub fn get_element_cursor_from_orderer<T: PartialEq>(
     linked_list: &mut LinkedList<T>,
     needle: T,
 ) -> Option<CursorMut<T>> {
-    let mut current = linked_list.cursor_front_mut();
-    while let Some(element) = current.current() {
+    let mut cursor = linked_list.cursor_front_mut();
+    while let Some(element) = cursor.current() {
         if *element == needle {
-            return Some(current);
+            return Some(cursor);
         }
 
-        current.move_next();
+        cursor.move_next();
     }
 
     return None;

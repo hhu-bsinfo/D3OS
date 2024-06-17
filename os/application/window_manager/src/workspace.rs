@@ -147,25 +147,18 @@ impl Workspace {
             let mut cursor =
                 get_element_cursor_from_orderer(&mut self.window_orderer, self.focused_window_id)
                     .unwrap();
-            let focused = cursor.remove_current().unwrap_or_else(|| {
-                cursor.move_next();
-                let temp = cursor.remove_current().unwrap();
-                cursor.move_prev();
-                temp
-            });
 
-            cursor.insert_after(focused);
+            let focused = cursor.remove_current().unwrap();
 
-            let swapped_id_option = cursor.current();
-            let swapped_id = match swapped_id_option {
-                Some(swapped_id) => swapped_id.clone(),
+            match cursor.current() {
+                Some(_) => cursor.insert_after(focused),
                 None => {
-                    cursor.move_prev();
-                    let temp = cursor.current().unwrap().clone();
                     cursor.move_next();
-                    temp
+                    cursor.insert_after(focused);
                 }
-            };
+            }
+
+            let swapped_id = cursor.current().unwrap().clone();
 
             let swapped_window = self.windows.get_mut(&swapped_id).unwrap();
             let swapped_rect_data = swapped_window.rect_data.clone();
