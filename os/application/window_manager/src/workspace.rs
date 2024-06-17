@@ -173,6 +173,50 @@ impl Workspace {
         focused_window.rescale_window_after_move(swapped_rect_data);
     }
 
+    pub fn move_focused_window_backward(&mut self) {
+        if self.windows.len() == 1 {
+            return;
+        }
+
+        let focused_rect_data = {
+            let focused_window = self.get_focused_window_mut();
+            let focused_rect_data = focused_window.rect_data.clone();
+            focused_window.is_dirty = true;
+
+            focused_rect_data
+        };
+
+        let swapped_rect_data = {
+            let mut cursor =
+                get_element_cursor_from_orderer(&mut self.window_orderer, self.focused_window_id)
+                    .unwrap();
+
+            let focused = cursor.remove_current().unwrap();
+            cursor.move_prev();
+
+            match cursor.current() {
+                Some(_) => cursor.insert_before(focused),
+                None => {
+                    cursor.move_prev();
+                    cursor.insert_before(focused);
+                }
+            }
+
+            let swapped_id = cursor.current().unwrap().clone();
+
+            let swapped_window = self.windows.get_mut(&swapped_id).unwrap();
+            let swapped_rect_data = swapped_window.rect_data.clone();
+            swapped_window.is_dirty = true;
+            swapped_window.rescale_window_after_move(focused_rect_data);
+
+            swapped_rect_data
+        };
+
+        let focused_window = self.get_focused_window_mut();
+        focused_window.rect_data = swapped_rect_data;
+        focused_window.rescale_window_after_move(swapped_rect_data);
+    }
+
     pub fn get_focused_window(&self) -> &AppWindow {
         self.windows.get(&self.focused_window_id).unwrap()
     }

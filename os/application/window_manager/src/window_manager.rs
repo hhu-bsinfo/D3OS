@@ -181,6 +181,10 @@ impl WindowManager {
                         self.get_current_workspace_mut()
                             .move_focused_window_forward();
                     }
+                    'i' => {
+                        self.get_current_workspace_mut()
+                            .move_focused_window_backward();
+                    }
                     'e' => {
                         self.switch_next_workspace();
                     }
