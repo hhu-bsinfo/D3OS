@@ -190,11 +190,7 @@ impl AppWindow {
         if full {
             Drawer::partial_clear_screen(self.rect_data);
 
-            Drawer::draw_rectangle(
-                Vertex::new(top_left.x, top_left.y),
-                Vertex::new(top_left.x + width, top_left.y + height),
-                WHITE,
-            );
+            Drawer::draw_rectangle(self.rect_data, WHITE);
         } else {
             // Clear everything except the border
             Drawer::partial_clear_screen(RectData {

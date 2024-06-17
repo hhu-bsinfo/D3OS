@@ -51,16 +51,10 @@ impl CommandLineWindow {
             return;
         }
 
-        let RectData {
-            top_left,
-            width,
-            height,
-        } = self.rect_data;
-
-        Drawer::draw_rectangle(top_left, top_left.add(width, height), CYAN);
+        Drawer::draw_rectangle(self.rect_data, CYAN);
         Drawer::draw_string(
             self.command.clone(),
-            top_left.add(2, 2),
+            self.rect_data.top_left.add(2, 2),
             WHITE,
             None,
             DEFAULT_FONT_SCALE,

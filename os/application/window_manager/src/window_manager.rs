@@ -173,9 +173,15 @@ impl WindowManager {
                 match keyboard_press {
                     'c' => {
                         self.create_new_workspace(false);
+                        self.workspace_selection_labels_window.is_dirty = true;
                     }
                     'q' => {
                         self.switch_prev_workspace();
+                        self.workspace_selection_labels_window.is_dirty = true;
+                    }
+                    'e' => {
+                        self.switch_next_workspace();
+                        self.workspace_selection_labels_window.is_dirty = true;
                     }
                     'o' => {
                         self.get_current_workspace_mut()
@@ -184,9 +190,6 @@ impl WindowManager {
                     'i' => {
                         self.get_current_workspace_mut()
                             .move_focused_window_backward();
-                    }
-                    'e' => {
-                        self.switch_next_workspace();
                     }
                     'h' => {
                         self.command_line_window

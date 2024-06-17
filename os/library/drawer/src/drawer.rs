@@ -257,7 +257,14 @@ impl Drawer {
         Self::execute(command);
     }
 
-    pub fn draw_rectangle(top_left: Vertex, bottom_right: Vertex, color: Color) {
+    pub fn draw_rectangle(rect_data: RectData, color: Color) {
+        let RectData {
+            top_left,
+            width,
+            height,
+        } = rect_data;
+        let bottom_right = Vertex::new(top_left.x + width, top_left.y + height);
+
         let command = DrawerCommand::DrawPolygon {
             vertices: vec![
                 Vertex::new(top_left.x, top_left.y),
@@ -273,8 +280,11 @@ impl Drawer {
 
     pub fn draw_square(top_left: Vertex, side_length: u32, color: Color) {
         Self::draw_rectangle(
-            top_left,
-            Vertex::new(top_left.x + side_length, top_left.y + side_length),
+            RectData {
+                top_left,
+                width: side_length,
+                height: side_length,
+            },
             color,
         )
     }
