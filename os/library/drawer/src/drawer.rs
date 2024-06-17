@@ -71,10 +71,10 @@ impl Vertex {
         }
     }
 
-    pub fn scale_by_rect_ratio(&self, old_window: &RectData, new_window: &RectData) -> Self {
+    pub fn scale_by_rect_ratio(&self, old_rect_data: &RectData, new_rect_data: &RectData) -> Self {
         // Calculate scale factors
-        let scale_x = f64::from(new_window.width) / f64::from(old_window.width);
-        let scale_y = f64::from(new_window.height) / f64::from(old_window.height);
+        let scale_x = f64::from(new_rect_data.width) / f64::from(old_rect_data.width);
+        let scale_y = f64::from(new_rect_data.height) / f64::from(old_rect_data.height);
 
         // Scale top-left position
         let new_x = (f64::from(self.x) * scale_x) as u32;

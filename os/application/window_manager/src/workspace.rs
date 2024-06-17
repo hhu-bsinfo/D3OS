@@ -53,11 +53,15 @@ impl Workspace {
         let mut cursor =
             get_element_cursor_from_orderer(&mut self.window_orderer, self.focused_window_id)
                 .unwrap();
+
         cursor.move_next();
 
         self.focused_window_id = match cursor.current() {
             Some(next_focused_el) => next_focused_el.clone(),
-            None => cursor.peek_next().unwrap().clone(),
+            None => {
+                cursor.move_next();
+                cursor.current().unwrap().clone()
+            }
         };
 
         self.get_focused_window_mut().is_dirty = true;
@@ -69,11 +73,15 @@ impl Workspace {
         let mut cursor =
             get_element_cursor_from_orderer(&mut self.window_orderer, self.focused_window_id)
                 .unwrap();
+
         cursor.move_prev();
 
         self.focused_window_id = match cursor.current() {
             Some(next_focused_el) => next_focused_el.clone(),
-            None => cursor.peek_prev().unwrap().clone(),
+            None => {
+                cursor.move_prev();
+                cursor.current().unwrap().clone()
+            }
         };
 
         self.get_focused_window_mut().is_dirty = true;
@@ -120,6 +128,56 @@ impl Workspace {
         cursor.remove_current();
 
         self.focused_window_id = new_focused_window_id;
+    }
+
+    pub fn move_focused_window_forward(&mut self) {
+        if self.windows.len() == 1 {
+            return;
+        }
+
+        let focused_rect_data = {
+            let focused_window = self.get_focused_window_mut();
+            let focused_rect_data = focused_window.rect_data.clone();
+            focused_window.is_dirty = true;
+
+            focused_rect_data
+        };
+
+        let swapped_rect_data = {
+            let mut cursor =
+                get_element_cursor_from_orderer(&mut self.window_orderer, self.focused_window_id)
+                    .unwrap();
+            let focused = cursor.remove_current().unwrap_or_else(|| {
+                cursor.move_next();
+                let temp = cursor.remove_current().unwrap();
+                cursor.move_prev();
+                temp
+            });
+
+            cursor.insert_after(focused);
+
+            let swapped_id_option = cursor.current();
+            let swapped_id = match swapped_id_option {
+                Some(swapped_id) => swapped_id.clone(),
+                None => {
+                    cursor.move_prev();
+                    let temp = cursor.current().unwrap().clone();
+                    cursor.move_next();
+                    temp
+                }
+            };
+
+            let swapped_window = self.windows.get_mut(&swapped_id).unwrap();
+            let swapped_rect_data = swapped_window.rect_data.clone();
+            swapped_window.is_dirty = true;
+            swapped_window.rescale_window_after_move(focused_rect_data);
+
+            swapped_rect_data
+        };
+
+        let focused_window = self.get_focused_window_mut();
+        focused_window.rect_data = swapped_rect_data;
+        focused_window.rescale_window_after_move(swapped_rect_data);
     }
 
     pub fn get_focused_window(&self) -> &AppWindow {

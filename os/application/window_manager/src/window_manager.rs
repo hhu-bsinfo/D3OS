@@ -31,16 +31,15 @@ mod utils;
 mod windows;
 mod workspace;
 
-// Ids are unique across all components
+// IDs are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 /// Global screen resolution, initialized in [`WindowManager::init()`]
 static SCREEN: Once<(u32, u32)> = Once::new();
-
+/// API instance to communicate between applications and window-manager
 static mut API: Once<Mutex<Api>> = Once::new();
 
-// Screen-split types
 #[derive(Clone, Copy)]
-enum SplitType {
+enum ScreenSplitType {
     Horizontal,
     Vertical,
 }
@@ -178,16 +177,21 @@ impl WindowManager {
                     'q' => {
                         self.switch_prev_workspace();
                     }
+                    'o' => {
+                        self.is_dirty = true;
+                        self.get_current_workspace_mut()
+                            .move_focused_window_forward();
+                    }
                     'e' => {
                         self.switch_next_workspace();
                     }
                     'h' => {
                         self.command_line_window
-                            .activate_enter_app_mode(SplitType::Horizontal);
+                            .activate_enter_app_mode(ScreenSplitType::Horizontal);
                     }
                     'v' => {
                         self.command_line_window
-                            .activate_enter_app_mode(SplitType::Vertical);
+                            .activate_enter_app_mode(ScreenSplitType::Vertical);
                     }
                     'w' => {
                         self.get_current_workspace_mut().focus_next_component();
@@ -278,7 +282,7 @@ impl WindowManager {
         let _ = Self::get_api().register(self.current_workspace, window_id, rect_data, app_name);
     }
 
-    fn split_window(&mut self, window_id: usize, split_type: SplitType, app_name: &str) {
+    fn split_window(&mut self, window_id: usize, split_type: ScreenSplitType, app_name: &str) {
         let curr_ws = self.get_current_workspace_mut();
 
         if let Some(window) = curr_ws.windows.get_mut(&window_id) {
@@ -288,7 +292,7 @@ impl WindowManager {
                 height: old_height,
             } = window.rect_data;
             match split_type {
-                SplitType::Horizontal => {
+                ScreenSplitType::Horizontal => {
                     window.rect_data.height /= 2;
                     let new_top_left = old_top_left.add(0, window.rect_data.height);
                     let new_rect_data = RectData {
@@ -298,11 +302,11 @@ impl WindowManager {
                     };
 
                     // Rescale components for old window
-                    window.rescale_components(old_rect, window.rect_data.clone());
+                    window.rescale_window_in_place(old_rect, window.rect_data.clone());
 
                     self.add_window_to_workspace(new_rect_data, app_name, Some(window_id));
                 }
-                SplitType::Vertical => {
+                ScreenSplitType::Vertical => {
                     window.rect_data.width /= 2;
                     let new_top_left = old_top_left.add(window.rect_data.width, 0);
                     let new_rect_data = RectData {
@@ -312,7 +316,7 @@ impl WindowManager {
                     };
 
                     // Rescale components for old window
-                    window.rescale_components(old_rect, window.rect_data.clone());
+                    window.rescale_window_in_place(old_rect, window.rect_data.clone());
 
                     self.add_window_to_workspace(new_rect_data, app_name, Some(window_id));
                 }

@@ -21,7 +21,7 @@ impl Runnable for TestApp {
         api.execute(
             handle,
             Command::CreateButton {
-                pos: RectData {
+                rel_rect_data: RectData {
                     top_left: Vertex::new(400, 400),
                     width: 200,
                     height: 100,
@@ -38,7 +38,7 @@ impl Runnable for TestApp {
         api.execute(
             handle,
             Command::CreateButton {
-                pos: RectData {
+                rel_rect_data: RectData {
                     top_left: Vertex::new(200, 200),
                     width: 150,
                     height: 130,

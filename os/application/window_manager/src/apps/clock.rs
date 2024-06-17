@@ -19,7 +19,7 @@ impl Runnable for Clock {
         api.execute(
             handle,
             Command::CreateDynamicLabel {
-                pos: RectData {
+                rel_rect_data: RectData {
                     top_left: Vertex::new(400, 400),
                     width: 200,
                     height: 100,

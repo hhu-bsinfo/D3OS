@@ -1,3 +1,5 @@
+use core::fmt::Debug;
+
 use alloc::{boxed::Box, rc::Rc, string::String};
 use concurrent::thread;
 use drawer::drawer::{RectData, Vertex};
@@ -27,12 +29,12 @@ enum FontScalingStrategy {
 
 pub enum Command {
     CreateButton {
-        pos: RectData,
+        rel_rect_data: RectData,
         label: Option<Rc<Mutex<String>>>,
         on_click: Box<dyn Fn() -> ()>,
     },
     CreateDynamicLabel {
-        pos: RectData,
+        rel_rect_data: RectData,
         text: Rc<RwLock<String>>,
         /// Function to be called on each window-manager main-loop iteration
         on_loop_iter: Option<Box<dyn Fn() -> ()>>,
@@ -70,7 +72,7 @@ pub struct HandleData {
     ratios: (f64, f64),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct WindowData {
     pub workspace_index: usize,
     pub window_id: usize,
@@ -84,6 +86,22 @@ pub struct NewCompData {
 pub struct NewLoopIterFnData {
     pub window_data: WindowData,
     pub fun: Box<dyn Fn() -> ()>,
+}
+
+impl Debug for NewCompData {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("NewCompData")
+            .field("window_data", &self.window_data)
+            .finish()
+    }
+}
+
+impl Debug for NewLoopIterFnData {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("NewLoopIterFnData")
+            .field("window_data", &self.window_data)
+            .finish()
+    }
 }
 
 impl Api {
@@ -135,13 +153,19 @@ impl Api {
 
         match command {
             Command::CreateButton {
-                pos,
+                rel_rect_data,
                 label,
                 on_click,
             } => {
-                let scaled_pos = self.scale_rect_to_window(pos, handle_data);
+                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data);
 
-                let button = Button::new(handle_data.workspace_index, scaled_pos, label, on_click);
+                let button = Button::new(
+                    handle_data.workspace_index,
+                    abs_rect_data,
+                    rel_rect_data,
+                    label,
+                    on_click,
+                );
 
                 let dispatch_data = NewCompData {
                     window_data,
@@ -151,12 +175,12 @@ impl Api {
                 self.add_component(dispatch_data);
             }
             Command::CreateDynamicLabel {
-                pos,
+                rel_rect_data,
                 text,
                 on_loop_iter,
                 font_size,
             } => {
-                let scaled_pos = self.scale_rect_to_window(pos, handle_data);
+                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data);
                 let scaled_font_size = font_size.map(|original_size| {
                     self.scale_font_to_window(
                         original_size,
@@ -167,7 +191,8 @@ impl Api {
 
                 let label = DynamicLabel::new(
                     handle_data.workspace_index,
-                    scaled_pos.top_left,
+                    abs_rect_data.top_left,
+                    rel_rect_data.top_left,
                     text,
                     scaled_font_size,
                 );
@@ -202,11 +227,17 @@ impl Api {
     }
 
     fn add_component(&self, dispatch_data: NewCompData) {
-        self.senders.tx_components.enqueue(dispatch_data);
+        self.senders
+            .tx_components
+            .enqueue(dispatch_data)
+            .expect("components queue was closed!");
     }
 
     fn add_on_loop_iter_fn(&self, fun: NewLoopIterFnData) {
-        self.senders.tx_on_loop_iter.enqueue(fun);
+        self.senders
+            .tx_on_loop_iter
+            .enqueue(fun)
+            .expect("on_loop_iter queue was closed!");
     }
 
     fn scale_rect_to_window(

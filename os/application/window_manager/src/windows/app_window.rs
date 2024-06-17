@@ -104,10 +104,18 @@ impl AppWindow {
         }
     }
 
-    pub fn rescale_components(&mut self, old_window: RectData, new_window: RectData) {
-        self.components
-            .values_mut()
-            .for_each(|component| component.rescale(&old_window, &new_window))
+    pub fn rescale_window_in_place(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
+        for component in self.components.values_mut() {
+            component.rescale_in_place(old_rect_data, new_rect_data);
+        }
+    }
+
+    pub fn rescale_window_after_move(&mut self, new_rect_data: RectData) {
+        self.rect_data = new_rect_data;
+
+        for component in self.components.values_mut() {
+            component.rescale_after_move(new_rect_data);
+        }
     }
 
     pub fn is_elligible_for_merging(&self, other_window: &AppWindow) -> bool {
@@ -159,7 +167,7 @@ impl AppWindow {
             height: new_height,
         };
 
-        self.rescale_components(old_rect, self.rect_data)
+        self.rescale_window_in_place(old_rect, self.rect_data)
     }
 
     pub fn draw(&mut self, focused_window_id: usize, full: bool) {

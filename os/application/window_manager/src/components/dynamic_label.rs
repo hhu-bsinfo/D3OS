@@ -5,14 +5,15 @@ use drawer::drawer::{Drawer, RectData, Vertex};
 use graphic::color::Color;
 use spin::RwLock;
 
-use crate::configs::general::DEFAULT_FONT_SCALE;
+use crate::{configs::general::DEFAULT_FONT_SCALE, utils::scale_pos_to_window};
 
 use super::component::{Component, Interaction};
 
 /// Dynamic Labels are characterized by their text being modifiable, unlike [`Label`](`crate::components::label::Label`)
 pub struct DynamicLabel {
     pub workspace_index: usize,
-    pub pos: Vertex,
+    pub abs_pos: Vertex,
+    pub rel_pos: Vertex,
     pub text: Rc<RwLock<String>>,
     pub font_scale: (u32, u32),
 }
@@ -20,13 +21,15 @@ pub struct DynamicLabel {
 impl DynamicLabel {
     pub fn new(
         workspace_index: usize,
-        pos: Vertex,
+        abs_pos: Vertex,
+        rel_pos: Vertex,
         text: Rc<RwLock<String>>,
         font_scale: Option<(u32, u32)>,
     ) -> Self {
         Self {
             workspace_index,
-            pos,
+            abs_pos,
+            rel_pos,
             text,
             font_scale: font_scale.unwrap_or(DEFAULT_FONT_SCALE),
         }
@@ -38,7 +41,7 @@ impl Component for DynamicLabel {
         let text = self.text.read();
         Drawer::draw_string(
             text.deref().clone(),
-            self.pos,
+            self.abs_pos,
             fg_color,
             bg_color,
             self.font_scale,
@@ -47,7 +50,11 @@ impl Component for DynamicLabel {
 
     fn interact(&self, _interaction: Interaction) {}
 
-    fn rescale(&mut self, old_window: &RectData, new_window: &RectData) {
-        self.pos.scale_by_rect_ratio(old_window, new_window);
+    fn rescale_in_place(&mut self, old_window: RectData, new_window: RectData) {
+        self.abs_pos.scale_by_rect_ratio(&old_window, &new_window);
+    }
+
+    fn rescale_after_move(&mut self, new_window_rect_data: RectData) {
+        self.abs_pos = scale_pos_to_window(self.rel_pos, new_window_rect_data);
     }
 }

@@ -2,7 +2,7 @@ use alloc::string::String;
 use drawer::drawer::{Drawer, RectData};
 use graphic::color::{CYAN, WHITE};
 
-use crate::{configs::general::DEFAULT_FONT_SCALE, SplitType};
+use crate::{configs::general::DEFAULT_FONT_SCALE, ScreenSplitType};
 
 /**
 This is the window used to contain the command-line, which in turn is used
@@ -12,7 +12,7 @@ pub struct CommandLineWindow {
     /// If true, all keyboard input is redirected to typing in the name of the app
     pub enter_app_mode: bool,
     pub command: String,
-    pub split_type: SplitType,
+    pub split_type: ScreenSplitType,
     rect_data: RectData,
 }
 
@@ -22,11 +22,11 @@ impl CommandLineWindow {
             rect_data,
             enter_app_mode: false,
             command: String::with_capacity(16),
-            split_type: SplitType::Horizontal,
+            split_type: ScreenSplitType::Horizontal,
         }
     }
 
-    pub fn activate_enter_app_mode(&mut self, split_type: SplitType) {
+    pub fn activate_enter_app_mode(&mut self, split_type: ScreenSplitType) {
         self.enter_app_mode = true;
         self.split_type = split_type;
         self.command.clear();

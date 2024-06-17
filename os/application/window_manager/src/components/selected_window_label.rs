@@ -37,7 +37,11 @@ impl Component for SelectedWorkspaceLabel {
 
     fn interact(&self, _interaction: Interaction) {}
 
-    fn rescale(&mut self, _old_window: &RectData, _new_window: &RectData) {
+    fn rescale_in_place(&mut self, _old_window: RectData, _new_window: RectData) {
         // Should never be rescaled
+    }
+
+    fn rescale_after_move(&mut self, _new_window_rect_data: RectData) {
+        // Should never be moved
     }
 }
