@@ -282,7 +282,9 @@ impl WindowManager {
 
         self.is_dirty = true;
 
-        let _ = Self::get_api().register(self.current_workspace, window_id, rect_data, app_name);
+        Self::get_api()
+            .register(self.current_workspace, window_id, rect_data, app_name)
+            .expect("Failed to create window!");
     }
 
     fn split_window(&mut self, window_id: usize, split_type: ScreenSplitType, app_name: &str) {
@@ -378,16 +380,18 @@ impl WindowManager {
 
         self.workspaces.insert(self.current_workspace, workspace);
 
-        let _ = Self::get_api().register(
-            self.current_workspace,
-            window_id,
-            RectData {
-                top_left: Vertex::new(100, 100),
-                width: 300,
-                height: 50,
-            },
-            DEFAULT_APP,
-        );
+        Self::get_api()
+            .register(
+                self.current_workspace,
+                window_id,
+                RectData {
+                    top_left: Vertex::new(100, 100),
+                    width: 300,
+                    height: 50,
+                },
+                DEFAULT_APP,
+            )
+            .expect("Failed to launch default app!");
     }
 
     fn switch_prev_workspace(&mut self) {
