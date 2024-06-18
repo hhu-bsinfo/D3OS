@@ -1,3 +1,11 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: scheduler                                                       ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: Implementation of the scheduler.                                ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, HHU                                             ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 use crate::process::thread::Thread;
 use alloc::collections::VecDeque;
 use alloc::format;
@@ -10,12 +18,14 @@ use smallmap::Map;
 use spin::{Mutex, MutexGuard};
 use crate::{allocator, apic, scheduler, timer, tss};
 
+// thread IDs
 static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 pub fn next_thread_id() -> usize {
     THREAD_ID_COUNTER.fetch_add(1, Relaxed)
 }
 
+// everything related to the ready state in the scheduler
 struct ReadyState {
     initialized: bool,
     current_thread: Option<Rc<Thread>>,
@@ -31,7 +41,7 @@ impl ReadyState {
 pub struct Scheduler {
     ready_state: Mutex<ReadyState>,
     sleep_list: Mutex<Vec<(Rc<Thread>, usize)>>,
-    join_map: Mutex<Map<usize, Vec<Rc<Thread>>>>
+    join_map: Mutex<Map<usize, Vec<Rc<Thread>>>> // manage which threads are waiting for a thread-id to terminate
 }
 
 unsafe impl Send for Scheduler {}
@@ -44,10 +54,13 @@ pub unsafe extern "C" fn unlock_scheduler() {
 }
 
 impl Scheduler {
+
+    // create and init scheduler
     pub fn new() -> Self {
         Self { ready_state: Mutex::new(ReadyState::new()), sleep_list: Mutex::new(Vec::new()), join_map: Mutex::new(Map::new()) }
     }
 
+    // called during creation of first thread
     pub fn set_init(&self) {
         self.get_ready_state().initialized = true;
     }
@@ -65,6 +78,7 @@ impl Scheduler {
         return Scheduler::current(&state);
     }
 
+    // get thread for given id
     pub fn thread(&self, thread_id: usize) -> Option<Rc<Thread>> {
         self.ready_state.lock()
             .ready_queue.iter().find(|thread| {
@@ -154,6 +168,7 @@ impl Scheduler {
         }
     }
 
+    // 
     pub fn switch_thread_no_interrupt(&self) {
         self.switch_thread(false);
     }

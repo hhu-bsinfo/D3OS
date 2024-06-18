@@ -1,9 +1,13 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: thread                                                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Implementation of threads.                                      ║
+   ║ Descr.: Implementation of threads. Supports kernel-only threads as well ║
+   ║         as several user thread per process.                             ║
+   ║                                                                         ║
+   ║         Stack-Management for threads:                                   ║
    ║         Kernel threads have a stack of 'KERNEL_STACK_PAGES'.            ║
-   ║         User threads have an additional stack with a logical size of    ║ 
+   ║         Kernel threads have a stack of 'KERNEL_STACK_PAGES'.            ║
+   ║         User threads have an additional stack with a logical size of    ║
    ║         'MAX_USER_STACK_SIZE' and an initial phyiscal size of one page. ║
    ║         Additional pages are allocated for user stacks as need until    ║
    ║         'MAX_USER_STACK_SIZE' is reached. The thread is killed if this  ║
@@ -15,12 +19,6 @@
    ║ Author: Fabian Ruhland, HHU                                             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-
-
-// each user thread gets 1 GiB stack (logical); 4 KiB physical at the beginning
-// will be extended physically as needed but at most until 1 GiB
-// all user level thread stacks are allocated sequentially in the logical address space (1 GiB per entry)
- 
 
 use crate::memory::alloc::StackAllocator;
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
@@ -47,18 +45,20 @@ use crate::consts::KERNEL_STACK_PAGES;
 use crate::consts::MAIN_USER_STACK_START;
 use crate::consts::MAX_USER_STACK_SIZE;
 
+/// kernel & user stack of a thread 
 struct Stacks {
     kernel_stack: Vec<u64, StackAllocator>,
     user_stack: Vec<u64, StackAllocator>,
     old_rsp0: VirtAddr, // used for thread switching; rsp3 is stored in TSS
 }
 
+/// thread meta data 
 pub struct Thread {
-    id: usize,
+    id: usize, 
     stacks: Mutex<Stacks>,
-    process: Arc<Process>,
-    entry: fn(),
-    user_rip: VirtAddr,
+    process: Arc<Process>, // reference to my process
+    entry: fn(),           // user thread: =0;                 kernel thread: address of entry function
+    user_rip: VirtAddr,    // user thread: elf-entry function; kernel thread: =0
 }
 
 impl Stacks {
@@ -75,11 +75,11 @@ impl Stacks {
 }
 
 impl Thread {
-    /**
-     Description: Create kernel thread. Not started yet, nor registered in the scheduler.
-
-     Parameters: `entry` thread entry function.
-    */
+    ///
+    /// Description: Create kernel thread. Not started yet, nor registered in the scheduler.
+    ///
+    /// Parameters: `entry` thread entry function.
+    ///
     pub fn new_kernel_thread(entry: fn()) -> Rc<Thread> {
         let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
             (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
@@ -102,10 +102,12 @@ impl Thread {
         return Rc::new(thread);
     }
 
-    pub fn load_application(elf_buffer: &[u8]) -> Rc<Thread> {
+ 
+pub fn load_application(elf_buffer: &[u8]) -> Rc<Thread> {
         let process = process_manager().write().create_process();
         let address_space = process.address_space();
 
+        // Parse elf file headers and map code vma if successful
         let elf = Elf::parse(elf_buffer).expect("Failed to parse application");
         elf.program_headers
             .iter()
@@ -144,6 +146,7 @@ impl Thread {
                 process.add_vma(VirtualMemoryArea::new(pages, VmaType::Code));
             });
 
+        // create kernel stack for the application
         let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
             (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
             StackAllocator::new(),
@@ -156,6 +159,7 @@ impl Thread {
             start: user_stack_end - 1,
             end: user_stack_end,
         };
+        // create user stack for the application
         let user_stack = unsafe {
             Vec::from_raw_parts_in(
                 user_stack_pages.start.start_address().as_u64() as *mut u64,
@@ -164,6 +168,7 @@ impl Thread {
                 StackAllocator::new(),
             )
         };
+        // map and add vma for user stack of the application
         address_space.map(
             user_stack_pages,
             MemorySpace::User,
@@ -171,6 +176,7 @@ impl Thread {
         );
         process.add_vma(VirtualMemoryArea::new(user_stack_pages, VmaType::Stack));
 
+        // create thread
         let thread = Thread {
             id: scheduler::next_thread_id(),
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
@@ -183,14 +189,14 @@ impl Thread {
         return Rc::new(thread);
     }
 
-    /**
-     Description: Create user thread. Not started yet, nor registered in the scheduler.
-
-     Parameters: \
-        `parent` process the thread belongs to. \
-        `kickoff_addr` address of `kickoff` function \
-        `entry` address of thread entry function
-    */
+    ///
+    /// Description: Create user thread. Not started yet, nor registered in the scheduler.
+    ///
+    /// Parameters: \
+    ///   `parent` process the thread belongs to. \
+    ///   `kickoff_addr` address of `kickoff` function \
+    ///   `entry` address of thread entry function
+    ///
     pub fn new_user_thread(
         parent: Arc<Process>,
         kickoff_addr: VirtAddr,
@@ -202,16 +208,17 @@ impl Thread {
             StackAllocator::new(),
         );
 
-        // get all stacks of my process; use highest entry and add 1 GB (stack size)
+        // get highest stack vma in my address space
         let stack_vmas = parent.find_vmas(VmaType::Stack);
         let highest_stack_vma = stack_vmas
             .last()
             .expect("Trying to create a user thread, before the main thread has been created!");
+
+        // from there allocate new user stack
         let user_stack_end = Page::<Size4KiB>::from_start_address(
             highest_stack_vma.end() + MAX_USER_STACK_SIZE as u64,
         )
         .unwrap();
-
         let user_stack_pages = PageRange {
             start: user_stack_end - 1,
             end: user_stack_end,
@@ -224,13 +231,18 @@ impl Thread {
                 StackAllocator::new(),
             )
         };
+
+        // map one page as PRESENT for the allocated user stack
         parent.address_space().map(
             user_stack_pages,
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
         );
+
+        // add the VMA entry for the new user stack
         parent.add_vma(VirtualMemoryArea::new(user_stack_pages, VmaType::Stack));
 
+        // create user thread and prepare the stack for starting it later
         let thread = Thread {
             id: scheduler::next_thread_id(),
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
@@ -238,35 +250,33 @@ impl Thread {
             entry,
             user_rip: kickoff_addr,
         };
-
         thread.prepare_kernel_stack();
         return Rc::new(thread);
     }
 
+    /// Description: Called first for both a new kernel and a new user thread
     pub fn kickoff_kernel_thread() {
         let scheduler = scheduler();
         scheduler.set_init(); // scheduler initialized
 
         let thread = scheduler.current_thread();
-        tss().lock().privilege_stack_table[0] = thread.kernel_stack_addr();
+        tss().lock().privilege_stack_table[0] = thread.kernel_stack_addr(); // get stack pointer for kernel stack
 
         if thread.is_kernel_thread() {
-            (thread.entry)();
-            drop(thread); // Manually decrease reference count, because exit() will never return
-            scheduler.exit(); 
+            (thread.entry)();  // Directly call the entry function of kernel thread
+            drop(thread);      // Manually decrease reference count, because exit() will never return
+            scheduler.exit();
         } else {
             let thread_ptr = ptr::from_ref(thread.as_ref());
             drop(thread); // Manually decrease reference count, because switch_to_user_mode() will never return
 
             let thread_ref = unsafe { thread_ptr.as_ref().unwrap() };
-            thread_ref.switch_to_user_mode();
+            thread_ref.switch_to_user_mode(); // call entry function of user thread
             // exit is in the entry function -> runtime::lib.rs
         }
     }
 
-    /**
-     Description: High-level function for starting a thread in kernel mode
-    */
+    /// Description: High-level function for starting a thread in kernel mode
     pub unsafe fn start_first(thread_ptr: *const Thread) {
         let thread = unsafe { thread_ptr.as_ref().unwrap() };
         let old_rsp0 = thread.stacks.lock().old_rsp0;
@@ -276,9 +286,7 @@ impl Thread {
         }
     }
 
-    /**
-     Description: High-level thread switching function
-    */
+    /// Description: High-level thread switching function
     pub unsafe fn switch(current_ptr: *const Thread, next_ptr: *const Thread) {
         let current = unsafe { current_ptr.as_ref().unwrap() };
         let next = unsafe { next_ptr.as_ref().unwrap() };
@@ -292,14 +300,13 @@ impl Thread {
         }
     }
 
-    // check if stacks are locked
+    /// Description: Check if stacks are locked
     pub fn stacks_locked(&self) -> bool {
         self.stacks.is_locked()
     }
 
-    /**
-     Description: Grow user stack on demand
-    */
+
+    /// Description: Grow user stack on demand
     pub fn grow_user_stack(&self) {
         let mut stacks = self.stacks.lock();
 
@@ -328,49 +335,41 @@ impl Thread {
         };
     }
 
-    /**
-     Description: Check if self is kernel thread or not
-    */
+    /// Description: Check if self is kernel thread or not
     pub fn is_kernel_thread(&self) -> bool {
         return self.stacks.lock().user_stack.capacity() == 0;
     }
 
-    // last usable address of stack, used to grow stack
+    /// Description: Return last usable address of stack. Used to implement dynamically growing stack
     pub fn user_stack_start(&self) -> VirtAddr {
         let stacks = self.stacks.lock();
         VirtAddr::new(stacks.user_stack.as_ptr() as u64)
     }
 
-    /**
-     Description: Return reference to my process
-    */
+    /// Description: Return reference to my process
     pub fn process(&self) -> Arc<Process> {
         return Arc::clone(&self.process);
     }
 
-    // wait for one thread
+    /// Description: Calling thread will Wait until 'self' terminates
     #[allow(dead_code)]
     pub fn join(&self) {
         scheduler().join(self.id());
     }
 
-    /**
-     Description: Return my thread id
-    */
+    ///  Description: Return my thread id
     pub fn id(&self) -> usize {
         return self.id;
     }
 
-    // ?
+    ///  Description: Helper function, returns highest useable stack address of kernel stack  of 'self'
     pub fn kernel_stack_addr(&self) -> VirtAddr {
         let stacks = self.stacks.lock();
         let kernel_stack_addr = VirtAddr::new(stacks.kernel_stack.as_ptr() as u64);
         return kernel_stack_addr + (stacks.kernel_stack.capacity() * 8) as u64;
     }
 
-    /**
-     Description: prepare a fake stack for starting a thread in kernel mode
-    */
+    /// Description: prepare a fake stack for starting a thread in kernel mode
     fn prepare_kernel_stack(&self) {
         let mut stacks = self.stacks.lock();
         let stack_addr = stacks.kernel_stack.as_ptr() as u64;
@@ -406,9 +405,7 @@ impl Thread {
         stacks.old_rsp0 = VirtAddr::new(stack_addr + ((capacity - 18) * 8) as u64);
     }
 
-    /**
-     Description: switch a thread to user mode by preparing a fake stackframe
-    */
+    /// Description: switch a thread to user mode by preparing a fake stackframe
     fn switch_to_user_mode(&self) {
         let old_rsp0: u64;
 
@@ -444,9 +441,7 @@ impl Thread {
     }
 }
 
-/**
- Description: Low-level function for starting a thread in kernel mode
-*/
+/// Description: Low-level function for starting a thread in kernel mode
 #[naked]
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
@@ -474,9 +469,7 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
     );
 }
 
-/**
- Description: Low-level function for starting a thread in user mode
-*/
+/// Description: Low-level function for starting a thread in user mode
 #[naked]
 #[allow(unsafe_op_in_unsafe_fn)]
 #[allow(improper_ctypes_definitions)] // 'entry' takes no arguments and has no return value, so we just assume that the "C" and "Rust" ABIs act the same way in this case
@@ -489,9 +482,7 @@ unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
     )
 }
 
-/**
- Description: Low-level thread switching function
-*/
+/// Description: Low-level thread switching function
 #[naked]
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" fn thread_switch(
