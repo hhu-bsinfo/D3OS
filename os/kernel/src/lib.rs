@@ -77,7 +77,7 @@ fn panic(info: &PanicInfo) -> ! {
         let record = Record::builder()
             .level(Level::Error)
             .file(Some("panic"))
-            .args(*info.message().unwrap_or(&Arguments::new_const(&["A panic occurred!"])))
+            .args(info.message())
             .build();
 
         unsafe { logger().force_unlock() };
