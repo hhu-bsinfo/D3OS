@@ -74,10 +74,11 @@ fn panic(info: &PanicInfo) -> ! {
     if terminal_initialized() {
         println!("Panic: {}", info);
     } else {
+        let args = [info.message().as_str().unwrap()];
         let record = Record::builder()
             .level(Level::Error)
             .file(Some("panic"))
-            .args(info.message())
+            .args(Arguments::new_const(&args))
             .build();
 
         unsafe { logger().force_unlock() };
