@@ -75,6 +75,7 @@ impl Stacks {
 }
 
 impl Thread {
+
     ///
     /// Description: Create kernel thread. Not started yet, nor registered in the scheduler.
     ///
@@ -103,7 +104,12 @@ impl Thread {
     }
 
  
-pub fn load_application(elf_buffer: &[u8]) -> Rc<Thread> {
+    ///
+    /// Description: Parses elf_buffer for entry function and returns a reference to a prepeared user thread
+    ///
+    /// Parameters: `elf_buffer` elf code image
+    ///
+    pub fn load_application(elf_buffer: &[u8]) -> Rc<Thread> {
         let process = process_manager().write().create_process();
         let address_space = process.address_space();
 
