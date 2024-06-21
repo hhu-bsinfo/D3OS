@@ -81,8 +81,15 @@ impl Component for Button {
         }
     }
 
-    fn rescale_in_place(&mut self, old_window: RectData, new_window: RectData) {
-        self.abs_rect_data = self.abs_rect_data.scale(&old_window, &new_window);
+    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
+        self.abs_rect_data.top_left = self
+            .abs_rect_data
+            .top_left
+            .move_to_new_rect(&old_window, &new_window);
+
+        self.abs_rect_data = self
+            .abs_rect_data
+            .scale_dimensions(&old_window, &new_window);
     }
 
     fn rescale_after_move(&mut self, new_window_rect_data: RectData) {

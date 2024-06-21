@@ -53,7 +53,8 @@ impl Vertex {
         }
     }
 
-    pub fn scale_by_rect_ratio(&self, old_rect_data: &RectData, new_rect_data: &RectData) -> Self {
+    ///Returns new vertex inside `new_rect_data`, scaling the position accordingly
+    pub fn move_to_new_rect(&self, old_rect_data: &RectData, new_rect_data: &RectData) -> Self {
         // Deltas between window-pos and vertex
         let delta_x = f64::from(self.x - old_rect_data.top_left.x);
         let delta_y = f64::from(self.y - old_rect_data.top_left.y);

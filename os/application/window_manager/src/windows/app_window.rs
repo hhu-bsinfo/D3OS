@@ -106,7 +106,7 @@ impl AppWindow {
 
     pub fn rescale_window_in_place(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
         for component in self.components.values_mut() {
-            component.rescale_in_place(old_rect_data, new_rect_data);
+            component.rescale_after_split(old_rect_data, new_rect_data);
         }
     }
 

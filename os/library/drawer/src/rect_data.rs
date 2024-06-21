@@ -30,26 +30,15 @@ impl RectData {
     }
 
     /// Scale this RectData to fit into the new window size
-    pub fn scale(&self, old_window: &RectData, new_window: &RectData) -> RectData {
+    pub fn scale_dimensions(&self, old_window: &RectData, new_window: &RectData) -> RectData {
         // Calculate scale factors
         let scale_x = f64::from(new_window.width) / f64::from(old_window.width);
         let scale_y = f64::from(new_window.height) / f64::from(old_window.height);
 
-        // Scale top-left position
-        let new_top_left_x = (f64::from(self.top_left.x) * scale_x) as u32;
-        let new_top_left_y = (f64::from(self.top_left.y) * scale_y) as u32;
-
-        // Scale width and height
-        let new_width = (f64::from(self.width) * scale_x) as u32;
-        let new_height = (f64::from(self.height) * scale_y) as u32;
-
-        RectData {
-            top_left: Vertex {
-                x: new_top_left_x,
-                y: new_top_left_y,
-            },
-            width: new_width,
-            height: new_height,
-        }
+        return RectData {
+            top_left: self.top_left,
+            width: (f64::from(self.width) * scale_x) as u32,
+            height: (f64::from(self.height) * scale_y) as u32,
+        };
     }
 }
