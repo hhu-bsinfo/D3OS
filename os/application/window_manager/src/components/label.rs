@@ -52,7 +52,7 @@ impl Component for Label {
     fn interact(&self, _interaction: Interaction) {}
 
     fn rescale_in_place(&mut self, old_window: RectData, new_window: RectData) {
-        self.abs_pos.scale_by_rect_ratio(&old_window, &new_window);
+        self.abs_pos = self.abs_pos.scale_by_rect_ratio(&old_window, &new_window);
     }
 
     fn rescale_after_move(&mut self, new_window_rect_data: RectData) {
