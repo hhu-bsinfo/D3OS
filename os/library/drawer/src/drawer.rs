@@ -1,3 +1,4 @@
+use core::fmt::Display;
 use core::ops::Add;
 use core::{marker::PhantomData, ops::AddAssign};
 
@@ -21,6 +22,16 @@ pub struct RectData {
     pub top_left: Vertex,
     pub width: u32,
     pub height: u32,
+}
+
+impl Display for RectData {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "x: {}, y: {}, width: {}, height: {}",
+            self.top_left.x, self.top_left.y, self.width, self.height
+        )
+    }
 }
 
 impl Add for Vertex {
@@ -72,23 +83,37 @@ impl Vertex {
     }
 
     pub fn scale_by_rect_ratio(&self, old_rect_data: &RectData, new_rect_data: &RectData) -> Self {
+        // Deltas between window-pos and vertex
+        let delta_x = f64::from(self.x - old_rect_data.top_left.x);
+        let delta_y = f64::from(self.y - old_rect_data.top_left.y);
         // Calculate scale factors
         let scale_x = f64::from(new_rect_data.width) / f64::from(old_rect_data.width);
         let scale_y = f64::from(new_rect_data.height) / f64::from(old_rect_data.height);
 
-        // Scale top-left position
-        let new_x = (f64::from(self.x) * scale_x) as u32;
-        let new_y = (f64::from(self.y) * scale_y) as u32;
-
         Self {
-            x: new_x,
-            y: new_y,
+            x: new_rect_data.top_left.x + ((delta_x * scale_x) as u32),
+            y: new_rect_data.top_left.y + ((delta_y * scale_y) as u32),
             private: PhantomData::default(),
         }
     }
 }
 
+impl Display for Vertex {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "x: {}, y: {}", self.x, self.y)
+    }
+}
+
 impl RectData {
+    pub fn sub_border(&self) -> Self {
+        let mut new_rect = self.clone();
+        new_rect.top_left += Vertex::new(1, 1);
+        new_rect.width -= 2;
+        new_rect.height -= 2;
+
+        return new_rect;
+    }
+
     /// Scale this RectData to fit into the new window size
     pub fn scale(&self, old_window: &RectData, new_window: &RectData) -> RectData {
         // Calculate scale factors
