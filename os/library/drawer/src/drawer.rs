@@ -117,7 +117,7 @@ impl RectData {
 
 #[repr(C, u8)]
 pub enum DrawerCommand {
-    FullClearScreen = 0,
+    FullClearScreen(bool) = 0,
     PartialClearScreen {
         part_of_screen: RectData,
     },
@@ -167,8 +167,12 @@ impl Drawer {
         syscall1(SystemCall::WriteGraphic, command_addr);
     }
 
-    pub fn full_clear_screen() {
-        let command = DrawerCommand::FullClearScreen;
+    /**
+    If `do_flush` is `true``, we flush and have an empty screen for at least one frame.
+    Use `false`, if you wanna draw something new, to minimize screen flickering
+    */
+    pub fn full_clear_screen(do_flush: bool) {
+        let command = DrawerCommand::FullClearScreen(do_flush);
 
         Self::execute(command);
     }

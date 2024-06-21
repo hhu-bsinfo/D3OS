@@ -425,7 +425,7 @@ impl WindowManager {
         let is_dirty = self.is_dirty;
 
         if is_dirty {
-            Drawer::full_clear_screen();
+            Drawer::full_clear_screen(false);
         }
 
         let focused_window_id = self.get_current_workspace().focused_window_id;

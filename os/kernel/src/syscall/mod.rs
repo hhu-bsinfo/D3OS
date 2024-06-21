@@ -245,8 +245,11 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
     let mut buff_lfb = buffered_lfb().lock();
     let lfb = buff_lfb.lfb();
     match enum_val {
-        DrawerCommand::FullClearScreen => {
+        DrawerCommand::FullClearScreen(do_flush) => {
             lfb.clear();
+            if !do_flush {
+                return;
+            }
         }
         DrawerCommand::DrawLine { from, to, color } => {
             lfb.draw_line(from.x, from.y, to.x, to.y, color.clone())
