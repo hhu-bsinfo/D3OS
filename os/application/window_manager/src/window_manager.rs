@@ -12,7 +12,9 @@ use configs::general::{COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE};
 use configs::workspace_selection_labels_window::{
     HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW, WORKSPACE_SELECTION_LABEL_FONT_SCALE,
 };
-use drawer::drawer::{Drawer, RectData, Vertex};
+use drawer::drawer::Drawer;
+use drawer::rect_data::RectData;
+use drawer::vertex::Vertex;
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use io::{read::try_read, Application};
 use nolock::queues::mpsc::jiffy;

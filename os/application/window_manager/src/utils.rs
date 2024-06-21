@@ -1,5 +1,5 @@
 use alloc::collections::{linked_list::CursorMut, LinkedList};
-use drawer::drawer::{RectData, Vertex};
+use drawer::{rect_data::RectData, vertex::Vertex};
 
 use crate::SCREEN;
 

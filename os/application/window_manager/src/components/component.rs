@@ -1,4 +1,4 @@
-use drawer::drawer::RectData;
+use drawer::rect_data::RectData;
 use graphic::color::Color;
 
 pub enum Interaction {

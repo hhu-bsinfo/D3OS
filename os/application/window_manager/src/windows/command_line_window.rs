@@ -1,5 +1,5 @@
 use alloc::string::String;
-use drawer::drawer::{Drawer, RectData};
+use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::color::{CYAN, WHITE};
 
 use crate::{configs::general::DEFAULT_FONT_SCALE, ScreenSplitType};

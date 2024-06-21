@@ -1,7 +1,7 @@
 use core::ops::Deref;
 
 use alloc::{rc::Rc, string::String};
-use drawer::drawer::{Drawer, RectData, Vertex};
+use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
 use spin::RwLock;
 

@@ -1,5 +1,5 @@
 use alloc::{boxed::Box, rc::Rc, string::ToString};
-use drawer::drawer::{RectData, Vertex};
+use drawer::{rect_data::RectData, vertex::Vertex};
 use spin::rwlock::RwLock;
 use time::date;
 

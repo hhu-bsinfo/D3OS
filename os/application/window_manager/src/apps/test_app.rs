@@ -3,7 +3,7 @@ use alloc::{
     rc::Rc,
     string::{String, ToString},
 };
-use drawer::drawer::{RectData, Vertex};
+use drawer::{rect_data::RectData, vertex::Vertex};
 use spin::Mutex;
 
 use crate::{api::Command, WindowManager};

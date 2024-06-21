@@ -2,7 +2,7 @@ use core::fmt::Debug;
 
 use alloc::{boxed::Box, rc::Rc, string::String};
 use concurrent::thread;
-use drawer::drawer::{RectData, Vertex};
+use drawer::{rect_data::RectData, vertex::Vertex};
 use hashbrown::HashMap;
 use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::{Mutex, RwLock};

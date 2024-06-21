@@ -1,0 +1,55 @@
+use core::fmt::Display;
+
+use crate::vertex::Vertex;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RectData {
+    pub top_left: Vertex,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Display for RectData {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "x: {}, y: {}, width: {}, height: {}",
+            self.top_left.x, self.top_left.y, self.width, self.height
+        )
+    }
+}
+
+impl RectData {
+    pub fn sub_border(&self) -> Self {
+        let mut new_rect = self.clone();
+        new_rect.top_left += Vertex::new(1, 1);
+        new_rect.width -= 2;
+        new_rect.height -= 2;
+
+        return new_rect;
+    }
+
+    /// Scale this RectData to fit into the new window size
+    pub fn scale(&self, old_window: &RectData, new_window: &RectData) -> RectData {
+        // Calculate scale factors
+        let scale_x = f64::from(new_window.width) / f64::from(old_window.width);
+        let scale_y = f64::from(new_window.height) / f64::from(old_window.height);
+
+        // Scale top-left position
+        let new_top_left_x = (f64::from(self.top_left.x) * scale_x) as u32;
+        let new_top_left_y = (f64::from(self.top_left.y) * scale_y) as u32;
+
+        // Scale width and height
+        let new_width = (f64::from(self.width) * scale_x) as u32;
+        let new_height = (f64::from(self.height) * scale_y) as u32;
+
+        RectData {
+            top_left: Vertex {
+                x: new_top_left_x,
+                y: new_top_left_y,
+            },
+            width: new_width,
+            height: new_height,
+        }
+    }
+}

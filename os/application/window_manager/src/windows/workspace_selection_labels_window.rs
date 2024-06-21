@@ -1,6 +1,6 @@
 use crate::configs::{general::FOCUSED_BG_COLOR, workspace_selection_labels_window};
 use alloc::vec::Vec;
-use drawer::drawer::{Drawer, RectData};
+use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::color::WHITE;
 
 use crate::components::{component::Component, selected_window_label::SelectedWorkspaceLabel};

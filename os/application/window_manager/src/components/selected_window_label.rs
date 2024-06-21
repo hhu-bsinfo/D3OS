@@ -1,5 +1,5 @@
 use alloc::string::{String, ToString};
-use drawer::drawer::{Drawer, RectData, Vertex};
+use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
 
 use crate::configs::workspace_selection_labels_window::WORKSPACE_SELECTION_LABEL_FONT_SCALE;

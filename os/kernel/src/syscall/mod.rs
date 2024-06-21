@@ -14,7 +14,7 @@ use core::mem::size_of;
 use core::ptr;
 use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
-use drawer::drawer::{DrawerCommand, RectData};
+use drawer::{drawer::DrawerCommand, rect_data::RectData};
 use graphic::color::BLACK;
 use io::Application;
 use libm::Libm;
