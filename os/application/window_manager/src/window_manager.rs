@@ -245,8 +245,14 @@ impl WindowManager {
                 self.is_dirty = true;
             }
             // Backspace
-            '\u{0008}' => self.command_line_window.pop_char(),
-            c => self.command_line_window.push_char(c),
+            '\u{0008}' => {
+                self.command_line_window.is_dirty = true;
+                self.command_line_window.pop_char();
+            }
+            c => {
+                self.command_line_window.is_dirty = true;
+                self.command_line_window.push_char(c);
+            }
         }
     }
 
@@ -342,18 +348,20 @@ impl WindowManager {
         }
 
         let screen_res = Self::get_screen_res();
+        let window_rect_data = RectData {
+            top_left: Vertex::new(
+                DIST_TO_SCREEN_EDGE,
+                DIST_TO_SCREEN_EDGE + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
+            ),
+            width: screen_res.0 - DIST_TO_SCREEN_EDGE * 2,
+            height: screen_res.1
+                - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW),
+        };
+
         let window = AppWindow::new(
             Self::generate_id(),
             self.current_workspace,
-            RectData {
-                top_left: Vertex::new(
-                    DIST_TO_SCREEN_EDGE,
-                    DIST_TO_SCREEN_EDGE + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
-                ),
-                width: screen_res.0 - DIST_TO_SCREEN_EDGE * 2,
-                height: screen_res.1
-                    - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW),
-            },
+            window_rect_data,
             // The first window is standalone and doesn't have a buddy :(
             None,
         );
@@ -387,11 +395,7 @@ impl WindowManager {
             .register(
                 self.current_workspace,
                 window_id,
-                RectData {
-                    top_left: Vertex::new(100, 100),
-                    width: 300,
-                    height: 50,
-                },
+                window_rect_data,
                 DEFAULT_APP,
             )
             .expect("Failed to launch default app!");

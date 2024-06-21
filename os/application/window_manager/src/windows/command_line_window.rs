@@ -9,6 +9,7 @@ This is the window used to contain the command-line, which in turn is used
 to run apps by their application-name
 */
 pub struct CommandLineWindow {
+    pub is_dirty: bool,
     /// If true, all keyboard input is redirected to typing in the name of the app
     pub enter_app_mode: bool,
     pub command: String,
@@ -19,6 +20,7 @@ pub struct CommandLineWindow {
 impl CommandLineWindow {
     pub fn new(rect_data: RectData) -> Self {
         Self {
+            is_dirty: true,
             rect_data,
             enter_app_mode: false,
             command: String::with_capacity(16),
@@ -28,6 +30,7 @@ impl CommandLineWindow {
 
     pub fn activate_enter_app_mode(&mut self, split_type: ScreenSplitType) {
         self.enter_app_mode = true;
+        self.is_dirty = true;
         self.split_type = split_type;
         self.command.clear();
     }
@@ -47,10 +50,11 @@ impl CommandLineWindow {
     /* BUG: For some reason, removing chars does not appear in the drawing, even though
     the next pushed character after removing one appears in the correct space */
     pub fn draw(&mut self) {
-        if !self.enter_app_mode {
+        if !self.enter_app_mode || !self.is_dirty {
             return;
         }
 
+        Drawer::partial_clear_screen(self.rect_data.sub_border());
         Drawer::draw_rectangle(self.rect_data, CYAN);
         Drawer::draw_string(
             self.command.clone(),
@@ -59,5 +63,7 @@ impl CommandLineWindow {
             None,
             DEFAULT_FONT_SCALE,
         );
+
+        self.is_dirty = false;
     }
 }
