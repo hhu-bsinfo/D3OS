@@ -20,7 +20,7 @@ impl Runnable for Clock {
             handle,
             Command::CreateDynamicLabel {
                 rel_rect_data: RectData {
-                    top_left: Vertex::new(400, 400),
+                    top_left: Vertex::new(500, 500),
                     width: 200,
                     height: 100,
                 },

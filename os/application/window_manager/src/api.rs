@@ -130,8 +130,8 @@ impl Api {
             window_id,
             abs_pos,
             ratios: (
-                abs_pos.width as f64 / self.screen_dims.0 as f64,
-                abs_pos.height as f64 / self.screen_dims.1 as f64,
+                f64::from(abs_pos.width) / f64::from(self.screen_dims.0),
+                f64::from(abs_pos.height) / f64::from(self.screen_dims.1),
             ),
         };
 
