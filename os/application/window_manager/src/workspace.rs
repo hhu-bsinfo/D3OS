@@ -1,7 +1,6 @@
 use alloc::collections::LinkedList;
 use hashbrown::HashMap;
 
-use crate::components::component::Interaction;
 use crate::utils::get_element_cursor_from_orderer;
 use crate::windows::app_window::AppWindow;
 
@@ -99,9 +98,9 @@ impl Workspace {
         focused_window.focus_prev_component();
     }
 
-    pub fn interact_with_focused_component(&mut self, interaction: Interaction) {
+    pub fn interact_with_focused_component(&mut self, keyboard_press: char) -> bool {
         let focused_window = self.get_focused_window_mut();
-        focused_window.interact_with_focused_component(interaction);
+        return focused_window.interact_with_focused_component(keyboard_press);
     }
 
     pub fn close_focused_window(&mut self) {

@@ -4,13 +4,8 @@ use graphic::color::Color;
 
 use crate::configs::general::DEFAULT_FONT_SCALE;
 
-use super::component::{Component, Interaction};
+use super::component::Component;
 
-/**
-Since [`draw_string()`](drawer::drawer::Drawer) uses the 8x8-font impl on kernel-side,
-we cannot specify a size to the characters until we implemented font-handling ourselves
-(which I reeeaaaaaaally don't want to do)
-*/
 #[derive(Debug)]
 pub struct Label {
     pub workspace_index: usize,
@@ -49,7 +44,9 @@ impl Component for Label {
         );
     }
 
-    fn interact(&self, _interaction: Interaction) {}
+    fn consume_keyboard_press(&mut self, _keyboard_press: char) -> bool {
+        return false;
+    }
 
     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
         self.abs_pos = self.abs_pos.move_to_new_rect(&old_window, &new_window);

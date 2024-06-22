@@ -4,7 +4,7 @@ use graphic::color::WHITE;
 use hashbrown::HashMap;
 
 use crate::{
-    components::component::{Component, Interaction},
+    components::component::Component,
     configs::{
         app_window::{FOCUSED_INDICATOR_COLOR, FOCUSED_INDICATOR_LENGTH},
         general::FOCUSED_FG_COLOR,
@@ -64,12 +64,17 @@ impl AppWindow {
         self.is_dirty = true;
     }
 
-    pub fn interact_with_focused_component(&mut self, interaction: Interaction) {
+    pub fn interact_with_focused_component(&mut self, keyboard_press: char) -> bool {
         if let Some(focused_component_id) = &self.focused_component_id {
-            let focused_component = self.components.get(focused_component_id).unwrap();
-            focused_component.interact(interaction);
+            let focused_component = self.components.get_mut(focused_component_id).unwrap();
+            let did_interact = focused_component.consume_keyboard_press(keyboard_press);
+            if did_interact {
+                self.is_dirty = true;
+                return true;
+            }
         }
-        self.is_dirty = true;
+
+        return false;
     }
 
     pub fn focus_next_component(&mut self) {

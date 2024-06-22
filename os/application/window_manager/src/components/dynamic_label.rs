@@ -7,7 +7,7 @@ use spin::RwLock;
 
 use crate::{configs::general::DEFAULT_FONT_SCALE, utils::scale_pos_to_window};
 
-use super::component::{Component, Interaction};
+use super::component::Component;
 
 /// Dynamic Labels are characterized by their text being modifiable, unlike [`Label`](`crate::components::label::Label`)
 pub struct DynamicLabel {
@@ -48,7 +48,9 @@ impl Component for DynamicLabel {
         );
     }
 
-    fn interact(&self, _interaction: Interaction) {}
+    fn consume_keyboard_press(&mut self, _keyboard_press: char) -> bool {
+        return false;
+    }
 
     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
         self.abs_pos = self.abs_pos.move_to_new_rect(&old_window, &new_window);

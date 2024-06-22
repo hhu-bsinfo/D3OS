@@ -7,7 +7,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::{borrow::ToOwned, string::ToString, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
-use components::{component::Interaction, selected_window_label::SelectedWorkspaceLabel};
+use components::selected_window_label::SelectedWorkspaceLabel;
 use configs::general::{COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE};
 use configs::workspace_selection_labels_window::{
     HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW, WORKSPACE_SELECTION_LABEL_FONT_SCALE,
@@ -169,9 +169,22 @@ impl WindowManager {
         let read_option = try_read(Application::WindowManager);
 
         if let Some(keyboard_press) = read_option {
+            // `enter_app_mode` overrides all other keyboard-interactions
             if self.command_line_window.enter_app_mode {
                 self.process_enter_app_mode(keyboard_press);
             } else {
+                let did_interact = self
+                    .get_current_workspace_mut()
+                    .get_focused_window_mut()
+                    .interact_with_focused_component(keyboard_press);
+
+                // If the focused component interacted with the keyboard-press,
+                // We don't need to deal with it anymore
+                if did_interact {
+                    return;
+                }
+
+                // Fine, let's deal with it
                 match keyboard_press {
                     'c' => {
                         self.create_new_workspace(false);
@@ -207,10 +220,6 @@ impl WindowManager {
                     's' => {
                         self.get_current_workspace_mut().focus_prev_component();
                     }
-                    'f' => {
-                        self.get_current_workspace_mut()
-                            .interact_with_focused_component(Interaction::Press);
-                    }
                     'a' => {
                         self.get_current_workspace_mut().focus_prev_window();
                     }
@@ -218,8 +227,8 @@ impl WindowManager {
                         self.get_current_workspace_mut().focus_next_window();
                     }
                     'm' => {
-                        // BUG: Doesn't work properly yet. Sadly, it would take a great deal of work to consider
-                        // all different cases that could occur when closing a window. Yeeeaaaah, we are shelving it for now.
+                        /* BUG: Doesn't work properly yet. Right now it only works properly in an optimal scenario
+                        of two windows without any subwindows in the buddy */
                         self.get_current_workspace_mut().close_focused_window();
                         self.is_dirty = true;
                     }

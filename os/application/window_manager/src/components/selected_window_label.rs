@@ -4,7 +4,7 @@ use graphic::color::Color;
 
 use crate::configs::workspace_selection_labels_window::WORKSPACE_SELECTION_LABEL_FONT_SCALE;
 
-use super::component::{Component, Interaction};
+use super::component::Component;
 
 pub struct SelectedWorkspaceLabel {
     pub workspace_index: usize,
@@ -35,7 +35,9 @@ impl Component for SelectedWorkspaceLabel {
         );
     }
 
-    fn interact(&self, _interaction: Interaction) {}
+    fn consume_keyboard_press(&mut self, _keyboard_press: char) -> bool {
+        return false;
+    }
 
     fn rescale_after_split(&mut self, _old_window: RectData, _new_window: RectData) {
         // Should never be rescaled

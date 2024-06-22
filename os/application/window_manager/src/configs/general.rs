@@ -1,5 +1,7 @@
 use graphic::color::{Color, HHU_BLUE, WHITE, YELLOW};
 
+pub static INTERACT_BUTTON: char = 'f';
+
 pub static DEFAULT_FG_COLOR: Color = WHITE;
 pub static FOCUSED_FG_COLOR: Color = YELLOW;
 pub static FOCUSED_BG_COLOR: Color = HHU_BLUE;

@@ -11,11 +11,14 @@ use graphic::{
 use spin::Mutex;
 
 use crate::{
-    configs::{components::BUTTON_BG_COLOR, general::DEFAULT_FONT_SCALE},
+    configs::{
+        components::BUTTON_BG_COLOR,
+        general::{DEFAULT_FONT_SCALE, INTERACT_BUTTON},
+    },
     utils::scale_rect_to_window,
 };
 
-use super::component::{Component, Interaction};
+use super::component::Component;
 
 pub struct Button {
     pub workspace_index: usize,
@@ -73,12 +76,13 @@ impl Component for Button {
         }
     }
 
-    fn interact(&self, interaction: Interaction) {
-        match interaction {
-            Interaction::Press => {
-                (self.on_click)();
-            }
+    fn consume_keyboard_press(&mut self, keyboard_press: char) -> bool {
+        if keyboard_press == INTERACT_BUTTON {
+            (self.on_click)();
+            return true;
         }
+
+        return false;
     }
 
     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
