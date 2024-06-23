@@ -37,14 +37,10 @@ impl Runnable for TestApp {
 
         api.execute(
             handle,
-            Command::CreateButton {
-                rel_rect_data: RectData {
-                    top_left: Vertex::new(200, 200),
-                    width: 150,
-                    height: 130,
-                },
-                label: Some(Rc::new(Mutex::new(String::from("ABC")))),
-                on_click: Box::new(move || {}),
+            Command::CreateInputField {
+                width_in_chars: 10,
+                font_size: None,
+                rel_pos: Vertex::new(200, 200),
             },
         );
     }

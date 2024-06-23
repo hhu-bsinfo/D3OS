@@ -18,6 +18,9 @@ impl Runnable for Clock {
         let on_create_rc = Rc::clone(&text_rc);
         api.execute(
             handle,
+            //TODO: Maybe change to use a Vertex instead, since the size of the label
+            // should only be dependent on the font-size and the app-dev should not
+            // have to deal with rect-data for this
             Command::CreateDynamicLabel {
                 rel_rect_data: RectData {
                     top_left: Vertex::new(500, 500),

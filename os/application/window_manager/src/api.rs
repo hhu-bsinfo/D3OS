@@ -3,13 +3,17 @@ use core::fmt::Debug;
 use alloc::{boxed::Box, rc::Rc, string::String};
 use concurrent::thread;
 use drawer::{rect_data::RectData, vertex::Vertex};
+use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use hashbrown::HashMap;
 use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::{Mutex, RwLock};
 
 use crate::{
     apps::{clock::Clock, runnable::Runnable, test_app::TestApp},
-    components::{button::Button, component::Component, dynamic_label::DynamicLabel},
+    components::{
+        button::Button, component::Component, dynamic_label::DynamicLabel, input_field::InputField,
+    },
+    configs::general::PADDING_BORDERS_AND_CHARS,
 };
 
 extern crate alloc;
@@ -38,7 +42,13 @@ pub enum Command {
         text: Rc<RwLock<String>>,
         /// Function to be called on each window-manager main-loop iteration
         on_loop_iter: Option<Box<dyn Fn() -> ()>>,
-        font_size: Option<u32>,
+        font_size: Option<usize>,
+    },
+    CreateInputField {
+        /// The maximum amount of chars to fit in this field
+        width_in_chars: usize,
+        font_size: Option<usize>,
+        rel_pos: Vertex,
     },
 }
 
@@ -209,6 +219,45 @@ impl Api {
                     self.add_on_loop_iter_fn(data);
                 }
             }
+            Command::CreateInputField {
+                rel_pos,
+                width_in_chars,
+                font_size,
+            } => {
+                let font_size = font_size.unwrap_or(1);
+                let scaled_font_size = self.scale_font_to_window(
+                    font_size,
+                    &handle_data.ratios,
+                    FontScalingStrategy::RespectRatio,
+                );
+
+                let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
+                let rel_rect_data = RectData {
+                    top_left: rel_pos,
+                    width: DEFAULT_CHAR_WIDTH * (font_size * width_in_chars) as u32,
+                    height: DEFAULT_CHAR_HEIGHT * font_size as u32,
+                };
+                let abs_rect_data = RectData {
+                    top_left: scaled_pos,
+                    width: DEFAULT_CHAR_WIDTH * scaled_font_size.0 * width_in_chars as u32
+                        + PADDING_BORDERS_AND_CHARS * 2,
+                    height: DEFAULT_CHAR_HEIGHT * scaled_font_size.1,
+                };
+
+                let input_field = InputField::new(
+                    handle_data.workspace_index,
+                    abs_rect_data,
+                    rel_rect_data,
+                    width_in_chars,
+                );
+
+                let dispatch_data = NewCompData {
+                    window_data,
+                    component: Box::new(input_field),
+                };
+
+                self.add_component(dispatch_data);
+            }
         }
 
         Ok(())
@@ -264,14 +313,14 @@ impl Api {
     #[allow(unused_variables, unreachable_code)]
     fn scale_font_to_window(
         &self,
-        original_font_size: u32,
+        original_font_size: usize,
         ratios: &(f64, f64),
         strategy: FontScalingStrategy,
     ) -> (u32, u32) {
         /* TODO: Fix font scaling not working properly. It scaled fonts up, instead of down.
         A working user-mode debugger would really be helpful right now, huh? */
         return (1, 1);
-        let float_font_size = f64::from(original_font_size);
+        let float_font_size = f64::from(original_font_size as u32);
         match strategy {
             FontScalingStrategy::WidthAndHeight => (
                 ((float_font_size * ratios.0) as u32).max(1),
@@ -284,5 +333,18 @@ impl Api {
                 (new_font, new_font)
             }
         }
+    }
+
+    fn scale_vertex_to_window(
+        &self,
+        original_vert: Vertex,
+        HandleData {
+            abs_pos, ratios, ..
+        }: &HandleData,
+    ) -> Vertex {
+        let new_x = (f64::from(original_vert.x) * ratios.0 + f64::from(abs_pos.top_left.x)) as u32;
+        let new_y = (f64::from(original_vert.y) * ratios.1 + f64::from(abs_pos.top_left.y)) as u32;
+
+        return Vertex::new(new_x, new_y);
     }
 }

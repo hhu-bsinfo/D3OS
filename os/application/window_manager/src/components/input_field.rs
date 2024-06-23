@@ -1,6 +1,6 @@
 use alloc::string::String;
 use drawer::{drawer::Drawer, rect_data::RectData};
-use graphic::color::Color;
+use graphic::color::{Color, CYAN};
 
 use crate::{
     configs::general::{DEFAULT_FONT_SCALE, INTERACT_BUTTON},
@@ -9,22 +9,31 @@ use crate::{
 
 use super::component::Component;
 
+const COLOR_SELECTED_BORDER: Color = CYAN;
+
 pub struct InputField {
     /**
     If we are selected, all keyboard input is redirected to us, unless
     command-line-window is opened
     */
-    pub is_selected: bool,
-    pub workspace_index: usize,
-    pub abs_rect_data: RectData,
-    pub rel_rect_data: RectData,
-    pub current_text: String,
+    is_selected: bool,
+    max_chars: usize,
+    workspace_index: usize,
+    abs_rect_data: RectData,
+    rel_rect_data: RectData,
+    current_text: String,
 }
 
 impl InputField {
-    fn new(workspace_index: usize, abs_rect_data: RectData, rel_rect_data: RectData) -> Self {
+    pub fn new(
+        workspace_index: usize,
+        abs_rect_data: RectData,
+        rel_rect_data: RectData,
+        max_chars: usize,
+    ) -> Self {
         Self {
             is_selected: false,
+            max_chars,
             workspace_index,
             abs_rect_data,
             rel_rect_data,
@@ -35,10 +44,16 @@ impl InputField {
 
 impl Component for InputField {
     fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
-        Drawer::draw_rectangle(self.abs_rect_data, fg_color);
+        let rect_color = if self.is_selected {
+            COLOR_SELECTED_BORDER
+        } else {
+            fg_color
+        };
+
+        Drawer::draw_rectangle(self.abs_rect_data, rect_color);
         Drawer::draw_string(
             self.current_text.clone(),
-            self.abs_rect_data.top_left.add(2, 2),
+            self.abs_rect_data.top_left.add(2, 0),
             fg_color,
             bg_color,
             DEFAULT_FONT_SCALE,
@@ -58,7 +73,11 @@ impl Component for InputField {
                 '\u{0008}' => {
                     self.current_text.pop();
                 }
-                c => self.current_text.push(c),
+                c => {
+                    if self.current_text.len() < self.max_chars {
+                        self.current_text.push(c);
+                    }
+                }
             }
 
             return true;
