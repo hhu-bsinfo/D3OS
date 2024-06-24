@@ -61,11 +61,13 @@ pub fn scale_pos_to_window(rel_pos: Vertex, abs_window_rect_data: RectData) -> V
     )
 }
 
+#[allow(unused_variables, unreachable_code)]
 pub fn scale_font(
     old_scale: &(u32, u32),
     old_rect_data: &RectData,
     new_rect_data: &RectData,
 ) -> (u32, u32) {
+    return (1, 1);
     let ratios = (
         f64::from(new_rect_data.width) / f64::from(old_rect_data.width),
         f64::from(new_rect_data.height) / f64::from(old_rect_data.height),

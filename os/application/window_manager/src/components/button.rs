@@ -93,9 +93,17 @@ impl Component for Button {
             .top_left
             .move_to_new_rect(&old_window, &new_window);
 
+        let min_dim = match &self.label {
+            Some(label) => Some((
+                label.lock().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+                DEFAULT_CHAR_HEIGHT * self.font_scale.1,
+            )),
+            None => None,
+        };
+
         self.abs_rect_data = self
             .abs_rect_data
-            .scale_dimensions(&old_window, &new_window);
+            .scale_dimensions(&old_window, &new_window, min_dim);
 
         self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
     }

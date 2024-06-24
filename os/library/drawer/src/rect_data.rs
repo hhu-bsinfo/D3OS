@@ -30,15 +30,21 @@ impl RectData {
     }
 
     /// Scale this RectData to fit into the new window size
-    pub fn scale_dimensions(&self, old_window: &RectData, new_window: &RectData) -> RectData {
+    pub fn scale_dimensions(
+        &self,
+        old_window: &RectData,
+        new_window: &RectData,
+        min_dim: Option<(u32, u32)>,
+    ) -> RectData {
         // Calculate scale factors
         let scale_x = f64::from(new_window.width) / f64::from(old_window.width);
         let scale_y = f64::from(new_window.height) / f64::from(old_window.height);
+        let min_dim = min_dim.unwrap_or((0, 0));
 
         return RectData {
             top_left: self.top_left,
-            width: (f64::from(self.width) * scale_x) as u32,
-            height: (f64::from(self.height) * scale_y) as u32,
+            width: ((f64::from(self.width) * scale_x) as u32).max(min_dim.0),
+            height: ((f64::from(self.height) * scale_y) as u32).max(min_dim.1),
         };
     }
 }

@@ -1,18 +1,20 @@
-use alloc::string::String;
+use alloc::{rc::Rc, string::String};
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::{
-    color::{Color, CYAN},
+    color::{Color, CYAN, WHITE},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
+use spin::RwLock;
 
 use crate::{
-    configs::general::{BACKSPACE_UNICODE, DEFAULT_FONT_SCALE, INTERACT_BUTTON},
+    configs::general::{BACKSPACE_UNICODE, INTERACT_BUTTON},
     utils::{scale_font, scale_rect_to_window},
 };
 
 use super::component::Component;
 
 const COLOR_SELECTED_BORDER: Color = CYAN;
+const COLOR_TEXT: Color = WHITE;
 
 pub struct InputField {
     /**
@@ -26,7 +28,7 @@ pub struct InputField {
     rel_rect_data: RectData,
     rel_font_size: usize,
     font_scale: (u32, u32),
-    current_text: String,
+    current_text: Rc<RwLock<String>>,
 }
 
 impl InputField {
@@ -37,6 +39,7 @@ impl InputField {
         rel_font_size: usize,
         font_scale: (u32, u32),
         max_chars: usize,
+        text: Rc<RwLock<String>>,
     ) -> Self {
         Self {
             is_selected: false,
@@ -46,7 +49,7 @@ impl InputField {
             rel_rect_data,
             rel_font_size,
             font_scale,
-            current_text: String::with_capacity(16),
+            current_text: text,
         }
     }
 }
@@ -61,11 +64,11 @@ impl Component for InputField {
 
         Drawer::draw_rectangle(self.abs_rect_data, rect_color);
         Drawer::draw_string(
-            self.current_text.clone(),
+            self.current_text.read().clone(),
             self.abs_rect_data.top_left.add(2, 0),
-            fg_color,
+            COLOR_TEXT,
             bg_color,
-            DEFAULT_FONT_SCALE,
+            self.font_scale,
         );
     }
 
@@ -79,11 +82,12 @@ impl Component for InputField {
                     self.is_selected = false;
                 }
                 BACKSPACE_UNICODE => {
-                    self.current_text.pop();
+                    self.current_text.write().pop();
                 }
                 c => {
-                    if self.current_text.len() < self.max_chars {
-                        self.current_text.push(c);
+                    let mut text_lock = self.current_text.write();
+                    if text_lock.len() < self.max_chars {
+                        text_lock.push(c);
                     }
                 }
             }
@@ -100,9 +104,14 @@ impl Component for InputField {
             .top_left
             .move_to_new_rect(&old_rect_data, &new_rect_data);
 
-        self.abs_rect_data = self
-            .abs_rect_data
-            .scale_dimensions(&old_rect_data, &new_rect_data);
+        let min_dim = (
+            self.current_text.read().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+            DEFAULT_CHAR_HEIGHT * self.font_scale.1,
+        );
+
+        self.abs_rect_data =
+            self.abs_rect_data
+                .scale_dimensions(&old_rect_data, &new_rect_data, Some(min_dim));
 
         self.font_scale = scale_font(&self.font_scale, &old_rect_data, &new_rect_data);
     }

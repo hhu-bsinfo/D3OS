@@ -1,7 +1,10 @@
 use drawer::rect_data::RectData;
 use graphic::color::Color;
 
-/// Everything size related is specified in relation to the window the component is contained in
+/**
+Any size-relations with the words "rel" or "relative" in them refer to the size inside the window
+as if the window was occupying the full screen
+*/
 pub trait Component {
     fn draw(&self, fg_color: Color, bg_color: Option<Color>);
 

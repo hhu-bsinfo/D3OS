@@ -9,7 +9,10 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::{Mutex, RwLock};
 
 use crate::{
-    apps::{clock::Clock, runnable::Runnable, test_app::TestApp},
+    apps::{
+        clock::Clock, counter::Counter, runnable::Runnable, submit_label::SubmitLabel,
+        test_app::TestApp,
+    },
     components::{button::Button, component::Component, input_field::InputField, label::Label},
     configs::general::PADDING_BORDERS_AND_CHARS,
 };
@@ -37,6 +40,7 @@ pub enum Command {
         width_in_chars: usize,
         font_size: Option<usize>,
         rel_pos: Vertex,
+        text: Rc<RwLock<String>>,
     },
 }
 
@@ -216,6 +220,7 @@ impl Api {
                 rel_pos,
                 width_in_chars,
                 font_size,
+                text,
             } => {
                 let font_size = font_size.unwrap_or(1);
                 let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
@@ -241,6 +246,7 @@ impl Api {
                     font_size,
                     scaled_font_scale,
                     width_in_chars,
+                    text,
                 );
 
                 let dispatch_data = NewCompData {
@@ -263,6 +269,8 @@ impl Api {
         match app_string {
             "clock" => Some(Clock::run),
             "test_app" => Some(TestApp::run),
+            "submit_label" => Some(SubmitLabel::run),
+            "counter" => Some(Counter::run),
             _ => None,
         }
     }
@@ -302,7 +310,9 @@ impl Api {
         }
     }
 
+    #[allow(unused_variables, unreachable_code)]
     fn scale_font_to_window(&self, original_font_size: usize, ratios: &(f64, f64)) -> (u32, u32) {
+        return (1, 1);
         let float_font_size = f64::from(original_font_size as u32);
         (
             ((float_font_size * ratios.0) as u32).max(1),

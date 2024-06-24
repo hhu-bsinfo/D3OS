@@ -1,10 +1,10 @@
-use graphic::color::{Color, HHU_BLUE, WHITE, YELLOW};
+use graphic::color::{Color, HHU_BLUE, WHITE};
 
 pub const INTERACT_BUTTON: char = 'f';
 pub const BACKSPACE_UNICODE: char = '\u{0008}';
 
 pub const DEFAULT_FG_COLOR: Color = WHITE;
-pub const FOCUSED_FG_COLOR: Color = YELLOW;
+pub const FOCUSED_FG_COLOR: Color = HHU_BLUE;
 pub const FOCUSED_BG_COLOR: Color = HHU_BLUE;
 
 pub const DIST_TO_SCREEN_EDGE: u32 = 10;
