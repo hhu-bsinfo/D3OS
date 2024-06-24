@@ -10,9 +10,7 @@ use spin::{Mutex, RwLock};
 
 use crate::{
     apps::{clock::Clock, runnable::Runnable, test_app::TestApp},
-    components::{
-        button::Button, component::Component, dynamic_label::DynamicLabel, input_field::InputField,
-    },
+    components::{button::Button, component::Component, input_field::InputField, label::Label},
     configs::general::PADDING_BORDERS_AND_CHARS,
 };
 
@@ -37,7 +35,7 @@ pub enum Command {
         label: Option<Rc<Mutex<String>>>,
         on_click: Box<dyn Fn() -> ()>,
     },
-    CreateDynamicLabel {
+    CreateLabel {
         rel_pos: Vertex,
         text: Rc<RwLock<String>>,
         /// Function to be called on each window-manager main-loop iteration
@@ -185,7 +183,7 @@ impl Api {
 
                 self.add_component(dispatch_data);
             }
-            Command::CreateDynamicLabel {
+            Command::CreateLabel {
                 rel_pos,
                 text,
                 on_loop_iter,
@@ -202,7 +200,7 @@ impl Api {
 
                 let text_rc = Rc::clone(&text);
 
-                let label = DynamicLabel::new(
+                let label = Label::new(
                     handle_data.workspace_index,
                     scaled_pos,
                     rel_pos,

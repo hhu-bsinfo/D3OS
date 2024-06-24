@@ -1,17 +1,19 @@
-use alloc::string::{String, ToString};
+use core::ops::Deref;
+
+use alloc::{rc::Rc, string::String};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
+use spin::RwLock;
 
-use crate::configs::general::DEFAULT_FONT_SCALE;
+use crate::utils::scale_pos_to_window;
 
 use super::component::Component;
 
-#[derive(Debug)]
 pub struct Label {
     pub workspace_index: usize,
     pub abs_pos: Vertex,
     pub rel_pos: Vertex,
-    pub text: String,
+    pub text: Rc<RwLock<String>>,
     pub font_scale: (u32, u32),
 }
 
@@ -20,23 +22,24 @@ impl Label {
         workspace_index: usize,
         abs_pos: Vertex,
         rel_pos: Vertex,
-        text: String,
-        font_scale: Option<(u32, u32)>,
+        text: Rc<RwLock<String>>,
+        font_scale: (u32, u32),
     ) -> Self {
         Self {
             workspace_index,
             abs_pos,
             rel_pos,
             text,
-            font_scale: font_scale.unwrap_or(DEFAULT_FONT_SCALE),
+            font_scale,
         }
     }
 }
 
 impl Component for Label {
     fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
+        let text = self.text.read();
         Drawer::draw_string(
-            self.text.to_string(),
+            text.deref().clone(),
             self.abs_pos,
             fg_color,
             bg_color,
@@ -53,8 +56,6 @@ impl Component for Label {
     }
 
     fn rescale_after_move(&mut self, new_window_rect_data: RectData) {
-        self.abs_pos = new_window_rect_data
-            .top_left
-            .add(self.rel_pos.x, self.rel_pos.y);
+        self.abs_pos = scale_pos_to_window(self.rel_pos, new_window_rect_data);
     }
 }

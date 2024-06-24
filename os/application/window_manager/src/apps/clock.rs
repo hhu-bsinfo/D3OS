@@ -18,7 +18,7 @@ impl Runnable for Clock {
         let on_create_rc = Rc::clone(&text_rc);
         api.execute(
             handle,
-            Command::CreateDynamicLabel {
+            Command::CreateLabel {
                 rel_pos: Vertex::new(500, 500),
                 text: text_rc,
                 on_loop_iter: Some(Box::new(move || {
