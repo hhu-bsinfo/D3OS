@@ -195,14 +195,7 @@ impl Api {
 
                 let text_rc = Rc::clone(&text);
 
-                let label = Label::new(
-                    handle_data.workspace_index,
-                    scaled_pos,
-                    rel_pos,
-                    font_size,
-                    text_rc,
-                    scaled_font_scale,
-                );
+                let label = Label::new(scaled_pos, rel_pos, font_size, text_rc, scaled_font_scale);
 
                 let dispatch_data = NewCompData {
                     window_data,
@@ -240,7 +233,6 @@ impl Api {
                 };
 
                 let input_field = InputField::new(
-                    handle_data.workspace_index,
                     abs_rect_data,
                     rel_rect_data,
                     font_size,

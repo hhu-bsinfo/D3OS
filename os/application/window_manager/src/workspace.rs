@@ -98,11 +98,6 @@ impl Workspace {
         focused_window.focus_prev_component();
     }
 
-    pub fn interact_with_focused_component(&mut self, keyboard_press: char) -> bool {
-        let focused_window = self.get_focused_window_mut();
-        return focused_window.interact_with_focused_component(keyboard_press);
-    }
-
     pub fn close_focused_window(&mut self) {
         let to_be_deleted_window = self.windows.remove(&self.focused_window_id).unwrap();
 
@@ -216,6 +211,7 @@ impl Workspace {
         focused_window.rescale_window_after_move(swapped_rect_data);
     }
 
+    #[allow(dead_code)]
     pub fn get_focused_window(&self) -> &AppWindow {
         self.windows.get(&self.focused_window_id).unwrap()
     }

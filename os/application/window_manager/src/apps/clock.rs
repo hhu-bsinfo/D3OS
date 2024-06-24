@@ -16,7 +16,7 @@ impl Runnable for Clock {
         let date_val = date().format("%Y-%m-%d %H:%M:%S").to_string();
         let text_rc = Rc::new(RwLock::new(date_val));
         let on_create_rc = Rc::clone(&text_rc);
-        api.execute(
+        let _ = api.execute(
             handle,
             Command::CreateLabel {
                 rel_pos: Vertex::new(200, 200),

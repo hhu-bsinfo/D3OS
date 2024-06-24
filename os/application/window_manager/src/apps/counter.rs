@@ -18,7 +18,7 @@ impl Runnable for Counter {
         let label_text_rc2 = Rc::clone(&label_text_rc1);
         let label_text_rc3 = Rc::clone(&label_text_rc1);
 
-        api.execute(
+        let _ = api.execute(
             handle,
             Command::CreateButton {
                 rel_rect_data: RectData {
@@ -35,7 +35,7 @@ impl Runnable for Counter {
             },
         );
 
-        api.execute(
+        let _ = api.execute(
             handle,
             Command::CreateButton {
                 rel_rect_data: RectData {

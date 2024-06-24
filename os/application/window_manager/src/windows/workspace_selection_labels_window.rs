@@ -1,13 +1,12 @@
 use alloc::vec::Vec;
 use drawer::{drawer::Drawer, rect_data::RectData};
-use graphic::color::WHITE;
 
 use crate::{
     components::{
         component::Component,
         selected_window_label::{SelectedWorkspaceLabel, FG_COLOR, UNFOCUSED_BG_COLOR},
     },
-    config::FOCUSED_BG_COLOR,
+    config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR},
 };
 
 pub struct WorkspaceSelectionLabelsWindow {
@@ -35,7 +34,7 @@ impl WorkspaceSelectionLabelsWindow {
         }
 
         Drawer::partial_clear_screen(self.rect_data);
-        Drawer::draw_rectangle(self.rect_data, WHITE);
+        Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
 
         for label in self.labels.iter() {
             let bg_color = if label.tied_workspace == current_workspace {

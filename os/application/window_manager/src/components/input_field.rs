@@ -23,7 +23,6 @@ pub struct InputField {
     */
     is_selected: bool,
     max_chars: usize,
-    workspace_index: usize,
     abs_rect_data: RectData,
     rel_rect_data: RectData,
     rel_font_size: usize,
@@ -33,7 +32,6 @@ pub struct InputField {
 
 impl InputField {
     pub fn new(
-        workspace_index: usize,
         abs_rect_data: RectData,
         rel_rect_data: RectData,
         rel_font_size: usize,
@@ -44,7 +42,6 @@ impl InputField {
         Self {
             is_selected: false,
             max_chars,
-            workspace_index,
             abs_rect_data,
             rel_rect_data,
             rel_font_size,

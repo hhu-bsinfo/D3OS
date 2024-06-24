@@ -13,7 +13,6 @@ use crate::{
 use super::component::Component;
 
 pub struct Label {
-    pub workspace_index: usize,
     pub abs_pos: Vertex,
     pub rel_pos: Vertex,
     rel_font_size: usize,
@@ -23,7 +22,6 @@ pub struct Label {
 
 impl Label {
     pub fn new(
-        workspace_index: usize,
         abs_pos: Vertex,
         rel_pos: Vertex,
         rel_font_size: usize,
@@ -31,7 +29,6 @@ impl Label {
         font_scale: (u32, u32),
     ) -> Self {
         Self {
-            workspace_index,
             abs_pos,
             rel_pos,
             rel_font_size,

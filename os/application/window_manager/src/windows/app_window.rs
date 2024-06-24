@@ -5,7 +5,7 @@ use hashbrown::HashMap;
 
 use crate::{
     components::component::Component,
-    config::{FOCUSED_BG_COLOR, FOCUSED_FG_COLOR},
+    config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR, FOCUSED_FG_COLOR},
     utils::get_element_cursor_from_orderer,
     WindowManager,
 };
@@ -21,8 +21,6 @@ pub struct AppWindow {
     pub is_dirty: bool,
     /// The buddy of this window, used to decide how closing this window works
     pub buddy_window_id: Option<usize>,
-    /// The workspace this window belongs to
-    workspace_index: usize,
     components: HashMap<usize, Box<dyn Component>>,
     /// focusable components are stored additionally in ordered fashion in here
     component_orderer: LinkedList<usize>,
@@ -30,16 +28,10 @@ pub struct AppWindow {
 }
 
 impl AppWindow {
-    pub fn new(
-        id: usize,
-        workspace_index: usize,
-        rect_data: RectData,
-        buddy_window: Option<usize>,
-    ) -> Self {
+    pub fn new(id: usize, rect_data: RectData, buddy_window: Option<usize>) -> Self {
         Self {
             id,
             is_dirty: true,
-            workspace_index,
             components: HashMap::new(),
             component_orderer: LinkedList::new(),
             rect_data,
@@ -195,7 +187,7 @@ impl AppWindow {
         if full {
             Drawer::partial_clear_screen(self.rect_data);
 
-            Drawer::draw_rectangle(self.rect_data, WHITE);
+            Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
         } else {
             // Clear everything except the border
             Drawer::partial_clear_screen(RectData {

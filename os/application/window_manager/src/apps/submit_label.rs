@@ -20,7 +20,7 @@ impl Runnable for SubmitLabel {
         let label_text_rc1 = Rc::new(RwLock::new(String::from("")));
         let label_text_rc2 = Rc::clone(&label_text_rc1);
 
-        api.execute(
+        let _ = api.execute(
             handle,
             Command::CreateInputField {
                 width_in_chars: 12,
@@ -30,7 +30,7 @@ impl Runnable for SubmitLabel {
             },
         );
 
-        api.execute(
+        let _ = api.execute(
             handle,
             Command::CreateLabel {
                 rel_pos: Vertex::new(400, 200),
@@ -40,7 +40,7 @@ impl Runnable for SubmitLabel {
             },
         );
 
-        api.execute(
+        let _ = api.execute(
             handle,
             Command::CreateLabel {
                 rel_pos: Vertex::new(660, 200),
@@ -52,7 +52,7 @@ impl Runnable for SubmitLabel {
 
         let label_rc = Rc::new(Mutex::new(String::from("Submit")));
         let button_font = 3;
-        api.execute(
+        let _ = api.execute(
             handle,
             Command::CreateButton {
                 rel_rect_data: RectData {

@@ -1,8 +1,11 @@
 use alloc::string::String;
 use drawer::{drawer::Drawer, rect_data::RectData};
-use graphic::color::{CYAN, WHITE};
+use graphic::color::CYAN;
 
-use crate::{config::DEFAULT_FONT_SCALE, ScreenSplitType};
+use crate::{
+    config::{DEFAULT_FG_COLOR, DEFAULT_FONT_SCALE},
+    ScreenSplitType,
+};
 
 /**
 This is the window used to contain the command-line, which in turn is used
@@ -56,7 +59,7 @@ impl CommandLineWindow {
         Drawer::draw_string(
             self.command.clone(),
             self.rect_data.top_left.add(2, 2),
-            WHITE,
+            DEFAULT_FG_COLOR,
             None,
             DEFAULT_FONT_SCALE,
         );

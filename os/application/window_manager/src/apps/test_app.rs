@@ -19,7 +19,7 @@ impl Runnable for TestApp {
         let label_rc = Rc::new(Mutex::new(String::from("0")));
         let on_click_rc = Rc::clone(&label_rc);
         let font_size = 4;
-        api.execute(
+        let _ = api.execute(
             handle,
             Command::CreateButton {
                 rel_rect_data: RectData {

@@ -291,7 +291,7 @@ impl WindowManager {
         buddy_window: Option<usize>,
     ) {
         let window_id = Self::generate_id();
-        let window = AppWindow::new(window_id, self.current_workspace, rect_data, buddy_window);
+        let window = AppWindow::new(window_id, rect_data, buddy_window);
 
         let curr_ws = self.get_current_workspace_mut();
         curr_ws.get_focused_window_mut().buddy_window_id = Some(window_id);
@@ -370,7 +370,6 @@ impl WindowManager {
 
         let window = AppWindow::new(
             Self::generate_id(),
-            self.current_workspace,
             window_rect_data,
             // The first window is standalone and doesn't have a buddy :(
             None,
@@ -381,7 +380,6 @@ impl WindowManager {
         let new_workspace_len = (self.workspaces.len() + 1) as u32;
 
         let workspace_selection_label = SelectedWorkspaceLabel::new(
-            0,
             Vertex::new(
                 DIST_TO_SCREEN_EDGE
                     + 1

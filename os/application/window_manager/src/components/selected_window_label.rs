@@ -15,16 +15,14 @@ pub const HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW: u32 =
     DEFAULT_CHAR_HEIGHT * WORKSPACE_SELECTION_LABEL_FONT_SCALE.1 + 2;
 
 pub struct SelectedWorkspaceLabel {
-    pub workspace_index: usize,
     pub pos: Vertex,
     pub text: String,
     pub tied_workspace: usize,
 }
 
 impl SelectedWorkspaceLabel {
-    pub fn new(workspace_index: usize, pos: Vertex, text: String, tied_workspace: usize) -> Self {
+    pub fn new(pos: Vertex, text: String, tied_workspace: usize) -> Self {
         Self {
-            workspace_index,
             pos,
             text,
             tied_workspace,
