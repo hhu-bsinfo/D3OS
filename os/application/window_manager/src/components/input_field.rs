@@ -7,7 +7,7 @@ use graphic::{
 
 use crate::{
     configs::general::{DEFAULT_FONT_SCALE, INTERACT_BUTTON},
-    utils::scale_rect_to_window,
+    utils::{scale_font, scale_rect_to_window},
 };
 
 use super::component::Component;
@@ -24,6 +24,8 @@ pub struct InputField {
     workspace_index: usize,
     abs_rect_data: RectData,
     rel_rect_data: RectData,
+    rel_font_size: usize,
+    font_scale: (u32, u32),
     current_text: String,
 }
 
@@ -32,6 +34,8 @@ impl InputField {
         workspace_index: usize,
         abs_rect_data: RectData,
         rel_rect_data: RectData,
+        rel_font_size: usize,
+        font_scale: (u32, u32),
         max_chars: usize,
     ) -> Self {
         Self {
@@ -40,6 +44,8 @@ impl InputField {
             workspace_index,
             abs_rect_data,
             rel_rect_data,
+            rel_font_size,
+            font_scale,
             current_text: String::with_capacity(16),
         }
     }
@@ -73,6 +79,7 @@ impl Component for InputField {
                     self.is_selected = false;
                 }
                 // Backspace
+                //TODO: Refactor into config
                 '\u{0008}' => {
                     self.current_text.pop();
                 }
@@ -98,6 +105,8 @@ impl Component for InputField {
         self.abs_rect_data = self
             .abs_rect_data
             .scale_dimensions(&old_rect_data, &new_rect_data);
+
+        self.font_scale = scale_font(&self.font_scale, &old_rect_data, &new_rect_data);
     }
 
     fn rescale_after_move(&mut self, new_window_rect_data: RectData) {
@@ -105,9 +114,15 @@ impl Component for InputField {
             self.rel_rect_data,
             new_window_rect_data,
             (
-                self.max_chars as u32 * DEFAULT_CHAR_WIDTH,
-                DEFAULT_CHAR_HEIGHT,
+                self.max_chars as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+                DEFAULT_CHAR_HEIGHT * self.font_scale.1,
             ),
+        );
+
+        self.font_scale = scale_font(
+            &(self.rel_font_size as u32, self.rel_font_size as u32),
+            &self.rel_rect_data,
+            &self.abs_rect_data,
         );
     }
 }

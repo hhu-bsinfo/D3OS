@@ -11,35 +11,35 @@ use graphic::{
 use spin::Mutex;
 
 use crate::{
-    configs::{
-        components::BUTTON_BG_COLOR,
-        general::{DEFAULT_FONT_SCALE, INTERACT_BUTTON},
-    },
-    utils::scale_rect_to_window,
+    configs::{components::BUTTON_BG_COLOR, general::INTERACT_BUTTON},
+    utils::{scale_font, scale_rect_to_window},
 };
 
 use super::component::Component;
 
 pub struct Button {
-    pub workspace_index: usize,
-    pub abs_rect_data: RectData,
-    pub rel_rect_data: RectData,
-    pub label: Option<Rc<Mutex<String>>>,
-    pub on_click: Box<dyn Fn() -> ()>,
+    abs_rect_data: RectData,
+    rel_rect_data: RectData,
+    label: Option<Rc<Mutex<String>>>,
+    rel_font_size: usize,
+    font_scale: (u32, u32),
+    on_click: Box<dyn Fn() -> ()>,
 }
 
 impl Button {
     pub fn new(
-        workspace_index: usize,
         abs_rect_data: RectData,
         rel_rect_data: RectData,
         label: Option<Rc<Mutex<String>>>,
+        rel_font_size: usize,
+        font_scale: (u32, u32),
         on_click: Box<dyn Fn() -> ()>,
     ) -> Self {
         Self {
-            workspace_index,
             abs_rect_data,
             rel_rect_data,
+            rel_font_size,
+            font_scale,
             label,
             on_click,
         }
@@ -53,8 +53,10 @@ impl Button {
         } = self.abs_rect_data;
 
         top_left.add(
-            width.saturating_sub(DEFAULT_CHAR_WIDTH * (label.chars().count() as u32)) / 2,
-            height.saturating_sub(DEFAULT_CHAR_HEIGHT) / 2,
+            width.saturating_sub(
+                DEFAULT_CHAR_WIDTH * self.font_scale.0 * (label.chars().count() as u32),
+            ) / 2,
+            height.saturating_sub(DEFAULT_CHAR_HEIGHT * self.font_scale.1) / 2,
         )
     }
 }
@@ -71,7 +73,7 @@ impl Component for Button {
                 label_pos,
                 fg_color,
                 bg_color,
-                DEFAULT_FONT_SCALE,
+                self.font_scale,
             );
         }
     }
@@ -94,17 +96,25 @@ impl Component for Button {
         self.abs_rect_data = self
             .abs_rect_data
             .scale_dimensions(&old_window, &new_window);
+
+        self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
     }
 
-    fn rescale_after_move(&mut self, new_window_rect_data: RectData) {
+    fn rescale_after_move(&mut self, new_rect_data: RectData) {
         let min_width = match &self.label {
-            Some(label) => label.lock().len() as u32 * DEFAULT_CHAR_WIDTH,
+            Some(label) => label.lock().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
             None => 0,
         };
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
-            new_window_rect_data,
-            (min_width, DEFAULT_CHAR_HEIGHT),
+            new_rect_data,
+            (min_width, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
+        );
+
+        self.font_scale = scale_font(
+            &(self.rel_font_size as u32, self.rel_font_size as u32),
+            &self.rel_rect_data,
+            &self.abs_rect_data,
         );
     }
 }

@@ -18,6 +18,7 @@ impl Runnable for TestApp {
         let api = WindowManager::get_api();
         let label_rc = Rc::new(Mutex::new(String::from("0")));
         let on_click_rc = Rc::clone(&label_rc);
+        let font_size = 4;
         api.execute(
             handle,
             Command::CreateButton {
@@ -26,7 +27,7 @@ impl Runnable for TestApp {
                     width: 200,
                     height: 100,
                 },
-                label: Some(label_rc),
+                label: Some((label_rc, font_size)),
                 on_click: Box::new(move || {
                     let mut value = on_click_rc.lock();
                     let old = (*value).parse::<usize>().unwrap();
@@ -39,7 +40,7 @@ impl Runnable for TestApp {
             handle,
             Command::CreateInputField {
                 width_in_chars: 10,
-                font_size: None,
+                font_size: Some(4),
                 rel_pos: Vertex::new(200, 200),
             },
         );

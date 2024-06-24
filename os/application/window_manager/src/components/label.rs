@@ -5,7 +5,10 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
 use spin::RwLock;
 
-use crate::utils::scale_pos_to_window;
+use crate::{
+    utils::{scale_font, scale_pos_to_window},
+    SCREEN,
+};
 
 use super::component::Component;
 
@@ -13,6 +16,7 @@ pub struct Label {
     pub workspace_index: usize,
     pub abs_pos: Vertex,
     pub rel_pos: Vertex,
+    rel_font_size: usize,
     pub text: Rc<RwLock<String>>,
     pub font_scale: (u32, u32),
 }
@@ -22,6 +26,7 @@ impl Label {
         workspace_index: usize,
         abs_pos: Vertex,
         rel_pos: Vertex,
+        rel_font_size: usize,
         text: Rc<RwLock<String>>,
         font_scale: (u32, u32),
     ) -> Self {
@@ -29,6 +34,7 @@ impl Label {
             workspace_index,
             abs_pos,
             rel_pos,
+            rel_font_size,
             text,
             font_scale,
         }
@@ -53,9 +59,20 @@ impl Component for Label {
 
     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
         self.abs_pos = self.abs_pos.move_to_new_rect(&old_window, &new_window);
+        self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
     }
 
     fn rescale_after_move(&mut self, new_window_rect_data: RectData) {
         self.abs_pos = scale_pos_to_window(self.rel_pos, new_window_rect_data);
+        let screen = SCREEN.get().unwrap();
+        self.font_scale = scale_font(
+            &(self.rel_font_size as u32, self.rel_font_size as u32),
+            &RectData {
+                top_left: Vertex::new(0, 0),
+                width: screen.0,
+                height: screen.1,
+            },
+            &new_window_rect_data,
+        );
     }
 }

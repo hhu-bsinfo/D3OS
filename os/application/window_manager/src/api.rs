@@ -19,20 +19,10 @@ extern crate alloc;
 /// Default app to be used on startup of a new workspace
 pub static DEFAULT_APP: &str = "clock";
 
-enum FontScalingStrategy {
-    /// We merely scale x and y values of the font
-    WidthAndHeight,
-    /**
-    We scale by the smaller one of x and y and change
-    the other in a way to keep the x/y ratio
-    */
-    RespectRatio,
-}
-
 pub enum Command {
     CreateButton {
         rel_rect_data: RectData,
-        label: Option<Rc<Mutex<String>>>,
+        label: Option<(Rc<Mutex<String>>, usize)>,
         on_click: Box<dyn Fn() -> ()>,
     },
     CreateLabel {
@@ -167,12 +157,17 @@ impl Api {
                 on_click,
             } => {
                 let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data);
+                let (text, font_size_option) = label.unzip();
+                let font_size = font_size_option.unwrap_or(1);
+
+                let font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
 
                 let button = Button::new(
-                    handle_data.workspace_index,
                     abs_rect_data,
                     rel_rect_data,
-                    label,
+                    text,
+                    font_size,
+                    font_scale,
                     on_click,
                 );
 
@@ -190,11 +185,7 @@ impl Api {
                 font_size,
             } => {
                 let font_size = font_size.unwrap_or(1);
-                let scaled_font_scale = self.scale_font_to_window(
-                    font_size,
-                    &handle_data.ratios,
-                    FontScalingStrategy::RespectRatio,
-                );
+                let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
 
                 let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
 
@@ -204,6 +195,7 @@ impl Api {
                     handle_data.workspace_index,
                     scaled_pos,
                     rel_pos,
+                    font_size,
                     text_rc,
                     scaled_font_scale,
                 );
@@ -226,16 +218,13 @@ impl Api {
                 font_size,
             } => {
                 let font_size = font_size.unwrap_or(1);
-                let scaled_font_scale = self.scale_font_to_window(
-                    font_size,
-                    &handle_data.ratios,
-                    FontScalingStrategy::RespectRatio,
-                );
+                let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
 
                 let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
                 let rel_rect_data = RectData {
                     top_left: rel_pos,
-                    width: DEFAULT_CHAR_WIDTH * (font_size * width_in_chars) as u32,
+                    width: DEFAULT_CHAR_WIDTH * (font_size * width_in_chars) as u32
+                        + PADDING_BORDERS_AND_CHARS * 2,
                     height: DEFAULT_CHAR_HEIGHT * font_size as u32,
                 };
                 let abs_rect_data = RectData {
@@ -249,6 +238,8 @@ impl Api {
                     handle_data.workspace_index,
                     abs_rect_data,
                     rel_rect_data,
+                    font_size,
+                    scaled_font_scale,
                     width_in_chars,
                 );
 
@@ -311,29 +302,12 @@ impl Api {
         }
     }
 
-    #[allow(unused_variables, unreachable_code)]
-    fn scale_font_to_window(
-        &self,
-        original_font_size: usize,
-        ratios: &(f64, f64),
-        strategy: FontScalingStrategy,
-    ) -> (u32, u32) {
-        /* TODO: Fix font scaling not working properly. It scaled fonts up, instead of down.
-        A working user-mode debugger would really be helpful right now, huh? */
-        return (1, 1);
+    fn scale_font_to_window(&self, original_font_size: usize, ratios: &(f64, f64)) -> (u32, u32) {
         let float_font_size = f64::from(original_font_size as u32);
-        match strategy {
-            FontScalingStrategy::WidthAndHeight => (
-                ((float_font_size * ratios.0) as u32).max(1),
-                ((float_font_size * ratios.1) as u32).max(1),
-            ),
-            FontScalingStrategy::RespectRatio => {
-                let min_ratio = ratios.0.min(ratios.1);
-                let new_font = ((float_font_size * min_ratio) as u32).max(1);
-
-                (new_font, new_font)
-            }
-        }
+        (
+            ((float_font_size * ratios.0) as u32).max(1),
+            ((float_font_size * ratios.1) as u32).max(1),
+        )
     }
 
     fn scale_vertex_to_window(

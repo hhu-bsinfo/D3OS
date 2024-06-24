@@ -19,13 +19,13 @@ impl Runnable for Clock {
         api.execute(
             handle,
             Command::CreateLabel {
-                rel_pos: Vertex::new(500, 500),
+                rel_pos: Vertex::new(200, 200),
                 text: text_rc,
                 on_loop_iter: Some(Box::new(move || {
                     let mut date_val = on_create_rc.write();
                     *date_val = date().format("%Y-%m-%d %H:%M:%S").to_string();
                 })),
-                font_size: Some(8),
+                font_size: Some(4),
             },
         );
     }
