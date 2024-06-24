@@ -5,17 +5,19 @@ use alloc::{
 };
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{
-    color::Color,
+    color::{Color, GREY},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
 use spin::Mutex;
 
 use crate::{
-    configs::{components::BUTTON_BG_COLOR, general::INTERACT_BUTTON},
+    config::INTERACT_BUTTON,
     utils::{scale_font, scale_rect_to_window},
 };
 
 use super::component::Component;
+
+pub const BUTTON_BG_COLOR: Color = GREY;
 
 pub struct Button {
     abs_rect_data: RectData,

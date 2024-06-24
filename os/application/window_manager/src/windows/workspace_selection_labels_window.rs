@@ -1,9 +1,14 @@
-use crate::configs::{general::FOCUSED_BG_COLOR, workspace_selection_labels_window};
 use alloc::vec::Vec;
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::color::WHITE;
 
-use crate::components::{component::Component, selected_window_label::SelectedWorkspaceLabel};
+use crate::{
+    components::{
+        component::Component,
+        selected_window_label::{SelectedWorkspaceLabel, FG_COLOR, UNFOCUSED_BG_COLOR},
+    },
+    config::FOCUSED_BG_COLOR,
+};
 
 pub struct WorkspaceSelectionLabelsWindow {
     pub is_dirty: bool,
@@ -36,10 +41,10 @@ impl WorkspaceSelectionLabelsWindow {
             let bg_color = if label.tied_workspace == current_workspace {
                 FOCUSED_BG_COLOR
             } else {
-                workspace_selection_labels_window::UNFOCUSED_BG_COLOR
+                UNFOCUSED_BG_COLOR
             };
 
-            label.draw(workspace_selection_labels_window::FG_COLOR, Some(bg_color));
+            label.draw(FG_COLOR, Some(bg_color));
         }
 
         self.is_dirty = false;

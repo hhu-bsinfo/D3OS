@@ -14,7 +14,7 @@ use crate::{
         test_app::TestApp,
     },
     components::{button::Button, component::Component, input_field::InputField, label::Label},
-    configs::general::PADDING_BORDERS_AND_CHARS,
+    config::PADDING_BORDERS_AND_CHARS,
 };
 
 extern crate alloc;

@@ -1,17 +1,17 @@
 use alloc::{boxed::Box, collections::LinkedList};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::color::WHITE;
+use graphic::color::{Color, WHITE};
 use hashbrown::HashMap;
 
 use crate::{
     components::component::Component,
-    configs::{
-        app_window::{FOCUSED_INDICATOR_COLOR, FOCUSED_INDICATOR_LENGTH},
-        general::FOCUSED_FG_COLOR,
-    },
+    config::{FOCUSED_BG_COLOR, FOCUSED_FG_COLOR},
     utils::get_element_cursor_from_orderer,
     WindowManager,
 };
+
+pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
+pub const FOCUSED_INDICATOR_LENGTH: u32 = 24;
 
 /// This is the window used in workspaces to contains components from different apps
 pub struct AppWindow {

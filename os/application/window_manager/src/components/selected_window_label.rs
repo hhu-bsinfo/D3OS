@@ -1,10 +1,18 @@
 use alloc::string::{String, ToString};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::color::Color;
-
-use crate::configs::workspace_selection_labels_window::WORKSPACE_SELECTION_LABEL_FONT_SCALE;
+use graphic::{
+    color::{Color, BLUE, WHITE},
+    lfb::DEFAULT_CHAR_HEIGHT,
+};
 
 use super::component::Component;
+
+pub const FG_COLOR: Color = WHITE;
+pub const UNFOCUSED_BG_COLOR: Color = BLUE;
+
+pub const WORKSPACE_SELECTION_LABEL_FONT_SCALE: (u32, u32) = (2, 2);
+pub const HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW: u32 =
+    DEFAULT_CHAR_HEIGHT * WORKSPACE_SELECTION_LABEL_FONT_SCALE.1 + 2;
 
 pub struct SelectedWorkspaceLabel {
     pub workspace_index: usize,

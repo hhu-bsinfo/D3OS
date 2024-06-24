@@ -7,11 +7,11 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::{borrow::ToOwned, string::ToString, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
-use components::selected_window_label::SelectedWorkspaceLabel;
-use configs::general::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE};
-use configs::workspace_selection_labels_window::{
-    HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW, WORKSPACE_SELECTION_LABEL_FONT_SCALE,
+use components::selected_window_label::{
+    SelectedWorkspaceLabel, HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
+    WORKSPACE_SELECTION_LABEL_FONT_SCALE,
 };
+use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE};
 use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
@@ -28,7 +28,7 @@ use workspace::Workspace;
 pub mod api;
 mod apps;
 mod components;
-mod configs;
+mod config;
 mod utils;
 mod windows;
 mod workspace;

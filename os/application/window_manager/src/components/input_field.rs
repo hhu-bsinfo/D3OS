@@ -7,7 +7,7 @@ use graphic::{
 use spin::RwLock;
 
 use crate::{
-    configs::general::{BACKSPACE_UNICODE, INTERACT_BUTTON},
+    config::{BACKSPACE_UNICODE, INTERACT_BUTTON},
     utils::{scale_font, scale_rect_to_window},
 };
 

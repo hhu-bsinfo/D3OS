@@ -2,7 +2,7 @@ use alloc::string::String;
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::color::{CYAN, WHITE};
 
-use crate::{configs::general::DEFAULT_FONT_SCALE, ScreenSplitType};
+use crate::{config::DEFAULT_FONT_SCALE, ScreenSplitType};
 
 /**
 This is the window used to contain the command-line, which in turn is used
