@@ -1,6 +1,9 @@
 use alloc::string::String;
 use drawer::{drawer::Drawer, rect_data::RectData};
-use graphic::color::{Color, CYAN};
+use graphic::{
+    color::{Color, CYAN},
+    lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
+};
 
 use crate::{
     configs::general::{DEFAULT_FONT_SCALE, INTERACT_BUTTON},
@@ -98,6 +101,13 @@ impl Component for InputField {
     }
 
     fn rescale_after_move(&mut self, new_window_rect_data: RectData) {
-        self.abs_rect_data = scale_rect_to_window(self.rel_rect_data, new_window_rect_data);
+        self.abs_rect_data = scale_rect_to_window(
+            self.rel_rect_data,
+            new_window_rect_data,
+            (
+                self.max_chars as u32 * DEFAULT_CHAR_WIDTH,
+                DEFAULT_CHAR_HEIGHT,
+            ),
+        );
     }
 }

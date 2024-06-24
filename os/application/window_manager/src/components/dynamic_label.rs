@@ -5,7 +5,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
 use spin::RwLock;
 
-use crate::{configs::general::DEFAULT_FONT_SCALE, utils::scale_pos_to_window};
+use crate::utils::scale_pos_to_window;
 
 use super::component::Component;
 
@@ -24,14 +24,14 @@ impl DynamicLabel {
         abs_pos: Vertex,
         rel_pos: Vertex,
         text: Rc<RwLock<String>>,
-        font_scale: Option<(u32, u32)>,
+        font_scale: (u32, u32),
     ) -> Self {
         Self {
             workspace_index,
             abs_pos,
             rel_pos,
             text,
-            font_scale: font_scale.unwrap_or(DEFAULT_FONT_SCALE),
+            font_scale,
         }
     }
 }

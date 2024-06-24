@@ -16,8 +16,8 @@ impl Runnable for TestApp {
     fn run() {
         let handle = concurrent::thread::current().id();
         let api = WindowManager::get_api();
-        let qwe = Rc::new(Mutex::new(String::from("0")));
-        let qwe2 = Rc::clone(&qwe);
+        let label_rc = Rc::new(Mutex::new(String::from("0")));
+        let on_click_rc = Rc::clone(&label_rc);
         api.execute(
             handle,
             Command::CreateButton {
@@ -26,9 +26,9 @@ impl Runnable for TestApp {
                     width: 200,
                     height: 100,
                 },
-                label: Some(qwe),
+                label: Some(label_rc),
                 on_click: Box::new(move || {
-                    let mut value = qwe2.lock();
+                    let mut value = on_click_rc.lock();
                     let old = (*value).parse::<usize>().unwrap();
                     *value = (old + 1).to_string();
                 }),

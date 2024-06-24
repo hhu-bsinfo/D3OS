@@ -97,6 +97,14 @@ impl Component for Button {
     }
 
     fn rescale_after_move(&mut self, new_window_rect_data: RectData) {
-        self.abs_rect_data = scale_rect_to_window(self.rel_rect_data, new_window_rect_data);
+        let min_width = match &self.label {
+            Some(label) => label.lock().len() as u32 * DEFAULT_CHAR_WIDTH,
+            None => 0,
+        };
+        self.abs_rect_data = scale_rect_to_window(
+            self.rel_rect_data,
+            new_window_rect_data,
+            (min_width, DEFAULT_CHAR_HEIGHT),
+        );
     }
 }

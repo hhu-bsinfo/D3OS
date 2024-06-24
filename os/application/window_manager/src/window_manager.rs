@@ -227,7 +227,7 @@ impl WindowManager {
                         self.get_current_workspace_mut().focus_next_window();
                     }
                     'm' => {
-                        /* BUG: Doesn't work properly yet. Right now it only works properly in an optimal scenario
+                        /* BUG: Right now it only works properly in an optimal scenario
                         of two windows without any subwindows in the buddy */
                         self.get_current_workspace_mut().close_focused_window();
                         self.is_dirty = true;

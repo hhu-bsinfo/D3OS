@@ -19,7 +19,11 @@ pub fn get_element_cursor_from_orderer<T: PartialEq>(
     return None;
 }
 
-pub fn scale_rect_to_window(rel_rect_data: RectData, abs_rect_data: RectData) -> RectData {
+pub fn scale_rect_to_window(
+    rel_rect_data: RectData,
+    abs_rect_data: RectData,
+    min_dim: (u32, u32),
+) -> RectData {
     let RectData {
         top_left: rel_top_left,
         width: rel_width,
@@ -38,8 +42,8 @@ pub fn scale_rect_to_window(rel_rect_data: RectData, abs_rect_data: RectData) ->
             (f64::from(rel_top_left.x) * ratios.0) as u32 + abs_rect_data.top_left.x,
             (f64::from(rel_top_left.y) * ratios.1) as u32 + abs_rect_data.top_left.y,
         ),
-        width: (f64::from(rel_width) * ratios.0) as u32,
-        height: (f64::from(rel_height) * ratios.1) as u32,
+        width: ((f64::from(rel_width) * ratios.0) as u32).max(min_dim.0),
+        height: ((f64::from(rel_height) * ratios.1) as u32).max(min_dim.1),
     }
 }
 

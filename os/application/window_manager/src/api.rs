@@ -38,7 +38,7 @@ pub enum Command {
         on_click: Box<dyn Fn() -> ()>,
     },
     CreateDynamicLabel {
-        rel_rect_data: RectData,
+        rel_pos: Vertex,
         text: Rc<RwLock<String>>,
         /// Function to be called on each window-manager main-loop iteration
         on_loop_iter: Option<Box<dyn Fn() -> ()>>,
@@ -68,6 +68,7 @@ a service from the window-manager, like creating components or subscribing callb
 executed in the main-loop.
 */
 pub struct Api {
+    /// handles are equal to the thread-id of the application
     handles: HashMap<usize, HandleData>,
     screen_dims: (u32, u32),
     senders: Senders,
@@ -185,26 +186,28 @@ impl Api {
                 self.add_component(dispatch_data);
             }
             Command::CreateDynamicLabel {
-                rel_rect_data,
+                rel_pos,
                 text,
                 on_loop_iter,
                 font_size,
             } => {
-                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data);
-                let scaled_font_size = font_size.map(|original_size| {
-                    self.scale_font_to_window(
-                        original_size,
-                        &handle_data.ratios,
-                        FontScalingStrategy::RespectRatio,
-                    )
-                });
+                let font_size = font_size.unwrap_or(1);
+                let scaled_font_scale = self.scale_font_to_window(
+                    font_size,
+                    &handle_data.ratios,
+                    FontScalingStrategy::RespectRatio,
+                );
+
+                let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
+
+                let text_rc = Rc::clone(&text);
 
                 let label = DynamicLabel::new(
                     handle_data.workspace_index,
-                    abs_rect_data.top_left,
-                    rel_rect_data.top_left,
-                    text,
-                    scaled_font_size,
+                    scaled_pos,
+                    rel_pos,
+                    text_rc,
+                    scaled_font_scale,
                 );
 
                 let dispatch_data = NewCompData {
@@ -225,7 +228,7 @@ impl Api {
                 font_size,
             } => {
                 let font_size = font_size.unwrap_or(1);
-                let scaled_font_size = self.scale_font_to_window(
+                let scaled_font_scale = self.scale_font_to_window(
                     font_size,
                     &handle_data.ratios,
                     FontScalingStrategy::RespectRatio,
@@ -239,9 +242,9 @@ impl Api {
                 };
                 let abs_rect_data = RectData {
                     top_left: scaled_pos,
-                    width: DEFAULT_CHAR_WIDTH * scaled_font_size.0 * width_in_chars as u32
+                    width: DEFAULT_CHAR_WIDTH * scaled_font_scale.0 * width_in_chars as u32
                         + PADDING_BORDERS_AND_CHARS * 2,
-                    height: DEFAULT_CHAR_HEIGHT * scaled_font_size.1,
+                    height: DEFAULT_CHAR_HEIGHT * scaled_font_scale.1,
                 };
 
                 let input_field = InputField::new(

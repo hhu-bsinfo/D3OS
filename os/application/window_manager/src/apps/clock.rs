@@ -1,5 +1,5 @@
 use alloc::{boxed::Box, rc::Rc, string::ToString};
-use drawer::{rect_data::RectData, vertex::Vertex};
+use drawer::vertex::Vertex;
 use spin::rwlock::RwLock;
 use time::date;
 
@@ -18,15 +18,8 @@ impl Runnable for Clock {
         let on_create_rc = Rc::clone(&text_rc);
         api.execute(
             handle,
-            //TODO: Maybe change to use a Vertex instead, since the size of the label
-            // should only be dependent on the font-size and the app-dev should not
-            // have to deal with rect-data for this
             Command::CreateDynamicLabel {
-                rel_rect_data: RectData {
-                    top_left: Vertex::new(500, 500),
-                    width: 200,
-                    height: 100,
-                },
+                rel_pos: Vertex::new(500, 500),
                 text: text_rc,
                 on_loop_iter: Some(Box::new(move || {
                     let mut date_val = on_create_rc.write();
