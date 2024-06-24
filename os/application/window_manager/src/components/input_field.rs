@@ -6,7 +6,7 @@ use graphic::{
 };
 
 use crate::{
-    configs::general::{DEFAULT_FONT_SCALE, INTERACT_BUTTON},
+    configs::general::{BACKSPACE_UNICODE, DEFAULT_FONT_SCALE, INTERACT_BUTTON},
     utils::{scale_font, scale_rect_to_window},
 };
 
@@ -78,9 +78,7 @@ impl Component for InputField {
                 '\n' => {
                     self.is_selected = false;
                 }
-                // Backspace
-                //TODO: Refactor into config
-                '\u{0008}' => {
+                BACKSPACE_UNICODE => {
                     self.current_text.pop();
                 }
                 c => {

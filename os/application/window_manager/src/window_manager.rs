@@ -8,7 +8,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use alloc::{borrow::ToOwned, string::ToString, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
 use components::selected_window_label::SelectedWorkspaceLabel;
-use configs::general::{COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE};
+use configs::general::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE};
 use configs::workspace_selection_labels_window::{
     HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW, WORKSPACE_SELECTION_LABEL_FONT_SCALE,
 };
@@ -255,8 +255,7 @@ impl WindowManager {
                 self.command_line_window.deactivate_enter_app_mode();
                 self.is_dirty = true;
             }
-            // Backspace
-            '\u{0008}' => {
+            BACKSPACE_UNICODE => {
                 self.command_line_window.is_dirty = true;
                 self.command_line_window.pop_char();
             }
