@@ -13,7 +13,7 @@ use crate::{
 
 use super::component::Component;
 
-const COLOR_SELECTED_BORDER: Color = CYAN;
+pub const COLOR_SELECTED_BORDER: Color = CYAN;
 const COLOR_TEXT: Color = WHITE;
 
 pub struct InputField {

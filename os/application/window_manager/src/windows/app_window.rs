@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, collections::LinkedList};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::color::{Color, WHITE};
+use graphic::color::Color;
 use hashbrown::HashMap;
 
 use crate::{
@@ -198,7 +198,7 @@ impl AppWindow {
         }
 
         for component in self.components.values() {
-            component.draw(WHITE, None);
+            component.draw(DEFAULT_FG_COLOR, None);
         }
 
         if is_focused {

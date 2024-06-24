@@ -1,8 +1,8 @@
 use alloc::string::String;
 use drawer::{drawer::Drawer, rect_data::RectData};
-use graphic::color::CYAN;
 
 use crate::{
+    components::input_field::COLOR_SELECTED_BORDER,
     config::{DEFAULT_FG_COLOR, DEFAULT_FONT_SCALE},
     ScreenSplitType,
 };
@@ -55,7 +55,7 @@ impl CommandLineWindow {
         }
 
         Drawer::partial_clear_screen(self.rect_data.sub_border());
-        Drawer::draw_rectangle(self.rect_data, CYAN);
+        Drawer::draw_rectangle(self.rect_data, COLOR_SELECTED_BORDER);
         Drawer::draw_string(
             self.command.clone(),
             self.rect_data.top_left.add(2, 2),
