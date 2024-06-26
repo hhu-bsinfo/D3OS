@@ -45,10 +45,6 @@ impl ConfigurationSpace {
 }
 
 impl ConfigRegionAccess for ConfigurationSpace {
-    fn function_exists(&self, _address: PciAddress) -> bool {
-        false
-    }
-
     unsafe fn read(&self, address: PciAddress, offset: u16) -> u32 {
         let mut ports = self.ports.lock();
 

@@ -16,4 +16,4 @@ runtime = { path = "../../library/runtime" }
 io = { path = "../../library/io" }
 time = { path = "../../library/time" }
 
-chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
+chrono = { version = "0.4.38", default-features = false, features = ["alloc"] }
