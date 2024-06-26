@@ -2,9 +2,10 @@
 BOOTLOADER_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/loader"
 INITRD_DIRECTORY = "${BOOTLOADER_DIRECTORY}/initrd"
 OVMF_URL = "https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd"
+TOWBOOT_VERSION = "0.9.0"
+TOWBOOT_URL = "https://github.com/hhuOS/towboot/releases/download/v${TOWBOOT_VERSION}/towbootctl-v${TOWBOOT_VERSION}"
 LINKER = "ld"
 LINKER_MAC = "x86_64-elf-ld"
-PATH = "${PATH}:~/.cargo/bin"
 
 [tasks.default]
 alias = "qemu"
@@ -39,7 +40,6 @@ args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64"
 [tasks.qemu-no-compile.mac]
 args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
 
-
 [tasks.ovmf]
 command = "wget"
 args = [ "-N", "${OVMF_URL}" ]
@@ -66,9 +66,24 @@ command = "gtar"
 
 [tasks.image]
 cwd = "${BOOTLOADER_DIRECTORY}"
-command = "towbootctl"
+command = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl"
 args = [ "image", "--target", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img", "--", "-config", "towboot.toml"]
-dependencies = [ "link-members", "initrd" ]
+dependencies = [ "link-members", "initrd", "towbootctl" ]
+
+[tasks.towbootctl-download]
+condition = { files_not_exist = [ "towbootctl" ] }
+command = "wget"
+args = [ "-O", "towbootctl", "${TOWBOOT_URL}-x86_64-linux" ]
+
+[tasks.towbootctl-download.mac]
+condition = { files_not_exist = [ "towbootctl" ] }
+command = "wget"
+args = [ "-O", "towbootctl", "${TOWBOOT_URL}-macos.-macos" ]
+
+[tasks.towbootctl]
+command = "chmod"
+args = [ "+x", "towbootctl" ]
+dependencies = [ "towbootctl-download" ]
 
 # Cleanup tasks
 
@@ -82,7 +97,8 @@ args = [ "-rf",
     "${BOOTLOADER_DIRECTORY}/kernel.elf",
     "${BOOTLOADER_DIRECTORY}/initrd.tar",
     "${INITRD_DIRECTORY}",
-    "RELEASEX64_OVMF.fd" ]
+    "RELEASEX64_OVMF.fd",
+    "towbootctl"]
 
 [tasks.clean-members]
 run_task = { name = "clean", fork = true }
