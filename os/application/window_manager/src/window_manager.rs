@@ -5,17 +5,14 @@ extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use alloc::{borrow::ToOwned, string::ToString, vec::Vec};
+use alloc::{borrow::ToOwned, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
-use components::selected_window_label::{
-    SelectedWorkspaceLabel, HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
-    WORKSPACE_SELECTION_LABEL_FONT_SCALE,
-};
+use components::selected_window_label::HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW;
 use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE};
 use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
-use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
+use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use io::{read::try_read, Application};
 use nolock::queues::mpsc::jiffy;
 #[allow(unused_imports)]
@@ -188,6 +185,10 @@ impl WindowManager {
                 match keyboard_press {
                     'c' => {
                         self.create_new_workspace(false);
+                        self.workspace_selection_labels_window.is_dirty = true;
+                    }
+                    'x' => {
+                        self.remove_current_workspace();
                         self.workspace_selection_labels_window.is_dirty = true;
                     }
                     'q' => {
@@ -376,24 +377,8 @@ impl WindowManager {
         );
         let window_id = window.id;
 
-        let old_workspace_len = self.workspaces.len() as u32;
-        let new_workspace_len = (self.workspaces.len() + 1) as u32;
-
-        let workspace_selection_label = SelectedWorkspaceLabel::new(
-            Vertex::new(
-                DIST_TO_SCREEN_EDGE
-                    + 1
-                    + old_workspace_len
-                        * DEFAULT_CHAR_WIDTH
-                        * WORKSPACE_SELECTION_LABEL_FONT_SCALE.0,
-                DIST_TO_SCREEN_EDGE + 1,
-            ),
-            char::from_digit(new_workspace_len, 10).unwrap().to_string(),
-            (new_workspace_len - 1) as usize,
-        );
-
         self.workspace_selection_labels_window
-            .insert_label(workspace_selection_label);
+            .insert_label(self.workspaces.len());
 
         let workspace = Workspace::new_with_single_window((window_id, window), window_id);
 
@@ -407,6 +392,33 @@ impl WindowManager {
                 DEFAULT_APP,
             )
             .expect("Failed to launch default app!");
+    }
+
+    fn remove_current_workspace(&mut self) {
+        if self.workspaces.len() == 1 {
+            return;
+        }
+
+        self.workspaces.remove(self.current_workspace);
+        self.workspace_selection_labels_window
+            .remove_label(self.current_workspace);
+
+        self.on_loop_iter_fns
+            .retain_mut(|fun| fun.window_data.workspace_index != self.current_workspace);
+        self.on_loop_iter_fns
+            .iter_mut()
+            .filter(|fun| fun.window_data.workspace_index > self.current_workspace)
+            .for_each(|fun| fun.window_data.workspace_index -= 1);
+
+        Self::get_api().remove_all_handles_tied_to_workspace(self.current_workspace);
+
+        self.current_workspace = if self.current_workspace == 0 {
+            self.workspaces.len() - 1
+        } else {
+            self.current_workspace - 1
+        };
+
+        self.is_dirty = true;
     }
 
     fn switch_prev_workspace(&mut self) {

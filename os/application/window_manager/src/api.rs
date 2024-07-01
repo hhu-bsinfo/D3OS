@@ -253,6 +253,16 @@ impl Api {
         Ok(())
     }
 
+    pub fn remove_all_handles_tied_to_workspace(&mut self, workspace_index: usize) {
+        self.handles
+            .retain(|_, handle| handle.workspace_index != workspace_index);
+
+        self.handles
+            .values_mut()
+            .filter(|handle| handle.workspace_index > workspace_index)
+            .for_each(|handle| handle.workspace_index -= 1);
+    }
+
     pub fn is_app_name_valid(&self, app_string: &str) -> bool {
         self.map_app_string_to_fn(app_string).is_some()
     }
