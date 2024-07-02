@@ -33,10 +33,11 @@ raw-cpuid = "11.0.2"
 smallmap = "1.4.2"
 uefi-raw = "0.5.0"
 uefi = { version = "0.28.0", features = ["alloc"] }
-log = "0.4.20"
+log = "0.4.22"
 goblin = { version = "0.8.2", default-features = false, features = ["elf32", "elf64", "endian_fd"]}
 tar-no-std = "0.3.1"
 pci_types = "0.10.0"
+bitflags = "2.6.0"
 
 [build-dependencies]
 built = { version = "0.7.3", features = ["chrono", "git2"] }
