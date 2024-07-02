@@ -130,3 +130,4 @@ RELEASEX64_OVMF.fd
 loader/kernel.elf
 loader/initrd.tar
 loader/initrd
+nvdimm0

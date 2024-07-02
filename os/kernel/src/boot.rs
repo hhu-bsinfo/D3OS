@@ -23,6 +23,7 @@ use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, Memory
 use uefi::prelude::*;
 use uefi::table::boot::{MemoryMap, PAGE_SIZE};
 use uefi::table::Runtime;
+use uefi::table::runtime::Time;
 use uefi_raw::table::boot::MemoryType;
 use x86_64::instructions::interrupts;
 use x86_64::instructions::segmentation::{Segment, CS, DS, ES, FS, GS, SS};
@@ -34,8 +35,9 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use crate::{allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
-use crate::memory::MemorySpace;
+use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
+use crate::memory::{MemorySpace, nvmem};
+use crate::memory::nvmem::Nfit;
 
 // import labels from linker script 'link.ld'
 extern "C" {
@@ -45,14 +47,11 @@ extern "C" {
 
 const INIT_HEAP_PAGES: usize = 0x400;   // number of heap pages for booting the OS
 
-
-/**
- Description: First rust function called from assembly code `boot.asm` \
-
- Parameters: \
-   `multiboot2_magic` frequency of musical note \
-    `multiboot2_addr` address of multiboot2 info records
-*/
+/// Description: First rust function called from assembly code `boot.asm` \
+///
+/// Parameters: \
+///    `multiboot2_magic` magic number read from 'eax' \
+///    `multiboot2_addr` address of multiboot2 info records
 #[no_mangle]
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
     // Initialize logger
@@ -192,6 +191,33 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     info!("Scanning PCI bus");
     init_pci();
 
+    // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
+    nvmem::init();
+
+    // As a demo for NVRAM support, we read the last boot time from NVRAM and write the current boot time to it
+    if let Ok(nfit) = acpi_tables().lock().find_table::<Nfit>() {
+        if let Some(range) = nfit.get_phys_addr_ranges().first() {
+            let date_ptr = range.as_phys_frame_range().start.start_address().as_u64() as *mut Time;
+
+            // Read last boot time from NVRAM
+            let date = unsafe { date_ptr.read() };
+            if date.is_valid() {
+                info!("Last boot time: [{:0>4}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}]", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
+            }
+
+            // Get current time
+            if let Some(efi_system_table) = efi_system_table() {
+                let system_table = efi_system_table.read();
+                let runtime_services = unsafe { system_table.runtime_services() };
+
+                // Write current boot time to NVRAM
+                if let Ok(time) = runtime_services.get_time() {
+                    unsafe { date_ptr.write(time) }
+                }
+            }
+        }
+    }
+
     // Load initial ramdisk
     let initrd_tag = multiboot.module_tags()
         .find(|module| module.cmdline().is_ok_and(|name| name == "initrd"))
@@ -213,7 +239,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         .expect("Shell application not available!")
         .data()));
 
-    // Disable terminal logging (remove terminal outputstream)
+    // Disable terminal logging (remove terminal output stream)
     logger().lock().remove(terminal());  
     terminal().clear();
 
@@ -226,10 +252,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     scheduler().start();
 }
 
-
-/**
- Description: Setup the GDT
-*/
+/// Description: Set up the GDT
 fn init_gdt() {
     let mut gdt = gdt().lock();
     let tss = tss().lock();
@@ -265,10 +288,7 @@ fn init_gdt() {
     }
 }
 
-
-/**
- Description: Return `PhysFrameRange` for memory occupied by the kernel image
-*/
+/// Description: Return `PhysFrameRange` for memory occupied by the kernel image
 fn kernel_image_region() -> PhysFrameRange {
     let start: PhysFrame;
     let end: PhysFrame;
@@ -282,14 +302,12 @@ fn kernel_image_region() -> PhysFrameRange {
 }
 
 
-/**
- Description: Search memory map, provided by bootloader of EFI, for usable memory and initialize physical memory management \
-
- Parameters: \
-    `multiboot2_addr` address of multiboot2 info records
-
- Return: `BootInformation`
-*/
+/// Description: Search memory map, provided by bootloader of EFI, for usable memory and initialize physical memory management \
+///
+/// Parameters: \
+///    `multiboot2_addr` address of multiboot2 info records
+///
+/// Return: `BootInformation`
 fn multiboot2_search_memory_map(multiboot2_addr: *const BootInformationHeader) -> BootInformation<'static> {
     let multiboot = unsafe { BootInformation::load(multiboot2_addr).expect("Failed to get Multiboot2 information") };
 
@@ -330,12 +348,9 @@ fn multiboot2_search_memory_map(multiboot2_addr: *const BootInformationHeader) -
     multiboot
 }
 
-
-/**
- Description: Searching available memory regions provided by multiboot2
-              Available only if efi boot services have been exited
-              and bootloader provides these memory maps.
-*/
+/// Description: Searching available memory regions provided by multiboot2
+///              Available only if efi boot services have been exited
+///              and bootloader provides these memory maps.
 fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag) {
     info!("Searching memory map for available regions");
     memory_map.memory_areas().iter()
@@ -351,11 +366,9 @@ fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag) {
 }
 
 
-/**
- Description: Memory map from efi. Only available if boot services have been exited.
-              Sometimes bootloaders do not provide multiboot2 memory maps if 
-              efi information has been requested.
-*/
+/// Description: Memory map from efi. Only available if boot services have been exited.
+///              Sometimes bootloaders do not provide multiboot2 memory maps if
+///              efi information has been requested.
 fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
     info!("Searching memory map for available regions");
     memory_map.memory_areas()
@@ -368,9 +381,7 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
 }
 
 
-/**
- Description: Memory map from efi. Only available if boot services have NOT been exited.
-*/
+/// Description: Memory map from efi. Only available if boot services have NOT been exited.
 fn scan_efi_memory_map(memory_map: &MemoryMap) {
     info!("Searching memory map for available regions");
     memory_map.entries()

@@ -11,7 +11,7 @@ CARGO_BUILD_OPTION = "--release"
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
-SOURCE_DIRECOTRY = "${CARGO_MAKE_WORKING_DIRECTORY}/src"
+SOURCE_DIRECTORY = "${CARGO_MAKE_WORKING_DIRECTORY}/src"
 LINKER_FILE = "${CARGO_MAKE_WORKING_DIRECTORY}/link.ld"
 RUST_OBJECT = "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}.a"
 ASM_OBJECT = "${BUILD_DIRECTORY}/boot.o"
@@ -28,7 +28,7 @@ args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compil
 
 [tasks.build-asm]
 command = "nasm"
-args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${ASM_OBJECT}", "${SOURCE_DIRECOTRY}/boot.asm" ]
+args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${ASM_OBJECT}", "${SOURCE_DIRECTORY}/boot.asm" ]
 
 [tasks.link]
 command = "${LINKER}"
