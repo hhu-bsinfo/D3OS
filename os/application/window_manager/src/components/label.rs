@@ -59,8 +59,8 @@ impl Component for Label {
         self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
     }
 
-    fn rescale_after_move(&mut self, new_window_rect_data: RectData) {
-        self.abs_pos = scale_pos_to_window(self.rel_pos, new_window_rect_data);
+    fn rescale_after_move(&mut self, new_rect_data: RectData) {
+        self.abs_pos = scale_pos_to_window(self.rel_pos, new_rect_data);
         let screen = SCREEN.get().unwrap();
         self.font_scale = scale_font(
             &(self.rel_font_size as u32, self.rel_font_size as u32),
@@ -69,7 +69,7 @@ impl Component for Label {
                 width: screen.0,
                 height: screen.1,
             },
-            &new_window_rect_data,
+            &new_rect_data,
         );
     }
 }

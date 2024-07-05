@@ -49,7 +49,7 @@ impl Component for SelectedWorkspaceLabel {
         // Should never be rescaled
     }
 
-    fn rescale_after_move(&mut self, _new_window_rect_data: RectData) {
+    fn rescale_after_move(&mut self, _new_rect_data: RectData) {
         // Should never be moved
     }
 }

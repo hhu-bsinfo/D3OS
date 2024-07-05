@@ -113,10 +113,10 @@ impl Component for InputField {
         self.font_scale = scale_font(&self.font_scale, &old_rect_data, &new_rect_data);
     }
 
-    fn rescale_after_move(&mut self, new_window_rect_data: RectData) {
+    fn rescale_after_move(&mut self, new_rect_data: RectData) {
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
-            new_window_rect_data,
+            new_rect_data,
             (
                 self.max_chars as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
                 DEFAULT_CHAR_HEIGHT * self.font_scale.1,
