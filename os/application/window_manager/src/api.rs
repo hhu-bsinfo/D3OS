@@ -9,10 +9,7 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::{Mutex, RwLock};
 
 use crate::{
-    apps::{
-        clock::Clock, counter::Counter, runnable::Runnable, submit_label::SubmitLabel,
-        test_app::TestApp,
-    },
+    apps::{clock::Clock, counter::Counter, runnable::Runnable, submit_label::SubmitLabel},
     components::{button::Button, component::Component, input_field::InputField, label::Label},
     config::PADDING_BORDERS_AND_CHARS,
 };
@@ -270,7 +267,6 @@ impl Api {
     fn map_app_string_to_fn(&self, app_string: &str) -> Option<fn()> {
         match app_string {
             "clock" => Some(Clock::run),
-            "test_app" => Some(TestApp::run),
             "submit_label" => Some(SubmitLabel::run),
             "counter" => Some(Counter::run),
             _ => None,
