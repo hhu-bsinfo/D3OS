@@ -12,6 +12,7 @@ use x86_64::structures::paging::page::PageRange;
 use x86_64::{PhysAddr, VirtAddr};
 use crate::{acpi_tables, process_manager};
 use crate::memory::MemorySpace;
+use core::mem::size_of;
 
 #[allow(dead_code)]
 #[repr(u16)]
