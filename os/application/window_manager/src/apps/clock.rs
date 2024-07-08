@@ -23,7 +23,12 @@ impl Runnable for Clock {
                 text: text_rc,
                 on_loop_iter: Some(Box::new(move || {
                     let mut date_val = on_create_rc.write();
-                    *date_val = date().format("%Y-%m-%d %H:%M:%S").to_string();
+                    let new_date = date().format("%Y-%m-%d %H:%M:%S").to_string();
+                    if *date_val != new_date {
+                        *date_val = new_date;
+                        return true;
+                    }
+                    return false;
                 })),
                 font_size: Some(4),
             },

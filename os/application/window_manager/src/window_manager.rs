@@ -144,14 +144,16 @@ impl WindowManager {
 
     fn call_on_loop_iter_fns(&mut self) {
         for NewLoopIterFnData { window_data, fun } in self.on_loop_iter_fns.iter() {
-            (*fun)();
+            let is_dirty = (*fun)();
 
             let window = self.workspaces[window_data.workspace_index]
                 .windows
                 .get_mut(&window_data.window_id);
 
-            if let Some(window) = window {
-                window.is_dirty = true;
+            if is_dirty {
+                if let Some(window) = window {
+                    window.is_dirty = true;
+                }
             }
         }
     }

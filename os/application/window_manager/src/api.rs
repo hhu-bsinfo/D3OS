@@ -28,8 +28,11 @@ pub enum Command {
     CreateLabel {
         rel_pos: Vertex,
         text: Rc<RwLock<String>>,
-        /// Function to be called on each window-manager main-loop iteration
-        on_loop_iter: Option<Box<dyn Fn() -> ()>>,
+        /**
+        Function to be called on each window-manager main-loop iteration.
+        If it returns true, the containing-window dirty-bit is set
+        */
+        on_loop_iter: Option<Box<dyn Fn() -> bool>>,
         font_size: Option<usize>,
     },
     CreateInputField {
@@ -85,7 +88,7 @@ pub struct NewCompData {
 
 pub struct NewLoopIterFnData {
     pub window_data: WindowData,
-    pub fun: Box<dyn Fn() -> ()>,
+    pub fun: Box<dyn Fn() -> bool>,
 }
 
 impl Debug for NewCompData {
