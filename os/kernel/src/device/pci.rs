@@ -100,6 +100,14 @@ impl PciBus {
             .collect()
     }
 
+    pub fn dump_devices(&self){
+        info!("alle gefundenen devices sind");
+        for endpoint_header in &self.devices{
+            let (subsystemid, subsystem_vendor_id) = endpoint_header.subsystem(&self.config_space);
+            info!("finde endpoint: subsystem is {:?}, subsystem_vendor_id is {:?}", subsystemid, subsystem_vendor_id);
+        }
+    }
+
     pub fn search_by_class(&self, base_class: BaseClass, sub_class: SubClass) -> Vec<&EndpointHeader> {
         self.devices.iter()
             .filter(|device| {

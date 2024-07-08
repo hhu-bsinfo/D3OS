@@ -38,6 +38,7 @@ use x86_64::structures::paging::page::PageRange;
 use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
 use crate::memory::{MemorySpace, nvmem};
 use crate::memory::nvmem::Nfit;
+use crate::memory::cxl;
 
 // import labels from linker script 'link.ld'
 extern "C" {
@@ -190,6 +191,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Scan PCI bus
     info!("Scanning PCI bus");
     init_pci();
+    info!("dumping all found devices");
+    cxl::print_bus_devices();
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
