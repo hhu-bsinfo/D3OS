@@ -13,7 +13,6 @@
 #![feature(naked_functions)]
 #![feature(asm_const)]
 #![feature(exact_size_is_empty)]
-#![feature(panic_info_message)]
 #![feature(fmt_internals)]
 #![feature(abi_x86_interrupt)]
 #![feature(trait_upcasting)]
