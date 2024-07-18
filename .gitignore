@@ -131,3 +131,4 @@ loader/kernel.elf
 loader/initrd.tar
 loader/initrd
 nvdimm0
+towbootctl

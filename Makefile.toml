@@ -34,13 +34,6 @@ dependencies = [ "image", "ovmf" ]
 [tasks.qemu.mac]
 args = [ "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0", "-m", "128M,slots=2,maxmem=1G", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-serial", "stdio", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M", "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M", "-audiodev", "id=audio0,driver=coreaudio" ]
 
-[tasks.qemu-no-compile]
-command = "qemu-system-x86_64"
-args = [ "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0", "-m", "128M,slots=2,maxmem=1G", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-serial", "stdio", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M", "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M", "-audiodev", "id=audio0,driver=pa" ]
-
-[tasks.qemu-no-compile.mac]
-args = [ "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0", "-m", "128M,slots=2,maxmem=1G", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-serial", "stdio", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M", "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M", "-audiodev", "id=audio0,driver=coreaudio" ]
-
 [tasks.ovmf]
 command = "wget"
 args = [ "-N", "${OVMF_URL}" ]
@@ -54,12 +47,14 @@ dependencies = [ "create-initrd-directory" ]
 [tasks.create-initrd-directory]
 command = "mkdir"
 args = [ "-p", "${INITRD_DIRECTORY}" ]
+condition = { files_not_exist = [ "${INITRD_DIRECTORY}" ] }
 
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
 command = "tar"
 args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "shell", "uptime", "date" ]
 dependencies = [ "link-members" ]
+condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
 
 [tasks.initrd.mac]
 cwd = "${INITRD_DIRECTORY}"
@@ -70,21 +65,20 @@ cwd = "${BOOTLOADER_DIRECTORY}"
 command = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl"
 args = [ "image", "--target", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img", "--", "-config", "towboot.toml"]
 dependencies = [ "link-members", "initrd", "towbootctl" ]
-
-[tasks.towbootctl-download]
-condition = { files_not_exist = [ "towbootctl" ] }
-command = "wget"
-args = [ "-O", "towbootctl", "${TOWBOOT_URL}-x86_64-linux" ]
-
-[tasks.towbootctl-download.mac]
-condition = { files_not_exist = [ "towbootctl" ] }
-command = "wget"
-args = [ "-O", "towbootctl", "${TOWBOOT_URL}-macos.-macos" ]
+condition = { files_modified = { input = [ "${BOOTLOADER_DIRECTORY}/initrd.tar", "${BOOTLOADER_DIRECTORY}/kernel.elf", "${BOOTLOADER_DIRECTORY}/towboot.toml" ], output = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img" ] } }
 
 [tasks.towbootctl]
-command = "chmod"
-args = [ "+x", "towbootctl" ]
-dependencies = [ "towbootctl-download" ]
+script = '''
+wget -O towbootctl "${TOWBOOT_URL}-x86_64-linux"
+chmod +x towbootctl
+'''
+condition = { files_not_exist = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl" ] }
+
+[tasks.towbootctl.mac]
+script = '''
+wget -O towbootctl "${TOWBOOT_URL}-macos.-macos"
+chmod +x towbootctl
+'''
 
 # Cleanup tasks
 
@@ -99,7 +93,7 @@ args = [ "-rf",
     "${BOOTLOADER_DIRECTORY}/initrd.tar",
     "${INITRD_DIRECTORY}",
     "RELEASEX64_OVMF.fd",
-    "towbootctl"]
+    "towbootctl" ]
 
 [tasks.clean-members]
 run_task = { name = "clean", fork = true }
