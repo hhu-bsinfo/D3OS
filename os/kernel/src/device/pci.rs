@@ -108,6 +108,22 @@ impl PciBus {
         }
     }
 
+    pub fn dump_devices_status_registers(&self){
+        info!("alle gefundenen devices sind");
+        for endpoint_header in &self.devices{
+            let status = endpoint_header.status(&self.config_space);
+            info!("finde endpoint: status is {:?}", status);
+        }
+    }
+
+    pub fn dump_devices_command_registers(&self){
+        info!("alle gefundenen devices sind");
+        for endpoint_header in &self.devices{
+            let command = endpoint_header.command(&self.config_space);
+            info!("finde endpoint: command is {:?}", command);
+        }
+    }
+
     pub fn search_by_class(&self, base_class: BaseClass, sub_class: SubClass) -> Vec<&EndpointHeader> {
         self.devices.iter()
             .filter(|device| {
@@ -131,6 +147,7 @@ impl PciBus {
 
         let device = PciHeader::new(address);
         let id = device.id(self.config_space());
+        //die id könnte hier wichtig sein
         if id.0 == INVALID {
             return;
         }

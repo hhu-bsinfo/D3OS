@@ -193,9 +193,15 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     init_pci();
     info!("dumping all found devices");
     cxl::print_bus_devices();
+    info!("dumping all found devices status info");
+    cxl::print_bus_devices_status();
+    info!("dumping all found devices command info");
+    cxl::print_bus_devices_command();
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
+    // Initialize the CEDT Table.
+    cxl::init();
 
     // As a demo for NVRAM support, we read the last boot time from NVRAM and write the current boot time to it
     if let Ok(nfit) = acpi_tables().lock().find_table::<Nfit>() {
