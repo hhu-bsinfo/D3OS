@@ -122,7 +122,7 @@ impl WindowManager {
 
     fn init(&mut self, senders: Senders) {
         unsafe {
-            API.call_once(|| Mutex::new(Api::new(Self::get_screen_res(), senders)));
+            API.call_once(|| Mutex::new(Api::new(senders)));
         }
 
         self.create_new_workspace(true);

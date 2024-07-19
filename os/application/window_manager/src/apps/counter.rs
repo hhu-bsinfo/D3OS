@@ -21,7 +21,7 @@ impl Runnable for Counter {
         let _ = api.execute(
             handle,
             Command::CreateButton {
-                rel_rect_data: RectData {
+                log_rect_data: RectData {
                     top_left: Vertex::new(200, 200),
                     width: 200,
                     height: 50,
@@ -38,7 +38,7 @@ impl Runnable for Counter {
         let _ = api.execute(
             handle,
             Command::CreateButton {
-                rel_rect_data: RectData {
+                log_rect_data: RectData {
                     top_left: Vertex::new(200, 350),
                     width: 200,
                     height: 50,

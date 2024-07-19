@@ -12,6 +12,7 @@ use crate::{
     apps::{clock::Clock, counter::Counter, runnable::Runnable, submit_label::SubmitLabel},
     components::{button::Button, component::Component, input_field::InputField, label::Label},
     config::PADDING_BORDERS_AND_CHARS,
+    SCREEN,
 };
 
 extern crate alloc;
@@ -19,14 +20,17 @@ extern crate alloc;
 /// Default app to be used on startup of a new workspace
 pub static DEFAULT_APP: &str = "clock";
 
+/// Logical screen resolution, used by apps for describing component locations
+pub const LOG_SCREEN: (u32, u32) = (1000, 750);
+
 pub enum Command {
     CreateButton {
-        rel_rect_data: RectData,
+        log_rect_data: RectData,
         label: Option<(Rc<Mutex<String>>, usize)>,
         on_click: Box<dyn Fn() -> ()>,
     },
     CreateLabel {
-        rel_pos: Vertex,
+        log_pos: Vertex,
         text: Rc<RwLock<String>>,
         /**
         Function to be called on each window-manager main-loop iteration.
@@ -39,7 +43,7 @@ pub enum Command {
         /// The maximum amount of chars to fit in this field
         width_in_chars: usize,
         font_size: Option<usize>,
-        rel_pos: Vertex,
+        log_pos: Vertex,
         text: Rc<RwLock<String>>,
     },
 }
@@ -58,12 +62,20 @@ pub struct Receivers {
 API offers an interface between the window-manager and external programs that request
 a service from the window-manager, like creating components or subscribing callback-functions to be
 executed in the main-loop.
+There are three different kinds of positional variables repeatedly mentioned:
+- Absolute positions: Denotes positions in relation to the entire screen, used to describe component
+positions in their window.
+- Relative positions: Denotes positions in relations to their window, as if their window was occupying
+the entire screen.
+- Logical positions: Denotes positions in relation to their window, as if their window was occupying
+the entire screen, with scaling defined by [`LOG_SCREEN`], by applications to describe
+their position screen-agnostically.
 */
 pub struct Api {
     /// handles are equal to the thread-id of the application
     handles: HashMap<usize, HandleData>,
-    screen_dims: (u32, u32),
     senders: Senders,
+    rel_to_log_ratios: (f64, f64),
 }
 
 /// All information saved for a single handle
@@ -108,11 +120,15 @@ impl Debug for NewLoopIterFnData {
 }
 
 impl Api {
-    pub fn new(screen_dims: (u32, u32), senders: Senders) -> Self {
+    pub fn new(senders: Senders) -> Self {
+        let screen = SCREEN.get().unwrap();
         Self {
             handles: HashMap::new(),
-            screen_dims,
             senders,
+            rel_to_log_ratios: (
+                f64::from(screen.0) / f64::from(LOG_SCREEN.0),
+                f64::from(screen.0) / f64::from(LOG_SCREEN.1),
+            ),
         }
     }
 
@@ -125,6 +141,7 @@ impl Api {
         abs_pos: RectData,
         app_string: &str,
     ) -> Option<()> {
+        let screen = SCREEN.get().unwrap();
         let app_fn_ptr = self.map_app_string_to_fn(app_string)?;
 
         let handle = thread::create(app_fn_ptr).id();
@@ -133,8 +150,8 @@ impl Api {
             window_id,
             abs_pos,
             ratios: (
-                f64::from(abs_pos.width) / f64::from(self.screen_dims.0),
-                f64::from(abs_pos.height) / f64::from(self.screen_dims.1),
+                f64::from(abs_pos.width) / f64::from(screen.0),
+                f64::from(abs_pos.height) / f64::from(screen.1),
             ),
         };
 
@@ -143,6 +160,7 @@ impl Api {
         Some(())
     }
 
+    /// Logical positions need to be contrained by `x <= 1000 && y <= 750`
     pub fn execute(&self, handle: usize, command: Command) -> Result<(), &str> {
         let handle_data = self
             .handles
@@ -156,10 +174,12 @@ impl Api {
 
         match command {
             Command::CreateButton {
-                rel_rect_data,
+                log_rect_data,
                 label,
                 on_click,
             } => {
+                self.validate_log_pos(&log_rect_data.top_left)?;
+                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
                 let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data);
                 let (text, font_size_option) = label.unzip();
                 let font_size = font_size_option.unwrap_or(1);
@@ -183,11 +203,14 @@ impl Api {
                 self.add_component(dispatch_data);
             }
             Command::CreateLabel {
-                rel_pos,
+                log_pos,
                 text,
                 on_loop_iter,
                 font_size,
             } => {
+                self.validate_log_pos(&log_pos)?;
+                let rel_pos = self.scale_vertex_to_rel(&log_pos);
+
                 let font_size = font_size.unwrap_or(1);
                 let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
 
@@ -210,11 +233,14 @@ impl Api {
                 }
             }
             Command::CreateInputField {
-                rel_pos,
+                log_pos,
                 width_in_chars,
                 font_size,
                 text,
             } => {
+                self.validate_log_pos(&log_pos)?;
+                let rel_pos = self.scale_vertex_to_rel(&log_pos);
+
                 let font_size = font_size.unwrap_or(1);
                 let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
 
@@ -332,5 +358,36 @@ impl Api {
         let new_y = (f64::from(original_vert.y) * ratios.1 + f64::from(abs_pos.top_left.y)) as u32;
 
         return Vertex::new(new_x, new_y);
+    }
+
+    fn scale_rect_data_to_rel(&self, log_rect_data: &RectData) -> RectData {
+        let new_pos = Vertex::new(
+            (f64::from(log_rect_data.top_left.x) * self.rel_to_log_ratios.0) as u32,
+            (f64::from(log_rect_data.top_left.y) * self.rel_to_log_ratios.1) as u32,
+        );
+
+        let new_width = f64::from(log_rect_data.width) * self.rel_to_log_ratios.0;
+        let new_height = f64::from(log_rect_data.height) * self.rel_to_log_ratios.1;
+
+        return RectData {
+            top_left: new_pos,
+            width: new_width as u32,
+            height: new_height as u32,
+        };
+    }
+
+    fn scale_vertex_to_rel(&self, log_pos: &Vertex) -> Vertex {
+        return Vertex::new(
+            (f64::from(log_pos.x) * self.rel_to_log_ratios.0) as u32,
+            (f64::from(log_pos.y) * self.rel_to_log_ratios.1) as u32,
+        );
+    }
+
+    fn validate_log_pos(&self, log_pos: &Vertex) -> Result<(), &str> {
+        if log_pos.x > LOG_SCREEN.0 || log_pos.y > LOG_SCREEN.1 {
+            return Err("Logical position-coordinates don't meet size-constraints");
+        }
+
+        return Ok(());
     }
 }

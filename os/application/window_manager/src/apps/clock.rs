@@ -19,7 +19,7 @@ impl Runnable for Clock {
         let _ = api.execute(
             handle,
             Command::CreateLabel {
-                rel_pos: Vertex::new(200, 200),
+                log_pos: Vertex::new(200, 200),
                 text: text_rc,
                 on_loop_iter: Some(Box::new(move || {
                     let mut date_val = on_create_rc.write();

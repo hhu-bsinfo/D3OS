@@ -25,7 +25,7 @@ impl Runnable for SubmitLabel {
             Command::CreateInputField {
                 width_in_chars: 12,
                 font_size: Some(2),
-                rel_pos: Vertex::new(100, 200),
+                log_pos: Vertex::new(100, 200),
                 text: input_field_rc1,
             },
         );
@@ -33,7 +33,7 @@ impl Runnable for SubmitLabel {
         let _ = api.execute(
             handle,
             Command::CreateLabel {
-                rel_pos: Vertex::new(400, 200),
+                log_pos: Vertex::new(400, 200),
                 text: Rc::new(RwLock::new(String::from("Submitted Text: "))),
                 on_loop_iter: None,
                 font_size: Some(2),
@@ -43,7 +43,7 @@ impl Runnable for SubmitLabel {
         let _ = api.execute(
             handle,
             Command::CreateLabel {
-                rel_pos: Vertex::new(660, 200),
+                log_pos: Vertex::new(660, 200),
                 text: label_text_rc1,
                 on_loop_iter: None,
                 font_size: Some(2),
@@ -55,7 +55,7 @@ impl Runnable for SubmitLabel {
         let _ = api.execute(
             handle,
             Command::CreateButton {
-                rel_rect_data: RectData {
+                log_rect_data: RectData {
                     top_left: Vertex::new(100, 300),
                     width: 160,
                     height: 50,
