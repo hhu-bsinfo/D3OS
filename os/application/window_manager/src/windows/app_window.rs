@@ -19,8 +19,6 @@ pub struct AppWindow {
     pub rect_data: RectData,
     /// Indicates whether redrawing of this window is required in next loop-iteration
     pub is_dirty: bool,
-    /// The buddy of this window, used to decide how closing this window works
-    pub buddy_window_id: Option<usize>,
     components: HashMap<usize, Box<dyn Component>>,
     /// focusable components are stored additionally in ordered fashion in here
     component_orderer: LinkedList<usize>,
@@ -28,7 +26,7 @@ pub struct AppWindow {
 }
 
 impl AppWindow {
-    pub fn new(id: usize, rect_data: RectData, buddy_window: Option<usize>) -> Self {
+    pub fn new(id: usize, rect_data: RectData) -> Self {
         Self {
             id,
             is_dirty: true,
@@ -36,7 +34,6 @@ impl AppWindow {
             component_orderer: LinkedList::new(),
             rect_data,
             focused_component_id: None,
-            buddy_window_id: buddy_window,
         }
     }
 
@@ -113,11 +110,6 @@ impl AppWindow {
         for component in self.components.values_mut() {
             component.rescale_after_move(new_rect_data);
         }
-    }
-
-    pub fn is_elligible_for_merging(&self, other_window: &AppWindow) -> bool {
-        &self.rect_data.width == &other_window.rect_data.width
-            && &self.rect_data.height == &other_window.rect_data.height
     }
 
     pub fn merge(&mut self, other_window: &AppWindow) {

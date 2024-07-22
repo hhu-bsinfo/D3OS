@@ -27,6 +27,7 @@ mod apps;
 mod components;
 mod config;
 mod utils;
+mod window_tree;
 mod windows;
 mod workspace;
 
@@ -172,18 +173,15 @@ impl WindowManager {
             if self.command_line_window.enter_app_mode {
                 self.process_enter_app_mode(keyboard_press);
             } else {
-                let did_interact = self
+                let block_interact = self
                     .get_current_workspace_mut()
                     .get_focused_window_mut()
                     .interact_with_focused_component(keyboard_press);
 
-                // If the focused component interacted with the keyboard-press,
-                // We don't need to deal with it anymore
-                if did_interact {
+                if block_interact {
                     return;
                 }
 
-                // Fine, let's deal with it
                 match keyboard_press {
                     'c' => {
                         self.create_new_workspace(false);
@@ -230,8 +228,8 @@ impl WindowManager {
                         self.get_current_workspace_mut().focus_next_window();
                     }
                     'm' => {
-                        /* BUG: Right now it only works properly in an optimal scenario
-                        of two windows without any subwindows in the buddy */
+                        /* Only works, if both buddies don't have subwindows inside them.
+                        Move windows up before merging, if that is a problem */
                         self.get_current_workspace_mut().close_focused_window();
                         self.is_dirty = true;
                     }
@@ -287,20 +285,13 @@ impl WindowManager {
         }
     }
 
-    fn add_window_to_workspace(
-        &mut self,
-        rect_data: RectData,
-        app_name: &str,
-        buddy_window: Option<usize>,
-    ) {
+    fn add_window_to_workspace(&mut self, rect_data: RectData, app_name: &str) {
         let window_id = Self::generate_id();
-        let window = AppWindow::new(window_id, rect_data, buddy_window);
+        let window = AppWindow::new(window_id, rect_data);
 
         let curr_ws = self.get_current_workspace_mut();
-        curr_ws.get_focused_window_mut().buddy_window_id = Some(window_id);
 
-        let focused_window_id = curr_ws.focused_window_id;
-        curr_ws.insert_window(window, Some(focused_window_id));
+        curr_ws.insert_window(window, curr_ws.focused_window_id);
 
         self.is_dirty = true;
 
@@ -331,7 +322,7 @@ impl WindowManager {
                     // Rescale components for old window
                     window.rescale_window_in_place(old_rect, window.rect_data.clone());
 
-                    self.add_window_to_workspace(new_rect_data, app_name, Some(window_id));
+                    self.add_window_to_workspace(new_rect_data, app_name);
                 }
                 ScreenSplitType::Vertical => {
                     window.rect_data.width /= 2;
@@ -345,7 +336,7 @@ impl WindowManager {
                     // Rescale components for old window
                     window.rescale_window_in_place(old_rect, window.rect_data.clone());
 
-                    self.add_window_to_workspace(new_rect_data, app_name, Some(window_id));
+                    self.add_window_to_workspace(new_rect_data, app_name);
                 }
             }
         }
@@ -371,12 +362,7 @@ impl WindowManager {
                 - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW),
         };
 
-        let window = AppWindow::new(
-            Self::generate_id(),
-            window_rect_data,
-            // The first window is standalone and doesn't have a buddy :(
-            None,
-        );
+        let window = AppWindow::new(Self::generate_id(), window_rect_data);
         let window_id = window.id;
 
         self.workspace_selection_labels_window
@@ -424,7 +410,11 @@ impl WindowManager {
     }
 
     fn switch_prev_workspace(&mut self) {
-        self.current_workspace = self.current_workspace.saturating_sub(1);
+        self.current_workspace = if self.current_workspace == 0 {
+            self.workspaces.len() - 1
+        } else {
+            self.current_workspace - 1
+        };
         self.is_dirty = true;
     }
 

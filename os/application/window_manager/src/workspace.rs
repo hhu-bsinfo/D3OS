@@ -2,6 +2,7 @@ use alloc::collections::LinkedList;
 use hashbrown::HashMap;
 
 use crate::utils::get_element_cursor_from_orderer;
+use crate::window_tree::WindowNode;
 use crate::windows::app_window::AppWindow;
 
 /**
@@ -14,6 +15,10 @@ pub struct Workspace {
     pub focused_window_id: usize,
     // Windows are stored additionally in ordered fashion in here
     pub window_orderer: LinkedList<usize>,
+    /**
+    Proxy-structure to determine buddies to be merged together
+    */
+    buddy_tree_root: WindowNode,
 }
 
 impl Workspace {
@@ -24,26 +29,25 @@ impl Workspace {
         let mut windows: HashMap<usize, AppWindow> = HashMap::new();
         windows.insert(window.0, window.1);
 
+        let buddy_tree_root = WindowNode::new_leaf(window.0);
+
         Self {
             windows,
             focused_window_id,
             window_orderer,
+            buddy_tree_root,
         }
     }
 
-    pub fn insert_window(&mut self, window: AppWindow, after: Option<usize>) {
+    pub fn insert_window(&mut self, window: AppWindow, after: usize) {
         let new_window_id = window.id;
         self.windows.insert(new_window_id, window);
-        match after {
-            Some(after_window_id) => {
-                let mut cursor =
-                    get_element_cursor_from_orderer(&mut self.window_orderer, after_window_id)
-                        .unwrap();
-                cursor.move_next();
-                cursor.insert_before(new_window_id);
-            }
-            None => self.window_orderer.push_back(new_window_id),
-        }
+
+        self.buddy_tree_root.insert_value(after, new_window_id);
+
+        let mut cursor = get_element_cursor_from_orderer(&mut self.window_orderer, after).unwrap();
+        cursor.move_next();
+        cursor.insert_before(new_window_id);
     }
 
     pub fn focus_next_window(&mut self) {
@@ -99,12 +103,25 @@ impl Workspace {
     }
 
     pub fn close_focused_window(&mut self) {
-        let to_be_deleted_window = self.windows.remove(&self.focused_window_id).unwrap();
+        if self.windows.len() == 1 {
+            return;
+        }
 
-        if let Some(buddy_id) = to_be_deleted_window.buddy_window_id {
-            let buddy_window = self.windows.get_mut(&buddy_id).unwrap();
-            if buddy_window.is_elligible_for_merging(&to_be_deleted_window) {
-                buddy_window.merge(&to_be_deleted_window)
+        let buddy_id = self.buddy_tree_root.get_sibling(self.focused_window_id);
+        match buddy_id {
+            Some(buddy_id) => {
+                let [to_be_deleted_window, buddy_window] = self
+                    .windows
+                    .get_many_mut([&self.focused_window_id, &buddy_id])
+                    .unwrap();
+
+                buddy_window.merge(&to_be_deleted_window);
+
+                self.windows.remove(&self.focused_window_id);
+                self.buddy_tree_root.remove_leaf(self.focused_window_id);
+            }
+            None => {
+                return;
             }
         }
 
@@ -159,6 +176,9 @@ impl Workspace {
             swapped_window.is_dirty = true;
             swapped_window.rescale_window_after_move(focused_rect_data);
 
+            self.buddy_tree_root
+                .swap_values(self.focused_window_id, swapped_id);
+
             swapped_rect_data
         };
 
@@ -202,6 +222,9 @@ impl Workspace {
             let swapped_rect_data = swapped_window.rect_data.clone();
             swapped_window.is_dirty = true;
             swapped_window.rescale_window_after_move(focused_rect_data);
+
+            self.buddy_tree_root
+                .swap_values(self.focused_window_id, swapped_id);
 
             swapped_rect_data
         };
