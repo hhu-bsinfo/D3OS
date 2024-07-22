@@ -31,13 +31,14 @@ acpi = "5.0.0"
 x2apic = "0.4.3"
 raw-cpuid = "11.0.2"
 smallmap = "1.4.2"
-uefi-raw = "0.5.0"
-uefi = { version = "0.28.0", features = ["alloc"] }
+uefi-raw = "0.6.0"
+uefi = { version = "0.29.0", features = ["alloc"] }
 log = "0.4.22"
 goblin = { version = "0.8.2", default-features = false, features = ["elf32", "elf64", "endian_fd"]}
 tar-no-std = "0.3.1"
 pci_types = "0.10.0"
 bitflags = "2.6.0"
+smoltcp = { version = "0.11.0", default-features = false, features = ["alloc", "log", "medium-ethernet", "proto-ipv4", "socket-raw"] }
 
 [build-dependencies]
 built = { version = "0.7.3", features = ["chrono", "git2"] }

@@ -131,4 +131,5 @@ loader/kernel.elf
 loader/initrd.tar
 loader/initrd
 nvdimm0
+rtl8139.dump
 towbootctl
