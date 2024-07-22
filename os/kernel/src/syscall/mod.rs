@@ -117,7 +117,7 @@ pub extern "C" fn sys_get_date() -> usize {
 
         match runtime_services.get_time() {
             Ok(time) => {
-                if time.is_valid() {
+                if time.is_valid().is_ok() {
                     let timezone = match time.time_zone() {
                         Some(timezone) => {
                             let delta = TimeDelta::try_minutes(timezone as i64).expect("Failed to create TimeDelta struct from timezone");

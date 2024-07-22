@@ -35,7 +35,8 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
+use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, pci_bus, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
+use crate::device::rtl8139::Rtl8139;
 use crate::memory::{MemorySpace, nvmem};
 use crate::memory::nvmem::Nfit;
 
@@ -191,6 +192,12 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     info!("Scanning PCI bus");
     init_pci();
 
+    for pci_device in pci_bus().search_by_ids(0x10ec, 0x8139) {
+        info!("Found Realtek RTL8139 network controller");
+        let rtl8139 = Rtl8139::new(pci_device);
+        info!("RTL8139 MAC address: [{}]", rtl8139.read_mac_address());
+    }
+
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
 
@@ -201,7 +208,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
             // Read last boot time from NVRAM
             let date = unsafe { date_ptr.read() };
-            if date.is_valid() {
+            if date.is_valid().is_ok() {
                 info!("Last boot time: [{:0>4}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}]", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
             }
 
@@ -327,10 +334,11 @@ fn multiboot2_search_memory_map(multiboot2_addr: *const BootInformationHeader) -
         }
 
         info!("Exiting EFI boot services to obtain runtime system table and memory map");
-        let (runtime_table, memory_map) = system_table.exit_boot_services(MemoryType::LOADER_DATA);
-
-        scan_efi_memory_map(&memory_map);
-        init_efi_system_table(runtime_table);
+        unsafe {
+            let (runtime_table, memory_map) = system_table.exit_boot_services(MemoryType::LOADER_DATA);
+            scan_efi_memory_map(&memory_map);
+            init_efi_system_table(runtime_table);
+        }
     } else {
         info!("EFI boot services have been exited");
         if let Some(memory_map) = multiboot.efi_memory_map_tag() {
