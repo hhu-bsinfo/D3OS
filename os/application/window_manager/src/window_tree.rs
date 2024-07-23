@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 #[derive(Clone)]
 pub enum WindowNode {
     Leaf(usize),
-    Twig {
+    Branch {
         left: Box<WindowNode>,
         right: Box<WindowNode>,
     },
@@ -15,8 +15,8 @@ impl WindowNode {
         WindowNode::Leaf(value)
     }
 
-    pub fn new_twig(left: WindowNode, right: WindowNode) -> Self {
-        WindowNode::Twig {
+    pub fn new_branch(left: WindowNode, right: WindowNode) -> Self {
+        WindowNode::Branch {
             left: Box::new(left),
             right: Box::new(right),
         }
@@ -26,13 +26,13 @@ impl WindowNode {
         match self {
             WindowNode::Leaf(value) => {
                 if *value == old_value {
-                    *self = WindowNode::new_twig(
+                    *self = WindowNode::new_branch(
                         WindowNode::new_leaf(old_value),
                         WindowNode::new_leaf(new_value),
                     );
                 }
             }
-            WindowNode::Twig { left, right } => {
+            WindowNode::Branch { left, right } => {
                 left.insert_value(old_value, new_value);
                 right.insert_value(old_value, new_value);
             }
@@ -41,7 +41,7 @@ impl WindowNode {
 
     pub fn get_sibling(&self, value: usize) -> Option<usize> {
         match self {
-            WindowNode::Twig { left, right } => match (&**left, &**right) {
+            WindowNode::Branch { left, right } => match (&**left, &**right) {
                 (WindowNode::Leaf(left_value), WindowNode::Leaf(right_value)) => {
                     if *left_value == value {
                         return Some(*right_value);
@@ -69,7 +69,7 @@ impl WindowNode {
 
     /// Returns whether the leaf has been successfully removed
     pub fn remove_leaf(&mut self, value: usize) -> bool {
-        if let WindowNode::Twig { left, right } = self {
+        if let WindowNode::Branch { left, right } = self {
             if let (WindowNode::Leaf(left_value), WindowNode::Leaf(right_value)) =
                 (&**left, &**right)
             {
@@ -122,7 +122,7 @@ impl WindowNode {
                     *node2 = Some(self);
                 }
             }
-            WindowNode::Twig { left, right } => {
+            WindowNode::Branch { left, right } => {
                 left.find_nodes_with_values(value1, value2, node1, node2);
                 right.find_nodes_with_values(value1, value2, node1, node2);
             }
