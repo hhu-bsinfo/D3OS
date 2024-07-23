@@ -35,8 +35,7 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, pci_bus, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
-use crate::device::rtl8139::Rtl8139;
+use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_rtl8139, init_serial_port, init_terminal, initrd, logger, memory, process_manager, ps2_devices, rtl8139, scheduler, serial_port, terminal, timer, tss};
 use crate::memory::{MemorySpace, nvmem};
 use crate::memory::nvmem::Nfit;
 
@@ -192,10 +191,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     info!("Scanning PCI bus");
     init_pci();
 
-    for pci_device in pci_bus().search_by_ids(0x10ec, 0x8139) {
-        info!("Found Realtek RTL8139 network controller");
-        let rtl8139 = Rtl8139::new(pci_device);
-        info!("RTL8139 MAC address: [{}]", rtl8139.read_mac_address());
+    init_rtl8139();
+    if let Some(rtl8139) = rtl8139() {
+        for i in 0..16 {
+            rtl8139.send(&['a' as u8 + i; 64]);
+        }
     }
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
