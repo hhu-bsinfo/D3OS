@@ -102,9 +102,9 @@ impl Workspace {
         focused_window.focus_prev_component();
     }
 
-    pub fn close_focused_window(&mut self) {
+    pub fn close_focused_window(&mut self) -> bool {
         if self.windows.len() == 1 {
-            return;
+            return false;
         }
 
         let buddy_id = self.buddy_tree_root.get_sibling(self.focused_window_id);
@@ -121,7 +121,7 @@ impl Workspace {
                 self.buddy_tree_root.remove_leaf(self.focused_window_id);
             }
             None => {
-                return;
+                return false;
             }
         }
 
@@ -139,6 +139,8 @@ impl Workspace {
         cursor.remove_current();
 
         self.focused_window_id = new_focused_window_id;
+
+        return true;
     }
 
     pub fn move_focused_window_forward(&mut self) {

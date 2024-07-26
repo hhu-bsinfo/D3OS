@@ -230,8 +230,10 @@ impl WindowManager {
                     'm' => {
                         /* Only works, if both buddies don't have subwindows inside them.
                         Move windows up before merging, if that is a problem */
-                        self.get_current_workspace_mut().close_focused_window();
-                        self.is_dirty = true;
+                        let was_closed = self.get_current_workspace_mut().close_focused_window();
+                        if was_closed {
+                            self.is_dirty = true;
+                        }
                     }
                     _ => {}
                 }
