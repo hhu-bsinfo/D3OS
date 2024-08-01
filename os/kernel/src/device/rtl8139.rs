@@ -3,11 +3,13 @@ use core::ops::BitOr;
 use core::sync::atomic::{AtomicU8, Ordering};
 use bitflags::bitflags;
 use log::info;
+use nolock::queues::mpsc;
 use pci_types::{CommandRegister, EndpointHeader};
 use smoltcp::wire::EthernetAddress;
 use spin::{Mutex, RwLock};
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 use x86_64::structures::paging::{Page, PageTableFlags};
+use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::VirtAddr;
 use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, rtl8139, scheduler};
@@ -106,7 +108,8 @@ struct Registers {
 pub struct Rtl8139 {
     registers: Registers,
     transmit_index: AtomicU8,
-    interrupt: InterruptVector
+    interrupt: InterruptVector,
+    send_queue: (Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>, mpsc::jiffy::Sender<PhysFrameRange>)
 }
 
 #[derive(Default)]
@@ -164,6 +167,11 @@ impl InterruptHandler for Rtl8139InterruptHandler {
             let mut status_reg = rtl8139.registers.interrupt_status.lock();
             let status = Interrupt::from_bits_retain(unsafe { status_reg.read() });
 
+            if status.contains(Interrupt::TRANSMIT_OK) {
+                let buffer = rtl8139.send_queue.0.lock().dequeue().expect("Failed to dequeue send buffer!");
+                unsafe { physical::free(buffer) };
+            }
+
             if status.contains(Interrupt::TRANSMIT_ERROR) {
                 panic!("Transmit failed!");
             }
@@ -190,7 +198,8 @@ impl Rtl8139 {
         info!("RTL8139 base address: [0x{:x}]", base_address);
 
         let interrupt = InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 + 32).unwrap();
-        let mut rtl8139 = Self { registers: Registers::new(base_address), transmit_index: AtomicU8::new(0), interrupt };
+        let send_queue = mpsc::jiffy::queue();
+        let mut rtl8139 = Self { registers: Registers::new(base_address), transmit_index: AtomicU8::new(0), interrupt, send_queue: (Mutex::new(send_queue.0), send_queue.1) };
 
         unsafe {
             info!("Powering on device");
@@ -207,7 +216,7 @@ impl Rtl8139 {
             info!("Masking interrupts");
             rtl8139.registers.interrupt_mask.write((Interrupt::RECEIVE_OK | Interrupt::RECEIVE_ERROR | Interrupt::TRANSMIT_OK | Interrupt::TRANSMIT_ERROR).bits());
 
-            info!("Enabling transmitter");
+            info!("Enabling transmitter/receiver");
             rtl8139.registers.command.write((Command::ENABLE_TRANSMITTER | Command::ENABLE_TRANSMITTER).bits());
         }
 
@@ -245,6 +254,9 @@ impl Rtl8139 {
             start: Page::from_start_address(VirtAddr::new(phys_start_addr.as_u64())).unwrap(),
             end: Page::from_start_address(VirtAddr::new(phys_buffer.end.start_address().as_u64())).unwrap()
         };
+
+        // Queue physical memory for deallocation after transmission
+        self.send_queue.1.enqueue(phys_buffer).expect("Failed to enqueue physical buffer!");
 
         // Disable caching for allocated buffer
         let kernel_process = process_manager().read().kernel_process().unwrap();

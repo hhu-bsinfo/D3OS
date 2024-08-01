@@ -3,8 +3,7 @@ use crate::interrupt::interrupt_handler::InterruptHandler;
 use stream::InputStream;
 use alloc::boxed::Box;
 use log::info;
-use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
-use nolock::queues::{mpmc, DequeueError};
+use nolock::queues::{DequeueError, mpmc};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use ps2::{Controller, KeyboardType};
 use ps2::error::{ControllerError, KeyboardError};
@@ -19,7 +18,7 @@ pub struct PS2 {
 }
 
 pub struct Keyboard {
-    buffer: (Receiver<u8>, Sender<u8>),
+    buffer: (mpmc::bounded::scq::Receiver<u8>, mpmc::bounded::scq::Sender<u8>),
 }
 
 #[derive(Default)]
