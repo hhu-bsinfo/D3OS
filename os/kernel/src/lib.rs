@@ -63,6 +63,7 @@ pub mod log;
 pub mod syscall;
 pub mod process;
 pub mod consts;
+pub mod naming;
 
 pub mod built_info {
     // The file has been placed there by the build script.
