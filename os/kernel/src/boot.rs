@@ -9,6 +9,7 @@
 */
 
 use crate::interrupt::interrupt_dispatcher;
+use crate::naming::name_service;
 use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
 use alloc::format;
@@ -107,7 +108,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize terminal and enable terminal logging
     init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
     logger().lock().register(terminal());
-
+ 
     // Dumping basic infos
     info!("Welcome to D3OS!");
     let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
@@ -224,6 +225,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             }
         }
     }
+
+    // Init naming service
+    name_service::init();
 
     // Load initial ramdisk
     let initrd_tag = multiboot.module_tags()
