@@ -13,6 +13,11 @@ use crate::memory::PAGE_SIZE;
 static PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> = Mutex::new(PageFrameListAllocator::new());
 static PHYS_LIMIT: Once<Mutex<Cell<PhysFrame>>> = Once::new();
 
+/// Check if the page frame allocator is currently locked.
+pub fn allocator_locked() -> bool {
+    PAGE_FRAME_ALLOCATOR.is_locked()
+}
+
 /// Insert an available memory region obtained during the boot process.
 pub unsafe fn insert(mut region: PhysFrameRange) {
     PHYS_LIMIT.call_once(|| Mutex::new(Cell::new(PhysFrame::from_start_address(PhysAddr::zero()).unwrap())));

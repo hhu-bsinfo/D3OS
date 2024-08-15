@@ -21,9 +21,6 @@ use core::mem;
 
 use spin::{Once, RwLock};
 
-
-const DEFAULT_NUMBER_OF_DIR_ENTRIES: usize = 0x10;
-
 /// helper function returning `root_dir`
 pub(super) fn get_root_dir() -> Arc<Directory> {
     let root = NAME_SERVICE.get();

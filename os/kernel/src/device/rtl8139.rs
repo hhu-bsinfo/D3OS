@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 use core::ops::BitOr;
 use core::sync::atomic::{AtomicU8, Ordering};
 use bitflags::bitflags;
@@ -15,7 +16,10 @@ use x86_64::VirtAddr;
 use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, rtl8139, scheduler};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::memory::physical;
+use crate::memory::{physical, PAGE_SIZE};
+
+const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
+const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 { BUFFER_SIZE / PAGE_SIZE } else { BUFFER_SIZE / PAGE_SIZE + 1 };
 
 bitflags! {
     pub struct Command: u8 {
@@ -93,15 +97,20 @@ struct TransmitDescriptor {
     address: PortWriteOnly<u32>
 }
 
+struct Receiver {
+    index: usize,
+    buffer: Vec<u8>
+}
+
 struct Registers {
     id: Mutex<(PortReadOnly<u8>, PortReadOnly<u8>, PortReadOnly<u8>, PortReadOnly<u8>, PortReadOnly<u8>, PortReadOnly<u8>)>,
     transmit_descriptors: [Mutex<TransmitDescriptor>; 4],
-    receive_buffer_start: PortReadOnly<u32>,
+    receive_buffer_start: PortWriteOnly<u32>,
     command: Port<u8>,
-    current_read_address: PortReadOnly<u32>,
+    current_read_address: Mutex<Port<u32>>,
     interrupt_mask: PortWriteOnly<u16>,
     interrupt_status: Mutex<Port<u16>>,
-    receive_configuration: PortReadOnly<u32>,
+    receive_configuration: PortWriteOnly<u32>,
     config1: PortWriteOnly<u8>,
 }
 
@@ -109,7 +118,8 @@ pub struct Rtl8139 {
     registers: Registers,
     transmit_index: AtomicU8,
     interrupt: InterruptVector,
-    send_queue: (Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>, mpsc::jiffy::Sender<PhysFrameRange>)
+    send_queue: (Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>, mpsc::jiffy::Sender<PhysFrameRange>),
+    receiver: Mutex<Receiver>
 }
 
 #[derive(Default)]
@@ -131,11 +141,11 @@ impl Registers {
                                    Mutex::new(TransmitDescriptor::new(base_address, 2)),
                                    Mutex::new(TransmitDescriptor::new(base_address, 3))],
             command: Port::new(base_address + 0x37),
-            receive_buffer_start: PortReadOnly::new(base_address + 0x30),
-            current_read_address: PortReadOnly::new(base_address + 0x38),
+            receive_buffer_start: PortWriteOnly::new(base_address + 0x30),
+            current_read_address: Mutex::new(Port::new(base_address + 0x38)),
             interrupt_mask: PortWriteOnly::new(base_address + 0x3c),
             interrupt_status: Mutex::new(Port::new(base_address + 0x3e)),
-            receive_configuration: PortReadOnly::new(base_address + 0x44),
+            receive_configuration: PortWriteOnly::new(base_address + 0x44),
             config1: PortWriteOnly::new(base_address + 0x52),
         }
     }
@@ -157,6 +167,15 @@ impl TransmitDescriptor {
     }
 }
 
+impl Receiver {
+    pub fn new() -> Self {
+        let receive_memory = physical::alloc(BUFFER_PAGES);
+        let receive_buffer = unsafe { Vec::from_raw_parts(receive_memory.start.start_address().as_u64() as *mut u8, BUFFER_SIZE, BUFFER_SIZE) };
+
+        Self { index: 0, buffer: receive_buffer }
+    }
+}
+
 impl InterruptHandler for Rtl8139InterruptHandler {
     fn trigger(&mut self) {
         if let Some(rtl8139) = rtl8139() {
@@ -167,9 +186,17 @@ impl InterruptHandler for Rtl8139InterruptHandler {
             let mut status_reg = rtl8139.registers.interrupt_status.lock();
             let status = Interrupt::from_bits_retain(unsafe { status_reg.read() });
 
-            if status.contains(Interrupt::TRANSMIT_OK) {
-                let buffer = rtl8139.send_queue.0.lock().dequeue().expect("Failed to dequeue send buffer!");
-                unsafe { physical::free(buffer) };
+            if status.contains(Interrupt::TRANSMIT_OK) && !physical::allocator_locked() {
+                let mut queue = rtl8139.send_queue.0.lock();
+                let mut buffer = queue.try_dequeue();
+                while buffer.is_ok() {
+                    unsafe { physical::free(buffer.unwrap()) };
+                    buffer = queue.try_dequeue();
+                }
+            }
+
+            if status.contains(Interrupt::RECEIVE_OK) {
+                rtl8139.process_received_packet();
             }
 
             if status.contains(Interrupt::TRANSMIT_ERROR) {
@@ -199,7 +226,8 @@ impl Rtl8139 {
 
         let interrupt = InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 + 32).unwrap();
         let send_queue = mpsc::jiffy::queue();
-        let mut rtl8139 = Self { registers: Registers::new(base_address), transmit_index: AtomicU8::new(0), interrupt, send_queue: (Mutex::new(send_queue.0), send_queue.1) };
+
+        let mut rtl8139 = Self { registers: Registers::new(base_address), transmit_index: AtomicU8::new(0), interrupt, send_queue: (Mutex::new(send_queue.0), send_queue.1), receiver: Mutex::new(Receiver::new()) };
 
         unsafe {
             info!("Powering on device");
@@ -216,8 +244,13 @@ impl Rtl8139 {
             info!("Masking interrupts");
             rtl8139.registers.interrupt_mask.write((Interrupt::RECEIVE_OK | Interrupt::RECEIVE_ERROR | Interrupt::TRANSMIT_OK | Interrupt::TRANSMIT_ERROR).bits());
 
+            info!("Configuring receive buffer");
+            rtl8139.registers.receive_buffer_start.write(rtl8139.receiver.lock().buffer.as_ptr() as u32);
+            rtl8139.registers.receive_configuration.write((ReceiveFlag::ACCEPT_PHYSICAL_MATCH | ReceiveFlag::ACCEPT_BROADCAST | ReceiveFlag::WRAP | ReceiveFlag::LENGTH_8K).bits());
+            rtl8139.registers.current_read_address.lock().write(0);
+
             info!("Enabling transmitter/receiver");
-            rtl8139.registers.command.write((Command::ENABLE_TRANSMITTER | Command::ENABLE_TRANSMITTER).bits());
+            rtl8139.registers.command.write((Command::ENABLE_TRANSMITTER | Command::ENABLE_RECEIVER).bits());
         }
 
         return rtl8139;
@@ -286,5 +319,30 @@ impl Rtl8139 {
     fn next_transmit_descriptor(&self) -> usize {
         let index = self.transmit_index.fetch_add(1, Ordering::Relaxed);
         (index % 4) as usize
+    }
+
+    fn process_received_packet(&self) {
+        if let Some(mut receiver) = self.receiver.try_lock() {
+            // Read packet header
+            let header = unsafe { (receiver.buffer.as_ptr().add(receiver.index) as *const PacketHeader).read() };
+
+            // Check if packet is valid and update index accordingly
+            let status = ReceiveStatus::from_bits_retain(header.status);
+            if status.contains(ReceiveStatus::OK) {
+                receiver.index += header.length as usize + size_of::<PacketHeader>(); // Add packet length
+                receiver.index = (receiver.index + 3) & !3; // Align to 4 bytes
+                if receiver.index >= 8192 {
+                    receiver.index %= 8192; // Wrap around buffer
+                }
+
+                if let Some(mut read_addr_register) = self.registers.current_read_address.try_lock() {
+                    unsafe { read_addr_register.write(receiver.index as u32) };
+                } else {
+                    panic!("Current read address register is locked during packet processing!");
+                }
+            }
+        } else {
+            panic!("Receiver is locked during packet processing!");
+        }
     }
 }
