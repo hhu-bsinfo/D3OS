@@ -207,7 +207,9 @@ pub fn init_rtl8139() {
             info!("Found Realtek RTL8139 network controller");
             let rtl8139 = Rtl8139::new(devices[0]);
             info!("RTL8139 MAC address: [{}]", rtl8139.read_mac_address());
-            rtl8139
+
+            rtl8139.plugin();
+            return rtl8139;
         });
     }
 }
