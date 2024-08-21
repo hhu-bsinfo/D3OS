@@ -9,7 +9,7 @@ use runtime::*;
 use io::{print, println};
 use io::read::read;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn main() {
     let mut command = String::new();
     print!("> ");

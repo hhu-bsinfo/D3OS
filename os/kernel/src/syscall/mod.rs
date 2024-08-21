@@ -15,7 +15,7 @@ use crate::process::thread::Thread;
 
 pub mod syscall_dispatcher;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_read() -> usize {
     let terminal = terminal();
     match terminal.read_byte() {
@@ -24,14 +24,14 @@ pub extern "C" fn sys_read() -> usize {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_write(buffer: *const u8, length: usize) {
     let string = from_utf8(unsafe { slice_from_raw_parts(buffer, length).as_ref().unwrap() }).unwrap();
     let terminal = terminal();
     terminal.write_str(string);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_map_user_heap(size: usize) -> usize {
     let process = process_manager().read().current_process();
     let code_areas = process.find_vmas(VmaType::Code);
@@ -45,18 +45,18 @@ pub extern "C" fn sys_map_user_heap(size: usize) -> usize {
     return heap_start.as_u64() as usize;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_process_id() -> usize {
     process_manager().read().current_process().id()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_process_exit() {
     scheduler().current_thread().process().exit();
     scheduler().exit();
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(improper_ctypes_definitions)] // 'entry' takes no arguments and has no return value, so we just assume that the "C" and "Rust" ABIs act the same way in this case
 pub extern "C" fn sys_thread_create(kickoff_addr: u64, entry: fn()) -> usize {
     let thread = Thread::new_user_thread(process_manager().read().current_process(), VirtAddr::new(kickoff_addr), entry);
@@ -66,32 +66,32 @@ pub extern "C" fn sys_thread_create(kickoff_addr: u64, entry: fn()) -> usize {
     return id;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_thread_id() -> usize {
     scheduler().current_thread().id()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_thread_switch() {
     scheduler().switch_thread_no_interrupt();
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_thread_sleep(ms: usize) {
     scheduler().sleep(ms);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_thread_join(id: usize) {
     scheduler().join(id);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_thread_exit() {
     scheduler().exit();
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize) -> usize {
     let app_name = from_utf8(unsafe { slice_from_raw_parts(name_buffer, name_length).as_ref().unwrap() }).unwrap();
     match initrd().entries().find(|entry| entry.filename().as_str().unwrap() == app_name) {
@@ -104,12 +104,12 @@ pub extern "C" fn sys_process_execute_binary(name_buffer: *const u8, name_length
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_get_system_time() -> usize {
     timer().read().systime_ms()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_get_date() -> usize {
     if let Some(efi_system_table) = efi_system_table() {
         let system_table = efi_system_table.read();
@@ -145,7 +145,7 @@ pub extern "C" fn sys_get_date() -> usize {
     return 0;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sys_set_date(date_ms: usize) -> usize {
     if let Some(efi_system_table) = efi_system_table() {
         let system_table = efi_system_table.write();

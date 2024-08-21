@@ -105,7 +105,7 @@ impl Thread {
 
  
     ///
-    /// Description: Parses elf_buffer for entry function and returns a reference to a prepeared user thread
+    /// Description: Parses elf_buffer for entry function and returns a reference to a prepared user thread
     ///
     /// Parameters: `elf_buffer` elf code image
     ///

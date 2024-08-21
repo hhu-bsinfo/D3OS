@@ -49,7 +49,7 @@ pub fn init() {
     KernelGsBase::write(VirtAddr::new(ptr::from_ref(core_local_storage.deref()) as u64));
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static SYSCALL_TABLE: SyscallTable = SyscallTable::new();
 
 #[repr(align(64))]
@@ -86,7 +86,7 @@ unsafe impl Send for SyscallTable {}
 unsafe impl Sync for SyscallTable {}
 
 #[naked]
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(unsafe_op_in_unsafe_fn)]
 // This functions does not take any parameters per its declaration,
 // but in reality, it takes at least the system call ID in rax
@@ -160,7 +160,7 @@ unsafe extern "C" fn syscall_handler() {
 }
 
 #[naked]
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" fn syscall_disp() {
     asm!(
@@ -171,7 +171,7 @@ unsafe extern "C" fn syscall_disp() {
     );
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 unsafe extern "C" fn syscall_abort() {
     let syscall_number: u64;
 

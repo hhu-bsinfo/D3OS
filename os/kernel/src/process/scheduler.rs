@@ -53,7 +53,7 @@ unsafe impl Send for Scheduler {}
 unsafe impl Sync for Scheduler {}
 
 /// Called from assembly code, after the thread has been switched
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn unlock_scheduler() {
     unsafe {
         scheduler().ready_state.force_unlock();
