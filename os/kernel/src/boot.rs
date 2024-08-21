@@ -20,7 +20,13 @@ use core::ops::Deref;
 use core::ptr;
 use chrono::DateTime;
 use log::{debug, error, info};
-use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, Tag};
+use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
+use smoltcp::iface;
+use smoltcp::iface::Interface;
+use smoltcp::phy::PcapLinkType::Ip;
+use smoltcp::time::Instant;
+use smoltcp::wire::{HardwareAddress, IpCidr, Ipv4Address};
+use smoltcp::wire::IpAddress::Ipv4;
 use uefi::prelude::*;
 use uefi::table::boot::{MemoryMap, PAGE_SIZE};
 use uefi::table::Runtime;
@@ -36,12 +42,14 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_rtl8139, init_serial_port, init_terminal, initrd, logger, memory, process_manager, ps2_devices, rtl8139, scheduler, serial_port, terminal, timer, tss};
+use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, network, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
+use crate::device::qemu_cfg;
 use crate::memory::{MemorySpace, nvmem};
 use crate::memory::nvmem::Nfit;
+use crate::network::{rtl8139, SocketType};
 
 // import labels from linker script 'link.ld'
-extern "C" {
+unsafe extern "C" {
     static ___KERNEL_DATA_START__: u64; // start address of OS image
     static ___KERNEL_DATA_END__: u64;   // end address of OS image
 }
@@ -53,7 +61,7 @@ const INIT_HEAP_PAGES: usize = 0x400;   // number of heap pages for booting the 
 /// Parameters: \
 ///    `multiboot2_magic` magic number read from 'eax' \
 ///    `multiboot2_addr` address of multiboot2 info records
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
     // Initialize logger
     if logger().lock().init().is_err() {
@@ -131,9 +139,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize ACPI tables
     info!("Initializing ACPI tables");
     let rsdp_addr: usize = if let Some(rsdp_tag) = multiboot.rsdp_v2_tag() {
-        ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
+        ptr::from_ref(rsdp_tag) as usize + size_of::<TagHeader>()
     } else if let Some(rsdp_tag) = multiboot.rsdp_v1_tag() {
-        ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
+        ptr::from_ref(rsdp_tag) as usize + size_of::<TagHeader>()
     } else {
         panic!("ACPI not available!");
     };
@@ -192,11 +200,24 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     info!("Scanning PCI bus");
     init_pci();
 
-    init_rtl8139();
-    if let Some(rtl8139) = rtl8139() {
-        for i in 0..16 {
-            rtl8139.send(&['a' as u8 + i; 64]);
-        }
+    // Initialize network stack
+    network::init();
+
+    // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
+    if qemu_cfg::is_available() {
+        let device = unsafe { ptr::from_ref(rtl8139().unwrap()).cast_mut().as_mut().unwrap() };
+        let time = timer().read().systime_ms();
+
+        let mut conf = iface::Config::new(HardwareAddress::from(device.read_mac_address()));
+        conf.random_seed = time as u64;
+
+        let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
+        interface.update_ip_addrs(|ips| {
+            ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24)).expect("Failed to add IP address");
+        });
+        interface.routes_mut().add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2)).expect("Failed to add default route");
+
+        network::add_interface(interface);
     }
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)

@@ -11,7 +11,6 @@
 #![feature(alloc_layout_extra)]
 #![feature(const_mut_refs)]
 #![feature(naked_functions)]
-#![feature(asm_const)]
 #![feature(exact_size_is_empty)]
 #![feature(fmt_internals)]
 #![feature(abi_x86_interrupt)]
@@ -34,7 +33,7 @@ use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use core::fmt::Arguments;
 use core::panic::PanicInfo;
-use ::log::{error, info, Level, Log, Record};
+use ::log::{error, Level, Log, Record};
 use acpi::AcpiTables;
 use multiboot2::ModuleTag;
 use spin::{Mutex, Once, RwLock};
@@ -47,7 +46,6 @@ use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::PhysAddr;
 use crate::device::pci::PciBus;
-use crate::device::rtl8139::Rtl8139;
 use crate::memory::PAGE_SIZE;
 use crate::process::process::ProcessManager;
 use crate::syscall::syscall_dispatcher::CoreLocalStorage;
@@ -64,6 +62,7 @@ pub mod syscall;
 pub mod process;
 pub mod consts;
 pub mod naming;
+pub mod network;
 
 pub mod built_info {
     // The file has been placed there by the build script.
@@ -126,7 +125,6 @@ static SERIAL_PORT: Once<SerialPort> = Once::new();
 static TERMINAL: Once<LFBTerminal> = Once::new();
 static PS2: Once<PS2> = Once::new();
 static PCI: Once<PciBus> = Once::new();
-static RTL8139: Once<Rtl8139> = Once::new();
 
 pub fn init_efi_system_table(table: SystemTable<Runtime>) {
     EFI_SYSTEM_TABLE.call_once(|| EfiSystemTable::new(table));
@@ -198,20 +196,6 @@ pub fn init_keyboard() {
 
 pub fn init_pci() {
     PCI.call_once(|| PciBus::scan());
-}
-
-pub fn init_rtl8139() {
-    let devices = pci_bus().search_by_ids(0x10ec, 0x8139);
-    if devices.len() > 0 {
-        RTL8139.call_once(|| {
-            info!("Found Realtek RTL8139 network controller");
-            let rtl8139 = Rtl8139::new(devices[0]);
-            info!("RTL8139 MAC address: [{}]", rtl8139.read_mac_address());
-
-            rtl8139.plugin();
-            return rtl8139;
-        });
-    }
 }
 
 pub fn init_initrd(module: &ModuleTag) {
@@ -310,8 +294,4 @@ pub fn ps2_devices() -> &'static PS2 {
 
 pub fn pci_bus() -> &'static PciBus {
     PCI.get().expect("Trying to access PCI bus before initialization!")
-}
-
-pub fn rtl8139() -> Option<&'static Rtl8139> {
-    RTL8139.get()
 }

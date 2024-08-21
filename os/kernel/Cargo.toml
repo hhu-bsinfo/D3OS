@@ -21,7 +21,7 @@ syscall = { path = "../library/syscall" }
 spin = "0.9.8"
 x86_64 = "0.15.1"
 linked_list_allocator = { version = "0.10.5", features = ["alloc_ref"] }
-multiboot2 = "0.20.2"
+multiboot2 = "0.21.0"
 ps2 = "0.2.0"
 pc-keyboard = "0.7.0"
 anstyle-parse = "0.2.4"
@@ -32,13 +32,13 @@ x2apic = "0.4.3"
 raw-cpuid = "11.0.2"
 smallmap = "1.4.2"
 uefi-raw = "0.6.0"
-uefi = { version = "0.29.0", features = ["alloc"] }
+uefi = { version = "0.30.0", features = ["alloc"] }
 log = "0.4.22"
 goblin = { version = "0.8.2", default-features = false, features = ["elf32", "elf64", "endian_fd"]}
 tar-no-std = "0.3.1"
 pci_types = "0.10.0"
 bitflags = "2.6.0"
-smoltcp = { version = "0.11.0", default-features = false, features = ["alloc", "log", "medium-ethernet", "proto-ipv4", "socket-raw"] }
+smoltcp = { version = "0.11.0", default-features = false, features = ["alloc", "log", "medium-ethernet", "proto-ipv4", "socket-udp"] }
 
 [build-dependencies]
 built = { version = "0.7.3", features = ["chrono", "git2"] }

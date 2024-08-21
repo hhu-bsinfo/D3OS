@@ -21,7 +21,7 @@ fn panic(info: &PanicInfo) -> ! {
     thread::exit();
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn entry() {
     let heap_start = syscall1(SystemCall::MapUserHeap, HEAP_SIZE) as *mut u8;
     unsafe { ALLOCATOR.lock().init(heap_start, HEAP_SIZE); }

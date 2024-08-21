@@ -34,7 +34,7 @@ args = [
     "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
 
     # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1798-:1798",
+    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
     # Audio configuration (Using pulse audio for Linux)
@@ -64,7 +64,7 @@ args = [
     "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
 
     # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1798-:1798",
+    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
     # Audio configuration (Using coreaduio for macOS)
@@ -101,7 +101,7 @@ args = [
     "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
 
     # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1798-:1798",
+    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
     # Audio configuration (Using pulse audio for Linux)
@@ -128,7 +128,7 @@ args = [
     "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
 
     # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1798-:1798",
+    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
     # Audio configuration (Using coreaduio for macOS)

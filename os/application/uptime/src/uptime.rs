@@ -7,7 +7,7 @@ use runtime::*;
 use io::{print, println};
 use time::systime;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn main() {
     let systime = systime();
 

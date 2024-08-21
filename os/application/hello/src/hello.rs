@@ -7,7 +7,7 @@ use concurrent::{process, thread};
 use runtime::*;
 use io::{print, println};
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn main() {
     let process = process::current();
     let thread = thread::current();
