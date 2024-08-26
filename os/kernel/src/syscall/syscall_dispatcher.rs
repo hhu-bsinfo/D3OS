@@ -1,18 +1,29 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: syscall_dispatcher                                              ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: Low-level dispatcher for system calls.                          ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, 22.8.2024, HHU                                  ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
+use crate::syscall::{
+    sys_get_date, sys_get_system_time, sys_map_user_heap, sys_process_execute_binary,
+    sys_process_exit, sys_process_id, sys_read, sys_set_date, sys_thread_create, sys_thread_exit,
+    sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch, sys_write, sys_mkentry,
+};
+use crate::{core_local_storage, tss};
 use core::arch::asm;
 use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
+use syscall::NUM_SYSCALLS;
 use x86_64::registers::control::{Efer, EferFlags};
 use x86_64::registers::model_specific::{KernelGsBase, LStar, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
-use syscall::NUM_SYSCALLS;
-use crate::{core_local_storage, tss};
-use crate::syscall::{sys_write, sys_thread_exit, sys_thread_sleep, sys_thread_switch, sys_process_id, sys_thread_id, sys_read, sys_map_user_heap, sys_thread_join, sys_process_execute_binary, sys_get_system_time, sys_get_date, sys_set_date, sys_thread_create, sys_process_exit};
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
-
 
 #[repr(C, packed)]
 pub struct CoreLocalStorage {
@@ -22,7 +33,10 @@ pub struct CoreLocalStorage {
 
 impl CoreLocalStorage {
     pub const fn new() -> Self {
-        Self { tss_rsp0_ptr: VirtAddr::zero(), user_rsp: VirtAddr::zero() }
+        Self {
+            tss_rsp0_ptr: VirtAddr::zero(),
+            user_rsp: VirtAddr::zero(),
+        }
     }
 }
 
@@ -37,7 +51,10 @@ pub fn init() {
     let ss_sysret = SegmentSelector::new(3, PrivilegeLevel::Ring3);
 
     if let Err(err) = Star::write(cs_sysret, ss_sysret, cs_syscall, ss_syscall) {
-        panic!("System Call: Failed to initialize STAR register (Error: {})", err)
+        panic!(
+            "System Call: Failed to initialize STAR register (Error: {})",
+            err
+        )
     }
 
     // Set rip for syscall
@@ -45,8 +62,11 @@ pub fn init() {
 
     // Initialize core local storage (accessible via 'swapgs')
     let mut core_local_storage = core_local_storage().lock();
-    core_local_storage.tss_rsp0_ptr = VirtAddr::new(ptr::from_ref(tss().lock().deref()) as u64 + size_of::<u32>() as u64);
-    KernelGsBase::write(VirtAddr::new(ptr::from_ref(core_local_storage.deref()) as u64));
+    core_local_storage.tss_rsp0_ptr =
+        VirtAddr::new(ptr::from_ref(tss().lock().deref()) as u64 + size_of::<u32>() as u64);
+    KernelGsBase::write(VirtAddr::new(
+        ptr::from_ref(core_local_storage.deref()) as u64
+    ));
 }
 
 #[unsafe(no_mangle)]
@@ -76,7 +96,8 @@ impl SyscallTable {
                 sys_thread_exit as *const _,
                 sys_get_system_time as *const _,
                 sys_get_date as *const _,
-                sys_set_date as *const _
+                sys_set_date as *const _,
+                sys_mkentry as *const _,
             ],
         }
     }
@@ -119,6 +140,9 @@ unsafe extern "C" fn syscall_handler() {
     "push r13",
     "push r14",
     "push r15",
+
+    // copy 4th argument to rcx to adhere x86_64 ABI
+    "mov rcx, r10",
 
     // Enable interrupts (we are now on the kernel stack and can handle them properly)
     "sti",
