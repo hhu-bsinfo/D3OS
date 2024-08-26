@@ -1,3 +1,11 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: lib                                                             ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: High-level dispatcher for system calls.                         ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, 22.8.2024, HHU                                  ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::ToString;
@@ -12,6 +20,8 @@ use crate::{efi_system_table, initrd, process_manager, scheduler, terminal, time
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::thread::Thread;
+use crate::naming::name_service;
+use alloc::vec; // for naming service, for the time being
 
 pub mod syscall_dispatcher;
 
@@ -171,4 +181,15 @@ pub extern "C" fn sys_set_date(date_ms: usize) -> usize {
     }
 
     return false as usize;
+}
+
+
+
+#[no_mangle]
+pub extern "C" fn sys_mkentry(path_buff: *const u8, path_buff_len: usize, name_buff: *const u8, name_buff_len: usize, data: usize) -> usize {
+    let path = from_utf8(unsafe { slice_from_raw_parts(path_buff, path_buff_len).as_ref().unwrap() }).unwrap();
+    let name = from_utf8(unsafe { slice_from_raw_parts(name_buff, name_buff_len).as_ref().unwrap() }).unwrap();
+    let r = name_service::mkentry(path, name, vec![1]);
+    //info!("sys_mkentry({}, {}, {}, {}, {})", arg1, arg2, arg3, arg4, arg5);
+    0
 }
