@@ -1,3 +1,4 @@
+#![feature(unsafe_attributes)]
 #![no_std]
 
 use core::panic::PanicInfo;

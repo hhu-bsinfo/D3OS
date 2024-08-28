@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Low-level dispatcher for system calls.                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, 22.8.2024, HHU                                  ║
+   ║ Author: Fabian Ruhland & Michael Schoettner, 27.8.2024, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use crate::syscall::{
@@ -109,9 +109,15 @@ unsafe impl Sync for SyscallTable {}
 #[naked]
 #[unsafe(no_mangle)]
 #[allow(unsafe_op_in_unsafe_fn)]
-// This functions does not take any parameters per its declaration,
-// but in reality, it takes at least the system call ID in rax
-// and may take additional parameters for the system call in rdi, rsi and rdx.
+///
+/// Description: \
+///    This functions does not take any parameters per its declaration,
+///    but in reality, it takes at least the system call ID in rax
+///    and may take additional parameters for the system call in `rdi`, `rsi` ... \
+///    See AMD64 ABI. 
+///
+/// Return: \
+///    Two values in `rax`, `rdx` to reconstruct `Result`in user mode
 unsafe extern "C" fn syscall_handler() {
     asm!(
     // We are now in ring 0, but still on the user stack
@@ -129,7 +135,7 @@ unsafe extern "C" fn syscall_handler() {
     // Store registers (except rax, which is used for system call ID and return value)
     "push rbx",
     "push rcx", // Contains rip for returning to ring 3
-    "push rdx",
+   // "push rdx",
     "push rdi",
     "push rsi",
     "push r8",
@@ -165,7 +171,7 @@ unsafe extern "C" fn syscall_handler() {
     "pop r8",
     "pop rsi",
     "pop rdi",
-    "pop rdx",
+  //  "pop rdx",
     "pop rcx", // Contains rip for returning to ring 3
     "pop rbx",
 

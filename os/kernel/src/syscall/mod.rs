@@ -185,11 +185,11 @@ pub extern "C" fn sys_set_date(date_ms: usize) -> usize {
 
 
 
-#[no_mangle]
-pub extern "C" fn sys_mkentry(path_buff: *const u8, path_buff_len: usize, name_buff: *const u8, name_buff_len: usize, data: usize) -> usize {
+#[unsafe(no_mangle)]
+pub extern "C" fn sys_mkentry(path_buff: *const u8, path_buff_len: usize, name_buff: *const u8, name_buff_len: usize, data: usize) -> (usize, usize) {
     let path = from_utf8(unsafe { slice_from_raw_parts(path_buff, path_buff_len).as_ref().unwrap() }).unwrap();
     let name = from_utf8(unsafe { slice_from_raw_parts(name_buff, name_buff_len).as_ref().unwrap() }).unwrap();
     let r = name_service::mkentry(path, name, vec![1]);
     //info!("sys_mkentry({}, {}, {}, {}, {})", arg1, arg2, arg3, arg4, arg5);
-    0
+    (0xAA, 0xBB)
 }
