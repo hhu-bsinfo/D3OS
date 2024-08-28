@@ -3,13 +3,12 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Syscall interface in user mode.                                 ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, 22.8.2024, HHU                                  ║
+   ║ Author: Fabian Ruhland, Michael Schoettner, 28.8.2024, HHU              ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![no_std]
 
 use core::arch::asm;
-use crate::SystemCall::Mkentry;
 
 #[repr(usize)]
 #[allow(dead_code)]
@@ -30,9 +29,43 @@ pub enum SystemCall {
     GetDate,
     SetDate,
     Mkentry,
+
+    // no syscall, just marking last number, see NUM_SYSCALLS
+    // insert any new system calls before this marker
+    LastEntryMarker,
 }
 
-pub const NUM_SYSCALLS: usize = Mkentry as usize + 1;
+pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
+
+///
+/// Description:
+///    Convert return values from a syscall to a Rust `Result`
+///
+/// Parameters: \
+///   `code`  first return value of a syscall \
+///   `val`   second return value of a syscall \
+///   `is_ok` function to termine if the result was `Ok` or `Err` \
+///   `ok_f`  function to produce the content for `Ok` \
+///   `err_f` function to produce the content for `Err`
+#[inline]
+pub fn convert_syscall_codes_to_result<T, E, D, F, G>(
+    code: usize,
+    val: usize,
+    is_ok_f: D,
+    ok_f: F,
+    err_f: G,
+) -> Result<T, E>
+where
+    F: Fn(usize, usize) -> T,
+    G: Fn(usize, usize) -> E,
+    D: Fn(usize, usize) -> bool,
+{
+    if is_ok_f(code, val) {
+        Err(err_f(code, val))
+    } else {
+        Ok(ok_f(code, val))
+    }
+}
 
 #[inline(always)]
 pub fn syscall0(call: SystemCall) -> usize {
@@ -134,16 +167,24 @@ pub fn syscall4(call: SystemCall, arg1: usize, arg2: usize, arg3: usize, arg4: u
 
 #[inline(always)]
 #[allow(dead_code)]
-pub fn syscall5(call: SystemCall, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> usize {
-    let ret: usize;
+pub fn syscall5(
+    call: SystemCall,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+    arg4: usize,
+    arg5: usize,
+) -> (usize, usize) {
+    let code: usize;
+    let val: usize;
 
     unsafe {
         asm!(
         "syscall",
-        inlateout("rax") call as usize => ret,
+        inlateout("rax") call as usize => code,
         in("rdi") arg1,
         in("rsi") arg2,
-        in("rdx") arg3,
+        inlateout("rdx") arg3 => val,
         in("r10") arg4,
         in("r8") arg5,
         out("rcx") _,
@@ -152,9 +193,40 @@ pub fn syscall5(call: SystemCall, arg1: usize, arg2: usize, arg3: usize, arg4: u
         );
     }
 
-    return ret;
+    return (code, val);
 }
 
+pub fn syscall(call: SystemCall, args: &[usize]) -> (usize, usize) {
+    let code: usize;
+    let val: usize;
+
+    if args.len() > 6 {
+        panic!("System call with more than six params is not supported.");
+    }
+
+    let a0 = *args.first().unwrap_or(&0usize);
+    let a1 = *args.get(1).unwrap_or(&0usize);
+    let a2 = *args.get(2).unwrap_or(&0usize);
+    let a3 = *args.get(3).unwrap_or(&0usize);
+    let a4 = *args.get(4).unwrap_or(&0usize);
+    let a5 = *args.get(5).unwrap_or(&0usize);
+
+    unsafe {
+        asm!(
+            "syscall", 
+            inlateout("rax") call as usize => code, 
+            in("rdi") a0, 
+            in("rsi") a1, 
+            inlateout("rdx") a2 => val, 
+            in("r10") a3, 
+            in("r8") a4, 
+            in("r9") a5, 
+            lateout("rcx") _, 
+            lateout("r11") _, 
+            clobber_abi("system"));
+    }
+    (code, val)
+}
 
 /*
 /// Tizzler, kernel

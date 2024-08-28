@@ -1,3 +1,4 @@
+#![feature(unsafe_attributes)]
 #![no_std]
 
 extern crate alloc;
@@ -7,10 +8,10 @@ use runtime::*;
 use io::{print, println};
 use naming::mkentry;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn main() {
 
-    let res = mkentry("/home/schoettner", "test.txt", 1);
+    let (r1,r2) = mkentry("/home/schoettner", "test.txt", 1);
 
-    println!("mkentry: {}", res);
+    println!("mkentry: 0x{:x}, 0x{:x}", r1,r2);
 }

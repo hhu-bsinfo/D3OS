@@ -25,8 +25,10 @@ use crate::naming::stat::Stat;
 ///   `content` data bytes
 ///
 pub fn mkentry(path: &str, name: &str, content: Vec<u8>) -> Result<()> {
-    info!("mkentry");
-    get_root_dir().mkentry(path, name, content)
+    let r =     get_root_dir().mkentry(path, name, content);
+
+    info!("mkentry: res = {:?}", r);
+    return r;
 }
 
 ///

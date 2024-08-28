@@ -3,34 +3,37 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Syscalls for the naming service.                                ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, 22.8.2024, HHU                              ║
+   ║ Author: Michael Schoettner, 28.8.2024, HHU                              ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![no_std]
 
 pub mod consts;
 
-use syscall::{syscall5, SystemCall};
+use syscall::{SystemCall, syscall, convert_syscall_codes_to_result};
+use io::{print, println};
 
-pub fn mkentry(path: &str, name: &str, data: usize) -> usize {
-    let result = syscall5(
+pub fn mkentry(path: &str, name: &str, data: usize) -> (usize, usize) {
+    let (code, val) = syscall(
         SystemCall::Mkentry,
-        path.as_bytes().as_ptr() as usize,
-        path.len(),
-        name.as_bytes().as_ptr() as usize,
-        name.len(),
-        data, // place holder, to be replaced by pointer to container
+        &[
+            path.as_bytes().as_ptr() as usize,
+            path.len(),
+            name.as_bytes().as_ptr() as usize,
+            name.len(),
+            data, // place holder, to be replaced by pointer to container
+        ],
     );
-/*
-    let (code, val) = syscall5(call, arg1, arg2, arg3, arg4, arg5);
 
-    let v = convert_codes_to_result(
+    let v:Result<usize, usize> = convert_syscall_codes_to_result(
         code,
         val,
         |c, _| c != 0,
-        |_, _| unsafe { clock_info.assume_init() },
-        |_, v| v.into(),
+        |_, _| val.into(),
+        |_, v| val.into(),
     );
-*/
-    result
+
+    println!("lib/mkentry: result = {:?}", v);
+
+    (code, val)
 }
