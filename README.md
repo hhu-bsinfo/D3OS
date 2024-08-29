@@ -45,3 +45,9 @@ To only build the bootable image _d3os.img_, run:
 ```
 cargo make --no-workspace image
 ```
+
+Do not forget to update your compiler from time to time:
+
+```
+rustup update nightly
+```
