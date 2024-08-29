@@ -11,7 +11,7 @@ use naming::mkentry;
 #[unsafe(no_mangle)]
 pub fn main() {
 
-    let (r1,r2) = mkentry("/home/schoettner", "test.txt", 1);
+    let res = mkentry("/home/schoettner", "test.txt", 1);
 
-    println!("mkentry: 0x{:x}, 0x{:x}", r1,r2);
+    println!("app: mkentry {:?}", res);
 }

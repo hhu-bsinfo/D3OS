@@ -8,12 +8,10 @@
 */
 #![no_std]
 
-pub mod consts;
-
 use syscall::{SystemCall, syscall, convert_syscall_codes_to_result};
 use io::{print, println};
 
-pub fn mkentry(path: &str, name: &str, data: usize) -> (usize, usize) {
+pub fn mkentry(path: &str, name: &str, data: usize) -> Result<usize, usize> {
     let (code, val) = syscall(
         SystemCall::Mkentry,
         &[
@@ -35,5 +33,5 @@ pub fn mkentry(path: &str, name: &str, data: usize) -> (usize, usize) {
 
     println!("lib/mkentry: result = {:?}", v);
 
-    (code, val)
+    return v;
 }

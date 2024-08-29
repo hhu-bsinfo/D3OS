@@ -10,7 +10,7 @@ use alloc::vec;
 use ::log::info;
 
 use crate::naming::name_service::{cont, del, dir, mkdir, mkentry, rename, stat};
-use crate::naming::result::{Errno, Error};
+use syscall::consts::Errno;
 
 ///
 /// Description:
@@ -50,7 +50,7 @@ fn test_mkdir() {
     // Create same directory & subdirectory -> should fail
     let r = mkdir("/home/schoettner");
     assert!(
-        r == Err(Error::new(Errno::EEXIST)),
+        r == Err(Errno::EEXIST),
         "mkdir(\"{}\") -> {:?}",
         path,
         r
@@ -59,7 +59,7 @@ fn test_mkdir() {
     // Create same parent directory -> should fail
     let r = mkdir("/home");
     assert!(
-        r == Err(Error::new(Errno::EEXIST)),
+        r == Err(Errno::EEXIST),
         "mkdir(\"{}\") -> {:?}",
         path,
         r
@@ -92,7 +92,7 @@ fn test_mkentry() {
     let name = "brief.txt";
     let r = mkentry(path, name, vec![1, 1, 1, 1, 1]);
     assert!(
-        r == Err(Error::new(Errno::ENOENT)),
+        r == Err(Errno::ENOENT),
         "mkdir(\"{}\", \"{}\") -> {:?}",
         path,
         name,
@@ -104,7 +104,7 @@ fn test_mkentry() {
     let name = "brief.txt";
     let r = mkentry(path, name, vec![1, 1, 1, 1, 1]);
     assert!(
-        r == Err(Error::new(Errno::EEXIST)),
+        r == Err(Errno::EEXIST),
         "mkdir(\"{}\", \"{}\") -> {:?}",
         path,
         name,

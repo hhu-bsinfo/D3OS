@@ -1,7 +1,7 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: syscall_dispatcher                                              ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Low-level dispatcher for system calls.                          ║
+   ║ Descr.: Dispatcher for system calls.                                    ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland & Michael Schoettner, 27.8.2024, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
@@ -134,7 +134,7 @@ unsafe extern "C" fn syscall_handler() {
     // Store registers (except rax, which is used for system call ID and return value)
     "push rbx",
     "push rcx", // Contains rip for returning to ring 3
-   // "push rdx",
+   // "push rdx", // Contains 2nd return value -> do not save & restore
     "push rdi",
     "push rsi",
     "push r8",
@@ -170,7 +170,7 @@ unsafe extern "C" fn syscall_handler() {
     "pop r8",
     "pop rsi",
     "pop rdi",
-  //  "pop rdx",
+  //  "pop rdx", // Contains 2nd return value -> do not save & restore
     "pop rcx", // Contains rip for returning to ring 3
     "pop rbx",
 

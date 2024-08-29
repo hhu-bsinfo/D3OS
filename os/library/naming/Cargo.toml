@@ -8,3 +8,6 @@ authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhl
 # Local dependencies
 syscall = { path = "../syscall" }
 io = { path = "../io" }
+
+# External depencies
+num_enum = { version = "0.7", default-features = false }
