@@ -1,38 +1,40 @@
+use alloc::boxed::Box;
+use alloc::sync::Arc;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use stream::InputStream;
-use alloc::boxed::Box;
 use log::info;
 use nolock::queues::{DequeueError, mpmc};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use ps2::{Controller, KeyboardType};
 use ps2::error::{ControllerError, KeyboardError};
 use spin::Mutex;
-use crate::{apic, interrupt_dispatcher, ps2_devices};
+use spin::once::Once;
+use crate::{apic, interrupt_dispatcher};
 
 const KEYBOARD_BUFFER_CAPACITY: usize = 128;
 
 pub struct PS2 {
-    controller: Mutex<Controller>,
-    keyboard: Keyboard,
+    controller: Arc<Mutex<Controller>>,
+    keyboard: Once<Arc<Keyboard>>,
 }
 
 pub struct Keyboard {
+    controller: Arc<Mutex<Controller>>,
     buffer: (mpmc::bounded::scq::Receiver<u8>, mpmc::bounded::scq::Sender<u8>),
 }
 
-#[derive(Default)]
-struct KeyboardInterruptHandler;
+struct KeyboardInterruptHandler {
+    keyboard: Arc<Keyboard>,
+}
 
 impl Keyboard {
-    fn new(buffer_cap: usize) -> Self {
-        Self {
-            buffer: mpmc::bounded::scq::queue(buffer_cap),
-        }
+    fn new(controller: Arc<Mutex<Controller>>, buffer_cap: usize) -> Self {
+        Self { controller, buffer: mpmc::bounded::scq::queue(buffer_cap) }
     }
 
-    pub fn plugin(&self) {
-        interrupt_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardInterruptHandler::default()));
+    pub fn plugin(keyboard: Arc<Keyboard>) {
+        interrupt_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardInterruptHandler::new(Arc::clone(&keyboard))));
         apic().allow(InterruptVector::Keyboard);
     }
 }
@@ -49,13 +51,18 @@ impl InputStream for Keyboard {
     }
 }
 
+impl KeyboardInterruptHandler {
+    pub fn new(keyboard: Arc<Keyboard>) -> Self {
+        Self { keyboard }
+    }
+}
+
 impl InterruptHandler for KeyboardInterruptHandler {
-    fn trigger(&mut self) {
-        if let Some(mut controller) = ps2_devices().controller.try_lock() {
+    fn trigger(&self) {
+        if let Some(mut controller) = self.keyboard.controller.try_lock() {
             if let Ok(data) = controller.read_data() {
-                let keyboard = ps2_devices().keyboard();
-                while keyboard.buffer.1.try_enqueue(data).is_err() {
-                    if keyboard.buffer.0.try_dequeue().is_err() {
+                while self.keyboard.buffer.1.try_enqueue(data).is_err() {
+                    if self.keyboard.buffer.0.try_dequeue().is_err() {
                         panic!("Keyboard: Failed to store received byte in buffer!");
                     }
                 }
@@ -69,8 +76,8 @@ impl InterruptHandler for KeyboardInterruptHandler {
 impl PS2 {
     pub fn new() -> Self {
         Self {
-            controller: unsafe { Mutex::new(Controller::with_timeout(1000000)) },
-            keyboard: Keyboard::new(KEYBOARD_BUFFER_CAPACITY),
+            controller: unsafe { Arc::new(Mutex::new(Controller::with_timeout(1000000))) },
+            keyboard: Once::new()
         }
     }
 
@@ -111,7 +118,7 @@ impl PS2 {
             info!("First port enabled");
         }
 
-        return test_result;
+        test_result
     }
 
     pub fn init_keyboard(&mut self) -> Result<(), KeyboardError> {
@@ -143,10 +150,16 @@ impl PS2 {
         controller.keyboard().set_scancode_set(1)?;
         controller.keyboard().set_typematic_rate_and_delay(0)?;
         controller.keyboard().set_leds(KeyboardLedFlags::empty())?;
-        controller.keyboard().enable_scanning()
+        controller.keyboard().enable_scanning()?;
+
+        self.keyboard.call_once(|| {
+            Arc::new(Keyboard::new(Arc::clone(&self.controller), KEYBOARD_BUFFER_CAPACITY))
+        });
+
+        Ok(())
     }
 
-    pub fn keyboard(&self) -> &Keyboard {
-        return &self.keyboard;
+    pub fn keyboard(&self) -> Arc<Keyboard> {
+        Arc::clone(self.keyboard.get().unwrap())
     }
 }

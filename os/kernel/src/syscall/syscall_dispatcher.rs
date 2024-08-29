@@ -72,8 +72,7 @@ pub fn init() {
 #[unsafe(no_mangle)]
 pub static SYSCALL_TABLE: SyscallTable = SyscallTable::new();
 
-#[repr(align(64))]
-#[repr(C)]
+#[repr(C, align(64))]
 pub struct SyscallTable {
     handle: [*const usize; NUM_SYSCALLS],
 }

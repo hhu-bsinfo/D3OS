@@ -1,3 +1,3 @@
 pub trait InterruptHandler {
-    fn trigger(&mut self);
+    fn trigger(&self);
 }

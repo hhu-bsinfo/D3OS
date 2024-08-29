@@ -227,7 +227,7 @@ impl InterruptDispatcher {
             int_vectors.push(Mutex::new(Vec::new()));
         }
 
-        return Self { int_vectors };
+        Self { int_vectors }
     }
 
     pub fn assign(&self, vector: InterruptVector, handler: Box<dyn InterruptHandler>) {

@@ -16,15 +16,13 @@
 #![feature(abi_x86_interrupt)]
 #![feature(trait_upcasting)]
 #![allow(internal_features)]
-#![feature(unsafe_extern_blocks)]
-#![feature(unsafe_attributes)]
-#![feature(asm_const)]
 #![no_std]
 
+use alloc::sync::Arc;
 use crate::device::apic::Apic;
 use crate::device::lfb_terminal::{CursorThread, LFBTerminal};
 use crate::device::pit::Timer;
-use crate::device::ps2::PS2;
+use crate::device::ps2::{Keyboard, PS2};
 use crate::device::serial;
 use crate::device::serial::{BaudRate, ComPort, SerialPort};
 use crate::device::speaker::Speaker;
@@ -84,15 +82,14 @@ fn panic(info: &PanicInfo) -> ! {
             .args(Arguments::new_const(&args))
             .build();
 
-        unsafe { logger().force_unlock() };
-        let log = logger().lock();
-        unsafe { logger().force_unlock() }; // log() also calls logger().lock()
-        log.log(&record);
+        logger().log(&record);
     }
 
     loop {}
 }
 
+
+/// SystemTable<Runtime> is not Send + Sync, so we need to wrap it in a struct that is.
 struct EfiSystemTable {
     table: RwLock<SystemTable<Runtime>>,
 }
@@ -106,32 +103,69 @@ impl EfiSystemTable {
     }
 }
 
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Static kernel structures.                                               ║
+   ║ These structures are need for the kernel to work. Since they only exist ║
+   ║ once, they are shared as static lifetime references.                    ║
+   ╚═════════════════════════════════════════════════════════════════════════╝ */
+
+/// Global Descriptor Table.
+/// Needed to set up basic segmentation (flat model) and the TSS.
 static GDT: Mutex<GlobalDescriptorTable> = Mutex::new(GlobalDescriptorTable::new());
+
+pub fn gdt() -> &'static Mutex<GlobalDescriptorTable> {
+    &GDT
+}
+
+/// Task State Segment.
+/// Needed to set up kernel/user mode switching.
+/// Once multicore is implemented, we need one TSS per core.
 static TSS: Mutex<TaskStateSegment> = Mutex::new(TaskStateSegment::new());
+
+pub fn tss() -> &'static Mutex<TaskStateSegment> {
+    &TSS
+}
+
+/// Interrupt Descriptor Table.
+/// Tells the CPU which interrupt handler to call for each interrupt.
 static IDT: Mutex<InterruptDescriptorTable> = Mutex::new(InterruptDescriptorTable::new());
+
+pub fn idt() -> &'static Mutex<InterruptDescriptorTable> {
+    &IDT
+}
+
+/// Core Local Storage.
+/// Contains information that is needed by the syscall handler.
+/// It is never accessed directly, but via the swapgs instruction.
+/// 'boot.rs' sets up the gs base register with a pointer to this struct.
+/// Once multicore is implemented, we need one of these per core.
 static CORE_LOCAL_STORAGE: Mutex<CoreLocalStorage> = Mutex::new(CoreLocalStorage::new());
+
+pub fn core_local_storage() -> &'static Mutex<CoreLocalStorage> {
+    &CORE_LOCAL_STORAGE
+}
+
+/// EFI System Table.
+/// Needed to access UEFI services. After the kernel takes control, only the UEFI runtime services are available.
+/// While these have not nearly as many functions as the boot services, we at least use them to get the current date and time.
+/// 'boot.rs' initializes this struct by calling 'init_efi_system_table()' after obtaining a reference to the system table from the bootloader.
 static EFI_SYSTEM_TABLE: Once<EfiSystemTable> = Once::new();
-static ACPI_TABLES: Once<Mutex<AcpiTables<AcpiHandler>>> = Once::new();
-static INIT_RAMDISK: Once<TarArchiveRef> = Once::new();
-
-#[global_allocator]
-static ALLOCATOR: KernelAllocator = KernelAllocator::new();
-static LOGGER: Mutex<Logger> = Mutex::new(Logger::new());
-static PROCESS_MANAGER: RwLock<ProcessManager> = RwLock::new(ProcessManager::new());
-static SCHEDULER: Once<Scheduler> = Once::new();
-static INTERRUPT_DISPATCHER: Once<InterruptDispatcher> = Once::new();
-
-static APIC: Once<Apic> = Once::new();
-static TIMER: RwLock<Timer> = RwLock::new(Timer::new());
-static SPEAKER: Mutex<Speaker> = Mutex::new(Speaker::new());
-static SERIAL_PORT: Once<SerialPort> = Once::new();
-static TERMINAL: Once<LFBTerminal> = Once::new();
-static PS2: Once<PS2> = Once::new();
-static PCI: Once<PciBus> = Once::new();
 
 pub fn init_efi_system_table(table: SystemTable<Runtime>) {
     EFI_SYSTEM_TABLE.call_once(|| EfiSystemTable::new(table));
 }
+
+pub fn efi_system_table() -> Option<&'static RwLock<SystemTable<Runtime>>> {
+    match EFI_SYSTEM_TABLE.get() {
+        Some(wrapper) => Some(&wrapper.table),
+        None => None,
+    }
+}
+
+/// ACPI Tables.
+/// These contain information about some of the hardware in the system (e.g. the APIC or HPET).
+/// 'boot.rs' initializes the global struct by calling 'init_acpi_tables()' after obtaining the RSDP address from the bootloader.
+static ACPI_TABLES: Once<Mutex<AcpiTables<AcpiHandler>>> = Once::new();
 
 pub fn init_acpi_tables(rsdp_addr: usize) {
     ACPI_TABLES.call_once(|| {
@@ -147,59 +181,15 @@ pub fn init_acpi_tables(rsdp_addr: usize) {
     });
 }
 
-pub fn init_apic() {
-    APIC.call_once(|| Apic::new());
+pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
+    ACPI_TABLES.get().expect("Trying to access ACPI tables before initialization!")
 }
 
-pub fn init_serial_port() {
-    let mut serial: Option<SerialPort> = None;
-    if serial::check_port(ComPort::Com1) {
-        serial = Some(SerialPort::new(ComPort::Com1));
-    } else if serial::check_port(ComPort::Com2) {
-        serial = Some(SerialPort::new(ComPort::Com2));
-    } else if serial::check_port(ComPort::Com3) {
-        serial = Some(SerialPort::new(ComPort::Com3));
-    } else if serial::check_port(ComPort::Com4) {
-        serial = Some(SerialPort::new(ComPort::Com4));
-    }
-
-    if serial.is_some() {
-        serial.as_mut().unwrap().init(128, BaudRate::Baud115200);
-        SERIAL_PORT.call_once(|| serial.unwrap());
-    }
-}
-
-pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
-    let terminal = LFBTerminal::new(buffer, pitch, width, height, bpp);
-    terminal.clear();
-    TERMINAL.call_once(|| terminal);
-
-    scheduler().ready(Thread::new_kernel_thread(|| {
-        let mut cursor_thread = CursorThread::new(&TERMINAL.get().unwrap());
-        cursor_thread.run();
-    }));
-}
-
-pub fn init_keyboard() {
-    PS2.call_once(|| {
-        let mut ps2 = PS2::new();
-        match ps2.init_controller() {
-            Ok(_) => {
-                match ps2.init_keyboard() {
-                    Ok(_) => {}
-                    Err(error) => error!("Keyboard initialization failed: {:?}", error)
-                }
-            }
-            Err(error) => error!("PS/2 controller initialization failed: {:?}", error)
-        }
-
-        return ps2;
-    });
-}
-
-pub fn init_pci() {
-    PCI.call_once(|| PciBus::scan());
-}
+/// Initial Ramdisk.
+/// The initial ramdisk is TAR archive, loaded into memory by the bootloader.
+/// It contains all programs that D3OS can execute.
+/// 'boot.rs' initializes this struct by calling 'init_initrd()' after obtaining the corresponding multiboot2 tag.
+static INIT_RAMDISK: Once<TarArchiveRef> = Once::new();
 
 pub fn init_initrd(module: &ModuleTag) {
     INIT_RAMDISK.call_once(|| {
@@ -214,85 +204,183 @@ pub fn init_initrd(module: &ModuleTag) {
     });
 }
 
-pub fn terminal_initialized() -> bool {
-    TERMINAL.get().is_some()
-}
-
-pub fn gdt() -> &'static Mutex<GlobalDescriptorTable> {
-    &GDT
-}
-
-pub fn tss() -> &'static Mutex<TaskStateSegment> {
-    &TSS
-}
-
-pub fn idt() -> &'static Mutex<InterruptDescriptorTable> {
-    &IDT
-}
-
-pub fn core_local_storage() -> &'static Mutex<CoreLocalStorage> {
-    &CORE_LOCAL_STORAGE
-}
-
-pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
-    ACPI_TABLES.get().expect("Trying to access ACPI tables before initialization!")
-}
-
-pub fn efi_system_table() -> Option<&'static RwLock<SystemTable<Runtime>>> {
-    match EFI_SYSTEM_TABLE.get() {
-        Some(wrapper) => Some(&wrapper.table),
-        None => None,
-    }
-}
-
 pub fn initrd() -> &'static TarArchiveRef<'static> {
-    &INIT_RAMDISK.get().expect("Trying to access initial ramdisk before initialization!")
+    INIT_RAMDISK.get().expect("Trying to access initial ramdisk before initialization!")
 }
+
+/// Kernel Allocator.
+/// Used for dynamic memory allocation in the kernel.
+#[global_allocator]
+static ALLOCATOR: KernelAllocator = KernelAllocator::new();
 
 pub fn allocator() -> &'static KernelAllocator {
     &ALLOCATOR
 }
 
-pub fn logger() -> &'static Mutex<Logger> {
-    &LOGGER
+/// Kernel logger.
+/// Used to log kernel messages. During the boot process, log messages are printed to the serial port.
+/// 'boot.rs' sets up the log-crate to use this logger, so that macros like 'error!' or 'info!' can be used.
+static LOGGER: Once<Logger> = Once::new();
+
+pub fn logger() -> &'static Logger {
+    LOGGER.call_once(|| Logger::new());
+    LOGGER.get().unwrap()
 }
+
+/// Process Manager.
+/// Holds all active processes and allows to create new ones.
+static PROCESS_MANAGER: RwLock<ProcessManager> = RwLock::new(ProcessManager::new());
+
+pub fn process_manager() -> &'static RwLock<ProcessManager> {
+    &PROCESS_MANAGER
+}
+
+/// Scheduler.
+/// Manages the execution of threads and switches between them.
+/// Allows to access active threads, put threads to sleep, exit/kill threads and creates new ones.
+static SCHEDULER: Once<Scheduler> = Once::new();
+
+pub fn scheduler() -> &'static Scheduler {
+    SCHEDULER.call_once(|| Scheduler::new());
+    SCHEDULER.get().unwrap()
+}
+
+/// Interrupt Dispatcher.
+/// This dispatcher is called when an interrupt occurs and calls the corresponding interrupt handler.
+/// Device drivers can register their interrupt handlers at the dispatcher.
+static INTERRUPT_DISPATCHER: Once<InterruptDispatcher> = Once::new();
 
 pub fn interrupt_dispatcher() -> &'static InterruptDispatcher {
     INTERRUPT_DISPATCHER.call_once(|| InterruptDispatcher::new());
     INTERRUPT_DISPATCHER.get().unwrap()
 }
 
-pub fn process_manager() -> &'static RwLock<ProcessManager> {
-    &PROCESS_MANAGER
-}
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Device driver instances.                                                ║
+   ║ We currently do not have a device driver framework, so all driver       ║
+   ║ instances are created here.                                             ║
+   ║ Most device drivers use reference counting, which will (hopefully)      ║
+   ║ make it easier to integrate them into a dynamic driver framework later. ║
+   ║ Our current plan is to use the name service for holding driver          ║
+   ║ instances, allowing us to load/unload device drivers at runtime.        ║
+   ╚═════════════════════════════════════════════════════════════════════════╝ */
 
-pub fn scheduler() -> &'static Scheduler {
-    SCHEDULER.call_once(|| Scheduler::new());
-    &SCHEDULER.get().unwrap()
+/// Advanced Programmable Interrupt Controller.
+/// The APIC consists of an IO-APIC for device interrupts and one Local APIC per core.
+/// The Local APIC is used to send inter-processor interrupts (IPIs) and to receive interrupts from the IO-APIC.
+static APIC: Once<Apic> = Once::new();
+
+pub fn init_apic() {
+    APIC.call_once(|| Apic::new());
 }
 
 pub fn apic() -> &'static Apic {
     APIC.get().expect("Trying to access APIC before initialization!")
 }
 
-pub fn timer() -> &'static RwLock<Timer> {
-    &TIMER
+/// Programmable Interval Timer.
+/// The timer generates an interrupt each millisecond to keep track of the system time.
+/// In the future, we will probably replace it with the HPET or TSC.
+static TIMER: Once<Arc<Timer>> = Once::new();
+
+pub fn timer() -> Arc<Timer> {
+    TIMER.call_once(|| Arc::new(Timer::new()));
+    Arc::clone(TIMER.get().unwrap())
 }
 
-pub fn speaker() -> &'static Mutex<Speaker> {
-    &SPEAKER
+/// PC Speaker.
+/// A very simple device that generate square waves at a certain frequency, thus creating beep sounds.
+static SPEAKER: Once<Arc<Speaker>> = Once::new();
+
+pub fn speaker() -> Arc<Speaker> {
+    SPEAKER.call_once(|| Arc::new(Speaker::new()));
+    Arc::clone(SPEAKER.get().unwrap())
 }
 
-pub fn serial_port() -> Option<&'static SerialPort> {
-    SERIAL_PORT.get()
+/// Serial Port.
+/// Currently only one serial port is initialized. Once we have a driver framework, multiple serial ports can be supported.
+/// At the moment, the serial port is only used to print kernel log messages.
+static SERIAL_PORT: Once<Arc<SerialPort>> = Once::new();
+
+pub fn init_serial_port() {
+    let mut serial: Option<SerialPort> = None;
+    if serial::check_port(ComPort::Com1) {
+        serial = Some(SerialPort::new(ComPort::Com1, BaudRate::Baud115200, 128));
+    } else if serial::check_port(ComPort::Com2) {
+        serial = Some(SerialPort::new(ComPort::Com2, BaudRate::Baud115200, 128));
+    } else if serial::check_port(ComPort::Com3) {
+        serial = Some(SerialPort::new(ComPort::Com3, BaudRate::Baud115200, 128));
+    } else if serial::check_port(ComPort::Com4) {
+        serial = Some(SerialPort::new(ComPort::Com4, BaudRate::Baud115200, 128));
+    }
+
+    if serial.is_some() {
+        SERIAL_PORT.call_once(|| Arc::new(serial.unwrap()));
+    }
 }
 
-pub fn terminal() -> &'static dyn Terminal {
-    TERMINAL.get().expect("Trying to access terminal before initialization!")
+pub fn serial_port() -> Option<Arc<SerialPort>> {
+    match SERIAL_PORT.get() {
+        Some(port) => Some(Arc::clone(port)),
+        None => None,
+    }
 }
 
-pub fn ps2_devices() -> &'static PS2 {
-    PS2.get().expect("Trying to access PS/2 devices before initialization!")
+/// Terminal.
+/// The terminal is the main input/output device of the kernel. It can print text to the screen and
+/// reads keyboard input. Applications can use the 'read' system call to get keyboard input from the terminal.
+static TERMINAL: Once<Arc<dyn Terminal>> = Once::new();
+
+pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
+    let lfb_terminal = Arc::new(LFBTerminal::new(buffer, pitch, width, height, bpp));
+    lfb_terminal.clear();
+    TERMINAL.call_once(|| lfb_terminal);
+
+    scheduler().ready(Thread::new_kernel_thread(|| {
+        let mut cursor_thread = CursorThread::new(terminal());
+        cursor_thread.run();
+    }));
+}
+
+pub fn terminal_initialized() -> bool {
+    TERMINAL.get().is_some()
+}
+
+pub fn terminal() -> Arc<dyn Terminal> {
+    let terminal = TERMINAL.get().expect("Trying to access terminal before initialization!");
+    Arc::clone(terminal)
+}
+
+/// PS/2 Controller.
+/// Used to access PS/2 devices like the keyboard or mouse. Currently only the keyboard is supported.
+static PS2: Once<Arc<PS2>> = Once::new();
+
+pub fn keyboard() -> Arc<Keyboard> {
+    PS2.call_once(|| {
+        let mut ps2 = PS2::new();
+        match ps2.init_controller() {
+            Ok(_) => {
+                match ps2.init_keyboard() {
+                    Ok(_) => {}
+                    Err(error) => error!("Keyboard initialization failed: {:?}", error)
+                }
+            }
+            Err(error) => error!("PS/2 controller initialization failed: {:?}", error)
+        }
+
+        Arc::new(ps2)
+    });
+
+    PS2.get().expect("Trying to access PS/2 devices before initialization!").keyboard()
+}
+
+/// PCI Bus.
+/// Used to access PCI devices.
+/// 'boot.rs' call 'init_pci()' to scan the PCI bus and initialize this struct.
+static PCI: Once<PciBus> = Once::new();
+
+pub fn init_pci() {
+    PCI.call_once(|| PciBus::scan());
 }
 
 pub fn pci_bus() -> &'static PciBus {
