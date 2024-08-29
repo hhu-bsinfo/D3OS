@@ -10,6 +10,8 @@
 
 use core::arch::asm;
 
+pub mod consts;
+
 #[repr(usize)]
 #[allow(dead_code)]
 pub enum SystemCall {
@@ -39,7 +41,7 @@ pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
 
 ///
 /// Description:
-///    Convert return values from a syscall to a Rust `Result`
+///    Converts return values from a syscall to a Rust `Result`
 ///
 /// Parameters: \
 ///   `code`  first return value of a syscall \

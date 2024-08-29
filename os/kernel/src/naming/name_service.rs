@@ -8,12 +8,33 @@
 */
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+//use core::result::Result;
+use syscall::consts::Errno;
+use syscall::consts::Result;
+
 use ::log::info;
 
 use crate::naming::name_service_internal;
 use crate::naming::name_service_internal::get_root_dir;
-use crate::naming::result::Result;
 use crate::naming::stat::Stat;
+
+
+///
+/// Description:
+///    Add an entry (with or without data)
+///
+/// Parameters: \
+///   `path` path (must exist) \
+///   `name` name for the new entry \
+///   `content` data bytes
+///
+pub fn mkentry_new(path: &str, name: &str, content: Vec<u8>) -> ::core::result::Result<usize,Errno> {
+    let r =     get_root_dir().mkentry(path, name, content);
+
+    info!("mkentry: res = {:?}", r);
+    return Ok(0)
+}
+
 
 ///
 /// Description:
@@ -28,7 +49,7 @@ pub fn mkentry(path: &str, name: &str, content: Vec<u8>) -> Result<()> {
     let r =     get_root_dir().mkentry(path, name, content);
 
     info!("mkentry: res = {:?}", r);
-    return r;
+    r
 }
 
 ///

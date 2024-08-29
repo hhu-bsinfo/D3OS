@@ -3,11 +3,11 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Internal implementation of name service.                        ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, 1.8.2024, HHU                               ║
+   ║ Author: Michael Schoettner, 29.8.2024, HHU                              ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use crate::naming::result::Result;
-use crate::naming::result::{Errno, Error};
+use syscall::consts::Result;
+use syscall::consts::Errno;
 use crate::naming::stat;
 use crate::naming::stat::Mode;
 use crate::naming::stat::Stat;
@@ -103,13 +103,13 @@ impl Directory {
                 // entry found, continue recursively, if more to do
                 if let EntryType::Directory(ref dir) = entry.entry_type {
                     if remaining_parts.is_empty() {
-                        return Err(Error::new(Errno::EEXIST)); // we are done, dir already exists
+                        return Err(Errno::EEXIST); // we are done, dir already exists
                     } else {
                         return dir.mkdir_in_dir(remaining_parts); // continue recursively
                     }
                 } else {
                     // found file with same name, abort
-                    return Err(Error::new(Errno::ENOTDIR));
+                    return Err(Errno::ENOTDIR);
                 }
             }
         }
@@ -127,7 +127,7 @@ impl Directory {
         if let EntryType::Directory(ref mut new_dir) = dir.entries.last_mut().unwrap().entry_type {
             return new_dir.mkdir_in_dir(remaining_parts);
         } else {
-            return Err(Error::new(Errno::EEXIST)); // This should not happen
+            return Err(Errno::EEXIST); // This should not happen
         }
     }
 
@@ -153,7 +153,7 @@ impl Directory {
         if parts.is_empty() {
             for entry in &dir.entries {
                 if entry.stat.name == new_entry.stat.name {
-                    return Err(Error::new(Errno::EEXIST)); // file already exists
+                    return Err(Errno::EEXIST); // file already exists
                 }
             }
             dir.entries.push(new_entry);
@@ -168,11 +168,11 @@ impl Directory {
                 if let EntryType::Directory(ref directory) = entry.entry_type {
                     return directory.mkentry_in_dir(remaining_parts, new_entry);
                 } else {
-                    return Err(Error::new(Errno::ENOENT)); // sub directory not found
+                    return Err(Errno::ENOENT); // sub directory not found
                 }
             }
         }
-        return Err(Error::new(Errno::ENOENT));
+        return Err(Errno::ENOENT);
     }
 
     ///
@@ -199,7 +199,7 @@ impl Directory {
                     return Ok(entry.content.clone());
                 } else {
                     // no, error
-                    return Err(Error::new(Errno::ENOENT));
+                    return Err(Errno::ENOENT);
                 }
             }
             Err(e) => Err(e),
@@ -223,7 +223,7 @@ impl Directory {
                     return Ok(ret);
                 } else {
                     // no, error
-                    return Err(Error::new(Errno::ENOENT));
+                    return Err(Errno::ENOENT);
                 }
             }
             Err(e) => Err(e),
@@ -236,7 +236,7 @@ impl Directory {
 
         // If no more path parts, we did not find the file
         if parts.is_empty() {
-            return Err(Error::new(Errno::ENOENT));
+            return Err(Errno::ENOENT);
         }
 
         // Recusively navigate to the right sub directory
@@ -249,11 +249,11 @@ impl Directory {
                 } else if let EntryType::Directory(ref directory) = entry.entry_type {
                     return directory.get_dentry(remaining_parts);
                 } else {
-                    return Err(Error::new(Errno::ENOENT));
+                    return Err(Errno::ENOENT);
                 }
             }
         }
-        return Err(Error::new(Errno::ENOENT));
+        return Err(Errno::ENOENT);
     }
 
     /// Rename given entry (any type)
@@ -268,7 +268,7 @@ impl Directory {
 
         // If no more path parts, we did not find the file
         if parts.is_empty() {
-            return Err(Error::new(Errno::ENOENT));
+            return Err(Errno::ENOENT);
         }
 
         // Recusively navigate to the right sub directory
@@ -282,11 +282,11 @@ impl Directory {
                 } else if let EntryType::Directory(ref directory) = entry.entry_type {
                     return directory.rename_internal(remaining_parts, new_name);
                 } else {
-                    return Err(Error::new(Errno::ENOENT));
+                    return Err(Errno::ENOENT);
                 }
             }
         }
-        return Err(Error::new(Errno::ENOENT));
+        return Err(Errno::ENOENT);
     }
 
     /// Delete given entry (any type)
@@ -302,7 +302,7 @@ impl Directory {
                 }
                 // If we found a dire which is not empty, return an error
                 else {
-                    return Err(Error::new(Errno::ENOTEMPTY));
+                    return Err(Errno::ENOTEMPTY);
                 }
             }
             // No dir found?, we continue below
@@ -316,7 +316,7 @@ impl Directory {
                     }
                     // No dir found?, we continue below
                     Err(_e) => {
-                        return Err(Error::new(Errno::ENOENT));
+                        return Err(Errno::ENOENT);
                     }
                 }
             }
@@ -341,13 +341,13 @@ impl Directory {
                     if let EntryType::Directory(ref directory) = entry.entry_type {
                         return directory.del_internal(remaining_parts);
                     } else {
-                        return Err(Error::new(Errno::ENOENT));
+                        return Err(Errno::ENOENT);
                     }
                 }
             }
         }
 
-        return Err(Error::new(Errno::ENOENT));
+        return Err(Errno::ENOENT);
     }
 
     ///
