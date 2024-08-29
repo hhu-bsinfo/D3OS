@@ -14,21 +14,22 @@ use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
 use alloc::format;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
 use chrono::DateTime;
-use log::{debug, error, info};
+use log::{debug, error, info, LevelFilter};
 use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
 use smoltcp::iface;
 use smoltcp::iface::Interface;
-use smoltcp::phy::PcapLinkType::Ip;
 use smoltcp::time::Instant;
 use smoltcp::wire::{HardwareAddress, IpCidr, Ipv4Address};
 use smoltcp::wire::IpAddress::Ipv4;
+use uefi::mem::memory_map::MemoryMap;
 use uefi::prelude::*;
-use uefi::table::boot::{MemoryMap, PAGE_SIZE};
+use uefi::table::boot::PAGE_SIZE;
 use uefi::table::Runtime;
 use uefi::table::runtime::Time;
 use uefi_raw::table::boot::MemoryType;
@@ -42,11 +43,14 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_keyboard, init_pci, init_serial_port, init_terminal, initrd, logger, memory, network, process_manager, ps2_devices, scheduler, serial_port, terminal, timer, tss};
+use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss};
+use crate::device::pit::Timer;
+use crate::device::ps2::Keyboard;
 use crate::device::qemu_cfg;
+use crate::device::serial::SerialPort;
 use crate::memory::{MemorySpace, nvmem};
 use crate::memory::nvmem::Nfit;
-use crate::network::{rtl8139, SocketType};
+use crate::network::rtl8139;
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
@@ -64,9 +68,7 @@ const INIT_HEAP_PAGES: usize = 0x400;   // number of heap pages for booting the 
 #[unsafe(no_mangle)]
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
     // Initialize logger
-    if logger().lock().init().is_err() {
-        panic!("Failed to initialize loggerr!")
-    }
+    log::set_logger(logger()).map(|()| log::set_max_level(LevelFilter::Debug)).expect("Failed to initialize logger!");
 
     // Log messages and panics are now working, but cannot use format string until the heap is initialized later on
     info!("Welcome to D3OS early boot environment!");
@@ -102,7 +104,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize serial port and enable serial logging
     init_serial_port();
     if let Some(serial) = serial_port() {
-        logger().lock().register(serial);
+        logger().register(serial);
     }
 
     // Map the framebuffer, needed for text output of the terminal
@@ -115,7 +117,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize terminal and enable terminal logging
     init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
-    logger().lock().register(terminal());
+    logger().register(terminal());
  
     // Dumping basic infos
     info!("Welcome to D3OS!");
@@ -156,12 +158,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     init_apic();
 
     // Initialize timer
-    {
-        info!("Initializing timer");
-        let mut timer = timer().write();
-        timer.interrupt_rate(1);
-        timer.plugin();
-    }
+    info!("Initializing timer");
+    let timer = timer();
+    Timer::plugin(Arc::clone(&timer));
 
     // Enable interrupts
     info!("Enabling interrupts");
@@ -188,12 +187,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize keyboard
     info!("Initializing PS/2 devices");
-    init_keyboard();
-    ps2_devices().keyboard().plugin();
+    Keyboard::plugin(keyboard());
 
     // Enable serial port interrupts
     if let Some(serial) = serial_port() {
-        serial.plugin();
+        SerialPort::plugin(serial);
     }
 
     // Scan PCI bus
@@ -206,7 +204,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
     if qemu_cfg::is_available() {
         let device = unsafe { ptr::from_ref(rtl8139().unwrap()).cast_mut().as_mut().unwrap() };
-        let time = timer().read().systime_ms();
+        let time = timer.systime_ms();
 
         let mut conf = iface::Config::new(HardwareAddress::from(device.read_mac_address()));
         conf.random_seed = time as u64;
@@ -272,7 +270,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         .data()));
 
     // Disable terminal logging (remove terminal output stream)
-    logger().lock().remove(terminal());  
+    logger().remove(terminal().as_ref());
     terminal().clear();
 
     println!(include_str!("banner.txt"), version, git_ref.rsplit("/").next().unwrap_or(git_ref), git_commit, build_date,
@@ -415,7 +413,7 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
 
 
 /// Description: Memory map from efi. Only available if boot services have NOT been exited.
-fn scan_efi_memory_map(memory_map: &MemoryMap) {
+fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
     info!("Searching memory map for available regions");
     memory_map.entries()
         .filter(|area| area.ty == MemoryType::CONVENTIONAL || area.ty == MemoryType::LOADER_CODE || area.ty == MemoryType::LOADER_DATA

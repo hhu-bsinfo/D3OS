@@ -23,7 +23,6 @@ use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::{physical, PAGE_SIZE};
-use crate::network::rtl8139;
 
 const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
 const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 { BUFFER_SIZE / PAGE_SIZE } else { BUFFER_SIZE / PAGE_SIZE + 1 };
@@ -132,8 +131,9 @@ pub struct Rtl8139 {
     recv_messages: (mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>, mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>)
 }
 
-#[derive(Default)]
-pub struct Rtl8139InterruptHandler;
+pub struct Rtl8139InterruptHandler {
+    device: &'static Rtl8139
+}
 
 impl Registers {
     fn new(base_address: u16) -> Self {
@@ -307,35 +307,39 @@ impl phy::Device for Rtl8139 {
     }
 }
 
+impl Rtl8139InterruptHandler {
+    pub fn new(rtl8139: &'static Rtl8139) -> Self {
+        Self { device: rtl8139 }
+    }
+}
+
 impl InterruptHandler for Rtl8139InterruptHandler {
-    fn trigger(&mut self) {
-        if let Some(rtl8139) = rtl8139() {
-            if rtl8139.registers.interrupt_status.is_locked() {
-                panic!("Interrupt status register is locked during interrupt!");
-            }
-
-            let mut status_reg = rtl8139.registers.interrupt_status.lock();
-            let status = Interrupt::from_bits_retain(unsafe { status_reg.read() });
-
-            if status.contains(Interrupt::TRANSMIT_OK) && !physical::allocator_locked() {
-                let mut queue = rtl8139.send_queue.0.lock();
-                let mut buffer = queue.try_dequeue();
-                while buffer.is_ok() {
-                    unsafe { physical::free(buffer.unwrap()) };
-                    buffer = queue.try_dequeue();
-                }
-            }
-
-            if status.contains(Interrupt::RECEIVE_OK) {
-                rtl8139.process_received_packet();
-            }
-
-            if status.contains(Interrupt::TRANSMIT_ERROR) {
-                panic!("Transmit failed!");
-            }
-
-            unsafe { status_reg.write(status.bits()); }
+    fn trigger(&self) {
+        if self.device.registers.interrupt_status.is_locked() {
+            panic!("Interrupt status register is locked during interrupt!");
         }
+
+        let mut status_reg = self.device.registers.interrupt_status.lock();
+        let status = Interrupt::from_bits_retain(unsafe { status_reg.read() });
+
+        if status.contains(Interrupt::TRANSMIT_OK) && !physical::allocator_locked() {
+            let mut queue = self.device.send_queue.0.lock();
+            let mut buffer = queue.try_dequeue();
+            while buffer.is_ok() {
+                unsafe { physical::free(buffer.unwrap()) };
+                buffer = queue.try_dequeue();
+            }
+        }
+
+        if status.contains(Interrupt::RECEIVE_OK) {
+            self.device.process_received_packet();
+        }
+
+        if status.contains(Interrupt::TRANSMIT_ERROR) {
+            panic!("Transmit failed!");
+        }
+
+        unsafe { status_reg.write(status.bits()); }
     }
 }
 
@@ -411,7 +415,8 @@ impl Rtl8139 {
     }
 
     pub fn plugin(&self) {
-        interrupt_dispatcher().assign(self.interrupt, Box::new(Rtl8139InterruptHandler::default()));
+        let device = unsafe { ptr::from_ref(self).as_ref().unwrap() };
+        interrupt_dispatcher().assign(self.interrupt, Box::new(Rtl8139InterruptHandler::new(device)));
         apic().allow(self.interrupt);
     }
 

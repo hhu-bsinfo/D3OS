@@ -7,13 +7,13 @@ A new research operating system, developed by the [operating systems group](http
 
 <p align="center">
   <a href="https://github.com/hhu-bsinfo/D3OS/actions/workflows/build.yml"><img src="https://github.com/hhu-bsinfo/D3OS/actions/workflows/build.yml/badge.svg"></a>
-  <img src="https://img.shields.io/badge/Rust-2021-blue.svg">
+  <img src="https://img.shields.io/badge/Rust-2024-blue.svg">
   <img src="https://img.shields.io/badge/license-GPLv3-orange.svg">
 </p>
 
 ## Requirements
 
-For building D3OS, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/).
+For building D3OS, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/). The nightly toolchain (2024-08-22) is confirmed to work.
 
 ```
 rustup toolchain install nightly
@@ -26,17 +26,10 @@ To run the build commands _cargo-make_ is required. Install it with:
 cargo install --no-default-features cargo-make
 ```
 
-Further the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
+Furthermore, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
 
 ```
 apt install build-essential nasm wget qemu-system-x86_64
-```
-
-D3OS depends on the rust-based bootloader [towboot](https://github.com/hhuOS/towboot), which provides the `towbootctl` utility for creating bootable images. Install it with: 
-
-```
-rustup target install i686-unknown-uefi x86_64-unknown-uefi
-cargo install --git https://github.com/hhuOS/towboot --features=binary -Z bindeps towbootctl
 ```
 
 ## Build and Run

@@ -1,4 +1,5 @@
 use alloc::format;
+use alloc::sync::Arc;
 use crate::device::terminal::Terminal;
 use graphic::ansi::COLOR_TABLE_256;
 use graphic::buffered_lfb::BufferedLFB;
@@ -15,7 +16,7 @@ use chrono::TimeDelta;
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::Mutex;
-use crate::{built_info, efi_system_table, process_manager, ps2_devices, scheduler, speaker, timer};
+use crate::{built_info, efi_system_table, keyboard, process_manager, scheduler, speaker, timer};
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) { cursor } else { '_' };
 const TAB_SPACES: u16 = 8;
@@ -53,7 +54,7 @@ pub struct LFBTerminal {
 }
 
 pub struct CursorThread {
-    terminal: &'static LFBTerminal,
+    terminal: Arc<dyn Terminal>,
     visible: bool,
 }
 
@@ -96,7 +97,7 @@ impl DisplayState {
 }
 
 impl CursorThread {
-    pub const fn new(terminal: &'static LFBTerminal) -> Self {
+    pub fn new(terminal: Arc<dyn Terminal>) -> Self {
         Self {
             terminal,
             visible: true,
@@ -110,8 +111,11 @@ impl CursorThread {
             scheduler().sleep(CURSOR_UPDATE_INTERVAL);
             sleep_counter += CURSOR_UPDATE_INTERVAL;
 
-            let mut display = self.terminal.display.lock();
-            let cursor = self.terminal.cursor.lock();
+            // CAUTION: This only works because LFBTerminal is the only implementation of Terminal
+            let terminal = unsafe { (ptr::from_ref(self.terminal.as_ref()) as *const LFBTerminal).as_ref().unwrap() };
+
+            let mut display = terminal.display.lock();
+            let cursor = terminal.cursor.lock();
             let character = display.char_buffer[(cursor.pos.1 * display.size.0 + cursor.pos.0) as usize];
 
             let draw_character = match self.visible {
@@ -161,7 +165,7 @@ impl OutputStream for LFBTerminal {
 
 impl InputStream for LFBTerminal {
     fn read_byte(&self) -> i16 {
-        let keyboard = ps2_devices().keyboard();
+        let keyboard = keyboard();
         let read_byte;
 
         loop {
@@ -185,7 +189,7 @@ impl InputStream for LFBTerminal {
         }
 
         self.write_byte(read_byte as u8);
-        return read_byte as i16;
+        read_byte as i16
     }
 }
 
@@ -277,7 +281,7 @@ impl LFBTerminal {
         }
 
         // Collect system information
-        let uptime = TimeDelta::try_milliseconds(timer().read().systime_ms() as i64).expect("Failed to create TimeDelta struct from systime");
+        let uptime = TimeDelta::try_milliseconds(timer().systime_ms() as i64).expect("Failed to create TimeDelta struct from systime");
         let active_process_ids = process_manager().read().active_process_ids();
         let active_thread_ids = scheduler().active_thread_ids();
 
@@ -340,7 +344,7 @@ impl LFBTerminal {
     }
 
     fn handle_bell() {
-        let mut speaker = speaker().lock();
+        let speaker = speaker();
         speaker.play(440, 250);
         speaker.play(880, 250);
     }

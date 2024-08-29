@@ -4,11 +4,9 @@ use core::ptr;
 use log::info;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
 use smoltcp::socket::udp;
-use smoltcp::socket::udp::UdpMetadata;
 use smoltcp::time::Instant;
-use smoltcp::wire::{IpEndpoint, Ipv4Address};
+use smoltcp::wire::Ipv4Address;
 use spin::{Once, RwLock};
-use uefi::proto::device_path::messaging::Ipv4;
 use crate::device::rtl8139::Rtl8139;
 use crate::{pci_bus, scheduler, timer};
 use crate::process::thread::Thread;
@@ -94,7 +92,7 @@ fn poll_sockets() {
     let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
     let mut interfaces = INTERFACES.write();
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let time = Instant::from_millis(timer().read().systime_ms() as i64);
+    let time = Instant::from_millis(timer().systime_ms() as i64);
 
     // Smoltcp expects a mutable reference to the device, but the RTL8139 driver is built
     // to work with a shared reference. We can safely cast the shared reference to a mutable.

@@ -159,7 +159,7 @@ impl Scheduler {
     pub fn sleep(&self, ms: usize) {
         let mut state = self.get_ready_state();
         let thread = Scheduler::current(&state);
-        let wakeup_time = timer().read().systime_ms() + ms;
+        let wakeup_time = timer().systime_ms() + ms;
 
         {
             // Execute in own block, so that the lock is released automatically (block() does not return)
@@ -370,18 +370,16 @@ impl Scheduler {
     /// MS -> why this param?
     /// 
     fn check_sleep_list(state: &mut ReadyState, sleep_list: &mut Vec<(Rc<Thread>, usize)>) {
-        if let Some(timer) = timer().try_read() {
-            let time = timer.systime_ms();
+        let time = timer().systime_ms();
 
-            sleep_list.retain(|entry| {
-                if time >= entry.1 {
-                    state.ready_queue.push_front(Rc::clone(&entry.0));
-                    return false;
-                }
+        sleep_list.retain(|entry| {
+            if time >= entry.1 {
+                state.ready_queue.push_front(Rc::clone(&entry.0));
+                return false;
+            }
 
-                return true;
-            });
-        }
+            return true;
+        });
     }
 
     /// Description: Helper function returning `ReadyState` of scheduler in a MutexGuard

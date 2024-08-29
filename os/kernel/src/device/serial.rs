@@ -1,15 +1,18 @@
+use alloc::boxed::Box;
 use crate::device::serial::ComPort::{Com1, Com2, Com3, Com4};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use stream::{InputStream, OutputStream};
-use alloc::boxed::Box;
 use alloc::string::String;
+use alloc::sync::Arc;
+use core::ptr;
+use bitflags::bitflags;
 use log::info;
 use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
 use nolock::queues::{mpmc, DequeueError};
-use spin::Once;
-use x86_64::instructions::port::Port;
-use crate::{apic, interrupt_dispatcher, serial_port};
+use spin::Mutex;
+use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
+use crate::{apic, interrupt_dispatcher, scheduler};
 
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -116,34 +119,132 @@ pub enum BaudRate {
     Baud2 = 57600,
 }
 
+bitflags! {
+    struct LineStatus: u8 {
+        const DATA_READY = 0x01;
+        const OVERRUNG_ERROR = 0x02;
+        const PARITOTY_ERROR = 0x04;
+        const FRAMING_ERROR = 0x08;
+        const BREAK_INDICATOR = 0x10;
+        const TRANSMITTER_HOLDING_REGISTER_EMPTY = 0x20;
+        const TRANSMITTER_EMPTY = 0x40;
+        const IMPENDING_ERROR = 0x80;
+    }
+}
+
+bitflags! {
+    struct InterruptStatus: u8 {
+        const InterruptPending = 0x01;
+    }
+}
+
 pub struct SerialPort {
     port: ComPort,
-    buffer: Once<(Receiver<u8>, Sender<u8>)>,
+    transceiver: Transceiver,
+    interrupt_status: Mutex<PortReadOnly<u8>>,
+    buffer: Option<(Receiver<u8>, Sender<u8>)>
+}
+
+struct Transceiver {
+    port: ComPort,
+    receive_buffer: Mutex<PortReadOnly<u8>>,
+    transmit_buffer: Mutex<PortWriteOnly<u8>>,
+    interrupt_control: Mutex<Port<u8>>,
+    line_control: Mutex<Port<u8>>,
+    line_status: PortReadOnly<u8>,
+}
+
+impl Transceiver {
+    fn new(port: ComPort) -> Self {
+        let base = port as u16;
+        Self {
+            port,
+            receive_buffer: Mutex::new(PortReadOnly::new(base)),
+            transmit_buffer: Mutex::new(PortWriteOnly::new(base)),
+            interrupt_control: Mutex::new(Port::new(base + 1)),
+            line_control: Mutex::new(Port::new(base + 3)),
+            line_status: PortReadOnly::new(base + 5),
+        }
+    }
+
+    fn speed(&self, speed: BaudRate) {
+        let mut interrupt_control = self.interrupt_control.lock();
+        let mut line_control = self.line_control.lock();
+        let mut data = self.transmit_buffer.lock();
+
+        info!("Setting baud rate of {:?} to {:?}", self.port, speed);
+
+        unsafe  {
+            let interrupt_backup = interrupt_control.read(); // Backup interrupt register
+            let line_control_backup = line_control.read(); // Backup line control register
+
+            line_control.write(0x80); // Enable DLAB, so that the divisor can be set
+
+            data.write((speed as u16 & 0x00ff) as u8); // Divisor low byte
+            interrupt_control.write(((speed as u16 & 0xff00) >> 8) as u8); // Divisor high byte
+
+            line_control.write(line_control_backup); // Restore line control register
+            interrupt_control.write(interrupt_backup); // Restore interrupt register
+        }
+    }
+
+    fn interrupts(&self, enabled: bool) {
+        let mut interrupt_control = self.interrupt_control.lock();
+        unsafe { interrupt_control.write(if enabled { 0x01 } else { 0x00 }) };
+    }
+
+    fn line_status(&self) -> LineStatus {
+        unsafe {
+            // Reading line status is always safe. However, PortReadOnly::read() needs a mutable reference.
+            let reg = ptr::from_ref(&self.line_status).cast_mut().as_mut().unwrap();
+            LineStatus::from_bits_truncate(reg.read())
+        }
+    }
+
+    fn readable(&self) -> bool {
+        self.line_status().contains(LineStatus::DATA_READY)
+    }
+
+    fn writable(&self) -> bool {
+        self.line_status().contains(LineStatus::TRANSMITTER_EMPTY)
+    }
+
+    fn read(&self) -> Option<u8> {
+        match self.readable() {
+            true => { Some(unsafe { self.receive_buffer.lock().read() }) }
+            false => None,
+        }
+    }
+
+    fn write(&self, byte: u8) {
+        let mut buffer = self.transmit_buffer.lock();
+        while !self.writable() {
+            scheduler().switch_thread_no_interrupt();
+        }
+
+        unsafe { buffer.write(byte) };
+    }
 }
 
 struct SerialInterruptHandler {
-    port: ComPort,
+    serial_port: Arc<SerialPort>,
 }
 
 impl SerialInterruptHandler {
-    pub const fn new(port: ComPort) -> Self {
-        Self { port }
+    pub const fn new(serial_port: Arc<SerialPort>) -> Self {
+        Self { serial_port }
     }
 }
 
 pub fn check_port(port: ComPort) -> bool {
     let mut scratch = Port::<u8>::new(port as u16 + 7);
 
-    for i in 0..0xff {
+    (0..0xff).all(|i| {
         unsafe {
             scratch.write(i);
-            if scratch.read() != i {
-                return false;
-            }
+            scratch.read() == i
         }
-    }
-
-    return true;
+    })
 }
 
 impl OutputStream for SerialPort {
@@ -152,21 +253,12 @@ impl OutputStream for SerialPort {
     }
 
     fn write_str(&self, string: &str) {
-        let mut data_reg = Port::<u8>::new(self.port as u16);
-        let mut line_status_reg = Port::<u8>::new(self.port as u16 + 5);
-
         for b in string.bytes() {
             if b == '\n' as u8 {
                 self.write_str("\r");
             }
 
-            unsafe {
-                while (line_status_reg.read() & 0x20) != 0x20 {
-                    core::hint::spin_loop();
-                }
-
-                data_reg.write(b);
-            }
+            self.transceiver.write(b);
         }
     }
 }
@@ -174,7 +266,7 @@ impl OutputStream for SerialPort {
 impl InputStream for SerialPort {
     fn read_byte(&self) -> i16 {
         loop {
-            if let Some(buffer) = self.buffer.get() {
+            if let Some(buffer) = &self.buffer {
                 match buffer.0.try_dequeue() {
                     Ok(byte) => return byte as i16,
                     Err(DequeueError::Closed) => return -1,
@@ -188,28 +280,22 @@ impl InputStream for SerialPort {
 }
 
 impl InterruptHandler for SerialInterruptHandler {
-    fn trigger(&mut self) {
-        if let Some(serial) = serial_port() {
-            let mut data_reg = Port::<u8>::new(self.port as u16);
-            let mut fifo_control_reg = Port::<u8>::new(self.port as u16 + 2);
-            let mut line_status_reg = Port::<u8>::new(self.port as u16 + 5);
+    fn trigger(&self) {
+        if self.serial_port.interrupt_status.is_locked() || self.serial_port.transceiver.receive_buffer.is_locked() {
+            panic!("Serial: Required register is locked during interrupt!");
+        }
 
-            unsafe {
-                if (fifo_control_reg.read() & 0x01) == 0x01 {
-                    return;
-                }
+        let interrupt_status = InterruptStatus::from_bits_truncate(unsafe { self.serial_port.interrupt_status.lock().read() });
+        if !interrupt_status.contains(InterruptStatus::InterruptPending) {
+            return;
+        }
 
-                while (line_status_reg.read() & 0x01) == 0x01 {
-                    let byte = data_reg.read();
-                    match serial.buffer.get() {
-                        Some(buffer) => {
-                            while buffer.1.try_enqueue(byte).is_err() {
-                                if buffer.0.try_dequeue().is_err() {
-                                    panic!("Serial: Failed to store received byte in buffer!");
-                                }
-                            }
-                        }
-                        None => panic!("Serial: Interrupt handler called before initialization!"),
+        let transceiver = &self.serial_port.transceiver;
+        if let Some(buffer) = &self.serial_port.buffer {
+            while let Some(data) = transceiver.read() {
+                while buffer.1.try_enqueue(data).is_err() {
+                    if buffer.0.try_dequeue().is_err() {
+                        panic!("Serial: Failed to store received byte in buffer!");
                     }
                 }
             }
@@ -218,90 +304,40 @@ impl InterruptHandler for SerialInterruptHandler {
 }
 
 impl SerialPort {
-    pub const fn new(port: ComPort) -> Self {
+    pub fn new(port: ComPort, speed: BaudRate, buffer_cap: usize) -> Self {
+        let transceiver = Transceiver::new(port);
+        transceiver.interrupts(false);
+        transceiver.speed(speed);
+
         Self {
             port,
-            buffer: Once::new(),
+            transceiver,
+            interrupt_status: Mutex::new(PortReadOnly::new(port as u16 + 2)),
+            buffer: Some(mpmc::bounded::scq::queue(buffer_cap))
         }
     }
 
-    pub fn init(&self, buffer_cap: usize, speed: BaudRate) {
-        if !check_port(self.port) {
-            panic!("Serial: Port [{:?}] not found!", self.port);
-        }
+    pub fn new_write_only(port: ComPort) -> Self {
+        let transceiver = Transceiver::new(port);
+        transceiver.interrupts(false);
+        transceiver.speed(BaudRate::Baud115200);
 
-        self.buffer
-            .call_once(|| mpmc::bounded::scq::queue(buffer_cap));
-
-        let mut interrupt_reg = Port::<u8>::new(self.port as u16 + 1);
-        let mut fifo_control_reg = Port::<u8>::new(self.port as u16 + 2);
-        let mut line_control_reg = Port::<u8>::new(self.port as u16 + 3);
-        let mut modem_control_reg = Port::<u8>::new(self.port as u16 + 4);
-
-        unsafe {
-            interrupt_reg.write(0x00); // Disable all interrupts
-            self.speed(speed);
-            line_control_reg.write(0x03); // 8 bits per char, no parity, one stop bit
-            fifo_control_reg.write(0x07); // Enable FIFO-buffers, Clear FIFO-buffers, Trigger interrupt after each byte
-            modem_control_reg.write(0x0b); // Enable data lines
+        Self {
+            port,
+            transceiver,
+            interrupt_status: Mutex::new(PortReadOnly::new(port as u16 + 2)),
+            buffer: None
         }
     }
 
-    pub fn init_write_only(&mut self) {
-        if !check_port(self.port) {
-            panic!("Serial: Port [{:?}] not found!", self.port);
-        }
-
-        let mut interrupt_reg = Port::<u8>::new(self.port as u16 + 1);
-        let mut fifo_control_reg = Port::<u8>::new(self.port as u16 + 2);
-        let mut line_control_reg = Port::<u8>::new(self.port as u16 + 3);
-        let mut modem_control_reg = Port::<u8>::new(self.port as u16 + 4);
-
-        unsafe {
-            interrupt_reg.write(0x00); // Disable all interrupts
-            self.speed(BaudRate::Baud115200);
-            line_control_reg.write(0x03); // 8 bits per char, no parity, one stop bit
-            fifo_control_reg.write(0x00); // Disable FIFO-buffers
-            modem_control_reg.write(0x0b); // Enable data lines
-        }
-    }
-
-    pub fn speed(&self, speed: BaudRate) {
-        let mut data_reg = Port::<u8>::new(self.port as u16);
-        let mut interrupt_reg = Port::<u8>::new(self.port as u16 + 1);
-        let mut line_control_reg = Port::<u8>::new(self.port as u16 + 3);
-
-        info!("Setting speed to [{:?}]", speed);
-
-        unsafe {
-            let interrupt_backup = interrupt_reg.read();
-            let line_control_backup = line_control_reg.read();
-
-            interrupt_reg.write(0x00); // Disable all interrupts
-            line_control_reg.write(0x80); // Enable DLAB, so that the divisor can be set
-
-            data_reg.write((speed as u16 & 0x00ff) as u8); // Divisor low byte
-            interrupt_reg.write(((speed as u16 & 0xff00) >> 8) as u8); // Divisor high byte
-
-            line_control_reg.write(line_control_backup); // Restore line control register
-            interrupt_reg.write(interrupt_backup); // Restore interrupt register
-        }
-    }
-
-    pub fn plugin(&self) {
-        if !self.buffer.is_completed() {
-            panic!("Serial: Calling plugin() before initialization!");
-        }
-
-        let mut interrupt_reg = Port::<u8>::new(self.port as u16 + 1);
-        let vector = match self.port {
+    pub fn plugin(serial_port: Arc<SerialPort>) {
+        let vector = match serial_port.port {
             Com1 | Com3 => InterruptVector::Com1,
             Com2 | Com4 => InterruptVector::Com2,
         };
 
-        interrupt_dispatcher().assign(vector, Box::new(SerialInterruptHandler::new(self.port)));
+        serial_port.transceiver.interrupts(true);
+        interrupt_dispatcher().assign(vector, Box::new(SerialInterruptHandler::new(serial_port)));
         apic().allow(vector);
-
-        unsafe { interrupt_reg.write(0x01) } // Enable interrupts
     }
 }
