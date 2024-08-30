@@ -12,6 +12,7 @@ pub struct KernelAllocator {
     heap: LockedHeap,
 }
 
+#[derive(Default)]
 pub struct StackAllocator {}
 
 #[derive(Default, Clone)]
@@ -28,7 +29,7 @@ impl KernelAllocator {
     }
 
     pub fn is_initialized(&self) -> bool {
-        return self.heap.lock().size() > 0;
+        self.heap.lock().size() > 0
     }
 
     pub fn is_locked(&self) -> bool {
@@ -58,21 +59,15 @@ unsafe impl Allocator for KernelAllocator {
 
 unsafe impl GlobalAlloc for KernelAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        return self.heap.lock()
+        self.heap.lock()
             .allocate_first_fit(layout)
             .ok()
-            .map_or(core::ptr::null_mut(), |allocation| allocation.as_ptr());
+            .map_or(core::ptr::null_mut(), |allocation| allocation.as_ptr())
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let mut heap = self.heap.lock();
         unsafe { heap.deallocate(NonNull::new_unchecked(ptr), layout); }
-    }
-}
-
-impl StackAllocator {
-    pub const fn new() -> Self {
-        Self {}
     }
 }
 
@@ -85,7 +80,7 @@ unsafe impl Allocator for StackAllocator {
         let frame_count = if layout.size() % PAGE_SIZE == 0 { layout.size() / PAGE_SIZE } else { (layout.size() / PAGE_SIZE) + 1 };
         let frames = physical::alloc(frame_count);
 
-        return Ok(NonNull::slice_from_raw_parts(NonNull::new(frames.start.start_address().as_u64() as *mut u8).unwrap(), (frames.end - frames.start) as usize * PAGE_SIZE))
+        Ok(NonNull::slice_from_raw_parts(NonNull::new(frames.start.start_address().as_u64() as *mut u8).unwrap(), (frames.end - frames.start) as usize * PAGE_SIZE))
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {

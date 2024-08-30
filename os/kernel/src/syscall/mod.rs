@@ -15,6 +15,7 @@ use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::ToString;
 use alloc::vec;
+use alloc::vec::Vec;
 use chrono::{DateTime, Datelike, TimeDelta, Timelike};
 use core::ptr;
 use core::ptr::slice_from_raw_parts;
@@ -88,11 +89,7 @@ pub fn sys_map_user_heap(size: usize) -> usize {
     let heap_start = code_area.end().align_up(PAGE_SIZE as u64);
     let heap_area = VirtualMemoryArea::from_address(heap_start, size, VmaType::Heap);
 
-    process.address_space().map(
-        heap_area.range(),
-        MemorySpace::User,
-        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-    );
+    process.address_space().map(heap_area.range(), MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
     process.add_vma(heap_area);
 
     heap_start.as_u64() as usize
@@ -136,19 +133,11 @@ pub fn sys_thread_exit() {
     scheduler().exit();
 }
 
-pub fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize) -> usize {
-    let app_name = from_utf8(unsafe {
-        slice_from_raw_parts(name_buffer, name_length)
-            .as_ref()
-            .unwrap()
-    })
-    .unwrap();
-    match initrd()
-        .entries()
-        .find(|entry| entry.filename().as_str().unwrap() == app_name)
-    {
+pub fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize, args: *const Vec<&str>) -> usize {
+    let app_name = from_utf8(unsafe { slice_from_raw_parts(name_buffer, name_length).as_ref().unwrap() }).unwrap();
+    match initrd().entries().find(|entry| entry.filename().as_str().unwrap() == app_name) {
         Some(app) => {
-            let thread = Thread::load_application(app.data());
+            let thread = Thread::load_application(app.data(), app_name, unsafe { args.as_ref().unwrap() });
             scheduler().ready(Rc::clone(&thread));
             thread.id()
         }
@@ -170,27 +159,17 @@ pub fn sys_get_date() -> usize {
                 if time.is_valid().is_ok() {
                     let timezone = match time.time_zone() {
                         Some(timezone) => {
-                            let delta = TimeDelta::try_minutes(timezone as i64)
-                                .expect("Failed to create TimeDelta struct from timezone");
+                            let delta = TimeDelta::try_minutes(timezone as i64).expect("Failed to create TimeDelta struct from timezone");
                             if timezone >= 0 {
-                                format!(
-                                    "+{:0>2}:{:0>2}",
-                                    delta.num_hours(),
-                                    delta.num_minutes() % 60
-                                )
+                                format!("+{:0>2}:{:0>2}", delta.num_hours(), delta.num_minutes() % 60)
                             } else {
-                                format!(
-                                    "-{:0>2}:{:0>2}",
-                                    delta.num_hours(),
-                                    delta.num_minutes() % 60
-                                )
+                                format!("-{:0>2}:{:0>2}", delta.num_hours(), delta.num_minutes() % 60)
                             }
                         }
                         None => "Z".to_string(),
                     };
 
-                    DateTime::parse_from_rfc3339(
-                        format!("{}-{:0>2}-{:0>2}T{:0>2}:{:0>2}:{:0>2}.{:0>9}{}", time.year(), time.month(), time.day(), time.hour(), time.minute(), time.second(), time.nanosecond(), timezone).as_str())
+                    DateTime::parse_from_rfc3339(format!("{}-{:0>2}-{:0>2}T{:0>2}:{:0>2}:{:0>2}.{:0>9}{}", time.year(), time.month(), time.day(), time.hour(), time.minute(), time.second(), time.nanosecond(), timezone).as_str())
                         .expect("Failed to parse date from EFI runtime services")
                         .timestamp_millis() as usize
                 } else {
@@ -208,15 +187,9 @@ pub fn sys_set_date(date_ms: usize) -> usize {
     if let Some(efi_system_table) = efi_system_table() {
         let system_table = efi_system_table.write();
         let runtime_services_read = unsafe { system_table.runtime_services() };
-        let runtime_services = unsafe {
-            ptr::from_ref(runtime_services_read)
-                .cast_mut()
-                .as_mut()
-                .unwrap()
-        };
+        let runtime_services = unsafe { ptr::from_ref(runtime_services_read).cast_mut().as_mut().unwrap() };
 
-        let date = DateTime::from_timestamp_millis(date_ms as i64)
-            .expect("Failed to parse date from milliseconds");
+        let date = DateTime::from_timestamp_millis(date_ms as i64).expect("Failed to parse date from milliseconds");
         let uefi_date = Time::new(TimeParams {
             year: date.year() as u16,
             month: date.month() as u8,
@@ -227,8 +200,7 @@ pub fn sys_set_date(date_ms: usize) -> usize {
             nanosecond: date.nanosecond(),
             time_zone: None,
             daylight: Default::default(),
-        })
-        .expect("Failed to create EFI date");
+        }).expect("Failed to create EFI date");
 
         return match unsafe { runtime_services.set_time(&uefi_date) } {
             Ok(_) => true as usize,

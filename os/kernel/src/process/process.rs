@@ -28,7 +28,6 @@ impl ProcessManager {
         Self { active_processes: Vec::new(), exited_processes: Vec::new() }
     }
 
-    // MS ?
     pub fn create_process(&mut self) -> Arc<Process> {
         let address_space = match self.kernel_process() {
             Some(kernel_process) => { // Create user address space
@@ -47,7 +46,7 @@ impl ProcessManager {
         let process = Arc::new(Process::new(address_space));
         self.active_processes.push(Arc::clone(&process));
 
-        return process;
+        process
     }
 
     pub fn active_process_ids(&self) -> Vec<usize> {
@@ -154,7 +153,7 @@ impl Process {
             }
         });
 
-        return found;
+        found
     }
 
     pub fn update_vma(&self, vma: VirtualMemoryArea, update: impl Fn(&mut VirtualMemoryArea)) {

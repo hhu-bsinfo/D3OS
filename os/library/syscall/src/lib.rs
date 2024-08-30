@@ -83,7 +83,7 @@ pub fn syscall0(call: SystemCall) -> usize {
         );
     }
 
-    return ret;
+    ret
 }
 
 #[inline(always)]
@@ -101,7 +101,7 @@ pub fn syscall1(call: SystemCall, arg1: usize) -> usize {
         );
     }
 
-    return ret;
+    ret
 }
 
 #[inline(always)]
@@ -121,7 +121,7 @@ pub fn syscall2(call: SystemCall, arg1: usize, arg2: usize) -> usize {
         );
     }
 
-    return ret;
+    ret
 }
 
 #[inline(always)]
@@ -142,7 +142,7 @@ pub fn syscall3(call: SystemCall, arg1: usize, arg2: usize, arg3: usize) -> usiz
         );
     }
 
-    return ret;
+    ret
 }
 
 #[inline(always)]
@@ -164,7 +164,7 @@ pub fn syscall4(call: SystemCall, arg1: usize, arg2: usize, arg3: usize, arg4: u
         );
     }
 
-    return ret;
+    ret
 }
 
 #[inline(always)]
@@ -195,7 +195,7 @@ pub fn syscall5(
         );
     }
 
-    return (code, val);
+    (code, val)
 }
 
 pub fn syscall(call: SystemCall, args: &[usize]) -> (usize, usize) {

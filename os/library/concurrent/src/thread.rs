@@ -1,4 +1,6 @@
-use syscall::{syscall0, syscall1, syscall2, SystemCall};
+use alloc::vec::Vec;
+use core::ptr;
+use syscall::{syscall0, syscall1, syscall2, syscall3, SystemCall};
 
 pub struct Thread {
     id: usize
@@ -48,8 +50,8 @@ pub fn exit() -> ! {
     panic!("System call 'ThreadExit' has returned!")
 }
 
-pub fn start_application(name: &str) -> Option<Thread> {
-    match syscall2(SystemCall::ProcessExecuteBinary, name.as_bytes().as_ptr() as usize, name.len()) {
+pub fn start_application(name: &str, args: Vec<&str>) -> Option<Thread> {
+    match syscall3(SystemCall::ProcessExecuteBinary, name.as_bytes().as_ptr() as usize, name.len(), ptr::from_ref(&args) as usize) {
         0 => None,
         id => Some(Thread::new(id))
     }
