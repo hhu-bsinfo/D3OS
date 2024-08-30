@@ -1,4 +1,3 @@
-#![feature(unsafe_attributes)]
 #![no_std]
 
 extern crate alloc;
@@ -12,6 +11,10 @@ use io::{print, println};
 pub fn main() {
     let process = process::current();
     let thread = thread::current();
-
     println!("Hello from Thread [{}] in Process [{}]!", thread.id(), process.id());
+
+    let args = env::args();
+    for (i, arg) in args.enumerate() {
+        println!("Arg[{}]: {}", i, arg);
+    }
 }

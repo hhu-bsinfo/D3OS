@@ -1,5 +1,7 @@
-#![feature(unsafe_attributes)]
 #![no_std]
+extern crate alloc;
+
+pub mod env;
 
 use core::panic::PanicInfo;
 use linked_list_allocator::LockedHeap;

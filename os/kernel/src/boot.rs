@@ -15,6 +15,7 @@ use crate::process::thread::Thread;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Deref;
@@ -267,7 +268,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     scheduler().ready(Thread::load_application(initrd().entries()
         .find(|entry| entry.filename().as_str().unwrap() == "shell")
         .expect("Shell application not available!")
-        .data()));
+        .data(), "shell", &Vec::new()));
 
     // Disable terminal logging (remove terminal output stream)
     logger().remove(terminal().as_ref());
