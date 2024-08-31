@@ -1,17 +1,11 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: syscall_dispatcher                                              ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Dispatcher for system calls.                                    ║
+   ║ Descr.: Low-level dispatcher for system calls.                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland & Michael Schoettner, 27.8.2024, HHU             ║
+   ║ Author: Fabian Ruhland, 30.8.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use crate::syscall::{
-    sys_get_date, sys_get_system_time, sys_map_user_heap, sys_process_execute_binary,
-    sys_process_exit, sys_process_id, sys_read, sys_set_date, sys_thread_create, sys_thread_exit,
-    sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch, sys_write, sys_mkentry,
-};
-use crate::{core_local_storage, tss};
 use core::arch::asm;
 use core::mem::size_of;
 use core::ops::Deref;
@@ -21,6 +15,14 @@ use x86_64::registers::control::{Efer, EferFlags};
 use x86_64::registers::model_specific::{KernelGsBase, LStar, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
+use crate::syscall::sys_vmem::sys_map_user_heap;
+use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, };
+use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
+    sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch,};
+use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write};
+use crate::syscall::sys_naming::sys_mkentry;
+
+use crate::{core_local_storage, tss};
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -81,8 +83,8 @@ impl SyscallTable {
     pub const fn new() -> Self {
         SyscallTable {
             handle: [
-                sys_read as *const _,
-                sys_write as *const _,
+                sys_terminal_read as *const _,
+                sys_terminal_write as *const _,
                 sys_map_user_heap as *const _,
                 sys_process_execute_binary as *const _,
                 sys_process_id as *const _,
@@ -134,7 +136,7 @@ unsafe extern "C" fn syscall_handler() {
     // Store registers (except rax, which is used for system call ID and return value)
     "push rbx",
     "push rcx", // Contains rip for returning to ring 3
-   // "push rdx", // Contains 2nd return value -> do not save & restore
+    "push rdx", 
     "push rdi",
     "push rsi",
     "push r8",
@@ -170,7 +172,7 @@ unsafe extern "C" fn syscall_handler() {
     "pop r8",
     "pop rsi",
     "pop rdi",
-  //  "pop rdx", // Contains 2nd return value -> do not save & restore
+    "pop rdx",
     "pop rcx", // Contains rip for returning to ring 3
     "pop rbx",
 

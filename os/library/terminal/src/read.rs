@@ -1,25 +1,17 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: lib                                                             ║
+   ║ Module: read                                                            ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Syscalls for the naming service.                                ║
+   ║ Descr.: Read a input char from terminal.                                ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, 29.8.2024, HHU                              ║
+   ║ Author: Fabian Ruhland, 31.8.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+use syscall::{syscall, SystemCall};
 
-use num_enum::{FromPrimitive,IntoPrimitive};
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, FromPrimitive)]
-#[repr(usize)]
-pub enum Errno {
-    #[num_enum(default)]
-    ENOENT = 2, 	    /* No such file or directory */
-    EACCES = 13,	    /* Permission denied */
-    EEXIST = 17,	    /* File/directory exists */
-    ENOTDIR = 20,	    /* Not a directory */
-    EINVAL = 22,	    /* Invalid argument */
-    ENOTEMPTY = 90,	    /* Directory not empty */
+pub fn read() -> Option<char> {
+    let res = syscall(SystemCall::TerminalRead, &[]);
+    match res {
+        Ok(ch) => Some(char::from_u32(ch as u32).unwrap()),
+        Err(_) => None,
+    }    
 }
-
-pub type SyscallResult<T> = ::core::result::Result<T, Errno>;
-pub type Result<T> = ::core::result::Result<T, Errno>;

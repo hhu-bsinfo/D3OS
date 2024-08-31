@@ -7,7 +7,7 @@ authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhl
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }
-io = { path = "../io" }
+terminal = { path = "../terminal" }
 
 # External depencies
 num_enum = { version = "0.7", default-features = false }

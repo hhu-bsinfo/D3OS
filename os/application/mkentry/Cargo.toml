@@ -12,7 +12,7 @@ path = "src/mkentry.rs"
 
 [dependencies]
 # Local dependencies
-io = { path = "../../library/io" }
+terminal = { path = "../../library/terminal" }
 runtime = { path = "../../library/runtime" }
 naming = { path = "../../library/naming" }
 

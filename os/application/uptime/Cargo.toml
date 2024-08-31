@@ -13,5 +13,5 @@ path = "src/uptime.rs"
 [dependencies]
 # Local dependencies
 runtime = { path = "../../library/runtime" }
-io = { path = "../../library/io" }
+terminal = { path = "../../library/terminal" }
 time = { path = "../../library/time" }

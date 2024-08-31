@@ -1,16 +1,28 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: lib                                                             ║
+   ║ Module: sys_vmem                                                        ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: All system call counterparts in kernel, starting with 'sys_'.   ║
+   ║ Descr.: All system calls related to virtual memory management.          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland & Michael Schoettner, 30.8.2024, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-pub mod sys_naming;
-pub mod sys_terminal;
-pub mod sys_concurrent;
-pub mod sys_time;
-pub mod sys_vmem;
+use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
+use crate::memory::{MemorySpace, PAGE_SIZE};
+use crate::process_manager;
+use x86_64::structures::paging::PageTableFlags;
 
-pub mod syscall_dispatcher;
+
+pub fn sys_map_user_heap(size: usize) -> usize {
+    let process = process_manager().read().current_process();
+    let code_areas = process.find_vmas(VmaType::Code);
+    let code_area = code_areas.get(0).expect("Process does not have code area!");
+    let heap_start = code_area.end().align_up(PAGE_SIZE as u64);
+    let heap_area = VirtualMemoryArea::from_address(heap_start, size, VmaType::Heap);
+
+    process.address_space().map(heap_area.range(), MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+    process.add_vma(heap_area);
+
+    heap_start.as_u64() as usize
+}
+
