@@ -1,53 +1,52 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: lib                                                             ║
+   ║ Module: write                                                           ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Entry function for an application.                              ║
+   ║ Descr.: Write a char to the terminal.                                   ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland, 31.8.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-#![no_std]
-extern crate alloc;
-
-pub mod env;
-
-use concurrent::{process, thread};
-use core::panic::PanicInfo;
-use terminal::{print, println};
-use linked_list_allocator::LockedHeap;
+use core::fmt;
+use core::fmt::Write;
+use spin::Mutex;
 use syscall::{syscall, SystemCall};
 
-extern "C" {
-    fn main();
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => ({
+        $crate::write::print(format_args!($($arg)*));
+    });
 }
 
-const HEAP_SIZE: usize = 0x100000;
-
-#[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
-
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    println!("Panic: {}!", info);
-    thread::exit();
+#[macro_export]
+macro_rules! println {
+    ($fmt:expr) => (print!(concat!($fmt, "\n")));
+    ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
 }
 
-#[unsafe(no_mangle)]
-extern "C" fn entry() {
-    let heap_start: *mut u8;
+static WRITER: Mutex<Writer> = Mutex::new(Writer::new());
 
-    let res = syscall(SystemCall::MapUserHeap, &[HEAP_SIZE]);
-    match res {
-        Ok(hs) => heap_start = hs as *mut u8,
-        Err(_) => panic!("Could not create user heap."),
-    }
+pub fn print(args: fmt::Arguments) {
+    WRITER.lock().write_fmt(args).unwrap();
+}
 
-    unsafe {
-        ALLOCATOR.lock().init(heap_start, HEAP_SIZE);
-    }
+struct Writer {}
 
-    unsafe {
-        main();
+impl Writer {
+    const fn new() -> Self {
+        Self {}
     }
-    process::exit();
+}
+
+impl Write for Writer {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let res = syscall(
+            SystemCall::TerminalWrite,
+            &[s.as_bytes().as_ptr() as usize, s.len()],
+        );
+        match res {
+            Ok(_) => Ok(()),
+            Err(_) => Err(fmt::Error),
+        }
+    }
 }

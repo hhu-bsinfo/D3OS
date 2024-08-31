@@ -1,35 +1,25 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: process                                                         ║
+   ║ Module: sys_terminal                                                    ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Syscalls for process functions.                                 ║
+   ║ Descr.: All system calls for terminal.                                  ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Michael Schoettner, 31.8.2024, HHU              ║
+   ║ Author: Fabian Ruhland, 30.8.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use syscall::{syscall, SystemCall};
+use core::ptr::slice_from_raw_parts;
+use core::str::from_utf8;
+use crate::terminal;
 
-pub struct Process {
-    id: usize,
-}
-
-impl Process {
-    const fn new(id: usize) -> Self {
-        Self { id }
-    }
-
-    pub fn id(&self) -> usize {
-        self.id
+pub fn sys_terminal_read() -> usize {
+    let terminal = terminal();
+    match terminal.read_byte() {
+        -1 => panic!("Input stream closed!"),
+        c => c as usize
     }
 }
 
-pub fn current() -> Option<Process> {
-    let res = syscall(SystemCall::ProcessId, &[]);
-    match res {
-        Ok(id) => Some(Process::new(id as usize)),
-        Err(e) => None,
-    }    
-}
-
-pub fn exit() {
-    syscall(SystemCall::ProcessExit, &[]);
+pub fn sys_terminal_write(buffer: *const u8, length: usize) {
+    let string = from_utf8(unsafe { slice_from_raw_parts(buffer, length).as_ref().unwrap() }).unwrap();
+    let terminal = terminal();
+    terminal.write_str(string);
 }

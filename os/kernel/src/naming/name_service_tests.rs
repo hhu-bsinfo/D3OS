@@ -10,7 +10,7 @@ use alloc::vec;
 use ::log::info;
 
 use crate::naming::name_service::{cont, del, dir, mkdir, mkentry, rename, stat};
-use syscall::consts::Errno;
+use syscall::return_vals::Errno;
 
 ///
 /// Description:
@@ -40,12 +40,12 @@ fn test_mkdir() {
     // Create directory & subdirectory -> should work
     let path = "/home/schoettner";
     let r = mkdir(path);
-    assert!(r == Ok(()), "mkdir(\"{}\") -> {:?}", path, r);
+    assert!(r == Ok(0), "mkdir(\"{}\") -> {:?}", path, r);
 
     // Create directory & subdirectory -> should work
     let path = "/home/ruhland";
     let r = mkdir("/home/ruhland");
-    assert!(r == Ok(()), "mkdir(\"{}\") -> {:?}", path, r);
+    assert!(r == Ok(0), "mkdir(\"{}\") -> {:?}", path, r);
 
     // Create same directory & subdirectory -> should fail
     let r = mkdir("/home/schoettner");
@@ -79,13 +79,13 @@ fn test_mkentry() {
     let path = "/home/schoettner";
     let name = "brief.txt";
     let r = mkentry(path, name, vec![1, 1, 1, 1, 1]);
-    assert!(r == Ok(()), "mkdir(\"{}\", \"{}\") -> {:?}", path, name, r);
+    assert!(r == Ok(0), "mkdir(\"{}\", \"{}\") -> {:?}", path, name, r);
 
     // Create container entry in existing directory -> should work
     let path = "/home/ruhland";
     let name = "klausur.txt";
     let r = mkentry(path, name, vec![1, 1, 1, 1, 1]);
-    assert!(r == Ok(()), "mkdir(\"{}\", \"{}\") -> {:?}", path, name, r);
+    assert!(r == Ok(0), "mkdir(\"{}\", \"{}\") -> {:?}", path, name, r);
 
     // Create container in non-existing directory -> should fail
     let path = "/home/krakowski";
@@ -211,14 +211,14 @@ fn test_del() {
     // Delete empty existing subdirectory -> should work
     let pathname = "/home/krakowski";
     let r = mkdir(pathname);
-    assert!(r == Ok(()), "mkdir(\"{}\") -> {:?}", pathname, r);
+    assert!(r == Ok(0), "mkdir(\"{}\") -> {:?}", pathname, r);
     let r = del(pathname);
-    assert!(r == Ok(()), "del(\"{}\") -> {:?}", pathname, r);
+    assert!(r == Ok(0), "del(\"{}\") -> {:?}", pathname, r);
 
     // Delete existing container -> should work
     let pathname = "/home/schoettner/brief.txt";
     let r = del(pathname);
-    assert!(r == Ok(()), "del(\"{}\") -> {:?}", pathname, r);
+    assert!(r == Ok(0), "del(\"{}\") -> {:?}", pathname, r);
 
     info!("   test 'del':     passed");
 }
@@ -232,14 +232,14 @@ fn test_rename() {
     let path = "/home/schoettner";
     let name = "brief.txt";
     let r = mkentry(path, name, vec![1, 1, 1, 1, 1]);
-    assert!(r == Ok(()), "mkdir(\"{}\", \"{}\") -> {:?}", path, name, r);
+    assert!(r == Ok(0), "mkdir(\"{}\", \"{}\") -> {:?}", path, name, r);
 
     // Rename existing container -> should work
     let pathname = "/home/schoettner/brief.txt";
     let new_name = "email.txt";
     let r = rename(pathname, new_name);
     assert!(
-        r == Ok(()),
+        r == Ok(0),
         "rename(\"{}\", \"{}\") -> {:?}",
         pathname,
         new_name,
@@ -251,7 +251,7 @@ fn test_rename() {
     let new_name = "krakowski";
     let r = rename(pathname, new_name);
     assert!(
-        r == Ok(()),
+        r == Ok(0),
         "rename(\"{}\", \"{}\") -> {:?}",
         pathname,
         new_name,

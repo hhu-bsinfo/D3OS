@@ -6,11 +6,11 @@
    ║ Author: Michael Schoettner, 29.8.2024, HHU                              ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use syscall::consts::Result;
-use syscall::consts::Errno;
+use syscall::return_vals::Errno;
 use crate::naming::stat;
 use crate::naming::stat::Mode;
 use crate::naming::stat::Stat;
+use crate::naming::name_service::Result;
 
 use alloc::boxed::Box;
 use alloc::string::ToString;

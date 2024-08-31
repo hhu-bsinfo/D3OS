@@ -6,7 +6,7 @@ authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhl
 
 [dependencies]
 # Local dependencies
-io = { path = "../io" }
+terminal = { path = "../terminal" }
 syscall = { path = "../syscall" }
 concurrent = { path = "../concurrent" }
 
