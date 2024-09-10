@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Syscall interface in user mode.                                 ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Michael Schoettner, 30.8.2024, HHU              ║
+   ║ Author: Fabian Ruhland, Michael Schoettner, 10.09.2024, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![no_std]
@@ -49,7 +49,7 @@ pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
 ///    success >= 0 \
 ///    error, codes defined in consts.rs 
 pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
-    let ret_code: i64;
+    let ret_code: isize;
 
     if args.len() > 6 {
         panic!("System calls with more than 6 params are not supported.");
@@ -77,5 +77,5 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
             clobber_abi("system"));
     }
 
-    convert_ret_code_to_syscall_result(ret_code)
+    convert_ret_code_to_syscall_result(ret_code.try_into().unwrap())
 }
