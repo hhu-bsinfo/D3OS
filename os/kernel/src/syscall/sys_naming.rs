@@ -21,7 +21,7 @@ pub fn sys_mkentry(
     name_buff: *const u8,
     name_buff_len: usize,
     data: usize,
-) -> i64 {
+) -> isize {
     let path = from_utf8(unsafe {
         slice_from_raw_parts(path_buff, path_buff_len)
             .as_ref()

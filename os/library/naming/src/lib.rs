@@ -10,7 +10,7 @@
 
 use syscall::{return_vals::Errno, syscall, SystemCall};
 
-pub fn mkentry(path: &str, name: &str, data: usize) -> Result<u64, Errno> {
+pub fn mkentry(path: &str, name: &str, data: usize) -> Result<usize, Errno> {
     // Check if params are valid
     if path.is_empty() || name.is_empty() {
         Err(Errno::EINVAL) // Abort, if not

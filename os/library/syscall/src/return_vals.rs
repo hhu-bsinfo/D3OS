@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Consts and types for syscall return values.                     ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, 31.8.2024, HHU                              ║
+   ║ Author: Michael Schoettner, 10.09.2024, HHU                             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -22,23 +22,23 @@ pub enum Errno {
     ENOTEMPTY = -90,    // Directory not empty
 }
 
-pub type SyscallResult = ::core::result::Result<u64, Errno>;
+pub type SyscallResult = ::core::result::Result<usize, Errno>;
 
 pub fn convert_ret_code_to_syscall_result(ret_code: i64) -> SyscallResult {
     if ret_code < 0 {
         return Err(Errno::from(ret_code));
     } else {
-        return Ok(ret_code as u64);
+        return Ok(ret_code as usize);
     }
 }
 
-pub fn convert_syscall_result_to_ret_code(syscall_result: SyscallResult) -> i64 {
+pub fn convert_syscall_result_to_ret_code(syscall_result: SyscallResult) -> isize {
     let ret_val: i64;
     match syscall_result {
         Ok(t) => ret_val = t as i64,
         Err(e) => ret_val = e.into(),
     }
-    ret_val
+    ret_val as isize
 }
 
 
