@@ -1,8 +1,7 @@
 use alloc::string::{String, ToString};
-use core::fmt::Display;
-use core::ptr;
+use core::ffi::CStr;
 use core::ptr::slice_from_raw_parts;
-use core::str::from_utf8;
+use stream::strlen;
 
 // Duplicated from 'kernel/src/consts.rs'
 const USER_SPACE_START: usize = 0x10000000000;
@@ -10,26 +9,11 @@ const USER_SPACE_CODE_START: usize = USER_SPACE_START;
 const USER_SPACE_ENV_START: usize = USER_SPACE_CODE_START + 0x40000000;
 const USER_SPACE_ARG_START: usize = USER_SPACE_ENV_START;
 
-const ARGC_PTR: *const usize = USER_SPACE_ARG_START as *mut usize;
-const ARGV_PTR: *const *const Argument = (USER_SPACE_ARG_START + size_of::<usize>()) as *const *const Argument;
+pub(crate) const ARGC_PTR: *const usize = USER_SPACE_ARG_START as *const usize;
+pub(crate) const ARGV_PTR: *const *const u8 = (USER_SPACE_ARG_START + size_of::<*const usize>()) as *const *const u8;
 
 pub fn args() -> Args {
     Args::new()
-}
-
-#[repr(C, packed)]
-struct Argument {
-    len: usize,
-    data: u8
-}
-
-impl Display for Argument {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let slice = slice_from_raw_parts(ptr::from_ref(&self.data), self.len);
-        let string = unsafe { from_utf8(&*slice).unwrap() };
-
-        f.write_str(string)
-    }
 }
 
 pub struct Args {
@@ -47,16 +31,18 @@ impl Iterator for Args {
 
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
-            let argc = *ARGC_PTR ;
+            let argc = *ARGC_PTR;
             if self.index >= argc {
                 return None;
             }
 
-            let arg_ptr = *ARGV_PTR.offset(self.index as isize);
-            let arg = arg_ptr.as_ref()?;
+            let arg = *ARGV_PTR.add(self.index);
+            let len = strlen(arg);
             self.index += 1;
 
-            Some(arg.to_string())
+            CStr::from_bytes_with_nul(slice_from_raw_parts(arg, len + 1).as_ref()?)
+                .map(|cstr| cstr.to_str().expect("Invalid UTF-8 in argument").to_string())
+                .ok()
         }
     }
 }

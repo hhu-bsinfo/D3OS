@@ -12,10 +12,11 @@ pub fn main() {
     let process = process::current().unwrap();
     let thread = thread::current().unwrap();
 
-    println!("Hello from Thread [{}] in Process [{}]!", thread.id(), process.id());
+    println!("Hello from Thread [{}] in Process [{}]!\n", thread.id(), process.id());
 
+    println!("Arguments:");
     let args = env::args();
-    for (i, arg) in args.enumerate() {
-        println!("Arg[{}]: {}", i, arg);
+    for arg in args {
+        println!("  {}", arg);
     }
 }

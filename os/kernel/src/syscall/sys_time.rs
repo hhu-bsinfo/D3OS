@@ -15,11 +15,11 @@ use uefi::table::runtime::{Time, TimeParams};
 use crate::{efi_system_table, timer};
 
 
-pub fn sys_get_system_time() -> usize {
-    timer().systime_ms()
+pub fn sys_get_system_time() -> isize {
+    timer().systime_ms() as isize
 }
 
-pub fn sys_get_date() -> usize {
+pub fn sys_get_date() -> isize {
     if let Some(efi_system_table) = efi_system_table() {
         let system_table = efi_system_table.read();
         let runtime_services = unsafe { system_table.runtime_services() };
@@ -41,7 +41,7 @@ pub fn sys_get_date() -> usize {
 
                     DateTime::parse_from_rfc3339(format!("{}-{:0>2}-{:0>2}T{:0>2}:{:0>2}:{:0>2}.{:0>9}{}", time.year(), time.month(), time.day(), time.hour(), time.minute(), time.second(), time.nanosecond(), timezone).as_str())
                         .expect("Failed to parse date from EFI runtime services")
-                        .timestamp_millis() as usize
+                        .timestamp_millis() as isize
                 } else {
                     0
                 }
@@ -53,7 +53,7 @@ pub fn sys_get_date() -> usize {
     0
 }
 
-pub fn sys_set_date(date_ms: usize) -> usize {
+pub fn sys_set_date(date_ms: usize) -> isize {
     if let Some(efi_system_table) = efi_system_table() {
         let system_table = efi_system_table.write();
         let runtime_services_read = unsafe { system_table.runtime_services() };
@@ -73,10 +73,10 @@ pub fn sys_set_date(date_ms: usize) -> usize {
         }).expect("Failed to create EFI date");
 
         return match unsafe { runtime_services.set_time(&uefi_date) } {
-            Ok(_) => true as usize,
-            Err(_) => false as usize,
+            Ok(_) => true as isize,
+            Err(_) => false as isize,
         };
     }
 
-    false as usize
+    false as isize
 }

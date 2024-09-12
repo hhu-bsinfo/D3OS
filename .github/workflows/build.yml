@@ -50,7 +50,7 @@ jobs:
       - name: Install packages
         uses: amitie10g/install-package@v1.2.3
         with:
-          brew: x86_64-elf-binutils nasm
+          brew: x86_64-elf-binutils x86_64-elf-gcc nasm
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
@@ -84,7 +84,7 @@ jobs:
       - name: Install packages
         uses: amitie10g/install-package@v1.2.3
         with:
-          brew: x86_64-elf-binutils nasm
+          brew: x86_64-elf-binutils x86_64-elf-gcc nasm
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly

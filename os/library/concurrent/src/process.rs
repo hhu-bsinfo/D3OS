@@ -25,11 +25,11 @@ impl Process {
 pub fn current() -> Option<Process> {
     let res = syscall(SystemCall::ProcessId, &[]);
     match res {
-        Ok(id) => Some(Process::new(id as usize)),
-        Err(e) => None,
+        Ok(id) => Some(Process::new(id)),
+        Err(_) => None,
     }    
 }
 
 pub fn exit() {
-    syscall(SystemCall::ProcessExit, &[]);
+    syscall(SystemCall::ProcessExit, &[]).expect("Failed to exit process");
 }
