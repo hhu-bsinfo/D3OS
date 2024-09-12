@@ -1,5 +1,7 @@
+cargo-features = ["edition2024"]
+
 [package]
-edition = "2021"
+edition = "2024"
 name = "concurrent"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]

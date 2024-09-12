@@ -4,8 +4,8 @@ INITRD_DIRECTORY = "${BOOTLOADER_DIRECTORY}/initrd"
 OVMF_URL = "https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd"
 TOWBOOT_VERSION = "0.9.0"
 TOWBOOT_URL = "https://github.com/hhuOS/towboot/releases/download/v${TOWBOOT_VERSION}/towbootctl-v${TOWBOOT_VERSION}"
-LINKER = "ld"
-LINKER_MAC = "x86_64-elf-ld"
+TAR = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "tar", mapping = { "macos" = "gtar" } }
+LINKER = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "ld", mapping = { "macos" = "x86_64-elf-ld" } }
 
 [tasks.default]
 alias = "qemu"
@@ -152,14 +152,10 @@ condition = { files_not_exist = [ "${INITRD_DIRECTORY}" ] }
 
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
-command = "tar"
-args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "shell", "uptime", "date", "mkentry" ]
+command = "${TAR}"
+args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "helloc", "shell", "uptime", "date", "mkentry" ]
 dependencies = [ "link-members" ]
 condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
-
-[tasks.initrd.mac]
-cwd = "${INITRD_DIRECTORY}"
-command = "gtar"
 
 [tasks.image]
 cwd = "${BOOTLOADER_DIRECTORY}"

@@ -40,7 +40,6 @@ use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB};
 use x86_64::PrivilegeLevel::Ring3;
 use x86_64::VirtAddr;
-
 use crate::consts::{KERNEL_STACK_PAGES, USER_SPACE_ENV_START};
 use crate::consts::MAIN_USER_STACK_START;
 use crate::consts::MAX_USER_STACK_SIZE;
@@ -166,26 +165,20 @@ impl Thread {
             let args_begin_virt = env_virt_start.start_address() + size_of::<usize>() as u64 + ((args.len() + 1) * size_of::<usize>()) as u64; // Virtual start address of arguments (they will be visible here in user space)
 
             // copy program name as first argument
-            let mut current_arg = args_begin;
-            let mut current_arg_len = current_arg as *mut usize;
-            let mut current_arg_str = current_arg.offset(size_of::<usize>() as isize);
-
-            current_arg_len.write_unaligned(name.len());
-            current_arg_str.copy_from(name.as_bytes().as_ptr(), name.len());
+            args_begin.copy_from(name.as_bytes().as_ptr(), name.len());
+            args_begin.add(name.len()).write(0); // null-terminate the string for C compatibility
             argv.write(args_begin_virt.as_ptr());
-            let mut offset = size_of::<usize>() + name.len();
+
+            let mut offset = name.len() + 1;
 
             // copy remaining arguments
-            for i in 0..args.len() {
-                current_arg = args_begin.offset(offset as isize);
-                current_arg_len = current_arg as *mut usize;
-                current_arg_str = current_arg.offset(size_of::<usize>() as isize);
+            for (i, arg) in args.iter().enumerate() {
+                let target = args_begin.add(offset);
+                target.copy_from(arg.as_bytes().as_ptr(), arg.len());
+                target.add(arg.len()).write(0); // null-terminate the string for C compatibility
 
-                current_arg_len.write_unaligned(args[i].len());
-                current_arg_str.copy_from(args[i].as_bytes().as_ptr(), args[i].len());
-
-                argv.offset((i + 1) as isize).write((args_begin_virt + offset as u64).as_ptr());
-                offset += size_of::<usize>() + args[i].len();
+                argv.add(i + 1).write((args_begin_virt + offset as u64).as_ptr());
+                offset += arg.len() + 1;
             }
         }
 

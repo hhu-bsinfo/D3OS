@@ -2,14 +2,14 @@ cargo-features = ["edition2024"]
 
 [package]
 edition = "2024"
-name = "naming"
+name = "libc"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
 
 [dependencies]
 # Local dependencies
-syscall = { path = "../syscall" }
+runtime = { path = "../runtime" }
 terminal = { path = "../terminal" }
-
-# External depencies
-num_enum = { version = "0.7", default-features = false }
+syscall = { path = "../syscall" }
+concurrent = { path = "../concurrent" }
+stream = { path = "../stream" }

@@ -10,16 +10,17 @@ use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
 use crate::terminal;
 
-pub fn sys_terminal_read() -> usize {
+pub fn sys_terminal_read() -> isize {
     let terminal = terminal();
     match terminal.read_byte() {
         -1 => panic!("Input stream closed!"),
-        c => c as usize
+        c => c as isize
     }
 }
 
-pub fn sys_terminal_write(buffer: *const u8, length: usize) {
+pub fn sys_terminal_write(buffer: *const u8, length: usize) -> isize {
     let string = from_utf8(unsafe { slice_from_raw_parts(buffer, length).as_ref().unwrap() }).unwrap();
     let terminal = terminal();
     terminal.write_str(string);
+    0
 }

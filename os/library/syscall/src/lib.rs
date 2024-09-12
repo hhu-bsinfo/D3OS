@@ -47,7 +47,7 @@ pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
 ///
 /// Return: Result \
 ///    success >= 0 \
-///    error, codes defined in consts.rs 
+///    error, codes defined in consts.rs
 pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
     let ret_code: isize;
 
