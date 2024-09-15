@@ -2,13 +2,13 @@ cargo-features = ["edition2024"]
 
 [package]
 edition = "2024"
-name = "mkentry"
+name = "mkdir"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
 
 [lib]
 crate-type = ["staticlib"]
-path = "src/mkentry.rs"
+path = "src/mkdir.rs"
 
 [dependencies]
 # Local dependencies

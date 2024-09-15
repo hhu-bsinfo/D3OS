@@ -9,7 +9,7 @@
 */
 
 use crate::interrupt::interrupt_dispatcher;
-use crate::naming::name_service;
+use crate::naming;
 use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
 use alloc::format;
@@ -247,7 +247,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     }
 
     // Init naming service
-    name_service::init();
+    naming::api::init();
 
     // Load initial ramdisk
     let initrd_tag = multiboot.module_tags()

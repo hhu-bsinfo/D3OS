@@ -5,7 +5,7 @@ extern crate alloc;
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::{print, println};
-use naming::mkentry;
+use naming::mkdir;
 
 #[unsafe(no_mangle)]
 pub fn main() {
@@ -14,7 +14,7 @@ pub fn main() {
         println!("Arg[{}]: {}", i, arg);
     }
 
-    let res = mkentry("/home/schoettner", "test.txt", 1);
+    let res = mkdir("/home/schoettner");
 
-    println!("app: mkentry {:?}", res);
+    println!("app: mkdir {:?}", res);
 }

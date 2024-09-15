@@ -8,7 +8,7 @@ members = [
     "os/application/shell",
     "os/application/uptime",
     "os/application/date",
-    "os/application/mkentry"
+    "os/application/mkdir"
 ]
 
 # [profile.release]

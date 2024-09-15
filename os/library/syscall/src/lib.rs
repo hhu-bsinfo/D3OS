@@ -7,6 +7,10 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![no_std]
+
+#[macro_use]
+extern crate bitflags;
+
 pub mod return_vals;
 
 use core::arch::asm;
@@ -31,7 +35,7 @@ pub enum SystemCall {
     GetSystemTime,
     GetDate,
     SetDate,
-    Mkentry,
+    MkDir,
 
     // no syscall, just marking last number, see NUM_SYSCALLS
     // insert any new system calls before this marker
