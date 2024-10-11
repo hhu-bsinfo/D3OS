@@ -30,7 +30,7 @@ use crate::{memory, process_manager, scheduler, tss};
 use alloc::rc::Rc;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::arch::asm;
+use core::arch::naked_asm;
 use core::{mem, ptr};
 use goblin::elf::Elf;
 use goblin::elf64;
@@ -416,7 +416,7 @@ impl Thread {
 #[naked]
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
-    asm!(
+    naked_asm!(
         "mov rsp, rdi", // First parameter -> load 'old_rsp0'
         "pop rbp",
         "pop rdi", // 'old_rsp0' is here
@@ -435,8 +435,7 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
         "pop r8",
         "popf",
         "call unlock_scheduler", // force unlock, thread_switch locks Scheduler but returns later
-        "ret",
-        options(noreturn)
+        "ret"
     );
 }
 
@@ -445,11 +444,10 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
 #[allow(unsafe_op_in_unsafe_fn)]
 #[allow(improper_ctypes_definitions)] // 'entry' takes no arguments and has no return value, so we just assume that the "C" and "Rust" ABIs act the same way in this case
 unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
-    asm!(
+    naked_asm!(
         "mov rsp, rdi", // Load 'old_rsp' (first parameter)
         "mov rdi, rsi", // Second parameter becomes first parameter for 'kickoff_user_thread()'
-        "iretq",        // Switch to user-mode
-        options(noreturn)
+        "iretq"        // Switch to user-mode
     )
 }
 
@@ -457,7 +455,7 @@ unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
 #[naked]
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_rsp0_end: u64, next_cr3: u64) {
-    asm!(
+    naked_asm!(
     // Save registers of current thread
     "pushf",
     "push r8",
@@ -509,7 +507,6 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
 
     "call unlock_scheduler", // force unlock, thread_switch locks Scheduler but returns later
     "ret", // Return to next thread
-    CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX,
-    options(noreturn)
+    CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX
     )
 }
