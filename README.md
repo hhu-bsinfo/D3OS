@@ -13,7 +13,7 @@ A new research operating system, developed by the [operating systems group](http
 
 ## Requirements
 
-For building D3OS, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/). The nightly toolchain (2024-08-22) is confirmed to work.
+For building D3OS, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/). The nightly toolchain `1.83.0-nightly (52fd99839 2024-10-10)` is confirmed to work.
 
 ```
 rustup toolchain install nightly

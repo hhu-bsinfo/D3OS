@@ -6,7 +6,7 @@
    ║ Author: Fabian Ruhland, 15.9.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use core::arch::asm;
+use core::arch::{asm, naked_asm};
 use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
@@ -120,7 +120,7 @@ unsafe impl Sync for SyscallTable {}
 /// Return: \
 ///    Two values in `rax`, `rdx` to reconstruct `Result`in user mode
 unsafe extern "C" fn syscall_handler() {
-    asm!(
+    naked_asm!(
     // We are now in ring 0, but still on the user stack
     // Disable interrupts until we have switched to kernel stack
     "cli",
@@ -185,8 +185,7 @@ unsafe extern "C" fn syscall_handler() {
     "sysretq",
     NUM_SYSCALLS = const NUM_SYSCALLS,
     CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX,
-    CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX,
-    options(noreturn)
+    CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX
     );
 }
 
@@ -194,11 +193,10 @@ unsafe extern "C" fn syscall_handler() {
 #[unsafe(no_mangle)]
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" fn syscall_disp() {
-    asm!(
+    naked_asm!(
     "call [{SYSCALL_TABLE} + 8 * rax]",
     "ret",
-    SYSCALL_TABLE = sym SYSCALL_TABLE,
-    options(noreturn)
+    SYSCALL_TABLE = sym SYSCALL_TABLE
     );
 }
 
