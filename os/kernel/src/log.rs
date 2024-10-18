@@ -46,6 +46,7 @@ impl log::Log for Logger {
         if streams.is_empty() {
             if let Some(serial) = &self.serial {
                 serial.write_str(ansi::FOREGROUND_CYAN);
+
                 serial.write_str("[0.000]");
                 serial.write_str(ansi_color(level));
                 serial.write_str("[");

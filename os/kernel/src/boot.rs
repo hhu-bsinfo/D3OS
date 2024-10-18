@@ -59,7 +59,7 @@ unsafe extern "C" {
     static ___KERNEL_DATA_END__: u64;   // end address of OS image
 }
 
-const INIT_HEAP_PAGES: usize = 0x400;   // number of heap pages for booting the OS
+const INIT_HEAP_PAGES: usize = 0x4000;   // number of heap pages for booting the OS
 
 /// Description: First rust function called from assembly code `boot.asm` \
 ///

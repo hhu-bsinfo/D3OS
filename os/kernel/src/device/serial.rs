@@ -12,7 +12,7 @@ use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
 use nolock::queues::{mpmc, DequeueError};
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
-use crate::{apic, interrupt_dispatcher, scheduler};
+use crate::{allocator, apic, interrupt_dispatcher, scheduler};
 
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -178,6 +178,7 @@ impl Transceiver {
             let interrupt_backup = interrupt_control.read(); // Backup interrupt register
             let line_control_backup = line_control.read(); // Backup line control register
 
+            interrupt_control.write(0x00); // Disable all interrupts
             line_control.write(0x80); // Enable DLAB, so that the divisor can be set
 
             data.write((speed as u16 & 0x00ff) as u8); // Divisor low byte
@@ -206,7 +207,7 @@ impl Transceiver {
     }
 
     fn writable(&self) -> bool {
-        self.line_status().contains(LineStatus::TRANSMITTER_EMPTY)
+        self.line_status().contains(LineStatus::TRANSMITTER_HOLDING_REGISTER_EMPTY)
     }
 
     fn read(&self) -> Option<u8> {
@@ -219,7 +220,9 @@ impl Transceiver {
     fn write(&self, byte: u8) {
         let mut buffer = self.transmit_buffer.lock();
         while !self.writable() {
-            scheduler().switch_thread_no_interrupt();
+            if allocator().is_initialized() {
+                scheduler().switch_thread_no_interrupt();
+            }
         }
 
         unsafe { buffer.write(byte) };

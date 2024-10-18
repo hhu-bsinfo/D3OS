@@ -85,7 +85,7 @@ dependencies = [ "image", "ovmf" ]
 args = [
     # Base machine configuration
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "128M,slots=2,maxmem=1G",
+    "-m", "256M,slots=2,maxmem=1G",
     "-cpu", "qemu64",
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "d",
