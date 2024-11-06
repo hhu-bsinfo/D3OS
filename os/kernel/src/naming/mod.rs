@@ -8,4 +8,3 @@ mod main;
 mod file;
 mod directory;
 mod open_objects;
-mod kerla;

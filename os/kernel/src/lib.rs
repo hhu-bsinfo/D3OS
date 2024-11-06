@@ -39,7 +39,6 @@ use acpi::AcpiTables;
 use multiboot2::ModuleTag;
 use spin::{Mutex, Once, RwLock};
 use tar_no_std::TarArchiveRef;
-use uefi::table::{Runtime, SystemTable};
 use x86_64::structures::gdt::GlobalDescriptorTable;
 use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::paging::frame::PhysFrameRange;
@@ -88,26 +87,16 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-
-/// SystemTable<Runtime> is not Send + Sync, so we need to wrap it in a struct that is.
-struct EfiSystemTable {
-    table: RwLock<SystemTable<Runtime>>,
-}
-
-unsafe impl Send for EfiSystemTable {}
-unsafe impl Sync for EfiSystemTable {}
-
-impl EfiSystemTable {
-    const fn new(table: SystemTable<Runtime>) -> Self {
-        Self { table: RwLock::new(table) }
-    }
-}
-
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Static kernel structures.                                               ║
    ║ These structures are need for the kernel to work. Since they only exist ║
    ║ once, they are shared as static lifetime references.                    ║
    ╚═════════════════════════════════════════════════════════════════════════╝ */
+
+/// Check if EFI system table (and thus runtime services) are available.
+pub fn efi_services_available() -> bool {
+    uefi::table::system_table_raw().is_some()
+}
 
 /// Global Descriptor Table.
 /// Needed to set up basic segmentation (flat model) and the TSS.
@@ -143,23 +132,6 @@ static CORE_LOCAL_STORAGE: Mutex<CoreLocalStorage> = Mutex::new(CoreLocalStorage
 
 pub fn core_local_storage() -> &'static Mutex<CoreLocalStorage> {
     &CORE_LOCAL_STORAGE
-}
-
-/// EFI System Table.
-/// Needed to access UEFI services. After the kernel takes control, only the UEFI runtime services are available.
-/// While these have not nearly as many functions as the boot services, we at least use them to get the current date and time.
-/// 'boot.rs' initializes this struct by calling 'init_efi_system_table()' after obtaining a reference to the system table from the bootloader.
-static EFI_SYSTEM_TABLE: Once<EfiSystemTable> = Once::new();
-
-pub fn init_efi_system_table(table: SystemTable<Runtime>) {
-    EFI_SYSTEM_TABLE.call_once(|| EfiSystemTable::new(table));
-}
-
-pub fn efi_system_table() -> Option<&'static RwLock<SystemTable<Runtime>>> {
-    match EFI_SYSTEM_TABLE.get() {
-        Some(wrapper) => Some(&wrapper.table),
-        None => None,
-    }
 }
 
 /// ACPI Tables.

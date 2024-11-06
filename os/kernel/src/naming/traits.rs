@@ -72,6 +72,7 @@ pub(super) trait NsNodeDirectory : NsNode + Debug + Send + Sync
 }
 
 /// Description: This trait defines all functions that can be applied to an open file
+#[allow(dead_code)] // size() is currently not used and produces a compiler warning. May be removed late, once all methods are in active use.
 pub(super) trait NsOpenFile: Debug + Send + Sync {
 
     ///
