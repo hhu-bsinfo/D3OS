@@ -58,7 +58,7 @@ impl NsNode for NsFile {
 
 /// Implement `NsNodeFile` operations for `NsFile`
 impl NsNodeFile for NsFile {
-    fn get_handle(&self, opt: OpenOptions) -> Result<Box<dyn NsOpenFile>, Errno> {
+    fn get_handle(&self, _opt: OpenOptions) -> Result<Box<dyn NsOpenFile>, Errno> {
         Ok(Box::new(NsFile {
             pos: AtomicUsize::new(0),
             data: self.data.clone(),
@@ -115,19 +115,15 @@ impl NsOpenFile for NsFile {
     fn seek(&self, offset: usize, origin: SeekOrigin) -> Result<usize, Errno> {
         match origin {
             SeekOrigin::Start => {
-                let pos = self.pos.store(offset, SeqCst);
-                Ok(offset as usize)
+                self.pos.store(offset, SeqCst);
+                Ok(offset)
             }
             SeekOrigin::End => {
                 let guard = self.data.read();
                 let ref vec: &Vec<u8> = guard.as_ref();
-                let data = vec.len() as usize + offset;
-                if data >= 0 {
-                    let pos = self.pos.store(data, SeqCst);
-                    Ok(data as usize)
-                } else {
-                    Err(Errno::EINVAL)
-                }
+                let data = vec.len() + offset;
+                self.pos.store(data, SeqCst);
+                Ok(data)
             }
             SeekOrigin::Current => {
                 let pos: i64 = self.pos.load(SeqCst) as i64 + offset as i64;

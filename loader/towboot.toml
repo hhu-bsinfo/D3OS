@@ -6,4 +6,4 @@ log_level = "info"
   [entries.d3os]
     name = "D3OS"
     image = "kernel.elf"
-  modules = [ { image = "initrd.tar", argv = "initrd" } ]
+    modules = [ { image = "initrd.tar", argv = "initrd" } ]

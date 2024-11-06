@@ -23,8 +23,8 @@
             "label": "qemu",
             "type": "shell",
             "isBackground": false,
-            "command": "${workspaceRoot}/run.sh",
-            "args": [],
+            "command": "cargo",
+            "args": [ "make", "--no-workspace", "--profile", "development", "qemu" ],
             "problemMatcher": [],
             "dependsOn": "build"
         },

@@ -9,7 +9,7 @@
 */
 
 use crate::interrupt::interrupt_dispatcher;
-use crate::naming;
+use crate::{naming, efi_services_available};
 use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
 use alloc::format;
@@ -21,7 +21,7 @@ use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
 use chrono::DateTime;
-use log::{debug, error, info, LevelFilter};
+use log::{debug, info, LevelFilter};
 use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
 use smoltcp::iface;
 use smoltcp::iface::Interface;
@@ -29,11 +29,10 @@ use smoltcp::time::Instant;
 use smoltcp::wire::{HardwareAddress, IpCidr, Ipv4Address};
 use smoltcp::wire::IpAddress::Ipv4;
 use uefi::mem::memory_map::MemoryMap;
-use uefi::prelude::*;
-use uefi::table::boot::PAGE_SIZE;
-use uefi::table::Runtime;
-use uefi::table::runtime::Time;
+use uefi::data_types::Handle;
+use uefi::runtime::Time;
 use uefi_raw::table::boot::MemoryType;
+use uefi_raw::table::system::SystemTable;
 use x86_64::instructions::interrupts;
 use x86_64::instructions::segmentation::{Segment, CS, DS, ES, FS, GS, SS};
 use x86_64::instructions::tables::load_tss;
@@ -44,12 +43,12 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use crate::{acpi_tables, allocator, apic, built_info, efi_system_table, gdt, init_acpi_tables, init_apic, init_efi_system_table, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss};
+use crate::{acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss};
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
 use crate::device::qemu_cfg;
 use crate::device::serial::SerialPort;
-use crate::memory::{MemorySpace, nvmem};
+use crate::memory::{MemorySpace, nvmem, PAGE_SIZE};
 use crate::memory::nvmem::Nfit;
 use crate::network::rtl8139;
 
@@ -79,7 +78,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         panic!("Invalid Multiboot2 magic number!");
     }
 
-    // Search memory map, provided by bootloader of EFI, for usable memory and initialize physical memory management
+    // Search memory map, provided by bootloader or EFI, for usable memory and initialize physical memory management
     let multiboot = multiboot2_search_memory_map(multiboot2_addr);
 
     // Setup global descriptor table
@@ -168,23 +167,14 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     interrupts::enable();
 
     // Initialize EFI runtime service (if available and not done already during memory initialization)
-    if efi_system_table().is_none() {
-        if let Some(sdt_tag) = multiboot.efi_sdt64_tag() {
-            info!("Initializing EFI runtime services");
-            let system_table = unsafe { SystemTable::<Runtime>::from_ptr(sdt_tag.sdt_address() as *mut c_void) };
-            if system_table.is_some() {
-                init_efi_system_table(system_table.unwrap());
-            } else {
-                error!("Failed to create EFI system table struct from pointer!");
-            }
-        }
+    if uefi::table::system_table_raw().is_none() {
+        info!("Initializing EFI runtime services");
+        let sdt_tag = multiboot.efi_sdt64_tag().expect("Bootloader did not provide EFI system table pointer");
+        unsafe { uefi::table::set_system_table(sdt_tag.sdt_address() as *const SystemTable) };
     }
 
-    // Dump information about EFI runtime service (if available)
-    if let Some(efi_system_table) = efi_system_table() {
-        let system_table = efi_system_table.read();
-        info!("EFI runtime services available (Vendor: [{}], UEFI version: [{}])", system_table.firmware_vendor(), system_table.uefi_revision());
-    }
+    // Dump information about EFI runtime service
+    info!("EFI runtime services available (Vendor: [{}], UEFI version: [{}])", uefi::system::firmware_vendor(), uefi::system::uefi_revision());
 
     // Initialize keyboard
     info!("Initializing PS/2 devices");
@@ -233,13 +223,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
                 info!("Last boot time: [{:0>4}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}]", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
             }
 
-            // Get current time
-            if let Some(efi_system_table) = efi_system_table() {
-                let system_table = efi_system_table.read();
-                let runtime_services = unsafe { system_table.runtime_services() };
-
-                // Write current boot time to NVRAM
-                if let Ok(time) = runtime_services.get_time() {
+            // Write current boot time to NVRAM
+            if efi_services_available() {
+                if let Ok(time) = uefi::runtime::get_time() {
                     unsafe { date_ptr.write(time) }
                 }
             }
@@ -345,26 +331,23 @@ fn multiboot2_search_memory_map(multiboot2_addr: *const BootInformationHeader) -
     // Search memory map, provided by bootloader of EFI, for usable memory and initialize physical memory management
     if let Some(_) = multiboot.efi_bs_not_exited_tag() {
         // EFI boot services have not been exited, and we obtain access to the memory map and EFI runtime services by exiting them manually
-        info!("EFI boot services have not been exited");
+        info!("EFI boot services have not been exited yet");
         let image_tag = multiboot.efi_ih64_tag().expect("EFI image handle not available!");
         let sdt_tag = multiboot.efi_sdt64_tag().expect("EFI system table not available!");
-        let image_handle;
-        let system_table;
+        let memory_map;
 
         unsafe {
-            image_handle = Handle::from_ptr(image_tag.image_handle() as *mut c_void).expect("Failed to create EFI image handle struct from pointer!");
-            system_table = SystemTable::<Boot>::from_ptr(sdt_tag.sdt_address() as *mut c_void).expect("Failed to create EFI system table struct from pointer!");
-            system_table.boot_services().set_image_handle(image_handle);
-        }
+            let image_handle = Handle::from_ptr(image_tag.image_handle() as *mut c_void).expect("Failed to create EFI image handle struct from pointer!");
+            uefi::table::set_system_table(sdt_tag.sdt_address() as *const SystemTable);
+            uefi::boot::set_image_handle(image_handle);
 
-        info!("Exiting EFI boot services to obtain runtime system table and memory map");
-        unsafe {
-            let (runtime_table, memory_map) = system_table.exit_boot_services(MemoryType::LOADER_DATA);
-            scan_efi_memory_map(&memory_map);
-            init_efi_system_table(runtime_table);
+            info!("Exiting EFI boot services to obtain runtime system table and memory map");
+            memory_map = uefi::boot::exit_boot_services(MemoryType::LOADER_DATA);
         }
+        
+        scan_efi_memory_map(&memory_map);
     } else {
-        info!("EFI boot services have been exited");
+        info!("EFI boot services have already been exited by the bootloader");
         if let Some(memory_map) = multiboot.efi_memory_map_tag() {
             // EFI services have been exited, but the bootloader has provided us with the EFI memory map
             info!("Bootloader provides EFI memory map");
@@ -407,8 +390,13 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
         .filter(|area| area.ty.0 == MemoryType::CONVENTIONAL.0 || area.ty.0 == MemoryType::LOADER_CODE.0 || area.ty.0 == MemoryType::LOADER_DATA.0
             || area.ty.0 == MemoryType::BOOT_SERVICES_CODE.0 || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0) // .0 necessary because of different version dependencies to uefi-crate
         .for_each(|area| {
-            let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
-            unsafe { memory::physical::insert(PhysFrameRange { start, end: start + area.page_count }); }
+            let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64));
+            if start.is_ok() {
+                let start = start.unwrap();
+                unsafe { memory::physical::insert(PhysFrameRange { start, end: start + area.page_count }); }
+            } else {
+                panic!("Failed to create physical frame from start address!");
+            }
         });
 }
 

@@ -16,7 +16,7 @@ use chrono::TimeDelta;
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::Mutex;
-use crate::{built_info, efi_system_table, keyboard, process_manager, scheduler, speaker, timer};
+use crate::{built_info, efi_services_available, keyboard, process_manager, scheduler, speaker, timer};
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) { cursor } else { '_' };
 const TAB_SPACES: u16 = 8;
@@ -287,19 +287,15 @@ impl LFBTerminal {
 
         // Draw info string
         let info_string = format!("D³OS v{} ({}) | Uptime: {:0>2}:{:0>2}:{:0>2} | Processes: {} | Threads: {}",
-                                  built_info::PKG_VERSION, built_info::PROFILE,
-                                  uptime.num_hours(), uptime.num_minutes() % 60, uptime.num_seconds() - (uptime.num_minutes() * 60),
-                                  active_process_ids.len(),
-                                  active_thread_ids.len());
+              built_info::PKG_VERSION, built_info::PROFILE,
+              uptime.num_hours(), uptime.num_minutes() % 60, uptime.num_seconds() - (uptime.num_minutes() * 60),
+              active_process_ids.len(), active_thread_ids.len());
 
         display.lfb.lfb().draw_string(0, 0, color::HHU_BLUE, color::INVISIBLE, info_string.as_str());
 
         // Draw date
-        if let Some(efi_system_table) = efi_system_table() {
-            let system_table = efi_system_table.read();
-            let runtime_services = unsafe { system_table.runtime_services() };
-
-            if let Ok(date) = runtime_services.get_time() {
+        if efi_services_available() {
+            if let Ok(date) = uefi::runtime::get_time() {
                 let date_str = format!("{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
                 display.lfb.lfb().draw_string((display.size.0 as u32 - date_str.len() as u32) * lfb::DEFAULT_CHAR_WIDTH, 0, color::HHU_BLUE, color::INVISIBLE, &date_str);
             }

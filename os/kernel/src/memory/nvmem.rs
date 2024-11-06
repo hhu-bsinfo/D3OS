@@ -5,13 +5,12 @@ use acpi::AcpiTable;
 use acpi::sdt::{SdtHeader, Signature};
 use bitflags::bitflags;
 use log::info;
-use uefi::table::boot::PAGE_SIZE;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::{PhysAddr, VirtAddr};
 use crate::{acpi_tables, process_manager};
-use crate::memory::MemorySpace;
+use crate::memory::{MemorySpace, PAGE_SIZE};
 
 #[allow(dead_code)]
 #[repr(u16)]
