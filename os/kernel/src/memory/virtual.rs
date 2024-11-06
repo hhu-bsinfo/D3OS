@@ -28,7 +28,7 @@ pub enum VmaType {
 unsafe impl Send for AddressSpace {}
 unsafe impl Sync for AddressSpace {}
 
-fn page_table_index(virt_addr: VirtAddr, level: usize) -> PageTableIndex {
+pub fn page_table_index(virt_addr: VirtAddr, level: usize) -> PageTableIndex {
     PageTableIndex::new_truncate((virt_addr.as_u64() >> 12 >> ((level as u8 - 1) * 9)) as u16)
 }
 

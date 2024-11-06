@@ -21,7 +21,7 @@ use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
 use chrono::DateTime;
-use log::{debug, info, LevelFilter};
+use log::{debug, info, warn, LevelFilter};
 use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
 use smoltcp::iface;
 use smoltcp::iface::Interface;
@@ -39,8 +39,9 @@ use x86_64::instructions::tables::load_tss;
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
-use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
+use x86_64::structures::paging::{Page, PageTable, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
+use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use crate::{acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss};
@@ -50,6 +51,7 @@ use crate::device::qemu_cfg;
 use crate::device::serial::SerialPort;
 use crate::memory::{MemorySpace, nvmem, PAGE_SIZE};
 use crate::memory::nvmem::Nfit;
+use crate::memory::r#virtual::page_table_index;
 use crate::network::rtl8139;
 
 // import labels from linker script 'link.ld'
@@ -58,7 +60,7 @@ unsafe extern "C" {
     static ___KERNEL_DATA_END__: u64;   // end address of OS image
 }
 
-const INIT_HEAP_PAGES: usize = 0x4000;   // number of heap pages for booting the OS
+const INIT_HEAP_PAGES: usize = 0x400;   // number of heap pages for booting the OS
 
 /// Description: First rust function called from assembly code `boot.asm` \
 ///
@@ -168,9 +170,13 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize EFI runtime service (if available and not done already during memory initialization)
     if uefi::table::system_table_raw().is_none() {
-        info!("Initializing EFI runtime services");
-        let sdt_tag = multiboot.efi_sdt64_tag().expect("Bootloader did not provide EFI system table pointer");
-        unsafe { uefi::table::set_system_table(sdt_tag.sdt_address() as *const SystemTable) };
+        match multiboot.efi_sdt64_tag() {
+            Some(tag) => {
+                info!("Initializing EFI runtime services");
+                unsafe { uefi::table::set_system_table(tag.sdt_address() as *const SystemTable) };
+            },
+            None => warn!("Bootloader did not provide EFI system table pointer"),
+        }
     }
 
     // Dump information about EFI runtime service
@@ -380,35 +386,79 @@ fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag) {
         });
 }
 
-
 /// Description: Memory map from efi. Only available if boot services have been exited.
 ///              Sometimes bootloaders do not provide multiboot2 memory maps if
 ///              efi information has been requested.
 fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
     info!("Searching memory map for available regions");
     memory_map.memory_areas()
-        .filter(|area| area.ty.0 == MemoryType::CONVENTIONAL.0 || area.ty.0 == MemoryType::LOADER_CODE.0 || area.ty.0 == MemoryType::LOADER_DATA.0
-            || area.ty.0 == MemoryType::BOOT_SERVICES_CODE.0 || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0) // .0 necessary because of different version dependencies to uefi-crate
+        .filter(|area| area.ty.0 == MemoryType::CONVENTIONAL.0
+            || area.ty.0 == MemoryType::LOADER_CODE.0
+            || area.ty.0 == MemoryType::LOADER_DATA.0
+            || area.ty.0 == MemoryType::BOOT_SERVICES_CODE.0
+            || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0) // .0 necessary because of different version dependencies to uefi-crate
         .for_each(|area| {
-            let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64));
-            if start.is_ok() {
-                let start = start.unwrap();
-                unsafe { memory::physical::insert(PhysFrameRange { start, end: start + area.page_count }); }
-            } else {
-                panic!("Failed to create physical frame from start address!");
+            let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
+            let frames = PhysFrame::range(start, start + area.page_count);
+            
+            // Non-conventional memory may be write-protected, and we need to unprotect it first
+            if area.ty.0 != MemoryType::CONVENTIONAL.0 {
+                unprotect_frames(frames);
             }
+            
+            unsafe { memory::physical::insert(frames); }
         });
 }
-
 
 /// Description: Memory map from efi. Only available if boot services have NOT been exited.
 fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
     info!("Searching memory map for available regions");
     memory_map.entries()
-        .filter(|area| area.ty == MemoryType::CONVENTIONAL || area.ty == MemoryType::LOADER_CODE || area.ty == MemoryType::LOADER_DATA
-            || area.ty == MemoryType::BOOT_SERVICES_CODE || area.ty == MemoryType::BOOT_SERVICES_DATA)
+        .filter(|area| area.ty == MemoryType::CONVENTIONAL
+            || area.ty == MemoryType::LOADER_CODE
+            || area.ty == MemoryType::LOADER_DATA
+            || area.ty == MemoryType::BOOT_SERVICES_CODE
+            || area.ty == MemoryType::BOOT_SERVICES_DATA)
         .for_each(|area| {
             let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
-            unsafe { memory::physical::insert(PhysFrameRange { start, end: start + area.page_count }); }
+            let frames = PhysFrame::range(start, start + area.page_count);
+
+            // Non-conventional memory may be write-protected, and we need to unprotect it first
+            if area.ty != MemoryType::CONVENTIONAL {
+                unprotect_frames(frames);
+            }
+
+            unsafe { memory::physical::insert(frames); }
         });
+}
+
+fn unprotect_frames(frames: PhysFrameRange) {
+    unsafe { Cr0::update(|flags| flags.remove(Cr0Flags::WRITE_PROTECT)) };
+    
+    let root_level = if Cr4::read().contains(Cr4Flags::L5_PAGING) { 5 } else { 4 };
+    for frame in frames {
+        unprotect_frame(frame, root_level);
+    }
+    
+    unsafe { Cr0::update(|flags| flags.insert(Cr0Flags::WRITE_PROTECT)) };
+}
+
+fn unprotect_frame(frame: PhysFrame, root_level: usize) {
+    let addr = VirtAddr::new(frame.start_address().as_u64());
+    let mut page_table = unsafe { (Cr3::read().0.start_address().as_u64() as *mut PageTable).as_mut().unwrap() };
+    
+    let mut level = root_level;
+    loop  {
+        let index = page_table_index(addr, level);
+        let entry = &mut page_table[index];
+        let flags = entry.flags();
+
+        if level == 1 || flags.contains(PageTableFlags::HUGE_PAGE) {
+            entry.set_flags(flags | PageTableFlags::WRITABLE);
+            break;
+        }
+
+        page_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
+        level -= 1;
+    }
 }
