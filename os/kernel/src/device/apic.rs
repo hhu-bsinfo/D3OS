@@ -1,10 +1,11 @@
 use alloc::boxed::Box;
+use alloc::format;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use acpi::madt::Madt;
 use acpi::platform::interrupt::{InterruptSourceOverride, NmiSource, Polarity, TriggerMode};
 use acpi::InterruptModel;
 use alloc::vec::Vec;
-use log::info;
+use log::{info, warn};
 use raw_cpuid::CpuId;
 use spin::Mutex;
 use x2apic::ioapic::{IoApic, IrqFlags, IrqMode, RedirectionTableEntry};
@@ -18,7 +19,7 @@ use crate::memory::MemorySpace;
 
 pub struct Apic {
     local_apic: Mutex<LocalApic>,
-    io_apic: Mutex<IoApic>,
+    io_apics: Vec<(Mutex<IoApic>, u32)>, // (0: IO APIC instance, 1: Base Global System Interrupt)
     irq_overrides: Vec<InterruptSourceOverride>,
     nmi_sources: Vec<NmiSource>,
     timer_ticks_per_ms: usize
@@ -59,69 +60,48 @@ impl Apic {
 
         info!("[{}] application {} detected", cpu_info.application_processors.len(), if cpu_info.application_processors.len() == 1 { "processor" } else { "processors" });
         info!("CPU [{}] is the bootstrap processor", cpu_info.boot_processor.processor_uid);
-
-        // Read physical APIC MMIO base address and map it to the kernel address space
-        // Needs to be executed in unsafe block; APIC availability has been checked before, so this should work.
-        let apic_page = Page::from_start_address(VirtAddr::new(madt.local_apic_address as u64)).expect("Local Apic MMIO address is not page aligned");
-        let address_space = process_manager().read().kernel_process().unwrap().address_space();
-        address_space.map(PageRange { start: apic_page, end: apic_page + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
-
-        let local_apic_mutex = Mutex::new(LocalApicBuilder::new()
-                .timer_vector(InterruptVector::ApicTimer as usize)
-                .error_vector(InterruptVector::ApicError as usize)
-                .spurious_vector(InterruptVector::Spurious as usize)
-                .set_xapic_base(apic_page.start_address().as_u64())
-                .build()
-                .unwrap_or_else(|err| panic!("Failed to initialize Local APIC ({})!", err)),
-        );
-
-        let io_apic_mutex;
+        
+        // Vectors to store IRQ overrides and Non-maskable interrupts
         let mut irq_overrides = Vec::<InterruptSourceOverride>::new();
         let mut nmi_sources = Vec::<NmiSource>::new();
+        
+        // Vector to store initialized IO APICs with their base interrupt number
+        let mut io_apics = Vec::<(Mutex<IoApic>, u32)>::new();
+        
+        // Create Local APIC instance
+        let local_apic = Mutex::new(Self::create_local_apic(&madt));
 
-        {
-            let mut local_apic = local_apic_mutex.lock();
-            info!("Initialized Local APIC [{}]", cpu_info.boot_processor.local_apic_id);
+        match int_model.0 {
+            InterruptModel::Apic(apic_desc) => {
+                // Read and store IRQ override entries
+                info!("[{}] interrupt source {} detected", apic_desc.interrupt_source_overrides.len(), if apic_desc.interrupt_source_overrides.len() == 1 { "override" } else { "overrides" });
 
-            match int_model.0 {
-                InterruptModel::Unknown => panic!("No APIC described by MADT!"),
-                InterruptModel::Apic(apic_desc) => {
-                    info!("[{}] IO {} detected", apic_desc.io_apics.len(), if apic_desc.io_apics.len() == 1 { "APIC" } else { "APICs" });
+                for irq_override in apic_desc.interrupt_source_overrides.iter() {
+                    info!("IRQ override [{}]->[{}], Polarity: [{:?}], Trigger: [{:?}]", irq_override.isa_source, irq_override.global_system_interrupt, irq_override.polarity, irq_override.trigger_mode);
+                    irq_overrides.push(InterruptSourceOverride { isa_source: irq_override.isa_source, global_system_interrupt: irq_override.global_system_interrupt, polarity: irq_override.polarity, trigger_mode: irq_override.trigger_mode, });
+                }
 
-                    if apic_desc.io_apics.len() > 1 {
-                        panic!("More than one IO APIC found!");
-                    }
+                // Read and store non-maskable interrupts sources
+                info!("[{}] NMI {} detected", apic_desc.nmi_sources.len(), if apic_desc.nmi_sources.len() == 1 { "source" } else { "sources" });
 
-                    let io_apic_desc = apic_desc.io_apics.get(0).unwrap_or_else(|| panic!("No IO APIC described by MADT!"));
+                for nmi_source in apic_desc.nmi_sources.iter() {
+                    info!("NMI source [{}], Polarity: [{:?}], Trigger: [{:?}]", nmi_source.global_system_interrupt, nmi_source.polarity, nmi_source.trigger_mode);
+                    nmi_sources.push(NmiSource { global_system_interrupt: nmi_source.global_system_interrupt, polarity: nmi_source.polarity, trigger_mode: nmi_source.trigger_mode });
+                }
 
-                    info!("Initializing IO APIC");
-                    let io_apic_page = Page::from_start_address(VirtAddr::new(io_apic_desc.address as u64)).expect("IO Apic MMIO address is not page aligned");
-                    address_space.map(PageRange { start: io_apic_page, end: io_apic_page + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
-                    unsafe { io_apic_mutex = Mutex::new(IoApic::new(io_apic_page.start_address().as_u64())); } // Needs to be executed in unsafe block; Since exactly one IO APIC has been detected, this should work
+                info!("[{}] IO {} detected", apic_desc.io_apics.len(), if apic_desc.io_apics.len() == 1 { "APIC" } else { "APICs" });
 
-                    let mut io_apic = io_apic_mutex.lock();
-                    unsafe { io_apic.init(io_apic_desc.global_system_interrupt_base as u8); }
-
-                    // Read and store IRQ override entries
-                    info!("[{}] interrupt source {} detected", apic_desc.interrupt_source_overrides.len(), if apic_desc.interrupt_source_overrides.len() == 1 { "override" } else { "overrides" });
-
-                    for irq_override in apic_desc.interrupt_source_overrides.iter() {
-                        info!("IRQ override [{}]->[{}], Polarity: [{:?}], Trigger: [{:?}]", irq_override.isa_source, irq_override.global_system_interrupt, irq_override.polarity, irq_override.trigger_mode);
-                        irq_overrides.push(InterruptSourceOverride { isa_source: irq_override.isa_source, global_system_interrupt: irq_override.global_system_interrupt, polarity: irq_override.polarity, trigger_mode: irq_override.trigger_mode, });
-                    }
-
-                    // Read and store non-maskable interrupts sources
-                    info!("[{}] NMI {} detected", apic_desc.nmi_sources.len(), if apic_desc.nmi_sources.len() == 1 { "source" } else { "sources" });
-
-                    for nmi_source in apic_desc.nmi_sources.iter() {
-                        info!("NMI source [{}], Polarity: [{:?}], Trigger: [{:?}]", nmi_source.global_system_interrupt, nmi_source.polarity, nmi_source.trigger_mode);
-                        nmi_sources.push(NmiSource { global_system_interrupt: nmi_source.global_system_interrupt, polarity: nmi_source.polarity, trigger_mode: nmi_source.trigger_mode });
-                    }
+                // Iterate over IO APIC entries in MADT and initialize IO APICs (should only be a single one on most systems)
+                for (i, io_apic_desc) in apic_desc.io_apics.iter().enumerate() {
+                    info!("Initializing IO APIC [{}]", i);
+                    let mut io_apic = Self::create_io_apic(io_apic_desc);
 
                     // Initialize redirection table with regards to IRQ override entries
                     // Needs to be executed in unsafe block; At this point, the IO APIC has been initialized successfully, so we can assume, that reading the MSR works.
-                    let max_entry = unsafe { io_apic.max_table_entry() };
-                    for i in io_apic_desc.global_system_interrupt_base as u8..max_entry {
+                    let max_entry = io_apic_desc.global_system_interrupt_base + unsafe { io_apic.max_table_entry() } as u32;
+                    info!("IO APIC [{}] handles interrupts [{}-{}]", i + 1, io_apic_desc.global_system_interrupt_base, max_entry);
+                    
+                    for i in io_apic_desc.global_system_interrupt_base..max_entry {
                         let mut entry = RedirectionTableEntry::default();
                         let mut flags = IrqFlags::MASKED;
 
@@ -129,7 +109,7 @@ impl Apic {
                         entry.set_dest(cpu_info.boot_processor.local_apic_id as u8);
 
                         match override_for_target(&irq_overrides, i) {
-                            None => entry.set_vector(i + InterruptVector::Pit as u8),
+                            None => entry.set_vector(i as u8 + InterruptVector::Pit as u8),
                             Some(irq_override) => {
                                 if irq_override.polarity == Polarity::ActiveLow {
                                     flags |= IrqFlags::LOW_ACTIVE;
@@ -138,73 +118,102 @@ impl Apic {
                                     flags |= IrqFlags::LEVEL_TRIGGERED;
                                 }
 
-                                entry.set_vector(irq_override.isa_source + InterruptVector::Pit as u8, );
+                                entry.set_vector(irq_override.isa_source + InterruptVector::Pit as u8);
                             }
                         }
 
                         entry.set_flags(flags);
 
                         // Needs to be executed in unsafe block; Tables entries have been initialized in IoApic::init(), so writing them works.
-                        unsafe { io_apic.set_table_entry(i, entry); }
+                        unsafe { io_apic.set_table_entry(i as u8, entry); }
                     }
-
-                    // Set entries for non-maskable interrupts
-                    for nmi in nmi_sources.iter() {
-                        let mut entry = RedirectionTableEntry::default();
-                        let mut flags = IrqFlags::empty();
-
-                        if nmi.polarity == Polarity::ActiveLow {
-                            flags |= IrqFlags::LOW_ACTIVE;
-                        }
-                        if nmi.trigger_mode == TriggerMode::Level {
-                            flags |= IrqFlags::LEVEL_TRIGGERED;
-                        }
-
-                        entry.set_mode(IrqMode::NonMaskable);
-                        entry.set_vector(0);
-                        entry.set_flags(flags);
-
-                        // Needs to be executed in unsafe block; At this point, the APIC has been initialized successfully, so we can assume, that reading the MSR works.
-                        entry.set_dest(unsafe { local_apic.id() } as u8);
-
-                        // Needs to be executed in unsafe block; Tables entries have been initialized in IoApic::init(), so writing them works.
-                        unsafe { io_apic.set_table_entry(nmi.global_system_interrupt as u8, entry); }
-
-                        // Needs to be executed in unsafe block; We just disable the APIC timer here to prevent it from firing interrupts before calibration
-                        let apic_timer_target = target_gsi(&irq_overrides, InterruptVector::ApicTimer as u8 - InterruptVector::Pit as u8);
-                        unsafe { io_apic.disable_irq(apic_timer_target) }
-                    }
+                    
+                    io_apics.push((Mutex::new(io_apic), io_apic_desc.global_system_interrupt_base));
                 }
-                _ => panic!("No APIC described by MADT!"),
+            },
+            _ => panic!("No APIC described by MADT!"),
+        }
+        
+        // Set entries for non-maskable interrupts
+        for nmi in nmi_sources.iter() {
+            let mut entry = RedirectionTableEntry::default();
+            let mut flags = IrqFlags::empty();
+
+            if nmi.polarity == Polarity::ActiveLow {
+                flags |= IrqFlags::LOW_ACTIVE;
+            }
+            if nmi.trigger_mode == TriggerMode::Level {
+                flags |= IrqFlags::LEVEL_TRIGGERED;
             }
 
-            // Initialization is finished -> Enable Local Apic
-            unsafe {
-                info!("Enabling Local APIC [{}]", cpu_info.boot_processor.local_apic_id);
-                local_apic.enable();
+            entry.set_mode(IrqMode::NonMaskable);
+            entry.set_vector(0);
+            entry.set_flags(flags);
+
+            // Needs to be executed in unsafe block; At this point, the APIC has been initialized successfully, so we can assume that reading the MSR works.
+            entry.set_dest(unsafe { local_apic.lock().id() } as u8);
+
+            // Find the correct IO APIC for the given NMI and set the corresponding entry in its redirection table
+            match io_apic_for_target(&io_apics, nmi.global_system_interrupt) {
+                Some(io_apic) => {
+                    unsafe { io_apic.0.lock().set_table_entry(nmi.global_system_interrupt as u8, entry); }
+                }, 
+                None => warn!("No responsible IO APIC found for NMI [{}]", nmi.global_system_interrupt)
             }
+        }
+
+        // Initialization is finished -> Enable Local Apic
+        unsafe {
+            info!("Enabling Local APIC [{}]", cpu_info.boot_processor.local_apic_id);
+            local_apic.lock().enable();
         }
 
         // Calibrate APIC timer
-        let timer_ticks_per_ms = Apic::calibrate_timer(&mut local_apic_mutex.lock());
+        let timer_ticks_per_ms = Apic::calibrate_timer(&mut local_apic.lock());
         info!("APIC Timer ticks per millisecond: [{}]", timer_ticks_per_ms);
 
-        Self {
-            local_apic: local_apic_mutex,
-            io_apic: io_apic_mutex,
-            irq_overrides,
-            nmi_sources,
-            timer_ticks_per_ms
-        }
+        Self { local_apic, io_apics, irq_overrides, nmi_sources, timer_ticks_per_ms }
+    }
+    
+    fn create_local_apic(madt: &Madt) -> LocalApic {
+        // Read physical APIC MMIO base address and map it to the kernel address space
+        let registers = Page::from_start_address(VirtAddr::new(madt.local_apic_address as u64)).expect("Local Apic MMIO address is not page aligned");
+        let address_space = process_manager().read().kernel_process().unwrap().address_space();
+        address_space.map(PageRange { start: registers, end: registers + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+        
+        LocalApicBuilder::new()
+            .timer_vector(InterruptVector::ApicTimer as usize)
+            .error_vector(InterruptVector::ApicError as usize)
+            .spurious_vector(InterruptVector::Spurious as usize)
+            .set_xapic_base(registers.start_address().as_u64())
+            .build()
+            .unwrap_or_else(|err| panic!("Failed to initialize Local APIC ({})!", err))
     }
 
+    fn create_io_apic(io_apic_desc: &acpi::platform::interrupt::IoApic) -> IoApic {
+        // Read physical IO APIC MMIO base address and map it to the kernel address space
+        let registers = Page::from_start_address(VirtAddr::new(io_apic_desc.address as u64)).expect("IO Apic MMIO address is not page aligned");
+        let address_space = process_manager().read().kernel_process().unwrap().address_space();
+        address_space.map(PageRange { start: registers, end: registers + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+        
+        unsafe {
+            let mut io_apic = IoApic::new(registers.start_address().as_u64());
+            io_apic.init(io_apic_desc.global_system_interrupt_base as u8);
+
+            io_apic
+        }
+    }
+    
     pub fn allow(&self, vector: InterruptVector) {
         let target = target_gsi(&self.irq_overrides, vector as u8 - InterruptVector::Pit as u8);
         if is_nmi(&self.nmi_sources, target) {
             panic!("Trying to mask a non-maskable interrupt");
         }
 
-        unsafe { self.io_apic.lock().enable_irq(target); }
+        let io_apic = io_apic_for_target(&self.io_apics, target)
+            .expect(format!("No responsible IO APIC found for interrupt [{}]", target).as_str());
+        
+        unsafe { io_apic.0.lock().enable_irq(target as u8); }
     }
 
     pub fn end_of_interrupt(&self) {
@@ -230,7 +239,6 @@ impl Apic {
         }
 
         interrupt_dispatcher().assign(InterruptVector::ApicTimer, Box::new(ApicTimerInterruptHandler::default()));
-        self.allow(InterruptVector::ApicTimer);
     }
 
     fn calibrate_timer(local_apic: &mut LocalApic) -> usize {
@@ -254,10 +262,10 @@ impl Apic {
     }
 }
 
-fn target_gsi(irq_overrides: &Vec<InterruptSourceOverride>, source_irq: u8) -> u8 {
+fn target_gsi(irq_overrides: &Vec<InterruptSourceOverride>, source_irq: u8) -> u32 {
     match override_for_source(irq_overrides, source_irq) {
-        None => source_irq,
-        Some(irq_override) => irq_override.global_system_interrupt as u8,
+        None => source_irq as u32,
+        Some(irq_override) => irq_override.global_system_interrupt,
     }
 }
 
@@ -271,9 +279,9 @@ fn override_for_source(irq_overrides: &Vec<InterruptSourceOverride>, source_irq:
     return None;
 }
 
-fn override_for_target(irq_overrides: &Vec<InterruptSourceOverride>, target_gsi: u8) -> Option<&InterruptSourceOverride> {
+fn override_for_target(irq_overrides: &Vec<InterruptSourceOverride>, target_gsi: u32) -> Option<&InterruptSourceOverride> {
     for irq_override in irq_overrides.iter() {
-        if irq_override.global_system_interrupt as u8 == target_gsi {
+        if irq_override.global_system_interrupt == target_gsi {
             return Some(irq_override);
         }
     }
@@ -281,9 +289,23 @@ fn override_for_target(irq_overrides: &Vec<InterruptSourceOverride>, target_gsi:
     return None;
 }
 
-fn is_nmi(nmi_sources: &Vec<NmiSource>, gsi: u8) -> bool {
+fn io_apic_for_target(io_apics: &Vec<(Mutex<IoApic>, u32)>, target_gsi: u32) -> Option<&(Mutex<IoApic>, u32)> {
+    for entry in io_apics.iter() {
+        let mut io_apic = entry.0.lock();
+        let min_entry = entry.1;
+        let max_entry = min_entry + unsafe { io_apic.max_table_entry() } as u32;
+        
+        if target_gsi >= min_entry && target_gsi <= max_entry {
+            return Some(entry);
+        }
+    }
+    
+    None
+}
+
+fn is_nmi(nmi_sources: &Vec<NmiSource>, gsi: u32) -> bool {
     for nmi in nmi_sources.iter() {
-        if nmi.global_system_interrupt == gsi as u32 {
+        if nmi.global_system_interrupt == gsi {
             return true;
         }
     }
