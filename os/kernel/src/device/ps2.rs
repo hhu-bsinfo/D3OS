@@ -159,7 +159,10 @@ impl PS2 {
         Ok(())
     }
 
-    pub fn keyboard(&self) -> Arc<Keyboard> {
-        Arc::clone(self.keyboard.get().unwrap())
+    pub fn keyboard(&self) -> Option<Arc<Keyboard>> {
+        match self.keyboard.is_completed() {
+            true => Some(Arc::clone(self.keyboard.get().unwrap())),
+            false => None
+        }
     }
 }

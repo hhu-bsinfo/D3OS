@@ -184,7 +184,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize keyboard
     info!("Initializing PS/2 devices");
-    Keyboard::plugin(keyboard());
+    if let Some(keyboard) = keyboard() {
+        Keyboard::plugin(keyboard);
+    }
 
     // Enable serial port interrupts
     if let Some(serial) = serial_port() {

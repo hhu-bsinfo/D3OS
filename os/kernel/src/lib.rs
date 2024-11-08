@@ -327,7 +327,7 @@ pub fn terminal() -> Arc<dyn Terminal> {
 /// Used to access PS/2 devices like the keyboard or mouse. Currently only the keyboard is supported.
 static PS2: Once<Arc<PS2>> = Once::new();
 
-pub fn keyboard() -> Arc<Keyboard> {
+pub fn keyboard() -> Option<Arc<Keyboard>> {
     PS2.call_once(|| {
         let mut ps2 = PS2::new();
         match ps2.init_controller() {
