@@ -1,7 +1,7 @@
 use core::fmt;
 use core::fmt::Write;
 use spin::Mutex;
-use syscall::{syscall2, SystemCall};
+use syscall::{syscall, SystemCall};
 
 #[macro_export]
 macro_rules! print {
@@ -23,10 +23,9 @@ pub fn print(args: fmt::Arguments) {
 }
 
 pub fn log_debug(s: &str) {
-    syscall2(
+    let _ = syscall(
         SystemCall::LogSerial,
-        s.as_bytes().as_ptr() as usize,
-        s.len(),
+        &[s.as_bytes().as_ptr() as usize, s.len()],
     );
 }
 
@@ -40,7 +39,10 @@ impl Writer {
 
 impl Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        syscall2(SystemCall::Write, s.as_bytes().as_ptr() as usize, s.len());
-        return Ok(());
+        let res = syscall(SystemCall::TerminalWrite, &[s.as_bytes().as_ptr() as usize, s.len()]);
+        match res {
+            Ok(_) => Ok(()),
+            Err(_) => Err(fmt::Error),
+        }
     }
 }

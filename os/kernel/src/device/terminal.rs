@@ -1,8 +1,8 @@
-use crate::terminal;
+use stream::{InputStream, OutputStream};
 use core::fmt::Write;
 use core::ops::Deref;
 use core::{fmt, ptr};
-use stream::{InputStream, OutputStream};
+use crate::terminal;
 
 pub trait Terminal: OutputStream + InputStream {
     fn clear(&self);
@@ -14,14 +14,30 @@ pub trait Terminal: OutputStream + InputStream {
 impl Write for dyn Terminal {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.deref().write_str(s);
-        return Ok(());
+        Ok(())
     }
+}
+
+// Provide macros like in the 'io' module of Rust
+// The $crate variable ensures that the macro also works
+// from outside the 'std' crate.
+macro_rules! print {
+    ($($arg:tt)*) => ({
+        $crate::device::terminal::print(format_args!($($arg)*));
+    });
+}
+
+macro_rules! println {
+    ($fmt:expr) => (print!(concat!($fmt, "\n")));
+    ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
 }
 
 // Helper function of print macros (must be public)
 pub fn print(args: fmt::Arguments) {
+    let terminal = terminal();
+
     // Writing to LFBTerminal does not need a mutable reference,
     // so it is safe to construct a mutable reference here and use it for writing.
-    let terminal = unsafe { ptr::from_ref(terminal()).cast_mut().as_mut().unwrap() };
-    terminal.write_fmt(args).unwrap();
+    let terminal_mut = unsafe { ptr::from_ref(terminal.as_ref()).cast_mut().as_mut().unwrap() };
+    terminal_mut.write_fmt(args).unwrap();
 }

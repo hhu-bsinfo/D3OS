@@ -20,7 +20,7 @@ fn next_process_id() -> usize {
 
 pub struct ProcessManager {
     active_processes: Vec<Arc<Process>>,
-    exited_processes: Vec<Arc<Process>>
+    exited_processes: Vec<Arc<Process>> // processed by cleanup thread later
 }
 
 impl ProcessManager {
@@ -33,7 +33,7 @@ impl ProcessManager {
             Some(kernel_process) => { // Create user address space
                 Arc::new(AddressSpace::from_other(&kernel_process.address_space()))
             }
-            None => { // Create kernel address space
+            None => { // Create kernel address space (only once)
                 let address_space = AddressSpace::new(4);
                 let max_phys_addr = phys_limit().start_address();
                 let range = PageRange { start: Page::containing_address(VirtAddr::zero()), end: Page::containing_address(VirtAddr::new(max_phys_addr.as_u64())) };
@@ -46,7 +46,7 @@ impl ProcessManager {
         let process = Arc::new(Process::new(address_space));
         self.active_processes.push(Arc::clone(&process));
 
-        return process;
+        process
     }
 
     pub fn active_process_ids(&self) -> Vec<usize> {
@@ -153,7 +153,7 @@ impl Process {
             }
         });
 
-        return found;
+        found
     }
 
     pub fn update_vma(&self, vma: VirtualMemoryArea, update: impl Fn(&mut VirtualMemoryArea)) {

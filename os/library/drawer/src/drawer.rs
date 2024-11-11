@@ -1,7 +1,7 @@
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use syscall::{syscall0, syscall1, SystemCall};
+use syscall::{syscall, SystemCall};
 
 use graphic::color::{Color, INVISIBLE};
 
@@ -55,8 +55,8 @@ pub struct Drawer;
 
 impl Drawer {
     fn execute(command: DrawerCommand) {
-        let command_addr = core::ptr::addr_of!(command) as usize;
-        syscall1(SystemCall::WriteGraphic, command_addr);
+        let command_addr = &[core::ptr::addr_of!(command) as usize];
+        let _ = syscall(SystemCall::WriteGraphic, command_addr).expect("Failed to write graphic");
     }
 
     /**
@@ -76,7 +76,8 @@ impl Drawer {
     }
 
     pub fn get_graphic_resolution() -> (u32, u32) {
-        let raw_graphic_resolution: usize = syscall0(SystemCall::GetGraphicResolution);
+        let raw_graphic_resolution: usize = syscall(SystemCall::GetGraphicResolution, &[])
+            .expect("Failed to get graphic resolution");
         return (
             (raw_graphic_resolution >> 32) as u32,
             raw_graphic_resolution as u32,

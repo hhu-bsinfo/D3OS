@@ -1,0 +1,19 @@
+cargo-features = ["edition2024"]
+
+[package]
+edition = "2024"
+name = "mkdir"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/mkdir.rs"
+
+[dependencies]
+# Local dependencies
+terminal = { path = "../../library/terminal" }
+runtime = { path = "../../library/runtime" }
+naming = { path = "../../library/naming" }
+
+chrono = { version = "0.4.38", default-features = false, features = ["alloc"] }

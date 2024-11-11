@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use log::{info};
 use pci_types::{BaseClass, ConfigRegionAccess, EndpointHeader, HeaderType, PciAddress, PciHeader, PciPciBridgeHeader, SubClass};
-use spin::Mutex;
+use spin::{Mutex, RwLock};
 use x86_64::instructions::port::{Port, PortWriteOnly};
 
 const MAX_DEVICES_PER_BUS: u8 = 32;
@@ -10,7 +10,7 @@ const INVALID: u16 = 0xffff;
 
 pub struct PciBus {
     config_space: ConfigurationSpace,
-    devices: Vec<EndpointHeader>
+    devices: Vec<RwLock<EndpointHeader>>
 }
 
 pub struct ConfigurationSpace {
@@ -40,27 +40,27 @@ impl ConfigurationSpace {
             | (address.function() as u32) << 8
             | (offset & 0xfc) as u32;
 
-        ports.address_port.write(address_raw);
+        unsafe { ports.address_port.write(address_raw);  }
     }
 }
 
 impl ConfigRegionAccess for ConfigurationSpace {
-    fn function_exists(&self, _address: PciAddress) -> bool {
-        false
-    }
-
     unsafe fn read(&self, address: PciAddress, offset: u16) -> u32 {
         let mut ports = self.ports.lock();
 
-        Self::prepare_access(&mut ports, address, offset);
-        return ports.data_port.read();
+        unsafe {
+            Self::prepare_access(&mut ports, address, offset);
+            return ports.data_port.read();
+        }
     }
 
     unsafe fn write(&self, address: PciAddress, offset: u16, value: u32) {
         let mut ports = self.ports.lock();
 
-        Self::prepare_access(&mut ports, address, offset);
-        ports.data_port.write(value);
+        unsafe {
+            Self::prepare_access(&mut ports, address, offset);
+            ports.data_port.write(value);
+        }
     }
 }
 
@@ -94,16 +94,16 @@ impl PciBus {
         &self.config_space
     }
 
-    pub fn search_by_ids(&self, vendor_id: u16, device_id: u16) -> Vec<&EndpointHeader> {
+    pub fn search_by_ids(&self, vendor_id: u16, device_id: u16) -> Vec<&RwLock<EndpointHeader>> {
         self.devices.iter()
-            .filter(|device| device.header().id(self.config_space()) == (vendor_id, device_id))
+            .filter(|device| device.read().header().id(self.config_space()) == (vendor_id, device_id))
             .collect()
     }
 
-    pub fn search_by_class(&self, base_class: BaseClass, sub_class: SubClass) -> Vec<&EndpointHeader> {
+    pub fn search_by_class(&self, base_class: BaseClass, sub_class: SubClass) -> Vec<&RwLock<EndpointHeader>> {
         self.devices.iter()
             .filter(|device| {
-                let info = device.header().revision_and_class(self.config_space());
+                let info = device.read().header().revision_and_class(self.config_space());
                 info.1 == base_class && info.2 == sub_class
             })
             .collect()
@@ -152,7 +152,7 @@ impl PciBus {
             self.scan_bus(PciAddress::new(0x8000, bridge.secondary_bus_number(self.config_space()), 0 , 0));
         } else {
             info!("Found PCI device [0x{:0>4x}:0x{:0>4x}] on bus [{}]", id.0, id.1, address.bus());
-            self.devices.push(EndpointHeader::from_header(device, self.config_space()).unwrap());
+            self.devices.push(RwLock::new(EndpointHeader::from_header(device, self.config_space()).unwrap()));
         }
     }
 }

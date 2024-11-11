@@ -13,6 +13,11 @@ use crate::memory::PAGE_SIZE;
 static PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> = Mutex::new(PageFrameListAllocator::new());
 static PHYS_LIMIT: Once<Mutex<Cell<PhysFrame>>> = Once::new();
 
+/// Check if the page frame allocator is currently locked.
+pub fn allocator_locked() -> bool {
+    PAGE_FRAME_ALLOCATOR.is_locked()
+}
+
 /// Insert an available memory region obtained during the boot process.
 pub unsafe fn insert(mut region: PhysFrameRange) {
     PHYS_LIMIT.call_once(|| Mutex::new(Cell::new(PhysFrame::from_start_address(PhysAddr::zero()).unwrap())));
@@ -32,7 +37,7 @@ pub unsafe fn insert(mut region: PhysFrameRange) {
         current_limit.swap(&Cell::new(region.end));
     }
 
-    free(region);
+    unsafe { free(region); }
 }
 
 /// Allocate `frame_count` contiguous page frames.
@@ -43,12 +48,12 @@ pub fn alloc(frame_count: usize) -> PhysFrameRange {
 /// Free `frame_count` contiguous page frames.
 /// Unsafe because invalid parameters may break the list allocator.
 pub unsafe fn free(frames: PhysFrameRange) {
-    PAGE_FRAME_ALLOCATOR.lock().free_block(frames);
+    unsafe { PAGE_FRAME_ALLOCATOR.lock().free_block(frames); }
 }
 
 /// Permanently reserve a block of free memory.
 pub unsafe fn reserve(frames: PhysFrameRange) {
-    PAGE_FRAME_ALLOCATOR.lock().reserve_block(frames);
+    unsafe { PAGE_FRAME_ALLOCATOR.lock().reserve_block(frames); }
 }
 
 /// Get the highest physical address, managed by PAGE_FRAME_ALLOCATOR.
@@ -117,9 +122,11 @@ impl PageFrameListAllocator {
 
         // Check if list is empty
         if self.head.next.is_none() {
-            new_block.next = self.head.next.take();
-            new_block_ptr.write(new_block);
-            self.head.next = Some(&mut *new_block_ptr);
+            unsafe {
+                new_block.next = self.head.next.take();
+                new_block_ptr.write(new_block);
+                self.head.next = Some(&mut *new_block_ptr);
+            }
 
             return;
         }
@@ -128,9 +135,11 @@ impl PageFrameListAllocator {
         let mut current = &mut self.head;
         while let Some(ref mut block) = current.next {
             if block.start().start_address() > frames.start.start_address() {
-                new_block.next = current.next.take();
-                new_block_ptr.write(new_block);
-                current.next = Some(&mut *new_block_ptr);
+                unsafe {
+                    new_block.next = current.next.take();
+                    new_block_ptr.write(new_block);
+                    current.next = Some(&mut *new_block_ptr);
+                }
 
                 return;
             }
@@ -139,9 +148,11 @@ impl PageFrameListAllocator {
         }
 
         // Insert new block at the list's end
-        new_block.next = None;
-        new_block_ptr.write(new_block);
-        current.next = Some(&mut *new_block_ptr);
+        unsafe {
+            new_block.next = None;
+            new_block_ptr.write(new_block);
+            current.next = Some(&mut *new_block_ptr);
+        }
     }
 
     /// Search a free memory block.
@@ -189,11 +200,15 @@ impl PageFrameListAllocator {
             if frames.end == block.start() {
                 // The freed memory block extends 'block' from the bottom
                 let mut new_block = PageFrameNode::new(block.frame_count + (frames.end - frames.start) as usize);
-                new_block_ptr = frames.start.start_address().as_u64() as *mut PageFrameNode;
-                new_block.next = block.next.take();
-                new_block_ptr.write(new_block);
 
-                current.next = Some(&mut *new_block_ptr);
+                unsafe {
+                    new_block_ptr = frames.start.start_address().as_u64() as *mut PageFrameNode;
+                    new_block.next = block.next.take();
+                    new_block_ptr.write(new_block);
+
+                    current.next = Some(&mut *new_block_ptr);
+                }
+
                 return;
             } else if block.end() == frames.start {
                 // The freed memory block extends 'block' from the top
@@ -217,7 +232,7 @@ impl PageFrameListAllocator {
             current = current.next.as_mut().unwrap();
         }
 
-        self.insert(frames);
+        unsafe { self.insert(frames); }
     }
 
     /// Permanently reserve a block of free memory.
@@ -240,9 +255,12 @@ impl PageFrameListAllocator {
 
                     let mut above_block = PageFrameNode::new(above_size as usize);
                     let above_block_ptr = reserved.end.start_address().as_u64() as *mut PageFrameNode;
-                    above_block.next = block.next.take();
-                    block.next = Some(&mut *above_block_ptr);
-                    above_block_ptr.write(above_block);
+
+                    unsafe {
+                        above_block.next = block.next.take();
+                        block.next = Some(&mut *above_block_ptr);
+                        above_block_ptr.write(above_block);
+                    }
                 }
             } else if block.start() <= reserved.end && block.end() >= reserved.start { // Block starts within the reserved region
                 if block.end() <= reserved.end { // Block start within and ends within the reserved region
@@ -252,9 +270,11 @@ impl PageFrameListAllocator {
                     let mut new_block = PageFrameNode::new(block.frame_count - overlapping as usize);
                     let new_block_ptr = (block.start() + overlapping).start_address().as_u64() as *mut PageFrameNode;
 
-                    new_block.next = block.next.take();
-                    new_block_ptr.write(new_block);
-                    current.next = Some(&mut *new_block_ptr);
+                    unsafe {
+                        new_block.next = block.next.take();
+                        new_block_ptr.write(new_block);
+                        current.next = Some(&mut *new_block_ptr);
+                    }
                 }
             }
 

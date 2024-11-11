@@ -20,7 +20,7 @@ use core::marker::Copy;
  *  Red  Green Blue
  * XXXXX XXXXX XXXXX
  */
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct Color {
     pub red: u8,
     pub green: u8,

@@ -1,0 +1,14 @@
+cargo-features = ["edition2024"]
+
+[package]
+edition = "2024"
+name = "terminal"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+
+[dependencies]
+# Local dependencies
+syscall = { path = "../syscall" }
+
+# External dependencies
+spin = "0.9.8"

@@ -1,19 +1,25 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: lib                                                             ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: Entry function for an application.                              ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, 31.8.2024, HHU                                  ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 #![no_std]
-#![feature(panic_info_message)]
-
-use alloc::string::String;
-use concurrent::{process, thread};
-use core::fmt::Write;
-use core::panic::PanicInfo;
-use io::write::log_debug;
-use linked_list_allocator::LockedHeap;
-use syscall::{syscall1, SystemCall};
-
-extern "C" {
-    fn main();
-}
-
 extern crate alloc;
+
+pub mod env;
+
+use concurrent::{process, thread};
+use core::panic::PanicInfo;
+use terminal::{print, println};
+use linked_list_allocator::LockedHeap;
+use syscall::{syscall, SystemCall};
+
+unsafe extern "C" {
+    fn main(argc: isize, argv: *const *const u8) -> isize;
+}
 
 const HEAP_SIZE: usize = 0x100000;
 
@@ -22,27 +28,26 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if let Some(loc) = info.location() {
-        log_debug(loc.file());
-        let mut s = String::new();
-        write!(&mut s, "{} : {}", loc.line(), loc.column()).unwrap();
-        log_debug(s.as_str());
-    }
-    if let Some(msg) = info.message() {
-        log_debug(msg.as_str().unwrap_or(""));
-    }
+    println!("Panic: {}!", info);
     thread::exit();
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn entry() {
-    let heap_start = syscall1(SystemCall::MapUserHeap, HEAP_SIZE) as *mut u8;
+    let heap_start: *mut u8;
+
+    let res = syscall(SystemCall::MapUserHeap, &[HEAP_SIZE]);
+    match res {
+        Ok(hs) => heap_start = hs as *mut u8,
+        Err(_) => panic!("Could not create user heap."),
+    }
+
     unsafe {
         ALLOCATOR.lock().init(heap_start, HEAP_SIZE);
     }
 
     unsafe {
-        main();
+        main(*env::ARGC_PTR as isize, env::ARGV_PTR);
     }
     process::exit();
 }

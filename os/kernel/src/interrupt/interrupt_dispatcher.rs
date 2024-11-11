@@ -149,6 +149,10 @@ impl TryFrom<u8> for InterruptVector {
             value if value == InterruptVector::Lpt2 as u8 => Ok(InterruptVector::Lpt2),
             value if value == InterruptVector::Floppy as u8 => Ok(InterruptVector::Floppy),
             value if value == InterruptVector::Lpt1 as u8 => Ok(InterruptVector::Lpt1),
+            value if value == InterruptVector::Rtc as u8 => Ok(InterruptVector::Rtc),
+            value if value == InterruptVector::Free1 as u8 => Ok(InterruptVector::Free1),
+            value if value == InterruptVector::Free2 as u8 => Ok(InterruptVector::Free2),
+            value if value == InterruptVector::Free3 as u8 => Ok(InterruptVector::Free3),
             value if value == InterruptVector::Mouse as u8 => Ok(InterruptVector::Mouse),
             value if value == InterruptVector::Fpu as u8 => Ok(InterruptVector::Fpu),
             value if value == InterruptVector::PrimaryAta as u8 => Ok(InterruptVector::PrimaryAta),
@@ -205,7 +209,7 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
     let thread = scheduler().current_thread();
 
     // Check if page fault occurred right below the user stack
-    if !thread.stacks_locked() && fault_addr > (thread.user_stack_start() - PAGE_SIZE as u64) && fault_addr < thread.user_stack_start() {
+    if !thread.is_kernel_thread() && !thread.stacks_locked() && fault_addr > (thread.user_stack_start() - PAGE_SIZE as u64) && fault_addr < thread.user_stack_start() {
         thread.grow_user_stack(); // Grow stack by one page
     } else {
         panic!("Page Fault!\nError code: [{:?}]\nAddress: [0x{:0>16x}]\n{:?}", error, fault_addr, frame);
@@ -223,7 +227,7 @@ impl InterruptDispatcher {
             int_vectors.push(Mutex::new(Vec::new()));
         }
 
-        return Self { int_vectors };
+        Self { int_vectors }
     }
 
     pub fn assign(&self, vector: InterruptVector, handler: Box<dyn InterruptHandler>) {
