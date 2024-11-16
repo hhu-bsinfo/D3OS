@@ -19,9 +19,9 @@ use crate::syscall::sys_vmem::sys_map_user_heap;
 use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, };
 use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
     sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch,};
-use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write};
+use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write, sys_log_serial};
 use crate::syscall::sys_naming::sys_mkdir;
-use crate::syscall::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic, sys_log_serial};
+use crate::syscall::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
 
 use crate::{core_local_storage, tss};
 

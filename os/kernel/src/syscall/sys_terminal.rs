@@ -10,6 +10,8 @@ use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
 use terminal::Application;
 use stream::{InputStream};
+use log::{debug};
+
 
 use crate::{keyboard, terminal};
 
@@ -49,4 +51,9 @@ pub fn sys_terminal_write(buffer: *const u8, length: usize) -> isize {
     let terminal = terminal();
     terminal.write_str(string);
     0
+}
+
+pub fn sys_log_serial(string_addr: *const u8, string_length: usize) {
+    let string = from_utf8(unsafe { slice_from_raw_parts(string_addr, string_length).as_ref().unwrap() }).unwrap();
+    debug!("{}", string);
 }

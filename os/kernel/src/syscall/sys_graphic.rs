@@ -154,15 +154,3 @@ pub extern "C" fn sys_get_graphic_resolution() -> usize {
     let lfb = buffered_lfb.direct_lfb();
     return (((lfb.width() as u64) << 32) | (lfb.height() as u64)) as usize;
 }
-
-pub extern "C" fn sys_log_serial(string_addr: *const u8, string_len: usize) {
-    let log_string = from_utf8(unsafe {
-        slice_from_raw_parts(string_addr, string_len)
-            .as_ref()
-            .unwrap()
-    })
-    .unwrap();
-
-    debug!("{}", log_string);
-}
- 

@@ -30,6 +30,13 @@ pub fn print(args: fmt::Arguments) {
     WRITER.lock().write_fmt(args).unwrap();
 }
 
+pub fn log_debug(s: &str) {
+    let _ = syscall(
+        SystemCall::LogSerial,
+        &[s.as_bytes().as_ptr() as usize, s.len()],
+    );
+}
+
 struct Writer {}
 
 impl Writer {
