@@ -49,6 +49,7 @@ pub enum DrawerCommand {
         bg_color: Color,
         scale: (u32, u32),
     },
+    Flush,
 }
 
 pub struct Drawer;
@@ -183,5 +184,9 @@ impl Drawer {
             },
             color,
         )
+    }
+
+    pub fn flush() {
+        Self::execute(DrawerCommand::Flush);
     }
 }

@@ -368,9 +368,10 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
                 BLACK,
             );
         }
+        DrawerCommand::Flush => {
+            buff_lfb.flush();
+        }
     };
-
-    buff_lfb.flush();
 }
 
 /// w = width, h = height;
