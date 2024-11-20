@@ -1,12 +1,13 @@
 use core::{
     fmt::Display,
     ops::{Add, AddAssign},
+    cmp::Ordering
 };
 
 use crate::rect_data::RectData;
 
 #[repr(C, align(8))]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct Vertex {
     pub x: u32,
     pub y: u32,
@@ -72,5 +73,26 @@ impl Vertex {
 impl Display for Vertex {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "x: {}, y: {}", self.x, self.y)
+    }
+}
+
+impl PartialOrd for Vertex {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (self.x, self.y).partial_cmp(&(other.x, other.y))
+    }
+    
+}
+
+impl Eq for Vertex {}
+
+impl Ord for Vertex {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.x, self.y).cmp(&(other.x, other.y))
+    }
+}
+
+impl PartialEq for Vertex {
+    fn eq(&self, other: &Self) -> bool {
+        self.x == other.x && self.y == other.y
     }
 }
