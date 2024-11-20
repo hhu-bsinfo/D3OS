@@ -47,4 +47,17 @@ impl RectData {
             height: ((f64::from(self.height) * scale_y) as u32).max(min_dim.1),
         };
     }
+
+    pub fn intersects(&self, other: &RectData) -> bool {
+        let self_top_left = self.top_left;
+        let self_bottom_right = self.top_left.add(self.width, self.height);
+
+        let other_top_left = other.top_left;
+        let other_bottom_right = other.top_left.add(other.width, other.height);
+
+        let x_overlap = self_bottom_right.x >= other_top_left.x && other_bottom_right.x >= self_top_left.x;
+        let y_overlap = self_bottom_right.y >= other_top_left.y && other_bottom_right.y >= self_top_left.y;
+        
+        x_overlap && y_overlap
+    }
 }
