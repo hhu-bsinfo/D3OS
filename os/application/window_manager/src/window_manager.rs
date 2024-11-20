@@ -35,6 +35,7 @@ mod utils;
 mod window_tree;
 mod windows;
 mod workspace;
+mod dirty_region;
 
 // IDs are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
