@@ -1,39 +1,21 @@
-/* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: lib                                                             ║
-   ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Syscalls for everything related to time.                        ║
-   ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, 31.8.2024, HHU                                  ║
-   ╚═════════════════════════════════════════════════════════════════════════╝
-*/
 #![no_std]
 
 use chrono::{DateTime, TimeDelta, Utc};
-use syscall::{syscall, SystemCall};
+use syscall::{syscall0, syscall1, SystemCall};
 
 pub fn systime() -> TimeDelta {
-    let res = syscall(SystemCall::GetSystemTime, &[]);
-    match res {
-        Ok(systime) => TimeDelta::try_milliseconds(systime as i64).expect("Failed to create TimeDelta struct from systime"),
-        Err(_) => panic!("Syscall: GetSystemTime failed."),
-    }    
+    let systime = syscall0(SystemCall::GetSystemTime);
+    TimeDelta::try_milliseconds(systime as i64).expect("Failed to create TimeDelta struct from systime")
 }
 
 pub fn date() -> DateTime<Utc> {
-    let res = syscall(SystemCall::GetDate, &[]);
-    match res {
-        Ok(date_ms) => DateTime::from_timestamp_millis(date_ms as i64).expect("Failed to parse date from milliseconds returned by system call"),
-        Err(_) => panic!("Syscall: GetDate failed."),
-    }    
+    let date_ms = syscall0(SystemCall::GetDate);
+    DateTime::from_timestamp_millis(date_ms as i64).expect("Failed to parse date from milliseconds returned by system call")
 }
 
 pub fn set_date(date: DateTime<Utc>) -> bool {
     let date_ms = date.timestamp_millis();
+    let success = syscall1(SystemCall::SetDate, date_ms as usize);
 
-    let res = syscall(SystemCall::SetDate, &[date_ms as usize, ]);
-    match res {
-        Ok(_) => true,
-        Err(_) => false,
-    }    
-
+    return success != 0;
 }

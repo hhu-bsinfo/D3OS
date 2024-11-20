@@ -3,45 +3,31 @@
 extern crate alloc;
 
 use alloc::string::String;
-use alloc::vec::Vec;
 use concurrent::thread;
-use terminal::{read::read, print, println, Application};
 #[allow(unused_imports)]
 use runtime::*;
+use io::{print, println, Application};
+use io::read::read;
 
-
-fn process_next_char(line: &mut String, ch: char) {
-    match ch {
-        '\n' => {
-            let split = line.split_whitespace().collect::<Vec<&str>>();
-            if !split.is_empty() {
-                match thread::start_application(split[0], split[1..].iter().map(|&s| s).collect()) {
-                    Some(app) => app.join(),
-                    None => println!("Command not found!"),
-                }
-            }
-
-            line.clear();
-            print!("> ");
-        },
-        '\x08' => { 
-            line.pop(); 
-        }, 
-        _ => {
-            line.push(ch);
-        },
-    }
-}
-
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub fn main() {
-    let mut line = String::new();
+    let mut command = String::new();
     print!("> ");
 
     loop {
         match read(Application::Shell) {
-            Some(ch) => process_next_char(&mut line, ch),
-            None => (),
+            '\n' => {
+                if !command.is_empty() {
+                    match thread::start_application(command.as_str()) {
+                        Some(app) => app.join(),
+                        None => println!("Command not found!")
+                    }
+                }
+
+                command.clear();
+                print!("> ")
+            },
+            c => command.push(char::from_u32(c as u32).unwrap())
         }
     }
 }

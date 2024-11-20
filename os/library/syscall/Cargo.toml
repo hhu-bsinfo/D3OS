@@ -1,12 +1,5 @@
-cargo-features = ["edition2024"]
-
 [package]
-edition = "2024"
+edition = "2021"
 name = "syscall"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
-
-[dependencies]
-# External depencies
-num_enum = { version = "0.7", default-features = false }
-bitflags = "1.0"

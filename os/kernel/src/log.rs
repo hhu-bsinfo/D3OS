@@ -1,36 +1,27 @@
-/* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: log                                                             ║
-   ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Logger implementation. Support one or several output streams.   ║
-   ║         Messages are dumped on each output stream.                      ║
-   ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, HHU                                             ║
-   ╚═════════════════════════════════════════════════════════════════════════╝
-*/
 use crate::device::serial;
 use crate::device::serial::ComPort;
 use crate::device::serial::SerialPort;
-use crate::{allocator, timer};
+use crate::{allocator, logger, timer};
 use graphic::ansi;
 use stream::OutputStream;
+use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::ToString;
-use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::ops::Deref;
 use core::ptr;
-use log::{Level, Metadata, Record};
-use spin::RwLock;
+use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
 use crate::built_info;
 
 pub struct Logger {
     level: Level,
-    streams: RwLock<Vec<Arc<dyn OutputStream>>>,
+    streams: Vec<Box<&'static dyn OutputStream>>,
     serial: Option<SerialPort>,
 }
 
 impl log::Log for Logger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= self.level
+        return metadata.level() <= self.level;
     }
 
     fn log(&self, record: &Record) {
@@ -42,11 +33,10 @@ impl log::Log for Logger {
         let file = record.file().unwrap_or("unknown").split('/').rev().next().unwrap_or("unknown");
         let line = record.line().unwrap_or(0);
 
-        let streams = self.streams.read();
-        if streams.is_empty() {
-            if let Some(serial) = &self.serial {
+        let mut logger = logger().lock();
+        if logger.streams.is_empty() {
+            if let Some(serial) = logger.serial.as_mut() {
                 serial.write_str(ansi::FOREGROUND_CYAN);
-
                 serial.write_str("[0.000]");
                 serial.write_str(ansi_color(level));
                 serial.write_str("[");
@@ -67,15 +57,15 @@ impl log::Log for Logger {
                 serial.write_str("\n");
             }
         } else {
-            let systime = timer().systime_ms();
+            let systime = timer().read().systime_ms();
             let seconds = systime / 1000;
             let fraction = systime % 1000;
 
             let string = format!("{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}]{} {}\n", ansi::FOREGROUND_CYAN, seconds, fraction,
                                  ansi_color(level), level_token(level),ansi::FOREGROUND_MAGENTA, file, line, ansi::FOREGROUND_DEFAULT, record.args());
 
-            for stream in streams.iter() {
-                stream.write_str(&string);
+            for i in 0..self.streams.len() {
+                logger.streams[i].write_str(&string);
             }
         }
     }
@@ -84,32 +74,51 @@ impl log::Log for Logger {
 }
 
 impl Logger {
-    pub fn new() -> Self {
-        let mut serial = None;
-        if serial::check_port(ComPort::Com1) {
-            serial = Some(SerialPort::new_write_only(ComPort::Com1))
-        } else if serial::check_port(ComPort::Com2) {
-            serial = Some(SerialPort::new_write_only(ComPort::Com2))
-        } else if serial::check_port(ComPort::Com3) {
-            serial = Some(SerialPort::new_write_only(ComPort::Com3))
-        } else if serial::check_port(ComPort::Com4) {
-            serial = Some(SerialPort::new_write_only(ComPort::Com4))
-        }
-
+    pub const fn new() -> Self {
         Self {
-            level: if built_info::PROFILE == "debug" { Level::Debug } else { Level::Info },
-            streams: RwLock::new(Vec::new()),
-            serial
+            level: Level::Info,
+            streams: Vec::new(),
+            serial: None,
         }
     }
 
-    pub fn register(&self, stream: Arc<dyn OutputStream>) {
-        self.streams.write().push(stream);
+    pub fn init(&self) -> Result<(), SetLoggerError> {
+        unsafe {
+            logger().force_unlock();
+        } // The caller needed to call logger().lock() in order to call init()
+        let mut logger = logger().lock();
+
+        if serial::check_port(ComPort::Com1) {
+            logger.serial = Some(SerialPort::new(ComPort::Com1))
+        } else if serial::check_port(ComPort::Com2) {
+            logger.serial = Some(SerialPort::new(ComPort::Com2))
+        } else if serial::check_port(ComPort::Com3) {
+            logger.serial = Some(SerialPort::new(ComPort::Com3))
+        } else if serial::check_port(ComPort::Com4) {
+            logger.serial = Some(SerialPort::new(ComPort::Com4))
+        }
+
+        if logger.serial.is_some() {
+            logger.serial.as_mut().unwrap().init_write_only();
+        }
+
+        if built_info::PROFILE == "debug" {
+            logger.level = Level::Debug;
+        }
+
+        unsafe {
+            let logger_ref = ptr::from_ref(logger.deref()).as_ref().unwrap();
+            return log::set_logger(logger_ref).map(|()| log::set_max_level(LevelFilter::Debug));
+        }
     }
 
-    pub fn remove(&self, stream: &dyn OutputStream) {
-        self.streams.write().retain(|element| {
-            !ptr::addr_eq(ptr::from_ref(element.as_ref()), ptr::from_ref(stream))
+    pub fn register(&mut self, stream: &'static dyn OutputStream) {
+        self.streams.push(Box::new(stream));
+    }
+
+    pub fn remove(&mut self, stream: &dyn OutputStream) {
+        self.streams.retain(|element| {
+            !ptr::addr_eq(ptr::from_ref(*element.as_ref()), ptr::from_ref(stream))
         });
     }
 }

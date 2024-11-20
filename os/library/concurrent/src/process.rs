@@ -1,15 +1,7 @@
-/* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: process                                                         ║
-   ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Syscalls for process functions.                                 ║
-   ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Michael Schoettner, 31.8.2024, HHU              ║
-   ╚═════════════════════════════════════════════════════════════════════════╝
-*/
-use syscall::{syscall, SystemCall};
+use syscall::{syscall0, SystemCall};
 
 pub struct Process {
-    id: usize,
+    id: usize
 }
 
 impl Process {
@@ -22,14 +14,11 @@ impl Process {
     }
 }
 
-pub fn current() -> Option<Process> {
-    let res = syscall(SystemCall::ProcessId, &[]);
-    match res {
-        Ok(id) => Some(Process::new(id)),
-        Err(_) => None,
-    }    
+pub fn current() -> Process {
+    let id = syscall0(SystemCall::ProcessId);
+    Process::new(id)
 }
 
 pub fn exit() {
-    syscall(SystemCall::ProcessExit, &[]).expect("Failed to exit process");
+    syscall0(SystemCall::ProcessExit);
 }

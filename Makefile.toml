@@ -2,10 +2,9 @@
 BOOTLOADER_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/loader"
 INITRD_DIRECTORY = "${BOOTLOADER_DIRECTORY}/initrd"
 OVMF_URL = "https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd"
-TOWBOOT_VERSION = "0.9.1"
-TOWBOOT_URL = "https://github.com/hhuOS/towboot/releases/download/v${TOWBOOT_VERSION}/towbootctl-v${TOWBOOT_VERSION}"
-TAR = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "tar", mapping = { "macos" = "gtar" } }
-LINKER = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "ld", mapping = { "macos" = "x86_64-elf-ld" } }
+LINKER = "ld"
+LINKER_MAC = "x86_64-elf-ld"
+PATH = "${PATH}:~/.cargo/bin"
 
 [tasks.default]
 alias = "qemu"
@@ -14,126 +13,32 @@ alias = "qemu"
 
 [tasks.debug]
 command = "qemu-system-x86_64"
+args = [ "-S", "-gdb", "tcp::1234", "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
 dependencies = [ "debug-signal-vscode" ]
-args = [
-    # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "128M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
-    "-boot", "d",
-    "-vga", "std",
-    "-rtc", "base=localtime",
-    "-serial", "stdio",
-
-    # Hard disk drive configuration
-    "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img",
-
-    # NVDIMM configuration
-    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
-    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
-
-    # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
-    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
-
-    # Audio configuration (Using pulse audio for Linux)
-    "-audiodev", "id=audio0,driver=pa",
-
-    # Debugging configuration
-    "-S", "-gdb", "tcp::1234"
-]
 
 [tasks.debug.mac]
-args = [
-    # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "128M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
-    "-boot", "d",
-    "-vga", "std",
-    "-rtc", "base=localtime",
-    "-serial", "stdio",
-
-    # Hard disk drive configuration
-    "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img",
-
-    # NVDIMM configuration
-    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
-    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
-
-    # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
-    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
-
-    # Audio configuration (Using coreaduio for macOS)
-    "-audiodev", "id=audio0,driver=coreaudio",
-
-    # Debugging configuration
-    "-S", "-gdb", "tcp::1234"
-]
+args = [ "-S", "-gdb", "tcp::1234", "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
 
 [tasks.debug-signal-vscode]
 command = "echo"
 args = [ "Ready to debug" ]
-dependencies = [ "image", "ovmf" ]
+dependencies = [ "image" ]
 
 [tasks.qemu]
 command = "qemu-system-x86_64"
-dependencies = [ "image", "ovmf" ]
-args = [
-    # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "256M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
-    "-boot", "d",
-    "-vga", "std",
-    "-rtc", "base=localtime",
-    "-serial", "stdio",
-
-    # Hard disk drive configuration
-    "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img",
-
-    # NVDIMM configuration
-    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
-    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
-
-    # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
-    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
-
-    # Audio configuration (Using pulse audio for Linux)
-    "-audiodev", "id=audio0,driver=pa",
-]
+args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
+dependencies = [ "image" ]
 
 [tasks.qemu.mac]
-args = [
-    # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "128M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
-    "-boot", "d",
-    "-vga", "std",
-    "-rtc", "base=localtime",
-    "-serial", "stdio",
+args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
 
-    # Hard disk drive configuration
-    "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img",
+[tasks.qemu-no-compile]
+command = "qemu-system-x86_64"
+args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=pa" ]
 
-    # NVDIMM configuration
-    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
-    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
+[tasks.qemu-no-compile.mac]
+args = [ "-machine", "q35,pcspk-audiodev=audio0", "-m", "128M", "-cpu", "qemu64", "-bios", "RELEASEX64_OVMF.fd", "-boot", "d", "-vga", "std", "-rtc", "base=localtime", "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img", "-audiodev", "id=audio0,driver=coreaudio" ]
 
-    # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
-    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
-
-    # Audio configuration (Using coreaduio for macOS)
-    "-audiodev", "id=audio0,driver=coreaudio",
-]
 
 [tasks.ovmf]
 command = "wget"
@@ -148,34 +53,18 @@ dependencies = [ "create-initrd-directory" ]
 [tasks.create-initrd-directory]
 command = "mkdir"
 args = [ "-p", "${INITRD_DIRECTORY}" ]
-condition = { files_not_exist = [ "${INITRD_DIRECTORY}" ] }
 
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
-command = "${TAR}"
-args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "helloc", "shell", "uptime", "date", "mkdir", "window_manager"]
+command = "tar"
+args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "shell", "uptime", "date", "window_manager" ]
 dependencies = [ "link-members" ]
-condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
 
 [tasks.image]
 cwd = "${BOOTLOADER_DIRECTORY}"
-command = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl"
+command = "towbootctl"
 args = [ "image", "--target", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img", "--", "-config", "towboot.toml"]
-dependencies = [ "link-members", "initrd", "towbootctl" ]
-condition = { files_modified = { input = [ "${BOOTLOADER_DIRECTORY}/initrd.tar", "${BOOTLOADER_DIRECTORY}/kernel.elf", "${BOOTLOADER_DIRECTORY}/towboot.toml" ], output = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img" ] } }
-
-[tasks.towbootctl]
-script = '''
-wget -O towbootctl "${TOWBOOT_URL}-x86_64-linux"
-chmod +x towbootctl
-'''
-condition = { files_not_exist = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl" ] }
-
-[tasks.towbootctl.mac]
-script = '''
-wget -O towbootctl "${TOWBOOT_URL}-macos"
-chmod +x towbootctl
-'''
+dependencies = [ "link-members", "initrd" ]
 
 # Cleanup tasks
 
@@ -189,8 +78,7 @@ args = [ "-rf",
     "${BOOTLOADER_DIRECTORY}/kernel.elf",
     "${BOOTLOADER_DIRECTORY}/initrd.tar",
     "${INITRD_DIRECTORY}",
-    "RELEASEX64_OVMF.fd",
-    "towbootctl" ]
+    "RELEASEX64_OVMF.fd" ]
 
 [tasks.clean-members]
 run_task = { name = "clean", fork = true }

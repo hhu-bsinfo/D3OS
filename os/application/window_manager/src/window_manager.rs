@@ -13,8 +13,7 @@ use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
-use terminal::Application;
-use terminal::read::try_read;
+use io::{read::try_read, Application};
 use nolock::queues::mpsc::jiffy;
 #[allow(unused_imports)]
 use runtime::*;

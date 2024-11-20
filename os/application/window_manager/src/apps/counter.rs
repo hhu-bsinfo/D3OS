@@ -11,7 +11,7 @@ pub struct Counter;
 
 impl Runnable for Counter {
     fn run() {
-        let handle = concurrent::thread::current().unwrap().id();
+        let handle = concurrent::thread::current().id();
         let api = WindowManager::get_api();
 
         let label_text_rc1 = Rc::new(Mutex::new(String::from("0")));

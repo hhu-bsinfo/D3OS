@@ -12,7 +12,8 @@ use x2apic::lapic::{LocalApic, LocalApicBuilder, TimerDivide, TimerMode};
 use x86_64::structures::paging::page::PageRange;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{Page, PageTableFlags};
-use crate::{acpi_tables, allocator, interrupt_dispatcher, process_manager, scheduler, timer};
+use crate::{acpi_tables, allocator, apic, interrupt_dispatcher, process_manager, scheduler};
+use crate::device::pit;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::MemorySpace;
 
@@ -28,7 +29,7 @@ pub struct Apic {
 struct ApicTimerInterruptHandler {}
 
 impl InterruptHandler for ApicTimerInterruptHandler {
-    fn trigger(&self) {
+    fn trigger(&mut self) {
         scheduler().switch_thread_from_interrupt();
     }
 }
@@ -189,13 +190,13 @@ impl Apic {
         let timer_ticks_per_ms = Apic::calibrate_timer(&mut local_apic_mutex.lock());
         info!("APIC Timer ticks per millisecond: [{}]", timer_ticks_per_ms);
 
-        Self {
+        return Self {
             local_apic: local_apic_mutex,
             io_apic: io_apic_mutex,
             irq_overrides,
             nmi_sources,
             timer_ticks_per_ms
-        }
+        };
     }
 
     pub fn allow(&self, vector: InterruptVector) {
@@ -230,7 +231,7 @@ impl Apic {
         }
 
         interrupt_dispatcher().assign(InterruptVector::ApicTimer, Box::new(ApicTimerInterruptHandler::default()));
-        self.allow(InterruptVector::ApicTimer);
+        apic().allow(InterruptVector::ApicTimer);
     }
 
     fn calibrate_timer(local_apic: &mut LocalApic) -> usize {
@@ -243,7 +244,7 @@ impl Apic {
             local_apic.enable_timer();
 
             // Wait 50 ms using the PIT
-            timer().wait(50);
+            pit::early_delay_50ms();
 
             // Calculate APIC timer ticks per millisecond
             let ticks_per_ms = ((0xffffffff - local_apic.timer_current()) / 50) as usize;

@@ -1,22 +1,17 @@
-use syscall::{syscall, SystemCall};
+use syscall::{syscall2, SystemCall};
 
 use crate::Application;
 
 pub fn read(application: Application) -> char {
     let application_addr = core::ptr::addr_of!(application) as usize;
-    let res = syscall(SystemCall::TerminalRead, &[application_addr, 1]);
-    
-    match res {
-        Ok(ch) => char::from_u32(ch as u32).unwrap(),
-        Err(_) => panic!("Failed to read from terminal"),
-    }
+    char::from_u32(syscall2(SystemCall::Read, application_addr, 1) as u32).unwrap()
 }
 
 pub fn try_read(application: Application) -> Option<char> {
     let application_addr = core::ptr::addr_of!(application) as usize;
-    let res = syscall(SystemCall::TerminalRead, &[application_addr, 0]);
-    match res {
-        Ok(ch) => Some(char::from_u32(ch as u32).unwrap()),
-        Err(_) => None,
+    let character = syscall2(SystemCall::Read, application_addr, 0) as u32;
+    match character {
+        0 => None,
+        u32_char @ 1.. => Some(char::from_u32(u32_char).unwrap()),
     }
 }

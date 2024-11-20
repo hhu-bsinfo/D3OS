@@ -11,7 +11,7 @@ pub struct SubmitLabel;
 
 impl Runnable for SubmitLabel {
     fn run() {
-        let handle = concurrent::thread::current().unwrap().id();
+        let handle = concurrent::thread::current().id();
         let api = WindowManager::get_api();
 
         let input_field_rc1 = Rc::new(RwLock::new(String::from("")));

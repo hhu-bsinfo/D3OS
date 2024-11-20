@@ -8,4 +8,3 @@ pub mod terminal;
 pub mod lfb_terminal;
 pub mod serial;
 pub mod pci;
-pub mod rtl8139;

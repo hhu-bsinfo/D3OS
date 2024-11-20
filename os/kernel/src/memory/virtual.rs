@@ -22,14 +22,14 @@ pub struct VirtualMemoryArea {
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum VmaType {
-    Code, Heap, Stack, Environment
+    Code, Heap, Stack
 }
 
 unsafe impl Send for AddressSpace {}
 unsafe impl Sync for AddressSpace {}
 
-pub fn page_table_index(virt_addr: VirtAddr, level: usize) -> PageTableIndex {
-    PageTableIndex::new_truncate((virt_addr.as_u64() >> 12 >> ((level as u8 - 1) * 9)) as u16)
+fn page_table_index(virt_addr: VirtAddr, level: usize) -> PageTableIndex {
+    return PageTableIndex::new_truncate((virt_addr.as_u64() >> 12 >> ((level as u8 - 1) * 9)) as u16);
 }
 
 impl Drop for AddressSpace {
@@ -108,7 +108,7 @@ impl AddressSpace {
             AddressSpace::copy_table(other_root_table, root_table, other.depth);
         }
 
-        address_space
+        return address_space;
     }
 
     pub fn load(&self) {
@@ -170,7 +170,6 @@ impl AddressSpace {
             for (index, target_entry) in target.iter_mut().enumerate() {
                 let source_entry = &source[index];
                 if source_entry.is_unused() { // Skip empty entries
-                    target_entry.set_unused();
                     continue;
                 }
 
@@ -232,7 +231,7 @@ impl AddressSpace {
             }
         }
 
-        total_allocated_pages
+        return total_allocated_pages;
     }
 
     fn unmap_in_table(table: &mut PageTable, mut pages: PageRange, level: usize, free_physical: bool) -> usize {
@@ -282,7 +281,7 @@ impl AddressSpace {
             return free_count;
         }
 
-        total_freed_pages
+        return total_freed_pages;
     }
 
     fn drop_table(table: &mut PageTable, level: usize) {
@@ -339,7 +338,7 @@ impl AddressSpace {
             return edit_count;
         }
 
-        total_edited_pages
+        return total_edited_pages;
     }
 
     fn translate_in_table(table: &mut PageTable, addr: VirtAddr, level: usize) -> Option<PhysAddr> {
@@ -352,9 +351,9 @@ impl AddressSpace {
 
         if level > 1 { // Calculate next level page table until level == 1
             let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
-            AddressSpace::translate_in_table(next_level_table, addr, level - 1)
+            return AddressSpace::translate_in_table(next_level_table, addr, level - 1);
         } else { // Reached level 1 page table
-            Some(entry.addr() + (addr - aligned_addr))
+            return Some(entry.addr() + (addr - aligned_addr));
         }
     }
 
@@ -372,7 +371,7 @@ impl AddressSpace {
             frame_addr = frame_addr + PAGE_SIZE as u64;
         }
 
-        alloc_count
+        return alloc_count;
     }
 
     fn map_user(table: &mut PageTable, pages: PageRange, flags: PageTableFlags) -> usize {
@@ -388,7 +387,7 @@ impl AddressSpace {
             entry.set_frame(phys_frame, flags);
         }
 
-        alloc_count
+        return alloc_count;
     }
 
     fn map_user_physical(table: &mut PageTable, frames: PhysFrameRange, pages: PageRange, flags: PageTableFlags) -> usize {
@@ -404,7 +403,7 @@ impl AddressSpace {
             entry.set_frame(frame_iter.next().unwrap(), flags);
         }
 
-        alloc_count
+        return alloc_count;
     }
 
     fn is_table_empty(table: &PageTable) -> bool {
@@ -414,6 +413,6 @@ impl AddressSpace {
             }
         }
 
-        true
+        return true;
     }
 }

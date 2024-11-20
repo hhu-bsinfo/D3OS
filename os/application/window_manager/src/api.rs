@@ -144,7 +144,7 @@ impl Api {
         let screen = SCREEN.get().unwrap();
         let app_fn_ptr = self.map_app_string_to_fn(app_string)?;
 
-        let handle = thread::create(app_fn_ptr).unwrap().id();
+        let handle = thread::create(app_fn_ptr).id();
         let handle_data = HandleData {
             workspace_index,
             window_id,

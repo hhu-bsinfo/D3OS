@@ -4,10 +4,10 @@ extern crate alloc;
 
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{print, println};
+use io::{print, println};
 use time::systime;
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub fn main() {
     let systime = systime();
 
