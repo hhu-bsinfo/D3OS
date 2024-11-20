@@ -40,6 +40,11 @@ To build D3OS and run it in QEMU, just execute:
 cargo make --no-workspace
 ```
 
+To build a release version of D3OS (much faster) and run it in QEMU, just execute: 
+
+`cargo make --no-workspace --profile production`
+
+
 To only build the bootable image _d3os.img_, run:
 
 ```
