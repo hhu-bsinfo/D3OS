@@ -22,7 +22,7 @@ spin = "0.9.8"
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 x86_64 = "0.15.1"
 linked_list_allocator = { version = "0.10.5", features = ["alloc_ref"] }
-multiboot2 = "0.20.0"
+multiboot2 = "0.22.0"
 ps2 = "0.2.0"
 pc-keyboard = "0.7.0"
 anstyle-parse = "0.2.4"

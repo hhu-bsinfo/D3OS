@@ -1,15 +1,17 @@
 use crate::interrupt::interrupt_dispatcher;
+use crate::memory::r#virtual::page_table_index;
 use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
 use alloc::format;
 use alloc::string::ToString;
+use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
 use chrono::DateTime;
 use log::{debug, error, info};
-use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, Tag};
+use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, Tag, TagHeader};
 use uefi::prelude::*;
 use uefi::table::boot::{MemoryMap, PAGE_SIZE};
 use uefi::table::Runtime;
@@ -20,7 +22,7 @@ use x86_64::instructions::tables::load_tss;
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
-use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
+use x86_64::structures::paging::{Page, PageTable, PageTableFlags, PhysFrame};
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
@@ -32,7 +34,7 @@ extern "C" {
     static ___KERNEL_DATA_END__: u64;
 }
 
-const INIT_HEAP_PAGES: usize = 0x800;
+const INIT_HEAP_PAGES: usize = 0x400;
 
 #[no_mangle]
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
@@ -143,9 +145,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize ACPI tables
     let rsdp_addr: usize = if let Some(rsdp_tag) = multiboot.rsdp_v2_tag() {
-        ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
+        ptr::from_ref(rsdp_tag) as usize + size_of::<TagHeader>()
     } else if let Some(rsdp_tag) = multiboot.rsdp_v1_tag() {
-        ptr::from_ref(rsdp_tag) as usize + size_of::<Tag>()
+        ptr::from_ref(rsdp_tag) as usize + size_of::<TagHeader>()
     } else {
         panic!("ACPI not available!");
     };
@@ -278,22 +280,41 @@ fn kernel_image_region() -> PhysFrameRange {
 fn scan_efi_memory_map(memory_map: &MemoryMap) {
     info!("Searching memory map for available regions");
     memory_map.entries()
-        .filter(|area| area.ty == MemoryType::CONVENTIONAL || area.ty == MemoryType::LOADER_CODE || area.ty == MemoryType::LOADER_DATA
-            || area.ty == MemoryType::BOOT_SERVICES_CODE || area.ty == MemoryType::BOOT_SERVICES_DATA)
+    .filter(|area| area.ty == MemoryType::CONVENTIONAL
+        || area.ty == MemoryType::LOADER_CODE
+        || area.ty == MemoryType::LOADER_DATA
+        || area.ty == MemoryType::BOOT_SERVICES_CODE
+        || area.ty == MemoryType::BOOT_SERVICES_DATA)
         .for_each(|area| {
             let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
-            unsafe { memory::physical::insert(PhysFrameRange { start, end: start + area.page_count }); }
+            let frames = PhysFrame::range(start, start + area.page_count);
+
+            // Non-conventional memory may be write-protected, and we need to unprotect it first
+            if area.ty != MemoryType::CONVENTIONAL {
+                unprotect_frames(frames);
+            }
+
+            unsafe { memory::physical::insert(frames); }
         });
 }
 
 fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
     info!("Searching memory map for available regions");
     memory_map.memory_areas()
-        .filter(|area| area.ty.0 == MemoryType::CONVENTIONAL.0 || area.ty.0 == MemoryType::LOADER_CODE.0 || area.ty.0 == MemoryType::LOADER_DATA.0
-            || area.ty.0 == MemoryType::BOOT_SERVICES_CODE.0 || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0) // .0 necessary because of different version dependencies to uefi-crate
+    .filter(|area| area.ty.0 == MemoryType::CONVENTIONAL.0
+        || area.ty.0 == MemoryType::LOADER_CODE.0
+        || area.ty.0 == MemoryType::LOADER_DATA.0
+        || area.ty.0 == MemoryType::BOOT_SERVICES_CODE.0
+        || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0) // .0 necessary because of different version dependencies to uefi-crate
         .for_each(|area| {
             let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
-            unsafe { memory::physical::insert(PhysFrameRange { start, end: start + area.page_count }); }
+            let frames = PhysFrame::range(start, start + area.page_count);
+
+            // Non-conventional memory may be write-protected, and we need to unprotect it first
+            if area.ty.0 != MemoryType::CONVENTIONAL.0 {
+                unprotect_frames(frames);
+            }
+            unsafe { memory::physical::insert(frames); }
         });
 }
 
@@ -309,4 +330,35 @@ fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag) {
                 });
             }
         });
+}
+
+fn unprotect_frames(frames: PhysFrameRange) {
+    unsafe { Cr0::update(|flags| flags.remove(Cr0Flags::WRITE_PROTECT)) };
+
+    let root_level = if Cr4::read().contains(Cr4Flags::L5_PAGING) { 5 } else { 4 };
+    for frame in frames {
+        unprotect_frame(frame, root_level);
+    }
+
+    unsafe { Cr0::update(|flags| flags.insert(Cr0Flags::WRITE_PROTECT)) };
+}
+
+fn unprotect_frame(frame: PhysFrame, root_level: usize) {
+    let addr = VirtAddr::new(frame.start_address().as_u64());
+    let mut page_table = unsafe { (Cr3::read().0.start_address().as_u64() as *mut PageTable).as_mut().unwrap() };
+
+    let mut level = root_level;
+    loop  {
+        let index = page_table_index(addr, level);
+        let entry = &mut page_table[index];
+        let flags = entry.flags();
+
+        if level == 1 || flags.contains(PageTableFlags::HUGE_PAGE) {
+            entry.set_flags(flags | PageTableFlags::WRITABLE);
+            break;
+        }
+
+        page_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
+        level -= 1;
+    }
 }

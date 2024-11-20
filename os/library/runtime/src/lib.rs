@@ -28,9 +28,10 @@ fn panic(info: &PanicInfo) -> ! {
         write!(&mut s, "{} : {}", loc.line(), loc.column()).unwrap();
         log_debug(s.as_str());
     }
-    if let Some(msg) = info.message() {
-        log_debug(msg.as_str().unwrap_or(""));
-    }
+    let msg = info.message();
+    
+    log_debug(msg.as_str().unwrap_or(""));
+    
     thread::exit();
 }
 

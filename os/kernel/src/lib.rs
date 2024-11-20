@@ -62,7 +62,7 @@ pub mod built_info {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    error!("{}", info.message().unwrap());
+    error!("{}", info.message());
 
     loop {}
 }
@@ -172,10 +172,10 @@ pub fn init_keyboard_and_mouse() {
                     Ok(_) => {}
                     Err(error) => error!("Keyboard initialization failed: {:?}", error)
                 };
-                match ps2.init_mouse() {
-                    Ok(_) => {}
-                    Err(error) => error!("Mouse initialization failed: {:?}", error)
-                };
+                // match ps2.init_mouse() {
+                //     Ok(_) => {}
+                //     Err(error) => error!("Mouse initialization failed: {:?}", error)
+                // };
             }
             Err(error) => error!("PS/2 controller initialization failed: {:?}", error)
         }

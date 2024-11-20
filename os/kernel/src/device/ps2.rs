@@ -227,18 +227,18 @@ impl PS2 {
             info!("First port enabled");
         }
 
-        // Check if mouse is present
-        let mouse_test_result = controller.test_mouse();
-        if mouse_test_result.is_ok() {
-            // Enable mouse
-            controller.enable_mouse()?;
-            config.set(ControllerConfigFlags::DISABLE_MOUSE, false);
-            config.set(ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT, true);
-            controller.write_config(config)?;
-            info!("Mouse enabled");
-        }
+        // // Check if mouse is present
+        // let mouse_test_result = controller.test_mouse();
+        // if mouse_test_result.is_ok() {
+        //     // Enable mouse
+        //     controller.enable_mouse()?;
+        //     config.set(ControllerConfigFlags::DISABLE_MOUSE, false);
+        //     config.set(ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT, true);
+        //     controller.write_config(config)?;
+        //     info!("Mouse enabled");
+        // }
 
-        return keyboard_test_result.and(mouse_test_result);
+        return keyboard_test_result//.and(mouse_test_result);
     }
 
     pub fn init_keyboard(&mut self) -> Result<(), KeyboardError> {
