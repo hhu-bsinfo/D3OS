@@ -4,16 +4,19 @@
 extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
+use core::time::Duration;
 
 use alloc::format;
 use alloc::{borrow::ToOwned, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
+use chrono::TimeDelta;
 use components::selected_window_label::HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW;
-use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE};
+use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE, FLUSHING_DELAY_MS};
 use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
+use io::write::log_debug;
 use io::{read::try_read, Application};
 use nolock::queues::mpsc::jiffy;
 #[allow(unused_imports)]
@@ -59,6 +62,9 @@ struct WindowManager {
     on_loop_iter_fns: Vec<NewLoopIterFnData>,
     /// Determines if a full redraw is required in the next loop-iteration
     is_dirty: bool,
+    last_frame_time: TimeDelta,
+    start_time: TimeDelta,
+    frames: i64,
 }
 
 impl WindowManager {
@@ -109,6 +115,8 @@ impl WindowManager {
             height: command_line_window_height,
         });
 
+        let time = systime();
+        
         (
             Self {
                 workspaces: Vec::new(),
@@ -118,6 +126,9 @@ impl WindowManager {
                 receivers,
                 is_dirty: true,
                 on_loop_iter_fns: Vec::new(),
+                last_frame_time: time,
+                start_time: time,
+                frames: 0,
             },
             senders,
         )
@@ -134,7 +145,7 @@ impl WindowManager {
     fn run(&mut self) {
         loop {
             self.draw();
-            Drawer::flush();
+            log_debug(&format!("FPS: {}", self.fps()));
 
             self.process_keyboard_input();
 
@@ -461,7 +472,31 @@ impl WindowManager {
             window.draw(focused_window_id, is_dirty);
         }
 
+        if self.should_flush() {
+            Drawer::flush();
+            self.frames += 1;
+            self.last_frame_time = systime();
+        }
+        
         self.is_dirty = false;
+    }
+
+    fn fps(&self) -> i64 {
+        let time = systime();
+        let elapsed = time.checked_sub(&self.start_time).unwrap().num_milliseconds() / 1000;
+
+        if elapsed > 0 {
+            self.frames / elapsed
+        } else {
+            0
+        }
+    }
+
+    fn should_flush(&self) -> bool {
+        let time = systime();
+        let elapsed = time.checked_sub(&self.last_frame_time).unwrap().num_milliseconds() as u32;
+
+        elapsed >= FLUSHING_DELAY_MS
     }
 }
 
