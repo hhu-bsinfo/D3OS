@@ -146,13 +146,13 @@ impl WindowManager {
         loop {
             self.draw();
             log_debug(&format!("FPS: {}", self.fps()));
-
+            
             self.process_keyboard_input();
-
+            
             self.add_new_components_from_api();
-
+            
             self.add_new_closures_from_api();
-
+            
             self.call_on_loop_iter_fns();
         }
     }
@@ -451,6 +451,7 @@ impl WindowManager {
         // In enter_app_mode, we freeze everything else and only redraw the command-line-window
         if self.command_line_window.enter_app_mode {
             self.command_line_window.draw();
+            self.flush();
             return;
         }
 
@@ -472,12 +473,7 @@ impl WindowManager {
             window.draw(focused_window_id, is_dirty);
         }
 
-        if self.should_flush() {
-            Drawer::flush();
-            self.frames += 1;
-            self.last_frame_time = systime();
-        }
-        
+        self.flush();
         self.is_dirty = false;
     }
 
@@ -497,6 +493,18 @@ impl WindowManager {
         let elapsed = time.checked_sub(&self.last_frame_time).unwrap().num_milliseconds() as u32;
 
         elapsed >= FLUSHING_DELAY_MS
+    }
+
+    fn flush(&mut self) {
+        if self.should_flush() {
+            Drawer::flush();
+            self.last_frame_time = systime();
+            self.frames = self.frames.checked_add(1).or_else(|| {
+                // Reset frames counter if it overflows also requires to reset start_time
+                self.start_time = self.last_frame_time;
+                Some(0)
+            }).unwrap();
+        }
     }
 }
 
