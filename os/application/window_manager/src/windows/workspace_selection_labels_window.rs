@@ -1,6 +1,6 @@
 use core::ops::Sub;
 
-use alloc::{string::ToString, vec::Vec};
+use alloc::{string::ToString, vec::{self, Vec}};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_WIDTH;
 
@@ -44,6 +44,7 @@ impl WorkspaceSelectionLabelsWindow {
                 .unwrap()
                 .to_string(),
             old_workspace_len,
+            Vec::new(),
         );
 
         self.labels.push(workspace_selection_label);

@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, rc::Rc, string::String};
+use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use spin::rwlock::RwLock;
 use spin::Mutex;
@@ -20,13 +20,14 @@ impl Runnable for SubmitLabel {
         let label_text_rc1 = Rc::new(RwLock::new(String::from("")));
         let label_text_rc2 = Rc::clone(&label_text_rc1);
 
-        let _ = api.execute(
+        let input_field = api.execute(
             handle,
             Command::CreateInputField {
                 width_in_chars: 12,
                 font_size: Some(2),
                 log_pos: Vertex::new(100, 200),
                 text: input_field_rc1,
+                state_dependencies: vec![],
             },
         );
 
@@ -37,16 +38,18 @@ impl Runnable for SubmitLabel {
                 text: Rc::new(RwLock::new(String::from("Submitted Text: "))),
                 on_loop_iter: None,
                 font_size: Some(2),
+                state_dependencies: vec![],
             },
         );
 
-        let _ = api.execute(
+        let submitted_text = api.execute(
             handle,
             Command::CreateLabel {
                 log_pos: Vertex::new(660, 200),
                 text: label_text_rc1,
                 on_loop_iter: None,
                 font_size: Some(2),
+                state_dependencies: vec![],
             },
         );
 
@@ -66,6 +69,7 @@ impl Runnable for SubmitLabel {
                     let mut label_text = label_text_rc2.write();
                     *label_text = input_field.drain(..).collect();
                 }),
+                state_dependencies: vec![input_field.unwrap(), submitted_text.unwrap()],
             },
         );
     }

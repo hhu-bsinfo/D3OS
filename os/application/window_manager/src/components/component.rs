@@ -1,5 +1,7 @@
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use drawer::rect_data::RectData;
 use graphic::color::Color;
+use spin::RwLock;
 
 /**
 Any size-relations with the words "rel" or "relative" in them refer to the size inside the window
@@ -19,4 +21,8 @@ pub trait Component {
     fn rescale_after_split(&mut self, old_rect_data: RectData, new_rect_data: RectData);
 
     fn rescale_after_move(&mut self, new_rect_data: RectData);
+
+    fn get_abs_rect_data(&self) -> RectData;
+
+    fn get_state_dependencies(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>>;
 }

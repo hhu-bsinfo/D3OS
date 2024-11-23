@@ -1,12 +1,12 @@
 use core::fmt::Debug;
 
-use alloc::{boxed::Box, rc::Rc, string::String};
+use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 use concurrent::thread;
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use hashbrown::HashMap;
 use nolock::queues::mpsc::jiffy::{Receiver, Sender};
-use spin::{Mutex, RwLock};
+use spin::{mutex::Mutex, rwlock::RwLock};
 
 use crate::{
     apps::{clock::Clock, counter::Counter, runnable::Runnable, submit_label::SubmitLabel},
@@ -28,6 +28,7 @@ pub enum Command {
         log_rect_data: RectData,
         label: Option<(Rc<Mutex<String>>, usize)>,
         on_click: Box<dyn Fn() -> ()>,
+        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
     },
     CreateLabel {
         log_pos: Vertex,
@@ -38,6 +39,7 @@ pub enum Command {
         */
         on_loop_iter: Option<Box<dyn Fn() -> bool>>,
         font_size: Option<usize>,
+        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
     },
     CreateInputField {
         /// The maximum amount of chars to fit in this field
@@ -45,6 +47,7 @@ pub enum Command {
         font_size: Option<usize>,
         log_pos: Vertex,
         text: Rc<RwLock<String>>,
+        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
     },
 }
 
@@ -95,11 +98,12 @@ pub struct WindowData {
 
 pub struct NewCompData {
     pub window_data: WindowData,
-    pub component: Box<dyn Component>,
+    pub component: Rc<RwLock<Box<dyn Component>>>,
 }
 
 pub struct NewLoopIterFnData {
     pub window_data: WindowData,
+    pub component: Rc<RwLock<Box<dyn Component>>>,
     pub fun: Box<dyn Fn() -> bool>,
 }
 
@@ -161,7 +165,7 @@ impl Api {
     }
 
     /// Logical positions need to be contrained by `x <= 1000 && y <= 750`
-    pub fn execute(&self, handle: usize, command: Command) -> Result<(), &str> {
+    pub fn execute(&self, handle: usize, command: Command) -> Result<Rc<RwLock<Box<dyn Component>>>, &str> {
         let handle_data = self
             .handles
             .get(&handle)
@@ -172,11 +176,12 @@ impl Api {
             window_id: handle_data.window_id,
         };
 
-        match command {
+        let component= match command {
             Command::CreateButton {
                 log_rect_data,
                 label,
                 on_click,
+                state_dependencies,
             } => {
                 self.validate_log_pos(&log_rect_data.top_left)?;
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
@@ -193,20 +198,26 @@ impl Api {
                     font_size,
                     font_scale,
                     on_click,
+                    state_dependencies,
                 );
+
+                // let component: Arc<Mutex<Box<dyn Component>>> = Arc::new(Mutex::new(Box::new(button)));
+                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(button)));
 
                 let dispatch_data = NewCompData {
                     window_data,
-                    component: Box::new(button),
+                    component: Rc::clone(&component),
                 };
 
                 self.add_component(dispatch_data);
+                Rc::clone(&component)
             }
             Command::CreateLabel {
                 log_pos,
                 text,
                 on_loop_iter,
                 font_size,
+                state_dependencies,
             } => {
                 self.validate_log_pos(&log_pos)?;
                 let rel_pos = self.scale_vertex_to_rel(&log_pos);
@@ -218,25 +229,29 @@ impl Api {
 
                 let text_rc = Rc::clone(&text);
 
-                let label = Label::new(scaled_pos, rel_pos, font_size, text_rc, scaled_font_scale);
+                let label = Label::new(scaled_pos, rel_pos, font_size, text_rc, scaled_font_scale, state_dependencies);
+                // let component: Arc<Mutex<Box<dyn Component>>> = Arc::new(Mutex::new(Box::new(label)));
+                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(label)));
 
                 let dispatch_data = NewCompData {
                     window_data,
-                    component: Box::new(label),
+                    component: Rc::clone(&component),
                 };
 
                 self.add_component(dispatch_data);
 
                 if let Some(fun) = on_loop_iter {
-                    let data = NewLoopIterFnData { window_data, fun };
+                    let data = NewLoopIterFnData { window_data, component: Rc::clone(&component), fun };
                     self.add_on_loop_iter_fn(data);
                 }
+                Rc::clone(&component)
             }
             Command::CreateInputField {
                 log_pos,
                 width_in_chars,
                 font_size,
                 text,
+                state_dependencies,
             } => {
                 self.validate_log_pos(&log_pos)?;
                 let rel_pos = self.scale_vertex_to_rel(&log_pos);
@@ -265,18 +280,22 @@ impl Api {
                     scaled_font_scale,
                     width_in_chars,
                     text,
+                    state_dependencies,
                 );
+
+                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(input_field)));
 
                 let dispatch_data = NewCompData {
                     window_data,
-                    component: Box::new(input_field),
+                    component: Rc::clone(&component),
                 };
 
                 self.add_component(dispatch_data);
+                Rc::clone(&component)
             }
-        }
+        };
 
-        Ok(())
+        Ok(component)
     }
 
     pub fn remove_all_handles_tied_to_workspace(&mut self, workspace_index: usize) {

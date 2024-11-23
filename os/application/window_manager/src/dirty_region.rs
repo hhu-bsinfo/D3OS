@@ -29,7 +29,7 @@ impl DirtyRegion {
 }
 
 pub struct DirtyRegionList {
-    regions: Vec<DirtyRegion>,
+    pub regions: Vec<DirtyRegion>,
 }
 
 impl DirtyRegionList {

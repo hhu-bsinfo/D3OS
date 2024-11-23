@@ -1,14 +1,13 @@
-use alloc::{rc::Rc, string::String};
+use alloc::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::{
     color::{Color, CYAN, WHITE},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
-use spin::RwLock;
+use spin::{Mutex, RwLock};
 
 use crate::{
-    config::{BACKSPACE_UNICODE, INTERACT_BUTTON},
-    utils::{scale_font, scale_rect_to_window},
+    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, observer::{Observable, Observer}, utils::{scale_font, scale_rect_to_window}
 };
 
 use super::component::Component;
@@ -28,6 +27,7 @@ pub struct InputField {
     rel_font_size: usize,
     font_scale: (u32, u32),
     current_text: Rc<RwLock<String>>,
+    state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
 }
 
 impl InputField {
@@ -38,6 +38,7 @@ impl InputField {
         font_scale: (u32, u32),
         max_chars: usize,
         text: Rc<RwLock<String>>,
+        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
     ) -> Self {
         Self {
             is_selected: false,
@@ -47,6 +48,7 @@ impl InputField {
             rel_font_size,
             font_scale,
             current_text: text,
+            state_dependencies,
         }
     }
 }
@@ -128,5 +130,13 @@ impl Component for InputField {
             &self.rel_rect_data,
             &self.abs_rect_data,
         );
+    }
+
+    fn get_abs_rect_data(&self) -> RectData {
+        self.abs_rect_data
+    }
+
+    fn get_state_dependencies(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
+        self.state_dependencies.clone()
     }
 }

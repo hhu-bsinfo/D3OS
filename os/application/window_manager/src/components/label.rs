@@ -1,13 +1,12 @@
 use core::ops::Deref;
 
-use alloc::{rc::Rc, string::String};
+use alloc::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::color::Color;
-use spin::RwLock;
+use graphic::{color::Color, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
+use spin::{Mutex, RwLock};
 
 use crate::{
-    utils::{scale_font, scale_pos_to_window},
-    SCREEN,
+    observer::{Observable, Observer}, utils::{scale_font, scale_pos_to_window}, SCREEN
 };
 
 use super::component::Component;
@@ -18,6 +17,7 @@ pub struct Label {
     rel_font_size: usize,
     pub text: Rc<RwLock<String>>,
     pub font_scale: (u32, u32),
+    state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
 }
 
 impl Label {
@@ -27,6 +27,7 @@ impl Label {
         rel_font_size: usize,
         text: Rc<RwLock<String>>,
         font_scale: (u32, u32),
+        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
     ) -> Self {
         Self {
             abs_pos,
@@ -34,6 +35,7 @@ impl Label {
             rel_font_size,
             text,
             font_scale,
+            state_dependencies,
         }
     }
 }
@@ -71,5 +73,17 @@ impl Component for Label {
             },
             &new_rect_data,
         );
+    }
+
+    fn get_abs_rect_data(&self) -> RectData {
+        RectData {
+            top_left: self.abs_pos,
+            width: self.text.read().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+            height: DEFAULT_CHAR_HEIGHT * self.font_scale.1,
+        }
+    }
+
+    fn get_state_dependencies(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
+        self.state_dependencies.clone()
     }
 }

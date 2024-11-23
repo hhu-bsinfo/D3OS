@@ -6,12 +6,15 @@ extern crate alloc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::time::Duration;
 
+use alloc::boxed::Box;
 use alloc::format;
+use alloc::sync::Arc;
 use alloc::{borrow::ToOwned, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
-use chrono::TimeDelta;
+use chrono::{format, TimeDelta};
 use components::selected_window_label::HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW;
 use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE, FLUSHING_DELAY_MS};
+use dirty_region::DirtyRegion;
 use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
@@ -19,6 +22,7 @@ use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use io::write::log_debug;
 use io::{read::try_read, Application};
 use nolock::queues::mpsc::jiffy;
+use observer::Observer;
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
@@ -36,6 +40,7 @@ mod window_tree;
 mod windows;
 mod workspace;
 mod dirty_region;
+mod observer;
 
 // IDs are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -146,7 +151,8 @@ impl WindowManager {
     fn run(&mut self) {
         loop {
             self.draw();
-            log_debug(&format!("FPS: {}", self.fps()));
+
+            self.flush();
             
             self.process_keyboard_input();
             
@@ -159,7 +165,7 @@ impl WindowManager {
     }
 
     fn call_on_loop_iter_fns(&mut self) {
-        for NewLoopIterFnData { window_data, fun } in self.on_loop_iter_fns.iter() {
+        for NewLoopIterFnData { window_data, component, fun } in self.on_loop_iter_fns.iter() {
             let is_dirty = (*fun)();
 
             let window = self.workspaces[window_data.workspace_index]
@@ -168,7 +174,7 @@ impl WindowManager {
 
             if is_dirty {
                 if let Some(window) = window {
-                    window.is_dirty = true;
+                    window.mark_component_dirty(component);
                 }
             }
         }
@@ -452,11 +458,10 @@ impl WindowManager {
         // In enter_app_mode, we freeze everything else and only redraw the command-line-window
         if self.command_line_window.enter_app_mode {
             self.command_line_window.draw();
-            self.flush();
             return;
         }
 
-        let is_dirty = self.is_dirty;
+        let is_dirty: bool = self.is_dirty;
 
         if is_dirty {
             Drawer::full_clear_screen(false);

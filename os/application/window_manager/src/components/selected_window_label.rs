@@ -1,9 +1,12 @@
-use alloc::string::{String, ToString};
+use alloc::{boxed::Box, rc::Rc, string::{String, ToString}, sync::Arc, vec::Vec};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{
     color::{Color, BLUE, WHITE},
-    lfb::DEFAULT_CHAR_HEIGHT,
+    lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
+use spin::{Mutex, RwLock};
+
+use crate::observer::{Observable, Observer};
 
 use super::component::Component;
 
@@ -18,19 +21,21 @@ pub struct SelectedWorkspaceLabel {
     pub pos: Vertex,
     pub text: String,
     pub tied_workspace: usize,
+    state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
 }
 
 impl SelectedWorkspaceLabel {
-    pub fn new(pos: Vertex, text: String, tied_workspace: usize) -> Self {
+    pub fn new(pos: Vertex, text: String, tied_workspace: usize, state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>) -> Self {
         Self {
             pos,
             text,
             tied_workspace,
+            state_dependencies,
         }
     }
 }
 
-impl Component for SelectedWorkspaceLabel {
+impl<'a> Component for SelectedWorkspaceLabel {
     fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
         Drawer::draw_string(
             self.text.to_string(),
@@ -51,5 +56,17 @@ impl Component for SelectedWorkspaceLabel {
 
     fn rescale_after_move(&mut self, _new_rect_data: RectData) {
         // Should never be moved
+    }
+
+    fn get_abs_rect_data(&self) -> RectData {
+        RectData {
+            top_left: self.pos,
+            width: self.text.len() as u32 * DEFAULT_CHAR_WIDTH * WORKSPACE_SELECTION_LABEL_FONT_SCALE.0,
+            height: HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
+        }
+    }
+
+    fn get_state_dependencies(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
+        self.state_dependencies.clone()
     }
 }

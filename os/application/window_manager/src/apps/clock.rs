@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, rc::Rc, string::ToString};
+use alloc::{boxed::Box, rc::Rc, string::ToString, vec};
 use drawer::vertex::Vertex;
 use spin::rwlock::RwLock;
 use time::date;
@@ -31,6 +31,7 @@ impl Runnable for Clock {
                     return false;
                 })),
                 font_size: Some(4),
+                state_dependencies: vec![],
             },
         );
     }

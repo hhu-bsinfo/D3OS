@@ -247,8 +247,8 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
     match enum_val {
         DrawerCommand::FullClearScreen(do_flush) => {
             lfb.clear();
-            if !do_flush {
-                return;
+            if *do_flush {
+                buff_lfb.flush();
             }
         }
         DrawerCommand::DrawLine { from, to, color } => {

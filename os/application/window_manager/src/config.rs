@@ -13,4 +13,4 @@ pub const DEFAULT_FONT_SCALE: (u32, u32) = (1, 1);
 
 pub const PADDING_BORDERS_AND_CHARS: u32 = 2;
 
-pub const FLUSHING_DELAY_MS: u32 = 10;
+pub const FLUSHING_DELAY_MS: u32 = 16;

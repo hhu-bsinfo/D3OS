@@ -1,31 +1,29 @@
 use alloc::{
-    boxed::Box,
-    rc::Rc,
-    string::{String, ToString},
+    boxed::Box, rc::Rc, string::{String, ToString}, sync::Arc, vec::Vec
 };
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{
     color::{Color, GREY},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
-use spin::Mutex;
+use spin::{Mutex, RwLock};
 
 use crate::{
-    config::INTERACT_BUTTON,
-    utils::{scale_font, scale_rect_to_window},
+    config::INTERACT_BUTTON, observer::{self, NotifyData, Observable, Observer}, utils::{scale_font, scale_rect_to_window}
 };
 
-use super::component::Component;
+use super::component::{self, Component};
 
 pub const BUTTON_BG_COLOR: Color = GREY;
 
-pub struct Button {
+pub struct Button{
     abs_rect_data: RectData,
     rel_rect_data: RectData,
     label: Option<Rc<Mutex<String>>>,
     rel_font_size: usize,
     font_scale: (u32, u32),
     on_click: Box<dyn Fn() -> ()>,
+    state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
 }
 
 impl Button {
@@ -36,6 +34,7 @@ impl Button {
         rel_font_size: usize,
         font_scale: (u32, u32),
         on_click: Box<dyn Fn() -> ()>,
+        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
     ) -> Self {
         Self {
             abs_rect_data,
@@ -44,6 +43,7 @@ impl Button {
             font_scale,
             label,
             on_click,
+            state_dependencies,
         }
     }
 
@@ -126,5 +126,13 @@ impl Component for Button {
             &self.rel_rect_data,
             &self.abs_rect_data,
         );
+    }
+    
+    fn get_abs_rect_data(&self) -> RectData {
+        self.abs_rect_data
+    }
+
+    fn get_state_dependencies(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
+        self.state_dependencies.clone()
     }
 }
