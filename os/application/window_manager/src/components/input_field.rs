@@ -27,7 +27,7 @@ pub struct InputField {
     rel_font_size: usize,
     font_scale: (u32, u32),
     current_text: Rc<RwLock<String>>,
-    state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+    on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
 }
 
 impl InputField {
@@ -38,7 +38,7 @@ impl InputField {
         font_scale: (u32, u32),
         max_chars: usize,
         text: Rc<RwLock<String>>,
-        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
     ) -> Self {
         Self {
             is_selected: false,
@@ -48,7 +48,7 @@ impl InputField {
             rel_font_size,
             font_scale,
             current_text: text,
-            state_dependencies,
+            on_change_redraw,
         }
     }
 }
@@ -136,7 +136,7 @@ impl Component for InputField {
         self.abs_rect_data
     }
 
-    fn get_state_dependencies(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
-        self.state_dependencies.clone()
+    fn get_redraw_components(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
+        self.on_change_redraw.clone()
     }
 }

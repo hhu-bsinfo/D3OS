@@ -1,7 +1,8 @@
-use alloc::{boxed::Box, collections::LinkedList, rc::Rc};
+use alloc::{boxed::Box, collections::LinkedList, format, rc::Rc};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
 use hashbrown::HashMap;
+use io::write::log_debug;
 use spin::RwLock;
 
 use crate::{
@@ -43,8 +44,8 @@ impl AppWindow {
 
     pub fn mark_component_dirty(&mut self, component: &Rc<RwLock<Box<dyn Component>>>) {
         let dirty_region = DirtyRegion::new(component.read().get_abs_rect_data());
-        
-        for depend_component in component.read().get_state_dependencies() {
+
+        for depend_component in component.read().get_redraw_components() {
             self.mark_component_dirty(&depend_component);
         }
         

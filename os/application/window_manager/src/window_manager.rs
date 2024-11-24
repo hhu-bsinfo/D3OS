@@ -150,8 +150,11 @@ impl WindowManager {
 
     fn run(&mut self) {
         loop {
+            let now = systime().num_milliseconds();
             self.draw();
-
+            let elapsed = systime().num_milliseconds() - now;
+            log_debug(&format!("Elapsed: {}", elapsed));
+            
             self.flush();
             
             self.process_keyboard_input();
@@ -174,6 +177,10 @@ impl WindowManager {
 
             if is_dirty {
                 if let Some(window) = window {
+                    for depend in component.read().get_redraw_components() {
+                        log_debug(&format!("Depend: {:?}", depend.read().get_abs_rect_data()));
+                    }
+
                     window.mark_component_dirty(component);
                 }
             }

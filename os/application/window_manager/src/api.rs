@@ -28,7 +28,7 @@ pub enum Command {
         log_rect_data: RectData,
         label: Option<(Rc<Mutex<String>>, usize)>,
         on_click: Box<dyn Fn() -> ()>,
-        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
     },
     CreateLabel {
         log_pos: Vertex,
@@ -39,7 +39,7 @@ pub enum Command {
         */
         on_loop_iter: Option<Box<dyn Fn() -> bool>>,
         font_size: Option<usize>,
-        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
     },
     CreateInputField {
         /// The maximum amount of chars to fit in this field
@@ -47,7 +47,7 @@ pub enum Command {
         font_size: Option<usize>,
         log_pos: Vertex,
         text: Rc<RwLock<String>>,
-        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
     },
 }
 
@@ -181,7 +181,7 @@ impl Api {
                 log_rect_data,
                 label,
                 on_click,
-                state_dependencies,
+                on_change_redraw,
             } => {
                 self.validate_log_pos(&log_rect_data.top_left)?;
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
@@ -198,7 +198,7 @@ impl Api {
                     font_size,
                     font_scale,
                     on_click,
-                    state_dependencies,
+                    on_change_redraw,
                 );
 
                 // let component: Arc<Mutex<Box<dyn Component>>> = Arc::new(Mutex::new(Box::new(button)));
@@ -217,7 +217,7 @@ impl Api {
                 text,
                 on_loop_iter,
                 font_size,
-                state_dependencies,
+                on_change_redraw,
             } => {
                 self.validate_log_pos(&log_pos)?;
                 let rel_pos = self.scale_vertex_to_rel(&log_pos);
@@ -229,7 +229,7 @@ impl Api {
 
                 let text_rc = Rc::clone(&text);
 
-                let label = Label::new(scaled_pos, rel_pos, font_size, text_rc, scaled_font_scale, state_dependencies);
+                let label = Label::new(scaled_pos, rel_pos, font_size, text_rc, scaled_font_scale, on_change_redraw);
                 // let component: Arc<Mutex<Box<dyn Component>>> = Arc::new(Mutex::new(Box::new(label)));
                 let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(label)));
 
@@ -251,7 +251,7 @@ impl Api {
                 width_in_chars,
                 font_size,
                 text,
-                state_dependencies,
+                on_change_redraw,
             } => {
                 self.validate_log_pos(&log_pos)?;
                 let rel_pos = self.scale_vertex_to_rel(&log_pos);
@@ -280,7 +280,7 @@ impl Api {
                     scaled_font_scale,
                     width_in_chars,
                     text,
-                    state_dependencies,
+                    on_change_redraw,
                 );
 
                 let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(input_field)));

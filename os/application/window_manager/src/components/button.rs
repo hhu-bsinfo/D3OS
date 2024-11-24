@@ -23,7 +23,7 @@ pub struct Button{
     rel_font_size: usize,
     font_scale: (u32, u32),
     on_click: Box<dyn Fn() -> ()>,
-    state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+    on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
 }
 
 impl Button {
@@ -34,7 +34,7 @@ impl Button {
         rel_font_size: usize,
         font_scale: (u32, u32),
         on_click: Box<dyn Fn() -> ()>,
-        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
     ) -> Self {
         Self {
             abs_rect_data,
@@ -43,7 +43,7 @@ impl Button {
             font_scale,
             label,
             on_click,
-            state_dependencies,
+            on_change_redraw,
         }
     }
 
@@ -132,7 +132,7 @@ impl Component for Button {
         self.abs_rect_data
     }
 
-    fn get_state_dependencies(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
-        self.state_dependencies.clone()
+    fn get_redraw_components(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
+        self.on_change_redraw.clone()
     }
 }

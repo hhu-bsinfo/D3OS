@@ -17,7 +17,7 @@ pub struct Label {
     rel_font_size: usize,
     pub text: Rc<RwLock<String>>,
     pub font_scale: (u32, u32),
-    state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+    on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
 }
 
 impl Label {
@@ -27,7 +27,7 @@ impl Label {
         rel_font_size: usize,
         text: Rc<RwLock<String>>,
         font_scale: (u32, u32),
-        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
     ) -> Self {
         Self {
             abs_pos,
@@ -35,7 +35,7 @@ impl Label {
             rel_font_size,
             text,
             font_scale,
-            state_dependencies,
+            on_change_redraw,
         }
     }
 }
@@ -83,7 +83,7 @@ impl Component for Label {
         }
     }
 
-    fn get_state_dependencies(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
-        self.state_dependencies.clone()
+    fn get_redraw_components(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
+        self.on_change_redraw.clone()
     }
 }

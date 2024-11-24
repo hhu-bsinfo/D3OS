@@ -24,5 +24,5 @@ pub trait Component {
 
     fn get_abs_rect_data(&self) -> RectData;
 
-    fn get_state_dependencies(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>>;
+    fn get_redraw_components(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>>;
 }

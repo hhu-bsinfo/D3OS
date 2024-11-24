@@ -66,7 +66,7 @@ impl<'a> Component for SelectedWorkspaceLabel {
         }
     }
 
-    fn get_state_dependencies(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
+    fn get_redraw_components(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
         self.state_dependencies.clone()
     }
 }
