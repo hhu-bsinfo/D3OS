@@ -10,7 +10,7 @@ use spin::{mutex::Mutex, rwlock::RwLock};
 
 use crate::{
     apps::{clock::Clock, counter::Counter, runnable::Runnable, submit_label::SubmitLabel},
-    components::{button::Button, component::Component, input_field::InputField, label::Label},
+    components::{button::Button, checkbox::Checkbox, component::Component, input_field::InputField, label::Label},
     config::PADDING_BORDERS_AND_CHARS,
     SCREEN,
 };
@@ -49,6 +49,12 @@ pub enum Command {
         text: Rc<RwLock<String>>,
         on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
     },
+    CreateCheckbox {
+        log_rect_data: RectData,
+        state: bool,
+        on_true: Box<dyn Fn() -> ()>,
+        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
+    }
 }
 
 pub struct Senders {
@@ -284,6 +290,34 @@ impl Api {
                 );
 
                 let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(input_field)));
+
+                let dispatch_data = NewCompData {
+                    window_data,
+                    component: Rc::clone(&component),
+                };
+
+                self.add_component(dispatch_data);
+                Rc::clone(&component)
+            },
+            Command::CreateCheckbox {
+                log_rect_data,
+                state,
+                on_true,
+                on_change_redraw
+            } => {
+                self.validate_log_pos(&log_rect_data.top_left)?;
+                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
+                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data);
+
+                let checkbox = Checkbox::new(
+                    abs_rect_data,
+                    rel_rect_data,
+                    state,
+                    on_true,
+                    on_change_redraw,
+                );
+
+                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(checkbox)));
 
                 let dispatch_data = NewCompData {
                     window_data,
