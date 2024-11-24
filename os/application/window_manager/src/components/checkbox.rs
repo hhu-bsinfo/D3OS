@@ -24,7 +24,8 @@ pub struct Checkbox {
     // rel_font_size: usize,
     // font_scale: (u32, u32),
     state: bool,
-    on_true: Box<dyn Fn() -> ()>,
+    on_checked: Box<dyn Fn() -> ()>,
+    on_unchecked: Box<dyn Fn() -> ()>,
     on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
 }
 
@@ -36,7 +37,8 @@ impl Checkbox {
         // rel_font_size: usize,
         // font_scale: (u32, u32),
         state: bool,
-        on_true: Box<dyn Fn() -> ()>,
+        on_checked: Box<dyn Fn() -> ()>,
+        on_unchecked: Box<dyn Fn() -> ()>,
         on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
     ) -> Self {
         Self {
@@ -46,7 +48,8 @@ impl Checkbox {
             // label,
             // font_scale,
             state,
-            on_true,
+            on_checked,
+            on_unchecked,
             on_change_redraw,
         }
     }
@@ -100,7 +103,9 @@ impl Component for Checkbox {
             self.state = !self.state;
 
             if self.state {
-                (self.on_true)();
+                (self.on_checked)();
+            } else {
+                (self.on_unchecked)();
             }
             
             return true;
