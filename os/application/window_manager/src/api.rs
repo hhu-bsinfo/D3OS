@@ -3,14 +3,14 @@ use core::fmt::Debug;
 use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 use concurrent::thread;
 use drawer::{rect_data::RectData, vertex::Vertex};
-use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
+use graphic::{bitmap::{Bitmap, ScalingMode}, color::Color, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
 use hashbrown::HashMap;
 use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::{mutex::Mutex, rwlock::RwLock};
 
 use crate::{
     apps::{clock::Clock, counter::Counter, runnable::Runnable, submit_label::SubmitLabel},
-    components::{button::Button, checkbox::Checkbox, component::Component, input_field::InputField, label::Label},
+    components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, input_field::InputField, label::Label, radio_button::RadioButton},
     config::PADDING_BORDERS_AND_CHARS,
     SCREEN,
 };
@@ -23,7 +23,7 @@ pub static DEFAULT_APP: &str = "clock";
 /// Logical screen resolution, used by apps for describing component locations
 pub const LOG_SCREEN: (u32, u32) = (1000, 750);
 
-pub enum Command {
+pub enum Command<'a> {
     CreateButton {
         log_rect_data: RectData,
         label: Option<(Rc<Mutex<String>>, usize)>,
@@ -52,8 +52,16 @@ pub enum Command {
     CreateCheckbox {
         log_rect_data: RectData,
         state: bool,
-        on_true: Box<dyn Fn() -> ()>,
+        on_checked: Box<dyn Fn() -> ()>,
+        on_unchecked: Box<dyn Fn() -> ()>,
         on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
+    },
+    CreateBitmapGraphic {
+        log_pos: Vertex,
+        width: u32,
+        height: u32,
+        bitmap: &'a Bitmap,
+        scaling_mode: ScalingMode,
     }
 }
 
@@ -302,7 +310,8 @@ impl Api {
             Command::CreateCheckbox {
                 log_rect_data,
                 state,
-                on_true,
+                on_checked,
+                on_unchecked,
                 on_change_redraw
             } => {
                 self.validate_log_pos(&log_rect_data.top_left)?;
@@ -313,11 +322,35 @@ impl Api {
                     abs_rect_data,
                     rel_rect_data,
                     state,
-                    on_true,
+                    on_checked,
+                    on_unchecked,
                     on_change_redraw,
                 );
 
                 let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(checkbox)));
+
+                let dispatch_data = NewCompData {
+                    window_data,
+                    component: Rc::clone(&component),
+                };
+
+                self.add_component(dispatch_data);
+                Rc::clone(&component)
+            },
+            Command::CreateBitmapGraphic { 
+                log_pos,
+                width,
+                height,
+                bitmap,
+                scaling_mode,
+            } => {
+                self.validate_log_pos(&log_pos)?;
+
+                // let rel_pos = self.scale_vertex_to_rel(&log_pos);
+                // let abs_pos = self.scale_vertex_to_window(rel_pos, handle_data);
+
+                let bitmap_graphic = BitmapGraphic::new(log_pos, (*bitmap).scale(width, height, scaling_mode));
+                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(bitmap_graphic)));
 
                 let dispatch_data = NewCompData {
                     window_data,
