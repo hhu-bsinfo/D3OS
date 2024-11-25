@@ -15,5 +15,3 @@ path = "src/mkdir.rs"
 terminal = { path = "../../library/terminal" }
 runtime = { path = "../../library/runtime" }
 naming = { path = "../../library/naming" }
-
-chrono = { version = "0.4.38", default-features = false, features = ["alloc"] }
