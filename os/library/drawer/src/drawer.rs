@@ -3,12 +3,12 @@ use alloc::vec;
 use alloc::vec::Vec;
 use syscall::{syscall0, syscall1, SystemCall};
 
-use graphic::color::{Color, INVISIBLE};
+use graphic::{bitmap::Bitmap, color::{Color, INVISIBLE}};
 
 use crate::{rect_data::RectData, vertex::Vertex};
 
 #[repr(C, u8)]
-pub enum DrawerCommand {
+pub enum DrawerCommand<'a> {
     FullClearScreen(bool) = 0,
     PartialClearScreen {
         part_of_screen: RectData,
@@ -49,6 +49,10 @@ pub enum DrawerCommand {
         bg_color: Color,
         scale: (u32, u32),
     },
+    DrawBitmap {
+        pos: Vertex,
+        bitmap: &'a Bitmap,
+    },
     Flush,
 }
 
@@ -65,7 +69,7 @@ impl Drawer {
     Use `false`, if you wanna draw something new, to minimize screen flickering
     */
     pub fn full_clear_screen(do_flush: bool) {
-        let command = DrawerCommand::FullClearScreen(do_flush);
+        let command: DrawerCommand<'_> = DrawerCommand::FullClearScreen(do_flush);
 
         Self::execute(command);
     }
@@ -184,6 +188,19 @@ impl Drawer {
             },
             color,
         )
+    }
+
+    pub fn draw_bitmap(
+        pos: Vertex,
+        bitmap: &Bitmap,
+
+    ) {
+        let command=  DrawerCommand::DrawBitmap {
+            pos,
+            bitmap,
+        };
+
+        Self::execute(command);
     }
 
     pub fn flush() {

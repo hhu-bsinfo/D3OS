@@ -302,8 +302,7 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
         DrawerCommand::DrawFilledTriangle { vertices, color } => {
             let tuples = vertices.map(|vertex| vertex.as_tuple());
             lfb.fill_triangle((tuples[0], tuples[1], tuples[2]), *color)
-        }
-
+        },
         DrawerCommand::DrawCircle {
             center,
             radius,
@@ -325,7 +324,7 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
 
                 x_curr += stepsize;
             }
-        }
+        },
         DrawerCommand::DrawString {
             string_to_draw,
             pos,
@@ -342,7 +341,7 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
                 bg_color.clone(),
                 string_to_draw,
             );
-        }
+        },
         DrawerCommand::DrawChar {
             char_to_draw,
             pos,
@@ -368,10 +367,17 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
                 BLACK,
             );
         }
+        DrawerCommand::DrawBitmap {
+            bitmap,
+            pos
+        } => {
+            lfb.draw_bitmap(pos.x, pos.y, &(**bitmap).data, (**bitmap).width, (**bitmap).height);
+        },
         DrawerCommand::Flush => {
             buff_lfb.flush();
         }
     };
+    
 }
 
 /// w = width, h = height;

@@ -354,6 +354,15 @@ impl LFB {
             }
         }
     }
+
+    pub fn draw_bitmap(&self, x: u32, y: u32, data: &[Color], width: u32, height: u32) {
+        for i in 0..height {
+            for j in 0..width {
+                let color = data[(i * width + j) as usize];
+                self.draw_pixel(x + j as u32, y + i as u32, color);
+            }
+        }
+    }
 }
 
 type PixelDrawer = unsafe fn(addr: *mut u8, pitch: u32, x: u32, y: u32, color: Color);
