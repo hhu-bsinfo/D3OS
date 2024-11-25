@@ -1,5 +1,7 @@
+use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::ops::Deref;
 use core::ptr;
 use log::info;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
@@ -11,7 +13,7 @@ use crate::device::rtl8139::Rtl8139;
 use crate::{pci_bus, scheduler, timer};
 use crate::process::thread::Thread;
 
-static RTL8139: Once<Rtl8139> = Once::new();
+static RTL8139: Once<Arc<Rtl8139>> = Once::new();
 
 static INTERFACES: RwLock<Vec<Interface>> = RwLock::new(Vec::new());
 static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
@@ -27,11 +29,11 @@ pub fn init() {
     if devices.len() > 0 {
         RTL8139.call_once(|| {
             info!("Found Realtek RTL8139 network controller");
-            let rtl8139 = Rtl8139::new(devices[0]);
+            let rtl8139 = Arc::new(Rtl8139::new(devices[0]));
             info!("RTL8139 MAC address: [{}]", rtl8139.read_mac_address());
 
-            rtl8139.plugin();
-            return rtl8139;
+            Rtl8139::plugin(Arc::clone(&rtl8139));
+            rtl8139
         });
     }
 
@@ -42,8 +44,11 @@ pub fn init() {
     }
 }
 
-pub fn rtl8139() -> Option<&'static Rtl8139> {
-    RTL8139.get()
+pub fn rtl8139() -> Option<Arc<Rtl8139>> {
+    match RTL8139.get() {
+        Some(rtl8139) => Some(Arc::clone(rtl8139)),
+        None => None
+    }
 }
 
 pub fn add_interface(interface: Interface) {
@@ -96,7 +101,7 @@ fn poll_sockets() {
 
     // Smoltcp expects a mutable reference to the device, but the RTL8139 driver is built
     // to work with a shared reference. We can safely cast the shared reference to a mutable.
-    let device = unsafe { ptr::from_ref(rtl8139).cast_mut().as_mut().unwrap() };
+    let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
 
     for interface in interfaces.iter_mut() {
         interface.poll(time, device, &mut sockets);

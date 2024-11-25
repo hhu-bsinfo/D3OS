@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::ops::BitOr;
 use core::{ptr, slice};
@@ -132,7 +133,7 @@ pub struct Rtl8139 {
 }
 
 pub struct Rtl8139InterruptHandler {
-    device: &'static Rtl8139
+    device: Arc<Rtl8139>
 }
 
 impl Registers {
@@ -204,28 +205,28 @@ unsafe impl Allocator for PacketAllocator {
     }
 }
 
-pub struct Rtl8139TxToken {
-    device: &'static Rtl8139
+pub struct Rtl8139TxToken<'a> {
+    device: &'a Rtl8139
 }
 
-pub struct Rtl8139RxToken {
+pub struct Rtl8139RxToken<'a> {
     buffer: Vec<u8, PacketAllocator>,
-    device: &'static Rtl8139
+    device: &'a Rtl8139
 }
 
-impl<'a> Rtl8139TxToken {
-    pub fn new(device: &'static Rtl8139) -> Self {
+impl<'a> Rtl8139TxToken<'a> {
+    pub fn new(device: &'a Rtl8139) -> Self {
         Self { device }
     }
 }
 
-impl<'a> Rtl8139RxToken {
-    pub fn new(buffer: Vec<u8, PacketAllocator>, device: &'static Rtl8139) -> Self {
+impl<'a> Rtl8139RxToken<'a> {
+    pub fn new(buffer: Vec<u8, PacketAllocator>, device: &'a Rtl8139) -> Self {
         Self { buffer, device }
     }
 }
 
-impl<'a> phy::TxToken for Rtl8139TxToken {
+impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
     fn consume<R, F>(self, len: usize, f: F) -> R
     where F: FnOnce(&mut [u8]) -> R {
         if len > PAGE_SIZE {
@@ -270,7 +271,7 @@ impl<'a> phy::TxToken for Rtl8139TxToken {
     }
 }
 
-impl<'a> phy::RxToken for Rtl8139RxToken {
+impl<'a> phy::RxToken for Rtl8139RxToken<'a> {
     fn consume<R, F>(mut self, f: F) -> R
     where F: FnOnce(&mut [u8]) -> R {
         let result = f(&mut self.buffer);
@@ -281,8 +282,8 @@ impl<'a> phy::RxToken for Rtl8139RxToken {
 }
 
 impl phy::Device for Rtl8139 {
-    type RxToken<'a> = Rtl8139RxToken where Self: 'a;
-    type TxToken<'a> = Rtl8139TxToken where Self: 'a;
+    type RxToken<'a> = Rtl8139RxToken<'a> where Self: 'a;
+    type TxToken<'a> = Rtl8139TxToken<'a> where Self: 'a;
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let device = unsafe { ptr::from_ref(self).as_ref()? };
@@ -308,8 +309,8 @@ impl phy::Device for Rtl8139 {
 }
 
 impl Rtl8139InterruptHandler {
-    pub fn new(rtl8139: &'static Rtl8139) -> Self {
-        Self { device: rtl8139 }
+    pub fn new(device: Arc<Rtl8139>) -> Self {
+        Self { device }
     }
 }
 
@@ -319,9 +320,24 @@ impl InterruptHandler for Rtl8139InterruptHandler {
             panic!("Interrupt status register is locked during interrupt!");
         }
 
+        // Read interrupt status register (Each bit corresponds to an interrupt type or error)
         let mut status_reg = self.device.registers.interrupt_status.lock();
         let status = Interrupt::from_bits_retain(unsafe { status_reg.read() });
 
+        // Check error flags
+        if status.contains(Interrupt::TRANSMIT_ERROR) {
+            panic!("Transmit failed!");
+        } else if status.contains(Interrupt::RECEIVE_ERROR) {
+            panic!("Receive failed!");
+        }
+
+        // Writing the status register clears all bits.
+        // According to the RTL8139 documentation, this is not necessary,
+        // but QEMU and some hardware require clearing the interrupt status register.
+        // Furthermore, this needs to be done before processing the received packet (https://wiki.osdev.org/RTL8139).
+        unsafe { status_reg.write(status.bits()); }
+
+        // Handle transmit by freeing allocated buffers
         if status.contains(Interrupt::TRANSMIT_OK) && !physical::allocator_locked() {
             let mut queue = self.device.send_queue.0.lock();
             let mut buffer = queue.try_dequeue();
@@ -331,15 +347,10 @@ impl InterruptHandler for Rtl8139InterruptHandler {
             }
         }
 
+        // Handle receive interrupt by processing received packet
         if status.contains(Interrupt::RECEIVE_OK) {
             self.device.process_received_packet();
         }
-
-        if status.contains(Interrupt::TRANSMIT_ERROR) {
-            panic!("Transmit failed!");
-        }
-
-        unsafe { status_reg.write(status.bits()); }
     }
 }
 
@@ -414,10 +425,10 @@ impl Rtl8139 {
         rtl8139
     }
 
-    pub fn plugin(&self) {
-        let device = unsafe { ptr::from_ref(self).as_ref().unwrap() };
-        interrupt_dispatcher().assign(self.interrupt, Box::new(Rtl8139InterruptHandler::new(device)));
-        apic().allow(self.interrupt);
+    pub fn plugin(device: Arc<Rtl8139>) {
+        let interrupt = device.interrupt;
+        interrupt_dispatcher().assign(device.interrupt, Box::new(Rtl8139InterruptHandler::new(device)));
+        apic().allow(interrupt);
     }
 
     pub fn read_mac_address(&self) -> EthernetAddress {

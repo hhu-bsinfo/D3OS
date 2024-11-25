@@ -52,7 +52,7 @@ use crate::device::serial::SerialPort;
 use crate::memory::{MemorySpace, nvmem, PAGE_SIZE};
 use crate::memory::nvmem::Nfit;
 use crate::memory::r#virtual::page_table_index;
-use crate::network::rtl8139;
+use crate::network::{bind_udp, open_socket, rtl8139, send_datagram, SocketType};
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
@@ -201,13 +201,15 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     network::init();
 
     // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
-    if qemu_cfg::is_available() {
-        let device = unsafe { ptr::from_ref(rtl8139().unwrap()).cast_mut().as_mut().unwrap() };
+    if let Some(rtl8139) = rtl8139() && qemu_cfg::is_available() {
         let time = timer.systime_ms();
-
-        let mut conf = iface::Config::new(HardwareAddress::from(device.read_mac_address()));
+        let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
         conf.random_seed = time as u64;
 
+        // The Ssoltcp interface struct wants a mutable reference to the device. However, the RTL8139 driver is designed to work with shared references.
+        // Since smoltcp does not actually store the mutable reference anywhere, we can safely cast the shared reference to a mutable one.
+        // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device, since it does not modify the device itself)
+        let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
         let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
         interface.update_ip_addrs(|ips| {
             ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24)).expect("Failed to add IP address");
