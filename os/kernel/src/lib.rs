@@ -15,6 +15,7 @@
 #![feature(abi_x86_interrupt)]
 #![feature(trait_upcasting)]
 #![feature(ptr_metadata)]
+#![feature(let_chains)]
 #![allow(internal_features)]
 #![no_std]
 
