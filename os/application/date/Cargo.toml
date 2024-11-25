@@ -15,5 +15,3 @@ path = "src/date.rs"
 runtime = { path = "../../library/runtime" }
 terminal = { path = "../../library/terminal" }
 time = { path = "../../library/time" }
-
-chrono = { version = "0.4.38", default-features = false, features = ["alloc"] }

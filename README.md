@@ -13,46 +13,42 @@ A new research operating system, developed by the [operating systems group](http
 
 ## Requirements
 
-For building D3OS, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/). The nightly toolchain `1.83.0-nightly (52fd99839 2024-10-10)` is confirmed to work.
-
-```
+For building D3OS, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/):
+```bash
 rustup toolchain install nightly
 rustup override set nightly
 ```
 
-To run the build commands _cargo-make_ is required. Install it with:
-
+The toolchain `nightly-2024-11-21` is confirmed to work. If you are having problems with new versions, try:
+```bash
+rustup toolchain install nightly-2024-11-21
+rustup override set nightly-2024-11-21
 ```
+
+To run the build commands _cargo-make_ is required. Install it with:
+```bash
 cargo install --no-default-features cargo-make
 ```
 
 Furthermore, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
-
-```
+```bash
 apt install build-essential nasm wget qemu-system-x86_64
 ```
 
 ## Build and Run
 
-To build D3OS and run it in QEMU, just execute: 
-
-```
+To build D3OS and run it in QEMU, just execute:
+```bash
 cargo make --no-workspace
 ```
 
-To build a release version of D3OS (much faster) and run it in QEMU, just execute: 
-
-`cargo make --no-workspace --profile production`
+To build a release version of D3OS (much faster) and run it in QEMU, just execute:
+```bash
+cargo make --no-workspace --profile production
+```
 
 
 To only build the bootable image _d3os.img_, run:
-
-```
+```bash
 cargo make --no-workspace image
-```
-
-Do not forget to update your compiler from time to time:
-
-```
-rustup update nightly
 ```
