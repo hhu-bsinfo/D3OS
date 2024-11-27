@@ -27,7 +27,7 @@ impl Runnable for SubmitLabel {
                 font_size: Some(2),
                 log_pos: Vertex::new(100, 200),
                 text: input_field_rc1,
-                state_dependencies: vec![],
+                on_change_redraw: vec![],
             },
         );
 
@@ -38,7 +38,7 @@ impl Runnable for SubmitLabel {
                 text: Rc::new(RwLock::new(String::from("Submitted Text: "))),
                 on_loop_iter: None,
                 font_size: Some(2),
-                state_dependencies: vec![],
+                on_change_redraw: vec![],
             },
         );
 
@@ -49,7 +49,7 @@ impl Runnable for SubmitLabel {
                 text: label_text_rc1,
                 on_loop_iter: None,
                 font_size: Some(2),
-                state_dependencies: vec![],
+                on_change_redraw: vec![],
             },
         );
 
@@ -65,11 +65,11 @@ impl Runnable for SubmitLabel {
                 },
                 label: Some((label_rc, button_font)),
                 on_click: Box::new(move || {
-                    let mut input_field = input_field_rc2.write();
+                    let mut input_field: spin::rwlock::RwLockWriteGuard<'_, String> = input_field_rc2.write();
                     let mut label_text = label_text_rc2.write();
                     *label_text = input_field.drain(..).collect();
                 }),
-                state_dependencies: vec![input_field.unwrap(), submitted_text.unwrap()],
+                on_change_redraw: vec![input_field.unwrap(), submitted_text.unwrap()],
             },
         );
     }

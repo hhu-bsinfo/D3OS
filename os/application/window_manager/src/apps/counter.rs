@@ -32,7 +32,7 @@ impl Runnable for Counter {
                     let old = (*value).parse::<usize>().unwrap();
                     *value = (old + 1).to_string();
                 }),
-                state_dependencies: vec![],
+                on_change_redraw: vec![],
             },
         ).unwrap();
 
@@ -49,7 +49,7 @@ impl Runnable for Counter {
                     let mut value = label_text_rc3.lock();
                     *value = String::from("0");
                 }),
-                state_dependencies: vec![Rc::clone(&counter_button)],
+                on_change_redraw: vec![Rc::clone(&counter_button)],
             },
         );
     }
