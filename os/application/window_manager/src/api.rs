@@ -3,14 +3,14 @@ use core::fmt::Debug;
 use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 use concurrent::thread;
 use drawer::{rect_data::RectData, vertex::Vertex};
-use graphic::{bitmap::{Bitmap, ScalingMode}, color::Color, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
+use graphic::{bitmap::{Bitmap, ScalingMode}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
 use hashbrown::HashMap;
 use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::{mutex::Mutex, rwlock::RwLock};
 
 use crate::{
     apps::{clock::Clock, counter::Counter, runnable::Runnable, submit_label::SubmitLabel},
-    components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, input_field::InputField, label::Label, radio_button::RadioButton},
+    components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::Component, input_field::InputField, label::Label},
     config::PADDING_BORDERS_AND_CHARS,
     SCREEN,
 };

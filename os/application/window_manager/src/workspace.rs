@@ -1,9 +1,6 @@
 use alloc::collections::LinkedList;
-use drawer::drawer::Drawer;
-use graphic::color::GREEN;
 use hashbrown::HashMap;
 
-use crate::dirty_region::DirtyRegion;
 use crate::utils::get_element_cursor_from_orderer;
 use crate::window_tree::WindowNode;
 use crate::windows::app_window::AppWindow;

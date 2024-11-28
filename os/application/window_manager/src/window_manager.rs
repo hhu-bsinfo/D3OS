@@ -4,17 +4,12 @@
 extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use core::time::Duration;
-
-use alloc::boxed::Box;
 use alloc::format;
-use alloc::sync::Arc;
 use alloc::{borrow::ToOwned, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
-use chrono::{format, TimeDelta};
+use chrono::TimeDelta;
 use components::selected_window_label::HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW;
 use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE, FLUSHING_DELAY_MS};
-use dirty_region::DirtyRegion;
 use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
@@ -22,7 +17,7 @@ use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use io::write::log_debug;
 use io::{read::try_read, Application};
 use nolock::queues::mpsc::jiffy;
-use observer::Observer;
+
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
