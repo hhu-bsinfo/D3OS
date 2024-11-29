@@ -52,7 +52,7 @@ use crate::device::serial::SerialPort;
 use crate::memory::{MemorySpace, nvmem, PAGE_SIZE};
 use crate::memory::nvmem::Nfit;
 use crate::memory::r#virtual::page_table_index;
-use crate::network::{bind_udp, open_socket, rtl8139, send_datagram, SocketType};
+use crate::network::rtl8139;
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
