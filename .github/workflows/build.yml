@@ -15,7 +15,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: "nightly-2024-11-21"
           components: "rust-src"
 
       - name: Cache Cargo
@@ -56,7 +55,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: "nightly-2024-11-21"
           components: "rust-src"
 
       - name: Cache Cargo
