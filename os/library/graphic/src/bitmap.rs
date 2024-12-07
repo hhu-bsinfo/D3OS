@@ -1,10 +1,9 @@
-use core::arch::x86_64;
-
 use alloc::vec::Vec;
-use libm::{floor, floorf};
+use libm::floorf;
 
 use crate::color::Color;
 
+#[derive(Clone, Copy)]
 pub enum ScalingMode {
     NearestNeighbor,
     Bilinear,
