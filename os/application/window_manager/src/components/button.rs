@@ -1,50 +1,70 @@
 use alloc::{
-    boxed::Box, rc::Rc, string::{String, ToString}, sync::Arc, vec::Vec
+    boxed::Box, rc::Rc, string::{String, ToString}
 };
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::{
-    color::{Color, GREY},
-    lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
-};
-use spin::{Mutex, RwLock};
+use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
+use spin::RwLock;
 
 use crate::{
-    config::INTERACT_BUTTON, observer::{self, NotifyData, Observable, Observer}, utils::{scale_font, scale_rect_to_window}
+    config::INTERACT_BUTTON, signal::{ComponentRef, Signal, Stateful}, utils::{scale_font, scale_rect_to_window}
 };
 
-use super::component::{self, Component};
-
-pub const BUTTON_BG_COLOR: Color = GREY;
+use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable, Resizable};
 
 pub struct Button{
+    pub id: Option<usize>,
+    pub is_dirty: bool,
     abs_rect_data: RectData,
     rel_rect_data: RectData,
-    label: Option<Rc<Mutex<String>>>,
+    orig_rect_data: RectData,
+    drawn_rect_data: RectData,
+    label: Option<Stateful<String>>,
     rel_font_size: usize,
     font_scale: (u32, u32),
-    on_click: Box<dyn Fn() -> ()>,
-    on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
+    on_click: Rc<Box<dyn Fn() -> ()>>,
+    is_disabled: bool,
+    is_hidden: bool,
+    styling: ComponentStyling,
 }
 
 impl Button {
     pub fn new(
         abs_rect_data: RectData,
         rel_rect_data: RectData,
-        label: Option<Rc<Mutex<String>>>,
+        orig_rect_data: RectData,
+        label: Option<Rc<Signal<String>>>,
         rel_font_size: usize,
         font_scale: (u32, u32),
-        on_click: Box<dyn Fn() -> ()>,
-        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
-    ) -> Self {
-        Self {
-            abs_rect_data,
-            rel_rect_data,
-            rel_font_size,
-            font_scale,
-            label,
-            on_click,
-            on_change_redraw,
-        }
+        on_click: Option<Box<dyn Fn() -> ()>>,
+        styling: Option<ComponentStyling>,
+    ) -> ComponentRef {
+        let signal_copy = label.clone();
+
+        let button = Box::new(
+            Self {
+                id: None,
+                is_dirty: true,
+                abs_rect_data,
+                orig_rect_data,
+                drawn_rect_data: abs_rect_data.clone(),
+                rel_rect_data,
+                rel_font_size,
+                font_scale,
+                label,
+                on_click: Rc::new(on_click.unwrap_or_else(|| Box::new(|| {}))),
+                is_disabled: false,
+                is_hidden: false,
+                styling: styling.unwrap_or_default(),
+            }
+        );
+
+        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(button));
+
+        if let Some(signal) = signal_copy {
+            signal.register_component(Rc::clone(&component));
+        };
+
+        component
     }
 
     fn calc_label_pos(&self, label: &str) -> Vertex {
@@ -64,61 +84,97 @@ impl Button {
 }
 
 impl Component for Button {
-    fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
-        Drawer::draw_filled_rectangle(self.abs_rect_data, BUTTON_BG_COLOR, Some(fg_color));
-        if let Some(label_mutex) = &self.label {
-            let label = &label_mutex.lock();
+    fn draw(&mut self, is_focused: bool) {
+        if !self.is_dirty {
+            return;
+        }
+
+        if self.is_hidden {
+            return;
+        }
+
+        let styling = self.styling;
+
+        let bg_color = if self.is_disabled {
+            styling.disabled_background_color
+        } else if is_focused {
+            styling.focused_background_color
+        } else {
+            styling.background_color
+        };
+
+        let border_color = if is_focused {
+            styling.focused_border_color
+        } else if self.is_disabled {
+            styling.disabled_border_color
+        } else {
+            styling.border_color
+        };
+
+        let text_color = if self.is_disabled {
+            styling.disabled_text_color
+        } else {
+            styling.text_color
+        };
+
+        Drawer::draw_filled_rectangle(self.abs_rect_data, bg_color, Some(border_color));
+
+        self.drawn_rect_data = self.abs_rect_data;
+
+        if let Some(label) = &self.label {
+            let label = &label.get();
             let label_pos = self.calc_label_pos(label);
 
             Drawer::draw_string(
                 label.to_string(),
                 label_pos,
-                fg_color,
-                bg_color,
+                text_color,
+                None,
                 self.font_scale,
             );
         }
-    }
 
-    fn consume_keyboard_press(&mut self, keyboard_press: char) -> bool {
-        if keyboard_press == INTERACT_BUTTON {
-            (self.on_click)();
-            return true;
-        }
-
-        return false;
+        self.is_dirty = false;
     }
 
     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-        self.abs_rect_data.top_left = self
-            .abs_rect_data
-            .top_left
-            .move_to_new_rect(&old_window, &new_window);
-
+        
         let min_dim = match &self.label {
             Some(label) => Some((
-                label.lock().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+                label.get().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
                 DEFAULT_CHAR_HEIGHT * self.font_scale.1,
             )),
             None => None,
         };
 
-        self.abs_rect_data = self
-            .abs_rect_data
-            .scale_dimensions(&old_window, &new_window, min_dim);
+        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
 
+        self.abs_rect_data = scale_rect_to_window(
+            self.rel_rect_data,
+            new_window,
+            (min_dim.unwrap().0, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
+            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            aspect_ratio,
+        );
+        
         self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
+        self.mark_dirty();
     }
 
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
         let min_width = match &self.label {
-            Some(label) => label.lock().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+            Some(label) => label.get().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
             None => 0,
         };
+
+        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
+
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_rect_data,
             (min_width, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
+            (self.orig_rect_data.width, self.orig_rect_data.height),
+            aspect_ratio,
         );
 
         self.font_scale = scale_font(
@@ -126,13 +182,143 @@ impl Component for Button {
             &self.rel_rect_data,
             &self.abs_rect_data,
         );
+
+        self.mark_dirty();
     }
     
     fn get_abs_rect_data(&self) -> RectData {
         self.abs_rect_data
     }
 
-    fn get_redraw_components(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
-        self.on_change_redraw.clone()
+    fn set_id(&mut self, id: usize) {
+        self.id = Some(id);
+    }
+
+    fn get_id(&self) -> Option<usize> {
+        self.id
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.is_dirty   
+    }
+
+    fn mark_dirty(&mut self) {
+        self.is_dirty = true;
+    }
+
+    fn get_drawn_rect_data(&self) -> RectData {
+        self.drawn_rect_data
+    }
+}
+
+impl Casts for Button {
+    fn as_disableable(&self) -> Option<&dyn Disableable> {
+        Some(self)
+    }
+
+    fn as_hideable(&self) -> Option<&dyn Hideable> {
+        Some(self)
+    }
+
+    fn as_interactable(&self) -> Option<&dyn Interactable> {
+        Some(self)
+    }
+
+    fn as_disableable_mut(&mut self) -> Option<&mut dyn Disableable> {
+        Some(self)
+    }
+
+    fn as_hideable_mut(&mut self) -> Option<&mut dyn Hideable> {
+        Some(self)
+    }
+
+    fn as_interactable_mut(&mut self) -> Option<&mut dyn Interactable> {
+        Some(self)
+    }
+
+    fn as_resizable(&self) -> Option<&dyn Resizable> {
+        Some(self)
+    }
+
+    fn as_resizable_mut(&mut self) -> Option<&mut dyn Resizable> {
+        Some(self)
+    }
+}
+
+impl Interactable for Button {
+    fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
+        if keyboard_press == INTERACT_BUTTON && !self.is_disabled {
+            let on_click = Rc::clone(&self.on_click);
+            self.mark_dirty();
+
+            Some(Box::new(move || {
+                (on_click)();
+            }))
+        } else {
+            None
+        }
+    }
+}
+
+impl Disableable for Button {
+    fn disable(&mut self) {
+        self.is_disabled = true;
+        self.mark_dirty();
+    }
+
+    fn enable(&mut self) {
+        self.is_disabled = false;
+        self.mark_dirty();
+    }
+
+    fn is_disabled(&self) -> bool {
+        self.is_disabled
+    }
+}
+
+impl Hideable for Button {
+    fn is_hidden(&self) -> bool {
+        self.is_hidden
+    }
+
+    fn hide(&mut self) {
+        self.is_hidden = true;
+        self.disable();
+        self.mark_dirty();
+    }
+
+    fn show(&mut self) {
+        self.is_hidden = false;
+        self.enable();
+        self.mark_dirty();
+    }
+}
+
+impl Resizable for Button {
+    fn rescale(&mut self, scale_factor: f64) {
+        let min_width = match &self.label {
+            Some(label) => label.get().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+            None => 0,
+        };
+
+        let min_height = DEFAULT_CHAR_HEIGHT * self.font_scale.1;
+
+        self.abs_rect_data.width = ((f64::from(self.abs_rect_data.width) * scale_factor) as u32).max(min_width);
+        self.abs_rect_data.height = ((f64::from(self.abs_rect_data.height) * scale_factor) as u32).max(min_height);
+
+        self.mark_dirty();
+    }
+
+    fn resize(&mut self, width: u32, height: u32) {
+        let scaling_factor_x = width as f32 / self.abs_rect_data.width as f32;
+        let scaling_factor_y = height as f32 / self.abs_rect_data.height as f32;
+
+        self.abs_rect_data.width = width;
+        self.abs_rect_data.height = height;
+
+        self.rel_rect_data.width = (self.rel_rect_data.width as f32 * scaling_factor_x) as u32;
+        self.rel_rect_data.height = (self.rel_rect_data.height as f32 * scaling_factor_y) as u32;
+
+        self.mark_dirty();
     }
 }
