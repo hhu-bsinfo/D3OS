@@ -1,78 +1,85 @@
 use alloc::{
-    boxed::Box, rc::Rc, string::{String, ToString}, vec::Vec
+    boxed::Box, rc::Rc
 };
-use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::{
-    color::{Color, GREY},
-    lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
-};
-use spin::{Mutex, RwLock};
+use drawer::{drawer::Drawer, rect_data::RectData};
+use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 
 use crate::{
-    config::{DEFAULT_FG_COLOR, INTERACT_BUTTON}, utils::{scale_font, scale_rect_to_window}
+    config::INTERACT_BUTTON, utils::scale_rect_to_window
 };
 
-use super::component::Component;
-
-pub const CHECKBOX_BG_COLOR: Color = GREY;
-pub const CHECKBOX_FG_COLOR: Color = DEFAULT_FG_COLOR;
+use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable};
 
 pub struct Checkbox {
+    pub id: Option<usize>,
+    pub is_dirty: bool,
     abs_rect_data: RectData,
     rel_rect_data: RectData,
-    // label: Option<Rc<Mutex<String>>>,
-    // rel_font_size: usize,
-    // font_scale: (u32, u32),
-    state: bool,
-    on_checked: Box<dyn Fn() -> ()>,
-    on_unchecked: Box<dyn Fn() -> ()>,
-    on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
+    orig_rect_data: RectData,
+    drawn_rect_data: RectData,
+    pub state: bool,
+    on_change: Rc<Box<dyn Fn(bool) -> ()>>,
+    is_disabled: bool,
+    is_hidden: bool,
+    styling: ComponentStyling,
 }
 
 impl Checkbox {
     pub fn new(
         abs_rect_data: RectData,
         rel_rect_data: RectData,
-        // label: Option<Rc<Mutex<String>>>,
-        // rel_font_size: usize,
-        // font_scale: (u32, u32),
+        orig_rect_data: RectData,
         state: bool,
-        on_checked: Box<dyn Fn() -> ()>,
-        on_unchecked: Box<dyn Fn() -> ()>,
-        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        on_change: Option<Box<dyn Fn(bool) -> ()>>,
+        styling: Option<ComponentStyling>,
     ) -> Self {
         Self {
+            id: None,
+            is_dirty: true,
             abs_rect_data,
             rel_rect_data,
-            // rel_font_size,
-            // label,
-            // font_scale,
+            orig_rect_data,
+            drawn_rect_data: abs_rect_data.clone(),
             state,
-            on_checked,
-            on_unchecked,
-            on_change_redraw,
+            on_change: Rc::new(on_change.unwrap_or_else(|| Box::new(|_| {}))),
+            is_disabled: false,
+            is_hidden: false,
+            styling: styling.unwrap_or_default(),
         }
     }
-
-    // fn calc_label_pos(&self, label: &str) -> Vertex {
-    //     let RectData {
-    //         top_left,
-    //         width,
-    //         height,
-    //     } = self.abs_rect_data;
-
-    //     top_left.add(
-    //         width.saturating_sub(
-    //             DEFAULT_CHAR_WIDTH * self.font_scale.0 * (label.chars().count() as u32),
-    //         ) / 2,
-    //         height + DEFAULT_CHAR_HEIGHT * self.font_scale.1,
-    //     )
-    // }
 }
 
 impl Component for Checkbox {
-    fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
-        Drawer::draw_filled_rectangle(self.abs_rect_data, CHECKBOX_BG_COLOR, Some(fg_color));
+    fn draw(&mut self, is_focused: bool) {
+        if !self.is_dirty {
+            return;
+        }
+        
+        if self.is_hidden {
+            return;
+        }
+
+        let styling = self.styling;
+
+        let bg_color = if self.is_disabled {
+            styling.disabled_background_color
+        } else if is_focused {
+            styling.focused_background_color
+        } else {
+            styling.background_color
+        };
+
+        let border_color = if is_focused {
+            styling.focused_border_color
+        } else if self.is_disabled {
+            styling.disabled_border_color
+        } else {
+            styling.border_color
+        };
+
+        Drawer::draw_filled_rectangle(self.abs_rect_data, bg_color, Some(border_color));
+
+        self.drawn_rect_data = self.abs_rect_data;
 
         if self.state {
             let RectData { top_left, width, height } = self.abs_rect_data;
@@ -80,38 +87,11 @@ impl Component for Checkbox {
             let top_right = top_left.add(width, 0);
             let bottom_left = top_left.add(0, height);
 
-            Drawer::draw_line(top_left, bottom_right, CHECKBOX_FG_COLOR);
-            Drawer::draw_line(top_right, bottom_left, CHECKBOX_FG_COLOR);
-        }
-        
-        // if let Some(label_mutex) = &self.label {
-        //     let label = &label_mutex.lock();
-        //     let label_pos = self.calc_label_pos(label);
-
-        //     Drawer::draw_string(
-        //         label.to_string(),
-        //         label_pos,
-        //         fg_color,
-        //         bg_color,
-        //         self.font_scale,
-        //     );
-        // }
-    }
-
-    fn consume_keyboard_press(&mut self, keyboard_press: char) -> bool {
-        if keyboard_press == INTERACT_BUTTON {
-            self.state = !self.state;
-
-            if self.state {
-                (self.on_checked)();
-            } else {
-                (self.on_unchecked)();
-            }
-            
-            return true;
+            Drawer::draw_line(top_left, bottom_right, border_color);
+            Drawer::draw_line(top_right, bottom_left, border_color);
         }
 
-        return false;
+        self.is_dirty = false;
     }
 
     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
@@ -120,29 +100,129 @@ impl Component for Checkbox {
             .top_left
             .move_to_new_rect(&old_window, &new_window);
 
-        let min_dim = Some((
-            DEFAULT_CHAR_HEIGHT,
-            DEFAULT_CHAR_HEIGHT,
-        ));
+        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
 
-        self.abs_rect_data = self
-            .abs_rect_data
-            .scale_dimensions(&old_window, &new_window, min_dim);
+        self.abs_rect_data = scale_rect_to_window(
+            self.rel_rect_data,
+            new_window,
+            (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT),
+            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            aspect_ratio,
+        );
+
+        self.mark_dirty();
     }
 
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
+        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
+        
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_rect_data,
             (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT),
+            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            aspect_ratio
         );
+        self.mark_dirty();
     }
     
     fn get_abs_rect_data(&self) -> RectData {
         self.abs_rect_data
     }
 
-    fn get_redraw_components(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
-        self.on_change_redraw.clone()
+    fn set_id(&mut self, id: usize) {
+        self.id = Some(id);
+    }
+
+    fn get_id(&self) -> Option<usize> {
+        self.id
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.is_dirty
+    }
+
+    fn mark_dirty(&mut self) {
+        self.is_dirty = true;
+    }
+
+    fn get_drawn_rect_data(&self) -> RectData {
+        self.drawn_rect_data
+    }
+}
+
+impl Casts for Checkbox {
+    fn as_disableable(&self) -> Option<&dyn Disableable> {
+        Some(self)
+    }
+
+    fn as_hideable(&self) -> Option<&dyn Hideable> {
+        Some(self)
+    }
+
+    fn as_interactable(&self) -> Option<&dyn Interactable> {
+        Some(self)
+    }
+
+    fn as_disableable_mut(&mut self) -> Option<&mut dyn Disableable> {
+        Some(self)
+    }
+
+    fn as_hideable_mut(&mut self) -> Option<&mut dyn Hideable> {
+        Some(self)
+    }
+
+    fn as_interactable_mut(&mut self) -> Option<&mut dyn Interactable> {
+        Some(self)
+    }
+}
+
+impl Disableable for Checkbox {
+    fn is_disabled(&self) -> bool {
+        self.is_disabled
+    }
+
+    fn disable(&mut self) {
+        self.is_disabled = true;
+    }
+
+    fn enable(&mut self) {
+        self.is_disabled = false;
+    }
+}
+
+impl Interactable for Checkbox {
+    fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
+        if keyboard_press == INTERACT_BUTTON && !self.is_disabled {
+            self.state = !self.state;
+
+            let on_change = Rc::clone(&self.on_change);
+            let state = self.state;
+            self.mark_dirty();
+
+            return Some(Box::new(move || {
+                (on_change)(state);
+            }));
+        }
+
+        None
+    }
+}
+
+impl Hideable for Checkbox {
+    fn is_hidden(&self) -> bool {
+        self.is_hidden
+    }
+
+    fn hide(&mut self) {
+        self.is_hidden = true;
+        self.disable();
+        self.mark_dirty();
+    }
+
+    fn show(&mut self) {
+        self.is_hidden = false;
+        self.enable();
+        self.mark_dirty();
     }
 }
