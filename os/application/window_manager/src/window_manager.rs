@@ -35,7 +35,7 @@ mod window_tree;
 mod windows;
 mod workspace;
 mod dirty_region;
-mod observer;
+mod signal;
 
 // IDs are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -163,22 +163,8 @@ impl WindowManager {
     }
 
     fn call_on_loop_iter_fns(&mut self) {
-        for NewLoopIterFnData { window_data, component, fun } in self.on_loop_iter_fns.iter() {
-            let is_dirty = (*fun)();
-
-            let window = self.workspaces[window_data.workspace_index]
-                .windows
-                .get_mut(&window_data.window_id);
-
-            if is_dirty {
-                if let Some(window) = window {
-                    for depend in component.read().get_redraw_components() {
-                        log_debug(&format!("Depend: {:?}", depend.read().get_abs_rect_data()));
-                    }
-
-                    window.mark_component_dirty(component);
-                }
-            }
+        for NewLoopIterFnData { window_data: _, fun } in self.on_loop_iter_fns.iter() {
+            (*fun)();
         }
     }
 
@@ -346,7 +332,6 @@ impl WindowManager {
 
                     // Rescale components for old window
                     window.rescale_window_in_place(old_rect, window.rect_data.clone());
-
                     self.add_window_to_workspace(new_rect_data, app_name);
                 }
                 ScreenSplitType::Vertical => {
@@ -360,7 +345,6 @@ impl WindowManager {
 
                     // Rescale components for old window
                     window.rescale_window_in_place(old_rect, window.rect_data.clone());
-
                     self.add_window_to_workspace(new_rect_data, app_name);
                 }
             }
