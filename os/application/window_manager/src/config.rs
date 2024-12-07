@@ -1,4 +1,4 @@
-use graphic::color::{Color, HHU_BLUE, WHITE, YELLOW};
+use graphic::color::{Color, CYAN, GREY, HHU_BLUE, WHITE, YELLOW};
 
 pub const INTERACT_BUTTON: char = 'f';
 pub const BACKSPACE_UNICODE: char = '\u{0008}';
@@ -14,3 +14,7 @@ pub const DEFAULT_FONT_SCALE: (u32, u32) = (1, 1);
 pub const PADDING_BORDERS_AND_CHARS: u32 = 2;
 
 pub const FLUSHING_DELAY_MS: u32 = 16;
+
+pub const BORDER_COLOR_ENABLED: Color = WHITE;
+pub const BORDER_COLOR_DISABLED: Color = GREY;
+pub const BORDER_COLOR_SELECTED: Color = CYAN;
