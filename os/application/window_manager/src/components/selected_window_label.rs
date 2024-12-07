@@ -1,14 +1,12 @@
-use alloc::{boxed::Box, rc::Rc, string::{String, ToString}, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, string::{String, ToString}, vec::Vec};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{
     color::{Color, BLUE, WHITE},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
-use spin::{Mutex, RwLock};
+use spin::RwLock;
 
-use crate::observer::{Observable, Observer};
-
-use super::component::Component;
+use super::component::{Casts, Component, ComponentStyling, Hideable};
 
 pub const FG_COLOR: Color = WHITE;
 pub const UNFOCUSED_BG_COLOR: Color = BLUE;
@@ -18,36 +16,71 @@ pub const HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW: u32 =
     DEFAULT_CHAR_HEIGHT * WORKSPACE_SELECTION_LABEL_FONT_SCALE.1 + 2;
 
 pub struct SelectedWorkspaceLabel {
+    pub id: Option<usize>,
+    pub is_dirty: bool,
     pub pos: Vertex,
     pub text: String,
     pub tied_workspace: usize,
     state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+    is_hidden: bool,
+    styling: ComponentStyling,
 }
 
 impl SelectedWorkspaceLabel {
-    pub fn new(pos: Vertex, text: String, tied_workspace: usize, state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>) -> Self {
+    pub fn new(
+        pos: Vertex,
+        text: String,
+        tied_workspace: usize,
+        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        styling: Option<ComponentStyling>,
+    ) -> Self {
         Self {
+            id: None,
+            is_dirty: true,
             pos,
             text,
             tied_workspace,
             state_dependencies,
+            is_hidden: false,
+            styling: styling.unwrap_or_default(),
+            
         }
     }
 }
 
-impl<'a> Component for SelectedWorkspaceLabel {
-    fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
+impl Component for SelectedWorkspaceLabel {
+    fn draw(&mut self, is_focused: bool) {
+        if !self.is_dirty {
+            return;
+        }
+        
+        if self.is_hidden {
+            return;
+        }
+
+        let styling = self.styling;
+
+        let bg_color = if is_focused {
+            styling.focused_background_color
+        } else {
+            styling.background_color
+        };
+
+        let text_color = if is_focused {
+            styling.focused_text_color
+        } else {
+            styling.text_color
+        };
+
         Drawer::draw_string(
             self.text.to_string(),
             self.pos,
-            fg_color,
-            bg_color,
+            text_color,
+            Some(bg_color),
             WORKSPACE_SELECTION_LABEL_FONT_SCALE,
         );
-    }
 
-    fn consume_keyboard_press(&mut self, _keyboard_press: char) -> bool {
-        return false;
+        self.is_dirty = false;
     }
 
     fn rescale_after_split(&mut self, _old_window: RectData, _new_window: RectData) {
@@ -66,7 +99,49 @@ impl<'a> Component for SelectedWorkspaceLabel {
         }
     }
 
-    fn get_redraw_components(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
-        self.state_dependencies.clone()
+    fn get_id(&self) -> Option<usize> {
+        self.id
+    }
+
+    fn set_id(&mut self, id: usize) {
+        self.id = Some(id);
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.is_dirty
+    }
+
+    fn mark_dirty(&mut self) {
+        self.is_dirty = true;
+    }
+
+    fn get_drawn_rect_data(&self) -> RectData {
+        self.get_abs_rect_data()
+    }
+}
+
+impl Casts for SelectedWorkspaceLabel {
+    fn as_hideable(&self) -> Option<&dyn Hideable> {
+        Some(self)
+    }
+
+    fn as_hideable_mut(&mut self) -> Option<&mut dyn Hideable> {
+        Some(self)
+    }
+}
+
+impl Hideable for SelectedWorkspaceLabel {
+    fn is_hidden(&self) -> bool {
+        self.is_hidden
+    }
+
+    fn show(&mut self) {
+        self.is_hidden = false;
+        self.mark_dirty();
+    }
+
+    fn hide(&mut self) {
+        self.is_hidden = true;
+        self.mark_dirty();
     }
 }
