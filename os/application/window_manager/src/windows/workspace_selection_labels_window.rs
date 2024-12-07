@@ -1,14 +1,19 @@
 use core::ops::Sub;
 
-use alloc::{string::ToString, vec::{self, Vec}};
+use alloc::{string::ToString, vec::Vec};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::lfb::DEFAULT_CHAR_WIDTH;
+use graphic::{color::{Color, WHITE}, lfb::DEFAULT_CHAR_WIDTH};
+
+pub const TEXT_COLOR: Color = WHITE;
+
+pub const LABEL_BG_COLOR_FOCUSED: Color = FOCUSED_BG_COLOR;
+pub const LABEL_BG_COLOR_UNFOCUSED: Color = UNFOCUSED_BG_COLOR;
 
 use crate::{
     components::{
-        component::Component,
+        component::{Component, ComponentStylingBuilder},
         selected_window_label::{
-            SelectedWorkspaceLabel, FG_COLOR, UNFOCUSED_BG_COLOR,
+            SelectedWorkspaceLabel, UNFOCUSED_BG_COLOR,
             WORKSPACE_SELECTION_LABEL_FONT_SCALE,
         },
     },
@@ -31,6 +36,11 @@ impl WorkspaceSelectionLabelsWindow {
     }
 
     pub fn insert_label(&mut self, old_workspace_len: usize) {
+        let styling = ComponentStylingBuilder::new()
+            .background_color(UNFOCUSED_BG_COLOR)
+            .focused_background_color(FOCUSED_BG_COLOR)
+            .build();
+    
         let workspace_selection_label = SelectedWorkspaceLabel::new(
             Vertex::new(
                 DIST_TO_SCREEN_EDGE
@@ -45,6 +55,7 @@ impl WorkspaceSelectionLabelsWindow {
                 .to_string(),
             old_workspace_len,
             Vec::new(),
+            Some(styling),
         );
 
         self.labels.push(workspace_selection_label);
@@ -74,14 +85,10 @@ impl WorkspaceSelectionLabelsWindow {
         Drawer::partial_clear_screen(self.rect_data);
         Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
 
-        for label in self.labels.iter() {
-            let bg_color = if label.tied_workspace == current_workspace {
-                FOCUSED_BG_COLOR
-            } else {
-                UNFOCUSED_BG_COLOR
-            };
-
-            label.draw(FG_COLOR, Some(bg_color));
+        for label in self.labels.iter_mut() {
+            let focused = label.tied_workspace == current_workspace;
+            label.mark_dirty();
+            label.draw(focused);
         }
 
         self.is_dirty = false;
