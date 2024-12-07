@@ -11,7 +11,9 @@ impl Runnable for SliderApp {
         let handle = concurrent::thread::current().id();
         let api = WindowManager::get_api();
 
-        let label = Signal::new(String::from("0"));
+        let initial_value = 10;
+
+        let label = Signal::new(initial_value.to_string());
         let label_slider = Rc::clone(&label);
 
         let _label_value = api.execute(
@@ -36,7 +38,7 @@ impl Runnable for SliderApp {
                 on_change: Some(Box::new(move |value| {
                     label_slider.set(value.to_string());
                 })),
-                value: 10,
+                value: initial_value,
                 min: 10,
                 max: 100,
                 steps: 1,
