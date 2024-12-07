@@ -23,6 +23,8 @@ pub fn scale_rect_to_window(
     rel_rect_data: RectData,
     abs_rect_data: RectData,
     min_dim: (u32, u32),
+    max_dim: (u32, u32),
+    aspect_ratio: f64,
 ) -> RectData {
     let RectData {
         top_left: rel_top_left,
@@ -37,13 +39,36 @@ pub fn scale_rect_to_window(
         f64::from(abs_rect_data.height) / f64::from(screen.1),
     );
 
+    let mut scaled_width = ((f64::from(rel_width) * ratios.0) as u32).max(min_dim.0);
+    let mut scaled_height = ((f64::from(rel_height) * ratios.1) as u32).max(min_dim.1);
+
+    // Erzwinge das Aspect Ratio
+    let calculated_height = (f64::from(scaled_width) / aspect_ratio) as u32;
+    let calculated_width = (f64::from(scaled_height) * aspect_ratio) as u32;
+
+    if calculated_height <= scaled_height {
+        scaled_height = calculated_height;
+    } else {
+        scaled_width = calculated_width;
+    }
+
+    // Begrenze auf maximale Dimensionen
+    if scaled_width > max_dim.0 {
+        scaled_width = max_dim.0;
+        scaled_height = (f64::from(scaled_width) / aspect_ratio) as u32;
+    }
+    if scaled_height > max_dim.1 {
+        scaled_height = max_dim.1;
+        scaled_width = (f64::from(scaled_height) * aspect_ratio) as u32;
+    }
+
     RectData {
         top_left: Vertex::new(
             (f64::from(rel_top_left.x) * ratios.0) as u32 + abs_rect_data.top_left.x,
             (f64::from(rel_top_left.y) * ratios.1) as u32 + abs_rect_data.top_left.y,
         ),
-        width: ((f64::from(rel_width) * ratios.0) as u32).max(min_dim.0),
-        height: ((f64::from(rel_height) * ratios.1) as u32).max(min_dim.1),
+        width: scaled_width.max(min_dim.0),
+        height: scaled_height.max(min_dim.1),
     }
 }
 
