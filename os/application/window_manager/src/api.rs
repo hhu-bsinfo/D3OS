@@ -1,24 +1,23 @@
-use core::fmt::Debug;
+use core::{fmt::Debug, usize};
 
-use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, string::String};
 use concurrent::thread;
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::{bitmap::{Bitmap, ScalingMode}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
 use hashbrown::HashMap;
 use nolock::queues::mpsc::jiffy::{Receiver, Sender};
-use spin::{mutex::Mutex, rwlock::RwLock};
+use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{clock::Clock, counter::Counter, runnable::Runnable, submit_label::SubmitLabel},
-    components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::Component, input_field::InputField, label::Label},
-    config::PADDING_BORDERS_AND_CHARS,
-    SCREEN,
+    apps::{bitmap_app::BitmapApp, calculator::Calculator, clock::Clock, counter::Counter, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, input_field::InputField, label::Label, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
 };
+
+use self::component::ComponentStyling;
 
 extern crate alloc;
 
 /// Default app to be used on startup of a new workspace
-pub static DEFAULT_APP: &str = "clock";
+pub static DEFAULT_APP: &str = "calculator";
 
 /// Logical screen resolution, used by apps for describing component locations
 pub const LOG_SCREEN: (u32, u32) = (1000, 750);
@@ -26,42 +25,51 @@ pub const LOG_SCREEN: (u32, u32) = (1000, 750);
 pub enum Command<'a> {
     CreateButton {
         log_rect_data: RectData,
-        label: Option<(Rc<Mutex<String>>, usize)>,
-        on_click: Box<dyn Fn() -> ()>,
-        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        label: Option<(Rc<Signal<String>>, usize)>,
+        on_click: Option<Box<dyn Fn() -> ()>>,
+        styling: Option<ComponentStyling>,
     },
     CreateLabel {
         log_pos: Vertex,
-        text: Rc<RwLock<String>>,
+        text: Rc<Signal<String>>,
         /**
         Function to be called on each window-manager main-loop iteration.
         If it returns true, the containing-window dirty-bit is set
         */
         on_loop_iter: Option<Box<dyn Fn() -> bool>>,
         font_size: Option<usize>,
-        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        styling: Option<ComponentStyling>,
     },
     CreateInputField {
         /// The maximum amount of chars to fit in this field
+        log_rect_data: RectData,
+        // log_pos: Vertex,
         width_in_chars: usize,
         font_size: Option<usize>,
-        log_pos: Vertex,
-        text: Rc<RwLock<String>>,
-        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        starting_text: String,
+        on_change: Option<Box<dyn Fn(String) -> ()>>,
+        styling: Option<ComponentStyling>,
     },
     CreateCheckbox {
         log_rect_data: RectData,
         state: bool,
-        on_checked: Box<dyn Fn() -> ()>,
-        on_unchecked: Box<dyn Fn() -> ()>,
-        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        on_change: Option<Box<dyn Fn(bool) -> ()>>,
+        styling: Option<ComponentStyling>,
     },
     CreateBitmapGraphic {
-        log_pos: Vertex,
-        width: u32,
-        height: u32,
+        log_rect_data: RectData,
         bitmap: &'a Bitmap,
         scaling_mode: ScalingMode,
+        styling: Option<ComponentStyling>,
+    },
+    CreateSlider {
+        log_rect_data: RectData,
+        on_change: Option<Box<dyn Fn(i32) -> ()>>,
+        value: i32,
+        min: i32,
+        max: i32,
+        steps: u32,
+        styling: Option<ComponentStyling>,
     }
 }
 
@@ -92,7 +100,7 @@ pub struct Api {
     /// handles are equal to the thread-id of the application
     handles: HashMap<usize, HandleData>,
     senders: Senders,
-    rel_to_log_ratios: (f64, f64),
+    pub rel_to_log_ratios: (f64, f64),
 }
 
 /// All information saved for a single handle
@@ -117,7 +125,6 @@ pub struct NewCompData {
 
 pub struct NewLoopIterFnData {
     pub window_data: WindowData,
-    pub component: Rc<RwLock<Box<dyn Component>>>,
     pub fun: Box<dyn Fn() -> bool>,
 }
 
@@ -179,7 +186,7 @@ impl Api {
     }
 
     /// Logical positions need to be contrained by `x <= 1000 && y <= 750`
-    pub fn execute(&self, handle: usize, command: Command) -> Result<Rc<RwLock<Box<dyn Component>>>, &str> {
+    pub fn execute(&self, handle: usize, command: Command) -> Result<ComponentRef, &str> {
         let handle_data = self
             .handles
             .get(&handle)
@@ -195,43 +202,52 @@ impl Api {
                 log_rect_data,
                 label,
                 on_click,
-                on_change_redraw,
+                styling,
             } => {
                 self.validate_log_pos(&log_rect_data.top_left)?;
-                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data);
+
                 let (text, font_size_option) = label.unzip();
                 let font_size = font_size_option.unwrap_or(1);
 
                 let font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
 
+                let min_dim = match &text {
+                    Some(label) => Some((
+                        label.get().len() as u32 * DEFAULT_CHAR_WIDTH * font_scale.0,
+                        DEFAULT_CHAR_HEIGHT * font_scale.1,
+                    )),
+                    None => None,
+                };
+
+                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
+                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data, min_dim.unwrap());
+        
                 let button = Button::new(
                     abs_rect_data,
                     rel_rect_data,
+                    log_rect_data.clone(),
                     text,
                     font_size,
                     font_scale,
                     on_click,
-                    on_change_redraw,
+                    styling,
                 );
-
-                // let component: Arc<Mutex<Box<dyn Component>>> = Arc::new(Mutex::new(Box::new(button)));
-                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(button)));
 
                 let dispatch_data = NewCompData {
                     window_data,
-                    component: Rc::clone(&component),
+                    component: Rc::clone(&button),
                 };
 
                 self.add_component(dispatch_data);
-                Rc::clone(&component)
+
+                button
             }
             Command::CreateLabel {
                 log_pos,
                 text,
                 on_loop_iter,
                 font_size,
-                on_change_redraw,
+                styling,
             } => {
                 self.validate_log_pos(&log_pos)?;
                 let rel_pos = self.scale_vertex_to_rel(&log_pos);
@@ -241,12 +257,15 @@ impl Api {
 
                 let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
 
-                let text_rc = Rc::clone(&text);
-
-                let label = Label::new(scaled_pos, rel_pos, font_size, text_rc, scaled_font_scale, on_change_redraw);
-                // let component: Arc<Mutex<Box<dyn Component>>> = Arc::new(Mutex::new(Box::new(label)));
-                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(label)));
-
+                let component = Label::new(
+                    scaled_pos,
+                    rel_pos,
+                    font_size,
+                    text,
+                    scaled_font_scale,
+                    styling,
+                );
+               
                 let dispatch_data = NewCompData {
                     window_data,
                     component: Rc::clone(&component),
@@ -255,49 +274,44 @@ impl Api {
                 self.add_component(dispatch_data);
 
                 if let Some(fun) = on_loop_iter {
-                    let data = NewLoopIterFnData { window_data, component: Rc::clone(&component), fun };
+                    let data = NewLoopIterFnData { window_data, fun };
                     self.add_on_loop_iter_fn(data);
                 }
-                Rc::clone(&component)
+
+                component
             }
             Command::CreateInputField {
-                log_pos,
+                log_rect_data,
+                // log_pos,
                 width_in_chars,
                 font_size,
-                text,
-                on_change_redraw,
+                starting_text,
+                on_change,
+                styling,
             } => {
-                self.validate_log_pos(&log_pos)?;
-                let rel_pos = self.scale_vertex_to_rel(&log_pos);
+                self.validate_log_pos(&log_rect_data.top_left)?;
 
                 let font_size = font_size.unwrap_or(1);
                 let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
 
-                let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
-                let rel_rect_data = RectData {
-                    top_left: rel_pos,
-                    width: DEFAULT_CHAR_WIDTH * (font_size * width_in_chars) as u32
-                        + PADDING_BORDERS_AND_CHARS * 2,
-                    height: DEFAULT_CHAR_HEIGHT * font_size as u32,
-                };
-                let abs_rect_data = RectData {
-                    top_left: scaled_pos,
-                    width: DEFAULT_CHAR_WIDTH * scaled_font_scale.0 * width_in_chars as u32
-                        + PADDING_BORDERS_AND_CHARS * 2,
-                    height: DEFAULT_CHAR_HEIGHT * scaled_font_scale.1,
-                };
+                let min_dim = (
+                    DEFAULT_CHAR_WIDTH * width_in_chars as u32 * scaled_font_scale.0 + PADDING_BORDERS_AND_CHARS,
+                    DEFAULT_CHAR_HEIGHT * scaled_font_scale.1 + PADDING_BORDERS_AND_CHARS,
+                );
 
-                let input_field = InputField::new(
+                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
+                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data, min_dim);
+
+                let component = InputField::new(
                     abs_rect_data,
                     rel_rect_data,
                     font_size,
                     scaled_font_scale,
                     width_in_chars,
-                    text,
-                    on_change_redraw,
+                    starting_text,
+                    on_change,
+                    styling,
                 );
-
-                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(input_field)));
 
                 let dispatch_data = NewCompData {
                     window_data,
@@ -305,26 +319,32 @@ impl Api {
                 };
 
                 self.add_component(dispatch_data);
-                Rc::clone(&component)
+
+                component
             },
             Command::CreateCheckbox {
                 log_rect_data,
                 state,
-                on_checked,
-                on_unchecked,
-                on_change_redraw
+                on_change,
+                styling,
             } => {
                 self.validate_log_pos(&log_rect_data.top_left)?;
+
+                let min_dim = Some((
+                    DEFAULT_CHAR_HEIGHT,
+                    DEFAULT_CHAR_HEIGHT,
+                ));
+
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data);
+                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data, min_dim.unwrap());
 
                 let checkbox = Checkbox::new(
                     abs_rect_data,
                     rel_rect_data,
+                    log_rect_data.clone(),
                     state,
-                    on_checked,
-                    on_unchecked,
-                    on_change_redraw,
+                    on_change,
+                    styling,
                 );
 
                 let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(checkbox)));
@@ -335,22 +355,71 @@ impl Api {
                 };
 
                 self.add_component(dispatch_data);
-                Rc::clone(&component)
+
+                component
             },
             Command::CreateBitmapGraphic { 
-                log_pos,
-                width,
-                height,
+                log_rect_data,
                 bitmap,
                 scaling_mode,
+                styling,
             } => {
-                self.validate_log_pos(&log_pos)?;
+                self.validate_log_pos(&log_rect_data.top_left)?;
 
-                // let rel_pos = self.scale_vertex_to_rel(&log_pos);
-                // let abs_pos = self.scale_vertex_to_window(rel_pos, handle_data);
+                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
+                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data, (10, 10));
 
-                let bitmap_graphic = BitmapGraphic::new(log_pos, (*bitmap).scale(width, height, scaling_mode));
+                let bitmap_graphic = BitmapGraphic::new(
+                    rel_rect_data,
+                    abs_rect_data,
+                    log_rect_data.clone(),
+                    bitmap.clone(),
+                    scaling_mode,
+                    styling,
+                );
+
                 let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(bitmap_graphic)));
+
+                let dispatch_data = NewCompData {
+                    window_data,
+                    component: Rc::clone(&component),
+                };
+
+                self.add_component(dispatch_data);
+                Rc::clone(&component)
+            },
+            Command::CreateSlider {
+                log_rect_data,
+                on_change,
+                value,
+                min,
+                max,
+                steps,
+                styling,
+            } => {
+                self.validate_log_pos(&log_rect_data.top_left)?;
+
+                let min_dim = Some((
+                    DEFAULT_CHAR_HEIGHT,
+                    DEFAULT_CHAR_HEIGHT,
+                ));
+
+                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
+                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data, min_dim.unwrap());
+
+                let slider = Slider::new(
+                    abs_rect_data,
+                    rel_rect_data,
+                    log_rect_data.clone(),
+                    on_change,
+                    value,
+                    min,
+                    max,
+                    steps,
+                    styling,
+                );
+
+                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(slider)));
 
                 let dispatch_data = NewCompData {
                     window_data,
@@ -384,6 +453,9 @@ impl Api {
             "clock" => Some(Clock::run),
             "submit_label" => Some(SubmitLabel::run),
             "counter" => Some(Counter::run),
+            "slider" => Some(SliderApp::run),
+            "bitmap" => Some(BitmapApp::run),
+            "calculator" => Some(Calculator::run),
             _ => None,
         }
     }
@@ -412,14 +484,31 @@ impl Api {
         HandleData {
             abs_pos, ratios, ..
         }: &HandleData,
+        min_dim: (u32, u32),
     ) -> RectData {
+        let aspect_ratio = f64::from(width) / f64::from(height);
+
+        // Skaliere Breite und Höhe basierend auf den Ratios
+        let mut scaled_width = ((f64::from(width) * ratios.0) as u32).max(min_dim.0);
+        let mut scaled_height = ((f64::from(height) * ratios.1) as u32).max(min_dim.1);
+
+        // Erzwinge das Aspect Ratio
+        let calculated_height = (f64::from(scaled_width) / aspect_ratio) as u32;
+        let calculated_width = (f64::from(scaled_height) * aspect_ratio) as u32;
+
+        if calculated_height <= scaled_height {
+            scaled_height = calculated_height;
+        } else {
+            scaled_width = calculated_width;
+        }
+
         RectData {
             top_left: Vertex::new(
                 (f64::from(top_left.x) * ratios.0) as u32 + abs_pos.top_left.x,
                 (f64::from(top_left.y) * ratios.1) as u32 + abs_pos.top_left.y,
             ),
-            width: (f64::from(width) * ratios.0) as u32,
-            height: (f64::from(height) * ratios.1) as u32,
+            width: scaled_width.max(min_dim.0),
+            height: scaled_height.max(min_dim.1),
         }
     }
 
@@ -452,8 +541,9 @@ impl Api {
             (f64::from(log_rect_data.top_left.y) * self.rel_to_log_ratios.1) as u32,
         );
 
+        let aspect_ratio = f64::from(log_rect_data.width) / f64::from(log_rect_data.height);
         let new_width = f64::from(log_rect_data.width) * self.rel_to_log_ratios.0;
-        let new_height = f64::from(log_rect_data.height) * self.rel_to_log_ratios.1;
+        let new_height = new_width / aspect_ratio;
 
         return RectData {
             top_left: new_pos,
