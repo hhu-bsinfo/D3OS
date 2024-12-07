@@ -1,33 +1,53 @@
-use alloc::{boxed::Box, rc::Rc, string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, string::String};
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::{
-    color::{Color, CYAN, WHITE},
+    color::{Color, CYAN},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
-use spin::{Mutex, RwLock};
+use spin::RwLock;
 
 use crate::{
-    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, observer::{Observable, Observer}, utils::{scale_font, scale_rect_to_window}
+    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, signal::ComponentRef, utils::{scale_font, scale_rect_to_window}
 };
 
-use super::component::Component;
+use super::component::{Casts, Clearable, Component, ComponentStyling, Disableable, Hideable, Interactable};
 
-pub const COLOR_SELECTED_BORDER: Color = CYAN;
-const COLOR_TEXT: Color = WHITE;
+pub const INPUT_BG_COLOR_ENABLED: Color = Color { red: 80, green: 80, blue: 80, alpha: 255 };
+pub const INPUT_BG_COLOR_DISABLED: Color = Color { red: 50, green: 50, blue: 50, alpha: 255 };
+
+pub const INPUT_BORDER_COLOR_ENABLED: Color = Color { red: 120, green: 120, blue: 120, alpha: 255 };
+pub const INPUT_BORDER_COLOR_DISABLED: Color = Color { red: 80, green: 80, blue: 80, alpha: 255 };
+pub const INPUT_BORDER_COLOR_SELECTED: Color = CYAN;
+
+pub const TEXT_COLOR_ENABLED: Color = Color { red: 255, green: 255, blue: 255, alpha: 255 };
+pub const TEXT_COLOR_DISABLED: Color = Color { red: 120, green: 120, blue: 120, alpha: 255 };
 
 pub struct InputField {
     /**
     If we are selected, all keyboard input is redirected to us, unless
     command-line-window is opened
     */
+    pub id: Option<usize>,
+    pub is_dirty: bool,
     is_selected: bool,
     max_chars: usize,
     abs_rect_data: RectData,
     rel_rect_data: RectData,
+    orig_rect_data: RectData,
+    drawn_rect_data: RectData,
     rel_font_size: usize,
     font_scale: (u32, u32),
-    current_text: Rc<RwLock<String>>,
-    on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
+    current_text: String,
+
+    // interactable
+    on_change: Rc<Box<dyn Fn(String) -> ()>>,
+
+    // disableable
+    is_disabled: bool,
+    // hideable
+    is_hidden: bool,
+
+    styling: ComponentStyling,
 }
 
 impl InputField {
@@ -37,85 +57,121 @@ impl InputField {
         rel_font_size: usize,
         font_scale: (u32, u32),
         max_chars: usize,
-        text: Rc<RwLock<String>>,
-        on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
-    ) -> Self {
-        Self {
-            is_selected: false,
-            max_chars,
-            abs_rect_data,
-            rel_rect_data,
-            rel_font_size,
-            font_scale,
-            current_text: text,
-            on_change_redraw,
-        }
+        starting_text: String,
+        on_submit: Option<Box<dyn Fn(String) -> ()>>,
+        styling: Option<ComponentStyling>,
+    ) -> ComponentRef {
+        let input_field = Box::new(
+            Self {
+                id: None,
+                is_dirty: true,
+                is_selected: false,
+                max_chars,
+                abs_rect_data,
+                rel_rect_data,
+                rel_font_size,
+                orig_rect_data: abs_rect_data.clone(),
+                drawn_rect_data: abs_rect_data.clone(),
+                font_scale,
+                current_text: starting_text,
+
+                on_change: Rc::new(on_submit.unwrap_or_else(|| Box::new(|_| {}))),
+
+                is_disabled: false,
+                is_hidden: false,
+
+                styling: styling.unwrap_or_default(),
+            }
+        );
+
+        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(input_field));
+
+        component
     }
 }
 
 impl Component for InputField {
-    fn draw(&self, fg_color: Color, bg_color: Option<Color>) {
-        let rect_color = if self.is_selected {
-            COLOR_SELECTED_BORDER
-        } else {
-            fg_color
-        };
-
-        Drawer::draw_rectangle(self.abs_rect_data, rect_color);
-        Drawer::draw_string(
-            self.current_text.read().clone(),
-            self.abs_rect_data.top_left.add(2, 0),
-            COLOR_TEXT,
-            bg_color,
-            self.font_scale,
-        );
-    }
-
-    fn consume_keyboard_press(&mut self, keyboard_press: char) -> bool {
-        if keyboard_press == INTERACT_BUTTON && !self.is_selected {
-            self.is_selected = true;
-            return true;
-        } else if self.is_selected {
-            match keyboard_press {
-                '\n' => {
-                    self.is_selected = false;
-                }
-                BACKSPACE_UNICODE => {
-                    self.current_text.write().pop();
-                }
-                c => {
-                    let mut text_lock = self.current_text.write();
-                    if text_lock.len() < self.max_chars {
-                        text_lock.push(c);
-                    }
-                }
-            }
-
-            return true;
+    fn draw(&mut self, is_focused: bool) {
+        if !self.is_dirty {
+            return;
         }
 
-        return false;
+        if self.is_hidden {
+            return;
+        }
+
+        let styling = self.styling;
+
+        let bg_color = if self.is_disabled {
+            styling.disabled_background_color
+        } else if is_focused {
+            styling.focused_background_color
+        } else {
+            styling.background_color
+        };
+
+        let border_color = if self.is_selected {
+            INPUT_BORDER_COLOR_SELECTED
+        } else if self.is_disabled {
+            styling.disabled_border_color
+        } else if is_focused {
+            styling.focused_border_color
+        } else {
+            styling.border_color
+        };
+
+        let text_color = if self.is_disabled {
+            styling.disabled_text_color
+        } else {
+            styling.text_color
+        };
+
+        Drawer::draw_filled_rectangle(self.abs_rect_data, bg_color, Some(border_color));
+
+        self.drawn_rect_data = self.abs_rect_data;
+
+        Drawer::draw_string(
+            self.current_text.clone(),
+            self.abs_rect_data.top_left.add(
+                2,
+                (self.abs_rect_data.height - DEFAULT_CHAR_HEIGHT * self.font_scale.1) / 2,
+            ),
+            text_color,
+            None,
+            self.font_scale,
+        );
+
+        self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
+    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
         self.abs_rect_data.top_left = self
             .abs_rect_data
             .top_left
-            .move_to_new_rect(&old_rect_data, &new_rect_data);
+            .move_to_new_rect(&old_window, &new_window);
 
-        let min_dim = (
-            self.current_text.read().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+        let min_dim: (u32, u32) = (
+            self.current_text.len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
             DEFAULT_CHAR_HEIGHT * self.font_scale.1,
         );
 
-        self.abs_rect_data =
-            self.abs_rect_data
-                .scale_dimensions(&old_rect_data, &new_rect_data, Some(min_dim));
+        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
 
-        self.font_scale = scale_font(&self.font_scale, &old_rect_data, &new_rect_data);
+        self.abs_rect_data = scale_rect_to_window(
+            self.rel_rect_data,
+            new_window,
+            (min_dim.0, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
+            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            aspect_ratio,
+        );
+
+        self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
+        self.mark_dirty();
     }
 
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
+        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
+
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_rect_data,
@@ -123,6 +179,8 @@ impl Component for InputField {
                 self.max_chars as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
                 DEFAULT_CHAR_HEIGHT * self.font_scale.1,
             ),
+            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            aspect_ratio
         );
 
         self.font_scale = scale_font(
@@ -130,13 +188,149 @@ impl Component for InputField {
             &self.rel_rect_data,
             &self.abs_rect_data,
         );
+        self.mark_dirty();
     }
 
     fn get_abs_rect_data(&self) -> RectData {
         self.abs_rect_data
     }
 
-    fn get_redraw_components(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
-        self.on_change_redraw.clone()
+    fn get_id(&self) -> Option<usize> {
+        self.id
+    }
+
+    fn set_id(&mut self, id: usize) {
+        self.id = Some(id);
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.is_dirty
+    }
+
+    fn mark_dirty(&mut self) {
+        self.is_dirty = true;
+    }
+
+    fn get_drawn_rect_data(&self) -> RectData {
+        self.drawn_rect_data
+    }
+}
+
+impl Casts for InputField {
+    fn as_disableable(&self) -> Option<&dyn Disableable> {
+        Some(self)
+    }
+
+    fn as_hideable(&self) -> Option<&dyn Hideable> {
+        Some(self)
+    }
+
+    fn as_interactable(&self) -> Option<&dyn Interactable> {
+        Some(self)
+    }
+
+    fn as_disableable_mut(&mut self) -> Option<&mut dyn Disableable> {
+        Some(self)
+    }
+
+    fn as_hideable_mut(&mut self) -> Option<&mut dyn Hideable> {
+        Some(self)
+    }
+
+    fn as_interactable_mut(&mut self) -> Option<&mut dyn Interactable> {
+        Some(self)
+    }
+
+    fn as_clearable_mut(&mut self) -> Option<&mut dyn Clearable> {
+        Some(self)
+    }
+}
+
+impl Interactable for InputField {
+    fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
+        if keyboard_press == INTERACT_BUTTON && !self.is_selected && !self.is_disabled {
+            self.is_selected = true;
+            self.mark_dirty();
+        } else if self.is_selected {
+            self.mark_dirty();
+            match keyboard_press {
+                '\n' => {
+                    self.is_selected = false;
+                    self.mark_dirty();
+                }
+                BACKSPACE_UNICODE => {
+                    self.current_text.pop();
+                    self.mark_dirty();
+
+                    let on_change = Rc::clone(&self.on_change);
+                    let value = self.current_text.clone();
+
+                    return Some(
+                        Box::new(move || {
+                            (on_change)(value);
+                        })
+                    );
+                }
+                c => {
+                    if self.current_text.len() < self.max_chars {
+                        self.current_text.push(c);
+                        self.mark_dirty();
+
+                    }
+                    
+                    let on_change = Rc::clone(&self.on_change);
+                    let value = self.current_text.clone();
+
+                    return Some(
+                        Box::new(move || {
+                            (on_change)(value);
+                        })
+                    );
+                }
+            }
+        }
+
+        return None;
+    }
+}
+
+impl Disableable for InputField {
+    fn disable(&mut self) {
+        self.is_disabled = true;
+        self.mark_dirty();
+    }
+
+    fn enable(&mut self) {
+        self.is_disabled = false;
+        self.mark_dirty();
+    }
+
+    fn is_disabled(&self) -> bool {
+        self.is_disabled
+    }
+}
+
+impl Hideable for InputField {
+    fn is_hidden(&self) -> bool {
+        self.is_hidden
+    }
+
+    fn hide(&mut self) {
+        self.is_hidden = true;
+        self.disable();
+        self.mark_dirty();
+    }
+
+    fn show(&mut self) {
+        self.is_hidden = false;
+        self.enable();
+        self.mark_dirty();
+    }
+}
+
+impl Clearable for InputField {
+    fn clear(&mut self) {
+        self.current_text.clear();
+        self.mark_dirty();
     }
 }
