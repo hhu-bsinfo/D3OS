@@ -1,9 +1,7 @@
-use alloc::{boxed::Box, rc::Rc, string::String, vec};
+use alloc::{boxed::Box, rc::Rc, string::String};
 use drawer::{rect_data::RectData, vertex::Vertex};
-use spin::rwlock::RwLock;
-use spin::Mutex;
 
-use crate::{api::Command, WindowManager};
+use crate::{api::Command, signal::Signal, WindowManager};
 
 use super::runnable::Runnable;
 
@@ -14,62 +12,81 @@ impl Runnable for SubmitLabel {
         let handle = concurrent::thread::current().id();
         let api = WindowManager::get_api();
 
-        let input_field_rc1 = Rc::new(RwLock::new(String::from("")));
-        let input_field_rc2 = Rc::clone(&input_field_rc1);
-
-        let label_text_rc1 = Rc::new(RwLock::new(String::from("")));
-        let label_text_rc2 = Rc::clone(&label_text_rc1);
+        let starting_text = String::from("");
+        let input = Signal::new(starting_text.clone());
+        let input_text = Rc::clone(&input);
+        let submit_input = Rc::clone(&input);
+        let submitted_text = Signal::new(starting_text.clone());
 
         let input_field = api.execute(
             handle,
             Command::CreateInputField {
+                log_rect_data: RectData {
+                    top_left: Vertex::new(50, 100),
+                    width: 200,
+                    height: 75,
+                },
                 width_in_chars: 12,
                 font_size: Some(2),
-                log_pos: Vertex::new(100, 200),
-                text: input_field_rc1,
-                on_change_redraw: vec![],
+                starting_text: starting_text.clone(),
+                on_change: Some(Box::new(move |new_text| {
+                    input.set(new_text);
+                })),
+                styling: None,
             },
-        );
+        ).unwrap();
 
-        let _ = api.execute(
+        let _submitted_text_label= api.execute(
             handle,
             Command::CreateLabel {
-                log_pos: Vertex::new(400, 200),
-                text: Rc::new(RwLock::new(String::from("Submitted Text: "))),
+                log_pos: Vertex::new(50, 200),
+                text: Signal::new(String::from("Submitted Text: ")),
                 on_loop_iter: None,
                 font_size: Some(2),
-                on_change_redraw: vec![],
+                styling: None,
             },
         );
 
-        let submitted_text = api.execute(
+        let _submitted_text = api.execute(
             handle,
             Command::CreateLabel {
-                log_pos: Vertex::new(660, 200),
-                text: label_text_rc1,
+                log_pos: Vertex::new(500, 200),
+                text: Rc::clone(&submitted_text),
                 on_loop_iter: None,
                 font_size: Some(2),
-                on_change_redraw: vec![],
+                styling: None,
             },
         );
 
-        let label_rc = Rc::new(Mutex::new(String::from("Submit")));
-        let button_font = 3;
-        let _ = api.execute(
+        let _on_change_text = api.execute(
+            handle,
+            Command::CreateLabel {
+                log_pos: Vertex::new(500, 300),
+                text: Rc::clone(&input_text),
+                on_loop_iter: None,
+                font_size: Some(2),
+                styling: None,
+            },
+        );
+
+        let _submit = api.execute(
             handle,
             Command::CreateButton {
                 log_rect_data: RectData {
-                    top_left: Vertex::new(100, 300),
+                    top_left: Vertex::new(50, 300),
                     width: 160,
                     height: 50,
                 },
-                label: Some((label_rc, button_font)),
-                on_click: Box::new(move || {
-                    let mut input_field: spin::rwlock::RwLockWriteGuard<'_, String> = input_field_rc2.write();
-                    let mut label_text = label_text_rc2.write();
-                    *label_text = input_field.drain(..).collect();
-                }),
-                on_change_redraw: vec![input_field.unwrap(), submitted_text.unwrap()],
+                label: Some((Signal::new(String::from("Submit")), 3)),
+                on_click: Some(Box::new(move || {
+                    let value = submit_input.get();
+                    submitted_text.set(value);
+
+                    if let Some(clearable) = input_field.write().as_clearable_mut() {
+                        clearable.clear();
+                    }
+                })),
+                styling: None,
             },
         );
     }
