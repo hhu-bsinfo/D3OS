@@ -150,6 +150,8 @@ impl Component for InputField {
             .top_left
             .move_to_new_rect(&old_window, &new_window);
 
+        self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
+
         let min_dim: (u32, u32) = (
             self.current_text.len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
             DEFAULT_CHAR_HEIGHT * self.font_scale.1,
@@ -165,13 +167,18 @@ impl Component for InputField {
             aspect_ratio,
         );
 
-        self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
         self.mark_dirty();
     }
 
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
         let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
 
+        self.font_scale = scale_font(
+            &(self.rel_font_size as u32, self.rel_font_size as u32),
+            &self.rel_rect_data,
+            &self.abs_rect_data,
+        );
+        
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_rect_data,
@@ -183,11 +190,6 @@ impl Component for InputField {
             aspect_ratio
         );
 
-        self.font_scale = scale_font(
-            &(self.rel_font_size as u32, self.rel_font_size as u32),
-            &self.rel_rect_data,
-            &self.abs_rect_data,
-        );
         self.mark_dirty();
     }
 
@@ -331,6 +333,7 @@ impl Hideable for InputField {
 impl Clearable for InputField {
     fn clear(&mut self) {
         self.current_text.clear();
+        (self.on_change)(self.current_text.clone());
         self.mark_dirty();
     }
 }
