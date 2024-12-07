@@ -25,7 +25,7 @@ impl Workspace {
     pub fn new_with_single_window(window: (usize, AppWindow), focused_window_id: usize) -> Self {
         let mut window_orderer = LinkedList::new();
         window_orderer.push_back(window.0);
-
+        
         let mut windows: HashMap<usize, AppWindow> = HashMap::new();
         windows.insert(window.0, window.1);
 
@@ -114,7 +114,7 @@ impl Workspace {
                     .get_many_mut([&self.focused_window_id, &buddy_id])
                     .unwrap();
 
-                buddy_window.merge(&to_be_deleted_window);
+                buddy_window.merge(to_be_deleted_window);
 
                 self.windows.remove(&self.focused_window_id);
                 self.buddy_tree_root.remove_leaf(self.focused_window_id);
