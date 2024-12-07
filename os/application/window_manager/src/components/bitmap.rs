@@ -11,7 +11,7 @@ pub struct BitmapGraphic {
     rel_rect_data: RectData,
     abs_rect_data: RectData,
     orig_rect_data: RectData,
-    drawed_rect_data: RectData,
+    drawn_rect_data: RectData,
     orig_bitmap: Bitmap,
     bitmap: Bitmap,
     scaling_mode: ScalingMode,
@@ -34,7 +34,7 @@ impl BitmapGraphic {
             is_dirty: true,
             rel_rect_data,
             abs_rect_data,
-            drawed_rect_data: abs_rect_data.clone(),
+            drawn_rect_data: abs_rect_data.clone(),
             orig_rect_data,
             scaling_mode,
             bitmap: bitmap.scale(abs_rect_data.width, abs_rect_data.height, scaling_mode.clone()),
@@ -76,7 +76,7 @@ impl Component for BitmapGraphic {
 
         Drawer::draw_bitmap(self.abs_rect_data.top_left, &self.bitmap);
 
-        self.drawed_rect_data = self.abs_rect_data;
+        self.drawn_rect_data = self.abs_rect_data;
 
         if is_focused {
             Drawer::draw_rectangle(self.abs_rect_data, styling.focused_border_color);
@@ -144,8 +144,8 @@ impl Component for BitmapGraphic {
         self.is_dirty = true;
     }
 
-    fn get_drawed_rect_data(&self) -> RectData {
-        self.drawed_rect_data
+    fn get_drawn_rect_data(&self) -> RectData {
+        self.drawn_rect_data
     }
 }
 

@@ -189,7 +189,7 @@ pub trait Component: Casts + {
 
     fn get_abs_rect_data(&self) -> RectData;
 
-    fn get_drawed_rect_data(&self) -> RectData;
+    fn get_drawn_rect_data(&self) -> RectData;
 
     fn is_dirty(&self) -> bool;
 
