@@ -1,12 +1,11 @@
-use alloc::{boxed::Box, collections::LinkedList, format, rc::Rc};
+use alloc::{boxed::Box, collections::LinkedList, rc::Rc, vec::Vec};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
 use hashbrown::HashMap;
-use io::write::log_debug;
 use spin::RwLock;
 
 use crate::{
-    components::component::Component, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR, FOCUSED_FG_COLOR}, dirty_region::{DirtyRegion, DirtyRegionList}, utils::get_element_cursor_from_orderer, WindowManager
+    components::component::Component, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, dirty_region::{DirtyRegion, DirtyRegionList}, signal::ComponentRef, utils::get_element_cursor_from_orderer, WindowManager
 };
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
@@ -42,14 +41,9 @@ impl AppWindow {
         self.dirty_regions.add(dirty_region);
     }
 
-    pub fn mark_component_dirty(&mut self, component: &Rc<RwLock<Box<dyn Component>>>) {
-        let dirty_region = DirtyRegion::new(component.read().get_abs_rect_data());
-
-        for depend_component in component.read().get_redraw_components() {
-            self.mark_component_dirty(&depend_component);
-        }
-        
-        self.mark_dirty_region(dirty_region);
+    pub fn mark_component_dirty(&mut self, id: usize) {
+        let component = self.components.get(&id).unwrap();
+        component.write().mark_dirty();
     }
 
     pub fn mark_window_dirty(&mut self) {
@@ -72,20 +66,21 @@ impl AppWindow {
             }
         }
         
-        
-        // region of new component is dirty
-        self.mark_component_dirty(&new_component);
+        new_component.write().set_id(id);
         self.components.insert(id, new_component);
     }
 
     pub fn interact_with_focused_component(&mut self, keyboard_press: char) -> bool {
         if let Some(focused_component_id) = &self.focused_component_id {
-            let focused_component = Rc::clone(self.components.get(focused_component_id).unwrap());
-            let did_interact = focused_component.write().consume_keyboard_press(keyboard_press);
+            let focused_component = self.components.get(focused_component_id).unwrap();
+            let callback = if let Some(interactable) = focused_component.write().as_interactable_mut() {
+                interactable.consume_keyboard_press(keyboard_press)
+            } else {
+                None
+            };
 
-            if did_interact {
-                // region of focused component is dirty
-                self.mark_component_dirty(&focused_component);
+            if let Some(callback) = callback {
+                callback();
                 return true;
             }
         }
@@ -100,18 +95,15 @@ impl AppWindow {
                     .unwrap();
             cursor.move_next();
 
-            let old_focused_component = Rc::clone(self.components.get(&focused_component_id).unwrap());
-
             self.focused_component_id = match cursor.current() {
                 Some(next_focused_el) => Some(next_focused_el.clone()),
                 None => Some(cursor.peek_next().unwrap().clone()),
             };
 
             let next_focused_component_id = self.focused_component_id.unwrap();
-            let next_focused_component = Rc::clone(self.components.get(&next_focused_component_id).unwrap());
 
-            self.mark_component_dirty(&old_focused_component);
-            self.mark_component_dirty(&next_focused_component);
+            self.mark_component_dirty(focused_component_id);
+            self.mark_component_dirty(next_focused_component_id);
         }
     }
 
@@ -122,27 +114,23 @@ impl AppWindow {
                     .unwrap();
             cursor.move_prev();
 
-            let old_focused_component_id = focused_component_id.clone();
-            let old_focused_component = Rc::clone(self.components.get(&focused_component_id).unwrap());
-
             self.focused_component_id = match cursor.current() {
                 Some(next_focused_el) => Some(next_focused_el.clone()),
                 None => Some(cursor.peek_prev().unwrap().clone()),
             };
 
             let next_focused_component_id = self.focused_component_id.unwrap();
-            let next_focused_component = Rc::clone(self.components.get(&next_focused_component_id).unwrap());
 
             // region of both components is dirty
-            self.mark_component_dirty(&old_focused_component);
-            self.mark_component_dirty(&next_focused_component);
+            self.mark_component_dirty(focused_component_id);
+            self.mark_component_dirty(next_focused_component_id);
         }
     }
 
     pub fn rescale_window_in_place(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
         let components = self.components.values();
         for component in components {
-            // self.mark_component_dirty(&component);
+            component.write().mark_dirty();
             component.write().rescale_after_split(old_rect_data, new_rect_data);
         }
 
@@ -157,7 +145,7 @@ impl AppWindow {
         }
     }
 
-    pub fn merge(&mut self, other_window: &AppWindow) {
+    pub fn merge(&mut self, other_window: &mut AppWindow) {
         let old_rect @ RectData {
             top_left: old_top_left,
             width: old_width,
@@ -201,7 +189,9 @@ impl AppWindow {
             height: new_height,
         };
 
-        self.rescale_window_in_place(old_rect, self.rect_data)
+        self.rescale_window_in_place(old_rect, self.rect_data);
+        self.mark_window_dirty();
+        other_window.mark_window_dirty();
     }
 
     pub fn draw(&mut self, focused_window_id: usize, full: bool) {
@@ -209,43 +199,43 @@ impl AppWindow {
             Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
             self.is_dirty = true;
         }
-
-        if self.is_dirty {
-            self.mark_window_region_dirty();
-        }
         
-        // Nothing to redraw
-        if self.dirty_regions.is_empty() {
-            return;
-        } 
+        if self.is_dirty {
+            Drawer::partial_clear_screen(self.rect_data.sub_border());
+        }
 
         let is_focused = self.id == focused_window_id;
 
-        for region in self.dirty_regions.regions.iter() {
-            Drawer::partial_clear_screen(region.rect);
+        let dirty_components: Vec<_> = self.components.iter().filter(|component_entry| {
+            component_entry.1.read().is_dirty() || self.is_dirty
+        }).map(|(_, value)| value).collect();
 
-            for component in self.components.values() {
-                // only redraw components in the dirty region
-                if region.rect.intersects(&component.read().get_abs_rect_data()) {
-                    component.read().draw(DEFAULT_FG_COLOR, None);
-                }
+        // clear
+        for dirty_component in &dirty_components {
+            // dont clear if full cleared before to reduce side effects in other windows
+            if !self.is_dirty {    
+                Drawer::partial_clear_screen(dirty_component.read().get_drawn_rect_data());
             }
+        }
+
+        for dirty_component in &dirty_components {
+            if self.is_dirty {
+                dirty_component.write().mark_dirty();
+            }
+
+            let is_focused = if let Some(focused_component_id) = self.focused_component_id {
+                focused_component_id == dirty_component.read().get_id().unwrap()
+            } else {
+                false
+            };
+
+            dirty_component.write().draw(is_focused);
         }
 
         if is_focused {
             self.draw_is_focused_indicator();
-
-            if let Some(focused_component_id) = self.focused_component_id {
-                self.components
-                    .get(&focused_component_id)
-                    .unwrap()
-                    .read()
-                    .draw(FOCUSED_FG_COLOR, None);
-            }
         }
 
-        // dirty regions redrawn
-        self.dirty_regions.clear();
         self.is_dirty = false;
     }
 
