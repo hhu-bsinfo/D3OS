@@ -5,3 +5,4 @@ pub(crate) mod label;
 pub(crate) mod selected_window_label;
 pub(crate) mod checkbox;
 pub(crate) mod bitmap;
+pub(crate) mod slider;
