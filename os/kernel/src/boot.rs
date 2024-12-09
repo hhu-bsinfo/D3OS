@@ -9,7 +9,7 @@
 */
 
 use crate::interrupt::interrupt_dispatcher;
-use crate::{naming, efi_services_available};
+use crate::{naming, efi_services_available, storage};
 use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
 use alloc::format;
@@ -196,6 +196,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Scan PCI bus
     info!("Scanning PCI bus");
     init_pci();
+
+    // Initialize storage devices
+    storage::init();
 
     // Initialize network stack
     network::init();
