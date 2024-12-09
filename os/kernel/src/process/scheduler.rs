@@ -142,16 +142,21 @@ impl Scheduler {
     /// Description: Put calling thread to sleep for `ms` milliseconds
     pub fn sleep(&self, ms: usize) {
         let mut state = self.get_ready_state();
-        let thread = Scheduler::current(&state);
-        let wakeup_time = timer().systime_ms() + ms;
 
-        {
-            // Execute in own block, so that the lock is released automatically (block() does not return)
-            let mut sleep_list = self.sleep_list.lock();
-            sleep_list.push((thread, wakeup_time));
+        if !state.initialized {
+            timer().wait(ms);
+        } else {
+            let thread = Scheduler::current(&state);
+            let wakeup_time = timer().systime_ms() + ms;
+            
+            {
+                // Execute in own block, so that the lock is released automatically (block() does not return)
+                let mut sleep_list = self.sleep_list.lock();
+                sleep_list.push((thread, wakeup_time));
+            }
+
+            self.block(&mut state);
         }
-
-        self.block(&mut state);
     }
 
     /// 

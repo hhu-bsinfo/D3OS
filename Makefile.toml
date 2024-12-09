@@ -12,9 +12,41 @@ alias = "qemu"
 
 # Run tasks
 
-[tasks.debug]
+[tasks.qemu]
 command = "qemu-system-x86_64"
-dependencies = [ "debug-signal-vscode" ]
+dependencies = [ "image", "hdd", "ovmf" ]
+args = [
+    # Base machine configuration
+    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
+    "-m", "256M,slots=2,maxmem=1G",
+    "-cpu", "qemu64",
+    "-bios", "RELEASEX64_OVMF.fd",
+    "-boot", "d",
+    "-vga", "std",
+    "-rtc", "base=localtime",
+    "-serial", "stdio",
+
+    # Hard disk drive configuration
+    "-device", "piix3-ide,id=ide",  # IDE Controller
+    "-device", "ahci,id=ahci",      # AHCI Controller
+    "-drive", "driver=raw,if=none,id=boot,file.filename=d3os.img",  # Boot drive
+    "-drive", "driver=raw,if=none,id=hdd,file.filename=hdd.img",    # HDD drive containing root filesystem
+    "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
+    "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
+
+    # NVDIMM configuration
+    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
+    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
+
+    # Network configuration
+    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
+    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+
+    # Audio configuration (Using pulse audio for Linux)
+    "-audiodev", "id=audio0,driver=pa",
+]
+
+[tasks.qemu.mac]
 args = [
     # Base machine configuration
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
@@ -27,7 +59,46 @@ args = [
     "-serial", "stdio",
 
     # Hard disk drive configuration
-    "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img",
+    "-device", "piix3-ide,id=ide",  # IDE Controller
+    "-device", "ahci,id=ahci",      # AHCI Controller
+    "-drive", "driver=raw,if=none,id=boot,file.filename=d3os.img",  # Boot drive
+    "-drive", "driver=raw,if=none,id=hdd,file.filename=hdd.img",    # HDD drive containing root filesystem
+    "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
+    "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
+
+    # NVDIMM configuration
+    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
+    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
+
+    # Network configuration
+    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
+    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+
+    # Audio configuration (Using coreaduio for macOS)
+    "-audiodev", "id=audio0,driver=coreaudio",
+]
+
+[tasks.debug]
+command = "qemu-system-x86_64"
+dependencies = [ "debug-signal-vscode" ]
+args = [
+    # Base machine configuration
+    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
+    "-m", "128M,slots=2,maxmem=1G",
+    "-cpu", "qemu64",
+    "-bios", "RELEASEX64_OVMF.fd",
+    "-boot", "c",
+    "-vga", "std",
+    "-rtc", "base=localtime",
+    "-serial", "stdio",
+
+    # Hard disk drive configuration
+    "-device", "piix3-ide,id=ide",  # IDE Controller
+    "-device", "ahci,id=ahci",      # AHCI Controller
+    "-drive", "driver=raw,if=none,id=boot,file.filename=d3os.img",  # Boot drive
+    "-drive", "driver=raw,if=none,id=hdd,file.filename=hdd.img",    # HDD drive containing root filesystem
+    "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
+    "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
 
     # NVDIMM configuration
     "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
@@ -57,7 +128,12 @@ args = [
     "-serial", "stdio",
 
     # Hard disk drive configuration
-    "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img",
+    "-device", "piix3-ide,id=ide",  # IDE Controller
+    "-device", "ahci,id=ahci",      # AHCI Controller
+    "-drive", "driver=raw,if=none,id=boot,file.filename=d3os.img",  # Boot drive
+    "-drive", "driver=raw,if=none,id=hdd,file.filename=hdd.img",    # HDD drive containing root filesystem
+    "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
+    "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
 
     # NVDIMM configuration
     "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
@@ -77,63 +153,7 @@ args = [
 [tasks.debug-signal-vscode]
 command = "echo"
 args = [ "Ready to debug" ]
-dependencies = [ "image", "ovmf" ]
-
-[tasks.qemu]
-command = "qemu-system-x86_64"
-dependencies = [ "image", "ovmf" ]
-args = [
-    # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "256M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
-    "-boot", "d",
-    "-vga", "std",
-    "-rtc", "base=localtime",
-    "-serial", "stdio",
-
-    # Hard disk drive configuration
-    "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img",
-
-    # NVDIMM configuration
-    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
-    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
-
-    # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
-    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
-
-    # Audio configuration (Using pulse audio for Linux)
-    "-audiodev", "id=audio0,driver=pa",
-]
-
-[tasks.qemu.mac]
-args = [
-    # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "128M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
-    "-boot", "d",
-    "-vga", "std",
-    "-rtc", "base=localtime",
-    "-serial", "stdio",
-
-    # Hard disk drive configuration
-    "-drive", "driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img",
-
-    # NVDIMM configuration
-    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
-    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
-
-    # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
-    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
-
-    # Audio configuration (Using coreaduio for macOS)
-    "-audiodev", "id=audio0,driver=coreaudio",
-]
+dependencies = [ "image", "hdd", "ovmf" ]
 
 [tasks.ovmf]
 command = "wget"
@@ -156,6 +176,26 @@ command = "${TAR}"
 args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "helloc", "shell", "uptime", "date", "mkdir" ]
 dependencies = [ "link-members" ]
 condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
+
+[tasks.create-hdd-fill-img]
+cwd = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}"
+command = "fallocate"
+args = [ "-l", "1M", "fill.img" ]
+condition = { files_not_exist = [ "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img" ] }
+
+[tasks.create-hdd-partition-img]
+cwd = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}"
+command = "mkfs.vfat"
+args = [ "-C", "part.img", "63488" ]
+condition = { files_not_exist = [ "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img" ] }
+
+[tasks.hdd]
+script = '''
+cat ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img > "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img"
+echo -e 'o\\nn\\np\\n1\\n2048\\n131071\\nt\\ne\\nw\\n' | fdisk "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img"
+'''
+dependencies = [ "create-hdd-fill-img", "create-hdd-partition-img" ]
+condition = { files_modified = { input = [ "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img", "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img" ], output = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img" ] } }
 
 [tasks.image]
 cwd = "${BOOTLOADER_DIRECTORY}"
@@ -186,6 +226,7 @@ dependencies = [ "clean-workspace", "clean-members" ]
 command = "rm"
 args = [ "-rf",
     "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img",
     "${BOOTLOADER_DIRECTORY}/kernel.elf",
     "${BOOTLOADER_DIRECTORY}/initrd.tar",
     "${INITRD_DIRECTORY}",
