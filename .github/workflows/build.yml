@@ -10,7 +10,7 @@ jobs:
       - name: Install packages
         uses: amitie10g/install-package@v1.2.3
         with:
-          apt: build-essential nasm
+          apt: build-essential nasm dosfstools
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
@@ -50,7 +50,7 @@ jobs:
       - name: Install packages
         uses: amitie10g/install-package@v1.2.3
         with:
-          brew: x86_64-elf-binutils x86_64-elf-gcc nasm
+          brew: x86_64-elf-binutils x86_64-elf-gcc nasm dosfstools
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
