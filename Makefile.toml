@@ -6,6 +6,7 @@ TOWBOOT_VERSION = "0.9.1"
 TOWBOOT_URL = "https://github.com/hhuOS/towboot/releases/download/v${TOWBOOT_VERSION}/towbootctl-v${TOWBOOT_VERSION}"
 TAR = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "tar", mapping = { "macos" = "gtar" } }
 LINKER = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "ld", mapping = { "macos" = "x86_64-elf-ld" } }
+QEMU_AUDIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "pa", mapping = { "macos" = "coreaudio" } }
 
 [tasks.default]
 alias = "qemu"
@@ -43,39 +44,7 @@ args = [
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
     # Audio configuration (Using pulse audio for Linux)
-    "-audiodev", "id=audio0,driver=pa",
-]
-
-[tasks.qemu.mac]
-args = [
-    # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "128M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
-    "-boot", "d",
-    "-vga", "std",
-    "-rtc", "base=localtime",
-    "-serial", "stdio",
-
-    # Hard disk drive configuration
-    "-device", "piix3-ide,id=ide",  # IDE Controller
-    "-device", "ahci,id=ahci",      # AHCI Controller
-    "-drive", "driver=raw,if=none,id=boot,file.filename=d3os.img",  # Boot drive
-    "-drive", "driver=raw,if=none,id=hdd,file.filename=hdd.img",    # HDD drive containing root filesystem
-    "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
-    "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
-
-    # NVDIMM configuration
-    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
-    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
-
-    # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
-    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
-
-    # Audio configuration (Using coreaduio for macOS)
-    "-audiodev", "id=audio0,driver=coreaudio",
+    "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
 ]
 
 [tasks.debug]
@@ -109,42 +78,7 @@ args = [
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
     # Audio configuration (Using pulse audio for Linux)
-    "-audiodev", "id=audio0,driver=pa",
-
-    # Debugging configuration
-    "-S", "-gdb", "tcp::1234"
-]
-
-[tasks.debug.mac]
-args = [
-    # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "128M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
-    "-boot", "d",
-    "-vga", "std",
-    "-rtc", "base=localtime",
-    "-serial", "stdio",
-
-    # Hard disk drive configuration
-    "-device", "piix3-ide,id=ide",  # IDE Controller
-    "-device", "ahci,id=ahci",      # AHCI Controller
-    "-drive", "driver=raw,if=none,id=boot,file.filename=d3os.img",  # Boot drive
-    "-drive", "driver=raw,if=none,id=hdd,file.filename=hdd.img",    # HDD drive containing root filesystem
-    "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
-    "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
-
-    # NVDIMM configuration
-    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
-    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
-
-    # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
-    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
-
-    # Audio configuration (Using coreaduio for macOS)
-    "-audiodev", "id=audio0,driver=coreaudio",
+    "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
 
     # Debugging configuration
     "-S", "-gdb", "tcp::1234"
