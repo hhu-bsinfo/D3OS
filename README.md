@@ -32,7 +32,7 @@ cargo install --no-default-features cargo-make
 
 Furthermore, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
 ```bash
-apt install build-essential nasm wget qemu-system-x86_64
+apt install build-essential nasm dosfstools wget qemu-system-x86_64
 ```
 
 ## Build and Run

@@ -183,6 +183,10 @@ command = "fallocate"
 args = [ "-l", "1M", "fill.img" ]
 condition = { files_not_exist = [ "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img" ] }
 
+[tasks.create-hdd-fill-img.mac]
+command = "mkfile"
+args = [ "-n", "1m", "fill.img" ]
+
 [tasks.create-hdd-partition-img]
 cwd = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}"
 command = "mkfs.vfat"
