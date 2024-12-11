@@ -1,3 +1,13 @@
+/* ╔══════════════════════════════════════════════════════════════════════════════════════════════════╗
+   ║ Module: ide                                                                                      ║
+   ╟──────────────────────────────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: The IDE driver is based on a bachelor's thesis, written by Tim Laurischkat.              ║
+   ║          he original source code can be found here: https://git.hhu.de/bsinfo/thesis/ba-tilau101 ║
+   ╟──────────────────────────────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Tim Laurischkat & Fabian Ruhland, HHU                                                    ║
+   ╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
+*/
+
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -12,8 +22,32 @@ use crate::{apic, interrupt_dispatcher, memory, pci_bus, scheduler, timer};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::PAGE_SIZE;
-use crate::storage::lba_to_chs;
+use crate::storage::{add_block_device, lba_to_chs, BlockDevice};
 
+/// Initialize all IDE controllers found on the PCI bus.
+/// Each connected drive gets registered as a block device in the storage module.
+pub fn init() {
+    let devices = pci_bus().search_by_class(0x01, 0x01);
+    for device in devices {
+        let device_id = device.read().header().id(&pci_bus().config_space());
+        info!("Found IDE controller [{}:{}]", device_id.0, device_id.1);
+
+        let ide_controller = Arc::new(IdeController::new(device));
+        let found_drives = ide_controller.init_drives();
+
+        for drive in found_drives.iter() {
+            let block_device = Arc::new(IdeDrive::new(Arc::clone(&ide_controller), *drive));
+            add_block_device("ata", block_device);
+        }
+
+        IdeController::plugin(Arc::clone(&ide_controller));
+    }
+}
+
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Constants needed for the driver.                                        ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 const CHANNELS_PER_CONTROLLER: u8 = 2;
 const DEVICES_PER_CHANNEL: u8 = 2;
 const DEFAULT_BASE_ADDRESSES: [u16; DEVICES_PER_CHANNEL as usize] = [ 0x01f0, 0x0170 ];
@@ -25,6 +59,11 @@ const ATAPI_CYLINDER_LOW_V1: u8 = 0x14;
 const ATAPI_CYLINDER_HIGH_V1: u8 = 0xeb;
 const ATAPI_CYLINDER_LOW_V2: u8 = 0x69;
 const ATAPI_CYLINDER_HIGH_V2: u8 = 0x96;
+
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Enums and structs needed to communicate with the ide controller.        ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
@@ -83,7 +122,7 @@ enum Command {
 bitflags! {
     #[repr(C)]
     #[derive(Debug, Clone, Copy)]
-    pub struct Status: u8 {
+    struct Status: u8 {
         const None = 0x00;
         const Error = 0x01;
         const DataRequest = 0x08;
@@ -101,7 +140,7 @@ enum DmaCommand {
 bitflags! {
     #[repr(C)]
     #[derive(Debug, Clone, Copy)]
-    pub struct DmaStatus: u8 {
+    struct DmaStatus: u8 {
         const BusMasterActive = 0x01;
         const DmaError = 0x02;
         const Interrupt = 0x04;
@@ -111,19 +150,247 @@ bitflags! {
     }
 }
 
-#[derive(Copy, Clone)]
-#[repr(C, packed)]
-struct AtapiInfo {
-    typ: u8,                // Atapi type
-    packet_length: u8,      // Packet length is 12 or 16
-    max_sectors_lba: u32,   // Size in Sectors
-    block_size: u32,        // Size of data blocks
-    capacity: u32,          // Storage Capacity in Bytes
+bitflags! {
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy)]
+    struct PrdFlags: u16 {
+        const END_OF_TRANSMISSION = 1 << 15;
+    }
 }
 
 #[derive(Copy, Clone)]
 #[repr(C, packed)]
-pub struct DriveInfo {
+struct PrdEntry {
+    base_address: u32,
+    byte_count: u16,
+    flags: PrdFlags
+}
+
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Register structs.                                                       ║
+   ║ The registers are divided into three blocks: Control, Command and DMA.  ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
+
+struct ControlRegisters {
+    alternate_status: PortReadOnly<u8>,
+    device_control: PortWriteOnly<u8>
+}
+
+impl ControlRegisters {
+    fn new(base_address: u16) -> Self {
+        let alternate_status = PortReadOnly::new(base_address + 0x02);
+        let device_control = PortWriteOnly::new(base_address + 0x02);
+
+        Self { alternate_status, device_control }
+    }
+}
+
+struct CommandRegisters {
+    data: Port<u16>,
+    error: PortReadOnly<u8>,
+    sector_count: Port<u8>,
+    sector_number: Port<u8>,
+    lba_low: Port<u8>,
+    cylinder_low: Port<u8>,
+    lba_mid: Port<u8>,
+    cylinder_high: Port<u8>,
+    lba_high: Port<u8>,
+    drive_head: Port<u8>,
+    status: PortReadOnly<u8>,
+    command: PortWriteOnly<u8>,
+}
+
+impl CommandRegisters {
+    fn new(base_address: u16) -> Self {
+        let data = Port::new(base_address + 0x00);
+        let error = PortReadOnly::new(base_address + 0x01);
+        let sector_count = Port::new(base_address + 0x02);
+        let sector_number = Port::new(base_address + 0x03);
+        let lba_low = Port::new(base_address + 0x03);
+        let cylinder_low = Port::new(base_address + 0x04);
+        let lba_mid = Port::new(base_address + 0x04);
+        let cylinder_high = Port::new(base_address + 0x05);
+        let lba_high = Port::new(base_address + 0x05);
+        let drive_head = Port::new(base_address + 0x06);
+        let status = PortReadOnly::new(base_address + 0x07);
+        let command = PortWriteOnly::new(base_address + 0x07);
+
+        Self { data, error, sector_count, sector_number, lba_low, cylinder_low, lba_mid, cylinder_high, lba_high, drive_head, status, command }
+    }
+}
+
+struct DmaRegisters {
+    command: Port<u8>,
+    status: Port<u8>,
+    address: Port<u32>,
+}
+
+impl DmaRegisters {
+    fn new(base_address: u16) -> Self {
+        let command = Port::new(base_address + 0x00);
+        let status = Port::new(base_address + 0x02);
+        let address = Port::new(base_address + 0x04);
+
+        Self { command, status, address }
+    }
+}
+
+/* ╔══════════════════════════════════════════════════════════════════════════════════════════════════╗
+   ║ The actual driver implementation.                                                                ║
+   ║ The driver is divided into two three structs: IdeController, IdeChannel and IdeDrive.            ║
+   ║ Each controller manages two channels and each channel can have up to two drives connected to it. ║
+   ║ IdeDrive implements the BlockDevice trait, so that the OS can access ide devices.                ║
+   ╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
+*/
+
+/// Each IDE controller has two channels, each of which can have up to two drives connected to it.
+/// This struct only manages the controller itself. Drive access is implemented in the `IdeChannel` struct.
+struct IdeController {
+    channels: [Mutex<IdeChannel>; CHANNELS_PER_CONTROLLER as usize]
+}
+
+impl IdeController {
+    fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
+        let mut channels: [Mutex<IdeChannel>; CHANNELS_PER_CONTROLLER as usize] = [Mutex::new(IdeChannel::default()), Mutex::new(IdeChannel::default())];
+
+        let pci_config_space = pci_bus().config_space();
+        let mut pci_device = pci_device.write();
+
+        let id = pci_device.header().id(&pci_config_space);
+        let mut rev_and_class = pci_device.header().revision_and_class(&pci_config_space);
+        info!("Initializing IDE controller [0x{:04x}:0x{:04x}]", id.0, id.1);
+
+        let mut supports_dma = false;
+        pci_device.update_command(&pci_config_space, |command| {
+            if rev_and_class.3 & 0x80 == 0x80 { // Bit 7 in programming defines whether the controller supports DMA
+                info!("IDE controller supports DMA");
+                supports_dma = true;
+                command.bitor(CommandRegister::IO_ENABLE | CommandRegister::BUS_MASTER_ENABLE)
+            } else {
+                info!("IDE controller does not support DMA");
+                command.bitor(CommandRegister::IO_ENABLE)
+            }
+        });
+
+        for i in 0..CHANNELS_PER_CONTROLLER {
+            let dma_base_address: u16 = match supports_dma {
+                true => pci_device.bar(4, &pci_config_space).expect("Failed to read DMA base address").unwrap_io() as u16,
+                false => 0
+            };
+
+            let mut interface = rev_and_class.3 >> i * 2; // Each channel has two bits in the programming interface
+            // First bit defines whether the channel is running in compatibility or native mode
+            // Second bit defines whether mode change is supported
+            if interface & 0x01 == 0x00 && interface  & 0x02 == 0x02 {
+                info!("Changing mode of channel [{}] to native mode", i);
+                unsafe {
+                    // Set first bit of channel interface to 1
+                    let value = pci_config_space.read(pci_device.header().address(), 0x08);
+                    pci_config_space.write(pci_device.header().address(), 0x08, value | (0x01 << i * 2) << 8);
+                }
+
+                rev_and_class = pci_device.header().revision_and_class(&pci_config_space);
+                interface = rev_and_class.3 >> i * 2;
+            }
+
+            let mut interrupts: [InterruptVector; CHANNELS_PER_CONTROLLER as usize] = [InterruptVector::PrimaryAta, InterruptVector::SecondaryAta];
+            let command_and_control_base_address = match interface & 0x01 {
+                0x00 => {
+                    // Channel is running in compatibility mode -> Use default base address
+                    info!("Channel [{}] is running in compatibility mode", i);
+                    (DEFAULT_BASE_ADDRESSES[i as usize], DEFAULT_CONTROL_BASE_ADDRESSES[i as usize])
+                },
+                _ => {
+                    // Channel is running in native mode -> Read base address from PCI registers
+                    info!("Channel [{}] is running in native mode", i);
+                    interrupts[i as usize] = InterruptVector::try_from(pci_device.interrupt(&pci_config_space).0).unwrap();
+
+                    (pci_device.bar(0, &pci_config_space).expect("Failed to read command base address").unwrap_io() as u16,
+                     pci_device.bar(1, &pci_config_space).expect("Failed to read control base address").unwrap_io() as u16)
+                }
+            };
+
+            channels[i as usize] = Mutex::new(IdeChannel::new(i, interrupts[i as usize], supports_dma, command_and_control_base_address.0, command_and_control_base_address.1, dma_base_address));
+        }
+
+        Self { channels }
+    }
+
+    fn init_drives(&self) -> Vec<DriveInfo> {
+        let mut drives: Vec<DriveInfo> = Vec::new();
+
+        for channel in self.channels.iter() {
+            let mut channel = channel.lock();
+            for i in 0..DEVICES_PER_CHANNEL {
+                if !channel.reset_drive(i) {
+                    continue;
+                }
+
+                if let Some(info) = channel.identify_drive(i) {
+                    info!("Found {:?} drive on channel [{}]: {} {} (Firmware: [{}])", info.typ, channel.index, info.model(), info.serial(), info.firmware());
+                    drives.push(info);
+                }
+            }
+        }
+
+        drives
+    }
+
+    fn plugin(controller: Arc<IdeController>) {
+        let primary_channel = controller.channels[0].lock();
+        let secondary_channel = controller.channels[1].lock();
+
+        interrupt_dispatcher().assign(primary_channel.interrupt, Box::new(IdeInterruptHandler::new(Arc::clone(&primary_channel.received_interrupt))));
+        apic().allow(primary_channel.interrupt);
+
+        interrupt_dispatcher().assign(secondary_channel.interrupt, Box::new(IdeInterruptHandler::new(Arc::clone(&secondary_channel.received_interrupt))));
+        apic().allow(secondary_channel.interrupt);
+    }
+
+    fn copy_byte_swapped_string(source: &[u16], target: &mut [u8]) {
+        for i in (0..target.len()).step_by(2) {
+            let bytes = source[i / 2];
+            target[i] = ((bytes & 0xff00) >> 8) as u8;
+            target[i + 1] = (bytes & 0x00ff) as u8;
+        }
+    }
+}
+
+/// A drive connected to an IDE controller
+/// Each drive has a reference to its controller and knows its channel via the `info.channel` filed.
+/// It implements the `BlockDevice` trait by calling `perform_ata_io()` on the channel.
+pub struct IdeDrive {
+    controller: Arc<IdeController>,
+    info: DriveInfo
+}
+
+impl IdeDrive {
+    fn new(controller: Arc<IdeController>, info: DriveInfo) -> Self {
+        Self { controller, info }
+    }
+}
+
+impl BlockDevice for IdeDrive {
+    fn read(&self, sector: u64, count: usize, buffer: &mut [u8]) -> usize {
+        let channel = &mut self.controller.channels[self.info.channel as usize].lock();
+        channel.perform_ata_io(&self.info, TransferMode::Read, sector, count, buffer)
+    }
+
+    fn write(&self, sector: u64, count: usize, buffer: &[u8]) -> usize {
+        // Channel::perform_ata_io() expects a mutable buffer, so we need to cast it to a mutable slice.
+        // This is safe, as the buffer is not modified by the function.
+        let buffer = unsafe { slice::from_raw_parts_mut(buffer.as_ptr().cast_mut(), buffer.len()) };
+
+        let channel = &mut self.controller.channels[self.info.channel as usize].lock();
+        channel.perform_ata_io(&self.info, TransferMode::Write, sector, count, buffer)
+    }
+}
+
+/// Information about a drive connected to an IDE controller
+/// This struct is created in the `IdeChannel::identify_drive()` method.
+#[derive(Copy, Clone)]
+struct DriveInfo {
     channel: u8,                                    // 0 (Primary Channel) or 1 (Secondary Channel)
     drive: u8,                                      // 0 (Master Drive) or 1 (Slave Drive)
     typ: DriveType,                                 // 0 (ATA) or 1 (ATAPI)
@@ -144,135 +411,6 @@ pub struct DriveInfo {
     minor_version: u16,                             // Minor ATA Version supported
     addressing: AddressType,                        // CHS (0), LBA28 (1), LBA48 (2)
     sector_size: u16,                               // Sector size
-    atapi: AtapiInfo                                // In case of ATAPI, more information about the drive
-}
-
-bitflags! {
-    #[repr(C)]
-    #[derive(Debug, Clone, Copy)]
-    pub struct PrdFlags: u16 {
-        const END_OF_TRANSMISSION = 1 << 15;
-    }
-}
-
-#[derive(Copy, Clone)]
-#[repr(C, packed)]
-struct PrdEntry {
-    base_address: u32,
-    byte_count: u16,
-    flags: PrdFlags
-}
-
-struct ControlRegisters {
-    alternate_status: PortReadOnly<u8>,
-    device_control: PortWriteOnly<u8>
-}
-
-struct CommandRegisters {
-    data: Port<u16>,
-    error: PortReadOnly<u8>,
-    sector_count: Port<u8>,
-    sector_number: Port<u8>,
-    lba_low: Port<u8>,
-    cylinder_low: Port<u8>,
-    lba_mid: Port<u8>,
-    cylinder_high: Port<u8>,
-    lba_high: Port<u8>,
-    drive_head: Port<u8>,
-    status: PortReadOnly<u8>,
-    command: PortWriteOnly<u8>,
-}
-
-struct DmaRegisters {
-    command: Port<u8>,
-    status: Port<u8>,
-    address: Port<u32>,
-}
-
-pub struct IdeDrive {
-    controller: Arc<IdeController>,
-    info: DriveInfo
-}
-
-struct Channel {
-    index: u8,                              // Channel number
-    interrupt: InterruptVector,             // Interrupt number
-    supports_dma: bool,                     // DMA support
-    received_interrupt: Arc<AtomicBool>,    // Received interrupt flag (shared with interrupt handler)
-    last_device_control: u8,                // Saves current state of deviceControlRegister
-    interrupts_disabled: bool,              // nIEN (No Interrupt)
-    drive_types: [DriveType; 2],            // Initially found drive types
-    command: CommandRegisters,              // Command registers (IO ports)
-    control: ControlRegisters,              // Control registers (IO ports)
-    dma: DmaRegisters                       // DMA registers (IO ports)
-}
-
-pub struct IdeController {
-    channels: [Mutex<Channel>; CHANNELS_PER_CONTROLLER as usize]
-}
-
-pub struct IdeInterruptHandler {
-    received_interrupt: Arc<AtomicBool>
-}
-
-impl IdeDrive {
-    pub fn new(controller: Arc<IdeController>, info: DriveInfo) -> Self {
-        Self { controller, info }
-    }
-
-    pub fn read(&self, sector: u64, count: usize, buffer: &mut [u8]) -> usize {
-        let channel = &mut self.controller.channels[self.info.channel as usize].lock();
-        channel.perform_ata_io(&self.info, TransferMode::Read, sector, count, buffer)
-    }
-
-    pub fn write(&self, sector: u64, count: usize, buffer: &mut [u8]) -> usize {
-        let channel = &mut self.controller.channels[self.info.channel as usize].lock();
-        channel.perform_ata_io(&self.info, TransferMode::Write, sector, count, buffer)
-    }
-}
-
-impl ControlRegisters {
-    pub fn new(base_address: u16) -> Self {
-        let alternate_status = PortReadOnly::new(base_address + 0x02);
-        let device_control = PortWriteOnly::new(base_address + 0x02);
-
-        Self { alternate_status, device_control }
-    }
-}
-
-impl CommandRegisters {
-    pub fn new(base_address: u16) -> Self {
-        let data = Port::new(base_address + 0x00);
-        let error = PortReadOnly::new(base_address + 0x01);
-        let sector_count = Port::new(base_address + 0x02);
-        let sector_number = Port::new(base_address + 0x03);
-        let lba_low = Port::new(base_address + 0x03);
-        let cylinder_low = Port::new(base_address + 0x04);
-        let lba_mid = Port::new(base_address + 0x04);
-        let cylinder_high = Port::new(base_address + 0x05);
-        let lba_high = Port::new(base_address + 0x05);
-        let drive_head = Port::new(base_address + 0x06);
-        let status = PortReadOnly::new(base_address + 0x07);
-        let command = PortWriteOnly::new(base_address + 0x07);
-
-        Self { data, error, sector_count, sector_number, lba_low, cylinder_low, lba_mid, cylinder_high, lba_high, drive_head, status, command }
-    }
-}
-
-impl DmaRegisters {
-    pub fn new(base_address: u16) -> Self {
-        let command = Port::new(base_address + 0x00);
-        let status = Port::new(base_address + 0x02);
-        let address = Port::new(base_address + 0x04);
-
-        Self { command, status, address }
-    }
-}
-
-impl Default for AtapiInfo {
-    fn default() -> Self {
-        Self { typ: 0, packet_length: 0, max_sectors_lba: 0, block_size: 0, capacity: 0 }
-    }
 }
 
 impl Default for DriveInfo {
@@ -297,8 +435,7 @@ impl Default for DriveInfo {
             major_version: 0,
             minor_version: 0,
             addressing: AddressType::Chs,
-            sector_size: 0,
-            atapi: AtapiInfo::default()
+            sector_size: 0
         }
     }
 }
@@ -321,26 +458,29 @@ impl DriveInfo {
     }
 }
 
-impl IdeInterruptHandler {
-    pub fn new(received_interrupt: Arc<AtomicBool>) -> Self {
-        Self { received_interrupt }
-    }
+/// The channel contains the main part of the IDE driver.
+/// It manages the communication with the drives and the DMA controller.
+struct IdeChannel {
+    index: u8,                              // Channel number
+    interrupt: InterruptVector,             // Interrupt number
+    supports_dma: bool,                     // DMA support
+    received_interrupt: Arc<AtomicBool>,    // Received interrupt flag (shared with interrupt handler)
+    last_device_control: u8,                // Saves current state of deviceControlRegister
+    interrupts_disabled: bool,              // nIEN (No Interrupt)
+    drive_types: [DriveType; 2],            // Initially found drive types
+    command: CommandRegisters,              // Command registers (IO ports)
+    control: ControlRegisters,              // Control registers (IO ports)
+    dma: DmaRegisters                       // DMA registers (IO ports)
 }
 
-impl InterruptHandler for IdeInterruptHandler {
-    fn trigger(&self) {
-        self.received_interrupt.store(true, Ordering::Relaxed);
-    }
-}
-
-impl Default for Channel {
+impl Default for IdeChannel {
     fn default() -> Self {
         Self::new(0 , InterruptVector::PrimaryAta, false, 0, 0, 0)
     }
 }
 
-impl Channel {
-    pub fn new(index: u8, interrupt: InterruptVector, supports_dma: bool, command_base_address: u16, control_base_address: u16, dma_base_address: u16) -> Self {
+impl IdeChannel {
+    fn new(index: u8, interrupt: InterruptVector, supports_dma: bool, command_base_address: u16, control_base_address: u16, dma_base_address: u16) -> Self {
         let command = CommandRegisters::new(command_base_address);
         let control = ControlRegisters::new(control_base_address);
         let dma = DmaRegisters::new(dma_base_address);
@@ -353,7 +493,9 @@ impl Channel {
             last_device_control: u8::MAX,
             interrupts_disabled: false,
             drive_types: [DriveType::Other, DriveType::Other],
-            command, control, dma
+            command,
+            control,
+            dma
         }
     }
 
@@ -844,109 +986,21 @@ impl Channel {
     }
 }
 
-impl IdeController {
-    pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
-        let mut channels: [Mutex<Channel>; CHANNELS_PER_CONTROLLER as usize] = [Mutex::new(Channel::default()), Mutex::new(Channel::default())];
+/// Each channel has its own interrupt handler with a reference to the channel's `received_interrupt` flag.
+/// Once an interrupt occurs, the handler sets the flag to `true`. This usually means, that a DMA transfer has finished.
+/// It must be set to `false` manually by the channel before starting a new DMA transfer.
+pub struct IdeInterruptHandler {
+    received_interrupt: Arc<AtomicBool>
+}
 
-        let pci_config_space = pci_bus().config_space();
-        let mut pci_device = pci_device.write();
-
-        let id = pci_device.header().id(&pci_config_space);
-        let mut rev_and_class = pci_device.header().revision_and_class(&pci_config_space);
-        info!("Initializing IDE controller [0x{:04x}:0x{:04x}]", id.0, id.1);
-
-        let mut supports_dma = false;
-        pci_device.update_command(&pci_config_space, |command| {
-            if rev_and_class.3 & 0x80 == 0x80 { // Bit 7 in programming defines whether the controller supports DMA
-                info!("IDE controller supports DMA");
-                supports_dma = true;
-                command.bitor(CommandRegister::IO_ENABLE | CommandRegister::BUS_MASTER_ENABLE)
-            } else {
-                info!("IDE controller does not support DMA");
-                command.bitor(CommandRegister::IO_ENABLE)
-            }
-        });
-
-        for i in 0..CHANNELS_PER_CONTROLLER {
-            let dma_base_address: u16 = match supports_dma {
-                true => pci_device.bar(4, &pci_config_space).expect("Failed to read DMA base address").unwrap_io() as u16,
-                false => 0
-            };
-
-            let mut interface = rev_and_class.3 >> i * 2; // Each channel has two bits in the programming interface
-            // First bit defines whether the channel is running in compatibility or native mode
-            // Second bit defines whether mode change is supported
-            if interface & 0x01 == 0x00 && interface  & 0x02 == 0x02 {
-                info!("Changing mode of channel [{}] to native mode", i);
-                unsafe {
-                    // Set first bit of channel interface to 1
-                    let value = pci_config_space.read(pci_device.header().address(), 0x08);
-                    pci_config_space.write(pci_device.header().address(), 0x08, value | (0x01 << i * 2) << 8);
-                }
-
-                rev_and_class = pci_device.header().revision_and_class(&pci_config_space);
-                interface = rev_and_class.3 >> i * 2;
-            }
-
-            let mut interrupts: [InterruptVector; CHANNELS_PER_CONTROLLER as usize] = [InterruptVector::PrimaryAta, InterruptVector::SecondaryAta];
-            let command_and_control_base_address = match interface & 0x01 {
-                0x00 => {
-                    // Channel is running in compatibility mode -> Use default base address
-                    info!("Channel [{}] is running in compatibility mode", i);
-                    (DEFAULT_BASE_ADDRESSES[i as usize], DEFAULT_CONTROL_BASE_ADDRESSES[i as usize])
-                },
-                _ => {
-                    // Channel is running in native mode -> Read base address from PCI registers
-                    info!("Channel [{}] is running in native mode", i);
-                    interrupts[i as usize] = InterruptVector::try_from(pci_device.interrupt(&pci_config_space).0).unwrap();
-
-                    (pci_device.bar(0, &pci_config_space).expect("Failed to read command base address").unwrap_io() as u16,
-                     pci_device.bar(1, &pci_config_space).expect("Failed to read control base address").unwrap_io() as u16)
-                }
-            };
-
-            channels[i as usize] = Mutex::new(Channel::new(i, interrupts[i as usize], supports_dma, command_and_control_base_address.0, command_and_control_base_address.1, dma_base_address));
-        }
-
-        Self { channels }
+impl IdeInterruptHandler {
+    fn new(received_interrupt: Arc<AtomicBool>) -> Self {
+        Self { received_interrupt }
     }
+}
 
-    pub fn init_drives(&self) -> Vec<DriveInfo> {
-        let mut drives: Vec<DriveInfo> = Vec::new();
-
-        for channel in self.channels.iter() {
-            let mut channel = channel.lock();
-            for i in 0..DEVICES_PER_CHANNEL {
-                if !channel.reset_drive(i) {
-                    continue;
-                }
-
-                if let Some(info) = channel.identify_drive(i) {
-                    info!("Found {:?} drive on channel [{}]: {} {} (Firmware: [{}])", info.typ, channel.index, info.model(), info.serial(), info.firmware());
-                    drives.push(info);
-                }
-            }
-        }
-
-        drives
-    }
-
-    pub fn plugin(controller: Arc<IdeController>) {
-        let primary_channel = controller.channels[0].lock();
-        let secondary_channel = controller.channels[1].lock();
-
-        interrupt_dispatcher().assign(primary_channel.interrupt, Box::new(IdeInterruptHandler::new(Arc::clone(&primary_channel.received_interrupt))));
-        apic().allow(primary_channel.interrupt);
-
-        interrupt_dispatcher().assign(secondary_channel.interrupt, Box::new(IdeInterruptHandler::new(Arc::clone(&secondary_channel.received_interrupt))));
-        apic().allow(secondary_channel.interrupt);
-    }
-
-    fn copy_byte_swapped_string(source: &[u16], target: &mut [u8]) {
-        for i in (0..target.len()).step_by(2) {
-            let bytes = source[i / 2];
-            target[i] = ((bytes & 0xff00) >> 8) as u8;
-            target[i + 1] = (bytes & 0x00ff) as u8;
-        }
+impl InterruptHandler for IdeInterruptHandler {
+    fn trigger(&self) {
+        self.received_interrupt.store(true, Ordering::Relaxed);
     }
 }
