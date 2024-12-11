@@ -1,41 +1,52 @@
+use alloc::format;
+use alloc::string::{String, ToString};
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use log::info;
-use spin::{Once, RwLock};
-use crate::device::ide::{IdeController, IdeDrive};
-use crate::pci_bus;
+use smallmap::Map;
+use spin::{Mutex, Once, RwLock};
+use crate::device::ide;
 
-static IDE_CONTROLLER: Once<Arc<IdeController>> = Once::new();
-static IDE_DRIVES: RwLock<Vec<Arc<IdeDrive>>> = RwLock::new(Vec::new());
+static BLOCK_DEVICES: Once<RwLock<Map<String, Arc<dyn BlockDevice + Send + Sync>>>> = Once::new();
+static DEVICE_TYPES: Once<Mutex<Map<String, usize>>> = Once::new();
 
+/// Trait for accessing devices that can read and write data in fixed-size blocks (sectors)
+/// This is the interface that the filesystems will use to access the storage devices
+/// Sector addressing uses LBA (Logical Block Addressing) starting from 0
+pub trait BlockDevice {
+    fn read(&self, sector: u64, count: usize, buffer: &mut [u8]) -> usize;
+    fn write(&self, sector: u64, count: usize, buffer: &[u8]) -> usize;
+}
+
+/// Initialize all storage drivers
 pub fn init() {
-    let devices = pci_bus().search_by_class(0x01, 0x01);
-    if devices.len() > 0 {
-        IDE_CONTROLLER.call_once(|| {
-            info!("Found IDE controller");
-            let ide_controller = Arc::new(IdeController::new(devices[0]));
-            let found_drives = ide_controller.init_drives();
-            let mut drives = IDE_DRIVES.write();
+    ide::init();
+}
 
-            for drive in found_drives.iter() {
-                drives.push(Arc::new(IdeDrive::new(Arc::clone(&ide_controller), *drive)));
-            }
+/// Register a block device with the given type
+/// The type is used to generate a unique name for the device (e.g. type "ata" will generate names "ata0", "ata1", etc.)
+pub fn add_block_device(typ: &str, drive: Arc<dyn BlockDevice + Send + Sync>) {
+    let typ = typ.to_string();
+    let mut types = DEVICE_TYPES.call_once(|| Mutex::new(Map::new())).lock();
+    let index = *types.get(&typ).unwrap_or(&0);
+    let name = format!("{}{}", typ, index);
+    types.insert(typ, index + 1);
 
-            IdeController::plugin(Arc::clone(&ide_controller));
-            ide_controller
-        });
+    let mut drives = BLOCK_DEVICES.call_once(|| RwLock::new(Map::new())).write();
+    drives.insert(name.clone(), drive);
+
+    info!("Registered block device [{}]", name);
+}
+
+/// Get a block device by its name
+pub fn block_device(name: &str) -> Option<Arc<dyn BlockDevice + Send + Sync>> {
+    match BLOCK_DEVICES.call_once(|| RwLock::new(Map::new())).read().get(name) {
+        None => None,
+        Some(device) => Some(Arc::clone(device))
     }
 }
 
-pub fn ide_drive(num: usize) -> Option<Arc<IdeDrive>> {
-    let drives = IDE_DRIVES.read();
-    if num < drives.len() {
-        Some(Arc::clone(&drives[num]))
-    } else {
-        None
-    }
-}
-
+/// Convert a Logical Block Address (LBA) to Cylinder-Head-Sector (CHS) addressing
+/// This is a helper function, that may be used by drivers for legacy devices
 pub fn lba_to_chs(lba: u64, heads: u8, sectors_per_cylinder: u8) -> (u16, u8, u8) {
     let cylinder = (lba / (heads as u64 * sectors_per_cylinder as u64)) as u16;
     let head = (lba % (heads as u64 * sectors_per_cylinder as u64)) as u8;

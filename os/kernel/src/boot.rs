@@ -203,6 +203,30 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize network stack
     network::init();
 
+    let drive = storage::block_device("ata0").unwrap();
+    let mut buffer = [0; 8192];
+
+    // Fill buffer with some data
+    for i in 0..8192 {
+        buffer[i] = i as u8;
+    }
+    // Write data to the third sector of the drive
+    drive.write(3, 16, &mut buffer);
+
+    // Fill buffer with zeroes
+    for i in 0..8192 {
+        buffer[i] = 0;
+    }
+    // Read data from the third sector of the drive
+    drive.read(3, 16, &mut buffer);
+
+    // Check integrity of read data
+    for i in 0..8192 {
+        if buffer[i] != (i as u8) {
+            panic!("Data integrity check failed!");
+        }
+    }
+
     // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
     if let Some(rtl8139) = rtl8139() && qemu_cfg::is_available() {
         let time = timer.systime_ms();
