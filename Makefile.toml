@@ -129,8 +129,8 @@ condition = { files_not_exist = [ "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img
 
 [tasks.hdd]
 script = '''
-cat ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img > "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img"
-echo -e 'o\\nn\\np\\n1\\n2048\\n131071\\nt\\ne\\nw\\n' | fdisk "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img"
+cat ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img > "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img"
+echo -e 'o\nn\np\n1\n2048\n131071\nt\ne\nw\n' | fdisk "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img"
 '''
 dependencies = [ "create-hdd-fill-img", "create-hdd-partition-img" ]
 condition = { files_modified = { input = [ "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img", "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img" ], output = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img" ] } }

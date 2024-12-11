@@ -22,7 +22,8 @@ use crate::{apic, interrupt_dispatcher, memory, pci_bus, scheduler, timer};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::PAGE_SIZE;
-use crate::storage::{add_block_device, lba_to_chs, BlockDevice};
+use crate::storage::{add_block_device, block};
+use crate::storage::block::BlockDevice;
 
 /// Initialize all IDE controllers found on the PCI bus.
 /// Each connected drive gets registered as a block device in the storage module.
@@ -33,14 +34,13 @@ pub fn init() {
         info!("Found IDE controller [{}:{}]", device_id.0, device_id.1);
 
         let ide_controller = Arc::new(IdeController::new(device));
-        let found_drives = ide_controller.init_drives();
+        IdeController::plugin(Arc::clone(&ide_controller));
 
+        let found_drives = ide_controller.init_drives();
         for drive in found_drives.iter() {
             let block_device = Arc::new(IdeDrive::new(Arc::clone(&ide_controller), *drive));
             add_block_device("ata", block_device);
         }
-
-        IdeController::plugin(Arc::clone(&ide_controller));
     }
 }
 
@@ -385,6 +385,14 @@ impl BlockDevice for IdeDrive {
         let channel = &mut self.controller.channels[self.info.channel as usize].lock();
         channel.perform_ata_io(&self.info, TransferMode::Write, sector, count, buffer)
     }
+
+    fn sector_count(&self) -> u64 {
+        self.info.sector_count()
+    }
+
+    fn sector_size(&self) -> u16 {
+        self.info.sector_size
+    }
 }
 
 /// Information about a drive connected to an IDE controller
@@ -455,6 +463,14 @@ impl DriveInfo {
 
     fn supports_dma(&self) -> bool {
         self.ultra_dma != 0 || self.multiword_dma != 0
+    }
+
+    fn sector_count(&self) -> u64 {
+        match self.addressing {
+            AddressType::Chs => self.cylinders as u64 * self.heads as u64 * self.sectors_per_track as u64,
+            AddressType::Lba28 => self.max_sectors_lba28 as u64,
+            AddressType::Lba48 => self.max_sectors_lba48 as u64
+        }
     }
 }
 
@@ -714,7 +730,7 @@ impl IdeChannel {
         match info.addressing {
             AddressType::Chs => {
                 // Convert LBA address to old CHS format
-                let (cylinder, head, sector) = lba_to_chs(sector, info.heads as u8, info.sectors_per_track as u8);
+                let (cylinder, head, sector) = block::lba_to_chs(sector, info.heads as u8, info.sectors_per_track as u8);
 
                 unsafe {
                     // Select drive
@@ -779,9 +795,11 @@ impl IdeChannel {
             return 0;
         }
 
+
         match mode {
             TransferMode::Read => {
                 let mut read = 0;
+
                 while read < count {
                     // Wait for the drive to be ready
                     if read > 0 && !Self::wait_status(&mut self.control.alternate_status, Status::DriveReady, WAIT_ON_STATUS_TIMEOUT) {
