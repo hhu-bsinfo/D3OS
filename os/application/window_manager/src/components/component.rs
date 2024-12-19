@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use drawer::rect_data::RectData;
 use graphic::color::{Color, CYAN, GREY, WHITE, YELLOW};
+
 #[derive(Clone, Copy)]
 pub struct ComponentStyling {
     pub border_color: Color,
@@ -44,6 +45,7 @@ pub struct ComponentStylingBuilder {
     disabled_text_color: Option<Color>,
 }
 
+// TODO: default values in configuration
 impl ComponentStyling {
     pub fn default() -> ComponentStyling {
         ComponentStyling {

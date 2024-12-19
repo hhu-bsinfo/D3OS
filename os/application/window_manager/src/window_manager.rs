@@ -465,7 +465,7 @@ impl WindowManager {
             window.draw(focused_window_id, is_dirty);
         }
 
-        self.flush();
+        // self.flush();
         self.is_dirty = false;
     }
 
