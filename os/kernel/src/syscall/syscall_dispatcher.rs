@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Low-level dispatcher for system calls.                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, 15.9.2024, HHU                                  ║
+   ║ Author: Fabian Ruhland, 27.12.2024, HHU                                 ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use core::arch::{asm, naked_asm};
@@ -18,9 +18,9 @@ use x86_64::{PrivilegeLevel, VirtAddr};
 use crate::syscall::sys_vmem::sys_map_user_heap;
 use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, };
 use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
-    sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch,};
+    sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch};
 use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write};
-use crate::syscall::sys_naming::sys_mkdir;
+use crate::syscall::sys_naming::*;
 
 use crate::{core_local_storage, tss};
 
@@ -98,7 +98,16 @@ impl SyscallTable {
                 sys_get_system_time as *const _,
                 sys_get_date as *const _,
                 sys_set_date as *const _,
+                sys_open as *const _,
+                sys_read as *const _,
+                sys_write as *const _,
+                sys_seek as *const _,
+                sys_close as *const _,
                 sys_mkdir as *const _,
+                sys_touch as *const _,
+                sys_readdir as *const _,
+                sys_cwd as *const _,
+                sys_cd as *const _,                
             ],
         }
     }
