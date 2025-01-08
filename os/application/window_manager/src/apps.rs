@@ -5,3 +5,4 @@ pub(crate) mod submit_label;
 pub(crate) mod bitmap_app;
 pub(crate) mod slider_app;
 pub(crate) mod calculator;
+pub(crate) mod radio_buttons;
