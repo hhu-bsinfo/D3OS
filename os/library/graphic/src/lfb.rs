@@ -11,6 +11,8 @@ pub struct LFB {
     bpp: u8,
 
     pixel_drawer: PixelDrawer,
+
+    is_dirty: bool,
 }
 
 unsafe impl Send for LFB {}
@@ -46,6 +48,7 @@ impl LFB {
             height,
             bpp,
             pixel_drawer,
+            is_dirty: false,
         }
     }
 
@@ -69,7 +72,15 @@ impl LFB {
         self.bpp
     }
 
-    pub fn draw_line(&self, x1: u32, y1: u32, x2: u32, y2: u32, color: Color) {
+    pub fn is_dirty(&self) -> bool {
+        self.is_dirty
+    }
+
+    pub fn mark_not_dirty(&mut self) {
+        self.is_dirty = false;
+    }
+
+    pub fn draw_line(&mut self, x1: u32, y1: u32, x2: u32, y2: u32, color: Color) {
         // Check if pixels are outside the framebuffer
         if x1 >= self.width || y1 >= self.height || x2 >= self.width || y2 >= self.height {
             return;
@@ -121,10 +132,12 @@ impl LFB {
                 y_curr += y_stepsize;
             }
         }
+
+        self.is_dirty = true;
     }
 
     #[inline]
-    pub fn draw_pixel(&self, x: u32, y: u32, color: Color) {
+    pub fn draw_pixel(&mut self, x: u32, y: u32, color: Color) {
         // Check if pixel is outside the framebuffer
         if x >= self.width || y >= self.height {
             return;
@@ -149,6 +162,8 @@ impl LFB {
         } else {
             unsafe { (self.pixel_drawer)(self.buffer, self.pitch, x, y, color) };
         }
+
+        self.is_dirty = true;
     }
 
     pub fn read_pixel(&self, x: u32, y: u32) -> Color {
@@ -167,7 +182,7 @@ impl LFB {
         }
     }
 
-    pub fn fill_rect(&self, x: u32, y: u32, width: u32, height: u32, color: Color) {
+    pub fn fill_rect(&mut self, x: u32, y: u32, width: u32, height: u32, color: Color) {
         let end_x = x + width;
         let end_y = y + height;
 
@@ -178,12 +193,12 @@ impl LFB {
         }
     }
 
-    pub fn draw_char(&self, x: u32, y: u32, fg_color: Color, bg_color: Color, c: char) -> u32 {
+    pub fn draw_char(&mut self, x: u32, y: u32, fg_color: Color, bg_color: Color, c: char) -> u32 {
         self.draw_char_scaled(x, y, 1, 1, fg_color, bg_color, c)
     }
 
     pub fn draw_char_scaled(
-        &self,
+        &mut self,
         x: u32,
         y: u32,
         x_scale: u32,
@@ -223,12 +238,12 @@ impl LFB {
         };
     }
 
-    pub fn draw_string(&self, x: u32, y: u32, fg_color: Color, bg_color: Color, string: &str) {
+    pub fn draw_string(&mut self, x: u32, y: u32, fg_color: Color, bg_color: Color, string: &str) {
         self.draw_string_scaled(x, y, 1, 1, fg_color, bg_color, string);
     }
 
     pub fn draw_string_scaled(
-        &self,
+        &mut self,
         x: u32,
         y: u32,
         x_scale: u32,
@@ -257,7 +272,7 @@ impl LFB {
         }
     }
 
-    pub fn scroll_up(&self, lines: u32) {
+    pub fn scroll_up(&mut self, lines: u32) {
         unsafe {
             // Move screen buffer upwards by the given amount of lines
             self.buffer.copy_from(
@@ -270,10 +285,12 @@ impl LFB {
                 .offset((self.pitch * (self.height - lines)) as isize)
                 .write_bytes(0, (self.pitch * lines) as usize);
         }
+
+        self.is_dirty = true;
     }
 
     pub fn fill_triangle(
-        &self,
+        &mut self,
         ((mut x1, mut y1), (mut x2, mut y2), (mut x3, mut y3)): (
             (u32, u32),
             (u32, u32),
@@ -331,7 +348,7 @@ impl LFB {
         }
     }
 
-    fn draw_horizontal_line(&self, start_x: f32, end_x: f32, y: u32, color: Color) {
+    fn draw_horizontal_line(&mut self, start_x: f32, end_x: f32, y: u32, color: Color) {
         if y >= self.height {
             return; // y is out of bounds
         }
@@ -353,9 +370,11 @@ impl LFB {
                 }
             }
         }
+
+        self.is_dirty = true;
     }
 
-    pub fn draw_bitmap(&self, x: u32, y: u32, data: &[Color], width: u32, height: u32) {
+    pub fn draw_bitmap(&mut self, x: u32, y: u32, data: &[Color], width: u32, height: u32) {
         for i in 0..height {
             for j in 0..width {
                 let color = data[(i * width + j) as usize];
@@ -363,6 +382,84 @@ impl LFB {
             }
         }
     }
+
+    pub fn draw_circle_bresenham(&mut self, center: (i32, i32), radius: i32, color: Color) {
+        let (cx, cy) = center;
+        let mut x = 0;
+        let mut y = radius;
+        let mut d = 3 - 2 * radius; // Entscheidungsvariable
+    
+        while x <= y {
+            // Zeichne alle symmetrischen Punkte
+            self.draw_pixel((cx + x) as u32, (cy + y) as u32, color);
+            self.draw_pixel((cx - x) as u32, (cy + y) as u32, color);
+            self.draw_pixel((cx + x) as u32, (cy - y) as u32, color);
+            self.draw_pixel((cx - x) as u32, (cy - y) as u32, color);
+            self.draw_pixel((cx + y) as u32, (cy + x) as u32, color);
+            self.draw_pixel((cx - y) as u32, (cy + x) as u32, color);
+            self.draw_pixel((cx + y) as u32, (cy - x) as u32, color);
+            self.draw_pixel((cx - y) as u32, (cy - x) as u32, color);
+    
+            // Aktualisiere die Entscheidungsvariable und Positionen
+            if d <= 0 {
+                d += 4 * x + 6;
+            } else {
+                d += 4 * (x - y) + 10;
+                y -= 1;
+            }
+            x += 1;
+        }
+    }
+
+    pub fn draw_filled_circle_bresenham(
+        &mut self,
+        center: (i32, i32),
+        radius: i32,
+        color: Color,
+    ) {
+        let (cx, cy) = center;
+        let mut x = 0;
+        let mut y = radius;
+        let mut d = 3 - 2 * radius; // Entscheidungsvariable
+    
+        while x <= y {
+            // Zeichne horizontale Linien für die symmetrischen Teile des Kreises
+            self.draw_horizontal_line(
+                cx as f32 - x as f32,
+                cx as f32 + x as f32,
+                (cy + y) as u32,
+                color,
+            );
+            self.draw_horizontal_line(
+                cx as f32 - x as f32,
+                cx as f32 + x as f32,
+                (cy - y) as u32,
+                color,
+            );
+            self.draw_horizontal_line(
+                cx as f32 - y as f32,
+                cx as f32 + y as f32,
+                (cy + x) as u32,
+                color,
+            );
+            self.draw_horizontal_line(
+                cx as f32 - y as f32,
+                cx as f32 + y as f32,
+                (cy - x) as u32,
+                color,
+            );
+    
+            // Aktualisiere die Entscheidungsvariable und Positionen
+            if d <= 0 {
+                d += 4 * x + 6;
+            } else {
+                d += 4 * (x - y) + 10;
+                y -= 1;
+            }
+            x += 1;
+        }
+    }
+    
 }
 
 type PixelDrawer = unsafe fn(addr: *mut u8, pitch: u32, x: u32, y: u32, color: Color);
