@@ -15,7 +15,7 @@ pub struct BitmapGraphic {
     orig_bitmap: Bitmap,
     bitmap: Bitmap,
     scaling_mode: ScalingMode,
-    scale_factor: f32,
+    scale_factor: f64,
     is_hidden: bool,
     styling: ComponentStyling,
 }
@@ -53,10 +53,11 @@ impl Component for BitmapGraphic {
         }
 
         if self.is_hidden {
+            self.is_dirty = false;
             return;
         }
 
-        let styling = self.styling;
+        let styling = &self.styling;
 
         let bg_color = if is_focused {
             styling.focused_background_color
@@ -70,7 +71,7 @@ impl Component for BitmapGraphic {
             styling.border_color
         };
 
-        let text_color = {
+        let text_color = {ComponentStyling
             styling.text_color
         };
 
@@ -79,13 +80,16 @@ impl Component for BitmapGraphic {
         self.drawn_rect_data = self.abs_rect_data;
 
         if is_focused {
-            Drawer::draw_rectangle(self.abs_rect_data, styling.focused_border_color);
+            // wegen eines bugs, dass unten und rechts noch eine border bei Fokusverlust zurück bleibt, wird border abgezogen
+            Drawer::draw_rectangle(self.abs_rect_data.sub_border(), styling.focused_border_color);
         }
 
         self.is_dirty = false;
     }
 
     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
+        let styling: &ComponentStyling = &self.styling;
+
         self.abs_rect_data.top_left = self
             .abs_rect_data
             .top_left
@@ -99,7 +103,8 @@ impl Component for BitmapGraphic {
             self.rel_rect_data,
             new_window,
             min_dim,
-            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32),
+            styling.maintain_aspect_ratio,
             aspect_ratio,
         );
 
@@ -108,6 +113,8 @@ impl Component for BitmapGraphic {
     }
 
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
+        let styling: &ComponentStyling = &self.styling;
+
         let min_dim = (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT);
         let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
         
@@ -115,10 +122,10 @@ impl Component for BitmapGraphic {
             self.rel_rect_data,
             new_rect_data,
             min_dim,
-            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32),
+            styling.maintain_aspect_ratio,
             aspect_ratio,
         );
-
 
         self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);
         self.mark_dirty();
@@ -185,24 +192,22 @@ impl Hideable for BitmapGraphic {
 
 impl Resizable for BitmapGraphic {
     fn rescale(&mut self, scale_factor: f64) {
+        self.scale_factor *= scale_factor;
+        
         self.abs_rect_data.width = (f64::from(self.abs_rect_data.width) * scale_factor) as u32;
         self.abs_rect_data.height = (f64::from(self.abs_rect_data.height) * scale_factor) as u32;
 
-        let api = WindowManager::get_api();
+        self.rel_rect_data.width = (f64::from(self.rel_rect_data.width) * scale_factor) as u32;
+        self.rel_rect_data.height = (f64::from(self.rel_rect_data.height) * scale_factor) as u32;
+
 
         self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);
         self.mark_dirty();
     }
 
     fn resize(&mut self, width: u32, height: u32) {
-        let scaling_factor_x = width as f32 / self.abs_rect_data.width as f32;
-        let scaling_factor_y = height as f32 / self.abs_rect_data.height as f32;
-
         self.abs_rect_data.width = width;
         self.abs_rect_data.height = height;
-
-        self.rel_rect_data.width = (self.rel_rect_data.width as f32 * scaling_factor_x) as u32;
-        self.rel_rect_data.height = (self.rel_rect_data.height as f32 * scaling_factor_y) as u32;
 
         self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);
         self.mark_dirty();
