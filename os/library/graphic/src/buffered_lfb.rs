@@ -31,7 +31,11 @@ impl BufferedLFB {
     }
 
     pub fn flush(&mut self) {
+        if !self.lfb.is_dirty() {
+            return;
+        }
+
         self.flush_lines(0, self.lfb.height());
-        // unsafe { self.target_lfb.buffer().copy_from(self.buffer.as_ptr(), (self.lfb.height() * self.lfb.pitch()) as usize); }
+        self.lfb.mark_not_dirty();
     }
 }
