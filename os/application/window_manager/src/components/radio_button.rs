@@ -1,149 +1,152 @@
-// use core::array::from_fn;
+use alloc::boxed::Box;
+use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
+use graphic::lfb::DEFAULT_CHAR_HEIGHT;
+use crate::{config::INTERACT_BUTTON, utils::{scale_pos_to_window, scale_radius_to_window, scale_rect_to_window}};
 
-// use alloc::{
-//     boxed::Box, rc::Rc, string::{String, ToString}, vec::Vec
-// };
-// use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-// use graphic::{
-//     color::{Color, GREY},
-//     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
-// };
-// use spin::{Mutex, RwLock};
+use super::component::{Casts, Component, ComponentStyling, Interactable};
 
-// use crate::{
-//     config::{DEFAULT_FG_COLOR, INTERACT_BUTTON}, utils::{scale_circle_to_window, scale_font, scale_rect_to_window}
-// };
-
-// use super::component::{Component, ComponentStyling};
-
-// pub const CHECKBOX_BG_COLOR: Color = GREY;
-// pub const CHECKBOX_FG_COLOR: Color = DEFAULT_FG_COLOR;
-
-// pub struct RadioButton {
-//     pub id: Option<usize>,
-//     index: u32,
-//     radius: u32,
-//     state: bool,
-//     abs_center: Vertex,
-//     rel_center: Vertex,
-//     on_select: Box<dyn Fn(u32) -> ()>,
-//     on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
-//     other_buttons: Vec<Rc<RwLock<RadioButton>>>, 
-// }
-
-// impl RadioButton {
-//     pub fn new(
-//         radius: u32,
-//         index: u32,
-//         state: bool,
-//         abs_center: Vertex,
-//         rel_center: Vertex,
-//         on_select: Box<dyn Fn(u32) -> ()>,
-//         on_change_redraw: Vec<Rc<RwLock<Box<dyn Component>>>>,
-//         other_buttons: Vec<Rc<RwLock<RadioButton>>>,
-//     ) -> Self {
-//         Self {
-//             id: None,
-//             index,
-//             radius,
-//             state,
-//             rel_center,
-//             abs_center,
-//             on_select,
-//             on_change_redraw,
-//             other_buttons,
-//         }
-//     }
-
-//     pub fn select(&mut self) {
-//         self.state = true;
-//     }
-
-//     pub fn deselect(&mut self) {
-//         self.state = false;
-//     }
-// }
-
-// impl Component for RadioButton {
-//     fn draw(&mut self, is_focused: bool, styling: Option<ComponentStyling>) {
-//         // Drawer::draw_circle(self.abs_center, self.radius, fg_color);
-//     }
-
-//     fn consume_keyboard_press(&mut self, keyboard_press: char) -> bool {
-//         if keyboard_press == INTERACT_BUTTON {
-//             // let selected option = 
-//             // (*self.on_select)(self.options[0]);
-//             return true;
-//         }
-
-//         return false;
-//     }
-
-//     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-//         let (abs_center, radius) =  scale_circle_to_window(self.abs_center, self.radius, old_window, DEFAULT_CHAR_HEIGHT);
-//         self.abs_center = abs_center;
-//         self.radius = radius;
-        
-//     }
-
-//     fn rescale_after_move(&mut self, new_rect_data: RectData) {
-//         // self.abs_center = scale_circle_to_window(self.rel_center, self.radius, new_rect_data, min_radius)
-//     }
+pub struct RadioButton {
+    pub id: Option<usize>,
     
-//     fn get_abs_rect_data(&self) -> RectData {
-//         let radius = self.radius;
+    abs_center: Vertex,
+    rel_center: Vertex,
+    abs_radius: u32,
+    rel_radius: u32,
+    drawn_rect_data: RectData,
 
-//         RectData {
-//             top_left: Vertex::new(
-//                 self.abs_center.x - radius,
-//                 self.abs_center.y - radius,
-//             ),
-//             width: radius * 2,
-//             height: radius * 2,
-//         }
-//     }
+    pub state: bool,
+    
+    is_disabled: bool,
+    is_hidden: bool,
+    is_dirty: bool,
 
-//     fn get_redraw_components(&self) -> Vec<Rc<RwLock<Box<dyn Component>>>> {
-//         Vec::new()
-//     }
+    styling: ComponentStyling,
+}
 
-//     fn disable(&mut self) {
+impl RadioButton {
+    pub fn new(
+        abs_center: Vertex,
+        rel_center: Vertex,
+        abs_radius: u32,
+        rel_radius: u32,
+        state: bool,
+        styling: Option<ComponentStyling>,
+    ) -> Self {
+        let drawn_rect_data = RectData {
+            top_left: abs_center.sub(abs_radius, abs_radius),
+            width: abs_radius * 2,
+            height: abs_radius * 2,
+        };
+
+        Self {
+            id: None,
+            abs_center,
+            rel_center,
+            abs_radius,
+            rel_radius,
+            drawn_rect_data,
+            state,
+            is_disabled: false,
+            is_hidden: false,
+            is_dirty: true,
+            styling: styling.unwrap_or_default(),
+        }
+    }
+
+    pub fn set_state(&mut self, state: bool) {
+        self.state = state;
+        self.is_dirty = true;
+    }
+
+    pub fn set_radius(&mut self, radius: u32) {
+        self.abs_radius = radius;
+        self.is_dirty = true;
+    }
+
+    pub fn set_center(&mut self, center: Vertex) {
+        self.abs_center = center;
+        self.is_dirty = true;
+    }
+}
+
+impl Component for RadioButton {
+    fn draw(&mut self, is_focused: bool) {
+        // if !self.is_dirty {
+        //     return;
+        // }
+
+        if self.is_hidden {
+            self.is_dirty = false;
+            return;
+        }
+
+        let styling = &self.styling;
+
+        let bg_color = if self.is_disabled {
+            styling.disabled_background_color
+        } else if is_focused {
+            styling.focused_background_color
+        } else {
+            styling.background_color
+        };
+
+        let border_color = if self.is_disabled {
+            styling.disabled_border_color
+        } else if is_focused {
+            styling.focused_border_color
+        } else {
+            styling.border_color
+        };
+
+        Drawer::draw_circle(self.abs_center, self.abs_radius, border_color);
+
+        self.drawn_rect_data = self.get_abs_rect_data();
+
+        if self.state {
+            let inner_rad = (self.abs_radius as f32 * 0.5) as u32;
+            Drawer::draw_filled_circle(self.abs_center, inner_rad, border_color, None);
+        }
+
+        self.is_dirty = false;
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.is_dirty
+    }
+
+    fn mark_dirty(&mut self) {
+        self.is_dirty = true;
+    }
+
+    fn get_id(&self) -> Option<usize> {
+        self.id
+    }
+
+    fn set_id(&mut self, id: usize) {
+        self.id = Some(id);
+    }
+
+    fn get_abs_rect_data(&self) -> RectData {
+        RectData {
+            top_left: self.abs_center.sub(self.abs_radius, self.abs_radius),
+            width: self.abs_radius * 2,
+            height: self.abs_radius * 2,
+        }
+    }
+
+    fn get_drawn_rect_data(&self) -> RectData {
+        self.drawn_rect_data
+    }
+
+    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
+       // wird in button_group übernommen
+    }
+
+    fn rescale_after_move(&mut self, new_rect_data: RectData) {
+        // wird in button_group übernommen
         
-//     }
+        self.mark_dirty();
+    }
+}
 
-//     fn enable(&mut self) {
-        
-//     }
-
-//     fn get_id(&self) -> Option<usize> {
-//         self.id
-//     }
-
-//     fn hide(&mut self) {
-        
-//     }
-
-//     fn is_dirty(&self) -> bool {
-//         false
-//     }
-
-//     fn is_disabled(&self) -> bool {
-//         false
-//     }
-
-//     fn is_hidden(&self) -> bool {
-//         false
-//     }
-
-//     fn mark_dirty(&mut self) {
-        
-//     }
-
-//     fn set_id(&mut self, id: usize) {
-        
-//     }
-
-//     fn show(&mut self) {
-        
-//     }
-// }
+impl Casts for RadioButton {}

@@ -6,3 +6,5 @@ pub(crate) mod selected_window_label;
 pub(crate) mod checkbox;
 pub(crate) mod bitmap;
 pub(crate) mod slider;
+pub(crate) mod radio_button_group;
+pub(crate) mod radio_button;
