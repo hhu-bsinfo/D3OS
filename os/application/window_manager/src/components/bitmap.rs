@@ -71,7 +71,7 @@ impl Component for BitmapGraphic {
             styling.border_color
         };
 
-        let text_color = {ComponentStyling
+        let text_color = {
             styling.text_color
         };
 
