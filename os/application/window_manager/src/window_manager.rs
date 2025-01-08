@@ -4,7 +4,6 @@
 extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use alloc::format;
 use alloc::{borrow::ToOwned, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
 use chrono::TimeDelta;
@@ -14,7 +13,6 @@ use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
-use io::write::log_debug;
 use io::{read::try_read, Application};
 use nolock::queues::mpsc::jiffy;
 
