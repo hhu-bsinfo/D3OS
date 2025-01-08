@@ -6,15 +6,17 @@ use graphic::{
 };
 use spin::RwLock;
 
+use crate::config::FOCUSED_BG_COLOR;
+
 use super::component::{Casts, Component, ComponentStyling, Hideable};
 
 pub const FG_COLOR: Color = WHITE;
-pub const UNFOCUSED_BG_COLOR: Color = BLUE;
 
 pub const WORKSPACE_SELECTION_LABEL_FONT_SCALE: (u32, u32) = (2, 2);
 pub const HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW: u32 =
     DEFAULT_CHAR_HEIGHT * WORKSPACE_SELECTION_LABEL_FONT_SCALE.1 + 2;
 
+// wird nicht mehr genutzt
 pub struct SelectedWorkspaceLabel {
     pub id: Option<usize>,
     pub is_dirty: bool,
@@ -55,10 +57,11 @@ impl Component for SelectedWorkspaceLabel {
         }
         
         if self.is_hidden {
+            self.is_dirty = false;
             return;
         }
 
-        let styling = self.styling;
+        let styling = &self.styling;
 
         let bg_color = if is_focused {
             styling.focused_background_color
