@@ -27,6 +27,12 @@ pub enum DrawerCommand<'a> {
         radius: u32,
         color: Color,
     },
+    DrawFilledCircle {
+    center: Vertex,
+        radius: u32,
+        inner_color: Color,
+        border_color: Option<Color>,
+    },
     DrawFilledRectangle {
         rect_data: RectData,
         inner_color: Color,
@@ -104,6 +110,17 @@ impl Drawer {
             center,
             radius,
             color,
+        };
+
+        Self::execute(command);
+    }
+
+    pub fn draw_filled_circle(center: Vertex, radius: u32, inner_color: Color, border_color: Option<Color>) {
+        let command = DrawerCommand::DrawFilledCircle {
+            center,
+            radius,
+            inner_color,
+            border_color
         };
 
         Self::execute(command);
@@ -205,5 +222,14 @@ impl Drawer {
 
     pub fn flush() {
         Self::execute(DrawerCommand::Flush);
+    }
+
+    pub fn reset_flush_count() {
+        let flush_count: usize = syscall0(SystemCall::ResetFlushCount);
+    }
+
+    pub fn get_flush_count() -> usize {
+        let flush_count: usize = syscall0(SystemCall::GetFlushCount);
+        return flush_count;
     }
 }
