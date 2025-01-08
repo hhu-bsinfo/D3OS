@@ -2,8 +2,12 @@ use alloc::boxed::Box;
 use drawer::rect_data::RectData;
 use graphic::color::{Color, CYAN, GREY, WHITE, YELLOW};
 
+use crate::config::{DEFAULT_BACKGROUND_COLOR, DEFAULT_BORDER_COLOR, DEFAULT_DISABLED_BACKGROUND_COLOR, DEFAULT_DISABLED_BORDER_COLOR, DEFAULT_DISABLED_TEXT_COLOR, DEFAULT_FOCUSED_BACKGROUND_COLOR, DEFAULT_FOCUSED_BORDER_COLOR, DEFAULT_FOCUSED_TEXT_COLOR, DEFAULT_SELECTED_BACKGROUND_COLOR, DEFAULT_SELECTED_BORDER_COLOR, DEFAULT_SELECTED_TEXT_COLOR, DEFAULT_TEXT_COLOR};
+
 #[derive(Clone, Copy)]
 pub struct ComponentStyling {
+    pub maintain_aspect_ratio: bool,
+
     pub border_color: Color,
     pub background_color: Color,
     pub text_color: Color,
@@ -23,11 +27,31 @@ pub struct ComponentStyling {
 
 impl Default for ComponentStyling {
     fn default() -> Self {
-        Self::default()
+        ComponentStyling {
+            maintain_aspect_ratio: false,
+
+            border_color: DEFAULT_BORDER_COLOR,
+            background_color: DEFAULT_BACKGROUND_COLOR,
+            text_color: DEFAULT_TEXT_COLOR,
+
+            focused_border_color: DEFAULT_FOCUSED_BORDER_COLOR,
+            focused_background_color: DEFAULT_FOCUSED_BACKGROUND_COLOR,
+            focused_text_color: DEFAULT_FOCUSED_TEXT_COLOR,
+
+            selected_border_color: DEFAULT_SELECTED_BORDER_COLOR,
+            selected_background_color: DEFAULT_SELECTED_BACKGROUND_COLOR,
+            selected_text_color: DEFAULT_SELECTED_TEXT_COLOR,
+
+            disabled_border_color: DEFAULT_DISABLED_BORDER_COLOR,
+            disabled_background_color: DEFAULT_DISABLED_BACKGROUND_COLOR,
+            disabled_text_color: DEFAULT_DISABLED_TEXT_COLOR,
+        }
     }
 }
 
 pub struct ComponentStylingBuilder {
+    maintain_aspect_ratio: Option<bool>,
+
     border_color: Option<Color>,
     background_color: Option<Color>,
     text_color: Option<Color>,
@@ -45,32 +69,11 @@ pub struct ComponentStylingBuilder {
     disabled_text_color: Option<Color>,
 }
 
-// TODO: default values in configuration
-impl ComponentStyling {
-    pub fn default() -> ComponentStyling {
-        ComponentStyling {
-            border_color: WHITE,
-            background_color: GREY,
-            text_color: WHITE,
-
-            focused_border_color: YELLOW.bright(),
-            focused_background_color: GREY,
-            focused_text_color: WHITE,
-
-            selected_border_color: CYAN,
-            selected_background_color: GREY,
-            selected_text_color: WHITE,
-
-            disabled_border_color: GREY.bright(),
-            disabled_background_color: GREY.dim(),
-            disabled_text_color: GREY,
-        }
-    }
-}
-
 impl ComponentStylingBuilder {
     pub fn new() -> Self {
         Self {
+            maintain_aspect_ratio: None,
+
             border_color: None,
             background_color: None,
             text_color: None,
@@ -87,6 +90,11 @@ impl ComponentStylingBuilder {
             disabled_background_color: None,
             disabled_text_color: None,
         }
+    }
+
+    pub fn maintain_aspect_ratio(&mut self, maintain_aspect_ratio: bool) -> &mut Self {
+        self.maintain_aspect_ratio = Some(maintain_aspect_ratio);
+        self
     }
 
     pub fn border_color(&mut self, color: Color) -> &mut Self {
@@ -151,21 +159,23 @@ impl ComponentStylingBuilder {
 
     pub fn build(&mut self) -> ComponentStyling {
         ComponentStyling {
-            border_color: self.border_color.unwrap_or(WHITE),
-            background_color: self.background_color.unwrap_or(GREY),
-            text_color: self.text_color.unwrap_or(WHITE),
+            maintain_aspect_ratio: self.maintain_aspect_ratio.unwrap_or(false),
 
-            focused_border_color: self.focused_border_color.unwrap_or(YELLOW.bright()),
-            focused_background_color: self.focused_background_color.unwrap_or(GREY),
-            focused_text_color: self.focused_text_color.unwrap_or(WHITE),
+            border_color: self.border_color.unwrap_or(DEFAULT_BORDER_COLOR),
+            background_color: self.background_color.unwrap_or(DEFAULT_BACKGROUND_COLOR),
+            text_color: self.text_color.unwrap_or(DEFAULT_TEXT_COLOR),
 
-            selected_border_color: self.selected_border_color.unwrap_or(CYAN),
-            selected_background_color: self.selected_background_color.unwrap_or(GREY),
-            selected_text_color: self.selected_text_color.unwrap_or(WHITE),
+            focused_border_color: self.focused_border_color.unwrap_or(DEFAULT_FOCUSED_BORDER_COLOR),
+            focused_background_color: self.focused_background_color.unwrap_or(DEFAULT_FOCUSED_BACKGROUND_COLOR),
+            focused_text_color: self.focused_text_color.unwrap_or(DEFAULT_FOCUSED_TEXT_COLOR),
 
-            disabled_background_color: self.disabled_background_color.unwrap_or(GREY.dim()),
-            disabled_border_color: self.disabled_border_color.unwrap_or(GREY.dim()),
-            disabled_text_color: self.disabled_text_color.unwrap_or(GREY),
+            selected_border_color: self.selected_border_color.unwrap_or(DEFAULT_SELECTED_BORDER_COLOR),
+            selected_background_color: self.selected_background_color.unwrap_or(DEFAULT_SELECTED_BACKGROUND_COLOR),
+            selected_text_color: self.selected_text_color.unwrap_or(DEFAULT_SELECTED_TEXT_COLOR),
+
+            disabled_background_color: self.disabled_background_color.unwrap_or(DEFAULT_DISABLED_BACKGROUND_COLOR),
+            disabled_border_color: self.disabled_border_color.unwrap_or(DEFAULT_DISABLED_BORDER_COLOR),
+            disabled_text_color: self.disabled_text_color.unwrap_or(DEFAULT_DISABLED_TEXT_COLOR),
         }
     }
 }
@@ -236,22 +246,22 @@ pub trait Casts {
     fn as_disableable(&self) -> Option<&dyn Disableable> {
         None
     }
-
+    
+    fn as_disableable_mut(&mut self) -> Option<&mut dyn Disableable> {
+        None
+    }
+    
     fn as_hideable(&self) -> Option<&dyn Hideable> {
         None
     }
 
+    fn as_hideable_mut(&mut self) -> Option<&mut dyn Hideable> {
+        None
+    }
+    
     fn as_interactable(&self) -> Option<&dyn Interactable> {
         None
     }
-
-    fn as_disableable_mut(&mut self) -> Option<&mut dyn Disableable> {
-        None
-    }
- 
-    fn as_hideable_mut(&mut self) -> Option<&mut dyn Hideable> {
-        None
-     }
  
     fn as_interactable_mut(&mut self) -> Option<&mut dyn Interactable> {
         None
@@ -262,6 +272,10 @@ pub trait Casts {
     }
 
     fn as_resizable_mut(&mut self) -> Option<&mut dyn Resizable> {
+        None
+    }
+
+    fn as_clearable(&self) -> Option<&dyn Clearable> {
         None
     }
 
