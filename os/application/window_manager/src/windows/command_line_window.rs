@@ -2,8 +2,7 @@ use alloc::string::String;
 use drawer::{drawer::Drawer, rect_data::RectData};
 
 use crate::{
-    config::{BORDER_COLOR_SELECTED, DEFAULT_FG_COLOR, DEFAULT_FONT_SCALE},
-    ScreenSplitType,
+    components::component::ComponentStyling, config::{DEFAULT_FG_COLOR, DEFAULT_FONT_SCALE}, ScreenSplitType
 };
 
 /**
@@ -17,16 +16,18 @@ pub struct CommandLineWindow {
     pub command: String,
     pub split_type: ScreenSplitType,
     rect_data: RectData,
+    styling: ComponentStyling,
 }
 
 impl CommandLineWindow {
-    pub fn new(rect_data: RectData) -> Self {
+    pub fn new(rect_data: RectData, styling: Option<ComponentStyling>) -> Self {
         Self {
             is_dirty: true,
             rect_data,
             enter_app_mode: false,
             command: String::with_capacity(16),
             split_type: ScreenSplitType::Horizontal,
+            styling: styling.unwrap_or_default(),
         }
     }
 
@@ -53,8 +54,12 @@ impl CommandLineWindow {
             return;
         }
 
+        let styling = &self.styling;
+
+        let border_color = styling.selected_border_color;
+
         Drawer::partial_clear_screen(self.rect_data.sub_border());
-        Drawer::draw_rectangle(self.rect_data, BORDER_COLOR_SELECTED);
+        Drawer::draw_rectangle(self.rect_data, border_color);
         Drawer::draw_string(
             self.command.clone(),
             self.rect_data.top_left.add(2, 2),
