@@ -308,22 +308,15 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
             radius,
             color,
         } => {
-            let stepsize = PI / 128.0;
-            const TWO_PI: f32 = PI * 2.0;
-            let mut x_curr = 0.0;
-            while x_curr <= TWO_PI {
-                lfb.draw_pixel(
-                    Libm::<f32>::round(
-                        Libm::<f32>::sin(x_curr) * (radius.clone() as f32) + (center.x as f32),
-                    ) as u32,
-                    Libm::<f32>::round(
-                        Libm::<f32>::cos(x_curr) * (radius.clone() as f32) + (center.y as f32),
-                    ) as u32,
-                    color.clone(),
-                );
-
-                x_curr += stepsize;
-            }
+            lfb.draw_circle_bresenham((center.x as i32, center.y as i32), radius.clone() as i32, color.clone());
+        },
+        DrawerCommand::DrawFilledCircle {
+            center,
+            radius,
+            inner_color,
+            border_color
+        } => {
+            lfb.draw_filled_circle_bresenham((center.x as i32, center.y as i32), radius.clone() as i32, inner_color.clone());
         },
         DrawerCommand::DrawString {
             string_to_draw,
@@ -366,7 +359,7 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
                 part_of_screen.height,
                 BLACK,
             );
-        }
+        },
         DrawerCommand::DrawBitmap {
             bitmap,
             pos
