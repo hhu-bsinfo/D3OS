@@ -1,4 +1,4 @@
-use core::{fmt::Debug, usize};
+use core::{fmt::Debug, num, usize};
 
 use alloc::{boxed::Box, rc::Rc, string::String};
 use concurrent::thread;
@@ -9,7 +9,7 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{bitmap_app::BitmapApp, calculator::Calculator, clock::Clock, counter::Counter, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, input_field::InputField, label::Label, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
+    apps::{bitmap_app::BitmapApp, calculator::Calculator, clock::Clock, counter::Counter, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -69,6 +69,16 @@ pub enum Command<'a> {
         min: i32,
         max: i32,
         steps: u32,
+        styling: Option<ComponentStyling>,
+    },
+    CreateRadioButtonGroup {
+        center: Vertex,
+        radius: u32,
+        spacing: u32,
+        num_buttons: usize,
+        // options: Vec<String>,
+        selected_option: usize,
+        on_change: Option<Box<dyn Fn(usize) -> ()>>,
         styling: Option<ComponentStyling>,
     }
 }
@@ -220,7 +230,12 @@ impl Api {
                 };
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data, min_dim.unwrap());
+                let abs_rect_data = self.scale_rect_to_window(
+                    rel_rect_data,
+                    handle_data,
+                    styling.unwrap_or_default().maintain_aspect_ratio,
+                    min_dim.unwrap()
+                );
         
                 let button = Button::new(
                     abs_rect_data,
@@ -300,7 +315,12 @@ impl Api {
                 );
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data, min_dim);
+                let abs_rect_data = self.scale_rect_to_window(
+                    rel_rect_data,
+                    handle_data,
+                    styling.unwrap_or_default().maintain_aspect_ratio,
+                    min_dim
+                );
 
                 let component = InputField::new(
                     abs_rect_data,
@@ -336,7 +356,12 @@ impl Api {
                 ));
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data, min_dim.unwrap());
+                let abs_rect_data = self.scale_rect_to_window(
+                    rel_rect_data,
+                    handle_data,
+                    styling.unwrap_or_default().maintain_aspect_ratio,
+                    min_dim.unwrap()
+                );
 
                 let checkbox = Checkbox::new(
                     abs_rect_data,
@@ -367,7 +392,12 @@ impl Api {
                 self.validate_log_pos(&log_rect_data.top_left)?;
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data, (10, 10));
+                let abs_rect_data = self.scale_rect_to_window(
+                    rel_rect_data,
+                    handle_data,
+                    styling.unwrap_or_default().maintain_aspect_ratio,
+                    (10, 10)
+                );
 
                 let bitmap_graphic = BitmapGraphic::new(
                     rel_rect_data,
@@ -405,7 +435,12 @@ impl Api {
                 ));
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(rel_rect_data, handle_data, min_dim.unwrap());
+                let abs_rect_data = self.scale_rect_to_window(
+                    rel_rect_data,
+                    handle_data,
+                    styling.unwrap_or_default().maintain_aspect_ratio,
+                    min_dim.unwrap()
+                );
 
                 let slider = Slider::new(
                     abs_rect_data,
@@ -428,6 +463,46 @@ impl Api {
 
                 self.add_component(dispatch_data);
                 Rc::clone(&component)
+            },
+            Command::CreateRadioButtonGroup { 
+                center,
+                radius,
+                spacing,
+                num_buttons,
+                selected_option,
+                on_change,
+                styling
+            } => {
+                self.validate_log_pos(&center)?;
+                let rel_pos = self.scale_vertex_to_rel(&center);
+                let rel_radius = self.scale_radius_to_rel(radius);
+
+                let abs_radius = self.scale_radius_to_window(rel_radius, 7, handle_data);
+
+                let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
+
+                let radio_buttons = RadioButtonGroup::new(
+                    num_buttons,
+                    scaled_pos,
+                    rel_pos,
+                    abs_radius,
+                    rel_radius,
+                    spacing,
+                    Some(selected_option),
+                    on_change,
+                    styling,
+                );
+
+                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(radio_buttons)));
+
+                let dispatch_data = NewCompData {
+                    window_data,
+                    component: Rc::clone(&component),
+                };
+
+                self.add_component(dispatch_data);
+
+                component
             }
         };
 
@@ -456,6 +531,7 @@ impl Api {
             "slider" => Some(SliderApp::run),
             "bitmap" => Some(BitmapApp::run),
             "calculator" => Some(Calculator::run),
+            "radio" => Some(RadioButtonApp::run),
             _ => None,
         }
     }
@@ -484,6 +560,7 @@ impl Api {
         HandleData {
             abs_pos, ratios, ..
         }: &HandleData,
+        maintain_aspect_ratio: bool,
         min_dim: (u32, u32),
     ) -> RectData {
         let aspect_ratio = f64::from(width) / f64::from(height);
@@ -492,14 +569,16 @@ impl Api {
         let mut scaled_width = ((f64::from(width) * ratios.0) as u32).max(min_dim.0);
         let mut scaled_height = ((f64::from(height) * ratios.1) as u32).max(min_dim.1);
 
-        // Erzwinge das Aspect Ratio
-        let calculated_height = (f64::from(scaled_width) / aspect_ratio) as u32;
-        let calculated_width = (f64::from(scaled_height) * aspect_ratio) as u32;
-
-        if calculated_height <= scaled_height {
-            scaled_height = calculated_height;
-        } else {
-            scaled_width = calculated_width;
+        // // Erzwinge das Aspect Ratio
+        if maintain_aspect_ratio {
+            let calculated_height = (f64::from(scaled_width) / aspect_ratio) as u32;
+            let calculated_width = (f64::from(scaled_height) * aspect_ratio) as u32;
+            
+            if calculated_height <= scaled_height {
+                scaled_height = calculated_height;
+            } else {
+                scaled_width = calculated_width;
+            }
         }
 
         RectData {
@@ -557,6 +636,23 @@ impl Api {
             (f64::from(log_pos.x) * self.rel_to_log_ratios.0) as u32,
             (f64::from(log_pos.y) * self.rel_to_log_ratios.1) as u32,
         );
+    }
+
+    fn scale_radius_to_rel(&self, radius: u32) -> u32 {
+        return (f64::from(radius) * self.rel_to_log_ratios.0.min(self.rel_to_log_ratios.1)) as u32;
+    }
+
+    fn scale_radius_to_window(
+        &self,
+        radius: u32,
+        min_radius: u32,
+        HandleData {
+            abs_pos, ratios, ..
+        }: &HandleData
+    ) -> u32 {    
+        let scaled_radius: u32 = (f64::from(radius) * ratios.0.min(ratios.1)) as u32;
+    
+        scaled_radius.max(min_radius)
     }
 
     fn validate_log_pos(&self, log_pos: &Vertex) -> Result<(), &str> {
