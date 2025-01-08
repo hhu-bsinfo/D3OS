@@ -107,14 +107,17 @@ impl WindowManager {
         });
 
         let command_line_window_height = DEFAULT_CHAR_HEIGHT + COMMAND_LINE_WINDOW_Y_PADDING * 2;
-        let command_line_window = CommandLineWindow::new(RectData {
-            top_left: Vertex::new(
-                DIST_TO_SCREEN_EDGE,
-                screen.1 - DIST_TO_SCREEN_EDGE - command_line_window_height,
-            ),
-            width: screen.0 - DIST_TO_SCREEN_EDGE * 2,
-            height: command_line_window_height,
-        });
+        let command_line_window = CommandLineWindow::new(
+            RectData {
+                top_left: Vertex::new(
+                    DIST_TO_SCREEN_EDGE,
+                    screen.1 - DIST_TO_SCREEN_EDGE - command_line_window_height,
+                ),
+                width: screen.0 - DIST_TO_SCREEN_EDGE * 2,
+                height: command_line_window_height,
+            },
+            None,
+        );
 
         let time = systime();
         
@@ -145,10 +148,7 @@ impl WindowManager {
 
     fn run(&mut self) {
         loop {
-            let now = systime().num_milliseconds();
             self.draw();
-            let elapsed = systime().num_milliseconds() - now;
-            log_debug(&format!("Elapsed: {}", elapsed));
             
             self.flush();
             
@@ -460,12 +460,18 @@ impl WindowManager {
             .draw(self.current_workspace, is_dirty);
 
         let curr_ws = self.get_current_workspace_mut();
+        
+        
         // Redraw workspace windows
-        for window in curr_ws.windows.values_mut() {
+        for window in curr_ws.windows.values_mut().filter(|w| w.id != focused_window_id) {
             window.draw(focused_window_id, is_dirty);
         }
 
-        // self.flush();
+        // zeichne fokussiertes als letztes
+        if let Some(window) = curr_ws.windows.get_mut(&focused_window_id) {
+            window.draw(focused_window_id, is_dirty);
+        }
+
         self.is_dirty = false;
     }
 
