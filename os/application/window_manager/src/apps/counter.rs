@@ -1,4 +1,4 @@
-use crate::{alloc::string::ToString, signal::{ComponentRef, Signal}};
+use crate::{alloc::string::ToString, components::{checkbox, component::{ComponentStylingBuilder, Hideable}}, signal::{ComponentRef, Signal}};
 use alloc::{boxed::Box, rc::Rc, string::String};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use spin::RwLock;
@@ -29,8 +29,8 @@ impl Runnable for Counter {
             Command::CreateCheckbox {
                 log_rect_data: RectData {
                     top_left: Vertex::new(200, 50),
-                    width: 50,
-                    height: 50,
+                    width: 25,
+                    height: 25,
                 },
                 state: true,
                 on_change: Some(Box::new(move |checked: bool| {
@@ -45,15 +45,15 @@ impl Runnable for Counter {
                     }
 
                     if let Some(reset_button) = reset_button_checkbox.read().as_ref() {
-                        if let Some(disableable) = reset_button.write().as_disableable_mut() {
+                        if let Some(hideable) = reset_button.write().as_hideable_mut() {
                             if checked {
-                                disableable.enable();
+                                hideable.show();
                             } else {
-                                disableable.disable();
+                                hideable.hide();
                             }                        }
                     }
                 })),
-                styling: None,
+                styling: Some(ComponentStylingBuilder::new().maintain_aspect_ratio(true).build()),
             },
         );
 
