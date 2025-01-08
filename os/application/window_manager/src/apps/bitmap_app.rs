@@ -2,7 +2,7 @@ use alloc::vec;
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::{bitmap::{Bitmap, ScalingMode}, color::Color};
 
-use crate::{api::Command, WindowManager};
+use crate::{ api::Command, components::component::{ComponentStylingBuilder}, WindowManager};
 
 use super::runnable::Runnable;
 
@@ -122,7 +122,10 @@ impl Runnable for BitmapApp {
                 },
                 bitmap: &transparent_bitmap,
                 scaling_mode: ScalingMode::NearestNeighbor,
-                styling: None,
+                styling: Some(ComponentStylingBuilder::new()
+                    .maintain_aspect_ratio(true)
+                    .build()
+                ),
             },
         );
 
@@ -131,12 +134,15 @@ impl Runnable for BitmapApp {
             Command::CreateBitmapGraphic {
                 log_rect_data: RectData {
                     top_left: Vertex::new(150, 150),
-                    width: 50,
-                    height: 25,
+                    width: 200,
+                    height: 100,
                 },
                 bitmap: &gradient_bitmap,
                 scaling_mode: ScalingMode::Bilinear,
-                styling: None,
+                styling: Some(ComponentStylingBuilder::new()
+                    .maintain_aspect_ratio(true)
+                    .build()
+                ),
             },
         );
     }
