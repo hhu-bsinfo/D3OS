@@ -13,11 +13,11 @@ use crate::{
     components::{
         component::{Component, ComponentStylingBuilder},
         selected_window_label::{
-            SelectedWorkspaceLabel, UNFOCUSED_BG_COLOR,
+            SelectedWorkspaceLabel,
             WORKSPACE_SELECTION_LABEL_FONT_SCALE,
         },
     },
-    config::{DEFAULT_FG_COLOR, DIST_TO_SCREEN_EDGE, FOCUSED_BG_COLOR},
+    config::{DEFAULT_FG_COLOR, DIST_TO_SCREEN_EDGE, FOCUSED_BG_COLOR, UNFOCUSED_BG_COLOR},
 };
 
 pub struct WorkspaceSelectionLabelsWindow {
