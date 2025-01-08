@@ -6,6 +6,8 @@ use crate::{config::DEFAULT_FONT_SCALE, utils::scale_rect_to_window};
 
 use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable};
 
+const HANDLE_WIDTH: u32 = 10;
+
 pub struct Slider {
     id: Option<usize>,
     value: i32,
@@ -69,10 +71,11 @@ impl Component for Slider {
         }
         
         if self.is_hidden {
+            self.is_dirty = false;
             return;
         }
 
-        let styling = self.styling;
+        let styling = &self.styling;
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -102,7 +105,7 @@ impl Component for Slider {
                 x: self.abs_rect_data.top_left.x + slider_position as u32,
                 y: self.abs_rect_data.top_left.y,
             },
-            width: 10,
+            width: HANDLE_WIDTH,
             height: self.abs_rect_data.height,
         };
         
@@ -111,15 +114,16 @@ impl Component for Slider {
         self.is_dirty = false;
     }
 
-    // TODO: min dimensions
     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
+        let styling: &ComponentStyling = &self.styling;
+
         self.abs_rect_data.top_left = self
             .abs_rect_data
             .top_left
             .move_to_new_rect(&old_window, &new_window);
 
         let min_dim = (
-            50,
+            HANDLE_WIDTH * self.steps,
             DEFAULT_CHAR_HEIGHT
         );
 
@@ -129,22 +133,25 @@ impl Component for Slider {
             self.rel_rect_data,
             new_window,
             min_dim,
-            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            (self.orig_rect_data.width, self.orig_rect_data.height),
+            styling.maintain_aspect_ratio,
             aspect_ratio,
         );
 
         self.mark_dirty();
     }
 
-    // TODO: min dimensions
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
+        let styling: &ComponentStyling = &self.styling;
+
         let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
 
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_rect_data,
-            (10, DEFAULT_CHAR_HEIGHT * DEFAULT_FONT_SCALE.1),
-            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            (HANDLE_WIDTH * self.steps, DEFAULT_CHAR_HEIGHT),
+            (self.orig_rect_data.width, self.orig_rect_data.height),
+            styling.maintain_aspect_ratio,
             aspect_ratio,
         );
 

@@ -97,10 +97,11 @@ impl Component for InputField {
         }
 
         if self.is_hidden {
+            self.is_dirty = false;
             return;
         }
 
-        let styling = self.styling;
+        let styling = &self.styling;
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -111,7 +112,7 @@ impl Component for InputField {
         };
 
         let border_color = if self.is_selected {
-            INPUT_BORDER_COLOR_SELECTED
+            styling.selected_border_color
         } else if self.is_disabled {
             styling.disabled_border_color
         } else if is_focused {
@@ -145,6 +146,8 @@ impl Component for InputField {
     }
 
     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
+        let styling: &ComponentStyling = &self.styling;
+
         self.abs_rect_data.top_left = self
             .abs_rect_data
             .top_left
@@ -163,7 +166,8 @@ impl Component for InputField {
             self.rel_rect_data,
             new_window,
             (min_dim.0, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
-            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            (self.orig_rect_data.width, self.orig_rect_data.height),
+            styling.maintain_aspect_ratio,
             aspect_ratio,
         );
 
@@ -171,6 +175,8 @@ impl Component for InputField {
     }
 
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
+        let styling: &ComponentStyling = &self.styling;
+
         let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
 
         self.font_scale = scale_font(
@@ -186,7 +192,8 @@ impl Component for InputField {
                 self.max_chars as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
                 DEFAULT_CHAR_HEIGHT * self.font_scale.1,
             ),
-            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            (self.orig_rect_data.width, self.orig_rect_data.height),
+            styling.maintain_aspect_ratio,
             aspect_ratio
         );
 

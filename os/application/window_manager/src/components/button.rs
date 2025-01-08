@@ -90,10 +90,11 @@ impl Component for Button {
         }
 
         if self.is_hidden {
+            self.is_dirty = false;
             return;
         }
 
-        let styling = self.styling;
+        let styling = &self.styling;
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -138,6 +139,7 @@ impl Component for Button {
     }
 
     fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
+        let styling = &self.styling;
         
         let min_dim = match &self.label {
             Some(label) => Some((
@@ -153,7 +155,8 @@ impl Component for Button {
             self.rel_rect_data,
             new_window,
             (min_dim.unwrap().0, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
-            (self.orig_rect_data.width, self.orig_rect_data.height), 
+            (self.orig_rect_data.width, self.orig_rect_data.height),
+            styling.maintain_aspect_ratio,
             aspect_ratio,
         );
         
@@ -162,6 +165,8 @@ impl Component for Button {
     }
 
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
+        let styling = &self.styling;
+
         let min_width = match &self.label {
             Some(label) => label.get().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
             None => 0,
@@ -174,6 +179,7 @@ impl Component for Button {
             new_rect_data,
             (min_width, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
             (self.orig_rect_data.width, self.orig_rect_data.height),
+            styling.maintain_aspect_ratio,
             aspect_ratio,
         );
 

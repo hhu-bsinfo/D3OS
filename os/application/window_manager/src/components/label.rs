@@ -70,10 +70,11 @@ impl Component for Label {
         }
 
         if self.is_hidden {
+            self.is_dirty = false;
             return;
         }
 
-        let styling = self.styling;
+        let styling = &self.styling;
 
         let text_color = if is_focused {
             styling.focused_border_color
