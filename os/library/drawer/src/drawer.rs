@@ -223,13 +223,4 @@ impl Drawer {
     pub fn flush() {
         Self::execute(DrawerCommand::Flush);
     }
-
-    pub fn reset_flush_count() {
-        let flush_count: usize = syscall0(SystemCall::ResetFlushCount);
-    }
-
-    pub fn get_flush_count() -> usize {
-        let flush_count: usize = syscall0(SystemCall::GetFlushCount);
-        return flush_count;
-    }
 }
