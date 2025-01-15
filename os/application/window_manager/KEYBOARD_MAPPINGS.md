@@ -15,4 +15,7 @@
 |        a        | Focus prev window                                    |
 |        d        | Focus next window                                    |
 |        m        | Close application (merge with buddy-window together) |
+|        +        | Increment Slider                                     |
+|        -        | Decrement Slider                                     |
+|        ESC      | Leave enter-app-mode                                 |
 
