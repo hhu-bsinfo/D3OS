@@ -1,7 +1,7 @@
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use syscall::{syscall0, syscall1, SystemCall};
+use syscall::{syscall, SystemCall};
 
 use graphic::{bitmap::Bitmap, color::{Color, INVISIBLE}};
 
@@ -67,7 +67,7 @@ pub struct Drawer;
 impl Drawer {
     fn execute(command: DrawerCommand) {
         let command_addr = core::ptr::addr_of!(command) as usize;
-        syscall1(SystemCall::WriteGraphic, command_addr);
+        syscall(SystemCall::WriteGraphic, &[command_addr]).expect("Failed to execute drawer command");
     }
 
     /**
@@ -87,7 +87,8 @@ impl Drawer {
     }
 
     pub fn get_graphic_resolution() -> (u32, u32) {
-        let raw_graphic_resolution: usize = syscall0(SystemCall::GetGraphicResolution);
+        let raw_graphic_resolution: usize = syscall(SystemCall::GetGraphicResolution, &[]).expect("Failed to get graphic resolution");
+
         return (
             (raw_graphic_resolution >> 32) as u32,
             raw_graphic_resolution as u32,
@@ -142,7 +143,6 @@ impl Drawer {
 
     pub fn draw_filled_triangle(vertices: [Vertex; 3], color: Color) {
         let command = DrawerCommand::DrawFilledTriangle { vertices, color };
-
         Self::execute(command);
     }
 

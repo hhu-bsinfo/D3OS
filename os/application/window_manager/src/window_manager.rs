@@ -4,21 +4,24 @@
 extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
+use alloc::format;
 use alloc::{borrow::ToOwned, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
-use chrono::TimeDelta;
+use chrono::{format, TimeDelta};
 use components::selected_window_label::HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW;
-use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE, FLUSHING_DELAY_MS};
+use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE, ESCAPE_UNICODE, FLUSHING_DELAY_MS};
 use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
-use io::{read::try_read, Application};
 use nolock::queues::mpsc::jiffy;
 
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
+use terminal::read::{read, try_read};
+use terminal::write::log_debug;
+use terminal::Application;
 use time::systime;
 use windows::workspace_selection_labels_window::WorkspaceSelectionLabelsWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
@@ -150,6 +153,8 @@ impl WindowManager {
             
             self.flush();
             
+            // log_debug(&format!("loop"));
+
             self.process_keyboard_input();
             
             self.add_new_components_from_api();
@@ -174,6 +179,8 @@ impl WindowManager {
 
     fn process_keyboard_input(&mut self) {
         let read_option = try_read(Application::WindowManager);
+
+        log_debug(&format!("read_option: {:?}", read_option));
 
         if let Some(keyboard_press) = read_option {
             // `enter_app_mode` overrides all other keyboard-interactions
@@ -268,6 +275,10 @@ impl WindowManager {
             BACKSPACE_UNICODE => {
                 self.command_line_window.is_dirty = true;
                 self.command_line_window.pop_char();
+            }
+            ESCAPE_UNICODE => {
+                self.command_line_window.deactivate_enter_app_mode();
+                self.is_dirty = true;
             }
             c => {
                 self.command_line_window.is_dirty = true;

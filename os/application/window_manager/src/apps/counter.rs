@@ -11,7 +11,7 @@ pub struct Counter;
 
 impl Runnable for Counter {
     fn run() {
-        let handle = concurrent::thread::current().id();
+        let handle = concurrent::thread::current().expect("Failed to get thread").id();
         let api = WindowManager::get_api();
 
         let label = Signal::new(String::from("0"));

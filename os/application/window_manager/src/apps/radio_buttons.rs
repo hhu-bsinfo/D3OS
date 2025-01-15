@@ -11,7 +11,7 @@ pub struct RadioButtonApp;
 
 impl Runnable for RadioButtonApp {
     fn run() {
-        let handle = concurrent::thread::current().id();
+        let handle = concurrent::thread::current().expect("Failed to get thread").id();
         let api = WindowManager::get_api();
         let option = Signal::new(String::from("1"));
 

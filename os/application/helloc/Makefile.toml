@@ -1,0 +1,67 @@
+[env.development]
+CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_application.json"
+BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/d3os_application/debug"
+CARGO_BUILD_OPTION = "--lib"
+
+[env.production]
+CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_application.json"
+BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/d3os_application/release"
+CARGO_BUILD_OPTION = "--release"
+
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
+SOURCE_DIRECTORY = "${CARGO_MAKE_WORKING_DIRECTORY}/src"
+LIBRARY_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library"
+LINKER_FILE = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/application/link.ld"
+RUST_OBJECT = "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}.a"
+C_OBJECT = "${BUILD_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}.o"
+APPLICATION = "${INITRD_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}"
+CC = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gcc", mapping = { "macos" = "x86_64-elf-gcc" } }
+
+# Build tasks
+
+[tasks.default]
+alias = "link"
+
+[tasks.compile]
+command = "cargo"
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+condition = { files_modified = { input = [
+    "${CARGO_MAKE_WORKING_DIRECTORY}/Cargo.toml", "${SOURCE_DIRECTORY}/**/*.rs",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/Cargo.toml", "${SOURCE_DIRECTORY}/**/*.c",
+    "${LIBRARY_DIRECTORY}/libc/Cargo.toml", "${LIBRARY_DIRECTORY}/libc/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/libc/Cargo.toml", "${LIBRARY_DIRECTORY}/libc/src/**/*.h",
+    "${LIBRARY_DIRECTORY}/runtime/Cargo.toml", "${LIBRARY_DIRECTORY}/runtime/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/terminal/Cargo.toml", "${LIBRARY_DIRECTORY}/terminal/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/concurrent/Cargo.toml", "${LIBRARY_DIRECTORY}/concurrent/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/syscall/Cargo.toml", "${LIBRARY_DIRECTORY}/syscall/src/**/*.rs" ], output = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*" ] } }
+
+[tasks.compile-c]
+command = "${CC}"
+args = [
+    # Compiler flags
+    "-c", "-nostdlib", "-ffreestanding", "-fno-stack-protector", "-fpic", "-Wall", "-Wextra", "-Werror",
+
+    # Output file
+    "-o", "${BUILD_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}.o",
+
+    # Source files
+    "${SOURCE_DIRECTORY}/hello.c" ]
+
+[tasks.link]
+command = "${LINKER}"
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${APPLICATION}", "${C_OBJECT}", "${RUST_OBJECT}" ]
+dependencies = [ "compile", "compile-c" ]
+condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd/${CARGO_MAKE_PROJECT_NAME}" ] } }
+
+# Cleanup tasks
+
+[tasks.clean]
+command = "cargo"
+args = [ "clean" ]
+dependencies = [ "remove-application" ]
+
+[tasks.remove-application]
+command = "rm"
+args = [ "-f", "${APPLICATION}" ]

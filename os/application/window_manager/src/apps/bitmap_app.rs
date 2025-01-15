@@ -10,7 +10,7 @@ pub struct BitmapApp;
 
 impl Runnable for BitmapApp {
     fn run() {
-        let handle = concurrent::thread::current().id();
+        let handle = concurrent::thread::current().expect("Failed to get thread").id();
         let api = WindowManager::get_api();
 
         let bitmap_red = Bitmap {

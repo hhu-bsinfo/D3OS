@@ -468,32 +468,35 @@ fn draw_pixel_stub(_addr: *mut u8, _pitch: u32, _x: u32, _y: u32, _color: Color)
     panic!("Using empty LFB!");
 }
 
+
 unsafe fn draw_pixel_15_bit(addr: *mut u8, pitch: u32, x: u32, y: u32, color: Color) {
     let index = (x + y * (pitch / 2)) as isize;
     let rgb = color.rgb_15();
 
-    (addr as *mut u16).offset(index).write(rgb);
+    unsafe { (addr as *mut u16).offset(index).write(rgb); }
 }
 
 unsafe fn draw_pixel_16_bit(addr: *mut u8, pitch: u32, x: u32, y: u32, color: Color) {
     let index = (x + y * (pitch / 2)) as isize;
     let rgb = color.rgb_16();
 
-    (addr as *mut u16).offset(index).write(rgb);
+    unsafe { (addr as *mut u16).offset(index).write(rgb); }
 }
 
 unsafe fn draw_pixel_24_bit(addr: *mut u8, pitch: u32, x: u32, y: u32, color: Color) {
     let index = (x * 3 + y * pitch) as isize;
     let rgb = color.rgb_24();
 
-    addr.offset(index).write((rgb & 0xff) as u8);
-    addr.offset(index + 1).write(((rgb >> 8) & 0xff) as u8);
-    addr.offset(index + 2).write(((rgb >> 16) & 0xff) as u8);
+    unsafe {
+        addr.offset(index).write((rgb & 0xff) as u8);
+        addr.offset(index + 1).write(((rgb >> 8) & 0xff) as u8);
+        addr.offset(index + 2).write(((rgb >> 16) & 0xff) as u8);
+    }
 }
 
 unsafe fn draw_pixel_32_bit(addr: *mut u8, pitch: u32, x: u32, y: u32, color: Color) {
     let index = (x + y * (pitch / 4)) as isize;
     let rgb = color.rgb_32();
 
-    (addr as *mut u32).offset(index).write(rgb);
+    unsafe { (addr as *mut u32).offset(index).write(rgb); }
 }

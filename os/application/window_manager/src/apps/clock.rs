@@ -10,7 +10,7 @@ pub struct Clock;
 
 impl Runnable for Clock {
     fn run() {
-        let handle = concurrent::thread::current().id();
+        let handle = concurrent::thread::current().expect("Failed to get thread").id();
         let api = WindowManager::get_api();
         let date_val = date().format("%Y-%m-%d %H:%M:%S").to_string();
         

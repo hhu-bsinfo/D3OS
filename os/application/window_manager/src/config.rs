@@ -2,6 +2,7 @@ use graphic::color::{Color, CYAN, GREY, HHU_BLUE, WHITE, YELLOW};
 
 pub const INTERACT_BUTTON: char = 'f';
 pub const BACKSPACE_UNICODE: char = '\u{0008}';
+pub const ESCAPE_UNICODE: char = '\u{001b}';
 
 pub const DEFAULT_FG_COLOR: Color = WHITE;
 pub const FOCUSED_FG_COLOR: Color = YELLOW;

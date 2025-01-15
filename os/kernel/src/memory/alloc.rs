@@ -12,6 +12,7 @@ pub struct KernelAllocator {
     heap: LockedHeap,
 }
 
+#[derive(Default)]
 pub struct StackAllocator {}
 
 #[derive(Default, Clone)]
@@ -23,11 +24,12 @@ impl KernelAllocator {
     }
 
     pub unsafe fn init(&self, frames: &PhysFrameRange) {
-        self.heap.lock().init(frames.start.start_address().as_u64() as *mut u8, (frames.end - frames.start) as usize * PAGE_SIZE);
+        let mut heap = self.heap.lock();
+        unsafe { heap.init(frames.start.start_address().as_u64() as *mut u8, (frames.end - frames.start) as usize * PAGE_SIZE); }
     }
 
     pub fn is_initialized(&self) -> bool {
-        return self.heap.lock().size() > 0;
+        self.heap.lock().size() > 0
     }
 
     pub fn is_locked(&self) -> bool {
@@ -49,27 +51,23 @@ unsafe impl Allocator for KernelAllocator {
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         if layout.size() != 0 {
-            self.heap.lock().deallocate(ptr, layout);
+            let mut heap = self.heap.lock();
+            unsafe { heap.deallocate(ptr, layout); }
         }
     }
 }
 
 unsafe impl GlobalAlloc for KernelAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        return self.heap.lock()
+        self.heap.lock()
             .allocate_first_fit(layout)
             .ok()
-            .map_or(core::ptr::null_mut(), |allocation| allocation.as_ptr());
+            .map_or(core::ptr::null_mut(), |allocation| allocation.as_ptr())
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.heap.lock().deallocate(NonNull::new_unchecked(ptr), layout);
-    }
-}
-
-impl StackAllocator {
-    pub const fn new() -> Self {
-        Self {}
+        let mut heap = self.heap.lock();
+        unsafe { heap.deallocate(NonNull::new_unchecked(ptr), layout); }
     }
 }
 
@@ -82,7 +80,7 @@ unsafe impl Allocator for StackAllocator {
         let frame_count = if layout.size() % PAGE_SIZE == 0 { layout.size() / PAGE_SIZE } else { (layout.size() / PAGE_SIZE) + 1 };
         let frames = physical::alloc(frame_count);
 
-        return Ok(NonNull::slice_from_raw_parts(NonNull::new(frames.start.start_address().as_u64() as *mut u8).unwrap(), (frames.end - frames.start) as usize * PAGE_SIZE))
+        Ok(NonNull::slice_from_raw_parts(NonNull::new(frames.start.start_address().as_u64() as *mut u8).unwrap(), (frames.end - frames.start) as usize * PAGE_SIZE))
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
@@ -92,14 +90,14 @@ unsafe impl Allocator for StackAllocator {
             assert_eq!(layout.size() % PAGE_SIZE, 0);
 
             let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64)).unwrap();
-            physical::free(PhysFrameRange { start, end: start + (layout.size() / PAGE_SIZE) as u64 });
+            unsafe { physical::free(PhysFrameRange { start, end: start + (layout.size() / PAGE_SIZE) as u64 }); }
         }
     }
 }
 
 impl acpi::AcpiHandler for AcpiHandler {
     unsafe fn map_physical_region<T>(&self, physical_address: usize, size: usize) -> PhysicalMapping<Self, T> {
-        PhysicalMapping::new(physical_address, NonNull::new(physical_address as *mut T).unwrap(), size, size, AcpiHandler)
+        unsafe { PhysicalMapping::new(physical_address, NonNull::new(physical_address as *mut T).unwrap(), size, size, AcpiHandler) }
     }
 
     fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {}

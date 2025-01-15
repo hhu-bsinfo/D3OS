@@ -1,4 +1,5 @@
 use alloc::format;
+use alloc::sync::Arc;
 use crate::device::terminal::Terminal;
 use graphic::ansi::COLOR_TABLE_256;
 use graphic::buffered_lfb::BufferedLFB;
@@ -12,8 +13,10 @@ use core::cell::RefCell;
 use core::mem::size_of;
 use core::ptr;
 use chrono::TimeDelta;
+use pc_keyboard::layouts::{AnyLayout, De105Key};
+use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::Mutex;
-use crate::{built_info, efi_system_table, process_manager, ps2_devices, scheduler, speaker, timer};
+use crate::{built_info, efi_services_available, keyboard, process_manager, scheduler, speaker, timer};
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) { cursor } else { '_' };
 const TAB_SPACES: u16 = 8;
@@ -47,10 +50,11 @@ pub struct LFBTerminal {
     cursor: Mutex<CursorState>,
     color: Mutex<ColorState>,
     parser: Mutex<RefCell<Parser>>,
+    decoder: Mutex<Keyboard<AnyLayout, ScancodeSet1>>,
 }
 
 pub struct CursorThread {
-    terminal: &'static LFBTerminal,
+    terminal: Arc<dyn Terminal>,
     visible: bool,
 }
 
@@ -93,7 +97,7 @@ impl DisplayState {
 }
 
 impl CursorThread {
-    pub const fn new(terminal: &'static LFBTerminal) -> Self {
+    pub fn new(terminal: Arc<dyn Terminal>) -> Self {
         Self {
             terminal,
             visible: true,
@@ -101,14 +105,17 @@ impl CursorThread {
     }
 
     pub fn run(&mut self) {
-        // let mut sleep_counter = 0usize;
+        let mut sleep_counter = 0usize;
 
         loop {
             scheduler().sleep(CURSOR_UPDATE_INTERVAL);
-            // sleep_counter += CURSOR_UPDATE_INTERVAL;
+            sleep_counter += CURSOR_UPDATE_INTERVAL;
 
-            let mut display = self.terminal.display.lock();
-            let cursor = self.terminal.cursor.lock();
+            // CAUTION: This only works because LFBTerminal is the only implementation of Terminal
+            let terminal = unsafe { (ptr::from_ref(self.terminal.as_ref()) as *const LFBTerminal).as_ref().unwrap() };
+
+            let mut display = terminal.display.lock();
+            let cursor = terminal.cursor.lock();
             let character = display.char_buffer[(cursor.pos.1 * display.size.0 + cursor.pos.0) as usize];
 
             let draw_character = match self.visible {
@@ -122,11 +129,10 @@ impl CursorThread {
             display.lfb.direct_lfb().draw_char(cursor.pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH, cursor.pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT, character.fg_color, character.bg_color, draw_character);
             self.visible = !self.visible;
 
-            // Disabled to have better view of the new and cool window-manager ;) 
-            //if sleep_counter >= 1000 {
-            //    LFBTerminal::draw_status_bar(&mut display);
-            //    sleep_counter = 0;
-            //}
+            if sleep_counter >= 1000 {
+                LFBTerminal::draw_status_bar(&mut display);
+                sleep_counter = 0;
+            }
         }
     }
 }
@@ -159,10 +165,34 @@ impl OutputStream for LFBTerminal {
 
 impl InputStream for LFBTerminal {
     fn read_byte(&self) -> i16 {
-        let read_byte = ps2_devices().keyboard().read_byte();
+        if let Some(keyboard) = keyboard() {
+            let read_byte;
 
-        self.write_byte(read_byte as u8);
-        return read_byte;
+            loop {
+                let mut decoder = self.decoder.lock();
+                let scancode = keyboard.read_byte();
+                if scancode == -1 {
+                    panic!("Keyboard stream closed!");
+                }
+
+                if let Ok(Some(event)) = decoder.add_byte(scancode as u8) {
+                    if let Some(key) = decoder.process_keyevent(event) {
+                        match key {
+                            DecodedKey::Unicode(c) => {
+                                read_byte = c;
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
+            self.write_byte(read_byte as u8);
+            return read_byte as i16;
+        }
+        
+        -1
     }
 }
 
@@ -184,6 +214,7 @@ impl LFBTerminal {
             cursor: Mutex::new(CursorState::new()),
             color: Mutex::new(ColorState::new()),
             parser: Mutex::new(RefCell::new(Parser::<Utf8Parser>::new())),
+            decoder: Mutex::new(Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore))
         }
     }
 
@@ -253,25 +284,21 @@ impl LFBTerminal {
         }
 
         // Collect system information
-        let uptime = TimeDelta::try_milliseconds(timer().read().systime_ms() as i64).expect("Failed to create TimeDelta struct from systime");
+        let uptime = TimeDelta::try_milliseconds(timer().systime_ms() as i64).expect("Failed to create TimeDelta struct from systime");
         let active_process_ids = process_manager().read().active_process_ids();
         let active_thread_ids = scheduler().active_thread_ids();
 
         // Draw info string
-        let info_string = format!("D3OS v{} ({}) | Uptime: {:0>2}:{:0>2}:{:0>2} | Processes: {} | Threads: {}",
-                                  built_info::PKG_VERSION, built_info::PROFILE,
-                                  uptime.num_hours(), uptime.num_minutes() % 60, uptime.num_seconds() - (uptime.num_minutes() * 60),
-                                  active_process_ids.len(),
-                                  active_thread_ids.len());
+        let info_string = format!("D³OS v{} ({}) | Uptime: {:0>2}:{:0>2}:{:0>2} | Processes: {} | Threads: {}",
+              built_info::PKG_VERSION, built_info::PROFILE,
+              uptime.num_hours(), uptime.num_minutes() % 60, uptime.num_seconds() - (uptime.num_minutes() * 60),
+              active_process_ids.len(), active_thread_ids.len());
 
         display.lfb.lfb().draw_string(0, 0, color::HHU_BLUE, color::INVISIBLE, info_string.as_str());
 
         // Draw date
-        if let Some(efi_system_table) = efi_system_table() {
-            let system_table = efi_system_table.read();
-            let runtime_services = unsafe { system_table.runtime_services() };
-
-            if let Ok(date) = runtime_services.get_time() {
+        if efi_services_available() {
+            if let Ok(date) = uefi::runtime::get_time() {
                 let date_str = format!("{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}", date.year(), date.month(), date.day(), date.hour(), date.minute(), date.second());
                 display.lfb.lfb().draw_string((display.size.0 as u32 - date_str.len() as u32) * lfb::DEFAULT_CHAR_WIDTH, 0, color::HHU_BLUE, color::INVISIBLE, &date_str);
             }
@@ -316,7 +343,7 @@ impl LFBTerminal {
     }
 
     fn handle_bell() {
-        let mut speaker = speaker().lock();
+        let speaker = speaker();
         speaker.play(440, 250);
         speaker.play(880, 250);
     }

@@ -1,5 +1,5 @@
 [package]
-edition = "2021"
+edition = "2024"
 name = "shell"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
@@ -11,5 +11,6 @@ path = "src/shell.rs"
 [dependencies]
 # Local dependencies
 runtime = { path = "../../library/runtime" }
-io = { path = "../../library/io" }
+terminal = { path = "../../library/terminal" }
 concurrent = { path = "../../library/concurrent" }
+naming = { path = "../../library/naming" }

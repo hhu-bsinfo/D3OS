@@ -1,7 +1,17 @@
-use syscall::{syscall0, syscall1, syscall2, SystemCall};
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: thread                                                          ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: Syscalls for thread functions.                                  ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, Michael Schoettner, 31.8.2024, HHU              ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
+use alloc::vec::Vec;
+use core::ptr;
+use syscall::{syscall, SystemCall};
 
 pub struct Thread {
-    id: usize
+    id: usize,
 }
 
 impl Thread {
@@ -14,7 +24,7 @@ impl Thread {
     }
 
     pub fn join(&self) {
-        syscall1(SystemCall::ThreadJoin, self.id);
+        let _ = syscall(SystemCall::ThreadJoin, &[self.id]);
     }
 }
 
@@ -23,34 +33,44 @@ fn kickoff_user_thread(entry: fn()) {
     exit();
 }
 
-pub fn create(entry: fn()) -> Thread {
-    let id = syscall2(SystemCall::ThreadCreate, kickoff_user_thread as usize, entry as usize);
-    Thread::new(id)
+pub fn create(entry: fn()) -> Option<Thread> {
+    let res = syscall(SystemCall::ThreadCreate, &[kickoff_user_thread as usize,
+        entry as usize,]);
+    match res {
+        Ok(id) => Some(Thread::new(id as usize)),
+        Err(_) => None,
+    }    
 }
 
-pub fn current() -> Thread {
-    let id = syscall0(SystemCall::ThreadId);
-    Thread::new(id)
+pub fn current() -> Option<Thread> {
+    let res = syscall(SystemCall::ThreadId, &[]);
+    match res {
+        Ok(id) => Some(Thread::new(id as usize)),
+        Err(_) => None,
+    }    
 }
 
 #[allow(dead_code)]
 pub fn switch() {
-    syscall0(SystemCall::ThreadSwitch);
+    let _ = syscall(SystemCall::ThreadSwitch, &[]);
 }
 
 #[allow(dead_code)]
 pub fn sleep(ms: usize) {
-    syscall1(SystemCall::ThreadSleep, ms);
+    let _ = syscall(SystemCall::ThreadSleep, &[ms]);
 }
 
 pub fn exit() -> ! {
-    syscall0(SystemCall::ThreadExit);
+    let _ = syscall(SystemCall::ThreadExit, &[]);
     panic!("System call 'ThreadExit' has returned!")
 }
 
-pub fn start_application(name: &str) -> Option<Thread> {
-    match syscall2(SystemCall::ProcessExecuteBinary, name.as_bytes().as_ptr() as usize, name.len()) {
-        0 => None,
-        id => Some(Thread::new(id))
-    }
+pub fn start_application(name: &str, args: Vec<&str>) -> Option<Thread> {
+    let res = syscall(SystemCall::ProcessExecuteBinary, &[name.as_bytes().as_ptr() as usize,
+    name.len(),
+    ptr::from_ref(&args) as usize,]);
+    match res {
+        Ok(id) => Some(Thread::new(id as usize)),
+        Err(_) => None,
+    }    
 }

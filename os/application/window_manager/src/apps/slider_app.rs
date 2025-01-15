@@ -10,7 +10,7 @@ pub struct SliderApp;
 
 impl Runnable for SliderApp {
     fn run() {
-        let handle = concurrent::thread::current().id();
+        let handle = concurrent::thread::current().expect("Failed to get thread").id();
         let api = WindowManager::get_api();
 
         let initial_value = 1;

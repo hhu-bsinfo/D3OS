@@ -1,5 +1,5 @@
 [package]
-edition = "2021"
+edition = "2024"
 name = "date"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
@@ -11,7 +11,5 @@ path = "src/date.rs"
 [dependencies]
 # Local dependencies
 runtime = { path = "../../library/runtime" }
-io = { path = "../../library/io" }
+terminal = { path = "../../library/terminal" }
 time = { path = "../../library/time" }
-
-chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
