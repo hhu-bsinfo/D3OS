@@ -180,8 +180,6 @@ impl WindowManager {
     fn process_keyboard_input(&mut self) {
         let read_option = try_read(Application::WindowManager);
 
-        log_debug(&format!("read_option: {:?}", read_option));
-
         if let Some(keyboard_press) = read_option {
             // `enter_app_mode` overrides all other keyboard-interactions
             if self.command_line_window.enter_app_mode {
