@@ -208,11 +208,17 @@ impl Resizable for BitmapGraphic {
     fn resize(&mut self, width: u32, height: u32) {
         self.scale_factor = 1.0;
 
+        let scale_factor_x = width as f64 / self.abs_rect_data.width as f64;
+        let scale_factor_y = height as f64 / self.abs_rect_data.height as f64;
+
         self.abs_rect_data.width = width;
         self.abs_rect_data.height = height;
 
         self.orig_rect_data.width = width;
         self.orig_rect_data.height = height;
+
+        self.rel_rect_data.width = self.rel_rect_data.width * scale_factor_x as u32;
+        self.rel_rect_data.height = self.rel_rect_data.height * scale_factor_y as u32;
 
         self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);
         self.mark_dirty();
