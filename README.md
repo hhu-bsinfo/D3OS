@@ -1,8 +1,11 @@
-# D3OS
-A new research operating system, developed by the [operating systems group](https://www.cs.hhu.de/en/research-groups/operating-systems.html) of the department of computer science at [Heinrich Heine University Düsseldorf](https://www.hhu.de)
+<p align="left">
+  <a href="https://www.uni-duesseldorf.de/home/en/home.html"><img src="media/d3os.png" width=300></a>
+</p>
+
+A new distributed operating system for data centers, developed by the [operating systems group](https://www.cs.hhu.de/en/research-groups/operating-systems.html) of the department of computer science at [Heinrich Heine University Düsseldorf](https://www.hhu.de)
 
 <p align="center">
-  <a href="https://www.uni-duesseldorf.de/home/en/home.html"><img src="media/hhu.svg" width=300></a>
+  <a href="https://www.uni-duesseldorf.de/home/en/home.html"><img src="media/hhu.svg" width=200></a>
 </p>
 
 <p align="center">
