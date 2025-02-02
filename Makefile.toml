@@ -89,6 +89,10 @@ command = "echo"
 args = [ "Ready to debug" ]
 dependencies = [ "image", "hdd", "ovmf" ]
 
+[tasks.gdb]
+command = "gdb" 
+args = [ "-ex", "break start", "-ex", "target remote 127.0.0.1:1234", "-ex", "continue", "loader/kernel.elf" ]
+
 [tasks.ovmf]
 command = "wget"
 args = [ "-N", "${OVMF_URL}" ]
