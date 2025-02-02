@@ -60,21 +60,18 @@ cargo make --no-workspace image
 
 ### In a terminal with gdb
 
-1.
 Open a terminal and compile and start D3OS in `qemu` halted by `gdb` with the following commands:
 ```bash
 cargo make --no-workspace clean
 cargo make --no-workspace debug
 ```
 
-2.
 Open another terminal and start `gdb` with:
 ```bash
 cargo make --no-workspace gdb
 ```
 This will fire booting D3OS and stop in `boot.rs::start`.
 
-3.
 Setting a breakpoint in `gdb`:
 ```bash
 break kernel::naming::api::init
