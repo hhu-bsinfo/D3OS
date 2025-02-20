@@ -7,7 +7,7 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
+use crate::memory::vma::{VirtualMemoryArea, VmaType};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process_manager;
 use x86_64::structures::paging::PageTableFlags;
