@@ -10,7 +10,8 @@ use x86_64::VirtAddr;
 use crate::{ process_manager, scheduler};
 use crate::memory::MemorySpace;
 use crate::memory::physical::phys_limit;
-use crate::memory::r#virtual::{AddressSpace, VirtualMemoryArea, VmaType};
+use crate::memory::r#virtual::AddressSpace;
+use crate::memory::vma::{VirtualMemoryArea, VmaType};
 
 static PROCESS_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 

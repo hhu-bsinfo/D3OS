@@ -21,7 +21,7 @@
 */
 
 use crate::memory::alloc::StackAllocator;
-use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
+use crate::memory::vma::{VirtualMemoryArea, VmaType};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process::process::Process;
 use crate::process::scheduler;
