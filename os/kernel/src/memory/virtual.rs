@@ -2,6 +2,13 @@
    ║ Module: virtual                                                         ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Functions related to paging, protection, and memory mapping.    ║
+   ║ Funcs:                                                                  ║
+   ║   - map:          map a range of pages to the given memory space        ║
+   ║   - unmap:        unmap a range of pages from the address space         ║
+   ║   - map_physical: map a range of frames to the given page range in the  ║ 
+   ║                   in the given memory space                             ║
+   ║   - translate:    translate a virtual address to a physical address     ║
+   ║   - set_flags:    set flags of page table entries for a range of pages  ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland, Univ. Duesseldorf, 20.2.2025                    ║
    ╚═════════════════════════════════════════════════════════════════════════╝

@@ -2,13 +2,14 @@
    ║ Module: api                                                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Public interface of the naming service:                         ║
-   ║         - init:  init ns, called once                                   ║
-   ║         - open:  open a named object                                    ║
-   ║         - read:  read bytes from an open object                         ║
-   ║         - write: write bytes into an open object                        ║
-   ║         - seek:  set file pointer (for files)                           ║
-   ║         - mkdir: create a directory                                     ║
-   ║         - touch: create a file                                          ║
+   ║ Funcs:                                                                  ║
+   ║   - init:  init ns, called once                                         ║
+   ║   - open:  open a named object                                          ║
+   ║   - read:  read bytes from an open object                               ║
+   ║   - write: write bytes into an open object                              ║
+   ║   - seek:  set file pointer (for files)                                 ║
+   ║   - mkdir: create a directory                                           ║
+   ║   - touch: create a file                                                ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Michael Schoettner, Univ. Duesseldorf, 30.12.2024               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
