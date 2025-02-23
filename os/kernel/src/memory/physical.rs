@@ -1,3 +1,18 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: physical                                                        ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Page frame allocator.                                                   ║
+   ║   - alloc:             allooc a range of frames                         ║
+   ║   - free:              free a range of frames                           ║
+   ║   - reserve:           permanently reserve a range of frames            ║
+   ║   - allocator_locked:  check if allocator is locked                     ║
+   ║   - insert:            insert free frame region detected during boot    ║
+   ║   - phys_limit         get the highest phys. addr. managed by the alloc.║
+   ║   - dump:              get a dump of the current free list              ║ 
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 20.2.2025                    ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 use alloc::format;
 use alloc::string::String;
 use core::cell::Cell;
@@ -18,7 +33,7 @@ pub fn allocator_locked() -> bool {
     PAGE_FRAME_ALLOCATOR.is_locked()
 }
 
-/// Insert an available memory region obtained during the boot process.
+/// Insert an available memory `region` obtained during the boot process.
 pub unsafe fn insert(mut region: PhysFrameRange) {
     PHYS_LIMIT.call_once(|| Mutex::new(Cell::new(PhysFrame::from_start_address(PhysAddr::zero()).unwrap())));
 
@@ -45,13 +60,13 @@ pub fn alloc(frame_count: usize) -> PhysFrameRange {
     PAGE_FRAME_ALLOCATOR.lock().alloc_block(frame_count)
 }
 
-/// Free `frame_count` contiguous page frames.
+/// Free a contiguous range of page `frames`.
 /// Unsafe because invalid parameters may break the list allocator.
 pub unsafe fn free(frames: PhysFrameRange) {
     unsafe { PAGE_FRAME_ALLOCATOR.lock().free_block(frames); }
 }
 
-/// Permanently reserve a block of free memory.
+/// Permanently reserve a range of page `frames`.
 pub unsafe fn reserve(frames: PhysFrameRange) {
     unsafe { PAGE_FRAME_ALLOCATOR.lock().reserve_block(frames); }
 }
@@ -115,7 +130,7 @@ impl PageFrameListAllocator {
         Self { head: PageFrameNode::new(0) }
     }
 
-    /// Insert a new block, sorted ascending by its memory address.
+    /// Insert a new range of `frames`, sorted ascending by its memory address.
     unsafe fn insert(&mut self, frames: PhysFrameRange) {
         let mut new_block = PageFrameNode::new((frames.end - frames.start) as usize);
         let new_block_ptr = frames.start.start_address().as_u64() as *mut PageFrameNode;
@@ -155,7 +170,7 @@ impl PageFrameListAllocator {
         }
     }
 
-    /// Search a free memory block.
+    /// Search a block with `frame_count` contiguous page frames.
     fn find_free_block(&mut self, frame_count: usize) -> Option<&'static mut PageFrameNode> {
         let mut current = &mut self.head;
         while let Some(ref mut block) = current.next {
@@ -174,7 +189,7 @@ impl PageFrameListAllocator {
         return None;
     }
 
-    /// Allocate `frame_count` page frames.
+    /// Allocate a block with `frame_count` contiguous page frames.
     fn alloc_block(&mut self, frame_count: usize) -> PhysFrameRange {
         match self.find_free_block(frame_count) {
             Some(block) => {
@@ -189,7 +204,7 @@ impl PageFrameListAllocator {
         }
     }
 
-    /// Free a block of memory, consisting of at least one page frame.
+    /// Free a region of `frames` consisting of at least one page frame.
     /// The block is inserted ascending by address and fused with its neighbours, if possible.
     unsafe fn free_block(&mut self, frames: PhysFrameRange) {
         let mut current = &mut self.head;
@@ -235,7 +250,7 @@ impl PageFrameListAllocator {
         unsafe { self.insert(frames); }
     }
 
-    /// Permanently reserve a block of free memory.
+    /// Permanently reserve a frame region given by `reserved`.
     unsafe fn reserve_block(&mut self, reserved: PhysFrameRange) {
         let mut current = &mut self.head;
 
