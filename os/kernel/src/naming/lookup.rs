@@ -1,7 +1,7 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: lookup                                                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Lookup functions.                                               ║
+   ║ Lookup functions.                                                       ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Michael Schoettner, Univ. Duesseldorf, 30.12.2024               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
@@ -22,7 +22,8 @@ pub(super) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errn
     }
 }
 
-/// Resolves an absolute path into an `NamedObject`
+/// Resolves absolute `path` into a named object. \
+/// Returns `Ok(NamedObject)` or `Err`
 pub(super) fn lookup_named_object(path: &String) -> Result<NamedObject, Errno> {
     let mut found_named_object;
 
@@ -61,7 +62,7 @@ pub(super) fn lookup_named_object(path: &String) -> Result<NamedObject, Errno> {
     Err(Errno::ENOENT)
 }
 
-/// Helper function to check if `path` is an abolute path
+/// Helper function for checking if `path` is an abolute path
 fn check_absolute_path(path: &String) -> bool {
     if let Some(pos) = path.find('/') {
         if pos == 0 {

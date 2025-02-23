@@ -1,10 +1,9 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: virtual                                                         ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Functions related to paging, protection, and memory mapping.    ║
-   ║ Funcs:                                                                  ║
+   ║ Functions related to paging, protection, and memory mapping.            ║
    ║   - map:          map a range of pages to the given memory space        ║
-   ║   - unmap:        unmap a range of pages from the address space         ║
+   ║   - unmap:        unmap a range of pages                                ║
    ║   - map_physical: map a range of frames to the given page range in the  ║ 
    ║                   in the given memory space                             ║
    ║   - translate:    translate a virtual address to a physical address     ║
@@ -24,9 +23,7 @@ use x86_64::structures::paging::page::PageRange;
 
 use crate::memory::{MemorySpace, PAGE_SIZE, physical};
 
-///
-/// Description: Address space for a process
-///
+/// Address space for a process
 pub struct AddressSpace {
     root_table: RwLock<*mut PageTable>, // Root page table (pml4)
     depth: usize  // Depth of the page table hierarchy
@@ -51,9 +48,7 @@ impl Drop for AddressSpace {
 
 impl AddressSpace {
 
-    ///
-    /// Description: Create a new root page table for this address space
-    ///
+    /// Create a new root page table for address space `self` with the given `depth`
     pub fn new(depth: usize) -> Self {
         let table_addr = physical::alloc(1).start;
         let root_table = table_addr.start_address().as_u64() as *mut PageTable;
@@ -62,11 +57,7 @@ impl AddressSpace {
         Self { root_table: RwLock::new(root_table), depth }
     }
 
-    ///
-    /// Description: Create a new address space from another address space (copying all page tables)
-    ///
-    /// Parameters: `other` address space to be copied 
-    /// 
+    /// Create a new address space from `other` address space (copying all page tables)
     pub fn from_other(other: &AddressSpace) -> Self {
         let address_space = AddressSpace::new(other.depth);
 
@@ -82,17 +73,13 @@ impl AddressSpace {
         address_space
     }
 
-    ///
-    /// Description: Load cr3 register with the root page table address
-    ///
+    /// Load cr3 register with the root page table address of `self`
     pub fn load(&self) {
         unsafe { Cr3::write(PhysFrame::from_start_address(self.page_table_address()).unwrap(), Cr3Flags::empty()) };
     }
 
 
-    ///
-    /// Description: Get root page table address (pml4) 
-    ///
+    /// Return physical address of root page table address (pml4) of `self`
     pub fn page_table_address(&self) -> PhysAddr {
         // Get root table pointer without locking.
         // We cannot use the lock here, because this function is called by the scheduler.
@@ -101,14 +88,7 @@ impl AddressSpace {
         PhysAddr::new(root_table as u64)
     }
 
-    ///
-    /// Description: Map a range of pages to the given memory space
-    ///
-    /// Parameters: \
-    ///  `pages` page range to map \
-    ///  `space` kernel or user space \
-    ///  `flags` page table entry flags
-    /// 
+    /// Map page range `pages` to the given memory `space` with the given page table entry `flags`
     pub fn map(&self, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
@@ -118,15 +98,7 @@ impl AddressSpace {
         AddressSpace::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
-    ///
-    /// Description: Map a range of frames to the given page range in the given memory space
-    ///
-    /// Parameters: \
-    ///  `frames` frame range to map \
-    ///  `pages`  page range to be used for the mapping \
-    ///  `space` kernel or user space \
-    ///  `flags` page table entry flags
-    /// 
+    /// Map a range of `frames` to the given page range `pages` in the given memory `space` with the given page table entry `flags`
     pub fn map_physical(&self, frames: PhysFrameRange, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
@@ -137,13 +109,7 @@ impl AddressSpace {
         AddressSpace::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
-    ///
-    /// Description: Translate a virtual address to a physical address
-    ///
-    /// Parameters: `addr` virtual address to be translated
-    /// 
-    /// Return: physical address
-    /// 
+    /// Return physical address for the give a virtual address `addr`
     pub fn translate(&self, addr: VirtAddr) -> Option<PhysAddr> {
         let depth = self.depth;
         let root_table_guard = self.root_table.read();
@@ -152,13 +118,8 @@ impl AddressSpace {
         AddressSpace::translate_in_table(root_table, addr, depth)
     }
 
-    ///
-    /// Description: Unmap a range of pages from the address space
-    ///
-    /// Parameters: \
-    ///   `pages`         page range \
-    ///   `free_physical` flag to indicate if the physical frames should be freed
-    /// 
+    /// Unmap a range of `pages` from the address space. 
+    /// `free_physical` indicates if the physical frames should be freed.
     pub fn unmap(&self, pages: PageRange, free_physical: bool) {
         let depth = self.depth;
         let root_table_guard = self.root_table.read();
@@ -167,13 +128,7 @@ impl AddressSpace {
         AddressSpace::unmap_in_table(root_table, pages, depth, free_physical);
     }
 
-    ///
-    /// Description: Set flags of page table entries for a range of pages 
-    ///
-    /// Parameters: \
-    ///   `pages`  page range \
-    ///   `flags`  page table entry flags
-    ///   
+    /// Set `flags` of page table entries for the give range of `pages`` 
     pub fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
@@ -182,13 +137,7 @@ impl AddressSpace {
         AddressSpace::set_flags_in_table(root_table, pages, flags, depth);
     }
 
-    ///
-    /// Description: Internal recursive function to copy page tables
-    ///
-    /// Parameters: \
-    ///  `source`  current source table \
-    ///  `target`  current target table
-    //
+    /// Internal recursive function to copy page tables from `source` to `target`
     fn copy_table(source: &PageTable, target: &mut PageTable, level: usize) {
         if level > 1 { // On all levels larger than 1, we allocate new page frames
             for (index, target_entry) in target.iter_mut().enumerate() {
@@ -214,16 +163,7 @@ impl AddressSpace {
         }
     }
 
-    ///
-    /// Description: Internal recursive function to map a range of pages into page tables
-    ///
-    /// Parameters: \
-    ///  `table`  current table \
-    ///  `frames` frame range \
-    ///  `space`  kernel or user space \
-    ///  `flags`  page table entry flags \
-    ///  `level`  current level of the page table hierarchy
-    /// 
+    /// Internal recursive function to map a range of `frames` to the given page range `pages` in the given memory `space` with the given page table entry `flags`.
     fn map_in_table(table: &mut PageTable, mut frames: PhysFrameRange, mut pages: PageRange, space: MemorySpace, flags: PageTableFlags, level: usize) -> usize {
         let mut total_allocated_pages: usize = 0;
         let start_index = usize::from(page_table_index(pages.start.start_address(), level));
@@ -269,15 +209,7 @@ impl AddressSpace {
         total_allocated_pages
     }
 
-    ///
-    /// Description: Internal recursive function to unmap a range of pages and free frames
-    ///
-    /// Parameters: \
-    ///  `table`          current table \
-    ///  `pages`          page range \
-    ///  `level`          current level of the page table hierarchy \
-    ///   `free_physical` flag to indicate if the physical frames should be freed
-    /// 
+    /// Internal recursive function to unmap a range of `pages` where `free_phyisical` defines if frame should be freed.
     fn unmap_in_table(table: &mut PageTable, mut pages: PageRange, level: usize, free_physical: bool) -> usize {
         let mut total_freed_pages: usize = 0;
         let start_index = usize::from(page_table_index(pages.start.start_address(), level));
@@ -328,13 +260,7 @@ impl AddressSpace {
         total_freed_pages
     }
 
-    ///
-    /// Description: Internal recursive function to delete page tables
-    ///
-    /// Parameters: \
-    ///  `table`          current table \
-    ///  `level`          current level of the page table hierarchy \
-    /// 
+    /// Internal recursive function to delete page tables
     fn drop_table(table: &mut PageTable, level: usize) {
         if level > 1 { // Calculate next level page table until level == 1
             for entry in table.iter_mut() {
@@ -354,15 +280,7 @@ impl AddressSpace {
         unsafe { physical::free(PhysFrameRange { start: table_frame, end: table_frame + 1 }); }
     }
 
-    ///
-    /// Description: Internal recursive function to set flags in page table entries for a range of pages
-    ///
-    /// Parameters: \
-    ///  `table`  actual table \
-    ///  `pages`  page range \
-    ///  `flags`  page table entry flags \
-    ///  `level`  current level of the page table hierarchy
-    /// 
+    /// Internal recursive function to set `flags` in page table entries for a range of `pages`.
     fn set_flags_in_table(table: &mut PageTable, mut pages: PageRange, flags: PageTableFlags, level: usize) -> usize {
         let mut total_edited_pages: usize = 0;
         let start_index = usize::from(page_table_index(pages.start.start_address(), level));
@@ -401,16 +319,7 @@ impl AddressSpace {
         total_edited_pages
     }
 
-    ///
-    /// Description: Internal recursive function to translate a virtual address to a physical address
-    ///
-    /// Parameters: \
-    ///  `table`  current table \
-    ///  `addr`   virtual address \
-    ///  `level`  current level of the page table hierarchy
-    /// 
-    /// Return: PhysAddr or None
-    /// 
+    /// Internal recursive function returning physical address for the given virtual address `addr` or None.
     fn translate_in_table(table: &mut PageTable, addr: VirtAddr, level: usize) -> Option<PhysAddr> {
         let aligned_addr = addr.align_down(PAGE_SIZE as u64);
         let index = usize::from(page_table_index(aligned_addr, level));
@@ -427,14 +336,7 @@ impl AddressSpace {
         }
     }
 
-    ///
-    /// Description: Create identity mapping for kernel space
-    /// 
-    /// Parameters: \
-    ///  `table`  table to be used for the mapping \
-    ///  `pages`  user page range to be mapped \
-    ///  `flags`  page table entry flags
-    /// 
+    /// Create 1:1 mapping entries in the given page `table` for `pages` with the given `flags` for the kernel space.
     fn identity_map_kernel(table: &mut PageTable, pages: PageRange, flags: PageTableFlags) -> usize {
         let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
         let alloc_count = min((pages.end - pages.start) as usize, 512 - start_index);
@@ -452,13 +354,7 @@ impl AddressSpace {
         alloc_count
     }
 
-    ///
-    /// Description: Map a page range to the user space using newly allocated physical frames
-    /// 
-    /// Parameters: \
-    ///  `pages`  user page range to be mapped \
-    ///  `flags`  page table entry flags
-    /// 
+    /// Create mapping entries in the given page `table` for `pages` with the given `flags` using freshly allocated physical frames.
     fn map_user(table: &mut PageTable, pages: PageRange, flags: PageTableFlags) -> usize {
         let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
         let alloc_count = min((pages.end - pages.start) as usize, 512 - start_index);
@@ -475,14 +371,7 @@ impl AddressSpace {
         alloc_count
     }
 
-    ///
-    /// Description: Map a range of physical frames to user space at given user page range
-    /// 
-    /// Parameters: \
-    ///  `frames` page frame range to be mapped \
-    ///  `pages`  user page range for the mapping \
-    ///  `flags`  page table entry flags
-    /// 
+    /// Create mapping entries in the given page `table` for `pages` using `frames` with the given `flags`.
     fn map_user_physical(table: &mut PageTable, frames: PhysFrameRange, pages: PageRange, flags: PageTableFlags) -> usize {
         let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
         let alloc_count = min((pages.end - pages.start) as usize, 512 - start_index);
@@ -499,11 +388,7 @@ impl AddressSpace {
         alloc_count
     }
 
-    ///
-    /// Description: Check if a page table is empty
-    /// 
-    /// Return: `true` if all entries are unused otherwise `false`
-    /// 
+    /// Check if a page table is empty.
     fn is_table_empty(table: &PageTable) -> bool {
         for entry in table.iter() {
             if !entry.is_unused() {

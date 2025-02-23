@@ -1,8 +1,8 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: open_objects                                                    ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Managing opened objects in a global table (OPEN_OBJECTS). And   ║
-   ║         providing all major functions for the naming service.           ║
+   ║ Managing opened objects in a global table (OPEN_OBJECTS). And providing ║
+   ║ all major functions for the naming service.                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Michael Schoettner, Univ. Duesseldorf, 30.12.2024               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
@@ -21,7 +21,7 @@ use syscall::return_vals::{Errno, SyscallResult};
 
 
 /// Max. number of open objetcs
-const MAX_OPEN_OBJECTS: usize = 0x100;
+const MAX_OPEN_OBJECTS: usize = 0x10000;
 
 /// Helper function returning safe access to the open object table (oot)
 fn get_open_object_table() -> Arc<Mutex<OpenObjectTable>> {
