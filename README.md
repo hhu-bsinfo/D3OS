@@ -77,3 +77,17 @@ Setting a breakpoint in `gdb`:
 break kernel::naming::api::init
 ```
 For further commands check [GDB Quick Reference](docs/gdb-commands.pdf).
+
+## Creating a bootable USB stick
+
+### Using towboot
+D3OS uses [towboot](https://github.com/hhuOS/towboot) which is already installed after you have successfully compiled D3OS. 
+
+Use following command (in the D3OS directory) to create a bootable media for the device referenced by `/mnt/external`
+
+`$ towbootctl install /mnt/external --removable -- -config towboot.toml`
+
+### Using balenaEtcher
+Write the file `d3os.img` using [balenaEtcher](https://etcher.balena.io) to your USB stick.
+
+
