@@ -119,7 +119,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize terminal and enable terminal logging
     init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
-    logger().register(terminal());
+    // Terminal output uses locks => hangs up when used for debugging
+    // MS logger().register(terminal()); 
  
     // Dumping basic infos
     info!("Welcome to D3OS!");

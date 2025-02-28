@@ -1,13 +1,13 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: virtual                                                         ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Functions related to paging, protection, and memory mapping.            ║
-   ║   - map:          map a range of pages to the given memory space        ║
-   ║   - unmap:        unmap a range of pages                                ║
-   ║   - map_physical: map a range of frames to the given page range in the  ║ 
+   ║ Public functions related to paging, protection, and memory mapping.     ║
+   ║   - map           map a range of pages to the given memory space        ║
+   ║   - unmap         unmap a range of pages                                ║
+   ║   - map_physical  map a range of frames to the given page range in the  ║ 
    ║                   in the given memory space                             ║
-   ║   - translate:    translate a virtual address to a physical address     ║
-   ║   - set_flags:    set flags of page table entries for a range of pages  ║
+   ║   - translate     translate a virtual address to a physical address     ║
+   ║   - set_flags     set flags of page table entries for a range of pages  ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland, Univ. Duesseldorf, 20.2.2025                    ║
    ╚═════════════════════════════════════════════════════════════════════════╝
@@ -19,7 +19,7 @@ use x86_64::structures::paging::{PageTable, PageTableFlags, PageTableIndex, Phys
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::page::PageRange;
+use x86_64::structures::paging::page::{PageRange,Page};
 
 use crate::memory::{MemorySpace, PAGE_SIZE, physical};
 
@@ -107,6 +107,19 @@ impl AddressSpace {
         // Check if the number of frames matches the number of pages
         assert_eq!(frames.end - frames.start, pages.end - pages.start);
         AddressSpace::map_in_table(root_table, frames, pages, space, flags, depth);
+    }
+
+    /// Map a range of `frames` of a device into kernel space 
+    pub fn map_io(&self, frames: PhysFrameRange) {
+        let v_start = VirtAddr::new(frames.start.start_address().as_u64());
+        let v_end = VirtAddr::new(frames.end.start_address().as_u64());
+
+        let start_page = Page::containing_address(v_start);
+        let end_page = Page::containing_address(v_end);
+        let pages = PageRange { start: start_page, end: end_page };
+
+        // We have 1:1 mapping in kernel space
+        self.map(pages, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
     }
 
     /// Return physical address for the give a virtual address `addr`
