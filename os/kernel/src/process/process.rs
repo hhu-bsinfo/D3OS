@@ -12,6 +12,7 @@ use crate::memory::MemorySpace;
 use crate::memory::physical::phys_limit;
 use crate::memory::r#virtual::AddressSpace;
 use crate::memory::vma::{VirtualMemoryArea, VmaType};
+//use log::info;
 
 static PROCESS_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -29,6 +30,7 @@ impl ProcessManager {
         Self { active_processes: Vec::new(), exited_processes: Vec::new() }
     }
 
+    /// Create a new process
     pub fn create_process(&mut self) -> Arc<Process> {
         let address_space = match self.kernel_process() {
             Some(kernel_process) => { // Create user address space
@@ -45,8 +47,11 @@ impl ProcessManager {
         };
 
         let process = Arc::new(Process::new(address_space));
+        
         self.active_processes.push(Arc::clone(&process));
 
+       // info!("Process [{}]: created", process.id());
+        
         process
     }
 
@@ -128,6 +133,8 @@ impl Process {
     }
 
     pub fn add_vma(&self, new_area: VirtualMemoryArea) {
+//        info!("Process [{}]: adding VMA: {:?} - {:?}", self.id, new_area.start(), new_area.end());
+
         let mut areas = self.memory_areas.write();
         match areas.iter().find(|area| area.overlaps_with(&new_area)) {
             Some(_) => panic!("Process: Trying to add a VMA, which overlaps with an existing one!"),

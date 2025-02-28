@@ -2,13 +2,13 @@
    ║ Module: physical                                                        ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Page frame allocator.                                                   ║
-   ║   - alloc:             allooc a range of frames                         ║
-   ║   - free:              free a range of frames                           ║
-   ║   - reserve:           permanently reserve a range of frames            ║
-   ║   - allocator_locked:  check if allocator is locked                     ║
-   ║   - insert:            insert free frame region detected during boot    ║
+   ║   - alloc              allooc a range of frames                         ║
+   ║   - free               free a range of frames                           ║
+   ║   - reserve            permanently reserve a range of frames            ║
+   ║   - allocator_locked   check if allocator is locked                     ║
+   ║   - insert             insert free frame region detected during boot    ║
    ║   - phys_limit         get the highest phys. addr. managed by the alloc.║
-   ║   - dump:              get a dump of the current free list              ║ 
+   ║   - dump               get a dump of the current free list              ║ 
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland, Univ. Duesseldorf, 20.2.2025                    ║
    ╚═════════════════════════════════════════════════════════════════════════╝
