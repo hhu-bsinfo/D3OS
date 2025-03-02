@@ -857,11 +857,11 @@ impl IdeChannel {
         // Each page corresponds to an 8-byte entry in the PRD
         let prd_size = pages * 8;
         let prd_pages = prd_size / PAGE_SIZE + if (prd_size % PAGE_SIZE) == 0 { 0 } else { 1 };
-        let prd_frames = memory::physical::alloc(prd_pages);
+        let prd_frames = memory::frames::alloc(prd_pages);
         let prd = unsafe { slice::from_raw_parts_mut(prd_frames.start.start_address().as_u64() as *mut PrdEntry, pages) };
 
         // Allocate memory for the DMA transfer
-        let dma_frames = memory::physical::alloc(pages);
+        let dma_frames = memory::frames::alloc(pages);
         let dma_buffer = unsafe { slice::from_raw_parts_mut(dma_frames.start.start_address().as_u64() as *mut u8, buffer.len()) };
 
         // Copy data to the DMA buffer if we are writing
@@ -901,8 +901,8 @@ impl IdeChannel {
             error!("Failed to perform DMA {:?} operation on drive [{}] on channel [{}]: Data request not answered", mode, info.drive, self.index);
 
             unsafe {
-                memory::physical::free(dma_frames);
-                memory::physical::free(prd_frames);
+                memory::frames::free(dma_frames);
+                memory::frames::free(prd_frames);
             }
             return 0;
         }
@@ -937,8 +937,8 @@ impl IdeChannel {
             error!("Failed to perform DMA {:?} operation on drive [{}] on channel [{}]: Timeout occurred", mode, info.drive, self.index);
 
             unsafe {
-                memory::physical::free(dma_frames);
-                memory::physical::free(prd_frames);
+                memory::frames::free(dma_frames);
+                memory::frames::free(prd_frames);
             }
             return 0;
         }
@@ -950,8 +950,8 @@ impl IdeChannel {
 
         // Free allocated page frames
         unsafe {
-            memory::physical::free(dma_frames);
-            memory::physical::free(prd_frames);
+            memory::frames::free(dma_frames);
+            memory::frames::free(prd_frames);
         }
 
         count

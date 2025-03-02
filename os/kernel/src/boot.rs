@@ -51,7 +51,7 @@ use crate::device::qemu_cfg;
 use crate::device::serial::SerialPort;
 use crate::memory::{MemorySpace, nvmem, PAGE_SIZE};
 use crate::memory::nvmem::Nfit;
-use crate::memory::r#virtual::page_table_index;
+use crate::memory::pages::page_table_index;
 use crate::network::rtl8139;
 
 // import labels from linker script 'link.ld'
@@ -87,14 +87,14 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     init_gdt();
     
     // The bootloader marks the kernel image region as available, so we need to reserve it manually
-    unsafe { memory::physical::reserve(kernel_image_region()); }
+    unsafe { memory::frames::reserve(kernel_image_region()); }
 
     // and initialize kernel heap, after which formatted strings may be used in logs and panics.
     info!("Initializing kernel heap");
-    let heap_region = memory::physical::alloc(INIT_HEAP_PAGES);
+    let heap_region = memory::frames::alloc(INIT_HEAP_PAGES);
     unsafe { allocator().init(&heap_region); }
     debug!("Kernel heap is initialized [0x{:x} - 0x{:x}]", heap_region.start.start_address().as_u64(), heap_region.end.start_address().as_u64());
-    debug!("Page frame allocator:\n{}", memory::physical::dump());
+    debug!("Page frame allocator:\n{}", memory::frames::dump());
 
     // Create kernel process (and initialize virtual memory management)
     info!("Create kernel process and initialize paging");
@@ -406,7 +406,7 @@ fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag) {
         .filter(|area| area.typ() == MemoryAreaType::Available)
         .for_each(|area| {
             unsafe {
-                memory::physical::insert(PhysFrameRange {
+                memory::frames::insert(PhysFrameRange {
                     start: PhysFrame::from_start_address(PhysAddr::new(area.start_address()).align_up(PAGE_SIZE as u64)).unwrap(),
                     end: PhysFrame::from_start_address(PhysAddr::new(area.end_address()).align_down(PAGE_SIZE as u64)).unwrap()
                 });
@@ -434,7 +434,7 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
                 unprotect_frames(frames);
             }
             
-            unsafe { memory::physical::insert(frames); }
+            unsafe { memory::frames::insert(frames); }
         });
 }
 
@@ -456,7 +456,7 @@ fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
                 unprotect_frames(frames);
             }
 
-            unsafe { memory::physical::insert(frames); }
+            unsafe { memory::frames::insert(frames); }
         });
 }
 
