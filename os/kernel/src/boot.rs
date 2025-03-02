@@ -1,7 +1,7 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: boot                                                            ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Boot sequence of the OS. First rust function called after       ║
+   ║ Descr.: Boot sequence of the OS. First Rust function called after       ║
    ║         assembly code: 'start'.                                         ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland, HHU                                             ║
@@ -62,11 +62,9 @@ unsafe extern "C" {
 
 const INIT_HEAP_PAGES: usize = 0x400;   // number of heap pages for booting the OS
 
-/// Description: First rust function called from assembly code `boot.asm` \
-///
-/// Parameters: \
-///    `multiboot2_magic` magic number read from 'eax' \
-///    `multiboot2_addr` address of multiboot2 info records
+/// First Rust function called from assembly code `boot.asm` \
+///   `multiboot2_magic` is the magic number read from 'eax' \
+///   and `multiboot2_addr` is the address of multiboot2 info records
 #[unsafe(no_mangle)]
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
     // Initialize logger
@@ -80,10 +78,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         panic!("Invalid Multiboot2 magic number!");
     }
 
-    // Search memory map, provided by bootloader or EFI, for usable memory and initialize physical memory management
+    // Search memory map, provided by bootloader or EFI, for usable memory and initialize physical memory management with free memory regions
     let multiboot = multiboot2_search_memory_map(multiboot2_addr);
 
-    // Setup global descriptor table
+    // Setup the GDT (Global Descriptor Table)
     // Has to be done after EFI boot services have been exited, since they rely on their own GDT
     info!("Initializing GDT");
     init_gdt();
@@ -98,8 +96,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     debug!("Kernel heap is initialized [0x{:x} - 0x{:x}]", heap_region.start.start_address().as_u64(), heap_region.end.start_address().as_u64());
     debug!("Page frame allocator:\n{}", memory::physical::dump());
 
-    // Initialize virtual memory management
-    info!("Initializing paging");
+    // Create kernel process (and initialize virtual memory management)
+    info!("Create kernel process and initialize paging");
     let kernel_process = process_manager().write().create_process();
     kernel_process.address_space().load();
 
@@ -307,7 +305,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     scheduler().start();
 }
 
-/// Description: Set up the GDT
+
+/// Set up the GDT
 fn init_gdt() {
     let mut gdt = gdt().lock();
     let tss = tss().lock();
@@ -343,7 +342,8 @@ fn init_gdt() {
     }
 }
 
-/// Description: Return `PhysFrameRange` for memory occupied by the kernel image
+
+/// Return `PhysFrameRange` for memory occupied by the kernel image
 fn kernel_image_region() -> PhysFrameRange {
     let start: PhysFrame;
     let end: PhysFrame;
@@ -357,12 +357,9 @@ fn kernel_image_region() -> PhysFrameRange {
 }
 
 
-/// Description: Search memory map, provided by bootloader of EFI, for usable memory and initialize physical memory management \
-///
-/// Parameters: \
-///    `multiboot2_addr` address of multiboot2 info records
-///
-/// Return: `BootInformation`
+/// Identifies usable memory and initialize physical memory management \
+/// and returns `BootInformation` by searching the memory maps, provided by bootloader of EFI. \
+///   `multiboot2_addr` is the address of multiboot2 info records
 fn multiboot2_search_memory_map(multiboot2_addr: *const BootInformationHeader) -> BootInformation<'static> {
     let multiboot = unsafe { BootInformation::load(multiboot2_addr).expect("Failed to get Multiboot2 information") };
 
@@ -401,9 +398,8 @@ fn multiboot2_search_memory_map(multiboot2_addr: *const BootInformationHeader) -
     multiboot
 }
 
-/// Description: Searching available memory regions provided by multiboot2
-///              Available only if efi boot services have been exited
-///              and bootloader provides these memory maps.
+/// Searching available memory regions provided by multiboot2 in `memory map`. \
+/// Available only if efi boot services have been exited and bootloader provides these memory maps.
 fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag) {
     info!("Searching memory map for available regions");
     memory_map.memory_areas().iter()
@@ -418,9 +414,9 @@ fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag) {
         });
 }
 
-/// Description: Memory map from efi. Only available if boot services have been exited.
-///              Sometimes bootloaders do not provide multiboot2 memory maps if
-///              efi information has been requested.
+/// Memory map from efi. Only available if boot services have been exited. \
+/// Sometimes bootloaders do not provide multiboot2 memory maps if \
+/// efi information has been requested.
 fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
     info!("Searching memory map for available regions");
     memory_map.memory_areas()
@@ -442,7 +438,7 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
         });
 }
 
-/// Description: Memory map from efi. Only available if boot services have NOT been exited.
+/// Memory map from efi. Only available if boot services have NOT been exited.
 fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
     info!("Searching memory map for available regions");
     memory_map.entries()
