@@ -23,7 +23,7 @@ use x86_64::{PhysAddr, VirtAddr};
 use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::memory::{physical, PAGE_SIZE};
+use crate::memory::{frames, PAGE_SIZE};
 
 const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
 const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 { BUFFER_SIZE / PAGE_SIZE } else { BUFFER_SIZE / PAGE_SIZE + 1 };
@@ -180,7 +180,7 @@ impl TransmitDescriptor {
 
 impl ReceiveBuffer {
     pub fn new() -> Self {
-        let receive_memory = physical::alloc(BUFFER_PAGES);
+        let receive_memory = frames::alloc(BUFFER_PAGES);
         let receive_buffer = unsafe { Vec::from_raw_parts(receive_memory.start.start_address().as_u64() as *mut u8, BUFFER_SIZE, BUFFER_SIZE) };
 
         Self { index: 0, data: receive_buffer }
@@ -201,7 +201,7 @@ unsafe impl Allocator for PacketAllocator {
         }
 
         let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64)).expect("PacketAllocator may only be used with page frames!");
-        unsafe { physical::free(PhysFrameRange { start, end: start + 1 }) }
+        unsafe { frames::free(PhysFrameRange { start, end: start + 1 }) }
     }
 }
 
@@ -234,7 +234,7 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
         }
 
         // Allocate physical memory for the packet (DMA only works with physical addresses)
-        let phys_buffer = physical::alloc(1);
+        let phys_buffer = frames::alloc(1);
         let phys_start_addr = phys_buffer.start.start_address();
         let pages = PageRange {
             start: Page::from_start_address(VirtAddr::new(phys_start_addr.as_u64())).unwrap(),
@@ -338,11 +338,11 @@ impl InterruptHandler for Rtl8139InterruptHandler {
         unsafe { status_reg.write(status.bits()); }
 
         // Handle transmit by freeing allocated buffers
-        if status.contains(Interrupt::TRANSMIT_OK) && !physical::allocator_locked() {
+        if status.contains(Interrupt::TRANSMIT_OK) && !frames::allocator_locked() {
             let mut queue = self.device.send_queue.0.lock();
             let mut buffer = queue.try_dequeue();
             while buffer.is_ok() {
-                unsafe { physical::free(buffer.unwrap()) };
+                unsafe { frames::free(buffer.unwrap()) };
                 buffer = queue.try_dequeue();
             }
         }
@@ -376,7 +376,7 @@ impl Rtl8139 {
         let kernel_process = process_manager().read().kernel_process().unwrap();
         let recv_buffers = mpmc::bounded::scq::queue(RECV_QUEUE_CAP);
         for _ in 0..RECV_QUEUE_CAP {
-            let phys_frame = physical::alloc(1);
+            let phys_frame = frames::alloc(1);
             let pages = PageRange {
                 start: Page::from_start_address(VirtAddr::new(phys_frame.start.start_address().as_u64())).unwrap(),
                 end: Page::from_start_address(VirtAddr::new(phys_frame.end.start_address().as_u64())).unwrap()

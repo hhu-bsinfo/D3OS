@@ -32,8 +32,8 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-use crate::memory::alloc::StackAllocator;
-use crate::memory::vma::{VirtualMemoryArea, VmaType};
+use crate::memory::kstack::StackAllocator;
+use crate::memory::vmm::{VirtualMemoryArea, VmaType};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process::process::Process;
 use crate::process::scheduler;
@@ -120,7 +120,7 @@ impl Thread {
                 } else {
                     (header.p_memsz as usize / PAGE_SIZE) + 1
                 };
-                let frames = memory::physical::alloc(page_count);
+                let frames = memory::frames::alloc(page_count);
                 let virt_start = Page::from_start_address(VirtAddr::new(header.p_vaddr)).expect("ELF: Program section not page aligned");
                 let pages = PageRange { start: virt_start, end: virt_start + page_count as u64 };
 
@@ -152,7 +152,7 @@ impl Thread {
         let env_virt_start = Page::from_start_address(VirtAddr::new(USER_SPACE_ENV_START as u64)).unwrap();
         let env_size = args_size;
         let env_page_count = if env_size > 0 && env_size % PAGE_SIZE == 0 { env_size / PAGE_SIZE } else { (env_size / PAGE_SIZE) + 1 };
-        let env_frames = memory::physical::alloc(env_page_count);
+        let env_frames = memory::frames::alloc(env_page_count);
         let env_pages = PageRange { start: env_virt_start, end: env_virt_start + env_page_count as u64 };
 
         // map and add vma for environment of the application

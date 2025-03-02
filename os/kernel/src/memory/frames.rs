@@ -3,12 +3,12 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Page frame allocator.                                                   ║
    ║   - alloc              allooc a range of frames                         ║
-   ║   - free               free a range of frames                           ║
-   ║   - reserve            permanently reserve a range of frames            ║
    ║   - allocator_locked   check if allocator is locked                     ║
+   ║   - dump               get a dump of the current free list              ║ 
+   ║   - free               free a range of frames                           ║
    ║   - insert             insert free frame region detected during boot    ║
    ║   - phys_limit         get the highest phys. addr. managed by the alloc.║
-   ║   - dump               get a dump of the current free list              ║ 
+   ║   - reserve            permanently reserve a range of frames            ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland, Univ. Duesseldorf, 20.2.2025                    ║
    ╚═════════════════════════════════════════════════════════════════════════╝

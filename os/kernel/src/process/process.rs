@@ -9,10 +9,10 @@ use x86_64::structures::paging::page::PageRange;
 use x86_64::VirtAddr;
 use crate::{ process_manager, scheduler};
 use crate::memory::MemorySpace;
-use crate::memory::physical::phys_limit;
-use crate::memory::r#virtual::AddressSpace;
-use crate::memory::vma::{VirtualMemoryArea, VmaType};
-//use log::info;
+use crate::memory::frames::phys_limit;
+use crate::memory::pages::AddressSpace;
+use crate::memory::vmm::{VirtualMemoryArea, VmaType};
+use log::info;
 
 static PROCESS_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -50,7 +50,7 @@ impl ProcessManager {
         
         self.active_processes.push(Arc::clone(&process));
 
-       // info!("Process [{}]: created", process.id());
+        info!("Process [{}]: created", process.id());
         
         process
     }
@@ -133,7 +133,7 @@ impl Process {
     }
 
     pub fn add_vma(&self, new_area: VirtualMemoryArea) {
-//        info!("Process [{}]: adding VMA: {:?} - {:?}", self.id, new_area.start(), new_area.end());
+        info!("Process [{}]: adding VMA: {:?} - {:?}", self.id, new_area.start(), new_area.end());
 
         let mut areas = self.memory_areas.write();
         match areas.iter().find(|area| area.overlaps_with(&new_area)) {

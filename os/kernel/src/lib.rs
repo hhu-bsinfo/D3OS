@@ -28,7 +28,8 @@ use crate::device::serial;
 use crate::device::serial::{BaudRate, ComPort, SerialPort};
 use crate::device::speaker::Speaker;
 use crate::device::terminal::Terminal;
-use crate::memory::alloc::{AcpiHandler, KernelAllocator};
+use crate::memory::acpi_handler::AcpiHandler;
+use crate::memory::kheap::KernelAllocator;
 use crate::interrupt::interrupt_dispatcher::InterruptDispatcher;
 use crate::log::Logger;
 use crate::process::scheduler::Scheduler;
@@ -171,7 +172,7 @@ pub fn init_initrd(module: &ModuleTag) {
             start: PhysFrame::from_start_address(PhysAddr::new(module.start_address() as u64)).expect("Initial ramdisk is not page aligned"),
             end: PhysFrame::from_start_address(PhysAddr::new(module.end_address() as u64).align_up(PAGE_SIZE as u64)).unwrap(),
         };
-        unsafe { memory::physical::reserve(initrd_frames); }
+        unsafe { memory::frames::reserve(initrd_frames); }
 
         let initrd_bytes = unsafe { core::slice::from_raw_parts(module.start_address() as *const u8, (module.end_address() - module.start_address()) as usize) };
         TarArchiveRef::new(initrd_bytes).expect("Failed to create TarArchiveRef from Multiboot2 module")
