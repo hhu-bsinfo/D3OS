@@ -1,3 +1,13 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: kstack                                                          ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Allocator for the kernel stack of a thread. Allocates only page frames  ║
+   ║ because kernel maps all frames 1:1, so page table entries are already   ║
+   ║ initialized.                                                            ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 02.03.2025                   ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 use core::alloc::{AllocError, Allocator, Layout};
 use core::ptr::NonNull;
 use x86_64::PhysAddr;

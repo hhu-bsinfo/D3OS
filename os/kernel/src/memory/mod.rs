@@ -1,6 +1,6 @@
 pub mod vmm;
-pub mod frames;
 pub mod pages;
+pub mod frames;
 
 pub mod nvmem;
 
