@@ -243,7 +243,7 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
 
         // Disable caching for allocated buffer
         let kernel_process = process_manager().read().kernel_process().unwrap();
-        kernel_process.address_space().set_flags(pages, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+        kernel_process.virtual_address_space.set_flags(pages, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
 
         // Queue physical memory for deallocation after transmission
         self.device.send_queue.1.enqueue(phys_buffer).expect("Failed to enqueue physical buffer!");
@@ -382,7 +382,7 @@ impl Rtl8139 {
                 end: Page::from_start_address(VirtAddr::new(phys_frame.end.start_address().as_u64())).unwrap()
             };
 
-            kernel_process.address_space().set_flags(pages, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+            kernel_process.virtual_address_space.set_flags(pages, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
 
             let buffer = unsafe { Vec::from_raw_parts_in(phys_frame.start.start_address().as_u64() as *mut u8, PAGE_SIZE, PAGE_SIZE, PacketAllocator::default()) };
             recv_buffers.1.try_enqueue(buffer).expect("Failed to enqueue receive buffer!");

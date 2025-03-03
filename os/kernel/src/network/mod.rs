@@ -40,7 +40,7 @@ pub fn init() {
     if RTL8139.get().is_some() {
         scheduler().ready(Thread::new_kernel_thread(|| loop {
             poll_sockets();
-        }));
+        }, "RTL8139"));
     }
 }
 

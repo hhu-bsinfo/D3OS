@@ -1,3 +1,11 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: kheap                                                           ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Allocator for the kernel heap.                                          ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 02.03.2025                   ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
 use core::ptr::NonNull;
 use linked_list_allocator::LockedHeap;

@@ -1,5 +1,5 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: virtual                                                         ║
+   ║ Module: paging                                                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Functions related to paging, protection, and memory mapping.            ║
    ║   - map           map a range of pages to the given memory space        ║
@@ -24,32 +24,32 @@ use x86_64::structures::paging::page::{PageRange,Page};
 use crate::memory::{MemorySpace, PAGE_SIZE, frames};
 
 /// Address space for a process
-pub struct AddressSpace {
+pub struct Paging {
     root_table: RwLock<*mut PageTable>, // Root page table (pml4)
     depth: usize  // Depth of the page table hierarchy
 }
 
-unsafe impl Send for AddressSpace {}
-unsafe impl Sync for AddressSpace {}
+unsafe impl Send for Paging {}
+unsafe impl Sync for Paging {}
 
 pub fn page_table_index(virt_addr: VirtAddr, level: usize) -> PageTableIndex {
     PageTableIndex::new_truncate((virt_addr.as_u64() >> 12 >> ((level as u8 - 1) * 9)) as u16)
 }
 
-impl Drop for AddressSpace {
+impl Drop for Paging {
     fn drop(&mut self) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
-        AddressSpace::drop_table(root_table, depth);
+        Paging::drop_table(root_table, depth);
     }
 }
 
-impl AddressSpace {
+impl Paging {
 
     /// Create a new root page table for address space `self` with the given `depth`
-    pub fn new(depth: usize) -> Self {
+    pub(super) fn new(depth: usize) -> Self {
         let table_addr = frames::alloc(1).start;
         let root_table = table_addr.start_address().as_u64() as *mut PageTable;
         unsafe { root_table.as_mut().unwrap().zero(); }
@@ -58,8 +58,8 @@ impl AddressSpace {
     }
 
     /// Create a new address space from `other` address space (copying all page tables)
-    pub fn from_other(other: &AddressSpace) -> Self {
-        let address_space = AddressSpace::new(other.depth);
+    pub fn from_other(other: &Paging) -> Self {
+        let address_space = Paging::new(other.depth);
 
         {
             let root_table_guard = address_space.root_table.write();
@@ -67,20 +67,20 @@ impl AddressSpace {
             let other_root_table_guard = other.root_table.read();
             let other_root_table = unsafe { other_root_table_guard.as_ref().unwrap() };
 
-            AddressSpace::copy_table(other_root_table, root_table, other.depth);
+            Paging::copy_table(other_root_table, root_table, other.depth);
         }
 
         address_space
     }
 
     /// Load cr3 register with the root page table address of `self`
-    pub fn load(&self) {
+    pub(super) fn load(&self) {
         unsafe { Cr3::write(PhysFrame::from_start_address(self.page_table_address()).unwrap(), Cr3Flags::empty()) };
     }
 
 
     /// Return physical address of root page table address (pml4) of `self`
-    pub fn page_table_address(&self) -> PhysAddr {
+    pub(super) fn page_table_address(&self) -> PhysAddr {
         // Get root table pointer without locking.
         // We cannot use the lock here, because this function is called by the scheduler.
         // This is still safe, since we only return an address and not a reference.
@@ -89,28 +89,28 @@ impl AddressSpace {
     }
 
     /// Map page range `pages` to the given memory `space` with the given page table entry `flags`
-    pub fn map(&self, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
+    pub(super) fn map(&self, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
         let frames = PhysFrameRange { start: PhysFrame::from_start_address(PhysAddr::zero()).unwrap(), end: PhysFrame::from_start_address(PhysAddr::zero()).unwrap() };
 
-        AddressSpace::map_in_table(root_table, frames, pages, space, flags, depth);
+        Paging::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
     /// Map a range of `frames` to the given page range `pages` in the given memory `space` with the given page table entry `flags`
-    pub fn map_physical(&self, frames: PhysFrameRange, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
+    pub(super) fn map_physical(&self, frames: PhysFrameRange, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
         // Check if the number of frames matches the number of pages
         assert_eq!(frames.end - frames.start, pages.end - pages.start);
-        AddressSpace::map_in_table(root_table, frames, pages, space, flags, depth);
+        Paging::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
     /// Map a range of `frames` of a device into kernel space 
-    pub fn map_io(&self, frames: PhysFrameRange) {
+    pub(super) fn map_io(&self, frames: PhysFrameRange) {
         let v_start = VirtAddr::new(frames.start.start_address().as_u64());
         let v_end = VirtAddr::new(frames.end.start_address().as_u64());
 
@@ -123,31 +123,31 @@ impl AddressSpace {
     }
 
     /// Return physical address for the give a virtual address `addr`
-    pub fn translate(&self, addr: VirtAddr) -> Option<PhysAddr> {
+    pub(super) fn translate(&self, addr: VirtAddr) -> Option<PhysAddr> {
         let depth = self.depth;
         let root_table_guard = self.root_table.read();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
-        AddressSpace::translate_in_table(root_table, addr, depth)
+        Paging::translate_in_table(root_table, addr, depth)
     }
 
     /// Unmap a range of `pages` from the address space. 
     /// `free_physical` indicates if the physical frames should be freed.
-    pub fn unmap(&self, pages: PageRange, free_physical: bool) {
+    pub(super) fn unmap(&self, pages: PageRange, free_physical: bool) {
         let depth = self.depth;
         let root_table_guard = self.root_table.read();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
-        AddressSpace::unmap_in_table(root_table, pages, depth, free_physical);
+        Paging::unmap_in_table(root_table, pages, depth, free_physical);
     }
 
     /// Set `flags` of page table entries for the give range of `pages`` 
-    pub fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
+    pub(super) fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
-        AddressSpace::set_flags_in_table(root_table, pages, flags, depth);
+        Paging::set_flags_in_table(root_table, pages, flags, depth);
     }
 
     /// Internal recursive function to copy page tables from `source` to `target`
@@ -166,7 +166,7 @@ impl AddressSpace {
 
                 let next_level_source = unsafe { (source_entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
                 let next_level_target = unsafe { (target_entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
-                AddressSpace::copy_table(next_level_source, next_level_target, level - 1);
+                Paging::copy_table(next_level_source, next_level_target, level - 1);
             }
         } else { // Only on the last level, we create a 1:1 copy of the page table
             for (index, target_entry) in target.iter_mut().enumerate() {
@@ -194,7 +194,7 @@ impl AddressSpace {
                     next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
                 }
 
-                let allocated_pages = AddressSpace::map_in_table(next_level_table, frames, pages, space, flags, level - 1);
+                let allocated_pages = Paging::map_in_table(next_level_table, frames, pages, space, flags, level - 1);
                 pages = PageRange { start: pages.start + allocated_pages as u64, end: pages.end };
                 total_allocated_pages += allocated_pages;
 
@@ -208,12 +208,12 @@ impl AddressSpace {
             }
         } else { // Reached level 1 page table
             total_allocated_pages += match space {
-                MemorySpace::Kernel => AddressSpace::identity_map_kernel(table, pages, flags),
+                MemorySpace::Kernel => Paging::identity_map_kernel(table, pages, flags),
                 MemorySpace::User => {
                     if frames.start == frames.end {
-                        AddressSpace::map_user(table, pages, flags)
+                        Paging::map_user(table, pages, flags)
                     } else {
-                        AddressSpace::map_user_physical(table, frames, pages, flags)
+                        Paging::map_user_physical(table, frames, pages, flags)
                     }
                 }
             }
@@ -234,11 +234,11 @@ impl AddressSpace {
                 }
 
                 let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
-                let freed_pages = AddressSpace::unmap_in_table(next_level_table, pages, level - 1, free_physical);
+                let freed_pages = Paging::unmap_in_table(next_level_table, pages, level - 1, free_physical);
                 pages = PageRange { start: pages.start + freed_pages as u64, end: pages.end };
                 total_freed_pages += freed_pages;
 
-                if AddressSpace::is_table_empty(next_level_table) {
+                if Paging::is_table_empty(next_level_table) {
                     let table_frame = PhysFrame::from_start_address(entry.addr()).unwrap();
                     unsafe { frames::free(PhysFrameRange { start: table_frame, end: table_frame + 1 }); }
                     entry.set_unused();
@@ -282,7 +282,7 @@ impl AddressSpace {
                 }
 
                 let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
-                AddressSpace::drop_table(next_level_table, level - 1);
+                Paging::drop_table(next_level_table, level - 1);
             }
         }
 
@@ -306,7 +306,7 @@ impl AddressSpace {
 
                 let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
 
-                let edited_pages = AddressSpace::set_flags_in_table(next_level_table, pages, flags, level - 1);
+                let edited_pages = Paging::set_flags_in_table(next_level_table, pages, flags, level - 1);
                 pages = PageRange { start: pages.start + edited_pages as u64, end: pages.end };
                 total_edited_pages += edited_pages;
 
@@ -343,7 +343,7 @@ impl AddressSpace {
 
         if level > 1 { // Calculate next level page table until level == 1
             let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
-            AddressSpace::translate_in_table(next_level_table, addr, level - 1)
+            Paging::translate_in_table(next_level_table, addr, level - 1)
         } else { // Reached level 1 page table
             Some(entry.addr() + (addr - aligned_addr))
         }
