@@ -231,12 +231,21 @@ impl VirtualMemoryArea {
         Self { range, typ, tag }
     }
 
+    /// Create a new VirtualMemoryArea from a virtual `start` address and `size` with `typ`
     pub fn from_address(start: VirtAddr, size: usize, typ: VmaType) -> Self {
         let start_page = Page::from_start_address(start)
             .expect("VirtualMemoryArea: Address is not page aligned");
+
+        // Calculate the number of pages needed
+        let mut count_pages = (size / PAGE_SIZE) as u64;
+        if size % PAGE_SIZE != 0 {
+            count_pages += 1;
+        } 
+
+        // Init PageRange
         let range = PageRange {
             start: start_page,
-            end: start_page + (size / PAGE_SIZE) as u64,
+            end: start_page + count_pages, // PageRange end is exclusive
         };
 
         let tag: [u8; TAG_SIZE] = [b'-'; TAG_SIZE];

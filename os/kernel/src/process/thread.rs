@@ -181,16 +181,17 @@ impl Thread {
             StackAllocator::default(),
         );
 
+        // create user stack for the application
         let user_stack_end = Page::from_start_address(VirtAddr::new(
             (MAIN_USER_STACK_START + MAX_USER_STACK_SIZE) as u64,
         ))
         .unwrap();
+    
         let user_stack_pages = PageRange {
             start: user_stack_end - 1,
             end: user_stack_end,
         };
 
-        // create user stack for the application
         let user_stack = unsafe {
             Vec::from_raw_parts_in(
                 user_stack_pages.start.start_address().as_u64() as *mut u64,
@@ -313,6 +314,7 @@ impl Thread {
             start: user_stack_end - 1,
             end: user_stack_end,
         };
+
         let user_stack = unsafe {
             Vec::from_raw_parts_in(
                 user_stack_pages.start.start_address().as_u64() as *mut u64,
