@@ -54,8 +54,10 @@ impl Apic {
             }
         }
 
+
         // Find APIC relevant structures in ACPI tables
-        let madt = acpi_tables().lock().find_table::<Madt>().expect("MADT not available");
+        let madt_mapping = acpi_tables().lock().find_table::<Madt>().expect("MADT not available");
+			  let madt = madt_mapping.get();
         let int_model = madt.parse_interrupt_model_in(allocator()).expect("Interrupt model not found in MADT");
         let cpu_info = int_model.1.expect("CPU info not found in interrupt model");
 
