@@ -273,7 +273,7 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
 
 impl<'a> phy::RxToken for Rtl8139RxToken<'a> {
     fn consume<R, F>(mut self, f: F) -> R
-    where F: FnOnce(&mut [u8]) -> R {
+    where F: FnOnce(&[u8]) -> R {
         let result = f(&mut self.buffer);
         self.device.recv_buffers_empty.1.try_enqueue(self.buffer).expect("Failed to enqueue used receive buffer!");
 

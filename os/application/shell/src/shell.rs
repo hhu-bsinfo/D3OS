@@ -70,10 +70,12 @@ fn process_next_char(line: &mut String, ch: char) {
     match ch {
         '\n' => {
             let split = line.split_whitespace().collect::<Vec<&str>>();
-            if !process_internal_command(&split) {
-                match thread::start_application(split[0], split[1..].iter().map(|&s| s).collect()) {
-                    Some(app) => app.join(),
-                    None => println!("Command not found!"),
+            if !split.is_empty() {
+                if !process_internal_command(&split) {
+                    match thread::start_application(split[0], split[1..].iter().map(|&s| s).collect()) {
+                        Some(app) => app.join(),
+                        None => println!("Command not found!"),
+                    }
                 }
             }
 

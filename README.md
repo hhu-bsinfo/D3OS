@@ -1,11 +1,11 @@
-<p align="left">
-  <a href="https://www.uni-duesseldorf.de/home/en/home.html"><img src="media/d3os.png" width=300></a>
+<p align="center">
+  <a href="https://www.uni-duesseldorf.de/home/en/home.html"><img src="media/d3os.png" width=460></a>
 </p>
 
-A new distributed operating system for data centers, developed by the [operating systems group](https://www.cs.hhu.de/en/research-groups/operating-systems.html) of the department of computer science at [Heinrich Heine University Düsseldorf](https://www.hhu.de)
+**A new distributed operating system for data centers, developed by the [operating systems group](https://www.cs.hhu.de/en/research-groups/operating-systems.html) of the department of computer science at [Heinrich Heine University Düsseldorf](https://www.hhu.de)**
 
 <p align="center">
-  <a href="https://www.uni-duesseldorf.de/home/en/home.html"><img src="media/hhu.svg" width=200></a>
+  <a href="https://www.uni-duesseldorf.de/home/en/home.html"><img src="media/hhu.svg" width=300></a>
 </p>
 
 <p align="center">
@@ -22,10 +22,10 @@ rustup toolchain install nightly
 rustup override set nightly
 ```
 
-The toolchain `nightly-2024-12-02` is confirmed to work. If you are having problems with new versions, try:
+The toolchain `nightly-2025-03-10` is confirmed to work. If you are having problems with new versions, try:
 ```bash
-rustup toolchain install nightly-2024-12-02
-rustup override set nightly-2024-12-02
+rustup toolchain install nightly-2025-03-10
+rustup override set nightly-2025-03-10
 ```
 
 To run the build commands _cargo-make_ is required. Install it with:
