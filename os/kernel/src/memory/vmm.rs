@@ -136,9 +136,9 @@ impl VirtualAddressSpace {
         self.page_tables.map_physical(frames, pages, space, flags);
     }
 
-    pub fn map_io(&self, frames: PhysFrameRange) {
-        //        self.add_vma(VirtualMemoryArea::new(pages, mem_type));
-        //      self.page_tables.map_physical(frames, pages, space, flags);
+    pub fn map_io(&self, _frames: PhysFrameRange) { 
+        // self.add_vma(VirtualMemoryArea::new(pages, mem_type));
+        // self.page_tables.map_physical(frames, pages, space, flags);
     }
 
     pub fn map_kernel_stack(&self, pages: PageRange, tag_str: &str) {
@@ -269,11 +269,7 @@ impl VirtualMemoryArea {
     }
 
     pub fn overlaps_with(&self, other: &VirtualMemoryArea) -> bool {
-        if self.range.end <= other.range.start || self.range.start >= other.range.end {
-            false
-        } else {
-            true
-        }
+        self.range.end > other.range.start && self.range.start < other.range.end
     }
 
     pub fn grow_downwards(&self, pages: usize) {

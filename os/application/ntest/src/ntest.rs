@@ -87,7 +87,7 @@ pub fn main() {
                     None => break,
                 }
             },
-            Err(e) => { 
+            Err(_) => { 
                 println!("   readdir failed");
                 break;
             },

@@ -390,7 +390,7 @@ impl Paging {
     fn map_user_physical(table: &mut PageTable, frames: PhysFrameRange, pages: PageRange, flags: PageTableFlags) -> usize {
         let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
         let alloc_count = min((pages.end - pages.start) as usize, 512 - start_index);
-        let mut frame_iter = frames.into_iter().skip(start_index);
+        let mut frame_iter = frames.into_iter();
 
         for (count, entry) in table.iter_mut().skip(start_index).enumerate() {
             if count >= alloc_count {
