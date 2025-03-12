@@ -20,7 +20,7 @@ fn process_pwd(split: &Vec<&str>) {
     let res = cwd();
     match res {
         Ok(path) =>  println!("{}", path),
-        Err(e) => println!("usage: pwd"),
+        Err(_) => println!("usage: pwd"),
     }
 }
 

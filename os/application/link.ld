@@ -5,18 +5,21 @@ SECTIONS {
 
     ___APP_DATA_START__ = .;
 
-    .text :
+    .text ALIGN (4K) :
     {
         *(.text*)
     }
 
-   .bss :
+   .bss ALIGN (4K) :
     {
       ___BSS_START__ = .;
-      *(".bss")
-      *(".bss.*")
+      *(".bss*")
       ___BSS_END__ = .;
     }
 
+    .data ALIGN (4K) :
+    {
+        *(.data*)
+    }
     ___APP_DATA_END__ = .;
 }

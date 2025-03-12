@@ -13,7 +13,6 @@
 #![feature(exact_size_is_empty)]
 #![feature(fmt_internals)]
 #![feature(abi_x86_interrupt)]
-#![feature(trait_upcasting)]
 #![feature(ptr_metadata)]
 #![feature(let_chains)]
 #![allow(internal_features)]

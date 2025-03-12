@@ -41,7 +41,7 @@ condition = { files_modified = { input = [ "${SOURCE_DIRECTORY}/boot.asm" ], out
 command = "${LINKER}"
 args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${KERNEL}", "${ASM_OBJECT}", "${RUST_OBJECT}" ]
 dependencies = [ "compile", "build-asm" ]
-condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*" ], output = [ "${BOOTLOADER_DIRECTORY}/kernel.elf" ] } }
+condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*", "${LINKER_FILE}" ], output = [ "${BOOTLOADER_DIRECTORY}/kernel.elf" ] } }
 
 # Cleanup tasks
 
