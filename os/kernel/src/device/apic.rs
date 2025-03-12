@@ -26,6 +26,9 @@ pub struct Apic {
     timer_ticks_per_ms: usize
 }
 
+unsafe impl Send for Apic {}
+unsafe impl Sync for Apic {}
+
 #[derive(Default)]
 struct ApicTimerInterruptHandler {}
 
@@ -233,7 +236,7 @@ impl Apic {
         let mut local_apic = self.local_apic.lock();
 
         unsafe {
-            local_apic.set_timer_divide(TimerDivide::Div256); // Div256 is labelled wrong and actually means Div1
+            local_apic.set_timer_divide(TimerDivide::Div1);
             local_apic.set_timer_mode(TimerMode::Periodic);
             local_apic.set_timer_initial((self.timer_ticks_per_ms * interval_ms) as u32);
             local_apic.enable_timer();
@@ -246,7 +249,7 @@ impl Apic {
         unsafe {
             // Set APIC timer to count down from 0xffffffff
             local_apic.disable_timer();
-            local_apic.set_timer_divide(TimerDivide::Div256); // Div256 is labelled wrong and actually means Div1
+            local_apic.set_timer_divide(TimerDivide::Div1);
             local_apic.set_timer_mode(TimerMode::OneShot);
             local_apic.set_timer_initial(0xffffffff);
             local_apic.enable_timer();
