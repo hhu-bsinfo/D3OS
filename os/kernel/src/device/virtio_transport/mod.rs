@@ -1,6 +1,5 @@
-pub mod queue;
+pub mod virtqueue;
 pub mod command;
-
 
 bitflags::bitflags! {
     /// Virtual I/O Device (VIRTIO) Version 1.3, section 2.1: Device Status Field

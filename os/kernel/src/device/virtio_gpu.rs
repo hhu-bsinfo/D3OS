@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use crate::pci_bus;
-use crate::device::virtio::queue::*;
-use crate::device::virtio::command::*;
+use crate::device::virtio_transport::virtqueue::*;
+use crate::device::virtio_transport::command::*;
 use log::info;
 use pci_types::EndpointHeader;
 use spin::Mutex;
@@ -64,3 +64,20 @@ pub fn init() {
         //gpu.lock().init();
     }
 }
+
+/*
+// GPU Commands
+#[repr(C)]
+pub struct VirtioGpuCtrlHdr {
+    // Command header fields
+}
+
+#[repr(C)]
+pub struct VirtioGpuResourceCreate2d {
+    // Fields for resource creation
+}
+
+#[repr(C)]
+pub struct VirtioGpuResourceFlush {
+    // Fields for resource flush
+}*/
