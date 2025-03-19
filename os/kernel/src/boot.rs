@@ -10,7 +10,7 @@
 
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
-use crate::device::{qemu_cfg, virtio_gpu};
+use crate::device::{qemu_cfg, gpu};
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
@@ -260,7 +260,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     network::init();
 
     // Initialize virtio-gpu device
-    virtio_gpu::init();
+    gpu::init();
 
     let drive = storage::block_device("ata0").unwrap();
     let mut buffer = [0; 8192];

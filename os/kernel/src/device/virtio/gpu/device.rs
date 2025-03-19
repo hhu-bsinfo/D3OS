@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use crate::pci_bus;
-use crate::device::virtio_transport::virtqueue::*;
-use crate::device::virtio_transport::command::*;
+use crate::device::virtio::virtqueue::*;
+use crate::device::virtio::command::*;
 use log::info;
 use pci_types::EndpointHeader;
 use spin::Mutex;
