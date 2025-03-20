@@ -72,12 +72,3 @@ pub struct DmaBuffer {
     pub length: u32,
 }
 
-impl VirtioQueue {
-    pub fn new() -> Self {
-        VirtioGpuQueue {
-            descriptors: vec![],
-            available: AvailableQueue { flags: 0, index: 0, ring: [0; 64] },
-            used: UsedQueue { flags: 0, index: 0, ring: [UsedQueueItem { id: 0, length: 0 }; 64] },
-        }
-    }
-}
