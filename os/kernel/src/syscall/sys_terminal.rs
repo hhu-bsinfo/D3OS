@@ -8,8 +8,8 @@
 */
 use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
-use crate::{keyboard, terminal};
-use log::debug;
+use crate::{keyboard, terminal, terminal_initialized};
+use log::{debug, info};
 use stream::{DecodedInputStream, InputStream};
 use terminal::Application;
 
@@ -47,7 +47,14 @@ pub fn sys_terminal_read(application_ptr: *const Application, blocking: usize) -
 
 pub fn sys_terminal_write(buffer: *const u8, length: usize) -> isize {
     let string = from_utf8(unsafe { slice_from_raw_parts(buffer, length).as_ref().unwrap() }).unwrap();
-    let terminal = terminal();
-    terminal.write_str(string);
+
+    // Prevent crashes when no terminal is available (window manager replaces the shell)
+    if terminal_initialized() {
+        let terminal = terminal();
+        terminal.write_str(string);
+    } else {
+        debug!("{}", string);
+    }
+
     0
 }
