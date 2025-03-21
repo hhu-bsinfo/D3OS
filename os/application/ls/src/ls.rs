@@ -4,9 +4,9 @@ extern crate alloc;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use naming::{mkdir, touch, cwd, cd};
+use naming::cwd;
 
-use naming::shared_types::{DirEntry, FileType, OpenOptions, SeekOrigin};
+use naming::shared_types::{DirEntry, FileType, OpenOptions};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::{print, println};
@@ -42,14 +42,12 @@ fn process_ls(path: &String) {
                     None => break,
                 }
             },
-            Err(e) => { 
-                break;
-            },
+            Err(_) => break
         }
     }
 
     // close directory
-    naming::close(fd);
+    naming::close(fd).expect("Failed to close directory");
 }
 
 pub fn args_to_vec() -> Vec<String> {
@@ -71,7 +69,7 @@ pub fn main() {
         let res = cwd();
         match res {
             Ok(path) =>  process_ls(&path),
-            Err(e) => print_usage(),
+            Err(_) => print_usage(),
         }
     } else if args_count == 2 {
         process_ls(&args_vec[1]);

@@ -1,36 +1,30 @@
 ENTRY(start)
 
 SECTIONS {
-    . = 1M;   /* load at address 1MB */
+    . = 1M;   /* load kernel at 1 MiB */
 
     ___KERNEL_DATA_START__ = .;
 
     .boot :
     {
-        /* ensure that the multiboot header is at the beginning */
         *(.multiboot2_header)
     }
 
-    /* Startcode fuer die APs, wird von System::init() reloziert */
-	.boot_seg_ap ALIGN(0x10) :
-	{
-		*(".boot_seg_ap")
-		*(".boot_seg_ap$")
-	}
-
-
-    .text :
+    .text ALIGN (4K) :
     {
-        *(.text)
+        *(.text*)
     }
 
-   .bss : 
+   .bss ALIGN (4K) :
     {
       ___BSS_START__ = .;
-      *(".bss")
-      *(".bss.*")
+      *(".bss*")
       ___BSS_END__ = .;
     }
 
+    .data ALIGN (4K) :
+    {
+        *(.data*)
+    }
     ___KERNEL_DATA_END__ = .;
 }

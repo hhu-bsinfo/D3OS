@@ -1,16 +1,16 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: api                                                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Public interface of the naming service:                         ║
-   ║         - init:  init ns, called once                                   ║
-   ║         - open:  open a named object                                    ║
-   ║         - read:  read bytes from an open object                         ║
-   ║         - write: write bytes into an open object                        ║
-   ║         - seek:  set file pointer (for files)                           ║
-   ║         - mkdir: create a directory                                     ║
-   ║         - touch: create a file                                          ║
+   ║ Public functions of the naming service:                                 ║
+   ║   - init   init ns, called once                                         ║
+   ║   - open   open a named object                                          ║
+   ║   - read   read bytes from an open object                               ║
+   ║   - write  write bytes into an open object                              ║
+   ║   - seek   set file pointer (for files)                                 ║
+   ║   - mkdi : create a directory                                           ║
+   ║   - touch  create a file                                                ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 30.12.2024               ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 23.2.2025                ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -35,9 +35,7 @@ pub(super) static ROOT: Once<Arc<dyn FileSystem>> = Once::new();
 // current working directory
 static CWD: Mutex<String> = Mutex::new(String::new());
 
-///
-/// Description: Initilize the naming service (must be called once before using it)
-///
+/// Initilize the naming service (must be called once before using it).
 pub fn init() {
     // Initialize ROOT with TmpFs
     ROOT.call_once(|| {
@@ -51,15 +49,8 @@ pub fn init() {
     //    test::running_tests();
 }
 
-///
-/// Description: Open/create a named object
-///
-/// Parameters: \
-///    `path` must be an absolute path \
-///    `flags` see below
-///
-/// Return: `SyscallResult`
-///
+/// Open/create a named object referenced by `path` using the given `flags`. \
+/// Returns `Ok(object_handle)` or `Err`.
 pub fn open(path: &String, flags: OpenOptions) -> Result<usize, Errno> {
     open_objects::open(path, flags).or_else(|e| {
         if flags.contains(OpenOptions::CREATE) {
@@ -69,63 +60,33 @@ pub fn open(path: &String, flags: OpenOptions) -> Result<usize, Errno> {
         }
     })
 }
-///
-/// Description: \
-///    Write bytes from the given buffer into the file (at the current position). \
-///    The number of bytes to be written is determined by the buffer size
-///
-/// Parameters: \
-///    `fh`  file handle \
-///    `buf` buffer from which bytes are copied into the file \
-///
-/// Return: `Ok(#bytes written)` or `Err(Errno)`
-///
-pub fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
-    open_objects::write(fh, &buf)
+
+/// Write all bytes from the given `buffer` into the named object referenced by `object_handle`. \
+/// Returns `Ok(number of bytes written)` or `Err`.
+pub fn write(object_handle: usize, buffer: &[u8]) -> Result<usize, Errno> {
+    open_objects::write(object_handle, &buffer)
 }
 
-///
-/// Description: \
-///    Read bytes from the file (from current position) into the given buffer. \
-///    The number of bytes to be read is determined by the buffer size
-///
-/// Parameters: \
-///    `fh`  file handle \
-///    `buf` buffer to copy file bytes into \
-///
-/// Return: `Ok(#bytes read)` or `Err(errno)`
-///
-pub fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
-    open_objects::read(fh, buf)
+/// Read from the named object referenced by `object_handle` into the given `buffer`. \
+/// Returns `Ok(number of bytes read)` or `Err`.
+pub fn read(object_handle: usize, buffer: &mut [u8]) -> Result<usize, Errno> {
+    open_objects::read(object_handle, buffer)
 }
 
-///
-/// Description: Set file pointer.
-///
-/// Parameters: \
-///    `fh`  file handle \
-///    `offset` offset in bytes \
-///    `origin` point of origin
-///
-/// Return: `Ok(0)` or `Err(errno)`
-///
-pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno> {
-    open_objects::seek(fh, offset, origin)
+/// Move the object pointer for the named object referenced by `object_handle` to the specified `offset` from the `origin`. \
+/// Returns `Ok(nr of bytes seeked)` or `Err`.
+pub fn seek(object_handle: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno> {
+    open_objects::seek(object_handle, offset, origin)
 }
 
-///
-/// Description: Close an open object \
-/// Return: `Ok(0)` or `Err(errno)`
-///
-pub fn close(fh: usize) -> Result<usize, Errno> {
-    open_objects::close(fh)
+/// Close the named object referenced by `object_handle`.
+/// Returns `Ok(0)` or `Err(errno)`
+pub fn close(object_handle: usize) -> Result<usize, Errno> {
+    open_objects::close(object_handle)
 }
 
-///
-/// Description: Create a directory for the given path \
-/// Parameters: `path` absolute path \
-/// Return: `Ok(0)` or `Err(errno)`
-///
+/// Create a directory for the given `path`. \
+/// Returns `Ok(0)` or `Err(errno)`
 pub fn mkdir(path: &String) -> Result<usize, Errno> {
     // Split the path into components
     let mut components: Vec<&str> = path.split("/").collect();
@@ -159,11 +120,8 @@ pub fn mkdir(path: &String) -> Result<usize, Errno> {
     }
 }
 
-///
-/// Description: Create a new empty file \
-/// Parameters: `path` absolute path \
-/// Return: `0` if successful, otherwise an error code
-///
+/// Create an empty file defined by `path`. \
+/// Returns `Ok(0)` or `Err(errno)`
 pub fn touch(path: &String) -> Result<usize, Errno> {
     // Split the path into components
     let mut components: Vec<&str> = path.split("/").collect();
@@ -197,21 +155,13 @@ pub fn touch(path: &String) -> Result<usize, Errno> {
     }
 }
 
-///
-/// Description: \
-///    Read next directory entry
-///
-/// Parameters: \
-///    `fh`     handle to an open directory \
-///    `dentry` memory for the next directory entry to be returned \
-///
-/// Return: \
-///    `Ok(1)` next directory entry in `dentry` \
-///    `Ok(0)` no more entries in the directory \
-///    `Err`    error code
-///
-pub fn readdir(fh: usize, dentry: *mut RawDirent) -> Result<usize, Errno> {
-    let res = open_objects::readdir(fh);
+/// Read next directory entry of directory referenced by `dir_handle` \
+/// Returns: \
+///   `Ok(1)` next directory entry in `dentry` \
+///   `Ok(0)` no more entries in the directory \
+///   `Err`   error code
+pub fn readdir(dir_handle: usize, dentry: *mut RawDirent) -> Result<usize, Errno> {
+    let res = open_objects::readdir(dir_handle);
     match res {
         Ok(dir_entry) => {
             match dir_entry {
@@ -240,16 +190,9 @@ pub fn readdir(fh: usize, dentry: *mut RawDirent) -> Result<usize, Errno> {
     }
 }
 
-///
-/// Description: \
-///    Return the current working path.
-///
-/// Parameters: \
-///    `buf` buffer to copy current path into \
-///
-/// Return: `Ok(#len of string)` or `Err(errno)`
-///
-pub fn cwd(buf: &mut [u8]) -> Result<usize, Errno> {
+/// Get the current working directory and return path in `buffer`. \
+/// Return: `Ok(len of string)` or `Err(errno)`
+pub fn cwd(buffer: &mut [u8]) -> Result<usize, Errno> {
     // Lock the CWD mutex to access its value
     let cwd = CWD.lock();
     
@@ -257,14 +200,14 @@ pub fn cwd(buf: &mut [u8]) -> Result<usize, Errno> {
     let cwd_bytes = cwd.as_bytes();
 
     // Calculate how much data can be copied (leave space for the null terminator)
-    let len_to_copy = (buf.len() - 1).min(cwd_bytes.len()); // Reserve space for the null terminator
+    let len_to_copy = (buffer.len() - 1).min(cwd_bytes.len()); // Reserve space for the null terminator
 
     // Copy the data into the buffer
-    buf[..len_to_copy].copy_from_slice(&cwd_bytes[..len_to_copy]);
+    buffer[..len_to_copy].copy_from_slice(&cwd_bytes[..len_to_copy]);
 
     // Add the null terminator if there is space
-    if buf.len() > len_to_copy {
-        buf[len_to_copy] = 0;
+    if buffer.len() > len_to_copy {
+        buffer[len_to_copy] = 0;
     }
 
     // Return the total length including the null terminator, or just the copied length

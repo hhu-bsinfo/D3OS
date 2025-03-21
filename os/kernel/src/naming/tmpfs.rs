@@ -1,7 +1,7 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: tmpfs                                                           ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Temporary file system running storing data in main memory.      ║
+   ║ Temporary file system running storing data in main memory.              ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Michael Schoettner, Univ. Duesseldorf, 30.12.2024               ║
    ╚═════════════════════════════════════════════════════════════════════════╝

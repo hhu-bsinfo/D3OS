@@ -1,11 +1,11 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: traits                                                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: All internal traits used within the naming service (ns).        ║
-   ║         - FileSystem: type and operations for a file system             ║
-   ║         - NamedObject: generic type of an object                        ║
-   ║         - DirectoryObject: specifies all operations on a directory obj. ║
-   ║         - FileObject: specifies all operations on a file object         ║
+   ║ All internal traits used within the naming service (ns).                ║
+   ║   - FileSystem: type and operations for a file system                   ║
+   ║   - NamedObject: generic type of an object                              ║
+   ║   - DirectoryObject: specifies all operations on a directory object     ║
+   ║   - FileObject: specifies all operations on a file object               ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Michael Schoettner, Univ. Duesseldorf, 30.12.2024               ║
    ╚═════════════════════════════════════════════════════════════════════════╝

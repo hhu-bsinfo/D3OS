@@ -53,7 +53,7 @@ args = [
 command = "${LINKER}"
 args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${APPLICATION}", "${C_OBJECT}", "${RUST_OBJECT}" ]
 dependencies = [ "compile", "compile-c" ]
-condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd/${CARGO_MAKE_PROJECT_NAME}" ] } }
+condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*", "${LINKER_FILE}" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd/${CARGO_MAKE_PROJECT_NAME}" ] } }
 
 # Cleanup tasks
 

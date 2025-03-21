@@ -1,22 +1,20 @@
-use acpi::PhysicalMapping;
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: kheap                                                           ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Allocator for the kernel heap.                                          ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 02.03.2025                   ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
 use core::ptr::NonNull;
 use linked_list_allocator::LockedHeap;
-use x86_64::PhysAddr;
 use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::PhysFrame;
-use crate::memory::{PAGE_SIZE, physical};
-use crate::memory::physical::phys_limit;
+use crate::memory::PAGE_SIZE;
 
 pub struct KernelAllocator {
     heap: LockedHeap,
 }
-
-#[derive(Default)]
-pub struct StackAllocator {}
-
-#[derive(Default, Clone)]
-pub struct AcpiHandler;
 
 impl KernelAllocator {
     pub const fn new() -> Self {
@@ -71,34 +69,3 @@ unsafe impl GlobalAlloc for KernelAllocator {
     }
 }
 
-unsafe impl Allocator for StackAllocator {
-    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        if PAGE_SIZE % layout.align() != 0 {
-            return Err(AllocError);
-        }
-
-        let frame_count = if layout.size() % PAGE_SIZE == 0 { layout.size() / PAGE_SIZE } else { (layout.size() / PAGE_SIZE) + 1 };
-        let frames = physical::alloc(frame_count);
-
-        Ok(NonNull::slice_from_raw_parts(NonNull::new(frames.start.start_address().as_u64() as *mut u8).unwrap(), (frames.end - frames.start) as usize * PAGE_SIZE))
-    }
-
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        // Ignore virtual addresses
-        if (ptr.as_ptr() as usize) < phys_limit().start_address().as_u64() as usize {
-            assert_eq!(PAGE_SIZE % layout.align(), 0);
-            assert_eq!(layout.size() % PAGE_SIZE, 0);
-
-            let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64)).unwrap();
-            unsafe { physical::free(PhysFrameRange { start, end: start + (layout.size() / PAGE_SIZE) as u64 }); }
-        }
-    }
-}
-
-impl acpi::AcpiHandler for AcpiHandler {
-    unsafe fn map_physical_region<T>(&self, physical_address: usize, size: usize) -> PhysicalMapping<Self, T> {
-        unsafe { PhysicalMapping::new(physical_address, NonNull::new(physical_address as *mut T).unwrap(), size, size, AcpiHandler) }
-    }
-
-    fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {}
-}
