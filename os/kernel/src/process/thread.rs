@@ -337,7 +337,7 @@ impl Thread {
         );
 
         // add the VMA entry for the new user stack
-        parent.virtual_address_space.add_vma(VirtualMemoryArea::new_with_id(user_stack_pages, VmaType::UserStack, tid));
+        //parent.virtual_address_space.add_vma(VirtualMemoryArea::new_with_id(user_stack_pages, VmaType::UserStack, tid));
 
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
