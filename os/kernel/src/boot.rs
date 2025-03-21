@@ -20,9 +20,7 @@ use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_initrd,
-    init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network,
-    process_manager, scheduler, serial_port, terminal, timer, tss,
+    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_initrd, init_lfb, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss
 };
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
@@ -136,6 +134,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             .align_up(PAGE_SIZE as u64),
     )
     .unwrap();
+
     kernel_process.virtual_address_space.map(
         PageRange {
             start: fb_start_page,
@@ -147,14 +146,17 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         "framebuffer",
     );
 
+    // Initialize framebuffer
+    init_lfb(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+
     // Initialize terminal kernel thread and enable terminal logging
-    init_terminal(
+    /*init_terminal(
         fb_info.address() as *mut u8,
         fb_info.pitch(),
         fb_info.width(),
         fb_info.height(),
         fb_info.bpp(),
-    );
+    );*/
     // Terminal output uses locks => hangs up when used for debugging
     // MS logger().register(terminal());
 
@@ -361,8 +363,14 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         "cleanup",
     ));
 
+    // Create and register the 'window_manager' thread in the scheduler
+    scheduler().ready(Thread::load_application(initrd().entries()
+        .find(|entry| entry.filename().as_str().unwrap() == "window_manager")
+        .expect("Window Manager application not available!")
+        .data(), "window_manager", &Vec::new()));
+
     // Create and register the 'shell' thread (from app image in ramdisk) in the scheduler
-    scheduler().ready(Thread::load_application(
+    /*scheduler().ready(Thread::load_application(
         initrd()
             .entries()
             .find(|entry| entry.filename().as_str().unwrap() == "shell")
@@ -388,7 +396,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             .0
             .trim(),
         bootloader_name
-    );
+    );*/
 
     // Dump information about all processes (including VMAs) 
     process_manager().read().dump();
