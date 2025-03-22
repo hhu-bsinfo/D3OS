@@ -276,7 +276,7 @@ impl Thread {
             id: scheduler::next_thread_id(),
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process,
-            entry: unsafe { mem::transmute(ptr::null::<fn()>()) },
+            entry: || {},
             user_rip: VirtAddr::new(elf.entry),
         };
 
