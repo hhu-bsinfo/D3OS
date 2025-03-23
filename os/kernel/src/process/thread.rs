@@ -277,7 +277,7 @@ impl Thread {
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process,
             entry: || {},
-//            entry: unsafe { mem::transmute(ptr::null::<fn()>()) },
+// old           entry: unsafe { mem::transmute(ptr::null::<fn()>()) },
             user_rip: VirtAddr::new(elf.entry),
         };
 
