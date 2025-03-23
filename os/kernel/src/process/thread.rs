@@ -276,9 +276,12 @@ impl Thread {
             id: scheduler::next_thread_id(),
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process,
-            entry: unsafe { mem::transmute(ptr::null::<fn()>()) },
+            entry: || {},
+//            entry: unsafe { mem::transmute(ptr::null::<fn()>()) },
             user_rip: VirtAddr::new(elf.entry),
         };
+
+        info!("***ms thread");
 
         thread.prepare_kernel_stack();
         Rc::new(thread)
@@ -335,9 +338,6 @@ impl Thread {
             VmaType::UserStack,
             ""
         );
-
-        // add the VMA entry for the new user stack
-        parent.virtual_address_space.add_vma(VirtualMemoryArea::new_with_id(user_stack_pages, VmaType::UserStack, tid));
 
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
