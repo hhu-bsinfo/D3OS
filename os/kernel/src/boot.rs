@@ -9,7 +9,7 @@
 */
 
 use crate::device::pit::Timer;
-use crate::device::ps2::Keyboard;
+use crate::device::ps2::{Keyboard, Mouse};
 use crate::device::qemu_cfg;
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
@@ -20,7 +20,7 @@ use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_initrd, init_lfb, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss
+    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_initrd, init_lfb, init_pci, init_serial_port, init_terminal, initrd, keyboard, mouse, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss
 };
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
@@ -244,6 +244,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     info!("Initializing PS/2 devices");
     if let Some(keyboard) = keyboard() {
         Keyboard::plugin(keyboard);
+    }
+
+    if let Some(mouse) = mouse() {
+        Mouse::plugin(mouse);
     }
 
     // Enable serial port interrupts

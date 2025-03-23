@@ -3,11 +3,11 @@ use alloc::sync::Arc;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use stream::{DecodedInputStream, InputStream};
-use log::info;
+use log::{debug, info};
 use nolock::queues::{DequeueError, mpmc};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use ps2::{Controller, KeyboardType};
-use ps2::error::{ControllerError, KeyboardError};
+use ps2::error::{ControllerError, KeyboardError, MouseError};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard as PcKeyboard, ScancodeSet1};
 use spin::Mutex;
@@ -15,10 +15,12 @@ use spin::once::Once;
 use crate::{apic, interrupt_dispatcher};
 
 const KEYBOARD_BUFFER_CAPACITY: usize = 128;
+const MOUSE_BUFFER_CAPACITY: usize = 128;
 
 pub struct PS2 {
     controller: Arc<Mutex<Controller>>,
     keyboard: Once<Arc<Keyboard>>,
+    mouse: Once<Arc<Mouse>>,
 }
 
 pub struct Keyboard {
@@ -136,11 +138,52 @@ impl InterruptHandler for KeyboardInterruptHandler {
     }
 }
 
+pub struct Mouse {
+    controller: Arc<Mutex<Controller>>,
+    buffer: (mpmc::bounded::scq::Receiver<u8>, mpmc::bounded::scq::Sender<u8>),
+}
+
+struct MouseInterruptHandler {
+    mouse: Arc<Mouse>
+}
+
+impl Mouse {
+    fn new(controller: Arc<Mutex<Controller>>, buffer_cap: usize) -> Self {
+        Self {
+            controller,
+            buffer: mpmc::bounded::scq::queue(buffer_cap)
+        }
+    }
+
+    pub fn plugin(mouse: Arc<Mouse>) {
+        interrupt_dispatcher().assign(InterruptVector::Mouse, Box::new(MouseInterruptHandler::new(Arc::clone(&mouse))));
+        apic().allow(InterruptVector::Mouse);
+    }
+}
+
+impl MouseInterruptHandler {
+    pub fn new(mouse: Arc<Mouse>) -> Self {
+        Self { mouse }
+    }
+}
+
+impl InterruptHandler for MouseInterruptHandler {
+    fn trigger(&self) {
+        if let Some(mut controller) = self.mouse.controller.try_lock() {
+            controller.read_data();
+            debug!("Mouse interrupt handler called");
+        } else {
+            panic!("Mouse: Controller is locked during interrupt!");
+        }
+    }
+}
+
 impl PS2 {
     pub fn new() -> Self {
         Self {
             controller: unsafe { Arc::new(Mutex::new(Controller::with_timeout(1000000))) },
-            keyboard: Once::new()
+            keyboard: Once::new(),
+            mouse: Once::new()
         }
     }
 
@@ -179,6 +222,18 @@ impl PS2 {
             config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT, true);
             controller.write_config(config)?;
             info!("First port enabled");
+        }
+
+        // Check if mouse is present
+        let test_result = controller.test_mouse();
+        if test_result.is_ok() {
+            // Enable mouse
+            info!("Second port detected");
+            controller.enable_mouse()?;
+            config.set(ControllerConfigFlags::DISABLE_MOUSE, false);
+            config.set(ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT, true);
+            controller.write_config(config)?;
+            info!("Second port enabled");
         }
 
         test_result
@@ -222,9 +277,39 @@ impl PS2 {
         Ok(())
     }
 
+    pub fn init_mouse(&mut self) -> Result<(), MouseError> {
+        info!("Initializing Mouse");
+        let mut controller = self.controller.lock();
+
+        // Perform self test on mouse
+        controller.mouse().reset_and_self_test()?;
+        info!("Mouse has been reset and self test result is OK");
+
+        // Setup mouse
+        controller.mouse().set_defaults()?;
+        //controller.mouse().set_resolution(2)?;
+        //controller.mouse().set_sample_rate(80)?;
+        //controller.mouse().set_scaling_one_to_one()?;
+        //controller.mouse().set_stream_mode()?;
+        controller.mouse().enable_data_reporting()?;
+
+        self.mouse.call_once(|| {
+            Arc::new(Mouse::new(Arc::clone(&self.controller), MOUSE_BUFFER_CAPACITY))
+        });
+        
+        Ok(())
+    }
+
     pub fn keyboard(&self) -> Option<Arc<Keyboard>> {
         match self.keyboard.is_completed() {
             true => Some(Arc::clone(self.keyboard.get().unwrap())),
+            false => None
+        }
+    }
+
+    pub fn mouse(&self) -> Option<Arc<Mouse>> {
+        match self.mouse.is_completed() {
+            true => Some(Arc::clone(self.mouse.get().unwrap())),
             false => None
         }
     }

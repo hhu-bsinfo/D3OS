@@ -22,7 +22,7 @@ use crate::device::apic::Apic;
 use crate::device::lfb_terminal::{CursorThread, LFBTerminal};
 use crate::device::pci::PciBus;
 use crate::device::pit::Timer;
-use crate::device::ps2::{Keyboard, PS2};
+use crate::device::ps2::{Keyboard, Mouse, PS2};
 use crate::device::serial;
 use crate::device::serial::{BaudRate, ComPort, SerialPort};
 use crate::device::speaker::Speaker;
@@ -353,23 +353,40 @@ pub fn terminal() -> Arc<dyn Terminal> {
 /// Used to access PS/2 devices like the keyboard or mouse. Currently only the keyboard is supported.
 static PS2: Once<Arc<PS2>> = Once::new();
 
-pub fn keyboard() -> Option<Arc<Keyboard>> {
-    PS2.call_once(|| {
-        let mut ps2 = PS2::new();
-        match ps2.init_controller() {
-            Ok(_) => match ps2.init_keyboard() {
+fn init_ps2() -> Arc<PS2> {
+    let mut ps2 = PS2::new();
+    match ps2.init_controller() {
+        Ok(_) => {
+            match ps2.init_keyboard() {
                 Ok(_) => {}
                 Err(error) => error!("Keyboard initialization failed: {:?}", error),
-            },
-            Err(error) => error!("PS/2 controller initialization failed: {:?}", error),
-        }
+            }
 
-        Arc::new(ps2)
-    });
+            match ps2.init_mouse() {
+                Ok(_) => {}
+                Err(error) => error!("Mouse initialization failed: {:?}", error),
+            }
+        },
+        Err(error) => error!("PS/2 controller initialization failed: {:?}", error),
+    }
+
+    Arc::new(ps2)
+}
+
+pub fn keyboard() -> Option<Arc<Keyboard>> {
+    PS2.call_once(init_ps2);
 
     PS2.get()
         .expect("Trying to access PS/2 devices before initialization!")
         .keyboard()
+}
+
+pub fn mouse() -> Option<Arc<Mouse>> {
+    PS2.call_once(init_ps2);
+
+    PS2.get()
+        .expect("Trying to access PS/2 devices before initialization!")
+        .mouse()
 }
 
 /// PCI Bus.
