@@ -138,13 +138,27 @@ impl InterruptHandler for KeyboardInterruptHandler {
     }
 }
 
+#[derive(Default, Clone, Copy)]
+pub struct MousePacket {
+    pub flags: u8,
+    pub dx: i8,
+    pub dy: i8,
+}
+
 pub struct Mouse {
     controller: Arc<Mutex<Controller>>,
-    buffer: (mpmc::bounded::scq::Receiver<u8>, mpmc::bounded::scq::Sender<u8>),
+    buffer: (mpmc::bounded::scq::Receiver<MousePacket>, mpmc::bounded::scq::Sender<MousePacket>),
+}
+
+#[derive(Default)]
+struct MouseState {
+    cycle: i8,
+    current_packet: MousePacket
 }
 
 struct MouseInterruptHandler {
-    mouse: Arc<Mouse>
+    mouse: Arc<Mouse>,
+    state: Mutex<MouseState>
 }
 
 impl Mouse {
@@ -163,15 +177,61 @@ impl Mouse {
 
 impl MouseInterruptHandler {
     pub fn new(mouse: Arc<Mouse>) -> Self {
-        Self { mouse }
+        Self { mouse, state: Mutex::new(MouseState::default()) }
     }
 }
 
 impl InterruptHandler for MouseInterruptHandler {
     fn trigger(&self) {
         if let Some(mut controller) = self.mouse.controller.try_lock() {
-            controller.read_data();
-            debug!("Mouse interrupt handler called");
+            if let Ok(data) = controller.read_data() {
+                let mut mouse_state = self.state.lock();
+
+                match mouse_state.cycle {
+                    0 => {
+                        // Is it really the first byte?
+                        if data & 0x08 == 0 {
+                            debug!("Mouse: Discarding invalid first byte");
+                            return;
+                        }
+
+                        // Read first byte (flags)
+                        mouse_state.current_packet = MousePacket::default();
+                        mouse_state.current_packet.flags = data;
+
+                        mouse_state.cycle += 1;
+                    },
+
+                    1 => {
+                        // Read second byte (delta x)
+                        mouse_state.current_packet.dx = data as i8;
+
+                        mouse_state.cycle += 1;
+                    }
+
+                    2 => {
+                        // Read third byte (delta y)
+                        mouse_state.current_packet.dy = data as i8;
+
+                        let packet = mouse_state.current_packet;
+                        debug!("Mouse: flags = {}, dx = {}, dy = {}", packet.flags, packet.dx, packet.dy);
+
+                        // The packet is complete. Enqueue it!
+                        while self.mouse.buffer.1.try_enqueue(mouse_state.current_packet.clone()).is_err() {
+                            if self.mouse.buffer.0.try_dequeue().is_err() {
+                                panic!("Mouse: Failed to store received packet in buffer!");
+                            }
+                        }
+
+                        mouse_state.cycle = 0;
+                    }
+
+                    _ => {
+                        mouse_state.cycle = 0;
+                    }
+                }
+            }
+            //debug!("Mouse interrupt handler called");
         } else {
             panic!("Mouse: Controller is locked during interrupt!");
         }
