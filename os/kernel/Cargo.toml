@@ -24,22 +24,22 @@ multiboot2 = "0.23.1"
 ps2 = "0.2.0"
 pc-keyboard = "0.8.0"
 anstyle-parse = "0.2.6"
-chrono = { version = "0.4.38", default-features = false, features = ["alloc"] }
+chrono = { version = "0.4.40", default-features = false, features = ["alloc"] }
 nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
-acpi = "5.1.0"
+acpi = "5.2.0"
 x2apic = "0.5.0"
 raw-cpuid = "11.2.0"
 smallmap = "1.4.2"
 uefi-raw = "0.10.0"
 uefi = { version = "0.34.1", features = ["alloc"] }
 log = "0.4.26"
-goblin = { version = "0.9.2", default-features = false, features = ["elf32", "elf64", "endian_fd"]}
-tar-no-std = "0.3.2"
+goblin = { version = "0.9.3", default-features = false, features = ["elf32", "elf64", "endian_fd"]}
+tar-no-std = "0.3.3"
 pci_types = "0.10.0"
-bitflags = "2.6.0"
+bitflags = "2.9.0"
 smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "log", "medium-ethernet", "proto-ipv4", "socket-udp"] }
 mbrs = { version = "0.3.1", default-features = false, features = ["no-std"] }
-num_enum = { version = "0.7", default-features = false }
+num_enum = { version = "0.7.3", default-features = false }
 
 [build-dependencies]
-built = { version = "0.7.5", features = ["chrono", "git2"] }
+built = { version = "0.7.7", features = ["chrono", "git2"] }
