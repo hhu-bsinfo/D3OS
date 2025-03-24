@@ -17,8 +17,6 @@ pub struct PciCapability {
     pub bar: u8,
     /// Multiple capabilities of the same type.
     pub id: u8,
-    /// Pad to a full dword.
-    pub padding: [u8; 2],
     /// Offset within the bar.
     /// Little-endian.
     pub offset: u32,

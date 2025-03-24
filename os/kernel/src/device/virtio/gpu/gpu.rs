@@ -1,27 +1,40 @@
 use alloc::boxed::Box;
 use alloc::sync::Arc;
-use crate::pci_bus;
-use log::info;
+use core::ptr::NonNull;
+use core::sync::atomic::AtomicU8;
 use pci_types::EndpointHeader;
 use spin::{Mutex, RwLock};
-use uefi::proto::console::gop::FrameBuffer;
-use x86_64::instructions::port::{Port, PortReadOnly};
-use crate::device::rtl8139::Command;
-use crate::device::virtio::transport::capabilities::CommonCfg;
-use crate::device::virtio::transport::flags::DeviceStatusFlags;
+use crate::device::virtio::transport::capabilities::{CommonCfg, PciCapability};
+use crate::device::virtio::transport::dma::DmaBuffer;
+
 
 const VIRTIO_GPU_MAX_SCANOUTS: usize = 16;
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
 struct VirtioGpu {
-    //pciDevice: RwLock<EndpointHeader>,
+    pci_device: RwLock<EndpointHeader>,
+    cap_ptr: u8,
+    irq: i32,
+
+    virtio_caps: [PciCapability; 16],
+    common_cfg: Option<NonNull<CommonCfg>>,
+    common_len: usize,
+    isr: Option<NonNull<AtomicU8>>,
+    notify_ptr: Option<NonNull<u16>>,
+    notify_off_multiplier: u32,
+    config: Option<NonNull<u32>>,
+    config_len: usize,
+
     rect: Option<VirtioGpuRect>,
-    //frame_buffer: FrameBuffer
+    frame_buffer: Option<DmaBuffer>,
     // cursot_buffer not implemented
     //control_queue: VirtioQueue,
     queue_buffer_send: Box<[u8]>,
     queue_buffer_recv: Box<[u8]>,
+}
+
+pub struct VirtioGpuInterruptHandler {
+    device: Arc<VirtioGpu>,
 }
 
 #[repr(C)]

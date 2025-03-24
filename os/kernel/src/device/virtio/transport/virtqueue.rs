@@ -73,9 +73,3 @@ pub struct UsedRingElement {
     length: u32,
 }
 
-#[repr(C)]
-pub struct DmaBuffer {
-    pub address: u64,
-    pub length: u32,
-}
-
