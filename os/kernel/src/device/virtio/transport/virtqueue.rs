@@ -1,5 +1,6 @@
 use alloc::vec;
 use alloc::vec::Vec;
+use core::sync::atomic::AtomicU16;
 
 pub const VIRTQUEUE_SIZE: usize = 64;
 pub const MAX_DESCRIPTORS: usize = 64;
@@ -46,21 +47,27 @@ bitflags::bitflags! {
 // Virtual I/O Device (VIRTIO) Version 1.3, section 2.7.6: The Virtqueue Available Ring
 // Also called Driver Ring. Driver to device communication
 #[repr(C)]
+#[derive(Debug)]
 pub struct AvailableRing {
-    flags: u16,
-    index: u16,
+    flags: AtomicU16,
+    index: AtomicU16,
     ring: [u16; VIRTQUEUE_SIZE],
+    /// Only used if VIRTIO_F_EVENT_IDX has been negotiated
+    used_event: AtomicU16,
 }
 
 // Also called Device Ring. Device to driver communication
 #[repr(C)]
+#[derive(Debug)]
 pub struct UsedRing {
-    flags: u16,
-    index: u16,
+    flags: AtomicU16,
+    index: AtomicU16,
     ring: [UsedRingElement; VIRTQUEUE_SIZE],
+    avail_event: AtomicU16,
 }
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct UsedRingElement {
     id: u32,
     length: u32,
