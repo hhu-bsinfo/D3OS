@@ -1,6 +1,7 @@
-use crate::memory::PAGE_SIZE;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub const PAGE_SIZE: usize = 0x1000;
+
+/*#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum VirtioGpuError {
     /// Insufficient descriptors available in the virtqueue. Try again later.
     #[error("Virtqueue lacks available descriptors")]
@@ -32,7 +33,7 @@ pub enum VirtioGpuError {
     /// The device lacks configuration space, but it was expected.
     #[error("Expected configuration space is missing")]
     MissingConfigSpace,
-}
+}*/
 
 fn align_up(size: usize) -> usize {
     (size + PAGE_SIZE) & !(PAGE_SIZE - 1)

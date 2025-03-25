@@ -10,7 +10,8 @@
 
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
-use crate::device::{qemu_cfg, gpu};
+use crate::device::virtio::gpu;
+use crate::device::{qemu_cfg};
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;

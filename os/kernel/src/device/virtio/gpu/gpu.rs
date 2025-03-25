@@ -1,18 +1,20 @@
 use alloc::boxed::Box;
 use alloc::sync::Arc;
+use core::ops::BitOr;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicU8;
-use pci_types::EndpointHeader;
-use spin::{Mutex, RwLock};
+use log::info;
+use pci_types::{CommandRegister, EndpointHeader};
+use spin::{RwLock};
 use crate::device::virtio::transport::capabilities::{CommonCfg, PciCapability};
 use crate::device::virtio::transport::dma::DmaBuffer;
-
+use crate::interrupt::interrupt_dispatcher::InterruptVector;
+use crate::pci_bus;
 
 const VIRTIO_GPU_MAX_SCANOUTS: usize = 16;
 
-#[repr(C)]
-struct VirtioGpu {
-    pci_device: RwLock<EndpointHeader>,
+pub struct VirtioGpu {
+    pci_device: u32,
     cap_ptr: u8,
     irq: i32,
 
@@ -38,7 +40,6 @@ pub struct VirtioGpuInterruptHandler {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
 struct GpuConfig {
     /// signals pending events to the driver. The driver MUST NOT write to this field.
     events_read: u32,
@@ -50,7 +51,6 @@ struct GpuConfig {
     num_capsets: u32,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(u32)]
 enum VirtioGpuCtrlType {
     Undefined = 0,
@@ -109,7 +109,6 @@ const VIRTIO_GPU_FLAG_FENCE: u32 = 1 << 0;
 const VIRTIO_GPU_FLAG_INFO_RING_IDX: u32 = 1 << 1;
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
 struct VirtioGpuCtrlHdr {
     type_: VirtioGpuCtrlType,
     flags: u32,
@@ -131,9 +130,9 @@ impl VirtioGpuCtrlHdr {
         }
     }
 
-    fn check_type(&self, type_: VirtioGpuCtrlType) -> bool {
+    /*fn check_type(&self, type_: VirtioGpuCtrlType) -> bool {
         self.type_ == type_
-    }
+    }*/
 }
 
 #[repr(C)]
@@ -146,7 +145,6 @@ struct VirtioGpuRect {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
 struct VirtioGpuRespDisplayInfo {
     hdr: VirtioGpuCtrlHdr,
     rect: VirtioGpuRect,
@@ -155,13 +153,11 @@ struct VirtioGpuRespDisplayInfo {
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy)]
 enum VirtioGpuFormats {
     B8G8R8A8UNORM = 1,
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
 struct ResourceCreate2d {
     hdr: VirtioGpuCtrlHdr,
     resource_id: u32,
@@ -171,7 +167,6 @@ struct ResourceCreate2d {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
 struct VirtioGpuSetScanout {
     hdr: VirtioGpuCtrlHdr,
     r: VirtioGpuRect,
@@ -180,7 +175,6 @@ struct VirtioGpuSetScanout {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
 struct VirtioGpuResourceFlush {
     hdr: VirtioGpuCtrlHdr,
     r: VirtioGpuRect,
@@ -189,7 +183,6 @@ struct VirtioGpuResourceFlush {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
 struct VirtioGpuTransferToHost2d {
     hdr: VirtioGpuCtrlHdr,
     r: VirtioGpuRect,
@@ -199,7 +192,6 @@ struct VirtioGpuTransferToHost2d {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
 struct VirtioGpuResourceAttachBacking {
     hdr: VirtioGpuCtrlHdr,
     resource_id: u32,
@@ -214,6 +206,46 @@ const QUEUE_TRANSMIT: u16 = 0;
 
 const SCANOUT_ID: u32 = 0;
 const RESOURCE_ID_FB: u32 = 0xbabe;
+
+
+impl VirtioGpu {
+    pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
+        info!("Reading Capabilities");
+        let pci_config_space = pci_bus().config_space();
+        let mut pci_device = pci_device.write();
+
+        pci_device.update_command(pci_config_space, |command| {
+            command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
+        });
+
+        let bar0 = pci_device.bar(0, pci_config_space).expect("Failed to read BAR0");
+        let base_address = bar0.unwrap_io() as u16;
+        info!("Virtio Gpu Base address: {:#X}", base_address);
+
+        let interrupt = InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 +32).unwrap();
+
+        let virtio_caps = [PciCapability::new(base_address); 16];
+        info!("Virtio Caps: {:?}", virtio_caps);
+
+        VirtioGpu {
+            pci_device: 0,
+            cap_ptr: 0,
+            irq: 0,
+            virtio_caps: [PciCapability::default(); 16],
+            common_cfg: None,
+            common_len: 0,
+            isr: None,
+            notify_ptr: None,
+            notify_off_multiplier: 0,
+            config: None,
+            config_len: 0,
+            rect: None,
+            frame_buffer: None,
+            queue_buffer_send: Box::new([]),
+            queue_buffer_recv: Box::new([]),
+        }
+    }
+}
 
 
 

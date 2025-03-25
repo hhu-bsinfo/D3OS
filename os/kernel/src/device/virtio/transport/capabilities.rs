@@ -2,30 +2,50 @@ use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly};
 use crate::device::virtio::transport::flags::DeviceStatusFlags;
 
-#[derive(Debug, Copy, Clone)]
 #[repr(C, packed)]
 pub struct PciCapability {
     /// Generic PCI field: PCI_CAP_ID_VNDR
-    pub cap_vndr: u8,
+    pub cap_vndr: Port<u8>,
     /// Generic PCI field: next ptr.
-    pub cap_next: u8,
+    pub cap_next: Port<u8>,
     /// Generic PCI field: capability length
-    pub cap_len: u8,
+    pub cap_len: Port<u8>,
     /// Identifies the structure.
-    pub cfg_type: CfgType,
+    pub cfg_type: Port<CfgType>,
     /// Where to find it.
-    pub bar: u8,
+    pub bar: Port<u8>,
     /// Multiple capabilities of the same type.
-    pub id: u8,
+    pub id: Port<u8>,
     /// Offset within the bar.
     /// Little-endian.
-    pub offset: u32,
+    pub offset: Port<u32>,
     /// Length of the structure, in bytes.
     /// Little-endian.
-    pub length: u32,
+    pub length: Port<u32>,
 }
 
-#[derive(Debug, Copy, Clone)]
+impl PciCapability {
+    pub(crate) fn default() -> PciCapability {
+        todo!()
+    }
+}
+
+impl PciCapability {
+    pub fn new(base: u16) -> Self {
+        Self {
+            cap_vndr: Port::new(base),
+            cap_next: Port::new(base + 0x01),
+            cap_len: Port::new(base + 0x02),
+            cfg_type: Port::new(base + 0x03),
+            bar: Port::new(base + 0x04),
+            id: Port::new(base + 0x05),
+            offset: Port::new(base + 0x08),
+            length: Port::new(base + 0x0C),
+        }
+    }
+}
+
+#[derive(Debug)]
 #[repr(u8)]
 pub enum CfgType {
     /// Common Configuration.
@@ -45,7 +65,6 @@ pub enum CfgType {
 }
 
 /// All of these values are in Little-endian.
-#[derive(Debug)]
 #[repr(C)]
 pub struct CommonCfg {
     /// The driver uses this to select which feature bits device_feature shows.
@@ -152,7 +171,6 @@ impl CommonCfg {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
 pub struct NotifyCfg {
     pub cap: PciCapability,
     /// The driver writes the queue number it is interested in to this field.

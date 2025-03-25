@@ -3,6 +3,8 @@ use x86_64::structures::paging::Page;
 use x86_64::structures::paging::page::PageRange;
 use crate::memory::frames;
 
+pub const PAGE_SIZE: usize = 0x1000;
+
 #[derive(Debug)]
 pub struct DmaBuffer {
     paddr: PhysAddr,
@@ -19,7 +21,7 @@ unsafe impl Sync for DmaBuffer {}
 
 impl DmaBuffer {
     pub fn new(pages: usize) -> Self {
-        let size = pages * frames::PAGE_SIZE;
+        let size = pages * PAGE_SIZE;
 
         let phys_buffer = frames::alloc(size);
         let phys_start_addr = phys_buffer.start.start_address();

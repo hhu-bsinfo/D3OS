@@ -1,5 +1,5 @@
-/// Virtual I/O Device (VIRTIO) Version 1.3, section 2.1: Device Status Field
-/// https://docs.oasis-open.org/virtio/virtio/v1.3/virtio-v1.3.pdf#page=15
+// Virtual I/O Device (VIRTIO) Version 1.3, section 2.1: Device Status Field
+// https://docs.oasis-open.org/virtio/virtio/v1.3/virtio-v1.3.pdf#page=15
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq)]
     #[repr(transparent)]
@@ -21,8 +21,8 @@ bitflags::bitflags! {
     }
 }
 
-/// Virtual I/O Device (VIRTIO) Version 1.3, section 6: Reserved Feature Bits
-/// https://docs.oasis-open.org/virtio/virtio/v1.3/virtio-v1.3.pdf#page=253
+// Virtual I/O Device (VIRTIO) Version 1.3, section 6: Reserved Feature Bits
+// https://docs.oasis-open.org/virtio/virtio/v1.3/virtio-v1.3.pdf#page=253
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq)]
     #[repr(transparent)]
