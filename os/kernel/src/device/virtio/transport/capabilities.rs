@@ -2,6 +2,8 @@ use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly};
 use crate::device::virtio::transport::flags::DeviceStatusFlags;
 
+
+
 #[repr(C, packed)]
 pub struct PciCapability {
     /// Generic PCI field: PCI_CAP_ID_VNDR
@@ -22,12 +24,6 @@ pub struct PciCapability {
     /// Length of the structure, in bytes.
     /// Little-endian.
     pub length: Port<u32>,
-}
-
-impl PciCapability {
-    pub(crate) fn default() -> PciCapability {
-        todo!()
-    }
 }
 
 impl PciCapability {
@@ -63,6 +59,11 @@ pub enum CfgType {
     /// Vendor-specific data.
     VirtioPciCapVendorCfg = 9,
 }
+
+pub const MAX_VIRTIO_CAPS: usize = 16;
+pub const PCI_CAP_ID_VNDR: u8 = 0x09; // Vendor-Specific
+pub const PCI_CONFIG_BASE_ADDR_0: u8 = 0x10; // Base Address Register 0 (BAR0)
+
 
 /// All of these values are in Little-endian.
 #[repr(C)]

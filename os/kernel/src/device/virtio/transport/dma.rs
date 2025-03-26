@@ -1,7 +1,8 @@
 use x86_64::{PhysAddr, VirtAddr};
-use x86_64::structures::paging::Page;
+use x86_64::structures::paging::{Page, PageTableFlags};
 use x86_64::structures::paging::page::PageRange;
 use crate::memory::frames;
+use crate::process_manager;
 
 pub const PAGE_SIZE: usize = 0x1000;
 
@@ -13,12 +14,6 @@ pub struct DmaBuffer {
     pages: usize,
 }
 
-
-// The Send trait indicates that it is safe to transfer ownership of a DmaTransport instance to another thread.
-unsafe impl Send for DmaBuffer {}
-// The Sync trait indicates that it is safe to reference a DmaTransport instance from multiple threads.
-unsafe impl Sync for DmaBuffer {}
-
 impl DmaBuffer {
     pub fn new(pages: usize) -> Self {
         let size = pages * PAGE_SIZE;
@@ -29,6 +24,11 @@ impl DmaBuffer {
             start: Page::from_start_address(VirtAddr::new(phys_start_addr.as_u64())).unwrap(),
             end: Page::from_start_address(VirtAddr::new(phys_buffer.end.start_address().as_u64())).unwrap()
         };
+
+        let kernel_process = process_manager().read().kernel_process().unwrap();
+        kernel_process.virtual_address_space.set_flags(page_range, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+
+
         Self {
             paddr: phys_start_addr,
             vaddr: page_range.start.start_address(),
