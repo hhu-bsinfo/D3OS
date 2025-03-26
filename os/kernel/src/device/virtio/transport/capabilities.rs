@@ -1,10 +1,12 @@
+use alloc::format;
+use alloc::string::String;
+use core::ops::Deref;
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly};
 use crate::device::virtio::transport::flags::DeviceStatusFlags;
 
 
 
-#[repr(C, packed)]
 pub struct PciCapability {
     /// Generic PCI field: PCI_CAP_ID_VNDR
     pub cap_vndr: Port<u8>,
@@ -13,7 +15,7 @@ pub struct PciCapability {
     /// Generic PCI field: capability length
     pub cap_len: Port<u8>,
     /// Identifies the structure.
-    pub cfg_type: Port<CfgType>,
+    pub cfg_type: Port<u8>,
     /// Where to find it.
     pub bar: Port<u8>,
     /// Multiple capabilities of the same type.
@@ -39,10 +41,32 @@ impl PciCapability {
             length: Port::new(base + 0x0C),
         }
     }
+
+    pub unsafe fn to_string(&mut self) -> String {
+        let cap_vndr = self.cap_vndr.read();
+        let cap_next = self.cap_next.read();
+        let cap_len = self.cap_len.read();
+        let cfg_type = self.cfg_type.read();
+        let bar = self.bar.read();
+        let id = self.id.read();
+        let offset = self.offset.read();
+        let length = self.length.read();
+
+        format!(
+            "PciCapability {{ cap_vndr: {:?}, cap_next: {:?}, cap_len: {:?}, cfg_type: {:?}, bar: {:?}, id: {:?}, offset: {:?}, length: {:?} }}",
+            cap_vndr,
+            cap_next,
+            cap_len,
+            cfg_type,
+            bar,
+            id,
+            offset,
+            length,
+        )
+    }
 }
 
-#[derive(Debug)]
-#[repr(u8)]
+
 pub enum CfgType {
     /// Common Configuration.
     VirtioPciCapCommonCfg = 1,
@@ -60,13 +84,13 @@ pub enum CfgType {
     VirtioPciCapVendorCfg = 9,
 }
 
+
 pub const MAX_VIRTIO_CAPS: usize = 16;
 pub const PCI_CAP_ID_VNDR: u8 = 0x09; // Vendor-Specific
 pub const PCI_CONFIG_BASE_ADDR_0: u8 = 0x10; // Base Address Register 0 (BAR0)
 
 
 /// All of these values are in Little-endian.
-#[repr(C)]
 pub struct CommonCfg {
     /// The driver uses this to select which feature bits device_feature shows.
     /// Value 0x0 selects Feature Bits 0 to 31, 0x1 selects Feature Bits 32 to 63, etc.
@@ -171,7 +195,6 @@ impl CommonCfg {
     }
 }
 
-#[repr(C)]
 pub struct NotifyCfg {
     pub cap: PciCapability,
     /// The driver writes the queue number it is interested in to this field.

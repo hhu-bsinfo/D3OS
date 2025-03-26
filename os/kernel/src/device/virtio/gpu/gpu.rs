@@ -1,12 +1,11 @@
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use core::ops::BitOr;
-use core::ptr::NonNull;
-use core::sync::atomic::AtomicU8;
+use core::sync::atomic::{AtomicU16, AtomicU8};
 use log::info;
-use pci_types::{CommandRegister, EndpointHeader};
-use spin::{RwLock};
-use crate::device::virtio::transport::capabilities::{CommonCfg, PciCapability};
+use pci_types::{Bar, CommandRegister, EndpointHeader};
+use spin::{Mutex, RwLock};
+use crate::device::virtio::transport::capabilities::{CommonCfg, PciCapability, MAX_VIRTIO_CAPS};
 use crate::device::virtio::transport::dma::DmaBuffer;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::pci_bus;
@@ -18,17 +17,22 @@ pub struct VirtioGpu {
     cap_ptr: u8,
     irq: i32,
 
-    virtio_caps: [PciCapability; 16],
-    common_cfg: Option<NonNull<CommonCfg>>,
+    //virtio_caps: [Mutex<PciCapability>; 16],
+    virtio_caps: u32, // testing
+    virtio_caps_count: u32,
+    //common_cfg: CommonCfg,
+    common_cfg: u32, // testing
     common_len: usize,
-    isr: Option<NonNull<AtomicU8>>,
-    notify_ptr: Option<NonNull<u16>>,
+    isr: AtomicU8,
+    notify_ptr: AtomicU16,
     notify_off_multiplier: u32,
-    config: Option<NonNull<u32>>,
+    config_ptr: u32,
     config_len: usize,
 
-    rect: Option<VirtioGpuRect>,
-    frame_buffer: Option<DmaBuffer>,
+    //rect: Mutex<VirtioGpuRect>,
+    rect: u32, // testing
+    //frame_buffer: Mutex<DmaBuffer>,
+    frame_buffer: u32, // testing
     // cursot_buffer not implemented
     //control_queue: VirtioQueue,
     queue_buffer_send: Box<[u8]>,
@@ -212,35 +216,86 @@ impl VirtioGpu {
     pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
         info!("Reading Capabilities");
         let pci_config_space = pci_bus().config_space();
-        let mut pci_device = pci_device.write();
-
-        pci_device.update_command(pci_config_space, |command| {
+        let mut virtio_pci = pci_device.write();
+        let mut cap_ptr = virtio_pci.capability_pointer(pci_config_space);
+        virtio_pci.update_command(pci_config_space, |command| {
             command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
         });
 
+        // Tesing and to know which BARs are available
+        for i in 0..6 {
+            if let Some(bar) = virtio_pci.bar(i, pci_config_space) {
+                match bar {
+                    Bar::Memory32 { address, size, .. } => {
+                        info!("Found BAR{} (Memory32): Base Address={:#x}, Size={:#x}", i, address, size);
+                    }
+                    Bar::Memory64 { address, size, .. } => {
+                        info!("Found BAR{} (Memory64): Base Address={:#x}, Size={:#x}", i, address, size);
+                    }
+                    Bar::Io { port } => {
+                        info!("Found BAR{} (I/O): Port Address={:#x}", i, port);
+                    }
+                    _ => {
+                        info!("BAR{} has an unknown type. Debug: {:?}", i, bar);
+                    }
+                }
+            } else {
+                info!("BAR{} is not available", i);
+            }
+        }
+        let mut cap_ptr = virtio_pci.capability_pointer(pci_config_space);
+        let bar1 = virtio_pci.bar(1, pci_config_space).expect("Failed to read BAR1");
+        let base_address1 = bar1.unwrap_mem().0 as u16;
+        let mut virtio_caps = PciCapability::new(cap_ptr);
+
+        unsafe {
+            info!("Virtio Caps: {:?}", virtio_caps.to_string());
+        }
+
+
+
+
+
+
+        /*
+        let mut cap_ptr = pci_device.capability_pointer(pci_config_space);
+
+        info!("Capabilities: {:?}", cap_ptr.next().unwrap().address().address);
+        let mut virtio_caps_count = 0;
+        while let Some(cap) = cap_ptr.next() && virtio_caps_count < MAX_VIRTIO_CAPS {
+            /*if cap.address().address.device() == 0x9 {
+                virtio_caps_count += 1;
+            }*/
+            virtio_caps_count += 1;
+        }*/
+/*
+        pci_device.update_command(pci_config_space, |command| {
+            command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
+        });
         let bar0 = pci_device.bar(0, pci_config_space).expect("Failed to read BAR0");
         let base_address = bar0.unwrap_io() as u16;
         info!("Virtio Gpu Base address: {:#X}", base_address);
 
         let interrupt = InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 +32).unwrap();
 
-        let virtio_caps = [PciCapability::new(base_address); 16];
-        info!("Virtio Caps: {:?}", virtio_caps);
-
+        let virtio_caps = PciCapability::new(base_address);
+        //info!("Virtio Caps: {:?}", virtio_caps);
+*/
         VirtioGpu {
             pci_device: 0,
             cap_ptr: 0,
             irq: 0,
-            virtio_caps: [PciCapability::default(); 16],
-            common_cfg: None,
+            virtio_caps: 0,
+            virtio_caps_count: 0,
+            common_cfg: 0,
             common_len: 0,
-            isr: None,
-            notify_ptr: None,
+            isr: AtomicU8::new(0),
+            notify_ptr: AtomicU16::new(0),
             notify_off_multiplier: 0,
-            config: None,
+            config_ptr: 0,
             config_len: 0,
-            rect: None,
-            frame_buffer: None,
+            rect: 0,
+            frame_buffer: 0,
             queue_buffer_send: Box::new([]),
             queue_buffer_recv: Box::new([]),
         }
