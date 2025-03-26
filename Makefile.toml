@@ -47,7 +47,7 @@ args = [
     "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
 
     # Virtio-GPU support
-    "-device", "virtio-gpu-pci",
+    "-device", "virtio-gpu-pci,id=vgpu,max_outputs=1",
 ]
 
 [tasks.debug]
