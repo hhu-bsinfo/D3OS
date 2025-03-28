@@ -1,14 +1,24 @@
 use alloc::boxed::Box;
 use alloc::sync::Arc;
+use alloc::vec;
+use alloc::vec::Vec;
 use core::ops::BitOr;
 use core::sync::atomic::{AtomicU16, AtomicU8};
 use log::info;
-use pci_types::{Bar, CommandRegister, ConfigRegionAccess, EndpointHeader};
+use pci_types::{Bar, CommandRegister, ConfigRegionAccess, EndpointHeader, PciAddress};
 use spin::{Mutex, RwLock};
-use crate::device::virtio::transport::capabilities::{CommonCfg, PciCapability, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR};
+use x86_64::{PhysAddr, VirtAddr};
+use x86_64::structures::paging::frame::PhysFrameRange;
+use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
+use x86_64::structures::paging::page::PageRange;
+use crate::device::virtio::transport::capabilities::{read_capabilities, CommonCfg, PciCapability, PciCapabilityTest, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR};
 use crate::device::virtio::transport::dma::DmaBuffer;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
-use crate::pci_bus;
+use crate::memory::{pages, MemorySpace};
+use crate::{allocator, pci_bus, process_manager};
+use crate::device::pci::ConfigurationSpace;
+use crate::device::virtio::lib::PAGE_SIZE;
+use crate::memory::vmm::VmaType;
 
 const VIRTIO_GPU_MAX_SCANOUTS: usize = 16;
 
@@ -217,7 +227,12 @@ impl VirtioGpu {
         info!("Configuring PCI registers");
         let pci_config_space = pci_bus().config_space();
         let mut pci_device = pci_device.write();
-        let mut cap_ptr = pci_device.capability_pointer(pci_config_space);
+        let device_address = pci_device.header().address();
+
+        let mut virtio_capability = PciCapability::read_all(pci_config_space, device_address);
+        info!("Virtio Capabilities: {:?}", virtio_capability);
+
+
         pci_device.update_command(pci_config_space, |command| {
             command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
         });
@@ -258,21 +273,47 @@ impl VirtioGpu {
 
             info!("Virtio Caps: {:?}", virtio_caps.to_string());
         }*/
-
+/*
         let bar1 = pci_device.bar(1, &pci_config_space).expect("Failed to read BAR1");
-        let base_address1 = bar1.unwrap_mem().0 as u16;
-        let mut virtio_caps = PciCapability::new(pci_device.capability_pointer(pci_config_space));
+        let base_address1 = bar1.unwrap_mem();
+
+
+        let address = base_address1.0 as u64;
+        let size = base_address1.1;
+        info!("MMIO base: {:#x}, size: {:#x}", address, size);*/
+
+
+
+        /*let start_page = Page::from_start_address(VirtAddr::new(address)).unwrap();
+        let num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+        process_manager()
+            .read()
+            .kernel_process()
+            .expect("Failed to get kernel process")
+            .virtual_address_space
+            .map(
+                PageRange {
+                    start: start_page,
+                    end: start_page + num_pages as u64,
+                },
+                MemorySpace::Kernel,
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
+                VmaType::DeviceMemory,
+                "virtio_gpu",
+            );*/
+
+        //let mmio_contents = read_mmio_region(base_address1.0, base_address1.1);
+
+        // Print contents
+        //for (i, &value) in mmio_contents.iter().enumerate() {
+        //    info!("MMIO[{}]: {:#x}", i * 4, value);
+        //}
 
 
         // Log the contents of virtio_caps
-        unsafe {
+        /*unsafe {
             info!("Virtio Caps: {}", virtio_caps.to_string());
-        }
-
-
-
-
-
+        }*/
 
 
         /*let mut cap_ptr = pci_device.capability_pointer(pci_config_space);
@@ -285,19 +326,19 @@ impl VirtioGpu {
             }
             virtio_caps_count += 1;
         }*/
-/*
-        pci_device.update_command(pci_config_space, |command| {
-            command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
-        });
-        let bar0 = pci_device.bar(0, pci_config_space).expect("Failed to read BAR0");
-        let base_address = bar0.unwrap_io() as u16;
-        info!("Virtio Gpu Base address: {:#X}", base_address);
+        /*
+                pci_device.update_command(pci_config_space, |command| {
+                    command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
+                });
+                let bar0 = pci_device.bar(0, pci_config_space).expect("Failed to read BAR0");
+                let base_address = bar0.unwrap_io() as u16;
+                info!("Virtio Gpu Base address: {:#X}", base_address);
 
-        let interrupt = InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 +32).unwrap();
+                let interrupt = InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 +32).unwrap();
 
-        let virtio_caps = PciCapability::new(base_address);
-        //info!("Virtio Caps: {:?}", virtio_caps);
-*/
+                let virtio_caps = PciCapability::new(base_address);
+                //info!("Virtio Caps: {:?}", virtio_caps);
+        */
         VirtioGpu {
             pci_device: 0,
             cap_ptr: 0,
