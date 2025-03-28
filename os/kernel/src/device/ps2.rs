@@ -345,10 +345,14 @@ impl PS2 {
         controller.mouse().reset_and_self_test()?;
         info!("Mouse has been reset and self test result is OK");
 
+        controller.mouse().disable_data_reporting()?;
+        let mouse_type = controller.mouse().get_mouse_type()?;
+        info!("Detected mouse type [{:?}]", mouse_type);
+
         // Setup mouse
         controller.mouse().set_defaults()?;
         //controller.mouse().set_resolution(2)?;
-        //controller.mouse().set_sample_rate(80)?;
+        //controller.mouse().set_sample_rate(10)?;
         //controller.mouse().set_scaling_one_to_one()?;
         //controller.mouse().set_stream_mode()?;
         controller.mouse().enable_data_reporting()?;

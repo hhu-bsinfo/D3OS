@@ -80,6 +80,9 @@ args = [
     # Audio configuration (Using pulse audio for Linux)
     "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
 
+    # Trace events
+    #"-d", "trace:ps2_write_keyboard,trace:ps2_read_data,trace:ps2_mouse_send_packet,trace:ps2_mouse_fake_event,trace:ps2_write_mouse,trace:ps2_mouse_reset",
+
     # Debugging configuration
     "-S", "-gdb", "tcp::1234"
 ]
