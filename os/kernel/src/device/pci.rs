@@ -43,7 +43,7 @@ impl ConfigurationSpace {
         unsafe { ports.address_port.write(address_raw);  }
     }
 
-    pub(crate) fn read_u16(&self, address: PciAddress, offset: u16) -> u16 {
+    pub fn read_u16(&self, address: PciAddress, offset: u16) -> u16 {
         // Align to a 32-bit boundary.
         let aligned_offset = offset & !0x3;
         // Read the 32-bit word.
@@ -53,11 +53,17 @@ impl ConfigurationSpace {
         ((word >> shift) & 0xffff) as u16
     }
 
-    pub(crate) fn read_u8(&self, address: PciAddress, offset: u16) -> u8 {
+    pub fn read_u8(&self, address: PciAddress, offset: u16) -> u8 {
         let aligned_offset = offset & !0x3;
         let word = unsafe { self.read(address, aligned_offset) };
         let shift = (offset & 0x3) * 8;
         ((word >> shift) & 0xff) as u8
+    }
+
+    pub fn read_u32(&self, address: PciAddress, offset: u16) -> u32 {
+        // Align offset to a 32-bit boundary.
+        let aligned_offset = offset & !0x3;
+        unsafe { self.read(address, aligned_offset) }
     }
 }
 
