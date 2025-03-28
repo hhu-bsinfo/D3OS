@@ -72,9 +72,13 @@ impl PciCapability {
             let cfg_type = config_space.read_u8(address, base + 3);
             let bar      = config_space.read_u8(address, base + 4);
             let id       = config_space.read_u8(address, base + 5);
-            let _padding = config_space.read_u8(address, base + 6);
-            let offset   = config_space.read_u32(address, base + 7);
-            let length   = config_space.read_u32(address, base + 11);
+
+            // Skip the two padding bytes at offsets 6 and 7. Padding is not used.
+            let _padding = 0;
+
+
+            let offset   = config_space.read_u32(address, base + 8);
+            let length   = config_space.read_u32(address, base + 12);
 
             capabilities.push(PciCapability {
                 cap_vndr,

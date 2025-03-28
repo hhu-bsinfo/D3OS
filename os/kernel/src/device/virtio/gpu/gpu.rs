@@ -26,9 +26,8 @@ pub struct VirtioGpu {
     pci_device: u32,
     cap_ptr: u8,
     irq: i32,
-
-    //virtio_caps: [Mutex<PciCapability>; 16],
-    virtio_caps: u32, // testing
+    
+    virtio_caps: Vec<PciCapability>, 
     virtio_caps_count: u32,
     //common_cfg: CommonCfg,
     common_cfg: u32, // testing
@@ -320,7 +319,7 @@ impl VirtioGpu {
             pci_device: 0,
             cap_ptr: 0,
             irq: 0,
-            virtio_caps: 0,
+            virtio_caps: virtio_capability,
             virtio_caps_count: 0,
             common_cfg: 0,
             common_len: 0,
