@@ -16,6 +16,7 @@ static VIRTIOGPU: Once<Arc<VirtioGpu>> = Once::new();
 
 pub fn init() {
     let devices = pci_bus().search_by_ids(VIRTIO_GPU_PCI_VENDOR_ID, VIRTIO_GPU_PCI_DEVICE_ID);
+
     if devices.len() > 0 {
         let (vendor_id, device_id) = devices[0].read().header().id(&pci_bus().config_space());
         VIRTIOGPU.call_once(|| {

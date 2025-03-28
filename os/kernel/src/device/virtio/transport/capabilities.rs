@@ -1,70 +1,100 @@
 use alloc::format;
 use alloc::string::String;
+use alloc::vec::Vec;
 use core::ops::Deref;
+use core::ptr::NonNull;
+use pci_types::PciAddress;
 use spin::Mutex;
+use tock_registers::interfaces::Readable;
+use tock_registers::register_bitfields;
+use tock_registers::registers::ReadWrite;
 use x86_64::instructions::port::{Port, PortReadOnly};
+use crate::device::pci::ConfigurationSpace;
 use crate::device::virtio::transport::flags::DeviceStatusFlags;
 
+pub const MAX_VIRTIO_CAPS: usize = 16;
+pub const PCI_CAP_ID_VNDR: u8 = 0x09; // Vendor-Specific
+pub const PCI_CONFIG_BASE_ADDR_0: u8 = 0x10; // Base Address Register 0 (BAR0)
 
+#[derive(Debug)]
+pub struct PciCapabilityTest {
+    pub(crate) id: u8,
+    pub(crate) offset: u8,
+}
 
+#[derive(Debug)]
 pub struct PciCapability {
     /// Generic PCI field: PCI_CAP_ID_VNDR
-    pub cap_vndr: Port<u8>,
+    pub cap_vndr: u8,
     /// Generic PCI field: next ptr.
-    pub cap_next: Port<u8>,
+    pub cap_next: u8,
     /// Generic PCI field: capability length
-    pub cap_len: Port<u8>,
+    pub cap_len: u8,
     /// Identifies the structure.
-    pub cfg_type: Port<u8>,
+    pub cfg_type: u8,
     /// Where to find it.
-    pub bar: Port<u8>,
+    pub bar: u8,
     /// Multiple capabilities of the same type.
-    pub id: Port<u8>,
+    pub id: u8,
+    /// Pad to full dword. Not used
+    pub _padding: u8,
     /// Offset within the bar.
     /// Little-endian.
-    pub offset: Port<u32>,
+    pub offset: u32,
     /// Length of the structure, in bytes.
     /// Little-endian.
-    pub length: Port<u32>,
+    pub length: u32,
 }
 
 impl PciCapability {
-    pub fn new(base: u16) -> Self {
-        Self {
-            cap_vndr: Port::new(base),
-            cap_next: Port::new(base + 0x01),
-            cap_len: Port::new(base + 0x02),
-            cfg_type: Port::new(base + 0x03),
-            bar: Port::new(base + 0x04),
-            id: Port::new(base + 0x05),
-            offset: Port::new(base + 0x08),
-            length: Port::new(base + 0x0C),
+    /// Reads all capabilities from the PCI configuration space for the given device.
+    pub fn read_all(config_space: &ConfigurationSpace, address: PciAddress) -> Vec<Self> {
+        let mut capabilities = Vec::new();
+
+        // Define offsets/constants for PCI configuration space.
+        const PCI_STATUS_OFFSET: u16 = 0x06;
+        const PCI_STATUS_CAP_LIST: u16 = 1 << 4;
+        const PCI_CAP_POINTER_OFFSET: u16 = 0x34;
+
+        // Check if the device supports capabilities.
+        let status = config_space.read_u16(address, PCI_STATUS_OFFSET);
+        if status & PCI_STATUS_CAP_LIST == 0 {
+            return capabilities;
         }
-    }
 
-    pub unsafe fn to_string(&mut self) -> String {
-        let cap_vndr = self.cap_vndr.read();
-        let cap_next = self.cap_next.read();
-        let cap_len = self.cap_len.read();
-        let cfg_type = self.cfg_type.read();
-        let bar = self.bar.read();
-        let id = self.id.read();
-        let offset = self.offset.read();
-        let length = self.length.read();
+        // Read the pointer to the first capability.
+        let mut cap_ptr = config_space.read_u8(address, PCI_CAP_POINTER_OFFSET);
+        while cap_ptr != 0 {
+            let base = cap_ptr as u16;
+            let cap_vndr = config_space.read_u8(address, base + 0);
+            let cap_next = config_space.read_u8(address, base + 1);
+            let cap_len  = config_space.read_u8(address, base + 2);
+            let cfg_type = config_space.read_u8(address, base + 3);
+            let bar      = config_space.read_u8(address, base + 4);
+            let id       = config_space.read_u8(address, base + 5);
+            let _padding = config_space.read_u8(address, base + 6);
+            let offset   = config_space.read_u32(address, base + 7);
+            let length   = config_space.read_u32(address, base + 11);
 
-        format!(
-            "PciCapability {{ cap_vndr: {:?}, cap_next: {:?}, cap_len: {:?}, cfg_type: {:?}, bar: {:?}, id: {:?}, offset: {:?}, length: {:?} }}",
-            cap_vndr,
-            cap_next,
-            cap_len,
-            cfg_type,
-            bar,
-            id,
-            offset,
-            length,
-        )
+            capabilities.push(PciCapability {
+                cap_vndr,
+                cap_next,
+                cap_len,
+                cfg_type,
+                bar,
+                id,
+                _padding,
+                offset,
+                length,
+            });
+
+            cap_ptr = cap_next;
+        }
+
+        capabilities
     }
 }
+
 
 
 pub enum CfgType {
@@ -85,75 +115,70 @@ pub enum CfgType {
 }
 
 
-pub const MAX_VIRTIO_CAPS: usize = 16;
-pub const PCI_CAP_ID_VNDR: u8 = 0x09; // Vendor-Specific
-pub const PCI_CONFIG_BASE_ADDR_0: u8 = 0x10; // Base Address Register 0 (BAR0)
-
-
 /// All of these values are in Little-endian.
 pub struct CommonCfg {
     /// The driver uses this to select which feature bits device_feature shows.
     /// Value 0x0 selects Feature Bits 0 to 31, 0x1 selects Feature Bits 32 to 63, etc.
     /// read-write
-    pub device_feature_select: Mutex<Port<u32>>,
+    pub device_feature_select: u32,
     /// The device uses this to report which feature bits it is offering to the driver:
     /// the driver writes to device_feature_select to select which feature bits are presented.
     /// read-only for driver
-    pub device_feature: PortReadOnly<u32>,
+    pub device_feature: u32,
     /// The driver uses this to select which feature bits driver_feature shows.
     /// Value 0x0 selects Feature Bits 0 to 31, 0x1 selects Feature Bits 32 to 63, etc.
     /// read-write
-    pub driver_feature_select: Mutex<Port<u32>>,
+    pub driver_feature_select: u32,
     /// The driver writes this to accept feature bits offered by the device.
     /// Driver Feature Bits selected by driver_feature_select.
     /// read-write
-    pub driver_feature: Mutex<Port<u32>>,
+    pub driver_feature: u32,
     /// The driver sets the Configuration Vector for MSI-X.
     /// read-write
-    pub config_msix_vector: Mutex<Port<u32>>,
+    pub config_msix_vector: u32,
     /// The device specifies the maximum number of virtqueues supported here.
     /// read-only for driver
-    pub num_queues: PortReadOnly<u32>,
+    pub num_queues: u32,
     /// The driver writes the device status here (see 2.1).
     /// Writing 0 into this field resets the device.
     /// read-write
-    pub device_status: Mutex<Port<DeviceStatusFlags>>,
+    pub device_status: DeviceStatusFlags,
     /// Configuration atomicity value. The device changes this every time the
     /// configuration noticeably changes.
     /// read-only for driver
-    pub config_generation: PortReadOnly<u8>,
+    pub config_generation: u8,
     /// Queue Select. The driver selects which virtqueue the following fields refer to.
     /// read-write
-    pub queue_select: Mutex<Port<u16>>,
+    pub queue_select: u16,
     /// Queue Size. On reset, specifies the maximum queue size supported by the device.
     /// This can be modified by the driver to reduce memory requirements.
     /// A 0 means the queue is unavailable.
     /// read-write
-    pub queue_size: Mutex<Port<u16>>,
+    pub queue_size: u16,
     /// The driver uses this to specify the queue vector for MSI-X.
     /// read-write
-    pub queue_msix_vector: Mutex<Port<u16>>,
+    pub queue_msix_vector: u16,
     /// The driver uses this to selectively prevent the device from executing
     /// requests from this virtqueue. 1 - enabled; 0 - disabled.
     /// read-write
-    pub queue_enable: Mutex<Port<u16>>,
+    pub queue_enable: u16,
     /// The driver reads this to calculate the offset from start of Notification
     /// structure at which this virtqueue is located. Note: this is not an offset
     /// in bytes. See 4.1.4.4 below.
     /// read-only for driver
-    pub queue_notify_off: PortReadOnly<u16>,
+    pub queue_notify_off: u16,
     /// The driver writes the physical address of Descriptor Area here.
     /// See section 2.6.
     /// read-write
-    pub queue_desc: Mutex<Port<u16>>,
+    pub queue_desc: u16,
     /// The driver writes the physical address of Driver Area here.
     /// See section 2.6.
     /// read-write
-    pub queue_driver: Mutex<Port<u16>>,
+    pub queue_driver: u16,
     /// The driver writes the physical address of Device Area here.
     /// See section 2.6.
     /// read-write
-    pub queue_device: Mutex<Port<u16>>,
+    pub queue_device: u16,
     /// This field exists only if VIRTIO_F_NOTIF_CONFIG_DATA has been negotiated.
     /// The driver will use this value to put it in the ’virtqueue number’ field
     /// in the available buffer notification structure. See section 4.1.5.2. Note:
@@ -163,36 +188,11 @@ pub struct CommonCfg {
     /// another value, for example an internal virtqueue identifier, or an internal
     /// offset related to the virtqueue number.
     /// read-only for driver
-    pub queue_notify_data: PortReadOnly<u16>,
+    pub queue_notify_data: u16,
     /// The driver uses this to selectively reset the queue. This field exists
     /// only if VIRTIO_F_RING_RESET has been negotiated. (see 2.6.1).
     /// read-write
-    pub queue_reset: Mutex<Port<u16>>,
-}
-
-impl CommonCfg {
-    pub fn new(base: u16) -> Self {
-        Self {
-            device_feature_select: Mutex::new(Port::new(base)),
-            device_feature: PortReadOnly::new(base + 0x04),
-            driver_feature_select: Mutex::new(Port::new(base + 0x08)),
-            driver_feature: Mutex::new(Port::new(base + 0x0C)),
-            config_msix_vector: Mutex::new(Port::new(base + 0x10)),
-            num_queues: PortReadOnly::new(base + 0x14),
-            device_status: Mutex::new(Port::new(base + 0x18)),
-            config_generation: PortReadOnly::new(base + 0x19),
-            queue_select: Mutex::new(Port::new(base + 0x1A)),
-            queue_size: Mutex::new(Port::new(base + 0x1C)),
-            queue_msix_vector: Mutex::new(Port::new(base + 0x1E)),
-            queue_enable: Mutex::new(Port::new(base + 0x20)),
-            queue_notify_off: PortReadOnly::new(base + 0x22),
-            queue_desc: Mutex::new(Port::new(base + 0x24)),
-            queue_driver: Mutex::new(Port::new(base + 0x26)),
-            queue_device: Mutex::new(Port::new(base + 0x28)),
-            queue_notify_data: PortReadOnly::new(base + 0x2A),
-            queue_reset: Mutex::new(Port::new(base + 0x2C)),
-        }
-    }
+    pub queue_reset: u16,
 }
 
 pub struct NotifyCfg {
