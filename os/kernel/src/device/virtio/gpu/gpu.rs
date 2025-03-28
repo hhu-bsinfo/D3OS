@@ -11,7 +11,7 @@ use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::structures::paging::page::PageRange;
-use crate::device::virtio::transport::capabilities::{read_capabilities, CommonCfg, PciCapability, PciCapabilityTest, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR};
+use crate::device::virtio::transport::capabilities::{CommonCfg, PciCapability, PciCapabilityTest, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR};
 use crate::device::virtio::transport::dma::DmaBuffer;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{pages, MemorySpace};
@@ -217,7 +217,6 @@ struct VirtioGpuResourceAttachBacking {
 
 // Cursor Structs not implemented
 const QUEUE_TRANSMIT: u16 = 0;
-
 const SCANOUT_ID: u32 = 0;
 const RESOURCE_ID_FB: u32 = 0xbabe;
 
@@ -227,37 +226,15 @@ impl VirtioGpu {
         info!("Configuring PCI registers");
         let pci_config_space = pci_bus().config_space();
         let mut pci_device = pci_device.write();
+
+        // This is the address of the device where the PCI capabilities are located
         let device_address = pci_device.header().address();
 
+        // Read the PCI configuration space
         let mut virtio_capability = PciCapability::read_all(pci_config_space, device_address);
         info!("Virtio Capabilities: {:?}", virtio_capability);
 
 
-        pci_device.update_command(pci_config_space, |command| {
-            command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
-        });
-
-        // Tesing and to know which BARs are available
-        for i in 0..6 {
-            if let Some(bar) = pci_device.bar(i, pci_config_space) {
-                match bar {
-                    Bar::Memory32 { address, size, .. } => {
-                        info!("Found BAR{} (Memory32): Base Address={:#x}, Size={:#x}", i, address, size);
-                    }
-                    Bar::Memory64 { address, size, .. } => {
-                        info!("Found BAR{} (Memory64): Base Address={:#x}, Size={:#x}", i, address, size);
-                    }
-                    Bar::Io { port } => {
-                        info!("Found BAR{} (I/O): Port Address={:#x}", i, port);
-                    }
-                    _ => {
-                        info!("BAR{} has an unknown type. Debug: {:?}", i, bar);
-                    }
-                }
-            } else {
-                info!("BAR{} is not available", i);
-            }
-        }
 
         /*let bar1 = pci_device.bar(1, pci_config_space).expect("Failed to read BAR1");
         let base_address1 = bar1.unwrap_mem().0 as u32;
