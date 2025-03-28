@@ -20,11 +20,12 @@ pub fn init() {
     if devices.len() > 0 {
         let (vendor_id, device_id) = devices[0].read().header().id(&pci_bus().config_space());
         VIRTIOGPU.call_once(|| {
-            info!("LEngth of devices: {}", devices.len());
             info!("Found Virtio GPU device: {:X}:{:X}", vendor_id, device_id);
             let gpu = Arc::new(VirtioGpu::new(devices[0]));
             gpu
         });
+    } else {
+        info!("No Virtio GPU device found");
     }
 
 
