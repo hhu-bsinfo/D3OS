@@ -30,3 +30,30 @@ The provided log output verifies that the Virtio GPU device is properly integrat
 ## Struggles with reading pci 
 
 Ich habe komplett flasch gearbeitet und versucht die PCi Capabilities in den Bars zu finden. Aber die sind nicht in den Bars. Die PCI Capabilities sind in der PCI Config Space.
+
+Ich habe außerdem diese Hilfsfunktionen in die ConfigurationSpace Struct in der "pci.rs" Datei hinzugefügt:
+```rust
+pub fn read_u16(&self, address: PciAddress, offset: u16) -> u16 {
+        // Align to a 32-bit boundary.
+        let aligned_offset = offset & !0x3;
+        // Read the 32-bit word.
+        let word = unsafe { self.read(address, aligned_offset) };
+        // Shift/mask to get the 16-bit value.
+        let shift = (offset & 0x3) * 8;
+        ((word >> shift) & 0xffff) as u16
+    }
+
+    pub fn read_u8(&self, address: PciAddress, offset: u16) -> u8 {
+        let aligned_offset = offset & !0x3;
+        let word = unsafe { self.read(address, aligned_offset) };
+        let shift = (offset & 0x3) * 8;
+        ((word >> shift) & 0xff) as u8
+    }
+
+    pub fn read_u32(&self, address: PciAddress, offset: u16) -> u32 {
+        // Align offset to a 32-bit boundary.
+        let aligned_offset = offset & !0x3;
+        unsafe { self.read(address, aligned_offset) }
+    }
+```
+
