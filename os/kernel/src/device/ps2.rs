@@ -138,22 +138,15 @@ impl InterruptHandler for KeyboardInterruptHandler {
     }
 }
 
-#[derive(Default, Clone, Copy)]
-pub struct MousePacket {
-    pub flags: u8,
-    pub dx: i8,
-    pub dy: i8,
-}
-
 pub struct Mouse {
     controller: Arc<Mutex<Controller>>,
-    buffer: (mpmc::bounded::scq::Receiver<MousePacket>, mpmc::bounded::scq::Sender<MousePacket>),
+    buffer: (mpmc::bounded::scq::Receiver<u32>, mpmc::bounded::scq::Sender<u32>),
 }
 
 #[derive(Default)]
 struct MouseState {
     cycle: i8,
-    current_packet: MousePacket
+    packet: u32
 }
 
 struct MouseInterruptHandler {
@@ -189,35 +182,34 @@ impl InterruptHandler for MouseInterruptHandler {
 
                 match mouse_state.cycle {
                     0 => {
-                        // Is it really the first byte?
+                        // Verify the always-one bit of the first packet
                         if data & 0x08 == 0 {
                             debug!("Mouse: Discarding invalid first byte");
                             return;
                         }
 
                         // Read first byte (flags)
-                        mouse_state.current_packet = MousePacket::default();
-                        mouse_state.current_packet.flags = data;
+                        mouse_state.packet = 0x0;
+                        mouse_state.packet |= (data as u32) << 0;
 
                         mouse_state.cycle += 1;
                     },
 
                     1 => {
                         // Read second byte (delta x)
-                        mouse_state.current_packet.dx = data as i8;
+                        mouse_state.packet |= (data as u32) << 8;
 
                         mouse_state.cycle += 1;
                     }
 
                     2 => {
                         // Read third byte (delta y)
-                        mouse_state.current_packet.dy = data as i8;
+                        mouse_state.packet |= (data as u32) << 16;
 
-                        let packet = mouse_state.current_packet;
-                        debug!("Mouse: flags = {}, dx = {}, dy = {}", packet.flags, packet.dx, packet.dy);
+                        debug!("Mouse: packet = {:#08X}", mouse_state.packet);
 
                         // The packet is complete. Enqueue it!
-                        while self.mouse.buffer.1.try_enqueue(mouse_state.current_packet.clone()).is_err() {
+                        while self.mouse.buffer.1.try_enqueue(mouse_state.packet).is_err() {
                             if self.mouse.buffer.0.try_dequeue().is_err() {
                                 panic!("Mouse: Failed to store received packet in buffer!");
                             }
@@ -231,7 +223,6 @@ impl InterruptHandler for MouseInterruptHandler {
                     }
                 }
             }
-            //debug!("Mouse interrupt handler called");
         } else {
             panic!("Mouse: Controller is locked during interrupt!");
         }
