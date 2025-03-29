@@ -13,5 +13,6 @@ pub mod sys_concurrent;
 pub mod sys_time;
 pub mod sys_vmem;
 pub mod sys_graphic;
+pub mod sys_input;
 
 pub mod syscall_dispatcher;

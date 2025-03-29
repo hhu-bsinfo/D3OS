@@ -21,6 +21,7 @@ use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exi
     sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch};
 use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write};
 use crate::syscall::sys_naming::*;
+use crate::syscall::sys_input::sys_read_mouse;
 
 use crate::{core_local_storage, tss};
 
@@ -114,6 +115,7 @@ impl SyscallTable {
                 sys_log_debug as *const _,
                 sys_write_graphic as * const _,
                 sys_get_graphic_resolution as * const _,
+                sys_read_mouse as * const _,
             ],
         }
     }

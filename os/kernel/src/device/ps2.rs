@@ -166,6 +166,14 @@ impl Mouse {
         interrupt_dispatcher().assign(InterruptVector::Mouse, Box::new(MouseInterruptHandler::new(Arc::clone(&mouse))));
         apic().allow(InterruptVector::Mouse);
     }
+
+    pub fn read(&self) -> Option<u32> {
+        match self.buffer.0.try_dequeue() {
+            Ok(data) => Some(data),
+            Err(DequeueError::Closed) => panic!("Mouse stream closed!"),
+            Err(_) => None
+        }
+    }
 }
 
 impl MouseInterruptHandler {
