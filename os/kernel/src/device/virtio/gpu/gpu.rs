@@ -233,6 +233,12 @@ impl VirtioGpu {
         let mut virtio_capability = PciCapability::read_all(pci_config_space, device_address);
         info!("Virtio Capabilities: {:?}", virtio_capability);
 
+        for cap in virtio_capability.iter() {
+            if cap.cap_vndr == PCI_CAP_ID_VNDR {
+                info!("Found Virtio GPU capability: {:?}", cap);
+            }
+        }
+
 
 
         /*let bar1 = pci_device.bar(1, pci_config_space).expect("Failed to read BAR1");

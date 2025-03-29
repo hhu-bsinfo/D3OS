@@ -48,7 +48,7 @@ pub struct PciCapability {
 
 impl PciCapability {
     /// Reads all capabilities from the PCI configuration space for the given device.
-    pub fn read_all(config_space: &ConfigurationSpace, address: PciAddress) -> Vec<Self> {
+    pub fn read_capabilities(config_space: &ConfigurationSpace, address: PciAddress) -> Vec<Self> {
         let mut capabilities = Vec::new();
 
         // Define offsets/constants for PCI configuration space.
@@ -57,42 +57,45 @@ impl PciCapability {
         const PCI_CAP_POINTER_OFFSET: u16 = 0x34;
 
         // Check if the device supports capabilities.
-        let status = config_space.read_u16(address, PCI_STATUS_OFFSET);
+        /*let status = config_space.read_u16(address, PCI_STATUS_OFFSET);
         if status & PCI_STATUS_CAP_LIST == 0 {
             return capabilities;
-        }
+        }*/
 
         // Read the pointer to the first capability.
         let mut cap_ptr = config_space.read_u8(address, PCI_CAP_POINTER_OFFSET);
-        while cap_ptr != 0 {
+        let mut virtio_caps_count = 0;
+        while cap_ptr != 0 && virtio_caps_count < MAX_VIRTIO_CAPS {
             let base = cap_ptr as u16;
             let cap_vndr = config_space.read_u8(address, base + 0);
             let cap_next = config_space.read_u8(address, base + 1);
             let cap_len  = config_space.read_u8(address, base + 2);
-            let cfg_type = config_space.read_u8(address, base + 3);
-            let bar      = config_space.read_u8(address, base + 4);
-            let id       = config_space.read_u8(address, base + 5);
 
-            // Skip the two padding bytes at offsets 6 and 7. Padding is not used.
-            let _padding = 0;
+            // Check if the capability is a vendor-specific capability.
+            if cap_vndr == PCI_CAP_ID_VNDR {
+                let cfg_type = config_space.read_u8(address, base + 3);
+                let bar = config_space.read_u8(address, base + 4);
+                let id = config_space.read_u8(address, base + 5);
+                let offset = config_space.read_u32(address, base + 8);
+                let length = config_space.read_u32(address, base + 12);
 
+                let pci_capability = PciCapability {
+                    cap_vndr,
+                    cap_next,
+                    cap_len,
+                    cfg_type,
+                    bar,
+                    id,
+                    _padding: 0,
+                    offset,
+                    length,
+                };
 
-            let offset   = config_space.read_u32(address, base + 8);
-            let length   = config_space.read_u32(address, base + 12);
-
-            capabilities.push(PciCapability {
-                cap_vndr,
-                cap_next,
-                cap_len,
-                cfg_type,
-                bar,
-                id,
-                _padding,
-                offset,
-                length,
-            });
+                capabilities.push(pci_capability);
+            }
 
             cap_ptr = cap_next;
+            virtio_caps_count += 1;
         }
 
         capabilities
