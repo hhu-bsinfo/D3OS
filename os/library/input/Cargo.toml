@@ -1,0 +1,9 @@
+[package]
+edition = "2024"
+name = "input"
+version = "0.1.0"
+authors = ["Leon Lehnen"]
+
+[dependencies]
+# Local dependencies
+syscall = { path = "../syscall" }

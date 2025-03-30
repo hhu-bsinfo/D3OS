@@ -214,7 +214,7 @@ impl InterruptHandler for MouseInterruptHandler {
                         // Read third byte (delta y)
                         mouse_state.packet |= (data as u32) << 16;
 
-                        debug!("Mouse: packet = {:#08X}", mouse_state.packet);
+                        //debug!("Mouse: packet = {:#08X}", mouse_state.packet);
 
                         // The packet is complete. Enqueue it!
                         while self.mouse.buffer.1.try_enqueue(mouse_state.packet).is_err() {

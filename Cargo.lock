@@ -516,6 +516,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "input"
+version = "0.1.0"
+dependencies = [
+ "syscall",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1624,6 +1631,7 @@ dependencies = [
  "drawer",
  "graphic",
  "hashbrown",
+ "input",
  "libm",
  "nolock",
  "runtime",

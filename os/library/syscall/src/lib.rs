@@ -45,6 +45,7 @@ pub enum SystemCall {
     LogDebug,
     WriteGraphic,
     GetGraphicResolution,
+    MouseRead,
     // no syscall, just marking last number, see NUM_SYSCALLS
     // insert any new system calls before this marker
     LastEntryMarker,
