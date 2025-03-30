@@ -13,7 +13,7 @@ use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::structures::paging::page::PageRange;
-use crate::device::virtio::transport::capabilities::{CommonCfgRegisters, PciCapability, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR, VIRTIO_PCI_CAP_COMMON_CFG, VIRTIO_PCI_CAP_NOTIFY_CFG, VIRTIO_PCI_CAP_ISR_CFG, VIRTIO_PCI_CAP_DEVICE_CFG, VIRTIO_PCI_CAP_PCI_CFG, VIRTIO_PCI_CAP_SHARED_MEMORY_CFG, VIRTIO_PCI_CAP_VENDOR_CFG, CommonCfg, VirtioPciNotifyCap};
+use crate::device::virtio::transport::capabilities::{CommonCfgRegisters, PciCapability, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR, VIRTIO_PCI_CAP_COMMON_CFG, VIRTIO_PCI_CAP_NOTIFY_CFG, VIRTIO_PCI_CAP_ISR_CFG, VIRTIO_PCI_CAP_DEVICE_CFG, VIRTIO_PCI_CAP_PCI_CFG, VIRTIO_PCI_CAP_SHARED_MEMORY_CFG, VIRTIO_PCI_CAP_VENDOR_CFG, CommonCfg, NotifyCfg, IsrCfg};
 use crate::device::virtio::transport::dma::DmaBuffer;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{pages, MemorySpace};
@@ -26,14 +26,14 @@ const VIRTIO_GPU_MAX_SCANOUTS: usize = 16;
 
 pub struct VirtioGpu<'a> {
     pci_device: &'a RwLock<EndpointHeader>,
-    cap_ptr: u8,
+    cap_ptr: PciAddress,
     irq: i32,
     
     virtio_caps: Vec<PciCapability>, 
     virtio_caps_count: u32,
     common_cfg: CommonCfg,
-    isr: AtomicU8,
-    notify_cfg: VirtioPciNotifyCap,
+    isr_cfg: IsrCfg,
+    notify_cfg: NotifyCfg,
     config_ptr: u32,
 
     //rect: Mutex<VirtioGpuRect>,
@@ -222,10 +222,12 @@ impl<'a> VirtioGpu<'a> {
     pub fn new(pci_device: &'a RwLock<EndpointHeader>) -> Result<Self, String> {
 
         // This is the address of the device where the PCI capabilities are located
-        let cap_ptr = pci_device.header().address();
+        let cap_ptr = pci_device.read().header().address();
 
-        let (common_cfg, notify_cfg, virtio_caps) = Self::extract_capabilities(pci_device, cap_ptr)?;
+        let (common_cfg, notify_cfg, isr_cfg,virtio_caps) = Self::extract_capabilities(pci_device, cap_ptr)?;
         let virtio_caps_count = virtio_caps.len() as u32;
+
+        info!("Isr_cfg status: {:?}", isr_cfg.read_status());
 
         Ok(VirtioGpu {
             pci_device,
@@ -234,7 +236,7 @@ impl<'a> VirtioGpu<'a> {
             virtio_caps,
             virtio_caps_count,
             common_cfg,
-            isr: AtomicU8::new(0),
+            isr_cfg,
             notify_cfg,
             config_ptr: 0,
             rect: 0,
@@ -244,7 +246,7 @@ impl<'a> VirtioGpu<'a> {
         })
     }
 
-    fn extract_capabilities(pci_device: &'a RwLock<EndpointHeader>, cap_ptr: PciAddress) -> Result<(CommonCfg, VirtioPciNotifyCap, Vec<PciCapability>), String> {
+    fn extract_capabilities(pci_device: &'a RwLock<EndpointHeader>, cap_ptr: PciAddress) -> Result<(CommonCfg, NotifyCfg, IsrCfg, Vec<PciCapability>), String> {
         info!("Configuring PCI registers");
         let pci_config_space = pci_bus().config_space();
         let mut pci_device = pci_device.write();
@@ -254,26 +256,33 @@ impl<'a> VirtioGpu<'a> {
         let virtio_caps = PciCapability::read_all(pci_config_space, cap_ptr);
         let mut common_cfg = None;
         let mut notify_cfg = None;
+        let mut isr_cfg = None;
 
         for cap in virtio_caps.iter() {
             match cap.cfg_type {
                 VIRTIO_PCI_CAP_COMMON_CFG => {
-                    info!("Found common configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
                     common_cfg = PciCapability::extract_common_cfg(&pci_config_space, &mut pci_device, cap);
                     if common_cfg.is_none() {
                         return Err("Failed to extract common configuration".to_string());
                     }
+
+                    info!("Found common configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
                 },
                 VIRTIO_PCI_CAP_NOTIFY_CFG => {
-                    info!("Found notify configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
                     notify_cfg = PciCapability::extract_notify_cfg(&pci_config_space, &mut pci_device, cap);
                     if notify_cfg.is_none() {
                         return Err("Failed to extract notify configuration".to_string());
                     }
+
+                    info!("Found notify configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
                 },
                 VIRTIO_PCI_CAP_ISR_CFG => {
+                    isr_cfg = PciCapability::extract_isr_cfg(&pci_config_space, &mut pci_device, cap);
+                    if isr_cfg.is_none() {
+                        return Err("Failed to extract ISR configuration".to_string());
+                    }
+
                     info!("Found ISR configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
-                    // Handle ISR configuration
                 },
                 VIRTIO_PCI_CAP_DEVICE_CFG => {
                     info!("Found device configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
@@ -295,8 +304,9 @@ impl<'a> VirtioGpu<'a> {
 
         let common_cfg = common_cfg.ok_or("Common configuration not found")?;
         let notify_cfg = notify_cfg.ok_or("Notify configuration not found")?;
+        let isr_cfg = isr_cfg.ok_or("ISR configuration not found")?;
 
-        Ok((common_cfg, notify_cfg, virtio_caps))
+        Ok((common_cfg, notify_cfg, isr_cfg, virtio_caps))
     }
 }
 
