@@ -11,7 +11,7 @@ use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::structures::paging::page::PageRange;
-use crate::device::virtio::transport::capabilities::{CommonCfg, PciCapability, PciCapabilityTest, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR};
+use crate::device::virtio::transport::capabilities::{CommonCfgRegisters, PciCapability, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR, VIRTIO_PCI_CAP_COMMON_CFG, VIRTIO_PCI_CAP_NOTIFY_CFG, VIRTIO_PCI_CAP_ISR_CFG, VIRTIO_PCI_CAP_DEVICE_CFG, VIRTIO_PCI_CAP_PCI_CFG, VIRTIO_PCI_CAP_SHARED_MEMORY_CFG, VIRTIO_PCI_CAP_VENDOR_CFG, CommonCfg};
 use crate::device::virtio::transport::dma::DmaBuffer;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{pages, MemorySpace};
@@ -230,14 +230,87 @@ impl VirtioGpu {
         let device_address = pci_device.header().address();
 
         // Read the PCI configuration space
-        let mut virtio_capability = PciCapability::read_all(pci_config_space, device_address);
-        info!("Virtio Capabilities: {:?}", virtio_capability);
+        let mut virtio_capability = PciCapability::read_capabilities(pci_config_space, device_address);
 
         for cap in virtio_capability.iter() {
-            if cap.cap_vndr == PCI_CAP_ID_VNDR {
-                info!("Found Virtio GPU capability: {:?}", cap);
+            match cap.cfg_type {
+                VIRTIO_PCI_CAP_COMMON_CFG => {
+                    info!("Found common configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
+
+                    let bar = pci_device.bar(cap.bar, &pci_config_space).expect("Failed to read BAR1");
+                    let base_address = bar.unwrap_mem();
+
+                    let address = base_address.0 as u64;
+                    let size = base_address.1;
+                    info!("MMIO base: {:#x}, size: {:#x}", address, size);
+
+                    let start_page = Page::from_start_address(VirtAddr::new(address)).unwrap();
+                    let num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+                    process_manager()
+                        .read()
+                        .kernel_process()
+                        .expect("Failed to get kernel process")
+                        .virtual_address_space
+                        .map(
+                            PageRange {
+                                start: start_page,
+                                end: start_page + num_pages as u64,
+                            },
+                            MemorySpace::Kernel,
+                            PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                            VmaType::DeviceMemory,
+                            "common_cfg",
+                        );
+
+                    // Initialize the CommonCfg struct
+                    let common_cfg_ptr = (address + cap.offset as u64) as *mut CommonCfgRegisters;
+                    let common_cfg = unsafe { CommonCfg::new(common_cfg_ptr) };
+
+                    // Example usage of the CommonCfg struct
+                    let device_feature_select = common_cfg.read_device_feature_select();
+                    info!("Device Feature Select: {}", device_feature_select);
+
+                    let num_virtqueues = common_cfg.read_num_queues();
+                    info!("Number of Virtqueues: {}", num_virtqueues);
+
+
+                    // testing
+                    let mut config_generation = common_cfg.read_config_generation();
+                    info!("Config Generation: {}", config_generation);
+                    config_generation = common_cfg.read_config_generation();
+                    info!("Config Generation: {}", config_generation);
+                },
+                VIRTIO_PCI_CAP_NOTIFY_CFG => {
+                    info!("Found notify configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
+                    // Handle notify configuration
+                },
+                VIRTIO_PCI_CAP_ISR_CFG => {
+                    info!("Found ISR configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
+                    // Handle ISR configuration
+                },
+                VIRTIO_PCI_CAP_DEVICE_CFG => {
+                    info!("Found device configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
+                    // Handle device configuration
+                },
+                VIRTIO_PCI_CAP_PCI_CFG => {
+                    info!("Found PCI configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
+                    // Handle PCI configuration
+                },
+                VIRTIO_PCI_CAP_SHARED_MEMORY_CFG => {
+                    info!("Found shared memory configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
+                    // Handle shared memory configuration
+                },
+                VIRTIO_PCI_CAP_VENDOR_CFG => {
+                    info!("Found vendor-specific configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
+                    // Handle vendor-specific configuration
+                },
+                _ => {
+                    info!("Found unknown configuration capability: {:?}", cap.cfg_type);
+                },
             }
         }
+
 
 
 
