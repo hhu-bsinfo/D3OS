@@ -4,14 +4,22 @@ use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr::NonNull;
 use log::info;
-use pci_types::PciAddress;
+use pci_types::{EndpointHeader, PciAddress};
 use spin::Mutex;
+use spin::rwlock::RwLockWriteGuard;
 use tock_registers::interfaces::{Readable, Writeable};
 use tock_registers::register_bitfields;
 use tock_registers::registers::{ReadOnly, ReadWrite};
 use x86_64::instructions::port::{Port, PortReadOnly};
+use x86_64::structures::paging::{Page, PageTableFlags};
+use x86_64::structures::paging::page::PageRange;
+use x86_64::VirtAddr;
 use crate::device::pci::ConfigurationSpace;
+use crate::device::virtio::lib::PAGE_SIZE;
 use crate::device::virtio::transport::flags::DeviceStatusFlags;
+use crate::memory::MemorySpace;
+use crate::memory::vmm::VmaType;
+use crate::process_manager;
 
 pub const MAX_VIRTIO_CAPS: usize = 16;
 pub const PCI_CAP_ID_VNDR: u8 = 0x09; // Vendor-Specific
@@ -102,6 +110,38 @@ impl PciCapability {
         }
 
         capabilities
+    }
+
+    pub fn extract_common_cfg(pci_config_space: &&ConfigurationSpace, pci_device: &mut RwLockWriteGuard<EndpointHeader>, cap: &PciCapability) -> &'static CommonCfg {
+        let bar = pci_device.bar(cap.bar, &pci_config_space).expect("Failed to read BAR");
+        let base_address = bar.unwrap_mem();
+
+        let address = base_address.0 as u64;
+        let size = base_address.1;
+
+        let start_page = Page::from_start_address(VirtAddr::new(address)).unwrap();
+        let num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+        process_manager()
+            .read()
+            .kernel_process()
+            .expect("Failed to get kernel process")
+            .virtual_address_space
+            .map(
+                PageRange {
+                    start: start_page,
+                    end: start_page + num_pages as u64,
+                },
+                MemorySpace::Kernel,
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                VmaType::DeviceMemory,
+                "common_cfg",
+            );
+
+        // Initialize the CommonCfg struct
+        let common_cfg_ptr = (address + cap.offset as u64) as *mut CommonCfgRegisters;
+        let common_cfg = unsafe { CommonCfg::new(common_cfg_ptr) };
+        &common_cfg
     }
 }
 
