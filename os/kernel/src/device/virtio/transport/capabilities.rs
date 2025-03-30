@@ -280,14 +280,43 @@ unsafe impl Send for CommonCfg {}
 unsafe impl Sync for CommonCfg {}
 
 #[derive(Debug, Clone)]
-pub struct VirtioPciNotifyCap {
+pub struct NotifyCfg {
     pub cap: PciCapability,
     /// The notify multiplier used for calculating per-queue notify addresses.
     pub notify_off_multiplier: u32,
 }
 
-// --- Global BAR mapping cache ---
-// This cache maps a (device address, BAR index) to a virtual base address.
+/// Define ISR configuration registers as specified in the Virtio PCI spec.
+#[repr(C)]
+pub struct IsrCfgRegisters {
+    /// ISR status field (read-only for driver)
+    pub isr_status: u8,
+    _padding: [u8; 3],
+}
+
+/// A wrapper for accessing the ISR configuration registers.
+pub struct IsrCfg {
+    regs: NonNull<IsrCfgRegisters>,
+}
+
+impl IsrCfg {
+    /// # Safety
+    /// `base_addr` must point to a valid ISR configuration register block.
+    pub unsafe fn new(base_addr: *mut IsrCfgRegisters) -> Self {
+        Self {
+            regs: NonNull::new(base_addr).expect("null pointer to ISR config registers"),
+        }
+    }
+
+    /// Reads the ISR status.
+    pub fn read_status(&self) -> u8 {
+        unsafe { self.regs.as_ref().isr_status }
+    }
+}
+
+
+/// --- Global BAR mapping cache ---
+/// This cache maps a (device address, BAR index) to a virtual base address.
 static BAR_MAPPINGS: Mutex<BTreeMap<(PciAddress, u8), u64>> = Mutex::new(BTreeMap::new());
 
 /// Maps a BAR only once for the given PCI device and returns the virtual base address.
@@ -329,7 +358,8 @@ fn map_bar_once(
             VmaType::DeviceMemory,
             &format!("bar_{}", bar_index),
         );
-    // For simplicity we assume identity mapping.
+
+
     let virt_base = phys_addr;
     BAR_MAPPINGS.lock().insert(key, virt_base);
     virt_base
@@ -395,15 +425,27 @@ impl PciCapability {
         pci_config_space: &ConfigurationSpace,
         pci_device: &mut RwLockWriteGuard<EndpointHeader>,
         cap: &PciCapability,
-    ) -> Option<VirtioPciNotifyCap> {
+    ) -> Option<NotifyCfg> {
         let device_addr = pci_device.header().address();
         let virt_base = map_bar_once(pci_config_space, pci_device, device_addr, cap.bar);
         // The notify_off_multiplier is located at an offset of 8 bytes from the start of the notify capability.
         let notify_addr = virt_base + cap.offset as u64 + 8;
         let notify_off_multiplier = unsafe { core::ptr::read_volatile(notify_addr as *const u32) };
-        Some(VirtioPciNotifyCap {
+        Some(NotifyCfg {
             cap: cap.clone(),
             notify_off_multiplier,
         })
+    }
+
+    /// Extracts the ISR configuration structure from the device.
+    pub fn extract_isr_cfg(
+        pci_config_space: &ConfigurationSpace,
+        pci_device: &mut RwLockWriteGuard<EndpointHeader>,
+        cap: &PciCapability,
+    ) -> Option<IsrCfg> {
+        let device_addr = pci_device.header().address();
+        let virt_base = map_bar_once(pci_config_space, pci_device, device_addr, cap.bar);
+        let isr_cfg_ptr = (virt_base + cap.offset as u64) as *mut IsrCfgRegisters;
+        Some(unsafe { IsrCfg::new(isr_cfg_ptr) })
     }
 }
