@@ -220,6 +220,26 @@ const RESOURCE_ID_FB: u32 = 0xbabe;
 
 impl VirtioGpu {
     pub fn new(pci_device: &RwLock<EndpointHeader>) -> Result<Self, String> {
+        let (common_cfg, notify_cfg, virtio_capability) = Self::extract_capabilities(pci_device)?;
+
+        Ok(VirtioGpu {
+            pci_device: 0,
+            cap_ptr: 0,
+            irq: 0,
+            virtio_caps: virtio_capability,
+            virtio_caps_count: 0,
+            common_cfg,
+            isr: AtomicU8::new(0),
+            notify_cfg,
+            config_ptr: 0,
+            rect: 0,
+            frame_buffer: 0,
+            queue_buffer_send: Box::new([]),
+            queue_buffer_recv: Box::new([]),
+        })
+    }
+
+    fn extract_capabilities(pci_device: &RwLock<EndpointHeader>) -> Result<(CommonCfg, VirtioPciNotifyCap, Vec<PciCapability>), String> {
         info!("Configuring PCI registers");
         let pci_config_space = pci_bus().config_space();
         let mut pci_device = pci_device.write();
@@ -228,7 +248,7 @@ impl VirtioGpu {
         let device_address = pci_device.header().address();
 
         // Read the PCI configuration space
-        let virtio_capability = PciCapability::read_capabilities(pci_config_space, device_address);
+        let virtio_capability = PciCapability::read_all(pci_config_space, device_address);
         let mut common_cfg = None;
         let mut notify_cfg = None;
 
@@ -247,7 +267,6 @@ impl VirtioGpu {
                     if notify_cfg.is_none() {
                         return Err("Failed to extract notify configuration".to_string());
                     }
-                    info!("Notify configuration: {:?}", notify_cfg);
                 },
                 VIRTIO_PCI_CAP_ISR_CFG => {
                     info!("Found ISR configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
@@ -274,21 +293,7 @@ impl VirtioGpu {
         let common_cfg = common_cfg.ok_or("Common configuration not found")?;
         let notify_cfg = notify_cfg.ok_or("Notify configuration not found")?;
 
-        Ok(VirtioGpu {
-            pci_device: 0,
-            cap_ptr: 0,
-            irq: 0,
-            virtio_caps: virtio_capability,
-            virtio_caps_count: 0,
-            common_cfg,
-            isr: AtomicU8::new(0),
-            notify_cfg,
-            config_ptr: 0,
-            rect: 0,
-            frame_buffer: 0,
-            queue_buffer_send: Box::new([]),
-            queue_buffer_recv: Box::new([]),
-        })
+        Ok((common_cfg, notify_cfg, virtio_capability))
     }
 }
 

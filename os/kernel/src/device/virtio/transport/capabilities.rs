@@ -337,7 +337,7 @@ fn map_bar_once(
 
 impl PciCapability {
     /// Reads all PCI capabilities from the configuration space for the given device.
-    pub fn read_capabilities(config_space: &ConfigurationSpace, address: PciAddress) -> Vec<Self> {
+    pub fn read_all(config_space: &ConfigurationSpace, address: PciAddress) -> Vec<Self> {
         let mut capabilities = Vec::new();
         const PCI_STATUS_OFFSET: u16 = 0x06;
         const PCI_STATUS_CAP_LIST: u16 = 1 << 4;
