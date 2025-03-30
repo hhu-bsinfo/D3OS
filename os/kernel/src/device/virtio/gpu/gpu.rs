@@ -24,8 +24,8 @@ use crate::memory::vmm::VmaType;
 
 const VIRTIO_GPU_MAX_SCANOUTS: usize = 16;
 
-pub struct VirtioGpu {
-    pci_device: u32,
+pub struct VirtioGpu<'a> {
+    pci_device: &'a RwLock<EndpointHeader>,
     cap_ptr: u8,
     irq: i32,
     
@@ -46,8 +46,8 @@ pub struct VirtioGpu {
     queue_buffer_recv: Box<[u8]>,
 }
 
-pub struct VirtioGpuInterruptHandler {
-    device: Arc<VirtioGpu>,
+pub struct VirtioGpuInterruptHandler<'a> {
+    device: Arc<VirtioGpu<'a>>,
 }
 
 #[repr(C)]
@@ -218,16 +218,21 @@ const SCANOUT_ID: u32 = 0;
 const RESOURCE_ID_FB: u32 = 0xbabe;
 
 
-impl VirtioGpu {
-    pub fn new(pci_device: &RwLock<EndpointHeader>) -> Result<Self, String> {
-        let (common_cfg, notify_cfg, virtio_capability) = Self::extract_capabilities(pci_device)?;
+impl<'a> VirtioGpu<'a> {
+    pub fn new(pci_device: &'a RwLock<EndpointHeader>) -> Result<Self, String> {
+
+        // This is the address of the device where the PCI capabilities are located
+        let cap_ptr = pci_device.header().address();
+
+        let (common_cfg, notify_cfg, virtio_caps) = Self::extract_capabilities(pci_device, cap_ptr)?;
+        let virtio_caps_count = virtio_caps.len() as u32;
 
         Ok(VirtioGpu {
-            pci_device: 0,
-            cap_ptr: 0,
+            pci_device,
+            cap_ptr,
             irq: 0,
-            virtio_caps: virtio_capability,
-            virtio_caps_count: 0,
+            virtio_caps,
+            virtio_caps_count,
             common_cfg,
             isr: AtomicU8::new(0),
             notify_cfg,
@@ -239,20 +244,18 @@ impl VirtioGpu {
         })
     }
 
-    fn extract_capabilities(pci_device: &RwLock<EndpointHeader>) -> Result<(CommonCfg, VirtioPciNotifyCap, Vec<PciCapability>), String> {
+    fn extract_capabilities(pci_device: &'a RwLock<EndpointHeader>, cap_ptr: PciAddress) -> Result<(CommonCfg, VirtioPciNotifyCap, Vec<PciCapability>), String> {
         info!("Configuring PCI registers");
         let pci_config_space = pci_bus().config_space();
         let mut pci_device = pci_device.write();
 
-        // This is the address of the device where the PCI capabilities are located
-        let device_address = pci_device.header().address();
 
         // Read the PCI configuration space
-        let virtio_capability = PciCapability::read_all(pci_config_space, device_address);
+        let virtio_caps = PciCapability::read_all(pci_config_space, cap_ptr);
         let mut common_cfg = None;
         let mut notify_cfg = None;
 
-        for cap in virtio_capability.iter() {
+        for cap in virtio_caps.iter() {
             match cap.cfg_type {
                 VIRTIO_PCI_CAP_COMMON_CFG => {
                     info!("Found common configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
@@ -293,7 +296,7 @@ impl VirtioGpu {
         let common_cfg = common_cfg.ok_or("Common configuration not found")?;
         let notify_cfg = notify_cfg.ok_or("Notify configuration not found")?;
 
-        Ok((common_cfg, notify_cfg, virtio_capability))
+        Ok((common_cfg, notify_cfg, virtio_caps))
     }
 }
 
