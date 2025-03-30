@@ -257,10 +257,6 @@ impl VirtioGpu {
                     info!("Found device configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
                     // Handle device configuration
                 },
-                VIRTIO_PCI_CAP_PCI_CFG => {
-                    info!("Found PCI configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
-                    // Handle PCI configuration
-                },
                 VIRTIO_PCI_CAP_SHARED_MEMORY_CFG => {
                     info!("Found shared memory configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
                     // Handle shared memory configuration
