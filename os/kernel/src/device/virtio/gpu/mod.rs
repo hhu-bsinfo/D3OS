@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use log::info;
 use crate::pci_bus;
-use spin::{Once};
+use spin::Once;
 use crate::device::virtio::gpu::gpu::VirtioGpu;
 
 pub mod gpu;
@@ -12,21 +12,17 @@ pub const VIRTIO_GPU_PCI_DEVICE_ID: u16 = 0x1050;
 
 static VIRTIOGPU: Once<Arc<VirtioGpu>> = Once::new();
 
-
-
 pub fn init() {
     let devices = pci_bus().search_by_ids(VIRTIO_GPU_PCI_VENDOR_ID, VIRTIO_GPU_PCI_DEVICE_ID);
 
-    if devices.len() > 0 {
+    if !devices.is_empty() {
         let (vendor_id, device_id) = devices[0].read().header().id(&pci_bus().config_space());
         VIRTIOGPU.call_once(|| {
             info!("Found Virtio GPU device: {:X}:{:X}", vendor_id, device_id);
-            let gpu = Arc::new(VirtioGpu::new(devices[0]));
+            let gpu = Arc::new(VirtioGpu::new(&devices[0]).expect("Failed to initialize Virtio GPU"));
             gpu
         });
     } else {
         info!("No Virtio GPU device found");
     }
-
-
 }
