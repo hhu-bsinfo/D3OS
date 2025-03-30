@@ -112,8 +112,8 @@ impl PciCapability {
         capabilities
     }
 
-    pub fn extract_common_cfg(pci_config_space: &&ConfigurationSpace, pci_device: &mut RwLockWriteGuard<EndpointHeader>, cap: &PciCapability) -> &'static CommonCfg {
-        let bar = pci_device.bar(cap.bar, &pci_config_space).expect("Failed to read BAR");
+    pub fn extract_common_cfg(pci_config_space: &ConfigurationSpace, pci_device: &mut RwLockWriteGuard<EndpointHeader>, cap: &PciCapability) -> Option<CommonCfg> {
+        let bar = pci_device.bar(cap.bar, pci_config_space).expect("Failed to read BAR");
         let base_address = bar.unwrap_mem();
 
         let address = base_address.0 as u64;
@@ -140,8 +140,7 @@ impl PciCapability {
 
         // Initialize the CommonCfg struct
         let common_cfg_ptr = (address + cap.offset as u64) as *mut CommonCfgRegisters;
-        let common_cfg = unsafe { CommonCfg::new(common_cfg_ptr) };
-        &common_cfg
+        Some(unsafe { CommonCfg::new(common_cfg_ptr) })
     }
 }
 
