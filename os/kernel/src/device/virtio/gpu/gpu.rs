@@ -30,8 +30,7 @@ pub struct VirtioGpu {
     
     virtio_caps: Vec<PciCapability>, 
     virtio_caps_count: u32,
-    //common_cfg: CommonCfg,
-    common_cfg: u32, // testing
+    common_cfg: CommonCfg,
     common_len: usize,
     isr: AtomicU8,
     notify_ptr: AtomicU16,
@@ -231,17 +230,19 @@ impl VirtioGpu {
         let device_address = pci_device.header().address();
 
         // Read the PCI configuration space
-        let mut virtio_capability = PciCapability::read_capabilities(pci_config_space, device_address);
-        let common_cfg: &CommonCfg;
-        let notify_cfg: &NotifyCfg;
-
+        let virtio_capability = PciCapability::read_capabilities(pci_config_space, device_address);
+        let mut common_cfg = None;
+        let mut notify_cfg = None;
 
         for cap in virtio_capability.iter() {
             match cap.cfg_type {
                 VIRTIO_PCI_CAP_COMMON_CFG => {
                     info!("Found common configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
-
                     common_cfg = PciCapability::extract_common_cfg(&pci_config_space, &mut pci_device, cap);
+                    if common_cfg.is_none() {
+                        info!("Failed to extract common configuration");
+                        return VirtioGpu::default();
+                    }
                 },
                 VIRTIO_PCI_CAP_NOTIFY_CFG => {
                     info!("Found notify configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
@@ -273,31 +274,15 @@ impl VirtioGpu {
             }
         }
 
+        let common_cfg = common_cfg.expect("Common configuration not found");
 
-
-
-
-
-        /*
-                pci_device.update_command(pci_config_space, |command| {
-                    command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
-                });
-                let bar0 = pci_device.bar(0, pci_config_space).expect("Failed to read BAR0");
-                let base_address = bar0.unwrap_io() as u16;
-                info!("Virtio Gpu Base address: {:#X}", base_address);
-
-                let interrupt = InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 +32).unwrap();
-
-                let virtio_caps = PciCapability::new(base_address);
-                //info!("Virtio Caps: {:?}", virtio_caps);
-        */
         VirtioGpu {
             pci_device: 0,
             cap_ptr: 0,
             irq: 0,
             virtio_caps: virtio_capability,
             virtio_caps_count: 0,
-            common_cfg: 0,
+            common_cfg,
             common_len: 0,
             isr: AtomicU8::new(0),
             notify_ptr: AtomicU16::new(0),
@@ -310,7 +295,29 @@ impl VirtioGpu {
             queue_buffer_recv: Box::new([]),
         }
     }
+}
 
+impl Default for VirtioGpu {
+    fn default() -> Self {
+        VirtioGpu {
+            pci_device: 0,
+            cap_ptr: 0,
+            irq: 0,
+            virtio_caps: Vec::new(),
+            virtio_caps_count: 0,
+            common_cfg: unsafe { CommonCfg::new(core::ptr::null_mut()) },
+            common_len: 0,
+            isr: AtomicU8::new(0),
+            notify_ptr: AtomicU16::new(0),
+            notify_off_multiplier: 0,
+            config_ptr: 0,
+            config_len: 0,
+            rect: 0,
+            frame_buffer: 0,
+            queue_buffer_send: Box::new([]),
+            queue_buffer_recv: Box::new([]),
+        }
+    }
 }
 
 
