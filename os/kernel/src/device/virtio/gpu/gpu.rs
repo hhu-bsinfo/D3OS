@@ -7,11 +7,12 @@ use core::sync::atomic::{AtomicU16, AtomicU8};
 use log::info;
 use pci_types::{Bar, CommandRegister, ConfigRegionAccess, EndpointHeader, PciAddress};
 use spin::{Mutex, RwLock};
+use spin::rwlock::RwLockWriteGuard;
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::structures::paging::page::PageRange;
-use crate::device::virtio::transport::capabilities::{CommonCfgRegisters, PciCapability, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR, VIRTIO_PCI_CAP_COMMON_CFG, VIRTIO_PCI_CAP_NOTIFY_CFG, VIRTIO_PCI_CAP_ISR_CFG, VIRTIO_PCI_CAP_DEVICE_CFG, VIRTIO_PCI_CAP_PCI_CFG, VIRTIO_PCI_CAP_SHARED_MEMORY_CFG, VIRTIO_PCI_CAP_VENDOR_CFG, CommonCfg};
+use crate::device::virtio::transport::capabilities::{CommonCfgRegisters, PciCapability, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR, VIRTIO_PCI_CAP_COMMON_CFG, VIRTIO_PCI_CAP_NOTIFY_CFG, VIRTIO_PCI_CAP_ISR_CFG, VIRTIO_PCI_CAP_DEVICE_CFG, VIRTIO_PCI_CAP_PCI_CFG, VIRTIO_PCI_CAP_SHARED_MEMORY_CFG, VIRTIO_PCI_CAP_VENDOR_CFG, CommonCfg, NotifyCfg};
 use crate::device::virtio::transport::dma::DmaBuffer;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{pages, MemorySpace};
@@ -231,55 +232,16 @@ impl VirtioGpu {
 
         // Read the PCI configuration space
         let mut virtio_capability = PciCapability::read_capabilities(pci_config_space, device_address);
+        let common_cfg: &CommonCfg;
+        let notify_cfg: &NotifyCfg;
+
 
         for cap in virtio_capability.iter() {
             match cap.cfg_type {
                 VIRTIO_PCI_CAP_COMMON_CFG => {
                     info!("Found common configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
 
-                    let bar = pci_device.bar(cap.bar, &pci_config_space).expect("Failed to read BAR1");
-                    let base_address = bar.unwrap_mem();
-
-                    let address = base_address.0 as u64;
-                    let size = base_address.1;
-                    info!("MMIO base: {:#x}, size: {:#x}", address, size);
-
-                    let start_page = Page::from_start_address(VirtAddr::new(address)).unwrap();
-                    let num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-
-                    process_manager()
-                        .read()
-                        .kernel_process()
-                        .expect("Failed to get kernel process")
-                        .virtual_address_space
-                        .map(
-                            PageRange {
-                                start: start_page,
-                                end: start_page + num_pages as u64,
-                            },
-                            MemorySpace::Kernel,
-                            PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                            VmaType::DeviceMemory,
-                            "common_cfg",
-                        );
-
-                    // Initialize the CommonCfg struct
-                    let common_cfg_ptr = (address + cap.offset as u64) as *mut CommonCfgRegisters;
-                    let common_cfg = unsafe { CommonCfg::new(common_cfg_ptr) };
-
-                    // Example usage of the CommonCfg struct
-                    let device_feature_select = common_cfg.read_device_feature_select();
-                    info!("Device Feature Select: {}", device_feature_select);
-
-                    let num_virtqueues = common_cfg.read_num_queues();
-                    info!("Number of Virtqueues: {}", num_virtqueues);
-
-
-                    // testing
-                    let mut config_generation = common_cfg.read_config_generation();
-                    info!("Config Generation: {}", config_generation);
-                    config_generation = common_cfg.read_config_generation();
-                    info!("Config Generation: {}", config_generation);
+                    common_cfg = PciCapability::extract_common_cfg(&pci_config_space, &mut pci_device, cap);
                 },
                 VIRTIO_PCI_CAP_NOTIFY_CFG => {
                     info!("Found notify configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
@@ -314,73 +276,8 @@ impl VirtioGpu {
 
 
 
-        /*let bar1 = pci_device.bar(1, pci_config_space).expect("Failed to read BAR1");
-        let base_address1 = bar1.unwrap_mem().0 as u32;
-        info!("Virtio Gpu Base address: {:#X}", base_address1);
-        info!("TEEEST: {:?}", pci_device.header().address());
-        pci_device
 
 
-        let mut virtio_caps = PciCapability::new(base_address1 as u16);
-
-
-        unsafe {
-
-            info!("Virtio Caps: {:?}", virtio_caps.to_string());
-        }*/
-/*
-        let bar1 = pci_device.bar(1, &pci_config_space).expect("Failed to read BAR1");
-        let base_address1 = bar1.unwrap_mem();
-
-
-        let address = base_address1.0 as u64;
-        let size = base_address1.1;
-        info!("MMIO base: {:#x}, size: {:#x}", address, size);*/
-
-
-
-        /*let start_page = Page::from_start_address(VirtAddr::new(address)).unwrap();
-        let num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-        process_manager()
-            .read()
-            .kernel_process()
-            .expect("Failed to get kernel process")
-            .virtual_address_space
-            .map(
-                PageRange {
-                    start: start_page,
-                    end: start_page + num_pages as u64,
-                },
-                MemorySpace::Kernel,
-                PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-                VmaType::DeviceMemory,
-                "virtio_gpu",
-            );*/
-
-        //let mmio_contents = read_mmio_region(base_address1.0, base_address1.1);
-
-        // Print contents
-        //for (i, &value) in mmio_contents.iter().enumerate() {
-        //    info!("MMIO[{}]: {:#x}", i * 4, value);
-        //}
-
-
-        // Log the contents of virtio_caps
-        /*unsafe {
-            info!("Virtio Caps: {}", virtio_caps.to_string());
-        }*/
-
-
-        /*let mut cap_ptr = pci_device.capability_pointer(pci_config_space);
-
-        info!("Capabilities: {:?}", cap_ptr.next().unwrap().address().address);
-        let mut virtio_caps_count = 0;
-        while let Some(cap) = cap_ptr.next() && virtio_caps_count < MAX_VIRTIO_CAPS {
-            if cap.address().address.device() == 0x9 {
-                virtio_caps_count += 1;
-            }
-            virtio_caps_count += 1;
-        }*/
         /*
                 pci_device.update_command(pci_config_space, |command| {
                     command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
@@ -413,6 +310,7 @@ impl VirtioGpu {
             queue_buffer_recv: Box::new([]),
         }
     }
+
 }
 
 
