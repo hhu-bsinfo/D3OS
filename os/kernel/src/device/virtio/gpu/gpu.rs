@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -12,7 +13,7 @@ use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::structures::paging::page::PageRange;
-use crate::device::virtio::transport::capabilities::{CommonCfgRegisters, PciCapability, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR, VIRTIO_PCI_CAP_COMMON_CFG, VIRTIO_PCI_CAP_NOTIFY_CFG, VIRTIO_PCI_CAP_ISR_CFG, VIRTIO_PCI_CAP_DEVICE_CFG, VIRTIO_PCI_CAP_PCI_CFG, VIRTIO_PCI_CAP_SHARED_MEMORY_CFG, VIRTIO_PCI_CAP_VENDOR_CFG, CommonCfg, NotifyCfg};
+use crate::device::virtio::transport::capabilities::{CommonCfgRegisters, PciCapability, MAX_VIRTIO_CAPS, PCI_CAP_ID_VNDR, VIRTIO_PCI_CAP_COMMON_CFG, VIRTIO_PCI_CAP_NOTIFY_CFG, VIRTIO_PCI_CAP_ISR_CFG, VIRTIO_PCI_CAP_DEVICE_CFG, VIRTIO_PCI_CAP_PCI_CFG, VIRTIO_PCI_CAP_SHARED_MEMORY_CFG, VIRTIO_PCI_CAP_VENDOR_CFG, CommonCfg, VirtioPciNotifyCap};
 use crate::device::virtio::transport::dma::DmaBuffer;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{pages, MemorySpace};
@@ -31,12 +32,9 @@ pub struct VirtioGpu {
     virtio_caps: Vec<PciCapability>, 
     virtio_caps_count: u32,
     common_cfg: CommonCfg,
-    common_len: usize,
     isr: AtomicU8,
-    notify_ptr: AtomicU16,
-    notify_off_multiplier: u32,
+    notify_cfg: VirtioPciNotifyCap,
     config_ptr: u32,
-    config_len: usize,
 
     //rect: Mutex<VirtioGpuRect>,
     rect: u32, // testing
@@ -221,7 +219,7 @@ const RESOURCE_ID_FB: u32 = 0xbabe;
 
 
 impl VirtioGpu {
-    pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
+    pub fn new(pci_device: &RwLock<EndpointHeader>) -> Result<Self, String> {
         info!("Configuring PCI registers");
         let pci_config_space = pci_bus().config_space();
         let mut pci_device = pci_device.write();
@@ -240,13 +238,16 @@ impl VirtioGpu {
                     info!("Found common configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
                     common_cfg = PciCapability::extract_common_cfg(&pci_config_space, &mut pci_device, cap);
                     if common_cfg.is_none() {
-                        info!("Failed to extract common configuration");
-                        return VirtioGpu::default();
+                        return Err("Failed to extract common configuration".to_string());
                     }
                 },
                 VIRTIO_PCI_CAP_NOTIFY_CFG => {
                     info!("Found notify configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
-                    // Handle notify configuration
+                    notify_cfg = PciCapability::extract_notify_cfg(&pci_config_space, &mut pci_device, cap);
+                    if notify_cfg.is_none() {
+                        return Err("Failed to extract notify configuration".to_string());
+                    }
+                    info!("Notify configuration: {:?}", notify_cfg);
                 },
                 VIRTIO_PCI_CAP_ISR_CFG => {
                     info!("Found ISR configuration capability at bar: {}, offset: {}", cap.bar, cap.offset);
@@ -274,49 +275,24 @@ impl VirtioGpu {
             }
         }
 
-        let common_cfg = common_cfg.expect("Common configuration not found");
+        let common_cfg = common_cfg.ok_or("Common configuration not found")?;
+        let notify_cfg = notify_cfg.ok_or("Notify configuration not found")?;
 
-        VirtioGpu {
+        Ok(VirtioGpu {
             pci_device: 0,
             cap_ptr: 0,
             irq: 0,
             virtio_caps: virtio_capability,
             virtio_caps_count: 0,
             common_cfg,
-            common_len: 0,
             isr: AtomicU8::new(0),
-            notify_ptr: AtomicU16::new(0),
-            notify_off_multiplier: 0,
+            notify_cfg,
             config_ptr: 0,
-            config_len: 0,
             rect: 0,
             frame_buffer: 0,
             queue_buffer_send: Box::new([]),
             queue_buffer_recv: Box::new([]),
-        }
-    }
-}
-
-impl Default for VirtioGpu {
-    fn default() -> Self {
-        VirtioGpu {
-            pci_device: 0,
-            cap_ptr: 0,
-            irq: 0,
-            virtio_caps: Vec::new(),
-            virtio_caps_count: 0,
-            common_cfg: unsafe { CommonCfg::new(core::ptr::null_mut()) },
-            common_len: 0,
-            isr: AtomicU8::new(0),
-            notify_ptr: AtomicU16::new(0),
-            notify_off_multiplier: 0,
-            config_ptr: 0,
-            config_len: 0,
-            rect: 0,
-            frame_buffer: 0,
-            queue_buffer_send: Box::new([]),
-            queue_buffer_recv: Box::new([]),
-        }
+        })
     }
 }
 
