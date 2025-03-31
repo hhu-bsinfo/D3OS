@@ -22,6 +22,7 @@ use spin::{once::Once, Mutex, MutexGuard};
 use terminal::read::{read, try_read};
 use terminal::write::log_debug;
 use terminal::Application;
+use input::mouse::{MousePacket, try_read_mouse};
 use time::systime;
 use windows::workspace_selection_labels_window::WorkspaceSelectionLabelsWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
@@ -51,6 +52,11 @@ enum ScreenSplitType {
     Vertical,
 }
 
+struct MouseState {
+    x: i32,
+    y: i32,
+}
+
 struct WindowManager {
     workspaces: Vec<Workspace>,
     /// Currently selected workspace
@@ -67,6 +73,22 @@ struct WindowManager {
     last_frame_time: TimeDelta,
     start_time: TimeDelta,
     frames: i64,
+
+    mouse_state: MouseState,
+}
+
+impl MouseState {
+    fn new() -> Self {
+        Self { x: 0, y: 0 }
+    }
+
+    fn update(&mut self, mouse_packet: &MousePacket, screen_res: (u32, u32)) {
+        self.x += mouse_packet.dx as i32;
+        self.y += mouse_packet.dy as i32;
+
+        self.x = self.x.clamp(0, screen_res.0 as i32);
+        self.y = self.y.clamp(0, screen_res.1 as i32);
+    }
 }
 
 impl WindowManager {
@@ -134,6 +156,7 @@ impl WindowManager {
                 last_frame_time: time,
                 start_time: time,
                 frames: 0,
+                mouse_state: MouseState::new(),
             },
             senders,
         )
@@ -156,6 +179,8 @@ impl WindowManager {
             // log_debug(&format!("loop"));
 
             self.process_keyboard_input();
+
+            self.process_mouse_input();
             
             self.add_new_components_from_api();
             
@@ -250,6 +275,18 @@ impl WindowManager {
                     _ => {}
                 }
             }
+        }
+    }
+
+    fn process_mouse_input(&mut self) {
+        let mouse_packet = try_read_mouse();
+        if let Some(mouse_packet) = mouse_packet {
+            self.mouse_state.update(&mouse_packet, Self::get_screen_res());
+
+            log_debug(&format!(
+                "Mouse position: x: {}, y: {}",
+                self.mouse_state.x, self.mouse_state.y
+            ));
         }
     }
 
