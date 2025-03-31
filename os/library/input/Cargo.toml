@@ -7,3 +7,6 @@ authors = ["Leon Lehnen"]
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }
+
+# External dependencies
+bitflags = "2.9.0"
