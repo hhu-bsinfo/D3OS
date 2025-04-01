@@ -36,6 +36,28 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
                 color.clone(),
             );
         }
+        DrawerCommand::DrawPolygonDirect { vertices, color } => {
+            let direct_lfb = buff_lfb.direct_lfb();
+            
+            let first_vertex = vertices.first();
+            let mut prev = match first_vertex {
+                Some(unwrapped) => unwrapped,
+                None => return,
+            };
+            let last_vertex = vertices.last().unwrap();
+            for vertex in &vertices[1..] {
+                direct_lfb.draw_line(prev.x, prev.y, vertex.x, vertex.y, color.clone());
+                prev = vertex;
+            }
+
+            direct_lfb.draw_line(
+                last_vertex.x,
+                last_vertex.y,
+                first_vertex.unwrap().x,
+                first_vertex.unwrap().y,
+                color.clone(),
+            );
+        }
         DrawerCommand::DrawFilledRectangle {
             rect_data:
                 RectData {
@@ -128,6 +150,9 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
         } => {
             lfb.draw_bitmap(pos.x, pos.y, &(**bitmap).data, (**bitmap).width, (**bitmap).height);
         },
+        DrawerCommand::FlushLines { start, count } => {
+            buff_lfb.flush_lines(*start, *count);
+        }
         DrawerCommand::Flush => {
             buff_lfb.flush();
         }

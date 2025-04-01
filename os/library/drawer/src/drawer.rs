@@ -22,6 +22,10 @@ pub enum DrawerCommand<'a> {
         vertices: Vec<Vertex>,
         color: Color,
     },
+    DrawPolygonDirect {
+        vertices: Vec<Vertex>,
+        color: Color,
+    },
     DrawCircle {
         center: Vertex,
         radius: u32,
@@ -58,6 +62,10 @@ pub enum DrawerCommand<'a> {
     DrawBitmap {
         pos: Vertex,
         bitmap: &'a Bitmap,
+    },
+    FlushLines {
+        start: u32,
+        count: u32,
     },
     Flush,
 }
@@ -102,6 +110,12 @@ impl Drawer {
 
     pub fn draw_polygon(vertices: Vec<Vertex>, color: Color) {
         let command = DrawerCommand::DrawPolygon { vertices, color };
+
+        Self::execute(command);
+    }
+
+    pub fn draw_polygo_direct(vertices: Vec<Vertex>, color: Color) {
+        let command = DrawerCommand::DrawPolygonDirect { vertices, color };
 
         Self::execute(command);
     }
@@ -216,6 +230,12 @@ impl Drawer {
             pos,
             bitmap,
         };
+
+        Self::execute(command);
+    }
+
+    pub fn flush_lines(start: u32, count: u32) {
+        let command = DrawerCommand::FlushLines { start, count };
 
         Self::execute(command);
     }

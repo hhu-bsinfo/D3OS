@@ -24,6 +24,11 @@ impl BufferedLFB {
     }
 
     pub fn flush_lines(&mut self, start: u32, count: u32) {
+        // Prevent out-of-bounds flush
+        if start + count > self.lfb.height() {
+            return;
+        }
+
         let offset = (self.lfb.pitch() * start) as isize;
         let bytes = (self.lfb().pitch() * count) as usize;
 

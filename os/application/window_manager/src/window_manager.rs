@@ -9,7 +9,7 @@ use alloc::{borrow::ToOwned, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
 use chrono::{format, TimeDelta};
 use components::selected_window_label::HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW;
-use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE, ESCAPE_UNICODE, FLUSHING_DELAY_MS};
+use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DEFAULT_BACKGROUND_COLOR, DEFAULT_FG_COLOR, DIST_TO_SCREEN_EDGE, ESCAPE_UNICODE, FLUSHING_DELAY_MS};
 use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
@@ -27,6 +27,7 @@ use time::systime;
 use windows::workspace_selection_labels_window::WorkspaceSelectionLabelsWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
 use workspace::Workspace;
+use mouse_cursor::MouseCursor;
 
 pub mod api;
 mod apps;
@@ -38,6 +39,7 @@ mod windows;
 mod workspace;
 mod dirty_region;
 mod signal;
+mod mouse_cursor;
 
 // IDs are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -75,6 +77,7 @@ struct WindowManager {
     frames: i64,
 
     mouse_state: MouseState,
+    mouse_cursor: MouseCursor,
 }
 
 impl MouseState {
@@ -84,7 +87,7 @@ impl MouseState {
 
     fn update(&mut self, mouse_packet: &MousePacket, screen_res: (u32, u32)) {
         self.x += mouse_packet.dx as i32;
-        self.y += mouse_packet.dy as i32;
+        self.y += (mouse_packet.dy * -1) as i32;
 
         self.x = self.x.clamp(0, screen_res.0 as i32);
         self.y = self.y.clamp(0, screen_res.1 as i32);
@@ -157,6 +160,7 @@ impl WindowManager {
                 start_time: time,
                 frames: 0,
                 mouse_state: MouseState::new(),
+                mouse_cursor: MouseCursor::new(),
             },
             senders,
         )
@@ -175,6 +179,8 @@ impl WindowManager {
             self.draw();
             
             self.flush();
+
+            self.mouse_cursor.draw();
             
             // log_debug(&format!("loop"));
 
@@ -282,6 +288,7 @@ impl WindowManager {
         let mouse_packet = try_read_mouse();
         if let Some(mouse_packet) = mouse_packet {
             self.mouse_state.update(&mouse_packet, Self::get_screen_res());
+            self.mouse_cursor.update(self.mouse_state.x as u32, self.mouse_state.y as u32);
 
             log_debug(&format!(
                 "Mouse position: x: {}, y: {}",
