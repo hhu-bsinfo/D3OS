@@ -101,6 +101,12 @@ impl Workspace {
         focused_window.focus_prev_component();
     }
 
+    // Focus a component at the given position in the currently focused window
+    pub fn focus_component_at(&mut self, x: u32, y: u32) {
+        let focused_window = self.get_focused_window_mut();
+        focused_window.focus_component_at(x, y);
+    }
+
     pub fn close_focused_window(&mut self) -> bool {
         if self.windows.len() == 1 {
             return false;

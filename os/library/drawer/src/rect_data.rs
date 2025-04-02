@@ -60,4 +60,12 @@ impl RectData {
         
         x_overlap && y_overlap
     }
+
+    pub fn contains_vertex(&self, vertex: &Vertex) -> bool {
+        let self_top_left = self.top_left;
+        let self_bottom_right = self.top_left.add(self.width, self.height);
+
+        vertex.x >= self_top_left.x && vertex.x <= self_bottom_right.x &&
+        vertex.y >= self_top_left.y && vertex.y <= self_bottom_right.y
+    }
 }

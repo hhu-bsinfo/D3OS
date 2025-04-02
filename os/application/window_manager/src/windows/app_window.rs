@@ -60,6 +60,18 @@ impl AppWindow {
         self.components.insert(id, new_component);
     }
 
+    // Find a component at a specific position
+    pub fn find_component_at(&self, position: &Vertex) -> Option<usize> {
+        for (id, component) in &self.components {
+            let component = component.read();
+            if component.get_abs_rect_data().contains_vertex(position) {
+                return Some(*id);
+            }
+        }
+
+        None
+    }
+
     pub fn interact_with_focused_component(&mut self, keyboard_press: char) -> bool {
         if let Some(focused_component_id) = &self.focused_component_id {
             let focused_component = self.components.get(focused_component_id).unwrap();
@@ -179,6 +191,23 @@ impl AppWindow {
                 self.mark_component_dirty(focused_component_id);
                 self.mark_component_dirty(next_focused_component_id);
 
+            }
+        }
+    }
+
+    // Focus a component at a specific position
+    pub fn focus_component_at(&mut self, x: u32, y: u32) {
+        let position = Vertex::new(x, y);
+        if let Some(new_component_id) = self.find_component_at(&position) {
+            // Only mark components as dirty if we're changing focus
+            if self.focused_component_id != Some(new_component_id) {
+                if let Some(focused_component_id) = self.focused_component_id {
+                    self.mark_component_dirty(focused_component_id);
+                }
+                
+                // Focus the new component
+                self.focused_component_id = Some(new_component_id);
+                self.mark_component_dirty(new_component_id);
             }
         }
     }

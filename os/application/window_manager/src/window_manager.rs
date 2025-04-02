@@ -294,6 +294,10 @@ impl WindowManager {
                 "Mouse position: x: {}, y: {}",
                 self.mouse_state.x, self.mouse_state.y
             ));
+
+            let x = self.mouse_state.x as u32;
+            let y = self.mouse_state.y as u32;
+            self.get_current_workspace_mut().focus_component_at(x, y);
         }
     }
 
