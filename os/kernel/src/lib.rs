@@ -13,6 +13,8 @@
 #![feature(abi_x86_interrupt)]
 #![feature(map_try_insert)]
 #![feature(str_split_remainder)]
+// #![feature(sized_hierarchy)]
+#![feature(get_mut_unchecked)]
 #![allow(internal_features)]
 #![no_std]
 
@@ -68,6 +70,7 @@ pub mod process;
 pub mod storage;
 pub mod syscall;
 pub mod sync;
+pub mod capabilities;
 
 pub mod built_info {
     // The file has been placed there by the build script

@@ -25,7 +25,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "256M,slots=2,maxmem=1G",
     "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
+    "-bios",  "RELEASEX64_OVMF.fd", #"OVMF.fd",
     "-boot", "d",
     "-vga", "std",
     "-rtc", "base=localtime",

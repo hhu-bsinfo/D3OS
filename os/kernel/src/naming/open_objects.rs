@@ -22,7 +22,7 @@ use super::traits::NamedObject;
 use naming::shared_types::{DirEntry, OpenOptions, SeekOrigin};
 use syscall::return_vals::{Errno, SyscallResult};
 
-/// Max. number of open objetcs
+/// Max. number of open objects
 const MAX_OPEN_OBJECTS: usize = 0x1000;
 
 //static OPEN_OBJECTS: Once<Arc<Mutex<Box<OpenObjectTable>>>> = Once::new();
@@ -37,14 +37,15 @@ pub(super) fn open_object_table_init() {
     OPEN_OBJECTS.call_once(|| Arc::new(OpenObjectTable::new()));
 }
 
-pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
+pub(super) fn open(path: &str, flags: OpenOptions) -> Result<NamedObject, Errno> {
+    // info!("opening '{}'", path);
     // try to open the named object for the given path
     let result = lookup::lookup_named_object(path);
     if result.is_err() {
         return Err(Errno::ENOENT);
     }
-    let found_named_object: NamedObject = result.unwrap();
-
+    let found_named_object: NamedObject = result?;
+    
     // check if path is a directory and this was requested
     if flags.contains(OpenOptions::DIRECTORY) {
         if !found_named_object.is_dir() {
@@ -52,8 +53,9 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
         }
     }
 
-    // try to allocate an new handle
-    get_open_object_table().allocate_handle(Arc::new(OpenedObject::new(Arc::new(found_named_object), AtomicUsize::new(0), flags)))
+    // info!("found named object: {:?}", found_named_object);
+    Ok(found_named_object)
+    //get_open_object_table().allocate_handle(Arc::new(OpenedObject::new(Arc::new(found_named_object), AtomicUsize::new(0), flags)))
 }
 
 pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {

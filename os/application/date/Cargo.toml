@@ -16,3 +16,4 @@ bench = false
 runtime = { path = "../../library/runtime" }
 terminal = { path = "../../library/terminal" }
 time = { path = "../../library/time" }
+concurrent = { path = "../../library/concurrent" }

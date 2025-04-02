@@ -21,22 +21,22 @@ pub enum SystemCall {
     TerminalWrite,
     MapMemory,
     MapFrameBuffer,
-    ProcessExecuteBinary,
+    ProcessExecuteBinary, //5
     ProcessId,
     ProcessExit,
     ThreadCreate,
     ThreadId,
-    ThreadSwitch,
+    ThreadSwitch, //10
     ThreadSleep,
     ThreadJoin,
     ThreadExit,
     GetSystemTime,
-    GetDate,
+    GetDate, //15
     SetDate,
     Open,
     Read,
-    Write,
-    Seek,
+    Write, 
+    Seek, //20
     Close,
     MkDir,
     Touch,
@@ -52,6 +52,11 @@ pub enum SystemCall {
     SockClose,
     GetIpAddresses,
     Mkfifo,
+    ShareSyscallCap,
+    RevokeSyscallCap,
+    ShareNamingCap,
+    RevokeNamingCap,
+    NamingLen,
     // no syscall, just marking last number, see NUM_SYSCALLS
     // insert any new system calls before this marker
     LastEntryMarker,

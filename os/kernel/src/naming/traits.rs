@@ -15,7 +15,7 @@
 use alloc::sync::Arc;
 use core::fmt::{self, Debug};
 use core::result::Result;
-
+use log::info;
 use super::stat::{Mode, Stat};
 use naming::shared_types::{OpenOptions, DirEntry};
 use syscall::return_vals::Errno;
@@ -94,6 +94,7 @@ impl NamedObject {
 
     /// Unwraps as a directory. If it's not, returns `Errno::EBADF`.
     pub fn as_dir(&self) -> Result<&Arc<dyn DirectoryObject>, Errno> {
+        info!("as dir called");
         match self {
             NamedObject::DirectoryObject(dir) => Ok(dir),
             _ => Err(Errno::EBADF),

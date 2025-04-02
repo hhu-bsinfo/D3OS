@@ -9,13 +9,14 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
+use log::info;
 use super::api::ROOT;
 use super::traits;
 use super::traits::{NamedObject, DirectoryObject};
 use syscall::return_vals::Errno;
 
 /// Resolves an absolute path into an `DirectoryLike`
-pub(super) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errno> {
+pub(crate) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errno> {
     match lookup_named_object(path)? {
         NamedObject::DirectoryObject(dir) => Ok(dir),
         NamedObject::FileObject(_) => Err(Errno::ENOTDIR),

@@ -10,6 +10,8 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
+use crate::capabilities::capability::{Capability, CapabilityFlags};
+use crate::capabilities::cspace::CSpace;
 use crate::{ network, process_manager, scheduler};
 use crate::memory::pages::Paging;
 use crate::memory::vmm::VirtualAddressSpace;
@@ -24,12 +26,13 @@ fn next_process_id() -> usize {
 pub struct Process {
     pub id: usize,
     pub virtual_address_space: VirtualAddressSpace,
+    pub cspace: Capability<CSpace>,
 }
 
 
 impl Process {
     pub fn new(page_tables: Arc<Paging>) -> Self {
-        Self { id: next_process_id(), virtual_address_space: VirtualAddressSpace::new(page_tables) }
+        Self { id: next_process_id(), virtual_address_space: VirtualAddressSpace::new(page_tables), cspace: Capability::new(CSpace::new(), CapabilityFlags::READ | CapabilityFlags::WRITE | CapabilityFlags::SHARE) }
     }
 
     /// Return the id of the process

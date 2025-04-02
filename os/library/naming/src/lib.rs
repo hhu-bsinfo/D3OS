@@ -19,61 +19,78 @@ use alloc::string::String;
 use alloc::ffi::CString;
 use core::mem;
 
-use shared_types::{DirEntry, FileType, OpenOptions, RawDirent, SeekOrigin};
+use shared_types::{DirEntry, FileType, OpenOptions, RawDirent, SeekOrigin, Capability};
 use syscall::{SystemCall, return_vals::Errno, syscall};
+use terminal::print;
 
+pub static ROOT : Capability = Capability::new(0);
+pub static SHARED_PIPE : Capability = Capability::new(1);
 
+/*pub fn root() -> Result<usize, Errno> {
+    syscall(SystemCall::Root, &[])
+}*/
 
-pub fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
-    match CString::new(path) {
-        Ok(c_path) => syscall(SystemCall::Open, &[
-            c_path.as_bytes().as_ptr() as usize,
-            flags.bits(),
-        ]),
-        Err(_) => Err(Errno::EBADSTR),
+pub fn open(cap_handle: Capability, flags: OpenOptions) -> Result<Capability, Errno> {
+    match syscall(SystemCall::Open, &[
+        cap_handle.handle(),
+        flags.bits(),
+    ]) {
+        Ok(cap_handle) => Ok(Capability::new(cap_handle)),
+        Err(e) => Err(e),
     }
 }
 
-pub fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
-    syscall(SystemCall::Write, &[fh, buf.as_ptr() as usize, buf.len()])
+pub fn write(cap: Capability, buf: &[u8]) -> Result<usize, Errno> {
+    syscall(SystemCall::Write, &[cap.handle(), buf.as_ptr() as usize, buf.len()])
 }
 
-pub fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
+pub fn read(cap: Capability, buf: &mut [u8]) -> Result<usize, Errno> {
     syscall(SystemCall::Read, &[
-        fh,
+        cap.handle(),
         buf.as_mut_ptr() as usize,
         buf.len(),
     ])
 }
 
-pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno> {
-    syscall(SystemCall::Seek, &[fh, offset, origin.into()])
+pub fn seek(cap: Capability, offset: usize, origin: SeekOrigin) -> Result<usize, Errno> {
+    syscall(SystemCall::Seek, &[cap.handle(), offset, origin.into()])
 }
 
-pub fn close(fh: usize) -> Result<usize, Errno> {
-    syscall(SystemCall::Close, &[fh])
+pub fn close(cap: Capability) -> Result<usize, Errno> {
+    syscall(SystemCall::Close, &[cap.handle()])
 }
 
-pub fn mkdir(path: &str) -> Result<usize, Errno> {
+pub fn mkdir(path: &str, flags: OpenOptions, dir_handle: Capability) -> Result<Capability, Errno> {
     match CString::new(path) {
-        Ok(c_path) => syscall(SystemCall::MkDir, &[c_path.as_bytes().as_ptr() as usize]),
+        Ok(c_path) => {
+            match syscall(SystemCall::MkDir, &[c_path.as_bytes().as_ptr() as usize,  flags.bits(), dir_handle.handle()]){
+                Ok(cap_handle) => Ok(Capability::new(cap_handle)),
+                Err(e) => Err(e),
+            }
+        },
         Err(_) => Err(Errno::EBADSTR),
     }
 }
 
-pub fn touch(path: &str) -> Result<usize, Errno> {
+pub fn touch(path: &str, flags: OpenOptions, dir_handle: Capability) -> Result<Capability, Errno> {
     match CString::new(path) {
-        Ok(c_path) => syscall(SystemCall::Touch, &[c_path.as_bytes().as_ptr() as usize]),
+        Ok(c_path) => {
+            match syscall(SystemCall::Touch, &[c_path.as_bytes().as_ptr() as usize,  flags.bits(), dir_handle.handle()]){
+                Ok(cap_handle) => Ok(Capability::new(cap_handle)),
+                Err(e) => Err(e),
+            }
+        },
         Err(_) => Err(Errno::EBADSTR),
     }
 }
 
-pub fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
+pub fn readdir(fh: Capability) -> Result<Option<DirEntry>, Errno> {
+    return Err(Errno::ENOTSUP);
     let mut raw_dirent = RawDirent::new();
     let ret = syscall(SystemCall::Readdir, &[
-        fh,
+        fh.handle(),
         raw_dirent.as_mut_ptr() as usize,
-        mem::size_of::<RawDirent>(),
+        size_of::<RawDirent>(),
     ]);
     match ret {
         Ok(0) => Ok(None),
@@ -111,6 +128,7 @@ impl DirEntry {
 }
 
 pub fn cwd() -> Result<String, Errno> {
+    return Err(Errno::ENOTSUP);
     let buf: [u8; 512] = [0; 512]; // buffer for the path
     let result = syscall(SystemCall::Cwd, &[ buf.as_ptr() as usize, buf.len(), ]);
     match result {
@@ -128,15 +146,22 @@ pub fn cwd() -> Result<String, Errno> {
 }
 
 pub fn cd(path: &str) -> Result<usize, Errno> {
+    return Err(Errno::ENOTSUP);
     match CString::new(path) {
         Ok(c_path) => syscall(SystemCall::Cd, &[c_path.as_bytes().as_ptr() as usize]),
         Err(_) => Err(Errno::EBADSTR),
     }
 }
 
-pub fn mkfifo(path: &str) -> Result<usize, Errno> {
-    match CString::new(path) {
-        Ok(c_path) => syscall(SystemCall::Mkfifo, &[c_path.as_bytes().as_ptr() as usize]),
+pub fn mkfifo(name: &str, flags: OpenOptions, dir: Capability) -> Result<Capability, Errno> {
+    // print!("lib::mkfifo called with path: {}, flags: {:?}, dir_handle: {} \n", path, flags, dir.handle());
+    match CString::new(name) {
+        Ok(c_path) => {
+            match syscall(SystemCall::Mkfifo, &[c_path.as_bytes().as_ptr() as usize, flags.bits(), dir.handle()]){
+                Ok(cap_handle) => Ok(Capability::new(cap_handle)),
+                Err(e) => Err(e)
+            }
+        },
         Err(_) => Err(Errno::EBADSTR),
     }
 }

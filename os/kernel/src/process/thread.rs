@@ -43,10 +43,13 @@ use crate::process::process::Process;
 use crate::process::scheduler;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
 use crate::{process_manager, scheduler, tss};
+use crate::capabilities::capability::{Capability, CapabilityFlags};
+use crate::capabilities::cspace::CSpace;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::naked_asm;
 use core::ptr;
+use core::ptr::null;
 use goblin::elf::Elf;
 use goblin::elf64;
 use log::info;
@@ -54,7 +57,8 @@ use spin::Mutex;
 use x86_64::PrivilegeLevel::Ring3;
 use x86_64::VirtAddr;
 use x86_64::structures::gdt::SegmentSelector;
-use x86_64::structures::paging::Page;
+use x86_64::structures::paging::page::PageRange;
+use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB};
 
 /// kernel & user stack of a thread
 struct Stacks {
@@ -88,6 +92,7 @@ pub struct Thread {
     id: usize,
     stacks: Mutex<Stacks>,
     process: Arc<Process>, // reference to my process
+    pub(crate) cspace: Capability<CSpace>, // capability to the CSpace
     /// for user threads: the address to jump to
     user_kickoff: VirtAddr,
     /// the actual entry point (eg. for user threads the single parameter to kickoff)
@@ -126,6 +131,7 @@ impl Thread {
                 .read()
                 .kernel_process()
                 .expect("Trying to create a kernel thread before process initialization!"),
+            cspace: Capability::null(),
             user_kickoff: VirtAddr::zero(),
             entry,
         };
@@ -185,11 +191,18 @@ impl Thread {
         // Make a Vec for the user stack
         let user_stack: Vec<u64, StackAllocator> = stack::alloc_user_stack(pid, tid, stack_vma.start().as_u64() as usize, MAX_USER_STACK_SIZE);
 
+        //Copy process CSpace for the user thread
+        let mut cspace_cap = Capability::null();
+        if let Some(cap) = parent.cspace.share(CapabilityFlags::READ | CapabilityFlags::WRITE | CapabilityFlags::SHARE) {
+            cspace_cap = cap; //TODO: Thread-Individual CSpace if needed
+        }
+        
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
             id: tid,
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: parent,
+            cspace: cspace_cap,
             user_kickoff: kickoff_addr,
             entry,
         };

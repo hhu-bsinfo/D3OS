@@ -151,4 +151,12 @@ impl ProcessManager {
         }
         info!("=============================");
     }
+    
+    pub fn process(&self, process_id: usize) -> Arc<Process> {
+        self.active_processes
+            .iter()
+            .find(|process| process.id() == process_id)
+            .map(Arc::clone)
+            .expect("Process: Trying to access a non-existent process!")
+    }
 }

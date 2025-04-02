@@ -13,5 +13,5 @@ pub mod sys_concurrent;
 pub mod sys_net;
 pub mod sys_time;
 pub mod sys_vmem;
-
 pub mod syscall_dispatcher;
+pub mod sys_caps;

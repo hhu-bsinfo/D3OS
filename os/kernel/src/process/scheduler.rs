@@ -114,11 +114,44 @@ impl Scheduler {
     }
 
     /// Return reference to thread identified by `thread_id`
+
     pub fn thread(&self, thread_id: usize) -> Option<Arc<Thread>> {
-        self.ready_state.lock().ready_queue
+        info!("Scheduler::thread: Searching for thread id {}", thread_id);
+
+        // First check if it's the current thread
+        let state = self.ready_state.lock();
+        if let Some(current) = state.current_thread.as_ref() {
+            if current.id() == thread_id {
+                return Some(Arc::clone(current));
+            }
+        }
+        drop(state);
+
+        // Check ready queue
+        if let Some(thread) = self.ready_state.lock().ready_queue
             .iter()
             .find(|thread| thread.id() == thread_id)
-            .cloned()
+            .cloned() {
+            return Some(thread);
+        }
+
+        // Check sleep list
+        if let Some(thread) = self.sleep_list.lock()
+            .iter()
+            .find(|(thread, _)| thread.id() == thread_id)
+            .map(|(thread, _)| thread.clone()) {
+            return Some(thread);
+        }
+
+        // Check blocked list
+        if let Some(thread) = self.blocked_list.lock()
+            .iter()
+            .find(|thread| thread.id() == thread_id)
+            .cloned() {
+            return Some(thread);
+        }
+
+        None
     }
 
     /// Return (pid, tid) of current thread
@@ -129,9 +162,8 @@ impl Scheduler {
     }
 
 
-    /// Start the scheduler, called only once from `boot.rs` 
+    /// Start the scheduler, called only once from `boot.rs`
     pub fn start(&self) {
-        // TODO: make sure this is actually called just once
         let mut state = self.get_ready_state();
         state.current_thread = state.ready_queue.pop_back();
 
@@ -167,12 +199,12 @@ impl Scheduler {
             // Scheduler is not initialized yet, so this function has been called during the boot process
             // So we do active waiting
             timer().wait(ms);
-        } 
+        }
         else {
             // Scheduler is initialized, so we can block the calling thread
             let thread = Scheduler::current(&state);
             let wakeup_time = timer().systime_ms() + ms;
-            
+
             {
                 // Execute in own block, so that the lock is released automatically (block() does not return)
                 let mut sleep_list = self.sleep_list.lock();
@@ -191,7 +223,7 @@ impl Scheduler {
             // Scheduler is not initialized yet, so this function has been called during the boot process
             // We panic
             panic!("Scheduler: Cannot block thread before scheduler is initialized!");
-        } 
+        }
         else {
             // Scheduler is initialized, so we can block the calling thread
             let thread = Scheduler::current(&state);
@@ -216,7 +248,7 @@ impl Scheduler {
     }
 
     /// Switch from current to next thread (from ready queue). \
-    /// If `interrupt` is true, the function is called from an ISR and will send EOI to APIC otherwise not. 
+    /// If `interrupt` is true, the function is called from an ISR and will send EOI to APIC otherwise not.
     fn switch_thread(&self, interrupt: bool) {
         if let Some(mut state) = self.ready_state.try_lock() {
             if !state.initialized {
