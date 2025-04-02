@@ -23,7 +23,7 @@ impl MouseCursor {
     pub fn draw(&mut self) {
         Drawer::flush_lines(self.last_position.1, 11);
             
-        Drawer::draw_polygo_direct(
+        Drawer::draw_polygon_direct(
             vec![
                 Vertex::new(self.position.0, self.position.1),
                 Vertex::new(self.position.0 + 10, self.position.1 + 4),

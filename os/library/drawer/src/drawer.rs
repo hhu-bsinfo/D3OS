@@ -114,7 +114,7 @@ impl Drawer {
         Self::execute(command);
     }
 
-    pub fn draw_polygo_direct(vertices: Vec<Vertex>, color: Color) {
+    pub fn draw_polygon_direct(vertices: Vec<Vertex>, color: Color) {
         let command = DrawerCommand::DrawPolygonDirect { vertices, color };
 
         Self::execute(command);
