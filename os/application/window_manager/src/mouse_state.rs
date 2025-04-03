@@ -21,6 +21,12 @@ pub enum MouseButtonState {
     Released,
 }
 
+// Events that will be sent to components
+pub struct MouseEvent {
+    pub button_states: [MouseButtonState; 3],
+    pub position: (u32, u32),
+}
+
 pub struct MouseState {
     position: (u32, u32),
     last_position: (u32, u32),
@@ -38,14 +44,9 @@ impl MouseState {
         }
     }
 
-    pub fn update(&mut self, mouse_packet: &MousePacket) {
+    pub fn process(&mut self, mouse_packet: &MousePacket) -> MouseEvent {
         // Update position
-        self.position.0 = self.position.0.saturating_add_signed(mouse_packet.dx as i32);
-        self.position.1 = self.position.1.saturating_add_signed(-mouse_packet.dy as i32);
-        /*log_debug(&format!(
-            "Mouse position: x: {}, y: {}",
-            self.position.0, self.position.1
-        ));*/
+        self.update_position(mouse_packet.dx as i32, mouse_packet.dy as i32);
 
         // Update button states
         self.update_button_state(MouseButton::Left, mouse_packet.left_button_down());
@@ -58,7 +59,16 @@ impl MouseState {
             self.button_states[MouseButton::Right as usize]
         ));
 
-        // TODO: Clamp to screen size
+        // Create and return the MouseEvent
+        MouseEvent {
+            button_states: self.button_states,
+            position: self.position,
+        }
+    }
+
+    fn update_position(&mut self, dx: i32, dy: i32) {
+        self.position.0 = self.position.0.saturating_add_signed(dx);
+        self.position.1 = self.position.1.saturating_add_signed(-dy);
     }
 
     fn update_button_state(&mut self, button: MouseButton, is_down: bool) {

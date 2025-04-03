@@ -27,7 +27,7 @@ use time::systime;
 use windows::workspace_selection_labels_window::WorkspaceSelectionLabelsWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
 use workspace::Workspace;
-use mouse_state::MouseState;
+use mouse_state::{MouseButtonState, MouseState};
 
 pub mod api;
 mod apps;
@@ -266,10 +266,19 @@ impl WindowManager {
     fn process_mouse_input(&mut self) {
         let mouse_packet = try_read_mouse();
         if let Some(mouse_packet) = mouse_packet {
-            self.mouse_state.update(&mouse_packet);
+            let mouse_event = self.mouse_state.process(&mouse_packet);
 
             let cursor_pos = self.mouse_state.position();
             self.get_current_workspace_mut().focus_component_at(cursor_pos.0, cursor_pos.1);
+
+            /* HACK */
+            if mouse_event.button_states[0] == MouseButtonState::Pressed {
+                self
+                    .get_current_workspace_mut()
+                    .get_focused_window_mut()
+                    .interact_with_focused_component('f');
+            }
+            /* HACK */
         }
     }
 
