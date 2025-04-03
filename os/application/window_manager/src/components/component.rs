@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use drawer::rect_data::RectData;
 use graphic::color::{Color, CYAN, GREY, WHITE, YELLOW};
 
-use crate::config::{DEFAULT_BACKGROUND_COLOR, DEFAULT_BORDER_COLOR, DEFAULT_DISABLED_BACKGROUND_COLOR, DEFAULT_DISABLED_BORDER_COLOR, DEFAULT_DISABLED_TEXT_COLOR, DEFAULT_FOCUSED_BACKGROUND_COLOR, DEFAULT_FOCUSED_BORDER_COLOR, DEFAULT_FOCUSED_TEXT_COLOR, DEFAULT_SELECTED_BACKGROUND_COLOR, DEFAULT_SELECTED_BORDER_COLOR, DEFAULT_SELECTED_TEXT_COLOR, DEFAULT_TEXT_COLOR};
+use crate::{config::{DEFAULT_BACKGROUND_COLOR, DEFAULT_BORDER_COLOR, DEFAULT_DISABLED_BACKGROUND_COLOR, DEFAULT_DISABLED_BORDER_COLOR, DEFAULT_DISABLED_TEXT_COLOR, DEFAULT_FOCUSED_BACKGROUND_COLOR, DEFAULT_FOCUSED_BORDER_COLOR, DEFAULT_FOCUSED_TEXT_COLOR, DEFAULT_SELECTED_BACKGROUND_COLOR, DEFAULT_SELECTED_BORDER_COLOR, DEFAULT_SELECTED_TEXT_COLOR, DEFAULT_TEXT_COLOR}, mouse_state::MouseEvent};
 
 #[derive(Clone, Copy)]
 pub struct ComponentStyling {
@@ -230,6 +230,11 @@ pub trait Hideable {
 
 pub trait Interactable {
     fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>>;
+
+    fn consume_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
+        // TODO: Remove the default implementation!
+        None
+    }
 }
 
 pub trait Resizable {

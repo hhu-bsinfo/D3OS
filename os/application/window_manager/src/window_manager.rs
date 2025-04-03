@@ -27,7 +27,7 @@ use time::systime;
 use windows::workspace_selection_labels_window::WorkspaceSelectionLabelsWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
 use workspace::Workspace;
-use mouse_state::{MouseButtonState, MouseState};
+use mouse_state::{MouseButtonState, MouseEvent, MouseState};
 
 pub mod api;
 mod apps;
@@ -47,6 +47,11 @@ static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 static SCREEN: Once<(u32, u32)> = Once::new();
 /// API instance to communicate between applications and window-manager
 static mut API: Once<Mutex<Api>> = Once::new();
+
+pub enum Interaction {
+    Keyboard(char),
+    Mouse(MouseEvent),
+}
 
 #[derive(Clone, Copy)]
 enum ScreenSplitType {
@@ -198,7 +203,7 @@ impl WindowManager {
                 let block_interact = self
                     .get_current_workspace_mut()
                     .get_focused_window_mut()
-                    .interact_with_focused_component(keyboard_press);
+                    .interact_with_focused_component(Interaction::Keyboard(keyboard_press));
 
                 if block_interact {
                     return;
@@ -276,7 +281,7 @@ impl WindowManager {
                 self
                     .get_current_workspace_mut()
                     .get_focused_window_mut()
-                    .interact_with_focused_component('f');
+                    .interact_with_focused_component(Interaction::Keyboard('f'));
             }
             /* HACK */
         }

@@ -5,7 +5,7 @@ use hashbrown::HashMap;
 use spin::RwLock;
 
 use crate::{
-    components::component::Component, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, utils::get_element_cursor_from_orderer, WindowManager
+    components::component::Component, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, utils::get_element_cursor_from_orderer, Interaction, WindowManager
 };
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
@@ -72,13 +72,17 @@ impl AppWindow {
         None
     }
 
-    pub fn interact_with_focused_component(&mut self, keyboard_press: char) -> bool {
+    pub fn interact_with_focused_component(&mut self, interaction: Interaction) -> bool {
         if let Some(focused_component_id) = &self.focused_component_id {
             let focused_component = self.components.get(focused_component_id).unwrap();
 
             // prüfe ob Komponente interagierbar ist und bekomme Callback
             let callback: Option<Box<dyn FnOnce()>> = if let Some(interactable) = focused_component.write().as_interactable_mut() {
-                interactable.consume_keyboard_press(keyboard_press)
+                //interactable.consume_keyboard_press(keyboard_press)
+                match interaction {
+                    Interaction::Keyboard(keyboard_press) => interactable.consume_keyboard_press(keyboard_press),
+                    Interaction::Mouse(mouse_event) => interactable.consume_mouse_event(&mouse_event),
+                }
             } else {
                 None
             };
