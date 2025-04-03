@@ -5,9 +5,27 @@ use terminal::write::log_debug;
 
 use crate::config::DEFAULT_FG_COLOR;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+}
+
+// None -> Pressed -> Down -> Released -> None
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseButtonState {
+    None,
+    Pressed,
+    Down,
+    Released,
+}
+
 pub struct MouseState {
     position: (u32, u32),
     last_position: (u32, u32),
+
+    button_states: [MouseButtonState; 3],
 }
 
 impl MouseState {
@@ -15,19 +33,52 @@ impl MouseState {
         Self {
             position: (0, 0),
             last_position: (0, 0),
+
+            button_states: [MouseButtonState::None; 3],
         }
     }
 
     pub fn update(&mut self, mouse_packet: &MousePacket) {
+        // Update position
         self.position.0 = self.position.0.saturating_add_signed(mouse_packet.dx as i32);
         self.position.1 = self.position.1.saturating_add_signed(-mouse_packet.dy as i32);
-
         /*log_debug(&format!(
             "Mouse position: x: {}, y: {}",
             self.position.0, self.position.1
         ));*/
 
+        // Update button states
+        self.update_button_state(MouseButton::Left, mouse_packet.left_button_down());
+        self.update_button_state(MouseButton::Right, mouse_packet.right_button_down());
+
+        // Print button states
+        log_debug(&format!(
+            "Mouse button states: Left: {:?}, Right: {:?}",
+            self.button_states[MouseButton::Left as usize],
+            self.button_states[MouseButton::Right as usize]
+        ));
+
         // TODO: Clamp to screen size
+    }
+
+    fn update_button_state(&mut self, button: MouseButton, is_down: bool) {
+        let button_idx = button as usize;
+        let current_state = self.button_states[button_idx];
+        
+        self.button_states[button_idx] = match (current_state, is_down) {
+            // Button is pressed (None -> Pressed -> Down)
+            (MouseButtonState::None, true) => MouseButtonState::Pressed,
+            (MouseButtonState::Pressed, true) => MouseButtonState::Down,
+            (MouseButtonState::Released, true) => MouseButtonState::Pressed,
+            
+            // Button is released (Down -> Released -> None)
+            (MouseButtonState::Pressed, false) => MouseButtonState::Released,
+            (MouseButtonState::Down, false) => MouseButtonState::Released,
+            (MouseButtonState::Released, false) => MouseButtonState::None,
+            
+            // Maintain current state in other cases
+            (state, _) => state,
+        };
     }
 
     pub fn position(&self) -> (u32, u32) {
