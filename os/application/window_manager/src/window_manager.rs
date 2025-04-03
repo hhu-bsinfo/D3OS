@@ -273,17 +273,12 @@ impl WindowManager {
         if let Some(mouse_packet) = mouse_packet {
             let mouse_event = self.mouse_state.process(&mouse_packet);
 
+            // Focus component under the cursor
             let cursor_pos = self.mouse_state.position();
             self.get_current_workspace_mut().focus_component_at(cursor_pos.0, cursor_pos.1);
 
-            /* HACK */
-            if mouse_event.button_states[0] == MouseButtonState::Pressed {
-                self
-                    .get_current_workspace_mut()
-                    .get_focused_window_mut()
-                    .interact_with_focused_component(Interaction::Keyboard('f'));
-            }
-            /* HACK */
+            // Pass mouse event to focused component
+            self.get_current_workspace_mut().get_focused_window_mut().interact_with_focused_component(Interaction::Mouse(mouse_event));
         }
     }
 

@@ -6,7 +6,7 @@ use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use spin::RwLock;
 
 use crate::{
-    config::INTERACT_BUTTON, signal::{ComponentRef, Signal, Stateful}, utils::{scale_font, scale_rect_to_window}
+    config::INTERACT_BUTTON, mouse_state::{MouseButtonState, MouseEvent}, signal::{ComponentRef, Signal, Stateful}, utils::{scale_font, scale_rect_to_window}
 };
 
 use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable, Resizable};
@@ -80,6 +80,15 @@ impl Button {
             ) / 2,
             height.saturating_sub(DEFAULT_CHAR_HEIGHT * self.font_scale.1) / 2,
         )
+    }
+
+    fn handle_click(&mut self) -> Option<Box<dyn FnOnce() -> ()>> {
+        let on_click = Rc::clone(&self.on_click);
+        self.mark_dirty();
+
+        Some(Box::new(move || {
+            (on_click)();
+        }))
     }
 }
 
@@ -254,12 +263,15 @@ impl Casts for Button {
 impl Interactable for Button {
     fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
         if keyboard_press == INTERACT_BUTTON && !self.is_disabled {
-            let on_click = Rc::clone(&self.on_click);
-            self.mark_dirty();
+            self.handle_click()
+        } else {
+            None
+        }
+    }
 
-            Some(Box::new(move || {
-                (on_click)();
-            }))
+    fn consume_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
+        if mouse_event.button_states[0] == MouseButtonState::Pressed && !self.is_disabled {
+            self.handle_click()
         } else {
             None
         }
