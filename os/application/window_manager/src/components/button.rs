@@ -270,7 +270,7 @@ impl Interactable for Button {
     }
 
     fn consume_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
-        if mouse_event.button_states[0] == ButtonState::Pressed && !self.is_disabled {
+        if mouse_event.button_states.left == ButtonState::Pressed && !self.is_disabled {
             self.handle_click()
         } else {
             None
