@@ -231,10 +231,7 @@ pub trait Hideable {
 pub trait Interactable {
     fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>>;
 
-    fn consume_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
-        // TODO: Remove the default implementation!
-        None
-    }
+    fn consume_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce() -> ()>>;
 }
 
 pub trait Resizable {
