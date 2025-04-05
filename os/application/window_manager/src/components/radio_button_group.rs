@@ -3,7 +3,7 @@ use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use spin::RwLock;
 
-use crate::{config::INTERACT_BUTTON, utils::{scale_pos_to_window, scale_radius_to_window, scale_rect_to_window}};
+use crate::{config::INTERACT_BUTTON, mouse_state::ButtonState, utils::{scale_pos_to_window, scale_radius_to_window, scale_rect_to_window}};
 
 use super::{component::{Casts, Component, ComponentStyling, Interactable}, radio_button::RadioButton};
 
@@ -60,6 +60,25 @@ impl RadioButtonGroup {
             on_change: Rc::new(on_change.unwrap_or_else(|| Box::new(|_| {}))),
             styling,
         }
+    }
+
+    fn handle_click(&mut self) -> Option<Box<dyn FnOnce() -> ()>> {
+        if let Some(selected_button_index) = self.selected_button_index {
+            self.buttons.get(selected_button_index).unwrap().write().set_state(false);
+        }
+
+        self.selected_button_index = Some(self.focused_button_index);
+        
+        let on_change: Rc<Box<dyn Fn(usize)>> = Rc::clone(&self.on_change);
+        let value = self.selected_button_index.unwrap();
+
+        self.buttons.get(self.focused_button_index).unwrap().write().set_state(true);
+
+        return Some(
+            Box::new(move || {
+                (on_change)(value);
+            })
+        );
     }
 }
 
@@ -216,25 +235,34 @@ impl Interactable for RadioButtonGroup {
                 }));
             }
         } else if keyboard_press == INTERACT_BUTTON {
-            if let Some(selected_button_index) = self.selected_button_index {
-                self.buttons.get(selected_button_index).unwrap().write().set_state(false);
-            }
-
-            self.selected_button_index = Some(self.focused_button_index);
-            
-            let on_change: Rc<Box<dyn Fn(usize)>> = Rc::clone(&self.on_change);
-            let value = self.selected_button_index.unwrap();
-
-            self.buttons.get(self.focused_button_index).unwrap().write().set_state(true);
-
-            return Some(
-                Box::new(move || {
-                    (on_change)(value);
-                })
-            );
-            
+            return self.handle_click();
         }
 
         return None;
+    }
+
+    fn consume_mouse_event(&mut self, mouse_event: &crate::mouse_state::MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
+        // Find the hovered radio button
+        let hovered_button_index = self.buttons.iter().enumerate()
+            .find_map(|(i, button)| {
+            let rect_data = button.read().get_abs_rect_data();
+            rect_data.contains_vertex(&Vertex::new(mouse_event.position.0, mouse_event.position.1))
+                .then_some(i)
+            });
+
+        // Redraw radio group if neccessary
+        if let Some(new_index) = hovered_button_index {
+            if new_index != self.focused_button_index {
+                self.focused_button_index = new_index;
+                self.mark_dirty();
+            }
+        }
+
+        // Check for mouse click
+        if mouse_event.button_states.left == ButtonState::Pressed {
+            return self.handle_click();
+        }
+
+        None
     }
 }
