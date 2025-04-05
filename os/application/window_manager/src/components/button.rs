@@ -6,7 +6,7 @@ use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use spin::RwLock;
 
 use crate::{
-    config::INTERACT_BUTTON, mouse_state::{MouseButtonState, MouseEvent}, signal::{ComponentRef, Signal, Stateful}, utils::{scale_font, scale_rect_to_window}
+    config::INTERACT_BUTTON, mouse_state::{ButtonState, MouseEvent}, signal::{ComponentRef, Signal, Stateful}, utils::{scale_font, scale_rect_to_window}
 };
 
 use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable, Resizable};
@@ -270,7 +270,7 @@ impl Interactable for Button {
     }
 
     fn consume_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
-        if mouse_event.button_states[0] == MouseButtonState::Pressed && !self.is_disabled {
+        if mouse_event.button_states[0] == ButtonState::Pressed && !self.is_disabled {
             self.handle_click()
         } else {
             None

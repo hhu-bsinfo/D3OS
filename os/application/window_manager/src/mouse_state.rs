@@ -14,7 +14,7 @@ pub enum MouseButton {
 
 // None -> Pressed -> Down -> Released -> None
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MouseButtonState {
+pub enum ButtonState {
     None,
     Pressed,
     Down,
@@ -23,7 +23,7 @@ pub enum MouseButtonState {
 
 // Events that will be sent to components
 pub struct MouseEvent {
-    pub button_states: [MouseButtonState; 3],
+    pub button_states: [ButtonState; 3],
     pub position: (u32, u32),
 }
 
@@ -31,7 +31,7 @@ pub struct MouseState {
     position: (u32, u32),
     last_position: (u32, u32),
 
-    button_states: [MouseButtonState; 3],
+    button_states: [ButtonState; 3],
 }
 
 impl MouseState {
@@ -40,7 +40,7 @@ impl MouseState {
             position: (0, 0),
             last_position: (0, 0),
 
-            button_states: [MouseButtonState::None; 3],
+            button_states: [ButtonState::None; 3],
         }
     }
 
@@ -77,14 +77,14 @@ impl MouseState {
         
         self.button_states[button_idx] = match (current_state, is_down) {
             // Button is pressed (None -> Pressed -> Down)
-            (MouseButtonState::None, true) => MouseButtonState::Pressed,
-            (MouseButtonState::Pressed, true) => MouseButtonState::Down,
-            (MouseButtonState::Released, true) => MouseButtonState::Pressed,
+            (ButtonState::None, true) => ButtonState::Pressed,
+            (ButtonState::Pressed, true) => ButtonState::Down,
+            (ButtonState::Released, true) => ButtonState::Pressed,
             
             // Button is released (Down -> Released -> None)
-            (MouseButtonState::Pressed, false) => MouseButtonState::Released,
-            (MouseButtonState::Down, false) => MouseButtonState::Released,
-            (MouseButtonState::Released, false) => MouseButtonState::None,
+            (ButtonState::Pressed, false) => ButtonState::Released,
+            (ButtonState::Down, false) => ButtonState::Released,
+            (ButtonState::Released, false) => ButtonState::None,
             
             // Maintain current state in other cases
             (state, _) => state,

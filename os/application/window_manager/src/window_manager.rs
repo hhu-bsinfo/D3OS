@@ -27,7 +27,7 @@ use time::systime;
 use windows::workspace_selection_labels_window::WorkspaceSelectionLabelsWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
 use workspace::Workspace;
-use mouse_state::{MouseButtonState, MouseEvent, MouseState};
+use mouse_state::{MouseEvent, MouseState};
 
 pub mod api;
 mod apps;
