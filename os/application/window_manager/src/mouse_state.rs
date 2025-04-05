@@ -5,13 +5,6 @@ use terminal::write::log_debug;
 
 use crate::config::DEFAULT_FG_COLOR;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MouseButton {
-    Left,
-    Right,
-    Middle,
-}
-
 // None -> Pressed -> Down -> Released -> None
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ButtonState {
@@ -19,6 +12,25 @@ pub enum ButtonState {
     Pressed,
     Down,
     Released,
+}
+
+impl ButtonState {
+    fn next_state(&self, is_down: bool) -> ButtonState {
+        match (*self, is_down) {
+            // Button is pressed (None -> Pressed -> Down)
+            (ButtonState::None, true) => ButtonState::Pressed,
+            (ButtonState::Pressed, true) => ButtonState::Down,
+            (ButtonState::Released, true) => ButtonState::Pressed,
+            
+            // Button is released (Down -> Released -> None)
+            (ButtonState::Pressed, false) => ButtonState::Released,
+            (ButtonState::Down, false) => ButtonState::Released,
+            (ButtonState::Released, false) => ButtonState::None,
+            
+            // Maintain current state in other cases
+            (state, _) => state,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -36,23 +48,6 @@ impl MouseButtonState {
             middle: ButtonState::None,
         }
     }
-}
-
-fn update_button_state(state_ref: &mut ButtonState, is_down: bool) {
-    *state_ref = match (*state_ref, is_down) {
-        // Button is pressed (None -> Pressed -> Down)
-        (ButtonState::None, true) => ButtonState::Pressed,
-        (ButtonState::Pressed, true) => ButtonState::Down,
-        (ButtonState::Released, true) => ButtonState::Pressed,
-        
-        // Button is released (Down -> Released -> None)
-        (ButtonState::Pressed, false) => ButtonState::Released,
-        (ButtonState::Down, false) => ButtonState::Released,
-        (ButtonState::Released, false) => ButtonState::None,
-        
-        // Maintain current state in other cases
-        (state, _) => state,
-    };
 }
 
 // Events that will be sent to components
@@ -83,14 +78,15 @@ impl MouseState {
         self.update_position(mouse_packet.dx as i32, mouse_packet.dy as i32);
 
         // Update button states
-        update_button_state(&mut self.button_states.left, mouse_packet.left_button_down());
-        update_button_state(&mut self.button_states.right, mouse_packet.right_button_down());
+        self.button_states.left = self.button_states.left.next_state(mouse_packet.left_button_down());
+        self.button_states.right = self.button_states.right.next_state(mouse_packet.right_button_down());
+        self.button_states.middle = self.button_states.middle.next_state(mouse_packet.middle_button_down());
 
         // Print button states
-        log_debug(&format!(
+        /*log_debug(&format!(
             "Mouse button states: Left: {:?}, Right: {:?}, Middle: {:?}",
             self.button_states.left, self.button_states.right, self.button_states.middle
-        ));
+        ));*/
 
         // Create and return the MouseEvent
         MouseEvent {
