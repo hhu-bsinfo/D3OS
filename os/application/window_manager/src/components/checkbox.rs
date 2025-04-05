@@ -5,7 +5,7 @@ use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 
 use crate::{
-    config::INTERACT_BUTTON, utils::scale_rect_to_window
+    config::INTERACT_BUTTON, mouse_state::ButtonState, utils::scale_rect_to_window
 };
 
 use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable};
@@ -46,6 +46,18 @@ impl Checkbox {
             is_hidden: false,
             styling: styling.unwrap_or_default(),
         }
+    }
+
+    fn handle_click(&mut self) -> Option<Box<dyn FnOnce() -> ()>> {
+        self.state = !self.state;
+
+        let on_change = Rc::clone(&self.on_change);
+        let state = self.state;
+        self.mark_dirty();
+
+        return Some(Box::new(move || {
+            (on_change)(state);
+        }));
     }
 }
 
@@ -201,18 +213,18 @@ impl Disableable for Checkbox {
 impl Interactable for Checkbox {
     fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
         if keyboard_press == INTERACT_BUTTON && !self.is_disabled {
-            self.state = !self.state;
-
-            let on_change = Rc::clone(&self.on_change);
-            let state = self.state;
-            self.mark_dirty();
-
-            return Some(Box::new(move || {
-                (on_change)(state);
-            }));
+            self.handle_click()
+        } else {
+            None
         }
+    }
 
-        None
+    fn consume_mouse_event(&mut self, mouse_event: &crate::mouse_state::MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
+        if mouse_event.button_states.left == ButtonState::Pressed && !self.is_disabled {
+            self.handle_click()
+        } else {
+            None
+        }
     }
 }
 

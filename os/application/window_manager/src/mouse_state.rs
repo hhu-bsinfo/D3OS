@@ -17,12 +17,12 @@ pub enum ButtonState {
 impl ButtonState {
     fn next_state(&self, is_down: bool) -> ButtonState {
         match (*self, is_down) {
-            // Button is pressed (None -> Pressed -> Down)
+            // Button is pressed (None/Released -> Pressed -> Down/Released)
             (ButtonState::None, true) => ButtonState::Pressed,
             (ButtonState::Pressed, true) => ButtonState::Down,
             (ButtonState::Released, true) => ButtonState::Pressed,
             
-            // Button is released (Down -> Released -> None)
+            // Button is released (Down/Pressed -> Released -> None/Presed)
             (ButtonState::Pressed, false) => ButtonState::Released,
             (ButtonState::Down, false) => ButtonState::Released,
             (ButtonState::Released, false) => ButtonState::None,
