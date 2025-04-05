@@ -7,7 +7,7 @@ use graphic::{
 use spin::RwLock;
 
 use crate::{
-    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, signal::ComponentRef, utils::{scale_font, scale_rect_to_window}
+    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, utils::{scale_font, scale_rect_to_window}
 };
 
 use super::component::{Casts, Clearable, Component, ComponentStyling, Disableable, Hideable, Interactable};
@@ -300,6 +300,15 @@ impl Interactable for InputField {
         }
 
         return None;
+    }
+
+    fn consume_mouse_event(&mut self, mouse_event: &crate::mouse_state::MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
+        if mouse_event.button_states.left == ButtonState::Pressed && !self.is_disabled {
+            self.is_selected = !self.is_selected;
+            self.mark_dirty();
+        }
+
+        None
     }
 }
 
