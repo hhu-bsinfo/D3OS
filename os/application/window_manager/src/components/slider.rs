@@ -2,7 +2,7 @@ use alloc::{boxed::Box, rc::Rc};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use libm::roundf;
-use crate::{config::DEFAULT_FONT_SCALE, utils::scale_rect_to_window};
+use crate::{config::DEFAULT_FONT_SCALE, mouse_state::ButtonState, utils::scale_rect_to_window};
 
 use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable};
 
@@ -61,6 +61,23 @@ impl Slider {
 
     pub fn on_change(&self, value: i32) {
         (self.on_change)(value);
+    }
+
+    fn update_value(&mut self, new_value: i32) -> Option<Box<dyn FnOnce() -> ()>> {
+        if new_value > self.max || new_value < self.min {
+            return None;
+        }
+        
+        self.value = new_value;
+
+        self.mark_dirty();
+        
+        let on_change = Rc::clone(&self.on_change);
+        let value = self.value;
+
+        Some(Box::new(move || {
+            (on_change)(value);
+        }))
     }
 }
 
@@ -246,43 +263,33 @@ impl Interactable for Slider {
         match keyboard_press {
             '+' => {
                 let new_value = self.value + self.steps as i32;
-
-                if new_value > self.max {
-                    return None;
-                } else {
-                    self.value = new_value;
-                }
-
-                self.mark_dirty();
-                
-                let on_change = Rc::clone(&self.on_change);
-                let value = self.value;
-
-                Some(Box::new(move || {
-                    (on_change)(value);
-                }))
+                self.update_value(new_value)
             }
             '-' => {
                 let new_value: i32 = self.value - self.steps as i32;
-
-                if new_value < self.min {
-                    return None;
-                } else {
-                    self.value = new_value;
-                }
-
-                self.mark_dirty();
-
-                let on_change = Rc::clone(&self.on_change);
-                let value = self.value;
-
-                Some(Box::new(move || {
-                    (on_change)(value);
-                }))
+                self.update_value(new_value)
             }
             _ => {
                 None
             }
         }
+    }
+
+    fn consume_mouse_event(&mut self, mouse_event: &crate::mouse_state::MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
+        if self.is_disabled {
+            return None;
+        }
+
+        if mouse_event.button_states.left == ButtonState::Pressed {
+            let new_value: i32 = self.value - self.steps as i32;
+            return self.update_value(new_value);
+        }
+
+        if mouse_event.button_states.right == ButtonState::Pressed {
+            let new_value: i32 = self.value + self.steps as i32;
+            return self.update_value(new_value);
+        }
+
+        None
     }
 }
