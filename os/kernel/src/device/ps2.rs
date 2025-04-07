@@ -216,19 +216,17 @@ impl InterruptHandler for MouseInterruptHandler {
                         // Read third byte (delta y)
                         mouse_state.packet |= (data as u32) << 16;
 
-                        //debug!("Mouse: packet = {:#08X}", mouse_state.packet);
-
-                        // The packet is complete. Enqueue it!
-                        while self.mouse.buffer.1.try_enqueue(mouse_state.packet).is_err() {
-                            if self.mouse.buffer.0.try_dequeue().is_err() {
-                                panic!("Mouse: Failed to store received packet in buffer!");
-                            }
-                        }
-
                         // IntelliMouse sends another 4th byte
                         if self.mouse.mouse_type == MouseType::IntelliMouse {
                             mouse_state.cycle += 1;
                         } else {
+                            // Enqueue the packet
+                            while self.mouse.buffer.1.try_enqueue(mouse_state.packet).is_err() {
+                                if self.mouse.buffer.0.try_dequeue().is_err() {
+                                    panic!("Mouse: Failed to store received packet in buffer!");
+                                }
+                            }
+
                             mouse_state.cycle = 0;
                         }
                     }
@@ -236,6 +234,13 @@ impl InterruptHandler for MouseInterruptHandler {
                     3 => {
                         // Read fourth byte (IntelliMouse)
                         mouse_state.packet |= (data as u32) << 24;
+
+                        // Enqueue the packet
+                        while self.mouse.buffer.1.try_enqueue(mouse_state.packet).is_err() {
+                            if self.mouse.buffer.0.try_dequeue().is_err() {
+                                panic!("Mouse: Failed to store received packet in buffer!");
+                            }
+                        }
 
                         mouse_state.cycle = 0;
                     }
