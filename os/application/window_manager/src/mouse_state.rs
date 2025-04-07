@@ -1,3 +1,8 @@
+/*
+    Processes mouse packets into mouse events and
+    manages the mouse state.
+*/
+
 use drawer::{drawer::Drawer, vertex::Vertex};
 use alloc::{format, vec};
 use input::mouse::MousePacket;
@@ -54,6 +59,7 @@ impl MouseButtonState {
 pub struct MouseEvent {
     pub button_states: MouseButtonState,
     pub position: (u32, u32),
+    pub scroll: i8,
 }
 
 pub struct MouseState {
@@ -84,14 +90,15 @@ impl MouseState {
 
         // Print button states
         /*log_debug(&format!(
-            "Mouse button states: Left: {:?}, Right: {:?}, Middle: {:?}",
-            self.button_states.left, self.button_states.right, self.button_states.middle
+            "Mouse scroll: Left: {}",
+            mouse_packet.dz
         ));*/
 
         // Create and return the MouseEvent
         MouseEvent {
             button_states: self.button_states,
             position: self.position,
+            scroll: mouse_packet.dz,
         }
     }
 
