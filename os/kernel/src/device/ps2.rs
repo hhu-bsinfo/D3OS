@@ -6,7 +6,7 @@ use stream::{DecodedInputStream, InputStream};
 use log::{debug, info};
 use nolock::queues::{DequeueError, mpmc};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
-use ps2::{Controller, KeyboardType};
+use ps2::{Controller, KeyboardType, MouseType};
 use ps2::error::{ControllerError, KeyboardError, MouseError};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard as PcKeyboard, ScancodeSet1};
@@ -141,6 +141,7 @@ impl InterruptHandler for KeyboardInterruptHandler {
 pub struct Mouse {
     controller: Arc<Mutex<Controller>>,
     buffer: (mpmc::bounded::scq::Receiver<u32>, mpmc::bounded::scq::Sender<u32>),
+    mouse_type: MouseType,
 }
 
 #[derive(Default)]
@@ -155,10 +156,11 @@ struct MouseInterruptHandler {
 }
 
 impl Mouse {
-    fn new(controller: Arc<Mutex<Controller>>, buffer_cap: usize) -> Self {
+    fn new(controller: Arc<Mutex<Controller>>, buffer_cap: usize, mouse_type: MouseType) -> Self {
         Self {
             controller,
-            buffer: mpmc::bounded::scq::queue(buffer_cap)
+            buffer: mpmc::bounded::scq::queue(buffer_cap),
+            mouse_type,
         }
     }
 
@@ -222,6 +224,18 @@ impl InterruptHandler for MouseInterruptHandler {
                                 panic!("Mouse: Failed to store received packet in buffer!");
                             }
                         }
+
+                        // IntelliMouse sends another 4th byte
+                        if self.mouse.mouse_type == MouseType::IntelliMouse {
+                            mouse_state.cycle += 1;
+                        } else {
+                            mouse_state.cycle = 0;
+                        }
+                    }
+
+                    3 => {
+                        // Read fourth byte (IntelliMouse)
+                        mouse_state.packet |= (data as u32) << 24;
 
                         mouse_state.cycle = 0;
                     }
@@ -344,6 +358,12 @@ impl PS2 {
         controller.mouse().reset_and_self_test()?;
         info!("Mouse has been reset and self test result is OK");
 
+        // Try to enable scroll wheel (magic sequence)
+        controller.mouse().set_sample_rate(200)?;
+        controller.mouse().set_sample_rate(100)?;
+        controller.mouse().set_sample_rate(80)?;
+
+        // Retrieve mouse type
         controller.mouse().disable_data_reporting()?;
         let mouse_type = controller.mouse().get_mouse_type()?;
         info!("Detected mouse type [{:?}]", mouse_type);
@@ -351,13 +371,13 @@ impl PS2 {
         // Setup mouse
         controller.mouse().set_defaults()?;
         //controller.mouse().set_resolution(2)?;
-        //controller.mouse().set_sample_rate(10)?;
+        controller.mouse().set_sample_rate(10)?;
         //controller.mouse().set_scaling_one_to_one()?;
         //controller.mouse().set_stream_mode()?;
         controller.mouse().enable_data_reporting()?;
 
         self.mouse.call_once(|| {
-            Arc::new(Mouse::new(Arc::clone(&self.controller), MOUSE_BUFFER_CAPACITY))
+            Arc::new(Mouse::new(Arc::clone(&self.controller), MOUSE_BUFFER_CAPACITY, mouse_type))
         });
         
         Ok(())
