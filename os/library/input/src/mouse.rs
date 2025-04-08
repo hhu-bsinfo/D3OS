@@ -77,11 +77,11 @@ impl MousePacket {
         self.flags.contains(MouseFlags::MIDDLE_BUTTON)
     }
 
-    pub fn button_4_down(&self) -> bool {
+    pub fn button4_down(&self) -> bool {
         self.im_flags.contains(IntelliMouseFlags::BUTTON_4)
     }
     
-    pub fn button_5_down(&self) -> bool {
+    pub fn button5_down(&self) -> bool {
         self.im_flags.contains(IntelliMouseFlags::BUTTON_5)
     }
 }

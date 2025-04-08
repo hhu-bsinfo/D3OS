@@ -217,7 +217,8 @@ impl InterruptHandler for MouseInterruptHandler {
                         mouse_state.packet |= (data as u32) << 16;
 
                         // IntelliMouse sends another 4th byte
-                        if self.mouse.mouse_type == MouseType::IntelliMouse {
+                        if self.mouse.mouse_type == MouseType::IntelliMouse
+                            || self.mouse.mouse_type == MouseType::IntelliMouseExplorer {
                             mouse_state.cycle += 1;
                         } else {
                             // Enqueue the packet
@@ -232,8 +233,13 @@ impl InterruptHandler for MouseInterruptHandler {
                     }
 
                     3 => {
-                        // Read fourth byte (IntelliMouse)
+                        // Read fourth byte (IntelliMouse / IntelliMouse Explorer)
                         mouse_state.packet |= (data as u32) << 24;
+
+                        // Discard ign extension, so it doesn't mess with button4/5 (IntelliMouse)
+                        if self.mouse.mouse_type == MouseType::IntelliMouse {
+                            mouse_state.packet &= 0x0F_FF_FF_FF;
+                        }
 
                         // Enqueue the packet
                         while self.mouse.buffer.1.try_enqueue(mouse_state.packet).is_err() {
@@ -374,9 +380,10 @@ impl PS2 {
         info!("Detected mouse type [{:?}]", mouse_type);
 
         // Setup mouse
+        info!("Enabling mouse");
         controller.mouse().set_defaults()?;
         //controller.mouse().set_resolution(2)?;
-        controller.mouse().set_sample_rate(10)?;
+        //controller.mouse().set_sample_rate(10)?;
         //controller.mouse().set_scaling_one_to_one()?;
         //controller.mouse().set_stream_mode()?;
         controller.mouse().enable_data_reporting()?;

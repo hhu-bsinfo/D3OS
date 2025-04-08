@@ -43,6 +43,8 @@ pub struct MouseButtonState {
     pub left: ButtonState,
     pub right: ButtonState,
     pub middle: ButtonState,
+    pub button4: ButtonState,
+    pub button5: ButtonState,
 }
 
 impl MouseButtonState {
@@ -51,6 +53,8 @@ impl MouseButtonState {
             left: ButtonState::None,
             right: ButtonState::None,
             middle: ButtonState::None,
+            button4: ButtonState::None,
+            button5: ButtonState::None,
         }
     }
 }
@@ -84,14 +88,18 @@ impl MouseState {
         self.update_position(mouse_packet.dx as i32, mouse_packet.dy as i32);
 
         // Update button states
-        self.button_states.left = self.button_states.left.next_state(mouse_packet.left_button_down());
-        self.button_states.right = self.button_states.right.next_state(mouse_packet.right_button_down());
-        self.button_states.middle = self.button_states.middle.next_state(mouse_packet.middle_button_down());
+        self.button_states = MouseButtonState {
+            left: self.button_states.left.next_state(mouse_packet.left_button_down()),
+            right: self.button_states.right.next_state(mouse_packet.right_button_down()),
+            middle: self.button_states.middle.next_state(mouse_packet.middle_button_down()),
+            button4: self.button_states.button4.next_state(mouse_packet.button4_down()),
+            button5: self.button_states.button5.next_state(mouse_packet.button5_down()),
+        };
 
         // Print button states
         /*log_debug(&format!(
-            "Mouse scroll: Left: {}",
-            mouse_packet.dz
+            "Mouse: B4: {} B5: {}",
+            mouse_packet.button4_down(), mouse_packet.button5_down()
         ));*/
 
         // Create and return the MouseEvent
