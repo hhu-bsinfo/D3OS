@@ -303,7 +303,7 @@ impl Interactable for InputField {
     }
 
     fn consume_mouse_event(&mut self, mouse_event: &crate::mouse_state::MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
-        if mouse_event.button_states.left == ButtonState::Pressed && !self.is_disabled {
+        if mouse_event.buttons.left == ButtonState::Pressed && !self.is_disabled {
             self.is_selected = !self.is_selected;
             self.mark_dirty();
         }

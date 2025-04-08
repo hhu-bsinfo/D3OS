@@ -259,7 +259,7 @@ impl Interactable for RadioButtonGroup {
         }
 
         // Check for mouse click
-        if mouse_event.button_states.left == ButtonState::Pressed {
+        if mouse_event.buttons.left == ButtonState::Pressed {
             return self.handle_click();
         }
 

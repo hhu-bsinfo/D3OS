@@ -280,12 +280,12 @@ impl Interactable for Slider {
             return None;
         }
 
-        if mouse_event.button_states.left == ButtonState::Pressed || mouse_event.scroll > 0 {
+        if mouse_event.buttons.left == ButtonState::Pressed || mouse_event.scroll > 0 {
             let new_value: i32 = self.value - self.steps as i32;
             return self.update_value(new_value);
         }
 
-        if mouse_event.button_states.right == ButtonState::Pressed || mouse_event.scroll < 0 {
+        if mouse_event.buttons.right == ButtonState::Pressed || mouse_event.scroll < 0 {
             let new_value: i32 = self.value + self.steps as i32;
             return self.update_value(new_value);
         }

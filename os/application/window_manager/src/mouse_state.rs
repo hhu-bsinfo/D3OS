@@ -61,7 +61,7 @@ impl MouseButtonState {
 
 // Events that will be sent to components
 pub struct MouseEvent {
-    pub button_states: MouseButtonState,
+    pub buttons: MouseButtonState,
     pub position: (u32, u32),
     pub scroll: i8,
 }
@@ -70,7 +70,7 @@ pub struct MouseState {
     position: (u32, u32),
     last_position: (u32, u32),
 
-    button_states: MouseButtonState,
+    buttons: MouseButtonState,
 }
 
 impl MouseState {
@@ -79,7 +79,7 @@ impl MouseState {
             position: (0, 0),
             last_position: (0, 0),
 
-            button_states: MouseButtonState::new(),
+            buttons: MouseButtonState::new(),
         }
     }
 
@@ -88,12 +88,12 @@ impl MouseState {
         self.update_position(mouse_packet.dx as i32, mouse_packet.dy as i32);
 
         // Update button states
-        self.button_states = MouseButtonState {
-            left: self.button_states.left.next_state(mouse_packet.left_button_down()),
-            right: self.button_states.right.next_state(mouse_packet.right_button_down()),
-            middle: self.button_states.middle.next_state(mouse_packet.middle_button_down()),
-            button4: self.button_states.button4.next_state(mouse_packet.button4_down()),
-            button5: self.button_states.button5.next_state(mouse_packet.button5_down()),
+        self.buttons = MouseButtonState {
+            left: self.buttons.left.next_state(mouse_packet.left_button_down()),
+            right: self.buttons.right.next_state(mouse_packet.right_button_down()),
+            middle: self.buttons.middle.next_state(mouse_packet.middle_button_down()),
+            button4: self.buttons.button4.next_state(mouse_packet.button4_down()),
+            button5: self.buttons.button5.next_state(mouse_packet.button5_down()),
         };
 
         // Print button states
@@ -104,7 +104,7 @@ impl MouseState {
 
         // Create and return the MouseEvent
         MouseEvent {
-            button_states: self.button_states,
+            buttons: self.buttons,
             position: self.position,
             scroll: mouse_packet.dz,
         }
