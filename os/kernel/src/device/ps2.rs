@@ -361,6 +361,28 @@ impl PS2 {
         Ok(())
     }
 
+    fn enable_scroll_wheel(mouse: &mut ps2::Mouse) -> Result<MouseType, MouseError> {
+        mouse.set_sample_rate(200)?;
+        mouse.set_sample_rate(100)?;
+        mouse.set_sample_rate(80)?;
+
+        // Retrieve mouse type
+        mouse.disable_data_reporting()?;
+        let mouse_type = mouse.get_mouse_type()?;
+        Ok(mouse_type)
+    }
+
+    fn enable_extra_buttons(mouse: &mut ps2::Mouse) -> Result<MouseType, MouseError> {
+        mouse.set_sample_rate(200)?;
+        mouse.set_sample_rate(200)?;
+        mouse.set_sample_rate(80)?;
+
+        // Retrieve mouse type
+        mouse.disable_data_reporting()?;
+        let mouse_type = mouse.get_mouse_type()?;
+        Ok(mouse_type)
+    }
+
     pub fn init_mouse(&mut self) -> Result<(), MouseError> {
         info!("Initializing Mouse");
         let mut controller = self.controller.lock();
@@ -368,15 +390,17 @@ impl PS2 {
         // Perform self test on mouse
         controller.mouse().reset_and_self_test()?;
         info!("Mouse has been reset and self test result is OK");
+        
+        // Try to enable scroll wheel
+        let mut mouse_type = Self::enable_scroll_wheel(&mut controller.mouse())?;
+        
+        // Try to enable extra buttons
+        if let Ok(new_type) = Self::enable_extra_buttons(&mut controller.mouse()) {
+            if new_type == MouseType::IntelliMouseExplorer {
+                mouse_type = new_type;
+            }
+        }
 
-        // Try to enable scroll wheel (magic sequence)
-        controller.mouse().set_sample_rate(200)?;
-        controller.mouse().set_sample_rate(100)?;
-        controller.mouse().set_sample_rate(80)?;
-
-        // Retrieve mouse type
-        controller.mouse().disable_data_reporting()?;
-        let mouse_type = controller.mouse().get_mouse_type()?;
         info!("Detected mouse type [{:?}]", mouse_type);
 
         // Setup mouse
