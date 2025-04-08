@@ -59,11 +59,20 @@ impl MouseButtonState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollDirection {
+    None,
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
 // Events that will be sent to components
 pub struct MouseEvent {
     pub buttons: MouseButtonState,
     pub position: (u32, u32),
-    pub scroll: i8,
+    pub scroll: ScrollDirection,
 }
 
 pub struct MouseState {
@@ -96,17 +105,26 @@ impl MouseState {
             button5: self.buttons.button5.next_state(mouse_packet.button5_down()),
         };
 
+        // Get scroll direction. -1 is down, 1 is up. Horizon scroll will increment by 2 or decrement by 2.
+        let scroll_direction = match mouse_packet.dz {
+            -1 => ScrollDirection::Up,
+            1 => ScrollDirection::Down,
+            -2 => ScrollDirection::Right,
+            2 => ScrollDirection::Left,
+            _ => ScrollDirection::None,
+        };
+
         // Print button states
         /*log_debug(&format!(
-            "Mouse: B4: {} B5: {}",
-            mouse_packet.button4_down(), mouse_packet.button5_down()
+            "Scroll: {:?}, Button 4: {}, Button 5: {}",
+            scroll_direction, mouse_packet.button4_down(), mouse_packet.button5_down()
         ));*/
 
         // Create and return the MouseEvent
         MouseEvent {
             buttons: self.buttons,
             position: self.position,
-            scroll: mouse_packet.dz,
+            scroll: scroll_direction,
         }
     }
 

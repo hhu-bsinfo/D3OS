@@ -2,7 +2,7 @@ use alloc::{boxed::Box, rc::Rc};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use libm::roundf;
-use crate::{config::DEFAULT_FONT_SCALE, mouse_state::ButtonState, utils::scale_rect_to_window};
+use crate::{config::DEFAULT_FONT_SCALE, mouse_state::{ButtonState, MouseEvent, ScrollDirection}, utils::scale_rect_to_window};
 
 use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable};
 
@@ -275,18 +275,24 @@ impl Interactable for Slider {
         }
     }
 
-    fn consume_mouse_event(&mut self, mouse_event: &crate::mouse_state::MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
+    fn consume_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
         if self.is_disabled {
             return None;
         }
 
-        if mouse_event.buttons.left == ButtonState::Pressed || mouse_event.scroll > 0 {
-            let new_value: i32 = self.value - self.steps as i32;
+        if mouse_event.buttons.right == ButtonState::Pressed
+            || mouse_event.scroll == ScrollDirection::Up
+            || mouse_event.scroll == ScrollDirection::Right
+        {
+            let new_value: i32 = self.value + self.steps as i32;
             return self.update_value(new_value);
         }
 
-        if mouse_event.buttons.right == ButtonState::Pressed || mouse_event.scroll < 0 {
-            let new_value: i32 = self.value + self.steps as i32;
+        if mouse_event.buttons.left == ButtonState::Pressed
+            || mouse_event.scroll == ScrollDirection::Down
+            || mouse_event.scroll == ScrollDirection::Left
+        {
+            let new_value: i32 = self.value - self.steps as i32;
             return self.update_value(new_value);
         }
 

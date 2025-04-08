@@ -21,7 +21,7 @@ bitflags! {
     pub struct IntelliMouseFlags: u8 {
         const BUTTON_4 = 0x01;
         const BUTTON_5 = 0x02;
-        const _ = 0x04;
+        const H_SCROLL_QEMU = 0x04; // QEMU only?
         const _ = 0x08;
     }
 }
@@ -47,14 +47,22 @@ impl MousePacket {
 
         // Read scroll wheel movement (4 bits signed)
         let dz: u8 = im & 0x0F;
-        let dz = (dz as i8) << 4 >> 4;
+        let mut dz = (dz as i8) << 4 >> 4;
 
         // Read standard flags
         let flags = MouseFlags::from_bits_truncate(flags);
 
         // Read intellimouse flags (4 bits)
         let im_flags = (im >> 4) as u8;
-        let im_flags = IntelliMouseFlags::from_bits_truncate(im_flags);
+        let mut im_flags = IntelliMouseFlags::from_bits_truncate(im_flags);
+
+        // HACK: QEMU handles horizontal scrolling differently
+        if im_flags.contains(IntelliMouseFlags::H_SCROLL_QEMU) {
+            dz *= 2;
+
+            im_flags.set(IntelliMouseFlags::BUTTON_4, false);
+            im_flags.set(IntelliMouseFlags::BUTTON_5, false);
+        }
 
         Self {
             flags,
