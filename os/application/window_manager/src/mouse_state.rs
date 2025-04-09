@@ -93,7 +93,6 @@ impl MouseState {
     }
 
     pub fn process(&mut self, mouse_packet: &MousePacket) -> MouseEvent {
-        // Update position
         self.update_position(mouse_packet.dx as i32, mouse_packet.dy as i32);
 
         // Update button states
@@ -105,7 +104,7 @@ impl MouseState {
             button5: self.buttons.button5.next_state(mouse_packet.button5_down()),
         };
 
-        // Get scroll direction. -1 is down, 1 is up. Horizon scroll will increment by 2 or decrement by 2.
+        // Horizontal scrolling sends -2 or 2 for left/right
         let scroll_direction = match mouse_packet.dz {
             -1 => ScrollDirection::Up,
             1 => ScrollDirection::Down,
@@ -120,7 +119,6 @@ impl MouseState {
             scroll_direction, mouse_packet.button4_down(), mouse_packet.button5_down()
         ));*/
 
-        // Create and return the MouseEvent
         MouseEvent {
             buttons: self.buttons,
             position: self.position,
