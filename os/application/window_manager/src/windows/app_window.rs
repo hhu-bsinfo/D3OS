@@ -199,17 +199,19 @@ impl AppWindow {
         }
     }
 
-    // Focus a component at a specific position
     pub fn focus_component_at(&mut self, pos: Vertex) {
-        if let Some(new_component_id) = self.find_component_at(&pos) {
-            // Only mark components as dirty if we're changing focus
-            if self.focused_component_id != Some(new_component_id) {
-                if let Some(focused_component_id) = self.focused_component_id {
-                    self.mark_component_dirty(focused_component_id);
-                }
-                
-                // Focus the new component
-                self.focused_component_id = Some(new_component_id);
+        let new_component_id = self.find_component_at(&pos);
+
+        // Only mark components as dirty if we're changing focus
+        if self.focused_component_id != new_component_id {
+            if let Some(focused_component_id) = self.focused_component_id {
+                self.mark_component_dirty(focused_component_id);
+            }
+            
+            // Focus the new component... if any
+            self.focused_component_id = new_component_id;
+
+            if let Some(new_component_id) = new_component_id {
                 self.mark_component_dirty(new_component_id);
             }
         }
