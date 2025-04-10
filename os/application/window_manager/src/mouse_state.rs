@@ -76,8 +76,8 @@ pub struct MouseEvent {
 }
 
 pub struct MouseState {
-    position: (u32, u32),
-    last_position: (u32, u32),
+    position: Vertex,
+    last_position: Vertex,
 
     buttons: MouseButtonState,
 }
@@ -85,15 +85,15 @@ pub struct MouseState {
 impl MouseState {
     pub fn new() -> Self {
         Self {
-            position: (0, 0),
-            last_position: (0, 0),
+            position: Vertex::new(0, 0),
+            last_position: Vertex::new(0, 0),
 
             buttons: MouseButtonState::new(),
         }
     }
 
     pub fn process(&mut self, mouse_packet: &MousePacket) -> MouseEvent {
-        self.update_position(mouse_packet.dx as i32, mouse_packet.dy as i32);
+        self.position = self.position.add_signed(mouse_packet.dx as i32, -mouse_packet.dy as i32);
 
         // Update button states
         self.buttons = MouseButtonState {
@@ -121,28 +121,23 @@ impl MouseState {
 
         MouseEvent {
             buttons: self.buttons,
-            position: self.position,
+            position: (self.position.x, self.position.y),
             scroll: scroll_direction,
         }
     }
 
-    fn update_position(&mut self, dx: i32, dy: i32) {
-        self.position.0 = self.position.0.saturating_add_signed(dx);
-        self.position.1 = self.position.1.saturating_add_signed(-dy);
-    }
-
     pub fn position(&self) -> (u32, u32) {
-        self.position
+        (self.position.x, self.position.y)
     }
 
     pub fn draw_cursor(&mut self) {
-        Drawer::flush_lines(self.last_position.1, 11);
+        Drawer::flush_lines(self.last_position.y, 11);
             
         Drawer::draw_polygon_direct(
             vec![
-                Vertex::new(self.position.0, self.position.1),
-                Vertex::new(self.position.0 + 10, self.position.1 + 4),
-                Vertex::new(self.position.0 + 4, self.position.1 + 10),
+                Vertex::new(self.position.x, self.position.y),
+                Vertex::new(self.position.x + 10, self.position.y + 4),
+                Vertex::new(self.position.x + 4, self.position.y + 10),
             ],
             DEFAULT_FG_COLOR,
         );

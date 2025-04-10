@@ -47,6 +47,13 @@ impl Vertex {
         }
     }
 
+    pub fn add_signed(&self, x_delta: i32, y_delta: i32) -> Self {
+        Self {
+            x: self.x.saturating_add_signed(x_delta),
+            y: self.y.saturating_add_signed(y_delta),
+        }
+    }
+
     pub fn sub(&self, x_delta: u32, y_delta: u32) -> Self {
         Self {
             x: self.x.saturating_sub(x_delta),
