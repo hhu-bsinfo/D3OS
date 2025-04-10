@@ -61,10 +61,10 @@ impl AppWindow {
     }
 
     // Find a component at a specific position
-    pub fn find_component_at(&self, position: &Vertex) -> Option<usize> {
+    pub fn find_component_at(&self, pos: &Vertex) -> Option<usize> {
         for (id, component) in &self.components {
             let component = component.read();
-            if component.get_abs_rect_data().contains_vertex(position) {
+            if component.get_abs_rect_data().contains_vertex(pos) {
                 return Some(*id);
             }
         }
@@ -200,9 +200,8 @@ impl AppWindow {
     }
 
     // Focus a component at a specific position
-    pub fn focus_component_at(&mut self, x: u32, y: u32) {
-        let position = Vertex::new(x, y);
-        if let Some(new_component_id) = self.find_component_at(&position) {
+    pub fn focus_component_at(&mut self, pos: Vertex) {
+        if let Some(new_component_id) = self.find_component_at(&pos) {
             // Only mark components as dirty if we're changing focus
             if self.focused_component_id != Some(new_component_id) {
                 if let Some(focused_component_id) = self.focused_component_id {

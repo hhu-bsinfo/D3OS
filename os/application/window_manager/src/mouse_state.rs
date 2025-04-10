@@ -3,12 +3,14 @@
     manages the mouse state.
 */
 
-use drawer::{drawer::Drawer, vertex::Vertex};
+use drawer::drawer::Drawer;
 use alloc::{format, vec};
 use input::mouse::MousePacket;
 use terminal::write::log_debug;
 
 use crate::config::DEFAULT_FG_COLOR;
+
+pub use drawer::vertex::Vertex;
 
 // None -> Pressed -> Down -> Released -> None
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,7 +73,7 @@ pub enum ScrollDirection {
 // Events that will be sent to components
 pub struct MouseEvent {
     pub buttons: MouseButtonState,
-    pub position: (u32, u32),
+    pub position: Vertex,
     pub scroll: ScrollDirection,
 }
 
@@ -121,13 +123,13 @@ impl MouseState {
 
         MouseEvent {
             buttons: self.buttons,
-            position: (self.position.x, self.position.y),
+            position: self.position,
             scroll: scroll_direction,
         }
     }
 
-    pub fn position(&self) -> (u32, u32) {
-        (self.position.x, self.position.y)
+    pub fn position(&self) -> Vertex {
+        self.position
     }
 
     pub fn draw_cursor(&mut self) {

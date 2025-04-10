@@ -1,4 +1,5 @@
 use alloc::collections::LinkedList;
+use drawer::vertex::Vertex;
 use hashbrown::HashMap;
 
 use crate::utils::get_element_cursor_from_orderer;
@@ -102,9 +103,9 @@ impl Workspace {
     }
 
     // Focus a component at the given position in the currently focused window
-    pub fn focus_component_at(&mut self, x: u32, y: u32) {
+    pub fn focus_component_at(&mut self, pos: Vertex) {
         let focused_window = self.get_focused_window_mut();
-        focused_window.focus_component_at(x, y);
+        focused_window.focus_component_at(pos);
     }
 
     pub fn close_focused_window(&mut self) -> bool {

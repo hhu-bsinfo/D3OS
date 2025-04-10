@@ -275,7 +275,7 @@ impl WindowManager {
 
             // Focus component under the cursor
             let cursor_pos = self.mouse_state.position();
-            self.get_current_workspace_mut().focus_component_at(cursor_pos.0, cursor_pos.1);
+            self.get_current_workspace_mut().focus_component_at(cursor_pos);
 
             // Pass mouse event to focused component
             self.get_current_workspace_mut().get_focused_window_mut().interact_with_focused_component(Interaction::Mouse(mouse_event));

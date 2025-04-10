@@ -246,7 +246,7 @@ impl Interactable for RadioButtonGroup {
         let hovered_button_index = self.buttons.iter().enumerate()
             .find_map(|(i, button)| {
             let rect_data = button.read().get_abs_rect_data();
-            rect_data.contains_vertex(&Vertex::new(mouse_event.position.0, mouse_event.position.1))
+            rect_data.contains_vertex(&Vertex::new(mouse_event.position.x, mouse_event.position.y))
                 .then_some(i)
             });
 
