@@ -229,9 +229,12 @@ pub trait Hideable {
 }
 
 pub trait Focusable {
+    fn is_focused(&self) -> bool;
+
     fn focus(&mut self);
 
-    fn unfocus(&mut self);
+    // Returns true if the component accepted the unfocus
+    fn unfocus(&mut self) -> bool;
 }
 
 pub trait Interactable {

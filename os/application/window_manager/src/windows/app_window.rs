@@ -81,7 +81,10 @@ impl AppWindow {
         if let Some(old_id) = self.focused_component_id {
             if let Some(component) = self.components.get(&old_id) {
                 if let Some(focusable) = component.write().as_focusable_mut() {
-                    focusable.unfocus();
+                    if !focusable.unfocus() {
+                        // The component does not want to lose focus
+                        return;
+                    }
                 }
             }
 

@@ -4,7 +4,7 @@ use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use libm::roundf;
 use crate::{config::DEFAULT_FONT_SCALE, mouse_state::{ButtonState, MouseEvent, ScrollDirection}, utils::scale_rect_to_window};
 
-use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable};
+use super::component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable};
 
 const HANDLE_WIDTH: u32 = 10;
 
@@ -25,6 +25,9 @@ pub struct Slider {
     is_hidden: bool,
     // disableable
     is_disabled: bool,
+    is_focused: bool,
+
+    is_dragging: bool,
 
     styling: ComponentStyling,
 }
@@ -55,6 +58,8 @@ impl Slider {
             is_dirty: true,
             is_disabled: false,
             is_hidden: false,
+            is_focused: false,
+            is_dragging: false,
             styling: styling.unwrap_or_default(),
         }
     }
@@ -96,13 +101,13 @@ impl Component for Slider {
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
-        } else if is_focused {
+        } else if self.is_focused {
             styling.focused_background_color
         } else {
             styling.background_color
         };
 
-        let border_color = if is_focused {
+        let border_color = if self.is_focused {
             styling.focused_border_color
         } else if self.is_disabled {
             styling.disabled_border_color
@@ -209,6 +214,10 @@ impl Casts for Slider {
         Some(self)
     }
 
+    fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
+        Some(self)
+    }
+
     fn as_interactable(&self) -> Option<&dyn Interactable> {
         Some(self)
     }
@@ -254,6 +263,25 @@ impl Hideable for Slider {
     }
 }
 
+impl Focusable for Slider {
+    fn is_focused(&self) -> bool {
+        self.is_focused
+    }
+
+    fn focus(&mut self) {
+        self.is_focused = true;
+    }
+
+    fn unfocus(&mut self) -> bool {
+        if self.is_dragging {
+            return false;
+        }
+
+        self.is_focused = false;
+        true
+    }
+}
+
 impl Interactable for Slider {
     fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
         if self.is_disabled {
@@ -280,20 +308,39 @@ impl Interactable for Slider {
             return None;
         }
 
-        if mouse_event.buttons.right == ButtonState::Pressed
-            || mouse_event.scroll == ScrollDirection::Up
-            || mouse_event.scroll == ScrollDirection::Right
+        // Scroll (+)
+        if mouse_event.scroll == ScrollDirection::Up || mouse_event.scroll == ScrollDirection::Right
         {
             let new_value: i32 = self.value + self.steps as i32;
             return self.update_value(new_value);
         }
 
-        if mouse_event.buttons.left == ButtonState::Pressed
-            || mouse_event.scroll == ScrollDirection::Down
-            || mouse_event.scroll == ScrollDirection::Left
+        // Scroll (-)
+        if mouse_event.scroll == ScrollDirection::Down || mouse_event.scroll == ScrollDirection::Left
         {
             let new_value: i32 = self.value - self.steps as i32;
             return self.update_value(new_value);
+        }
+
+        // Update dragging state
+        if mouse_event.buttons.left == ButtonState::Pressed {
+            self.is_dragging = true;
+        } else if mouse_event.buttons.left == ButtonState::Released {
+            self.is_dragging = false;
+        }
+
+        // Handle mouse dragging
+        if self.is_dragging {
+            let mouse_x = mouse_event.position.x as i32 - self.abs_rect_data.top_left.x as i32;
+            let size_per_step = (self.abs_rect_data.width as f32) / self.steps as f32;
+            let normalized_value = (mouse_x as f32 / size_per_step) * (self.max as f32 - self.min as f32) + self.min as f32;
+
+            let new_value = roundf(normalized_value) as i32;
+            let new_value = new_value.clamp(self.min, self.max);
+
+            if self.value != new_value {
+                return self.update_value(new_value);
+            }
         }
 
         None
