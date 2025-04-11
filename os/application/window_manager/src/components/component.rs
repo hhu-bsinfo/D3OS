@@ -228,6 +228,12 @@ pub trait Hideable {
     fn show(&mut self);
 }
 
+pub trait Focusable {
+    fn focus(&mut self);
+
+    fn unfocus(&mut self);
+}
+
 pub trait Interactable {
     fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>>;
 
@@ -258,6 +264,14 @@ pub trait Casts {
     }
 
     fn as_hideable_mut(&mut self) -> Option<&mut dyn Hideable> {
+        None
+    }
+
+    fn as_focusable(&self) -> Option<&dyn Focusable> {
+        None
+    }
+ 
+    fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
         None
     }
     

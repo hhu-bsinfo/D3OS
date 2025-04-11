@@ -61,7 +61,7 @@ impl AppWindow {
     }
 
     // Find a component at a specific position
-    pub fn find_component_at(&self, pos: &Vertex) -> Option<usize> {
+    fn find_component_at(&self, pos: &Vertex) -> Option<usize> {
         for (id, component) in &self.components {
             let component = component.read();
             if component.get_abs_rect_data().contains_vertex(pos) {
@@ -70,6 +70,36 @@ impl AppWindow {
         }
 
         None
+    }
+
+    fn focus_component(&mut self, id: Option<usize>) {
+        if self.focused_component_id == id {
+            return;
+        }
+
+        // Unfocus old component
+        if let Some(old_id) = self.focused_component_id {
+            if let Some(component) = self.components.get(&old_id) {
+                if let Some(focusable) = component.write().as_focusable_mut() {
+                    focusable.unfocus();
+                }
+            }
+
+            self.mark_component_dirty(old_id); // TODO: Only needed in focusable components?
+        }
+
+        // Focus the new component
+        self.focused_component_id = id;
+
+        if let Some(new_id) = id {
+            if let Some(component) = self.components.get(&new_id) {
+                if let Some(focusable) = component.write().as_focusable_mut() {
+                    focusable.focus();
+                }
+            }
+
+            self.mark_component_dirty(new_id); // TODO: Only needed in focusable components?
+        }
     }
 
     pub fn interact_with_focused_component(&mut self, interaction: Interaction) -> bool {
@@ -201,20 +231,7 @@ impl AppWindow {
 
     pub fn focus_component_at(&mut self, pos: Vertex) {
         let new_component_id = self.find_component_at(&pos);
-
-        // Only mark components as dirty if we're changing focus
-        if self.focused_component_id != new_component_id {
-            if let Some(focused_component_id) = self.focused_component_id {
-                self.mark_component_dirty(focused_component_id);
-            }
-            
-            // Focus the new component... if any
-            self.focused_component_id = new_component_id;
-
-            if let Some(new_component_id) = new_component_id {
-                self.mark_component_dirty(new_component_id);
-            }
-        }
+        self.focus_component(new_component_id);
     }
 
     pub fn rescale_window_in_place(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
