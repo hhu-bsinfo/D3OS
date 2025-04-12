@@ -131,75 +131,75 @@ impl AppWindow {
     }
 
     pub fn focus_next_component(&mut self) {
-        if let Some(focused_component_id) = self.focused_component_id {
-            let total_components = self.component_orderer.len();
-            
-            let mut cursor =
-                get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id)
-                    .unwrap();
-            
-            // Try to find the next non-hidden component in the orderer
-            let next_focus_id = (0..total_components).find_map(|_| {
-                cursor.move_next();
+        let total_components = self.component_orderer.len();
+        
+        // Find the cursor for the focused component (or default)
+        let mut cursor = match self.focused_component_id {
+            Some(focused_component_id) => get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id).unwrap(),
+            None => self.component_orderer.cursor_back_mut(),
+        };
 
-                if cursor.current().is_none() {
-                    cursor.move_next();
+        // Try to find the next non-hidden component in the orderer
+        let next_focus_id = (0..total_components).find_map(|_| {
+            cursor.move_next();
+
+            if cursor.current().is_none() {
+                cursor.move_next();
+            }
+
+            cursor.current().and_then(|current_id| {
+                // Check if component is visible (when hideable)
+                if let Some(component) = self.components.get(current_id) {
+                    if component
+                        .read()
+                        .as_hideable()
+                        .map_or(true, |hideable| !hideable.is_hidden())
+                    {
+                        return Some(*current_id);
+                    }
                 }
 
-                cursor.current().and_then(|current_id| {
-                    // Check if component is visible (when hideable)
-                    if let Some(component) = self.components.get(current_id) {
-                        if component
-                            .read()
-                            .as_hideable()
-                            .map_or(true, |hideable| !hideable.is_hidden())
-                        {
-                            return Some(*current_id);
-                        }
-                    }
-
-                    None
-                })
-            });
-                
-            self.focus_component(next_focus_id);
-        }
+                None
+            })
+        });
+            
+        self.focus_component(next_focus_id);
     }
 
     pub fn focus_prev_component(&mut self) {
-        if let Some(focused_component_id) = self.focused_component_id {
-            let total_components = self.component_orderer.len();
-            
-            let mut cursor =
-                get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id)
-                    .unwrap();
-            
-            // Try to find the previous non-hidden component in the orderer
-            let next_focus_id = (0..total_components).find_map(|_| {
-                cursor.move_prev();
+        let total_components = self.component_orderer.len();
+        
+        // Find the cursor for the focused component (or default)
+        let mut cursor = match self.focused_component_id {
+            Some(focused_component_id) => get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id).unwrap(),
+            None => self.component_orderer.cursor_front_mut(),
+        };
 
-                if cursor.current().is_none() {
-                    cursor.move_prev();
+        // Try to find the previous non-hidden component in the orderer
+        let next_focus_id = (0..total_components).find_map(|_| {
+            cursor.move_prev();
+
+            if cursor.current().is_none() {
+                cursor.move_prev();
+            }
+
+            cursor.current().and_then(|current_id| {
+                // Check if component is visible (when hideable)
+                if let Some(component) = self.components.get(current_id) {
+                    if component
+                        .read()
+                        .as_hideable()
+                        .map_or(true, |hideable| !hideable.is_hidden())
+                    {
+                        return Some(*current_id);
+                    }
                 }
 
-                cursor.current().and_then(|current_id| {
-                    // Check if component is visible (when hideable)
-                    if let Some(component) = self.components.get(current_id) {
-                        if component
-                            .read()
-                            .as_hideable()
-                            .map_or(true, |hideable| !hideable.is_hidden())
-                        {
-                            return Some(*current_id);
-                        }
-                    }
-                    
-                    None
-                })
-            });
-                
-            self.focus_component(next_focus_id);
-        }
+                None
+            })
+        });
+            
+        self.focus_component(next_focus_id);
     }
 
     pub fn focus_component_at(&mut self, pos: Vertex) {
