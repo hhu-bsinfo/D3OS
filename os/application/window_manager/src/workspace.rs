@@ -90,6 +90,27 @@ impl Workspace {
         self.get_focused_window_mut().mark_window_dirty();
     }
 
+    pub fn focus_window_at(&mut self, pos: Vertex) {
+        // Find the window that contains the position
+        let new_window_id = self.window_orderer.iter()
+            .find(|id| self.windows.get(*id).unwrap().rect_data.contains_vertex(&pos))
+            .copied();
+
+        if let Some(new_window_id) = new_window_id {
+            if self.focused_window_id == new_window_id {
+                return;
+            }
+
+            // Mark the old window as dirty
+            self.get_focused_window_mut().mark_window_dirty();
+
+            self.focused_window_id = new_window_id;
+
+            // Mark the new window as dirty
+            self.get_focused_window_mut().mark_window_dirty();
+        }
+    }
+
     /// Moves focus to the next component in currently focused window
     pub fn focus_next_component(&mut self) {
         let focused_window = self.get_focused_window_mut();
