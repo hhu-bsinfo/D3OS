@@ -212,6 +212,10 @@ impl Casts for Slider {
         Some(self)
     }
 
+    fn as_focusable(&self) -> Option<&dyn Focusable> {
+        Some(self)
+    }
+
     fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
         Some(self)
     }

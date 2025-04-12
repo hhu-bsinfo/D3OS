@@ -143,12 +143,8 @@ impl AppWindow {
         };
 
         // Try to find the next non-hidden component in the orderer
-        let next_focus_id = (0..total_components).find_map(|_| {
+        let next_focus_id = (0..total_components + 1).find_map(|_| {
             cursor.move_next();
-
-            if cursor.current().is_none() {
-                cursor.move_next();
-            }
 
             cursor.current().and_then(|current_id| {
                 // Check if component is visible (when hideable)
@@ -184,12 +180,8 @@ impl AppWindow {
         };
 
         // Try to find the previous non-hidden component in the orderer
-        let next_focus_id = (0..total_components).find_map(|_| {
+        let next_focus_id = (0..total_components + 1).find_map(|_| {
             cursor.move_prev();
-
-            if cursor.current().is_none() {
-                cursor.move_prev();
-            }
 
             cursor.current().and_then(|current_id| {
                 // Check if component is visible (when hideable)
