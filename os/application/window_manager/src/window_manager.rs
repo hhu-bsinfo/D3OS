@@ -327,7 +327,7 @@ impl WindowManager {
             let curr_ws = &mut self.workspaces[workspace_index];
             let window = &mut curr_ws.windows.get_mut(&window_id);
             if let Some(window) = window {
-                window.insert_component(component, true);
+                window.insert_component(component);
             }
         }
     }

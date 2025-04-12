@@ -10,7 +10,7 @@ use crate::{
     config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, utils::{scale_font, scale_rect_to_window}
 };
 
-use super::component::{Casts, Clearable, Component, ComponentStyling, Disableable, Hideable, Interactable};
+use super::component::{Casts, Clearable, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable};
 
 pub const INPUT_BG_COLOR_ENABLED: Color = Color { red: 80, green: 80, blue: 80, alpha: 255 };
 pub const INPUT_BG_COLOR_DISABLED: Color = Color { red: 50, green: 50, blue: 50, alpha: 255 };
@@ -234,6 +234,14 @@ impl Casts for InputField {
         Some(self)
     }
 
+    fn as_focusable(&self) -> Option<&dyn Focusable> {
+        Some(self)
+    }
+
+    fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
+        Some(self)
+    }
+
     fn as_interactable(&self) -> Option<&dyn Interactable> {
         Some(self)
     }
@@ -252,6 +260,21 @@ impl Casts for InputField {
 
     fn as_clearable_mut(&mut self) -> Option<&mut dyn Clearable> {
         Some(self)
+    }
+}
+
+impl Focusable for InputField {
+    fn focus(&mut self) {
+        self.mark_dirty();
+    }
+
+    fn unfocus(&mut self) -> bool {
+        if self.is_selected {
+            return false;
+        }
+
+        self.mark_dirty();
+        true
     }
 }
 

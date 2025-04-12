@@ -44,8 +44,9 @@ impl AppWindow {
         self.is_dirty = true;
     }
 
-    pub fn insert_component(&mut self, new_component: Rc<RwLock<Box<dyn Component>>>, is_focusable: bool) {
+    pub fn insert_component(&mut self, new_component: Rc<RwLock<Box<dyn Component>>>) {
         let id = WindowManager::generate_id();
+        let is_focusable = new_component.read().as_focusable().is_some();
         
         if is_focusable {
             self.component_orderer.push_back(id);
@@ -81,27 +82,24 @@ impl AppWindow {
         if let Some(old_id) = self.focused_component_id {
             if let Some(component) = self.components.get(&old_id) {
                 if let Some(focusable) = component.write().as_focusable_mut() {
+                    // Does the component accept the unfocus?
                     if !focusable.unfocus() {
-                        // The component does not want to lose focus
                         return;
                     }
                 }
             }
-
-            self.mark_component_dirty(old_id); // TODO: Only needed in focusable components?
         }
 
-        // Focus the new component
-        self.focused_component_id = id;
+        self.focused_component_id = None;
 
+        // Focus the new component
         if let Some(new_id) = id {
             if let Some(component) = self.components.get(&new_id) {
                 if let Some(focusable) = component.write().as_focusable_mut() {
+                    self.focused_component_id = id;
                     focusable.focus();
                 }
             }
-
-            self.mark_component_dirty(new_id); // TODO: Only needed in focusable components?
         }
     }
 
@@ -134,9 +132,14 @@ impl AppWindow {
         let total_components = self.component_orderer.len();
         
         // Find the cursor for the focused component (or default)
-        let mut cursor = match self.focused_component_id {
-            Some(focused_component_id) => get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id).unwrap(),
-            None => self.component_orderer.cursor_back_mut(),
+        let cursor = match self.focused_component_id {
+            Some(focused_component_id) => get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id),
+            None => Some(self.component_orderer.cursor_back_mut()),
+        };
+
+        let mut cursor = match cursor {
+            Some(cursor) => cursor,
+            None => return,
         };
 
         // Try to find the next non-hidden component in the orderer
@@ -170,9 +173,14 @@ impl AppWindow {
         let total_components = self.component_orderer.len();
         
         // Find the cursor for the focused component (or default)
-        let mut cursor = match self.focused_component_id {
-            Some(focused_component_id) => get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id).unwrap(),
-            None => self.component_orderer.cursor_front_mut(),
+        let cursor = match self.focused_component_id {
+            Some(focused_component_id) => get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id),
+            None => Some(self.component_orderer.cursor_front_mut()),
+        };
+
+        let mut cursor = match cursor {
+            Some(cursor) => cursor,
+            None => return,
         };
 
         // Try to find the previous non-hidden component in the orderer

@@ -8,7 +8,7 @@ use crate::{
     config::INTERACT_BUTTON, mouse_state::ButtonState, utils::scale_rect_to_window
 };
 
-use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable};
+use super::component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable};
 
 pub struct Checkbox {
     pub id: Option<usize>,
@@ -179,6 +179,14 @@ impl Casts for Checkbox {
         Some(self)
     }
 
+    fn as_focusable(&self) -> Option<&dyn Focusable> {
+        Some(self)
+    }
+
+    fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
+        Some(self)
+    }
+
     fn as_interactable(&self) -> Option<&dyn Interactable> {
         Some(self)
     }
@@ -207,6 +215,17 @@ impl Disableable for Checkbox {
 
     fn enable(&mut self) {
         self.is_disabled = false;
+    }
+}
+
+impl Focusable for Checkbox {
+    fn focus(&mut self) {
+        self.mark_dirty();
+    }
+
+    fn unfocus(&mut self) -> bool {
+        self.mark_dirty();
+        true
     }
 }
 

@@ -9,7 +9,7 @@ use crate::{
     config::INTERACT_BUTTON, mouse_state::{ButtonState, MouseEvent}, signal::{ComponentRef, Signal, Stateful}, utils::{scale_font, scale_rect_to_window}
 };
 
-use super::component::{Casts, Component, ComponentStyling, Disableable, Hideable, Interactable, Resizable};
+use super::component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable, Resizable};
 
 pub struct Button{
     pub id: Option<usize>,
@@ -235,6 +235,14 @@ impl Casts for Button {
         Some(self)
     }
 
+    fn as_focusable(&self) -> Option<&dyn Focusable> {
+        Some(self)
+    }
+
+    fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
+        Some(self)
+    }
+
     fn as_interactable(&self) -> Option<&dyn Interactable> {
         Some(self)
     }
@@ -257,6 +265,17 @@ impl Casts for Button {
 
     fn as_resizable_mut(&mut self) -> Option<&mut dyn Resizable> {
         Some(self)
+    }
+}
+
+impl Focusable for Button {
+    fn focus(&mut self) {
+        self.mark_dirty();
+    }
+
+    fn unfocus(&mut self) -> bool {
+        self.mark_dirty();
+        true
     }
 }
 

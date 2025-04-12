@@ -25,7 +25,6 @@ pub struct Slider {
     is_hidden: bool,
     // disableable
     is_disabled: bool,
-    is_focused: bool,
 
     is_dragging: bool,
 
@@ -58,7 +57,6 @@ impl Slider {
             is_dirty: true,
             is_disabled: false,
             is_hidden: false,
-            is_focused: false,
             is_dragging: false,
             styling: styling.unwrap_or_default(),
         }
@@ -101,13 +99,13 @@ impl Component for Slider {
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
-        } else if self.is_focused {
+        } else if is_focused {
             styling.focused_background_color
         } else {
             styling.background_color
         };
 
-        let border_color = if self.is_focused {
+        let border_color = if is_focused {
             styling.focused_border_color
         } else if self.is_disabled {
             styling.disabled_border_color
@@ -264,12 +262,8 @@ impl Hideable for Slider {
 }
 
 impl Focusable for Slider {
-    fn is_focused(&self) -> bool {
-        self.is_focused
-    }
-
     fn focus(&mut self) {
-        self.is_focused = true;
+        self.mark_dirty();
     }
 
     fn unfocus(&mut self) -> bool {
@@ -277,7 +271,7 @@ impl Focusable for Slider {
             return false;
         }
 
-        self.is_focused = false;
+        self.mark_dirty();
         true
     }
 }

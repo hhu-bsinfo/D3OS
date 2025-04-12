@@ -5,7 +5,7 @@ use spin::RwLock;
 
 use crate::{config::INTERACT_BUTTON, mouse_state::ButtonState, utils::{scale_pos_to_window, scale_radius_to_window, scale_rect_to_window}};
 
-use super::{component::{Casts, Component, ComponentStyling, Interactable}, radio_button::RadioButton};
+use super::{component::{Casts, Component, ComponentStyling, Focusable, Interactable}, radio_button::RadioButton};
 
 pub struct RadioButtonGroup {
     id: Option<usize>,
@@ -199,12 +199,31 @@ impl Component for RadioButtonGroup {
 }
 
 impl Casts for RadioButtonGroup {
+    fn as_focusable(&self) -> Option<&dyn Focusable> {
+        Some(self)
+    }
+
+    fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
+        Some(self)
+    }
+    
     fn as_interactable(&self) -> Option<&dyn Interactable> {
         Some(self)
     }
     
     fn as_interactable_mut(&mut self) -> Option<&mut dyn Interactable> {
         Some(self)
+    }
+}
+
+impl Focusable for RadioButtonGroup {
+    fn focus(&mut self) {
+        self.mark_dirty();
+    }
+
+    fn unfocus(&mut self) -> bool {
+        self.mark_dirty();
+        true
     }
 }
 
