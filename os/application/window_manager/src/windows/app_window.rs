@@ -132,103 +132,73 @@ impl AppWindow {
 
     pub fn focus_next_component(&mut self) {
         if let Some(focused_component_id) = self.focused_component_id {
-            // Sicherheitszählung, um nicht endlos nach nicht versteckten Komponenten zu suchen 
-            let mut iterations = 0;
             let total_components = self.component_orderer.len();
             
             let mut cursor =
                 get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id)
                     .unwrap();
             
-
-            loop {
+            // Try to find the next non-hidden component in the orderer
+            let next_focus_id = (0..total_components).find_map(|_| {
                 cursor.move_next();
 
                 if cursor.current().is_none() {
                     cursor.move_next();
                 }
 
-                iterations += 1;
-
-        
-                if let Some(next_focused_el) = cursor.current() {
-                    if let Some(component) = self.components.get(next_focused_el) {
-                        if let Some(hideable) = component.read().as_hideable() {
-                            // überspringe versteckte Komponenten
-                            if hideable.is_hidden() {
-                                continue;
-                            }
+                cursor.current().and_then(|current_id| {
+                    // Check if component is visible (when hideable)
+                    if let Some(component) = self.components.get(current_id) {
+                        if component
+                            .read()
+                            .as_hideable()
+                            .map_or(true, |hideable| !hideable.is_hidden())
+                        {
+                            return Some(*current_id);
                         }
                     }
 
-                    self.focused_component_id = Some(next_focused_el.clone());
-                    break;
-                }
-
-                // Alle Komponenten sind versteckt
-                if iterations >= total_components {
-                    self.focused_component_id = None; // Kein Fokus möglich
-                    break;
-                }
-            }
-
-            // markiere zuvor und neu fokusierte Komponente als dirty um Fokus-Indikator zu aktualisieren
-            if let Some(next_focused_component_id) = self.focused_component_id {
-                self.mark_component_dirty(focused_component_id);
-                self.mark_component_dirty(next_focused_component_id);
-
-            }
+                    None
+                })
+            });
+                
+            self.focus_component(next_focus_id);
         }
     }
 
     pub fn focus_prev_component(&mut self) {
         if let Some(focused_component_id) = self.focused_component_id {
-            // Sicherheitszählung, um nicht endlos nach nicht versteckten Komponenten zu suchen 
-            let mut iterations = 0;
             let total_components = self.component_orderer.len();
             
             let mut cursor =
                 get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id)
                     .unwrap();
             
-
-            loop {
+            // Try to find the previous non-hidden component in the orderer
+            let next_focus_id = (0..total_components).find_map(|_| {
                 cursor.move_prev();
 
                 if cursor.current().is_none() {
                     cursor.move_prev();
                 }
 
-                iterations += 1;
-
-        
-                if let Some(prev_focused_el) = cursor.current() {
-                    if let Some(component) = self.components.get(prev_focused_el) {
-                        if let Some(hideable) = component.read().as_hideable() {
-                            // überspringe versteckte Komponenten
-                            if hideable.is_hidden() {
-                                continue;
-                            }
+                cursor.current().and_then(|current_id| {
+                    // Check if component is visible (when hideable)
+                    if let Some(component) = self.components.get(current_id) {
+                        if component
+                            .read()
+                            .as_hideable()
+                            .map_or(true, |hideable| !hideable.is_hidden())
+                        {
+                            return Some(*current_id);
                         }
                     }
-
-                    self.focused_component_id = Some(prev_focused_el.clone());
-                    break;
-                }
-
-                // Alle Komponenten sind versteckt
-                if iterations >= total_components {
-                    self.focused_component_id = None; // Kein Fokus möglich
-                    break;
-                }
-            }
-
-            // markiere zuvor und neu fokusierte Komponente als dirty um Fokus-Indikator zu aktualisieren
-            if let Some(next_focused_component_id) = self.focused_component_id {
-                self.mark_component_dirty(focused_component_id);
-                self.mark_component_dirty(next_focused_component_id);
-
-            }
+                    
+                    None
+                })
+            });
+                
+            self.focus_component(next_focus_id);
         }
     }
 
