@@ -17,7 +17,7 @@ use crate::{
             WORKSPACE_SELECTION_LABEL_FONT_SCALE,
         },
     },
-    config::{DEFAULT_FG_COLOR, DIST_TO_SCREEN_EDGE, FOCUSED_BG_COLOR, UNFOCUSED_BG_COLOR},
+    config::{DEFAULT_FG_COLOR, DIST_TO_SCREEN_EDGE, FOCUSED_BG_COLOR, UNFOCUSED_BG_COLOR}, mouse_state::{ButtonState, MouseEvent},
 };
 
 pub struct WorkspaceSelectionLabelsWindow {
@@ -92,5 +92,17 @@ impl WorkspaceSelectionLabelsWindow {
         }
 
         self.is_dirty = false;
+    }
+
+    pub fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<usize> {
+        for label in self.labels.iter_mut() {
+            if label.get_abs_rect_data().contains_vertex(&mouse_event.position) {
+                if mouse_event.buttons.left == ButtonState::Pressed {
+                    return Some(label.tied_workspace);
+                }
+            }
+        }
+
+        None
     }
 }

@@ -273,6 +273,12 @@ impl WindowManager {
         if let Some(mouse_packet) = mouse_packet {
             let mouse_event = self.mouse_state.process(&mouse_packet);
 
+            // Ask the workspace manager first
+            if let Some(new_workspace) = self.workspace_selection_labels_window.handle_mouse_event(&mouse_event) {
+                self.switch_workspace(new_workspace);
+                return;
+            }
+
             // Focus component under the cursor
             let cursor_pos = self.mouse_state.position();
             self.get_current_workspace_mut().focus_window_at(cursor_pos);
@@ -455,22 +461,21 @@ impl WindowManager {
         self.is_dirty = true;
     }
 
-    fn switch_prev_workspace(&mut self) {
-        let prev_workspace = (self.current_workspace + self.workspaces.len() - 1) % self.workspaces.len();
-
-        if self.current_workspace != prev_workspace {
-            self.current_workspace = prev_workspace;
+    fn switch_workspace(&mut self, workspace_index: usize) {
+        if self.current_workspace != workspace_index {
+            self.current_workspace = workspace_index;
             self.is_dirty = true;
         }
     }
 
+    fn switch_prev_workspace(&mut self) {
+        let prev_workspace = (self.current_workspace + self.workspaces.len() - 1) % self.workspaces.len();
+        self.switch_workspace(prev_workspace);
+    }
+
     fn switch_next_workspace(&mut self) {
         let next_workspace = (self.current_workspace + 1) % self.workspaces.len();
-        
-        if self.current_workspace != next_workspace {
-            self.current_workspace = next_workspace;
-            self.is_dirty = true;
-        }
+        self.switch_workspace(next_workspace);
     }
 
     fn get_current_workspace(&self) -> &Workspace {
