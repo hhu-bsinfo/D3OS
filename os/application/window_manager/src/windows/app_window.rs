@@ -61,13 +61,28 @@ impl AppWindow {
         self.components.insert(id, new_component);
     }
 
-    // Find a component at a specific position
+    /// Find a visible component at a specific position
     fn find_component_at(&self, pos: &Vertex) -> Option<usize> {
         for (id, component) in &self.components {
             let component = component.read();
-            if component.get_abs_rect_data().contains_vertex(pos) {
-                return Some(*id);
+
+            // Focusable?
+            if component.as_focusable().is_none() {
+                continue;
             }
+
+            // Hidden?
+            if let Some(hideable) = component.as_hideable() {
+                if hideable.is_hidden() {
+                    continue;
+                }
+            }
+
+            if !component.get_abs_rect_data().contains_vertex(pos) {
+                continue;
+            }
+            
+            return Some(*id);
         }
 
         None
