@@ -327,6 +327,10 @@ impl WindowManager {
             component,
         }) = self.receivers.rx_components.try_dequeue()
         {
+            if workspace_index >= self.workspaces.len() {
+                continue;
+            }
+
             let curr_ws = &mut self.workspaces[workspace_index];
             let window = &mut curr_ws.windows.get_mut(&window_id);
             if let Some(window) = window {
