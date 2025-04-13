@@ -155,7 +155,7 @@ impl WindowManager {
             API.call_once(|| Mutex::new(Api::new(senders)));
         }
 
-        self.create_new_workspace(true);
+        self.create_new_workspace();
     }
 
     fn run(&mut self) {
@@ -211,7 +211,7 @@ impl WindowManager {
 
                 match keyboard_press {
                     'c' => {
-                        self.create_new_workspace(false);
+                        self.create_new_workspace();
                         self.workspace_selection_labels_window.is_dirty = true;
                     }
                     'x' => {
@@ -388,12 +388,12 @@ impl WindowManager {
         }
     }
 
-    fn create_new_workspace(&mut self, is_initial: bool) {
+    fn create_new_workspace(&mut self) {
         if self.workspaces.len() == 9 {
             return;
         }
 
-        if !is_initial {
+        if !self.workspaces.is_empty() {
             self.current_workspace += 1;
         }
 
@@ -456,17 +456,21 @@ impl WindowManager {
     }
 
     fn switch_prev_workspace(&mut self) {
-        self.current_workspace = if self.current_workspace == 0 {
-            self.workspaces.len() - 1
-        } else {
-            self.current_workspace - 1
-        };
-        self.is_dirty = true;
+        let prev_workspace = (self.current_workspace + self.workspaces.len() - 1) % self.workspaces.len();
+
+        if self.current_workspace != prev_workspace {
+            self.current_workspace = prev_workspace;
+            self.is_dirty = true;
+        }
     }
 
     fn switch_next_workspace(&mut self) {
-        self.current_workspace = (self.current_workspace + 1) % self.workspaces.len();
-        self.is_dirty = true;
+        let next_workspace = (self.current_workspace + 1) % self.workspaces.len();
+        
+        if self.current_workspace != next_workspace {
+            self.current_workspace = next_workspace;
+            self.is_dirty = true;
+        }
     }
 
     fn get_current_workspace(&self) -> &Workspace {
