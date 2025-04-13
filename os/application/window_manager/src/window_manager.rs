@@ -212,19 +212,15 @@ impl WindowManager {
                 match keyboard_press {
                     'c' => {
                         self.create_new_workspace();
-                        self.workspace_selection_labels_window.is_dirty = true;
                     }
                     'x' => {
                         self.remove_current_workspace();
-                        self.workspace_selection_labels_window.is_dirty = true;
                     }
                     'q' => {
                         self.switch_prev_workspace();
-                        self.workspace_selection_labels_window.is_dirty = true;
                     }
                     'e' => {
                         self.switch_next_workspace();
-                        self.workspace_selection_labels_window.is_dirty = true;
                     }
                     'o' => {
                         self.get_current_workspace_mut()
@@ -399,9 +395,7 @@ impl WindowManager {
             return;
         }
 
-        if !self.workspaces.is_empty() {
-            self.current_workspace += 1;
-        }
+        let new_workspace_index = self.workspaces.len();
 
         let screen_res = Self::get_screen_res();
         let window_rect_data = RectData {
@@ -422,27 +416,33 @@ impl WindowManager {
 
         let workspace = Workspace::new_with_single_window((window_id, window), window_id);
 
-        self.workspaces.insert(self.current_workspace, workspace);
+        self.workspaces.insert(new_workspace_index, workspace);
 
         Self::get_api()
             .register(
-                self.current_workspace,
+                new_workspace_index,
                 window_id,
                 window_rect_data,
                 DEFAULT_APP,
             )
             .expect("Failed to launch default app!");
+
+        self.switch_workspace(new_workspace_index);
+        self.workspace_selection_labels_window.mark_dirty();
     }
 
     fn remove_current_workspace(&mut self) {
-        if self.workspaces.len() == 1 {
+        if self.workspaces.len() <= 1 {
             return;
         }
 
+        // Remove workspace & labels
         self.workspaces.remove(self.current_workspace);
         self.workspace_selection_labels_window
             .remove_label(self.current_workspace);
+        self.workspace_selection_labels_window.mark_dirty();
 
+        // Update workspace indices
         self.on_loop_iter_fns
             .retain_mut(|fun| fun.window_data.workspace_index != self.current_workspace);
         self.on_loop_iter_fns
@@ -452,12 +452,7 @@ impl WindowManager {
 
         Self::get_api().remove_all_handles_tied_to_workspace(self.current_workspace);
 
-        self.current_workspace = if self.current_workspace == 0 {
-            self.workspaces.len() - 1
-        } else {
-            self.current_workspace - 1
-        };
-
+        self.switch_prev_workspace();
         self.is_dirty = true;
     }
 
@@ -465,6 +460,7 @@ impl WindowManager {
         if self.current_workspace != workspace_index {
             self.current_workspace = workspace_index;
             self.is_dirty = true;
+            self.workspace_selection_labels_window.mark_dirty();
         }
     }
 

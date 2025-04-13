@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub struct WorkspaceSelectionLabelsWindow {
-    pub is_dirty: bool,
+    is_dirty: bool,
     rect_data: RectData,
     labels: Vec<SelectedWorkspaceLabel>,
 }
@@ -33,6 +33,10 @@ impl WorkspaceSelectionLabelsWindow {
             labels: Vec::new(),
             is_dirty: true,
         }
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.is_dirty = true;
     }
 
     pub fn insert_label(&mut self, old_workspace_len: usize) {
