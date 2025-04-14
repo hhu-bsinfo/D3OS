@@ -37,7 +37,6 @@ mod utils;
 mod window_tree;
 mod windows;
 mod workspace;
-mod dirty_region;
 mod signal;
 mod mouse_state;
 

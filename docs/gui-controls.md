@@ -13,18 +13,13 @@
 ## Workspace
 
 - `C` => Create new workspace
-- `X` => Remove current workspace
+- `X` => Close current workspace
 - `Q` => Switch to previous workspace
 - `E` => Switch to next workspace
 
-## Command Line
-
-- `H` => Launch app by name in horizontal split mode
-- `V` => Launch app by name in vertical split mode
-
 ## Windows
-- `O` => Move focused window forward in current workspace
-- `I` => Move focused window backward in current workspace
+- `O` => Move focused window forward
+- `I` => Move focused window backward
 - `A` => Focus previous window
 - `D` => Focus next window
 - `M` => Close focused window
@@ -33,3 +28,11 @@
 
 - `W` => Focus next component
 - `S` => Focus previous component
+- `+` => Increase value of focused component (Slider)
+- `-` => Decrease value of focused component (Slider)
+
+## Command Line
+
+- `H` => Launch app by name in horizontal split mode
+- `V` => Launch app by name in vertical split mode
+- `ESC` => Leave enter-app mode
