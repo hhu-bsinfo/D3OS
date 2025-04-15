@@ -46,15 +46,10 @@ impl AppWindow {
 
     pub fn insert_component(&mut self, new_component: Rc<RwLock<Box<dyn Component>>>) {
         let id = WindowManager::generate_id();
-        let is_focusable = new_component.read().as_focusable().is_some();
-        
-        if is_focusable {
+
+        // Add focusable components to the orderer
+        if new_component.read().as_focusable().is_some() {
             self.component_orderer.push_back(id);
-            
-            // Focus new (focusable) component, if it is the first one in the window
-            if self.component_orderer.len() == 1 {
-                self.focused_component_id = Some(id);
-            }
         }
         
         new_component.write().set_id(id);
