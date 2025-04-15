@@ -167,19 +167,17 @@ impl Api {
         }
     }
 
-    /* Returning `Result<(), &str>` would make more sense, but
-    I get a dumb borrow-checker error when I do so, thus we using `Option<()>` */
     pub fn register(
         &mut self,
         workspace_index: usize,
         window_id: usize,
         abs_pos: RectData,
         app_string: &str,
-    ) -> Option<()> {
+    ) -> Result<(), &str> {
         let screen = SCREEN.get().unwrap();
-        let app_fn_ptr = self.map_app_string_to_fn(app_string)?;
+        let app_fn_ptr = self.map_app_string_to_fn(app_string).ok_or("App not found")?;
         
-        let handle = thread::create(app_fn_ptr).expect("Failed to create thread").id();
+        let handle = thread::create(app_fn_ptr).ok_or("Failed to create thread")?.id();
         let handle_data = HandleData {
             workspace_index,
             window_id,
@@ -192,14 +190,14 @@ impl Api {
 
         self.handles.insert(handle, handle_data);
 
-        Some(())
+        Ok(())
     }
 
     /// Logical positions need to be contrained by `x <= 1000 && y <= 750`
-    pub fn execute(&self, handle: usize, command: Command) -> Result<ComponentRef, &str> {
+    pub fn execute(&self, window_handle: usize, command: Command) -> Result<ComponentRef, &str> {
         let handle_data = self
             .handles
-            .get(&handle)
+            .get(&window_handle)
             .ok_or("Provided handle not found")?;
 
         let window_data = WindowData {
