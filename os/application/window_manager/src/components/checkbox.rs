@@ -239,7 +239,7 @@ impl Interactable for Checkbox {
     }
 
     fn consume_mouse_event(&mut self, mouse_event: &crate::mouse_state::MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
-        if mouse_event.buttons.left == ButtonState::Pressed && !self.is_disabled {
+        if mouse_event.buttons.left.is_pressed() && !self.is_disabled {
             self.handle_click()
         } else {
             None

@@ -321,9 +321,9 @@ impl Interactable for Slider {
         }
 
         // Update dragging state
-        if mouse_event.buttons.left == ButtonState::Pressed {
+        if mouse_event.buttons.left.is_pressed() {
             self.is_dragging = true;
-        } else if mouse_event.buttons.left == ButtonState::Released {
+        } else if mouse_event.buttons.left.is_released() {
             self.is_dragging = false;
         }
 

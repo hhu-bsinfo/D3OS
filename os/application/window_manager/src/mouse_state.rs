@@ -13,7 +13,7 @@ use crate::config::DEFAULT_FG_COLOR;
 pub use drawer::vertex::Vertex;
 
 // None -> Pressed -> Down -> Released -> None
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ButtonState {
     None,
     Pressed,
@@ -37,6 +37,22 @@ impl ButtonState {
             // Maintain current state in other cases
             (state, _) => state,
         }
+    }
+
+    pub fn is_up(&self) -> bool {
+        matches!(self, ButtonState::None)
+    }
+
+    pub fn is_pressed(&self) -> bool {
+        matches!(self, ButtonState::Pressed)
+    }
+
+    pub fn is_down(&self) -> bool {
+        matches!(self, ButtonState::Down)
+    }
+
+    pub fn is_released(&self) -> bool {
+        matches!(self, ButtonState::Released)
     }
 }
 
