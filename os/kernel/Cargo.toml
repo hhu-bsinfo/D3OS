@@ -24,7 +24,7 @@ spin = "0.9.8"
 x86_64 = "0.15.2"
 linked_list_allocator = { version = "0.10.5", features = ["alloc_ref"] }
 multiboot2 = "0.23.1"
-ps2 = "0.2.0"
+ps2 = { git = "https://github.com/lnx00/ps2-rs.git" }
 pc-keyboard = "0.8.0"
 anstyle-parse = "0.2.6"
 chrono = { version = "0.4.40", default-features = false, features = ["alloc"] }
