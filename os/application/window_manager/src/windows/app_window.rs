@@ -5,7 +5,7 @@ use hashbrown::HashMap;
 use spin::RwLock;
 
 use crate::{
-    components::component::Component, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, utils::get_element_cursor_from_orderer, Interaction, WindowManager
+    components::{component::Component, container::{basic_container::BasicContainer, Container}}, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, signal::ComponentRef, utils::get_element_cursor_from_orderer, Interaction, WindowManager
 };
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
@@ -17,6 +17,9 @@ pub struct AppWindow {
     pub rect_data: RectData,
     /// Indicates whether redrawing of this window is required in next loop-iteration
     pub is_dirty: bool,
+
+    root_container: BasicContainer,
+
     components: HashMap<usize, Rc<RwLock<Box<dyn Component>>>>,
     /// focusable components are stored additionally in ordered fashion in here
     component_orderer: LinkedList<usize>,
@@ -28,6 +31,7 @@ impl AppWindow {
         Self {
             id,
             is_dirty: true,
+            root_container: BasicContainer::new(rect_data),
             components: HashMap::new(),
             component_orderer: LinkedList::new(),
             rect_data,
@@ -44,13 +48,16 @@ impl AppWindow {
         self.is_dirty = true;
     }
 
-    pub fn insert_component(&mut self, new_component: Rc<RwLock<Box<dyn Component>>>) {
+    pub fn insert_component(&mut self, new_component: ComponentRef) {
         let id = WindowManager::generate_id();
 
         // Add focusable components to the orderer
         if new_component.read().as_focusable().is_some() {
             self.component_orderer.push_back(id);
         }
+
+        // Add the component to the root container
+        self.root_container.add_child(new_component.clone());
         
         new_component.write().set_id(id);
         self.components.insert(id, new_component);

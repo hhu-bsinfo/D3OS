@@ -12,14 +12,21 @@ pub struct BasicContainer {
     id: Option<usize>,
     childs: Vec<ComponentRef>,
 
+    rel_rect_data: RectData,
+    abs_rect_data: RectData,
+
     is_dirty: bool,
 }
 
 impl BasicContainer {
-    pub fn new() -> Self {
+    pub fn new(rel_rect_data: RectData) -> Self {
         Self {
             id: None,
             childs: Vec::new(),
+
+            rel_rect_data,
+            abs_rect_data: rel_rect_data,
+
             is_dirty: true,
         }
     }
