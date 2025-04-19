@@ -2,9 +2,11 @@ use alloc::boxed::Box;
 use drawer::rect_data::RectData;
 use graphic::color::Color;
 
-use crate::{config::{DEFAULT_BACKGROUND_COLOR, DEFAULT_BORDER_COLOR, DEFAULT_DISABLED_BACKGROUND_COLOR, DEFAULT_DISABLED_BORDER_COLOR, DEFAULT_DISABLED_TEXT_COLOR, DEFAULT_FOCUSED_BACKGROUND_COLOR, DEFAULT_FOCUSED_BORDER_COLOR, DEFAULT_FOCUSED_TEXT_COLOR, DEFAULT_SELECTED_BACKGROUND_COLOR, DEFAULT_SELECTED_BORDER_COLOR, DEFAULT_SELECTED_TEXT_COLOR, DEFAULT_TEXT_COLOR}};
+use crate::{config::{DEFAULT_BACKGROUND_COLOR, DEFAULT_BORDER_COLOR, DEFAULT_DISABLED_BACKGROUND_COLOR, DEFAULT_DISABLED_BORDER_COLOR, DEFAULT_DISABLED_TEXT_COLOR, DEFAULT_FOCUSED_BACKGROUND_COLOR, DEFAULT_FOCUSED_BORDER_COLOR, DEFAULT_FOCUSED_TEXT_COLOR, DEFAULT_SELECTED_BACKGROUND_COLOR, DEFAULT_SELECTED_BORDER_COLOR, DEFAULT_SELECTED_TEXT_COLOR, DEFAULT_TEXT_COLOR}, signal::ComponentRef};
 
 pub use crate::mouse_state::MouseEvent;
+
+use super::container::Container;
 
 #[derive(Clone, Copy)]
 pub struct ComponentStyling {
@@ -299,6 +301,14 @@ pub trait Casts {
     }
 
     fn as_clearable_mut(&mut self) -> Option<&mut dyn Clearable> {
+        None
+    }
+
+    fn as_container(&self) -> Option<&dyn Container> {
+        None
+    }
+
+    fn as_container_mut(&mut self) -> Option<&mut dyn Container> {
         None
     }
 }
