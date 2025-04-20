@@ -37,6 +37,7 @@ impl RadioButtonGroup {
         let buttons = (0..num_buttons)
             .map(|i| {
                 Rc::new(RwLock::new(RadioButton::new(
+                    i,
                     abs_center.add(i as u32 * ((abs_radius * 2) + spacing), 0),
                     rel_center.add(i as u32 * ((rel_radius * 2) + spacing), 0),
                     abs_radius,
@@ -87,7 +88,9 @@ impl Component for RadioButtonGroup {
         let is_focused = focus_id == self.id;
 
         for (i, button) in self.buttons.iter().enumerate() {
-            button.write().draw(if is_focused && i == self.focused_button_index { focus_id } else { None });
+            let is_button_focused = is_focused && i == self.focused_button_index;
+            let child_focus_id = if is_button_focused { button.read().id } else { None };
+            button.write().draw(child_focus_id);
         }
     }
 

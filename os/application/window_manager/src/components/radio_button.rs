@@ -25,6 +25,7 @@ pub struct RadioButton {
 
 impl RadioButton {
     pub fn new(
+        id: usize,
         abs_center: Vertex,
         rel_center: Vertex,
         abs_radius: u32,
@@ -39,7 +40,7 @@ impl RadioButton {
         };
 
         Self {
-            id: None,
+            id: Some(id),
             abs_center,
             rel_center,
             abs_radius,
