@@ -297,7 +297,7 @@ impl AppWindow {
         }
 
         // "dirty" Komponenten werden gesammelt
-        let dirty_components: Vec<_> = self.components.iter().filter(|component_entry| {
+        /*let dirty_components: Vec<_> = self.components.iter().filter(|component_entry| {
             component_entry.1.read().is_dirty() || self.is_dirty
         }).map(|(_, value)| value).collect();
 
@@ -305,7 +305,7 @@ impl AppWindow {
         // keine Änderungen in Komponenten oder Fenster
         if dirty_components.is_empty() && !self.is_dirty {
             return;
-        }
+        }*/
 
         let is_focused = self.id == focused_window_id;
 
@@ -317,18 +317,21 @@ impl AppWindow {
             } else {
                 Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
             }
+
+            self.root_container.mark_dirty();
         }
 
         // es muss nicht teil bereinigt werden, falls das Fenster dirty ist da dies durch Splitting der Fall sein kann und so  in anderen Fenstern entstehen könnten
-        if !self.is_dirty {  
+        /*if !self.is_dirty {  
             // bereinige zuvor gezeichnete Bereiche, der neu zu zeichnenden Komponenten
             for dirty_component in &dirty_components {
                 Drawer::partial_clear_screen(dirty_component.read().get_drawn_rect_data());
             }
-        }
+        }*/
 
         // Zeichne die aktualisierten Komponenten
-        for dirty_component in &dirty_components {
+        /*for dirty_component in &dirty_components {
+            // TODO: Isn't this useless?
             if self.is_dirty {
                 dirty_component.write().mark_dirty();
             }
@@ -341,7 +344,9 @@ impl AppWindow {
             };
 
             dirty_component.write().draw(is_focused);
-        }
+        }*/
+
+        self.root_container.draw(false);
 
         self.is_dirty = false;
     }
