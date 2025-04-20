@@ -92,7 +92,7 @@ impl WorkspaceSelectionLabelsWindow {
         for label in self.labels.iter_mut() {
             let focused = label.tied_workspace == current_workspace;
             label.mark_dirty();
-            label.draw(focused);
+            label.draw(if focused { label.id } else { None });
         }
 
         self.is_dirty = false;

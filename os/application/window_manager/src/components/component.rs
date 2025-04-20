@@ -192,7 +192,7 @@ as if the window was occupying the full screen
 // pub trait Component: ComponentBehaviour + Observable {}
 
 pub trait Component: Casts + {
-    fn draw(&mut self, is_focused: bool);
+    fn draw(&mut self, focus_id: Option<usize>);
 
     /// Defines how rescaling the component-geometry works after the containing window has been resized
     fn rescale_after_split(&mut self, old_rect_data: RectData, new_rect_data: RectData);

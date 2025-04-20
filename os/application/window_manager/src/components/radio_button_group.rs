@@ -83,9 +83,11 @@ impl RadioButtonGroup {
 }
 
 impl Component for RadioButtonGroup {
-    fn draw(&mut self, is_focused: bool) {
+    fn draw(&mut self, focus_id: Option<usize>) {
+        let is_focused = focus_id == self.id;
+
         for (i, button) in self.buttons.iter().enumerate() {
-            button.write().draw(is_focused && i == self.focused_button_index);
+            button.write().draw(if is_focused && i == self.focused_button_index { focus_id } else { None });
         }
     }
 

@@ -93,7 +93,7 @@ impl Button {
 }
 
 impl Component for Button {
-    fn draw(&mut self, is_focused: bool) {
+    fn draw(&mut self, focus_id: Option<usize>) {
         if !self.is_dirty {
             return;
         }
@@ -104,6 +104,7 @@ impl Component for Button {
         }
 
         let styling = &self.styling;
+        let is_focused = focus_id == self.id;
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color

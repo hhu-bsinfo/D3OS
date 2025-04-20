@@ -37,7 +37,7 @@ impl Container for BasicContainer {
 }
 
 impl Component for BasicContainer {
-    fn draw(&mut self, _: bool) {
+    fn draw(&mut self, focus_id: Option<usize>) {
         let dirty_components = self
             .childs
             .iter()
@@ -56,7 +56,7 @@ impl Component for BasicContainer {
 
         // Draw dirty child components
         for child in dirty_components {
-            child.write().draw(false);
+            child.write().draw(focus_id);
         }
     }
 

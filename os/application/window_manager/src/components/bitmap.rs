@@ -47,7 +47,7 @@ impl BitmapGraphic {
 }
 
 impl Component for BitmapGraphic {
-    fn draw(&mut self, is_focused: bool) {   
+    fn draw(&mut self, focus_id: Option<usize>) {   
         if !self.is_dirty {
             return;
         }
@@ -58,6 +58,7 @@ impl Component for BitmapGraphic {
         }
 
         let styling = &self.styling;
+        let is_focused = focus_id == self.id;
 
         let bg_color = if is_focused {
             styling.focused_background_color

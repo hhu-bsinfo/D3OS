@@ -346,7 +346,7 @@ impl AppWindow {
             dirty_component.write().draw(is_focused);
         }*/
 
-        self.root_container.draw(false);
+        self.root_container.draw(self.focused_component_id);
 
         self.is_dirty = false;
     }
