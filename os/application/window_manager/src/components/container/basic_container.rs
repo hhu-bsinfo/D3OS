@@ -1,9 +1,11 @@
-use alloc::vec::Vec;
-use drawer::{drawer::Drawer, rect_data::RectData};
+use alloc::{format, vec::Vec};
+use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
+use graphic::color::Color;
 
 use crate::{
     components::component::{Casts, Component},
     signal::ComponentRef,
+    utils::scale_rect_to_window,
 };
 
 use super::Container;
@@ -14,18 +16,20 @@ pub struct BasicContainer {
 
     rel_rect_data: RectData,
     abs_rect_data: RectData,
-    //is_dirty: bool,
+
+    is_dirty: bool,
 }
 
 impl BasicContainer {
-    pub fn new(rel_rect_data: RectData) -> Self {
+    pub fn new(rel_rect_data: RectData, abs_rect_data: RectData) -> Self {
         Self {
             id: None,
             childs: Vec::new(),
 
             rel_rect_data,
-            abs_rect_data: rel_rect_data,
-            //is_dirty: true,
+            abs_rect_data,
+
+            is_dirty: true,
         }
     }
 }
@@ -44,6 +48,21 @@ impl Component for BasicContainer {
             .filter(|child| child.read().is_dirty())
             .collect::<Vec<_>>();
 
+        // DEBUG
+        if self.is_dirty {
+            Drawer::draw_rectangle(
+                self.abs_rect_data,
+                Color {
+                    red: 255,
+                    green: 0,
+                    blue: 0,
+                    alpha: 255,
+                },
+            );
+
+            self.is_dirty = false;
+        }
+
         if dirty_components.is_empty() {
             return;
         }
@@ -60,12 +79,52 @@ impl Component for BasicContainer {
         }
     }
 
-    fn rescale_after_split(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
-        todo!()
+    fn rescale_after_split(&mut self, old_window_rect: RectData, new_window_rect: RectData) {
+        // TODO: This should project new_window_rect to abs_rect_data???
+        let old_abs_rect_data = self.abs_rect_data;
+
+        self.abs_rect_data = scale_rect_to_window(
+            self.rel_rect_data,
+            new_window_rect,
+            (10, 10),
+            (1000, 1000),
+            false,
+            1.0,
+        );
+
+        terminal::write::log_debug(&format!(
+            "Rescale after split ({}): abs_rect = {:?} -> {:?}, new_window_rect = {:?}",
+            self.id.unwrap_or(0),
+            old_abs_rect_data,
+            self.abs_rect_data,
+            new_window_rect
+        ));
+
+        self.mark_dirty();
     }
 
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        todo!()
+    fn rescale_after_move(&mut self, new_window_rect: RectData) {
+        // TODO: This should project new_window_rect to abs_rect_data???
+        let old_abs_rect_data = self.abs_rect_data;
+
+        self.abs_rect_data = scale_rect_to_window(
+            self.rel_rect_data,
+            new_window_rect,
+            (10, 10),
+            (1000, 1000),
+            false,
+            1.0,
+        );
+
+        terminal::write::log_debug(&format!(
+            "Rescale after move ({}): abs_rect = {:?} -> {:?}, new_window_rect = {:?}",
+            self.id.unwrap_or(0),
+            old_abs_rect_data,
+            self.abs_rect_data,
+            new_window_rect
+        ));
+
+        self.mark_dirty();
     }
 
     fn get_abs_rect_data(&self) -> RectData {
@@ -78,7 +137,7 @@ impl Component for BasicContainer {
 
     /// Returns whether any child is dirty
     fn is_dirty(&self) -> bool {
-        self.childs.iter().any(|child| child.read().is_dirty())
+        self.is_dirty || self.childs.iter().any(|child| child.read().is_dirty())
     }
 
     fn set_id(&mut self, id: usize) {
@@ -94,6 +153,8 @@ impl Component for BasicContainer {
         self.childs
             .iter()
             .for_each(|child| child.write().mark_dirty());
+
+        self.is_dirty = true;
     }
 }
 

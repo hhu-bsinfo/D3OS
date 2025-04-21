@@ -5,7 +5,7 @@ use hashbrown::HashMap;
 use spin::RwLock;
 
 use crate::{
-    components::{component::Component, container::{basic_container::BasicContainer, Container}}, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, signal::ComponentRef, utils::get_element_cursor_from_orderer, Interaction, WindowManager
+    components::{component::Component, container::{basic_container::BasicContainer, Container}}, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, signal::ComponentRef, utils::get_element_cursor_from_orderer, Interaction, WindowManager, SCREEN
 };
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
@@ -28,10 +28,18 @@ pub struct AppWindow {
 
 impl AppWindow {
     pub fn new(id: usize, rect_data: RectData) -> Self {
+        // TODO: This is a bit hacky
+        let screen_size = SCREEN.get().unwrap();
+        let screen_rect = RectData {
+            top_left: Vertex { x: 0, y: 0 },
+            width: screen_size.0,
+            height: screen_size.1,
+        };
+
         Self {
             id,
             is_dirty: true,
-            root_container: BasicContainer::new(rect_data),
+            root_container: BasicContainer::new(screen_rect, rect_data),
             components: HashMap::new(),
             component_orderer: LinkedList::new(),
             rect_data,
@@ -225,6 +233,8 @@ impl AppWindow {
     }
 
     pub fn rescale_window_in_place(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
+        self.root_container.rescale_after_split(old_rect_data, new_rect_data);
+        
         let components = self.components.values();
         for component in components {
             component.write().mark_dirty();
@@ -236,6 +246,8 @@ impl AppWindow {
 
     pub fn rescale_window_after_move(&mut self, new_rect_data: RectData) {
         self.rect_data = new_rect_data;
+
+        self.root_container.rescale_after_move(new_rect_data);
 
         for component in self.components.values_mut() {
             component.write().rescale_after_move(new_rect_data);
