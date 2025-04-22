@@ -90,9 +90,11 @@ impl WorkspaceSelectionLabelsWindow {
         Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
 
         for label in self.labels.iter_mut() {
-            let focused = label.tied_workspace == current_workspace;
             label.mark_dirty();
-            label.draw(if focused { label.id } else { None });
+
+            // Hacky way to focus the current workspace, but it'll do for now...
+            label.id = Some(label.tied_workspace);
+            label.draw(Some(current_workspace));
         }
 
         self.is_dirty = false;

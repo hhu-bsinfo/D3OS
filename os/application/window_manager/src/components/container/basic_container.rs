@@ -119,14 +119,14 @@ impl Component for BasicContainer {
     }
 
     fn get_abs_rect_data(&self) -> RectData {
-        todo!()
+        self.abs_rect_data
     }
 
     fn get_drawn_rect_data(&self) -> RectData {
-        todo!()
+        self.drawn_rect_data
     }
 
-    /// Returns whether any child is dirty
+    /// Returns whether the container or any child is dirty
     fn is_dirty(&self) -> bool {
         self.is_dirty || self.childs.iter().any(|child| child.read().is_dirty())
     }
@@ -139,7 +139,7 @@ impl Component for BasicContainer {
         self.id
     }
 
-    /// Marks all child components as dirty
+    /// Marks the container and all child components as dirty
     fn mark_dirty(&mut self) {
         self.childs
             .iter()
