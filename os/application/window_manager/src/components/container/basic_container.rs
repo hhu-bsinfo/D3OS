@@ -16,6 +16,7 @@ pub struct BasicContainer {
 
     rel_rect_data: RectData,
     abs_rect_data: RectData,
+    drawn_rect_data: RectData,
 
     is_dirty: bool,
 }
@@ -28,6 +29,7 @@ impl BasicContainer {
 
             rel_rect_data,
             abs_rect_data,
+            drawn_rect_data: abs_rect_data.clone(),
 
             is_dirty: true,
         }
@@ -48,7 +50,7 @@ impl Component for BasicContainer {
             .filter(|child| child.read().is_dirty())
             .collect::<Vec<_>>();
 
-        // DEBUG
+        // Draw the border (DEBUG)
         if self.is_dirty {
             Drawer::draw_rectangle(
                 self.abs_rect_data,
@@ -56,27 +58,31 @@ impl Component for BasicContainer {
                     red: 255,
                     green: 0,
                     blue: 0,
-                    alpha: 255,
+                    alpha: 100,
                 },
             );
-
-            self.is_dirty = false;
+    
+            self.drawn_rect_data = self.abs_rect_data.clone();
         }
 
-        if dirty_components.is_empty() {
+        if dirty_components.is_empty() && !self.is_dirty {
             return;
         }
 
-        // Clear the area of dirty components
-        for child in &dirty_components {
-            let rect_data = child.read().get_drawn_rect_data();
-            Drawer::partial_clear_screen(rect_data);
+        // Clear the area of dirty components (not needed, if the whole container is dirty)
+        if !self.is_dirty {
+            for child in &dirty_components {
+                let rect_data = child.read().get_drawn_rect_data();
+                Drawer::partial_clear_screen(rect_data);
+            }
         }
 
         // Draw dirty child components
         for child in dirty_components {
             child.write().draw(focus_id);
         }
+
+        self.is_dirty = false;
     }
 
     fn rescale_after_split(&mut self, old_window_rect: RectData, new_window_rect: RectData) {
@@ -100,7 +106,7 @@ impl Component for BasicContainer {
             new_window_rect
         ));
 
-        self.mark_dirty();
+        //self.mark_dirty();
     }
 
     fn rescale_after_move(&mut self, new_window_rect: RectData) {
@@ -124,7 +130,12 @@ impl Component for BasicContainer {
             new_window_rect
         ));
 
-        self.mark_dirty();
+        // Rescale all child components
+        for child in &self.childs {
+            child.write().rescale_after_move(new_window_rect);
+        }
+
+        //self.mark_dirty();
     }
 
     fn get_abs_rect_data(&self) -> RectData {
@@ -153,7 +164,7 @@ impl Component for BasicContainer {
         self.childs
             .iter()
             .for_each(|child| child.write().mark_dirty());
-
+        
         self.is_dirty = true;
     }
 }

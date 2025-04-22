@@ -249,9 +249,9 @@ impl AppWindow {
 
         self.root_container.rescale_after_move(new_rect_data);
 
-        for component in self.components.values_mut() {
+        /*for component in self.components.values_mut() {
             component.write().rescale_after_move(new_rect_data);
-        }
+        }*/
     }
 
     pub fn merge(&mut self, other_window: &mut AppWindow) {
@@ -343,7 +343,7 @@ impl AppWindow {
 
         // Zeichne die aktualisierten Komponenten
         /*for dirty_component in &dirty_components {
-            // TODO: Isn't this useless?
+            // This will mark non-dirty components as dirty, when window is dirty
             if self.is_dirty {
                 dirty_component.write().mark_dirty();
             }
