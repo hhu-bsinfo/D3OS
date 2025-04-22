@@ -9,7 +9,7 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{bitmap_app::BitmapApp, calculator::Calculator, clock::Clock, counter::Counter, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
+    apps::{bitmap_app::BitmapApp, calculator::Calculator, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::basic_container::BasicContainer, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -79,6 +79,10 @@ pub enum Command<'a> {
         // options: Vec<String>,
         selected_option: usize,
         on_change: Option<Box<dyn Fn(usize) -> ()>>,
+        styling: Option<ComponentStyling>,
+    },
+    CreateContainer {
+        log_rect_data: RectData,
         styling: Option<ComponentStyling>,
     }
 }
@@ -207,186 +211,302 @@ impl Api {
 
         let component= match command {
             Command::CreateButton {
-                log_rect_data,
-                label,
-                on_click,
-                styling,
-            } => {
-                self.validate_log_pos(&log_rect_data.top_left)?;
+                        log_rect_data,
+                        label,
+                        on_click,
+                        styling,
+                    } => {
+                        self.validate_log_pos(&log_rect_data.top_left)?;
 
-                let (text, font_size_option) = label.unzip();
-                let font_size = font_size_option.unwrap_or(1);
+                        let (text, font_size_option) = label.unzip();
+                        let font_size = font_size_option.unwrap_or(1);
 
-                let font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
+                        let font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
 
-                let min_dim = match &text {
-                    Some(label) => Some((
-                        label.get().len() as u32 * DEFAULT_CHAR_WIDTH * font_scale.0,
-                        DEFAULT_CHAR_HEIGHT * font_scale.1,
-                    )),
-                    None => None,
-                };
+                        let min_dim = match &text {
+                            Some(label) => Some((
+                                label.get().len() as u32 * DEFAULT_CHAR_WIDTH * font_scale.0,
+                                DEFAULT_CHAR_HEIGHT * font_scale.1,
+                            )),
+                            None => None,
+                        };
 
-                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(
-                    rel_rect_data,
-                    handle_data,
-                    styling.unwrap_or_default().maintain_aspect_ratio,
-                    min_dim.unwrap()
-                );
+                        let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
+                        let abs_rect_data = self.scale_rect_to_window(
+                            rel_rect_data,
+                            handle_data,
+                            styling.unwrap_or_default().maintain_aspect_ratio,
+                            min_dim.unwrap()
+                        );
         
-                let button = Button::new(
-                    abs_rect_data,
-                    rel_rect_data,
-                    log_rect_data.clone(),
-                    text,
-                    font_size,
-                    font_scale,
-                    on_click,
-                    styling,
-                );
+                        let button = Button::new(
+                            abs_rect_data,
+                            rel_rect_data,
+                            log_rect_data.clone(),
+                            text,
+                            font_size,
+                            font_scale,
+                            on_click,
+                            styling,
+                        );
 
-                let dispatch_data = NewCompData {
-                    window_data,
-                    component: Rc::clone(&button),
-                };
+                        let dispatch_data = NewCompData {
+                            window_data,
+                            component: Rc::clone(&button),
+                        };
 
-                self.add_component(dispatch_data);
+                        self.add_component(dispatch_data);
 
-                button
-            }
+                        button
+                    }
             Command::CreateLabel {
-                log_pos,
-                text,
-                on_loop_iter,
-                font_size,
-                styling,
-            } => {
-                self.validate_log_pos(&log_pos)?;
-                let rel_pos = self.scale_vertex_to_rel(&log_pos);
+                        log_pos,
+                        text,
+                        on_loop_iter,
+                        font_size,
+                        styling,
+                    } => {
+                        self.validate_log_pos(&log_pos)?;
+                        let rel_pos = self.scale_vertex_to_rel(&log_pos);
 
-                let font_size = font_size.unwrap_or(1);
-                let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
+                        let font_size = font_size.unwrap_or(1);
+                        let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
 
-                let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
+                        let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
 
-                let component = Label::new(
-                    scaled_pos,
-                    rel_pos,
-                    font_size,
-                    text,
-                    scaled_font_scale,
-                    styling,
-                );
+                        let component = Label::new(
+                            scaled_pos,
+                            rel_pos,
+                            font_size,
+                            text,
+                            scaled_font_scale,
+                            styling,
+                        );
                
-                let dispatch_data = NewCompData {
-                    window_data,
-                    component: Rc::clone(&component),
-                };
+                        let dispatch_data = NewCompData {
+                            window_data,
+                            component: Rc::clone(&component),
+                        };
 
-                self.add_component(dispatch_data);
+                        self.add_component(dispatch_data);
 
-                if let Some(fun) = on_loop_iter {
-                    let data = NewLoopIterFnData { window_data, fun };
-                    self.add_on_loop_iter_fn(data);
-                }
+                        if let Some(fun) = on_loop_iter {
+                            let data = NewLoopIterFnData { window_data, fun };
+                            self.add_on_loop_iter_fn(data);
+                        }
 
-                component
-            }
+                        component
+                    }
             Command::CreateInputField {
-                log_rect_data,
-                // log_pos,
-                width_in_chars,
-                font_size,
-                starting_text,
-                on_change,
-                styling,
-            } => {
-                self.validate_log_pos(&log_rect_data.top_left)?;
+                        log_rect_data,
+                        // log_pos,
+                        width_in_chars,
+                        font_size,
+                        starting_text,
+                        on_change,
+                        styling,
+                    } => {
+                        self.validate_log_pos(&log_rect_data.top_left)?;
 
-                let font_size = font_size.unwrap_or(1);
-                let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
+                        let font_size = font_size.unwrap_or(1);
+                        let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
 
-                let min_dim = (
-                    DEFAULT_CHAR_WIDTH * width_in_chars as u32 * scaled_font_scale.0 + PADDING_BORDERS_AND_CHARS,
-                    DEFAULT_CHAR_HEIGHT * scaled_font_scale.1 + PADDING_BORDERS_AND_CHARS,
-                );
+                        let min_dim = (
+                            DEFAULT_CHAR_WIDTH * width_in_chars as u32 * scaled_font_scale.0 + PADDING_BORDERS_AND_CHARS,
+                            DEFAULT_CHAR_HEIGHT * scaled_font_scale.1 + PADDING_BORDERS_AND_CHARS,
+                        );
 
-                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(
-                    rel_rect_data,
-                    handle_data,
-                    styling.unwrap_or_default().maintain_aspect_ratio,
-                    min_dim
-                );
+                        let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
+                        let abs_rect_data = self.scale_rect_to_window(
+                            rel_rect_data,
+                            handle_data,
+                            styling.unwrap_or_default().maintain_aspect_ratio,
+                            min_dim
+                        );
 
-                let component = InputField::new(
-                    abs_rect_data,
-                    rel_rect_data,
-                    font_size,
-                    scaled_font_scale,
-                    width_in_chars,
-                    starting_text,
-                    on_change,
-                    styling,
-                );
+                        let component = InputField::new(
+                            abs_rect_data,
+                            rel_rect_data,
+                            font_size,
+                            scaled_font_scale,
+                            width_in_chars,
+                            starting_text,
+                            on_change,
+                            styling,
+                        );
 
-                let dispatch_data = NewCompData {
-                    window_data,
-                    component: Rc::clone(&component),
-                };
+                        let dispatch_data = NewCompData {
+                            window_data,
+                            component: Rc::clone(&component),
+                        };
 
-                self.add_component(dispatch_data);
+                        self.add_component(dispatch_data);
 
-                component
-            },
+                        component
+                    },
             Command::CreateCheckbox {
-                log_rect_data,
-                state,
-                on_change,
-                styling,
-            } => {
-                self.validate_log_pos(&log_rect_data.top_left)?;
+                        log_rect_data,
+                        state,
+                        on_change,
+                        styling,
+                    } => {
+                        self.validate_log_pos(&log_rect_data.top_left)?;
 
-                let min_dim = Some((
-                    DEFAULT_CHAR_HEIGHT,
-                    DEFAULT_CHAR_HEIGHT,
-                ));
+                        let min_dim = Some((
+                            DEFAULT_CHAR_HEIGHT,
+                            DEFAULT_CHAR_HEIGHT,
+                        ));
 
-                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(
-                    rel_rect_data,
-                    handle_data,
-                    styling.unwrap_or_default().maintain_aspect_ratio,
-                    min_dim.unwrap()
-                );
+                        let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
+                        let abs_rect_data = self.scale_rect_to_window(
+                            rel_rect_data,
+                            handle_data,
+                            styling.unwrap_or_default().maintain_aspect_ratio,
+                            min_dim.unwrap()
+                        );
 
-                let checkbox = Checkbox::new(
-                    abs_rect_data,
-                    rel_rect_data,
-                    log_rect_data.clone(),
-                    state,
-                    on_change,
-                    styling,
-                );
+                        let checkbox = Checkbox::new(
+                            abs_rect_data,
+                            rel_rect_data,
+                            log_rect_data.clone(),
+                            state,
+                            on_change,
+                            styling,
+                        );
 
-                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(checkbox)));
+                        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(checkbox)));
 
-                let dispatch_data = NewCompData {
-                    window_data,
-                    component: Rc::clone(&component),
-                };
+                        let dispatch_data = NewCompData {
+                            window_data,
+                            component: Rc::clone(&component),
+                        };
 
-                self.add_component(dispatch_data);
+                        self.add_component(dispatch_data);
 
-                component
-            },
+                        component
+                    },
             Command::CreateBitmapGraphic { 
-                log_rect_data,
-                bitmap,
-                scaling_mode,
-                styling,
-            } => {
+                        log_rect_data,
+                        bitmap,
+                        scaling_mode,
+                        styling,
+                    } => {
+                        self.validate_log_pos(&log_rect_data.top_left)?;
+
+                        let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
+                        let abs_rect_data = self.scale_rect_to_window(
+                            rel_rect_data,
+                            handle_data,
+                            styling.unwrap_or_default().maintain_aspect_ratio,
+                            (10, 10)
+                        );
+
+                        let bitmap_graphic = BitmapGraphic::new(
+                            rel_rect_data,
+                            abs_rect_data,
+                            log_rect_data.clone(),
+                            bitmap.clone(),
+                            scaling_mode,
+                            styling,
+                        );
+
+                        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(bitmap_graphic)));
+
+                        let dispatch_data = NewCompData {
+                            window_data,
+                            component: Rc::clone(&component),
+                        };
+
+                        self.add_component(dispatch_data);
+                        Rc::clone(&component)
+                    },
+            Command::CreateSlider {
+                        log_rect_data,
+                        on_change,
+                        value,
+                        min,
+                        max,
+                        steps,
+                        styling,
+                    } => {
+                        self.validate_log_pos(&log_rect_data.top_left)?;
+
+                        let min_dim = Some((
+                            DEFAULT_CHAR_HEIGHT,
+                            DEFAULT_CHAR_HEIGHT,
+                        ));
+
+                        let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
+                        let abs_rect_data = self.scale_rect_to_window(
+                            rel_rect_data,
+                            handle_data,
+                            styling.unwrap_or_default().maintain_aspect_ratio,
+                            min_dim.unwrap()
+                        );
+
+                        let slider = Slider::new(
+                            abs_rect_data,
+                            rel_rect_data,
+                            log_rect_data.clone(),
+                            on_change,
+                            value,
+                            min,
+                            max,
+                            steps,
+                            styling,
+                        );
+
+                        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(slider)));
+
+                        let dispatch_data = NewCompData {
+                            window_data,
+                            component: Rc::clone(&component),
+                        };
+
+                        self.add_component(dispatch_data);
+                        Rc::clone(&component)
+                    },
+            Command::CreateRadioButtonGroup { 
+                        center,
+                        radius,
+                        spacing,
+                        num_buttons,
+                        selected_option,
+                        on_change,
+                        styling
+                    } => {
+                        self.validate_log_pos(&center)?;
+                        let rel_pos = self.scale_vertex_to_rel(&center);
+                        let rel_radius = self.scale_radius_to_rel(radius);
+
+                        let abs_radius = self.scale_radius_to_window(rel_radius, 7, handle_data);
+
+                        let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
+
+                        let radio_buttons = RadioButtonGroup::new(
+                            num_buttons,
+                            scaled_pos,
+                            rel_pos,
+                            abs_radius,
+                            rel_radius,
+                            spacing,
+                            Some(selected_option),
+                            on_change,
+                            styling,
+                        );
+
+                        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(radio_buttons)));
+
+                        let dispatch_data = NewCompData {
+                            window_data,
+                            component: Rc::clone(&component),
+                        };
+
+                        self.add_component(dispatch_data);
+
+                        component
+                    }
+            Command::CreateContainer { log_rect_data, styling } => {
                 self.validate_log_pos(&log_rect_data.top_left)?;
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
@@ -397,16 +517,9 @@ impl Api {
                     (10, 10)
                 );
 
-                let bitmap_graphic = BitmapGraphic::new(
-                    rel_rect_data,
-                    abs_rect_data,
-                    log_rect_data.clone(),
-                    bitmap.clone(),
-                    scaling_mode,
-                    styling,
-                );
+                let container = BasicContainer::new(rel_rect_data, abs_rect_data);
 
-                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(bitmap_graphic)));
+                let component: ComponentRef = Rc::new(RwLock::new(Box::new(container)));
 
                 let dispatch_data = NewCompData {
                     window_data,
@@ -414,94 +527,9 @@ impl Api {
                 };
 
                 self.add_component(dispatch_data);
-                Rc::clone(&component)
-            },
-            Command::CreateSlider {
-                log_rect_data,
-                on_change,
-                value,
-                min,
-                max,
-                steps,
-                styling,
-            } => {
-                self.validate_log_pos(&log_rect_data.top_left)?;
-
-                let min_dim = Some((
-                    DEFAULT_CHAR_HEIGHT,
-                    DEFAULT_CHAR_HEIGHT,
-                ));
-
-                let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(
-                    rel_rect_data,
-                    handle_data,
-                    styling.unwrap_or_default().maintain_aspect_ratio,
-                    min_dim.unwrap()
-                );
-
-                let slider = Slider::new(
-                    abs_rect_data,
-                    rel_rect_data,
-                    log_rect_data.clone(),
-                    on_change,
-                    value,
-                    min,
-                    max,
-                    steps,
-                    styling,
-                );
-
-                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(slider)));
-
-                let dispatch_data = NewCompData {
-                    window_data,
-                    component: Rc::clone(&component),
-                };
-
-                self.add_component(dispatch_data);
-                Rc::clone(&component)
-            },
-            Command::CreateRadioButtonGroup { 
-                center,
-                radius,
-                spacing,
-                num_buttons,
-                selected_option,
-                on_change,
-                styling
-            } => {
-                self.validate_log_pos(&center)?;
-                let rel_pos = self.scale_vertex_to_rel(&center);
-                let rel_radius = self.scale_radius_to_rel(radius);
-
-                let abs_radius = self.scale_radius_to_window(rel_radius, 7, handle_data);
-
-                let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
-
-                let radio_buttons = RadioButtonGroup::new(
-                    num_buttons,
-                    scaled_pos,
-                    rel_pos,
-                    abs_radius,
-                    rel_radius,
-                    spacing,
-                    Some(selected_option),
-                    on_change,
-                    styling,
-                );
-
-                let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(radio_buttons)));
-
-                let dispatch_data = NewCompData {
-                    window_data,
-                    component: Rc::clone(&component),
-                };
-
-                self.add_component(dispatch_data);
-
+                
                 component
-            }
+            },
         };
 
         Ok(component)
@@ -530,6 +558,7 @@ impl Api {
             "bitmap" => Some(BitmapApp::run),
             "calculator" => Some(Calculator::run),
             "radio" => Some(RadioButtonApp::run),
+            "layout" => Some(LayoutApp::run),
             _ => None,
         }
     }
