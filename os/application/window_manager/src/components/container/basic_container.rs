@@ -66,7 +66,7 @@ impl Component for BasicContainer {
                     alpha: 100,
                 },
             );
-    
+
             self.drawn_rect_data = self.abs_rect_data.clone();
         } else {
             // Clear the area of dirty child components
@@ -85,9 +85,6 @@ impl Component for BasicContainer {
     }
 
     fn rescale_after_split(&mut self, old_window_rect: RectData, new_window_rect: RectData) {
-        // TODO: This should project new_window_rect to abs_rect_data???
-        let old_abs_rect_data = self.abs_rect_data;
-
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_window_rect,
@@ -97,21 +94,15 @@ impl Component for BasicContainer {
             1.0,
         );
 
-        terminal::write::log_debug(&format!(
-            "Rescale after split ({}): abs_rect = {:?} -> {:?}, new_window_rect = {:?}",
-            self.id.unwrap_or(0),
-            old_abs_rect_data,
-            self.abs_rect_data,
-            new_window_rect
-        ));
-
-        //self.mark_dirty();
+        // Rescale all child components
+        for child in &self.childs {
+            child
+                .write()
+                .rescale_after_split(old_window_rect, new_window_rect);
+        }
     }
 
     fn rescale_after_move(&mut self, new_window_rect: RectData) {
-        // TODO: This should project new_window_rect to abs_rect_data???
-        let old_abs_rect_data = self.abs_rect_data;
-
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_window_rect,
@@ -120,21 +111,11 @@ impl Component for BasicContainer {
             false,
             1.0,
         );
-
-        terminal::write::log_debug(&format!(
-            "Rescale after move ({}): abs_rect = {:?} -> {:?}, new_window_rect = {:?}",
-            self.id.unwrap_or(0),
-            old_abs_rect_data,
-            self.abs_rect_data,
-            new_window_rect
-        ));
 
         // Rescale all child components
         for child in &self.childs {
             child.write().rescale_after_move(new_window_rect);
         }
-
-        //self.mark_dirty();
     }
 
     fn get_abs_rect_data(&self) -> RectData {
@@ -163,7 +144,7 @@ impl Component for BasicContainer {
         self.childs
             .iter()
             .for_each(|child| child.write().mark_dirty());
-        
+
         self.is_dirty = true;
     }
 }

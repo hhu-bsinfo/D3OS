@@ -235,11 +235,11 @@ impl AppWindow {
     pub fn rescale_window_in_place(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
         self.root_container.rescale_after_split(old_rect_data, new_rect_data);
         
-        let components = self.components.values();
+        /*let components = self.components.values();
         for component in components {
             component.write().mark_dirty();
             component.write().rescale_after_split(old_rect_data, new_rect_data);
-        }
+        }*/
 
         self.mark_window_dirty();
     }
