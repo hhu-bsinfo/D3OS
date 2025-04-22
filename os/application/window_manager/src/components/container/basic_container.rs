@@ -50,8 +50,13 @@ impl Component for BasicContainer {
             .filter(|child| child.read().is_dirty())
             .collect::<Vec<_>>();
 
-        // Draw the border (DEBUG)
+        // Bail out if there's nothing to do
+        if dirty_components.is_empty() && !self.is_dirty {
+            return;
+        }
+
         if self.is_dirty {
+            // Redraw the container, as it has been cleared by now
             Drawer::draw_rectangle(
                 self.abs_rect_data,
                 Color {
@@ -63,14 +68,8 @@ impl Component for BasicContainer {
             );
     
             self.drawn_rect_data = self.abs_rect_data.clone();
-        }
-
-        if dirty_components.is_empty() && !self.is_dirty {
-            return;
-        }
-
-        // Clear the area of dirty components (not needed, if the whole container is dirty)
-        if !self.is_dirty {
+        } else {
+            // Clear the area of dirty child components
             for child in &dirty_components {
                 let rect_data = child.read().get_drawn_rect_data();
                 Drawer::partial_clear_screen(rect_data);
