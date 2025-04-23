@@ -323,6 +323,7 @@ impl WindowManager {
                     workspace_index,
                     window_id,
                 },
+            parent,
             component,
         }) = self.receivers.rx_components.try_dequeue()
         {
@@ -333,7 +334,7 @@ impl WindowManager {
             let curr_ws = &mut self.workspaces[workspace_index];
             let window = &mut curr_ws.windows.get_mut(&window_id);
             if let Some(window) = window {
-                window.insert_component(component);
+                window.insert_component(component, parent);
             }
         }
     }

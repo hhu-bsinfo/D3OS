@@ -5,7 +5,7 @@ use hashbrown::HashMap;
 use spin::RwLock;
 
 use crate::{
-    components::{component::Component, container::{basic_container::BasicContainer, Container}}, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, signal::ComponentRef, utils::get_element_cursor_from_orderer, Interaction, WindowManager, SCREEN
+    components::{component::{Casts, Component}, container::{basic_container::BasicContainer, Container}}, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, signal::ComponentRef, utils::get_element_cursor_from_orderer, Interaction, WindowManager, SCREEN
 };
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
@@ -18,7 +18,7 @@ pub struct AppWindow {
     /// Indicates whether redrawing of this window is required in next loop-iteration
     pub is_dirty: bool,
 
-    root_container: BasicContainer,
+    root_container: Box<BasicContainer>,
 
     components: HashMap<usize, Rc<RwLock<Box<dyn Component>>>>,
     /// focusable components are stored additionally in ordered fashion in here
@@ -39,7 +39,7 @@ impl AppWindow {
         Self {
             id,
             is_dirty: true,
-            root_container: BasicContainer::new(screen_rect, rect_data),
+            root_container: Box::new(BasicContainer::new(screen_rect, rect_data)),
             components: HashMap::new(),
             component_orderer: LinkedList::new(),
             rect_data,
@@ -56,18 +56,27 @@ impl AppWindow {
         self.is_dirty = true;
     }
 
-    pub fn insert_component(&mut self, new_component: ComponentRef) {
+    pub fn insert_component(&mut self, new_component: ComponentRef, parent: Option<ComponentRef>) {
         let id = WindowManager::generate_id();
+        new_component.write().set_id(id);
 
         // Add focusable components to the orderer
         if new_component.read().as_focusable().is_some() {
             self.component_orderer.push_back(id);
         }
 
-        // Add the component to the root container
-        self.root_container.add_child(new_component.clone());
-        
-        new_component.write().set_id(id);
+        // Add the component to the parent or root container
+        match parent {
+            Some(parent) => {
+                parent.write().as_container_mut().expect("parent must be a container").add_child(new_component.clone());
+            },
+
+            None => {
+                self.root_container.add_child(new_component.clone());
+            }
+        }
+
+        //self.root_container.add_child(new_component.clone());
         self.components.insert(id, new_component);
     }
 

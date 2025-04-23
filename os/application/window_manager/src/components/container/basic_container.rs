@@ -149,4 +149,12 @@ impl Component for BasicContainer {
     }
 }
 
-impl Casts for BasicContainer {}
+impl Casts for BasicContainer {
+    fn as_container(&self) -> Option<&dyn Container> {
+        Some(self)
+    }
+
+    fn as_container_mut(&mut self) -> Option<&mut dyn Container> {
+        Some(self)
+    }
+}

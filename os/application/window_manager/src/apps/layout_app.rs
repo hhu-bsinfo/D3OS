@@ -16,9 +16,24 @@ impl Runnable for LayoutApp {
         let window_handle = concurrent::thread::current().unwrap().id();
         let api = WindowManager::get_api();
 
+        // Container
+        let container_1 = api.execute(
+            window_handle,
+            None,
+            Command::CreateContainer {
+                log_rect_data: RectData {
+                    top_left: Vertex { x: 50, y: 50 },
+                    width: 300,
+                    height: 200,
+                },
+                styling: None,
+            },
+        ).expect("failed to create container");
+
         fn create_button(
             api: &Api,
             window_handle: usize,
+            parent: ComponentRef,
             x: u32,
             y: u32,
             width: u32,
@@ -27,6 +42,7 @@ impl Runnable for LayoutApp {
         ) -> Option<ComponentRef> {
             api.execute(
                 window_handle,
+                Some(parent),
                 Command::CreateButton {
                     log_rect_data: RectData {
                         top_left: Vertex { x, y },
@@ -44,22 +60,9 @@ impl Runnable for LayoutApp {
         }
 
         // Buttons
-        let button_1 = create_button(&api, window_handle, 0, 0, 80, 50, "A");
-        let button_2 = create_button(&api, window_handle, 0, 0, 80, 50, "B");
-        let button_3 = create_button(&api, window_handle, 0, 0, 80, 50, "C");
-        let button_4 = create_button(&api, window_handle, 0, 0, 80, 50, "D");
-
-        // Container
-        let container_1 = api.execute(
-            window_handle,
-            Command::CreateContainer {
-                log_rect_data: RectData {
-                    top_left: Vertex { x: 50, y: 50 },
-                    width: 300,
-                    height: 200,
-                },
-                styling: None,
-            },
-        );
+        let button_1 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "A");
+        let button_2 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "B");
+        let button_3 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "C");
+        let button_4 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "D");
     }
 }

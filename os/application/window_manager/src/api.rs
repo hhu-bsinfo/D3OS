@@ -9,7 +9,7 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{bitmap_app::BitmapApp, calculator::Calculator, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::basic_container::BasicContainer, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
+    apps::{runnable::Runnable, /*bitmap_app::BitmapApp, calculator::Calculator, clock::Clock, counter::Counter,*/ layout_app::LayoutApp, /*radio_buttons::RadioButtonApp, slider_app::SliderApp, submit_label::SubmitLabel*/}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::basic_container::BasicContainer, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -17,7 +17,7 @@ use self::component::ComponentStyling;
 extern crate alloc;
 
 /// Default app to be used on startup of a new workspace
-pub static DEFAULT_APP: &str = "calculator";
+pub static DEFAULT_APP: &str = "layout";
 
 /// Logical screen resolution, used by apps for describing component locations
 pub const LOG_SCREEN: (u32, u32) = (1000, 750);
@@ -134,7 +134,8 @@ pub struct WindowData {
 
 pub struct NewCompData {
     pub window_data: WindowData,
-    pub component: Rc<RwLock<Box<dyn Component>>>,
+    pub parent: Option<ComponentRef>,
+    pub component: ComponentRef,
 }
 
 pub struct NewLoopIterFnData {
@@ -198,7 +199,7 @@ impl Api {
     }
 
     /// Logical positions need to be contrained by `x <= 1000 && y <= 750`
-    pub fn execute(&self, window_handle: usize, command: Command) -> Result<ComponentRef, &str> {
+    pub fn execute(&self, window_handle: usize, parent: Option<ComponentRef>, command: Command) -> Result<ComponentRef, &str> {
         let handle_data = self
             .handles
             .get(&window_handle)
@@ -252,6 +253,7 @@ impl Api {
 
                         let dispatch_data = NewCompData {
                             window_data,
+                            parent,
                             component: Rc::clone(&button),
                         };
 
@@ -285,6 +287,7 @@ impl Api {
                
                         let dispatch_data = NewCompData {
                             window_data,
+                            parent,
                             component: Rc::clone(&component),
                         };
 
@@ -337,6 +340,7 @@ impl Api {
 
                         let dispatch_data = NewCompData {
                             window_data,
+                            parent,
                             component: Rc::clone(&component),
                         };
 
@@ -378,6 +382,7 @@ impl Api {
 
                         let dispatch_data = NewCompData {
                             window_data,
+                            parent,
                             component: Rc::clone(&component),
                         };
 
@@ -414,6 +419,7 @@ impl Api {
 
                         let dispatch_data = NewCompData {
                             window_data,
+                            parent,
                             component: Rc::clone(&component),
                         };
 
@@ -460,6 +466,7 @@ impl Api {
 
                         let dispatch_data = NewCompData {
                             window_data,
+                            parent,
                             component: Rc::clone(&component),
                         };
 
@@ -499,6 +506,7 @@ impl Api {
 
                         let dispatch_data = NewCompData {
                             window_data,
+                            parent,
                             component: Rc::clone(&component),
                         };
 
@@ -523,6 +531,7 @@ impl Api {
 
                 let dispatch_data = NewCompData {
                     window_data,
+                    parent,
                     component: Rc::clone(&component),
                 };
 
@@ -551,13 +560,13 @@ impl Api {
 
     fn map_app_string_to_fn(&self, app_string: &str) -> Option<fn()> {
         match app_string {
-            "clock" => Some(Clock::run),
+            /*"clock" => Some(Clock::run),
             "submit_label" => Some(SubmitLabel::run),
             "counter" => Some(Counter::run),
             "slider" => Some(SliderApp::run),
             "bitmap" => Some(BitmapApp::run),
             "calculator" => Some(Calculator::run),
-            "radio" => Some(RadioButtonApp::run),
+            "radio" => Some(RadioButtonApp::run),*/
             "layout" => Some(LayoutApp::run),
             _ => None,
         }
