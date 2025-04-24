@@ -9,7 +9,7 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{runnable::Runnable, /*bitmap_app::BitmapApp, calculator::Calculator, clock::Clock, counter::Counter,*/ layout_app::LayoutApp, /*radio_buttons::RadioButtonApp, slider_app::SliderApp, submit_label::SubmitLabel*/}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::basic_container::BasicContainer, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
+    apps::{layout_app::LayoutApp, runnable::Runnable /*radio_buttons::RadioButtonApp, slider_app::SliderApp, submit_label::SubmitLabel*/}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -123,6 +123,8 @@ pub struct HandleData {
     window_id: usize,
     /// absolute position on the screen
     abs_pos: RectData,
+
+    /// ratio to the screen size (abs_size/screen_size)
     ratios: (f64, f64),
 }
 
@@ -210,6 +212,9 @@ impl Api {
             window_id: handle_data.window_id,
         };
 
+        // TODO: This is a hacky solution. Functions that currently accept a HandleDate as
+        // parameter should be refactored to accept only the needed data instead. But this
+        // will work for now...
         let fake_handle;
         if let Some(parent_component) = &parent {
             let screen = SCREEN.get().unwrap();
@@ -225,7 +230,12 @@ impl Api {
             };
 
             handle_data = &fake_handle;
-        } 
+        }
+
+        /*let container_rect = match &parent {
+            Some(parent_component) => parent_component.read().get_abs_rect_data(),
+            None => handle_data.abs_pos,
+        };*/
 
         let component= match command {
             Command::CreateButton {
@@ -247,15 +257,16 @@ impl Api {
                                 DEFAULT_CHAR_HEIGHT * font_scale.1,
                             )),
                             None => None,
-                        };
+                        }.unwrap();
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
                         let abs_rect_data = self.scale_rect_to_window(
                             rel_rect_data,
                             handle_data,
                             styling.unwrap_or_default().maintain_aspect_ratio,
-                            min_dim.unwrap()
+                            min_dim
                         );
+                        //let abs_rect_data = self.scale_rect_to_container(rel_rect_data, container_rect, min_dim);
         
                         let button = Button::new(
                             abs_rect_data,
@@ -542,7 +553,8 @@ impl Api {
                     (10, 10)
                 );
 
-                let container = BasicContainer::new(rel_rect_data, abs_rect_data);
+                // TODO: Receive the layout from the parameters
+                let container = BasicContainer::new(rel_rect_data, abs_rect_data, basic_container::Layout::Horizontal);
 
                 let component: ComponentRef = Rc::new(RwLock::new(Box::new(container)));
 
@@ -646,20 +658,20 @@ impl Api {
     }
 
     /// Scales a relative rect (container) to an absolute rect (screen)
-    fn scale_rect_to_container(&self, rect_data: RectData, container_rect: RectData) -> RectData {
+    fn scale_rect_to_container(&self, rel_rect: RectData, container_abs_rect: RectData, min_dim: (u32, u32)) -> RectData {
         let screen = SCREEN.get().unwrap();
 
         let fake_handle = HandleData {
             workspace_index: 0,
             window_id: 0,
-            abs_pos: container_rect,
+            abs_pos: container_abs_rect,
             ratios: (
-                f64::from(container_rect.width) / f64::from(screen.0),
-                f64::from(container_rect.height) / f64::from(screen.1),
+                f64::from(container_abs_rect.width) / f64::from(screen.0),
+                f64::from(container_abs_rect.height) / f64::from(screen.1),
             ),
         };
 
-        self.scale_rect_to_window(rect_data, &fake_handle, false, (0, 0))
+        self.scale_rect_to_window(rel_rect, &fake_handle, false, min_dim)
     }
 
     #[allow(unused_variables, unreachable_code)]

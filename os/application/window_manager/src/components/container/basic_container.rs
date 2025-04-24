@@ -10,34 +10,92 @@ use crate::{
 
 use super::Container;
 
+const CHILD_SPACING: u32 = 5;
+
+#[derive(PartialEq)]
+pub enum Layout {
+    None,
+    Horizontal,
+    Vertical,
+}
+
 pub struct BasicContainer {
     id: Option<usize>,
     childs: Vec<ComponentRef>,
+    layout: Layout,
 
     rel_rect_data: RectData,
     abs_rect_data: RectData,
     drawn_rect_data: RectData,
 
     is_dirty: bool,
+    cursor: Vertex,
 }
 
 impl BasicContainer {
-    pub fn new(rel_rect_data: RectData, abs_rect_data: RectData) -> Self {
+    pub fn new(rel_rect_data: RectData, abs_rect_data: RectData, layout: Layout) -> Self {
         Self {
             id: None,
             childs: Vec::new(),
+            layout,
 
             rel_rect_data,
             abs_rect_data,
             drawn_rect_data: abs_rect_data.clone(),
 
             is_dirty: true,
+            cursor: Vertex { x: 0, y: 0 },
+        }
+    }
+
+    fn apply_layout(&mut self) {
+        if self.layout == Layout::None {
+            return;
+        }
+
+        self.cursor = Vertex { x: 0, y: 0 };
+
+        for child in &self.childs {
+            // Update layout
+            child.write().rescale_after_move(RectData {
+                top_left: self.abs_rect_data.top_left + self.cursor,
+                width: self.abs_rect_data.width,
+                height: self.abs_rect_data.height,
+            });
+
+            // Update the cursor position
+            //self.cursor.x += abs_rect_data.width + 5;
+            let abs_rect_data = child.read().get_abs_rect_data();
+
+            if self.layout == Layout::Horizontal {
+                self.cursor.x += abs_rect_data.width + CHILD_SPACING;
+            } else if self.layout == Layout::Vertical {
+                self.cursor.y += abs_rect_data.height + CHILD_SPACING;
+            }
         }
     }
 }
 
 impl Container for BasicContainer {
     fn add_child(&mut self, child: ComponentRef) {
+        if self.layout != Layout::None {
+            // Update layout
+            child.write().rescale_after_move(RectData {
+                top_left: self.abs_rect_data.top_left + self.cursor,
+                width: self.abs_rect_data.width,
+                height: self.abs_rect_data.height,
+            });
+
+            // Update the cursor position
+            let abs_rect_data = child.read().get_abs_rect_data();
+
+            if self.layout == Layout::Horizontal {
+                self.cursor.x += abs_rect_data.width + CHILD_SPACING;
+            } else if self.layout == Layout::Vertical {
+                self.cursor.y += abs_rect_data.height + CHILD_SPACING;
+            }
+        }
+
         self.childs.push(child);
     }
 }
@@ -57,6 +115,7 @@ impl Component for BasicContainer {
 
         if self.is_dirty {
             // Redraw the container, as it has been cleared by now
+            // TODO: Allow custom styling for the border
             Drawer::draw_rectangle(
                 self.abs_rect_data,
                 Color {
@@ -72,6 +131,7 @@ impl Component for BasicContainer {
             // Clear the area of dirty child components
             for child in &dirty_components {
                 // We don't want to redraw entire containers
+                // TODO: Make components responsible for clearing their own area?
                 if child.read().as_container().is_some() {
                     continue;
                 }
@@ -105,6 +165,8 @@ impl Component for BasicContainer {
                 .write()
                 .rescale_after_split(old_window_rect, new_window_rect);
         }
+
+        self.apply_layout();
     }
 
     fn rescale_after_move(&mut self, new_window_rect: RectData) {

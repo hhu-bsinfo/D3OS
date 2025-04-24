@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, format, string::String};
 use drawer::{rect_data::RectData, vertex::Vertex};
 
 use crate::{
@@ -60,9 +60,23 @@ impl Runnable for LayoutApp {
         }
 
         // Buttons
-        let button_1 = create_button(&api, window_handle, container_1.clone(), 0, 0, 100, 750, "A");
-        let button_2 = create_button(&api, window_handle, container_1.clone(), 120, 0, 100, 750, "B");
-        //let button_3 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "C");
-        //let button_4 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "D");
+        //let button_1 = create_button(&api, window_handle, container_1.clone(), 0, 0, 100, 750, "A");
+        //let button_2 = create_button(&api, window_handle, container_1.clone(), 0, 0, 100, 750, "B");
+        //let button_3 = create_button(&api, window_handle, container_1.clone(), 0, 0, 1000, 100, "C");
+        //let button_4 = create_button(&api, window_handle, container_1.clone(), 0, 110, 1000, 100, "D");
+
+        // Create 5 buttons in a loop
+        for i in 0..5 {
+            let button = create_button(
+                &api,
+                window_handle,
+                container_1.clone(),
+                0,
+                0,
+                200,
+                200,
+                &format!("{}", i),
+            );
+        }
     }
 }
