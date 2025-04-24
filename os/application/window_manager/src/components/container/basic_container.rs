@@ -71,6 +71,11 @@ impl Component for BasicContainer {
         } else {
             // Clear the area of dirty child components
             for child in &dirty_components {
+                // We don't want to redraw entire containers
+                if child.read().as_container().is_some() {
+                    continue;
+                }
+
                 let rect_data = child.read().get_drawn_rect_data();
                 Drawer::partial_clear_screen(rect_data);
             }
