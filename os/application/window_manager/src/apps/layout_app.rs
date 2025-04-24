@@ -60,9 +60,9 @@ impl Runnable for LayoutApp {
         }
 
         // Buttons
-        let button_1 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "A");
-        let button_2 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "B");
-        let button_3 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "C");
-        let button_4 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "D");
+        let button_1 = create_button(&api, window_handle, container_1.clone(), 0, 0, 100, 750, "A");
+        let button_2 = create_button(&api, window_handle, container_1.clone(), 120, 0, 100, 750, "B");
+        //let button_3 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "C");
+        //let button_4 = create_button(&api, window_handle, container_1.clone(), 0, 0, 80, 50, "D");
     }
 }

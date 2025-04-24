@@ -200,7 +200,7 @@ impl Api {
 
     /// Logical positions need to be contrained by `x <= 1000 && y <= 750`
     pub fn execute(&self, window_handle: usize, parent: Option<ComponentRef>, command: Command) -> Result<ComponentRef, &str> {
-        let handle_data = self
+        let mut handle_data = self
             .handles
             .get(&window_handle)
             .ok_or("Provided handle not found")?;
@@ -209,6 +209,23 @@ impl Api {
             workspace_index: handle_data.workspace_index,
             window_id: handle_data.window_id,
         };
+
+        let fake_handle;
+        if let Some(parent_component) = &parent {
+            let screen = SCREEN.get().unwrap();
+            let container_rect = parent_component.read().get_abs_rect_data();
+            fake_handle = HandleData {
+                workspace_index: 0,
+                window_id: 0,
+                abs_pos: container_rect,
+                ratios: (
+                    f64::from(container_rect.width) / f64::from(screen.0),
+                    f64::from(container_rect.height) / f64::from(screen.1),
+                ),
+            };
+
+            handle_data = &fake_handle;
+        } 
 
         let component= match command {
             Command::CreateButton {
@@ -586,6 +603,7 @@ impl Api {
             .expect("on_loop_iter queue was closed!");
     }
 
+    /// Scales a relative rect (window) to an absolute rect (screen)
     fn scale_rect_to_window(
         &self,
         RectData {
@@ -627,6 +645,23 @@ impl Api {
         }
     }
 
+    /// Scales a relative rect (container) to an absolute rect (screen)
+    fn scale_rect_to_container(&self, rect_data: RectData, container_rect: RectData) -> RectData {
+        let screen = SCREEN.get().unwrap();
+
+        let fake_handle = HandleData {
+            workspace_index: 0,
+            window_id: 0,
+            abs_pos: container_rect,
+            ratios: (
+                f64::from(container_rect.width) / f64::from(screen.0),
+                f64::from(container_rect.height) / f64::from(screen.1),
+            ),
+        };
+
+        self.scale_rect_to_window(rect_data, &fake_handle, false, (0, 0))
+    }
+
     #[allow(unused_variables, unreachable_code)]
     fn scale_font_to_window(&self, original_font_size: usize, ratios: &(f64, f64)) -> (u32, u32) {
         return (1, 1);
@@ -650,6 +685,7 @@ impl Api {
         return Vertex::new(new_x, new_y);
     }
 
+    /// Scales a logical rect to a relative rect
     fn scale_rect_data_to_rel(&self, log_rect_data: &RectData) -> RectData {
         let new_pos = Vertex::new(
             (f64::from(log_rect_data.top_left.x) * self.rel_to_log_ratios.0) as u32,
