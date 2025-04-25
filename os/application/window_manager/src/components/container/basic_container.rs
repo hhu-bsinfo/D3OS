@@ -13,7 +13,7 @@ use super::Container;
 const CHILD_SPACING: u32 = 5;
 
 #[derive(PartialEq)]
-pub enum Layout {
+pub enum ContainerLayout {
     None,
     Horizontal,
     Vertical,
@@ -22,7 +22,7 @@ pub enum Layout {
 pub struct BasicContainer {
     id: Option<usize>,
     childs: Vec<ComponentRef>,
-    layout: Layout,
+    layout: ContainerLayout,
 
     rel_rect_data: RectData,
     abs_rect_data: RectData,
@@ -33,7 +33,7 @@ pub struct BasicContainer {
 }
 
 impl BasicContainer {
-    pub fn new(rel_rect_data: RectData, abs_rect_data: RectData, layout: Layout) -> Self {
+    pub fn new(rel_rect_data: RectData, abs_rect_data: RectData, layout: ContainerLayout) -> Self {
         Self {
             id: None,
             childs: Vec::new(),
@@ -49,7 +49,7 @@ impl BasicContainer {
     }
 
     fn apply_layout(&mut self) {
-        if self.layout == Layout::None {
+        if self.layout == ContainerLayout::None {
             return;
         }
 
@@ -67,9 +67,9 @@ impl BasicContainer {
             //self.cursor.x += abs_rect_data.width + 5;
             let abs_rect_data = child.read().get_abs_rect_data();
 
-            if self.layout == Layout::Horizontal {
+            if self.layout == ContainerLayout::Horizontal {
                 self.cursor.x += abs_rect_data.width + CHILD_SPACING;
-            } else if self.layout == Layout::Vertical {
+            } else if self.layout == ContainerLayout::Vertical {
                 self.cursor.y += abs_rect_data.height + CHILD_SPACING;
             }
         }
@@ -78,7 +78,7 @@ impl BasicContainer {
 
 impl Container for BasicContainer {
     fn add_child(&mut self, child: ComponentRef) {
-        if self.layout != Layout::None {
+        if self.layout != ContainerLayout::None {
             // Update layout
             child.write().rescale_after_move(RectData {
                 top_left: self.abs_rect_data.top_left + self.cursor,
@@ -89,9 +89,9 @@ impl Container for BasicContainer {
             // Update the cursor position
             let abs_rect_data = child.read().get_abs_rect_data();
 
-            if self.layout == Layout::Horizontal {
+            if self.layout == ContainerLayout::Horizontal {
                 self.cursor.x += abs_rect_data.width + CHILD_SPACING;
-            } else if self.layout == Layout::Vertical {
+            } else if self.layout == ContainerLayout::Vertical {
                 self.cursor.y += abs_rect_data.height + CHILD_SPACING;
             }
         }
@@ -183,6 +183,8 @@ impl Component for BasicContainer {
         for child in &self.childs {
             child.write().rescale_after_move(new_window_rect);
         }
+
+        self.apply_layout();
     }
 
     fn get_abs_rect_data(&self) -> RectData {

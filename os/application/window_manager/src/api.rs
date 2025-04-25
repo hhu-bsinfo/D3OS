@@ -9,7 +9,7 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{layout_app::LayoutApp, runnable::Runnable /*radio_buttons::RadioButtonApp, slider_app::SliderApp, submit_label::SubmitLabel*/}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
+    apps::{layout_app::LayoutApp, runnable::Runnable /*radio_buttons::RadioButtonApp, slider_app::SliderApp, submit_label::SubmitLabel*/}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, ContainerLayout}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -83,6 +83,7 @@ pub enum Command<'a> {
     },
     CreateContainer {
         log_rect_data: RectData,
+        layout: ContainerLayout,
         styling: Option<ComponentStyling>,
     }
 }
@@ -542,7 +543,7 @@ impl Api {
 
                         component
                     }
-            Command::CreateContainer { log_rect_data, styling } => {
+            Command::CreateContainer { log_rect_data, layout, styling } => {
                 self.validate_log_pos(&log_rect_data.top_left)?;
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
@@ -554,7 +555,7 @@ impl Api {
                 );
 
                 // TODO: Receive the layout from the parameters
-                let container = BasicContainer::new(rel_rect_data, abs_rect_data, basic_container::Layout::Horizontal);
+                let container = BasicContainer::new(rel_rect_data, abs_rect_data, layout);
 
                 let component: ComponentRef = Rc::new(RwLock::new(Box::new(container)));
 

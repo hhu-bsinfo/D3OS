@@ -2,9 +2,7 @@ use alloc::{boxed::Box, format, string::String};
 use drawer::{rect_data::RectData, vertex::Vertex};
 
 use crate::{
-    api::{Api, Command},
-    signal::{ComponentRef, Signal},
-    WindowManager,
+    api::{Api, Command}, components::container::basic_container::ContainerLayout, signal::{ComponentRef, Signal}, WindowManager
 };
 
 use super::runnable::Runnable;
@@ -26,6 +24,7 @@ impl Runnable for LayoutApp {
                     width: 300,
                     height: 200,
                 },
+                layout: ContainerLayout::Vertical,
                 styling: None,
             },
         ).expect("failed to create container");
