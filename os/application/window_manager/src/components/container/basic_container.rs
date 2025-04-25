@@ -17,6 +17,7 @@ pub enum ContainerLayout {
     None,
     Horizontal,
     Vertical,
+    Grid(u32, u32),
 }
 
 pub struct BasicContainer {
@@ -29,7 +30,6 @@ pub struct BasicContainer {
     drawn_rect_data: RectData,
 
     is_dirty: bool,
-    cursor: Vertex,
 }
 
 impl BasicContainer {
@@ -44,59 +44,83 @@ impl BasicContainer {
             drawn_rect_data: abs_rect_data.clone(),
 
             is_dirty: true,
-            cursor: Vertex { x: 0, y: 0 },
         }
     }
 
-    fn apply_layout(&mut self) {
-        if self.layout == ContainerLayout::None {
-            return;
-        }
-
-        self.cursor = Vertex { x: 0, y: 0 };
+    fn apply_horizontal_layout(&mut self) {
+        let mut cursor = Vertex { x: 0, y: 0 };
 
         for child in &self.childs {
             // Update layout
             child.write().rescale_after_move(RectData {
-                top_left: self.abs_rect_data.top_left + self.cursor,
+                top_left: self.abs_rect_data.top_left + cursor,
                 width: self.abs_rect_data.width,
                 height: self.abs_rect_data.height,
             });
 
             // Update the cursor position
-            //self.cursor.x += abs_rect_data.width + 5;
             let abs_rect_data = child.read().get_abs_rect_data();
+            cursor.x += abs_rect_data.width + CHILD_SPACING;
+        }
+    }
 
-            if self.layout == ContainerLayout::Horizontal {
-                self.cursor.x += abs_rect_data.width + CHILD_SPACING;
-            } else if self.layout == ContainerLayout::Vertical {
-                self.cursor.y += abs_rect_data.height + CHILD_SPACING;
+    fn apply_vertical_layout(&mut self) {
+        let mut cursor = Vertex { x: 0, y: 0 };
+
+        for child in &self.childs {
+            // Update layout
+            child.write().rescale_after_move(RectData {
+                top_left: self.abs_rect_data.top_left + cursor,
+                width: self.abs_rect_data.width,
+                height: self.abs_rect_data.height,
+            });
+
+            // Update the cursor position
+            let abs_rect_data = child.read().get_abs_rect_data();
+            cursor.y += abs_rect_data.height + CHILD_SPACING;
+        }
+    }
+
+    fn apply_grid_layout(&mut self, rows: u32, cols: u32) {
+        let mut cursor = Vertex { x: 0, y: 0 };
+        let cell_width = self.abs_rect_data.width / cols;
+        let cell_height = self.abs_rect_data.height / rows;
+
+        for child in &self.childs {
+            // Update layout
+            child.write().rescale_after_move(RectData {
+                top_left: self.abs_rect_data.top_left
+                    + Vertex {
+                        x: cursor.x * cell_width,
+                        y: cursor.y * cell_height,
+                    },
+                width: self.abs_rect_data.width,
+                height: self.abs_rect_data.height,
+            });
+
+            // Update the cursor
+            cursor.x = (cursor.x + 1) % cols;
+            if cursor.x == 0 {
+                cursor.y += 1;
             }
+        }
+    }
+
+    fn apply_layout(&mut self) {
+        match self.layout {
+            ContainerLayout::Horizontal => self.apply_horizontal_layout(),
+            ContainerLayout::Vertical => self.apply_vertical_layout(),
+            ContainerLayout::Grid(rows, cols) => self.apply_grid_layout(rows, cols),
+
+            _ => {}
         }
     }
 }
 
 impl Container for BasicContainer {
     fn add_child(&mut self, child: ComponentRef) {
-        if self.layout != ContainerLayout::None {
-            // Update layout
-            child.write().rescale_after_move(RectData {
-                top_left: self.abs_rect_data.top_left + self.cursor,
-                width: self.abs_rect_data.width,
-                height: self.abs_rect_data.height,
-            });
-
-            // Update the cursor position
-            let abs_rect_data = child.read().get_abs_rect_data();
-
-            if self.layout == ContainerLayout::Horizontal {
-                self.cursor.x += abs_rect_data.width + CHILD_SPACING;
-            } else if self.layout == ContainerLayout::Vertical {
-                self.cursor.y += abs_rect_data.height + CHILD_SPACING;
-            }
-        }
-
         self.childs.push(child);
+        self.apply_layout();
     }
 }
 
