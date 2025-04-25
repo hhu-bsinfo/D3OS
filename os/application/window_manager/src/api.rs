@@ -9,7 +9,7 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{layout_app::LayoutApp, runnable::Runnable /*radio_buttons::RadioButtonApp, slider_app::SliderApp, submit_label::SubmitLabel*/}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, ContainerLayout}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
+    apps::{bitmap_app::BitmapApp, calculator::Calculator, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, ContainerLayout}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -589,13 +589,13 @@ impl Api {
 
     fn map_app_string_to_fn(&self, app_string: &str) -> Option<fn()> {
         match app_string {
-            /*"clock" => Some(Clock::run),
+            "clock" => Some(Clock::run),
             "submit_label" => Some(SubmitLabel::run),
             "counter" => Some(Counter::run),
             "slider" => Some(SliderApp::run),
             "bitmap" => Some(BitmapApp::run),
             "calculator" => Some(Calculator::run),
-            "radio" => Some(RadioButtonApp::run),*/
+            "radio" => Some(RadioButtonApp::run),
             "layout" => Some(LayoutApp::run),
             _ => None,
         }

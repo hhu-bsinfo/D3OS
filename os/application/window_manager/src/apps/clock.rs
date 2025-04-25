@@ -19,6 +19,7 @@ impl Runnable for Clock {
         
         let _clock = api.execute(
             handle,
+            None,
             Command::CreateLabel {
                 log_pos: Vertex::new(200, 200),
                 text: Rc::clone(&clock),
@@ -40,6 +41,7 @@ impl Runnable for Clock {
 
         let _second_clock = api.execute(
             handle,
+            None,
             Command::CreateLabel {
                 log_pos: Vertex::new(200, 300),
                 text: Rc::clone(&second_clock),
