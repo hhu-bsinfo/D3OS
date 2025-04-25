@@ -29,7 +29,7 @@ impl Runnable for LayoutApp {
                         height: 200,
                     },
                     layout: ContainerLayout::Grid(2, 3),
-                    styling: None,
+                    styling: Some(ComponentStylingBuilder::new().maintain_aspect_ratio(true).build()),
                 },
             )
             .expect("failed to create container");

@@ -39,7 +39,7 @@ impl AppWindow {
         Self {
             id,
             is_dirty: true,
-            root_container: Box::new(BasicContainer::new(screen_rect, rect_data, ContainerLayout::None)),
+            root_container: Box::new(BasicContainer::new(screen_rect, rect_data, ContainerLayout::None, None)),
             components: HashMap::new(),
             component_orderer: LinkedList::new(),
             rect_data,

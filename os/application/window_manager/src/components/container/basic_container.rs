@@ -3,7 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
 
 use crate::{
-    components::component::{Casts, Component},
+    components::component::{Casts, Component, ComponentStyling},
     signal::ComponentRef,
     utils::scale_rect_to_window,
 };
@@ -30,10 +30,11 @@ pub struct BasicContainer {
     drawn_rect_data: RectData,
 
     is_dirty: bool,
+    styling: ComponentStyling,
 }
 
 impl BasicContainer {
-    pub fn new(rel_rect_data: RectData, abs_rect_data: RectData, layout: ContainerLayout) -> Self {
+    pub fn new(rel_rect_data: RectData, abs_rect_data: RectData, layout: ContainerLayout, styling: Option<ComponentStyling>) -> Self {
         Self {
             id: None,
             childs: Vec::new(),
@@ -44,6 +45,7 @@ impl BasicContainer {
             drawn_rect_data: abs_rect_data.clone(),
 
             is_dirty: true,
+            styling: styling.unwrap_or_default(),
         }
     }
 
@@ -139,15 +141,9 @@ impl Component for BasicContainer {
 
         if self.is_dirty {
             // Redraw the container, as it has been cleared by now
-            // TODO: Allow custom styling for the border
             Drawer::draw_rectangle(
                 self.abs_rect_data,
-                Color {
-                    red: 255,
-                    green: 0,
-                    blue: 0,
-                    alpha: 100,
-                },
+                self.styling.border_color,
             );
 
             self.drawn_rect_data = self.abs_rect_data.clone();
@@ -174,13 +170,15 @@ impl Component for BasicContainer {
     }
 
     fn rescale_after_split(&mut self, old_window_rect: RectData, new_window_rect: RectData) {
+        let aspect_ratio = self.rel_rect_data.width as f64 / self.rel_rect_data.height as f64;
+
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_window_rect,
             (10, 10),
             (1000, 1000),
-            false,
-            1.0,
+            self.styling.maintain_aspect_ratio,
+            aspect_ratio,
         );
 
         // Rescale all child components
@@ -194,13 +192,15 @@ impl Component for BasicContainer {
     }
 
     fn rescale_after_move(&mut self, new_window_rect: RectData) {
+        let aspect_ratio = self.rel_rect_data.width as f64 / self.rel_rect_data.height as f64;
+
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_window_rect,
             (10, 10),
             (1000, 1000),
-            false,
-            1.0,
+            self.styling.maintain_aspect_ratio,
+            aspect_ratio,
         );
 
         // Rescale all child components

@@ -554,8 +554,7 @@ impl Api {
                     (10, 10)
                 );
 
-                // TODO: Receive the layout from the parameters
-                let container = BasicContainer::new(rel_rect_data, abs_rect_data, layout);
+                let container = BasicContainer::new(rel_rect_data, abs_rect_data, layout, styling);
 
                 let component: ComponentRef = Rc::new(RwLock::new(Box::new(container)));
 
