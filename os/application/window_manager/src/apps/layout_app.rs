@@ -1,5 +1,6 @@
 use alloc::{boxed::Box, format, string::String};
 use drawer::{rect_data::RectData, vertex::Vertex};
+use graphic::color::Color;
 
 use crate::{
     api::{Api, Command},
@@ -17,7 +18,7 @@ impl Runnable for LayoutApp {
         let window_handle = concurrent::thread::current().unwrap().id();
         let api = WindowManager::get_api();
 
-        // Container
+        // Containers
         let container_1 = api
             .execute(
                 window_handle,
@@ -26,10 +27,54 @@ impl Runnable for LayoutApp {
                     log_rect_data: RectData {
                         top_left: Vertex { x: 50, y: 50 },
                         width: 300,
+                        height: 400,
+                    },
+                    layout: ContainerLayout::Vertical,
+                    styling: Some(
+                        ComponentStylingBuilder::new()
+                            .maintain_aspect_ratio(true)
+                            .build(),
+                    ),
+                },
+            )
+            .expect("failed to create container");
+
+        let container_2 = api
+            .execute(
+                window_handle,
+                Some(container_1.clone()),
+                Command::CreateContainer {
+                    log_rect_data: RectData {
+                        top_left: Vertex::zero(),
+                        width: 1000,
                         height: 200,
                     },
-                    layout: ContainerLayout::Grid(2, 3),
-                    styling: Some(ComponentStylingBuilder::new().maintain_aspect_ratio(true).build()),
+                    layout: ContainerLayout::Horizontal,
+                    styling: Some(
+                        ComponentStylingBuilder::new()
+                            .border_color(Color::new(255, 0, 0, 255))
+                            .build(),
+                    ),
+                },
+            )
+            .expect("failed to create container");
+
+        let container_3 = api
+            .execute(
+                window_handle,
+                Some(container_1.clone()),
+                Command::CreateContainer {
+                    log_rect_data: RectData {
+                        top_left: Vertex::zero(),
+                        width: 1000,
+                        height: 200,
+                    },
+                    layout: ContainerLayout::Horizontal,
+                    styling: Some(
+                        ComponentStylingBuilder::new()
+                            .border_color(Color::new(0, 255, 0, 255))
+                            .build(),
+                    ),
                 },
             )
             .expect("failed to create container");
@@ -59,7 +104,7 @@ impl Runnable for LayoutApp {
                     })),
                     styling: Some(
                         ComponentStylingBuilder::new()
-                            .maintain_aspect_ratio(true)
+                            .maintain_aspect_ratio(false)
                             .build(),
                     ),
                 },
@@ -73,16 +118,29 @@ impl Runnable for LayoutApp {
         //let button_3 = create_button(&api, window_handle, container_1.clone(), 0, 0, 1000, 100, "C");
         //let button_4 = create_button(&api, window_handle, container_1.clone(), 0, 110, 1000, 100, "D");
 
-        // Create 5 buttons in a loop
-        for i in 0..6 {
-            let button = create_button(
+        // Create some buttons
+        for i in 0..3 {
+            let _ = create_button(
                 &api,
                 window_handle,
-                container_1.clone(),
+                container_2.clone(),
                 0,
                 0,
-                200,
-                200,
+                300,
+                750,
+                &format!("{}", i),
+            );
+        }
+
+        for i in 0..3 {
+            let _ = create_button(
+                &api,
+                window_handle,
+                container_3.clone(),
+                0,
+                0,
+                300,
+                750,
                 &format!("{}", i),
             );
         }

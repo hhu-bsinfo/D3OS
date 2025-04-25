@@ -1,6 +1,5 @@
 use alloc::{format, vec::Vec};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::color::Color;
 
 use crate::{
     components::component::{Casts, Component, ComponentStyling},

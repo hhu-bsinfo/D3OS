@@ -49,6 +49,10 @@ pub const HHU_GREEN: Color = Color { red: 140, green: 177, blue: 16, alpha: 255 
 pub const GREY: Color = Color { red: 32, green: 32, blue: 32, alpha: 255 };
 
 impl Color {
+    pub const fn new(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
+        Self { red, green, blue, alpha }
+    }
+
     pub const fn from_rgb(rgb: u32, bpp: u8) -> Color {
         match bpp {
             32 => return Color::from_rgb_32(rgb),
