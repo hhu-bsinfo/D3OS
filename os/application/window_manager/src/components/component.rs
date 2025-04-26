@@ -235,7 +235,7 @@ pub trait Hideable {
 pub trait Focusable {
     fn focus(&mut self);
 
-    // Returns true if the component accepted the unfocus
+    /// Returns true if the component accepted the unfocus
     fn unfocus(&mut self) -> bool;
 }
 
@@ -248,6 +248,7 @@ pub trait Interactable {
 pub trait Resizable {
     fn rescale(&mut self, scale_factor: f64);
 
+    /// Resizes the component to the given abs width and height by calculating a scaling factor.
     fn resize(&mut self, width: u32, height: u32);
 }
 

@@ -12,17 +12,24 @@ use super::Container;
 const CHILD_SPACING: u32 = 5;
 
 #[derive(PartialEq)]
-pub enum ContainerLayout {
+pub enum LayoutMode {
     None,
     Horizontal,
     Vertical,
     Grid(u32, u32),
 }
 
+#[derive(PartialEq)]
+pub enum StretchMode {
+    None,
+    Fill,
+}
+
 pub struct BasicContainer {
     id: Option<usize>,
     childs: Vec<ComponentRef>,
-    layout: ContainerLayout,
+    layout: LayoutMode,
+    stretch: StretchMode,
 
     rel_rect_data: RectData,
     abs_rect_data: RectData,
@@ -33,11 +40,18 @@ pub struct BasicContainer {
 }
 
 impl BasicContainer {
-    pub fn new(rel_rect_data: RectData, abs_rect_data: RectData, layout: ContainerLayout, styling: Option<ComponentStyling>) -> Self {
+    pub fn new(
+        rel_rect_data: RectData,
+        abs_rect_data: RectData,
+        layout: LayoutMode,
+        stretch: StretchMode,
+        styling: Option<ComponentStyling>,
+    ) -> Self {
         Self {
             id: None,
             childs: Vec::new(),
             layout,
+            stretch,
 
             rel_rect_data,
             abs_rect_data,
@@ -52,12 +66,20 @@ impl BasicContainer {
         let mut cursor = Vertex { x: 0, y: 0 };
 
         for child in &self.childs {
-            // Update layout
+            // Apply layout
             child.write().rescale_after_move(RectData {
                 top_left: self.abs_rect_data.top_left + cursor,
                 width: self.abs_rect_data.width,
                 height: self.abs_rect_data.height,
             });
+
+            // Apply stretching
+            /*if self.stretch == StretchMode::Fill {
+                let abs_rect_data = child.read().get_abs_rect_data();
+                if let Some(resizable) = child.write().as_resizable_mut() {
+                    resizable.resize(abs_rect_data.width, self.abs_rect_data.height);
+                }
+            }*/
 
             // Update the cursor position
             let abs_rect_data = child.read().get_abs_rect_data();
@@ -69,12 +91,34 @@ impl BasicContainer {
         let mut cursor = Vertex { x: 0, y: 0 };
 
         for child in &self.childs {
-            // Update layout
+            // Apply layout
             child.write().rescale_after_move(RectData {
                 top_left: self.abs_rect_data.top_left + cursor,
                 width: self.abs_rect_data.width,
                 height: self.abs_rect_data.height,
             });
+
+            // Apply stretching
+            /*if self.stretch == StretchMode::Fill {
+                let abs_rect_data = child.read().get_abs_rect_data();
+                if let Some(resizable) = child.write().as_resizable_mut() {
+                    terminal::write::log_debug(&format!(
+                        "- resizing child from {}x{} to {}x{}",
+                        abs_rect_data.width,
+                        abs_rect_data.height,
+                        self.abs_rect_data.width,
+                        abs_rect_data.height
+                    ));
+
+                    resizable.resize(self.abs_rect_data.width, abs_rect_data.height);
+                }
+
+                let abs_rect_data = child.read().get_abs_rect_data();
+                terminal::write::log_debug(&format!(
+                    "- resized child to {}x{}",
+                    abs_rect_data.width, abs_rect_data.height
+                ));
+            }*/
 
             // Update the cursor position
             let abs_rect_data = child.read().get_abs_rect_data();
@@ -107,11 +151,30 @@ impl BasicContainer {
         }
     }
 
+    fn apply_stretch(&self, child: &ComponentRef) {
+        if self.stretch == StretchMode::Fill {
+            let abs_rect_data = child.read().get_abs_rect_data();
+            if let Some(resizable) = child.write().as_resizable_mut() {
+                match self.layout {
+                    LayoutMode::Horizontal => {
+                        resizable.resize(abs_rect_data.width, self.abs_rect_data.height);
+                    }
+
+                    LayoutMode::Vertical => {
+                        resizable.resize(self.abs_rect_data.width, abs_rect_data.height);
+                    }
+
+                    _ => {}
+                }
+            }
+        }
+    }
+
     fn apply_layout(&mut self) {
         match self.layout {
-            ContainerLayout::Horizontal => self.apply_horizontal_layout(),
-            ContainerLayout::Vertical => self.apply_vertical_layout(),
-            ContainerLayout::Grid(rows, cols) => self.apply_grid_layout(rows, cols),
+            LayoutMode::Horizontal => self.apply_horizontal_layout(),
+            LayoutMode::Vertical => self.apply_vertical_layout(),
+            LayoutMode::Grid(rows, cols) => self.apply_grid_layout(rows, cols),
 
             _ => {}
         }
@@ -120,7 +183,9 @@ impl BasicContainer {
 
 impl Container for BasicContainer {
     fn add_child(&mut self, child: ComponentRef) {
+        self.apply_stretch(&child);
         self.childs.push(child);
+
         self.apply_layout();
     }
 }
@@ -140,10 +205,7 @@ impl Component for BasicContainer {
 
         if self.is_dirty {
             // Redraw the container, as it has been cleared by now
-            Drawer::draw_rectangle(
-                self.abs_rect_data,
-                self.styling.border_color,
-            );
+            Drawer::draw_rectangle(self.abs_rect_data, self.styling.border_color);
 
             self.drawn_rect_data = self.abs_rect_data.clone();
         } else {

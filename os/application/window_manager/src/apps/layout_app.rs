@@ -4,7 +4,7 @@ use graphic::color::Color;
 
 use crate::{
     api::{Api, Command},
-    components::{component::ComponentStylingBuilder, container::basic_container::ContainerLayout},
+    components::{component::ComponentStylingBuilder, container::basic_container::{LayoutMode, StretchMode}},
     signal::{ComponentRef, Signal},
     WindowManager,
 };
@@ -27,12 +27,13 @@ impl Runnable for LayoutApp {
                     log_rect_data: RectData {
                         top_left: Vertex { x: 50, y: 50 },
                         width: 300,
-                        height: 400,
+                        height: 500,
                     },
-                    layout: ContainerLayout::Vertical,
+                    layout: LayoutMode::Vertical,
+                    stretch: StretchMode::None,
                     styling: Some(
                         ComponentStylingBuilder::new()
-                            .maintain_aspect_ratio(true)
+                            .maintain_aspect_ratio(false)
                             .build(),
                     ),
                 },
@@ -49,7 +50,8 @@ impl Runnable for LayoutApp {
                         width: 1000,
                         height: 200,
                     },
-                    layout: ContainerLayout::Horizontal,
+                    layout: LayoutMode::Horizontal,
+                    stretch: StretchMode::Fill,
                     styling: Some(
                         ComponentStylingBuilder::new()
                             .border_color(Color::new(255, 0, 0, 255))
@@ -67,9 +69,10 @@ impl Runnable for LayoutApp {
                     log_rect_data: RectData {
                         top_left: Vertex::zero(),
                         width: 1000,
-                        height: 200,
+                        height: 400,
                     },
-                    layout: ContainerLayout::Horizontal,
+                    layout: LayoutMode::Vertical,
+                    stretch: StretchMode::Fill,
                     styling: Some(
                         ComponentStylingBuilder::new()
                             .border_color(Color::new(0, 255, 0, 255))
@@ -127,7 +130,7 @@ impl Runnable for LayoutApp {
                 0,
                 0,
                 300,
-                750,
+                500,
                 &format!("{}", i),
             );
         }
@@ -139,8 +142,8 @@ impl Runnable for LayoutApp {
                 container_3.clone(),
                 0,
                 0,
-                300,
-                750,
+                900,
+                200,
                 &format!("{}", i),
             );
         }
