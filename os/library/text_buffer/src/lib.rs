@@ -60,6 +60,21 @@ impl<'s> TextBuffer<'s> {
                 piece_table_index,
                 PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
             );
+        } else {
+            let length = piece_descr.length;
+            piece_descr.length = piece_descr_offset;
+            self.piece_table.insert(
+                piece_table_index + 1,
+                PieceDescr::new(
+                    BufferDescr::File,
+                    self.piece_table[piece_table_index].offset + piece_descr_offset,
+                    length - piece_descr_offset,
+                ),
+            );
+            self.piece_table.insert(
+                piece_table_index + 1,
+                PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
+            );
         }
 
         Ok(())
@@ -447,6 +462,32 @@ mod tests {
                     offset: 0,
                     length: 1
                 }
+            ]
+        );
+    }
+    #[test]
+    fn single_insertion_in_middle() {
+        let file_buffer = "AC";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        buffer.insert(1, 'B');
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 1,
+                    length: 1
+                },
             ]
         );
     }
