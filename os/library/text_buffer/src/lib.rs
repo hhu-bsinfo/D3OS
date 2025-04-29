@@ -27,13 +27,13 @@ pub enum TextBufferError {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum BufferDescr {
+enum BufferDescr {
     File,
     Add,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub struct PieceDescr {
+struct PieceDescr {
     buffer: BufferDescr,
     offset: usize,
     length: usize,
@@ -46,7 +46,7 @@ pub struct TextBuffer<'s> {
 }
 
 impl<'s> TextBuffer<'s> {
-    // returns (index to piecetable,  possition in piece_descr_span)
+    // returns (index to piecetable entry,  possition in piece_descr_span (offset<=i<length))
     fn resolve_logical_adress(&self, logical_adress: usize) -> Option<(usize, usize)> {
         let mut piece_table_index = 0;
         let mut la_start = 0;
@@ -87,6 +87,7 @@ impl<'s> TextBuffer<'s> {
                 ),
             );
         }
+        // remove "empty" piece descriptor
         if self.piece_table.get(piece_table_index).unwrap().length == 0 {
             self.piece_table.remove(piece_table_index);
         }

@@ -9,3 +9,5 @@ authors = ["Julius Carl Drodofsky"]
 [features]
 default = ["alloc"]
 alloc = []
+
+[workspace]
