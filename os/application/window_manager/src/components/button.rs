@@ -202,6 +202,29 @@ impl Component for Button {
         self.mark_dirty();
     }
     
+    fn rescale_to_container(&mut self, parent: &dyn super::container::Container) {
+        /*let styling = &self.styling;
+
+        let min_width = match &self.label {
+            Some(label) => label.get().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+            None => 0,
+        };
+
+        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;*/
+
+        self.abs_rect_data = parent.scale_to_container(
+            self.rel_rect_data
+        );
+
+        self.font_scale = scale_font(
+            &(self.rel_font_size as u32, self.rel_font_size as u32),
+            &self.rel_rect_data,
+            &self.abs_rect_data,
+        );
+
+        self.mark_dirty();
+    }
+
     fn get_abs_rect_data(&self) -> RectData {
         self.abs_rect_data
     }

@@ -4,7 +4,10 @@ use graphic::color::Color;
 
 use crate::{
     api::{Api, Command},
-    components::{component::ComponentStylingBuilder, container::basic_container::{LayoutMode, StretchMode}},
+    components::{
+        component::ComponentStylingBuilder,
+        container::basic_container::{LayoutMode, StretchMode},
+    },
     signal::{ComponentRef, Signal},
     WindowManager,
 };
@@ -48,7 +51,7 @@ impl Runnable for LayoutApp {
                     log_rect_data: RectData {
                         top_left: Vertex::zero(),
                         width: 1000,
-                        height: 200,
+                        height: 100,
                     },
                     layout: LayoutMode::Horizontal,
                     stretch: StretchMode::Fill,
@@ -129,8 +132,8 @@ impl Runnable for LayoutApp {
                 container_2.clone(),
                 0,
                 0,
-                300,
-                500,
+                150,
+                0,
                 &format!("{}", i),
             );
         }
@@ -142,8 +145,8 @@ impl Runnable for LayoutApp {
                 container_3.clone(),
                 0,
                 0,
-                900,
-                200,
+                100,
+                100,
                 &format!("{}", i),
             );
         }

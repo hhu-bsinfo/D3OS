@@ -36,6 +36,7 @@ pub struct BasicContainer {
     drawn_rect_data: RectData,
 
     is_dirty: bool,
+    cursor: Vertex,
     styling: ComponentStyling,
 }
 
@@ -58,75 +59,40 @@ impl BasicContainer {
             drawn_rect_data: abs_rect_data.clone(),
 
             is_dirty: true,
+            cursor: Vertex::zero(),
             styling: styling.unwrap_or_default(),
         }
     }
 
     fn apply_horizontal_layout(&mut self) {
-        let mut cursor = Vertex { x: 0, y: 0 };
-
         for child in &self.childs {
-            // Apply layout
-            child.write().rescale_after_move(RectData {
-                top_left: self.abs_rect_data.top_left + cursor,
-                width: self.abs_rect_data.width,
-                height: self.abs_rect_data.height,
-            });
-
-            // Apply stretching
-            /*if self.stretch == StretchMode::Fill {
-                let abs_rect_data = child.read().get_abs_rect_data();
-                if let Some(resizable) = child.write().as_resizable_mut() {
-                    resizable.resize(abs_rect_data.width, self.abs_rect_data.height);
-                }
-            }*/
+            // Apply layout & scaling
+            child
+                .write()
+                .rescale_to_container(self.as_container().unwrap());
 
             // Update the cursor position
             let abs_rect_data = child.read().get_abs_rect_data();
-            cursor.x += abs_rect_data.width + CHILD_SPACING;
+            self.cursor.x += abs_rect_data.width + CHILD_SPACING;
         }
     }
 
     fn apply_vertical_layout(&mut self) {
-        let mut cursor = Vertex { x: 0, y: 0 };
-
         for child in &self.childs {
-            // Apply layout
-            child.write().rescale_after_move(RectData {
-                top_left: self.abs_rect_data.top_left + cursor,
-                width: self.abs_rect_data.width,
-                height: self.abs_rect_data.height,
-            });
-
-            // Apply stretching
-            /*if self.stretch == StretchMode::Fill {
-                let abs_rect_data = child.read().get_abs_rect_data();
-                if let Some(resizable) = child.write().as_resizable_mut() {
-                    terminal::write::log_debug(&format!(
-                        "- resizing child from {}x{} to {}x{}",
-                        abs_rect_data.width,
-                        abs_rect_data.height,
-                        self.abs_rect_data.width,
-                        abs_rect_data.height
-                    ));
-
-                    resizable.resize(self.abs_rect_data.width, abs_rect_data.height);
-                }
-
-                let abs_rect_data = child.read().get_abs_rect_data();
-                terminal::write::log_debug(&format!(
-                    "- resized child to {}x{}",
-                    abs_rect_data.width, abs_rect_data.height
-                ));
-            }*/
+            // Apply layout & scaling
+            child
+                .write()
+                .rescale_to_container(self.as_container().unwrap());
 
             // Update the cursor position
             let abs_rect_data = child.read().get_abs_rect_data();
-            cursor.y += abs_rect_data.height + CHILD_SPACING;
+            self.cursor.y += abs_rect_data.height + CHILD_SPACING;
         }
     }
 
     fn apply_grid_layout(&mut self, rows: u32, cols: u32) {
+        // TODO: Adjust for the new scaling function
+
         let mut cursor = Vertex { x: 0, y: 0 };
         let cell_width = self.abs_rect_data.width / cols;
         let cell_height = self.abs_rect_data.height / rows;
@@ -171,6 +137,8 @@ impl BasicContainer {
     }
 
     fn apply_layout(&mut self) {
+        self.cursor = self.abs_rect_data.top_left;
+
         match self.layout {
             LayoutMode::Horizontal => self.apply_horizontal_layout(),
             LayoutMode::Vertical => self.apply_vertical_layout(),
@@ -183,10 +151,86 @@ impl BasicContainer {
 
 impl Container for BasicContainer {
     fn add_child(&mut self, child: ComponentRef) {
-        self.apply_stretch(&child);
+        //self.apply_stretch(&child);
         self.childs.push(child);
 
         self.apply_layout();
+    }
+
+    fn scale_to_container(&self, rel_rect: RectData) -> RectData {
+        // TODO: The scaling logic should happen here, as it is container dependant
+        // TODO: Do stretching here
+
+        terminal::write::log_debug(&format!("old rel_rect: {}", rel_rect));
+
+        // Apply layout
+        /*let new_rel_rect = match &self.layout {
+            LayoutMode::Horizontal => RectData {
+                top_left: rel_rect.top_left + self.cursor,
+                height: match self.stretch {
+                    StretchMode::Fill => 600,
+                    _ => rel_rect.height,
+                },
+
+                ..rel_rect
+            },
+
+            LayoutMode::Vertical => RectData {
+                top_left: rel_rect.top_left + self.cursor,
+                width: match self.stretch {
+                    StretchMode::Fill => self.rel_rect_data.width,
+                    _ => rel_rect.width,
+                },
+
+                ..rel_rect
+            },
+
+            _ => rel_rect,
+        };*/
+
+        // Apply scaling
+        /*let new_rel_rect = match (&self.stretch, &self.layout) {
+            (StretchMode::Fill, LayoutMode::Horizontal) => RectData { height: self.rel_rect_data.height, ..rel_rect },
+            (StretchMode::Fill, LayoutMode::Vertical) => RectData { width: self.rel_rect_data.width, ..rel_rect },
+            (_, _) => rel_rect,
+        };*/
+
+        //terminal::write::log_debug(&format!("new rel_rect: {}", new_rel_rect));
+
+        let new_abs_rect = scale_rect_to_window(
+            rel_rect,
+            self.abs_rect_data,
+            (0, 0),
+            (1000, 1000),
+            false,
+            1.0,
+        );
+
+        let layout_abs_rect = match &self.layout {
+            LayoutMode::Horizontal => RectData {
+                top_left: self.cursor + rel_rect.top_left, // Orgininal rel = Offset
+                height: match self.stretch {
+                    StretchMode::Fill => self.abs_rect_data.height,
+                    _ => new_abs_rect.height,
+                },
+
+                ..new_abs_rect
+            },
+
+            LayoutMode::Vertical => RectData {
+                top_left: self.cursor + rel_rect.top_left, // Orgininal rel = Offset
+                width: match self.stretch {
+                    StretchMode::Fill => self.abs_rect_data.width,
+                    _ => new_abs_rect.width,
+                },
+
+                ..new_abs_rect
+            },
+
+            _ => new_abs_rect,
+        };
+
+        layout_abs_rect
     }
 }
 
@@ -270,6 +314,12 @@ impl Component for BasicContainer {
         }
 
         self.apply_layout();
+    }
+
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        self.abs_rect_data = parent.scale_to_container(self.rel_rect_data);
+
+        //self.apply_layout();
     }
 
     fn get_abs_rect_data(&self) -> RectData {

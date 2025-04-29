@@ -1,3 +1,5 @@
+use drawer::rect_data::RectData;
+
 use crate::signal::ComponentRef;
 
 use super::component::Component;
@@ -6,4 +8,7 @@ pub mod basic_container;
 
 pub trait Container: Component {
     fn add_child(&mut self, child: ComponentRef);
+
+    /// Scales a relative rect to the container and returns the absolute rect
+    fn scale_to_container(&self, rel_rect: RectData) -> RectData;
 }

@@ -262,12 +262,23 @@ impl Api {
                         }.unwrap();
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                        let abs_rect_data = self.scale_rect_to_window(
-                            rel_rect_data,
-                            handle_data,
-                            styling.unwrap_or_default().maintain_aspect_ratio,
-                            min_dim
-                        );
+
+                        // Scale the relative rect to the window or parent container
+                        // TODO: We should always scale to parent container, as every window has a root container...
+                        let abs_rect_data = match &parent {
+                            Some(parent) => {
+                                parent.read().as_container().unwrap().scale_to_container(rel_rect_data)
+                            },
+
+                            None => {
+                                self.scale_rect_to_window(
+                                    rel_rect_data,
+                                    handle_data,
+                                    styling.unwrap_or_default().maintain_aspect_ratio,
+                                    min_dim
+                                )
+                            },
+                        };
                         //let abs_rect_data = self.scale_rect_to_container(rel_rect_data, container_rect, min_dim);
         
                         let button = Button::new(
