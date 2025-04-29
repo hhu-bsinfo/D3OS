@@ -46,6 +46,25 @@ pub struct TextBuffer<'s> {
 }
 
 impl<'s> TextBuffer<'s> {
+    pub fn insert(&mut self, logical_adress: usize, c: char) -> Result<(), TextBufferError> {
+        let (piece_table_index, piece_descr_offset) =
+            match self.resolve_logical_adress(logical_adress, true) {
+                Some((i, o)) => (i, o),
+                None => return Err(TextBufferError::AddressOutOfBounds),
+            };
+        self.add_buffer.push(c);
+
+        let piece_descr = &mut self.piece_table[piece_table_index];
+        if piece_descr_offset == 0 {
+            self.piece_table.insert(
+                piece_table_index,
+                PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
+            );
+        }
+
+        Ok(())
+    }
+
     // returns (index to piecetable entry,  possition in piece_descr_span (offset<=i<length))
     fn resolve_logical_adress(
         &self,
@@ -409,5 +428,26 @@ mod tests {
         let buffer = TextBuffer::from_str(file_buffer);
         let ret = buffer.resolve_logical_adress(4, true);
         assert_eq!(ret, Some((1, 0)));
+    }
+    #[test]
+    fn single_insertion_at_beginning() {
+        let file_buffer = "B";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        buffer.insert(0, 'A');
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 1
+                }
+            ]
+        );
     }
 }
