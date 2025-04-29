@@ -158,45 +158,6 @@ impl Container for BasicContainer {
     }
 
     fn scale_to_container(&self, rel_rect: RectData) -> RectData {
-        // TODO: The scaling logic should happen here, as it is container dependant
-        // TODO: Do stretching here
-
-        terminal::write::log_debug(&format!("old rel_rect: {}", rel_rect));
-
-        // Apply layout
-        /*let new_rel_rect = match &self.layout {
-            LayoutMode::Horizontal => RectData {
-                top_left: rel_rect.top_left + self.cursor,
-                height: match self.stretch {
-                    StretchMode::Fill => 600,
-                    _ => rel_rect.height,
-                },
-
-                ..rel_rect
-            },
-
-            LayoutMode::Vertical => RectData {
-                top_left: rel_rect.top_left + self.cursor,
-                width: match self.stretch {
-                    StretchMode::Fill => self.rel_rect_data.width,
-                    _ => rel_rect.width,
-                },
-
-                ..rel_rect
-            },
-
-            _ => rel_rect,
-        };*/
-
-        // Apply scaling
-        /*let new_rel_rect = match (&self.stretch, &self.layout) {
-            (StretchMode::Fill, LayoutMode::Horizontal) => RectData { height: self.rel_rect_data.height, ..rel_rect },
-            (StretchMode::Fill, LayoutMode::Vertical) => RectData { width: self.rel_rect_data.width, ..rel_rect },
-            (_, _) => rel_rect,
-        };*/
-
-        //terminal::write::log_debug(&format!("new rel_rect: {}", new_rel_rect));
-
         let new_abs_rect = scale_rect_to_window(
             rel_rect,
             self.abs_rect_data,

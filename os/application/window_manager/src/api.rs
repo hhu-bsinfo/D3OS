@@ -116,6 +116,8 @@ pub struct Api {
     /// handles are equal to the thread-id of the application
     handles: HashMap<usize, HandleData>,
     senders: Senders,
+
+    /// constant ratios (screen / log_screen)
     pub rel_to_log_ratios: (f64, f64),
 }
 
@@ -171,7 +173,7 @@ impl Api {
             senders,
             rel_to_log_ratios: (
                 f64::from(screen.0) / f64::from(LOG_SCREEN.0),
-                f64::from(screen.0) / f64::from(LOG_SCREEN.1),
+                f64::from(screen.1) / f64::from(LOG_SCREEN.1),
             ),
         }
     }
@@ -716,9 +718,11 @@ impl Api {
             (f64::from(log_rect_data.top_left.y) * self.rel_to_log_ratios.1) as u32,
         );
 
-        let aspect_ratio = f64::from(log_rect_data.width) / f64::from(log_rect_data.height);
+        //let aspect_ratio = f64::from(log_rect_data.width) / f64::from(log_rect_data.height);
+        //let aspect_ratio = if aspect_ratio == 0.0 || aspect_ratio.is_infinite() { 1.0 } else { aspect_ratio };
+
         let new_width = f64::from(log_rect_data.width) * self.rel_to_log_ratios.0;
-        let new_height = new_width / aspect_ratio;
+        let new_height = f64::from(log_rect_data.height) * self.rel_to_log_ratios.1;
 
         return RectData {
             top_left: new_pos,
