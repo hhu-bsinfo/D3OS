@@ -1,12 +1,12 @@
 /*
-	
-	piece table text buffer  --  Julius Drodofsky
 
-	from_str()
-	delete(logical_adress)
-	insert(logical_adress, char)
-	to_string()
-	get_char()
+    piece table text buffer  --  Julius Drodofsky
+
+    from_str()
+    delete(logical_adress)
+    insert(logical_adress, char)
+    to_string()
+    get_char()
 */
 
 #![no_std]
@@ -47,7 +47,12 @@ pub struct TextBuffer<'s> {
 
 impl<'s> TextBuffer<'s> {
     // returns (index to piecetable entry,  possition in piece_descr_span (offset<=i<length))
-    fn resolve_logical_adress(&self, logical_adress: usize) -> Option<(usize, usize)> {
+    fn resolve_logical_adress(
+        &self,
+        logical_adress: usize,
+        // if logical_adress > range => return (n,0)
+        append: bool,
+    ) -> Option<(usize, usize)> {
         let mut piece_table_index = 0;
         let mut la_start = 0;
         while let Some(piece_descr) = self.piece_table.get(piece_table_index) {
@@ -57,12 +62,15 @@ impl<'s> TextBuffer<'s> {
             la_start += piece_descr.length;
             piece_table_index += 1;
         }
+        if append {
+            return Some((piece_table_index, 0));
+        }
         None
     }
 
     pub fn delete(&mut self, logical_adress: usize) -> Result<(), TextBufferError> {
         let (piece_table_index, piece_descr_offset) =
-            match self.resolve_logical_adress(logical_adress) {
+            match self.resolve_logical_adress(logical_adress, false) {
                 Some((i, o)) => (i, o),
                 None => return Err(TextBufferError::AddressOutOfBounds),
             };
@@ -169,16 +177,16 @@ mod tests {
                 }
             ]
         );
-        assert_eq!(buffer.resolve_logical_adress(0), Some((0, 0)));
-        assert_eq!(buffer.resolve_logical_adress(1), Some((0, 1)));
-        assert_eq!(buffer.resolve_logical_adress(2), Some((0, 2)));
-        assert_eq!(buffer.resolve_logical_adress(3), Some((0, 3)));
-        assert_eq!(buffer.resolve_logical_adress(4), Some((1, 0)));
-        assert_eq!(buffer.resolve_logical_adress(5), Some((1, 1)));
-        assert_eq!(buffer.resolve_logical_adress(6), Some((1, 2)));
-        assert_eq!(buffer.resolve_logical_adress(7), Some((1, 3)));
-        assert_eq!(buffer.resolve_logical_adress(8), Some((1, 4)));
-        assert_eq!(buffer.resolve_logical_adress(9), Some((1, 5)));
+        assert_eq!(buffer.resolve_logical_adress(0, false), Some((0, 0)));
+        assert_eq!(buffer.resolve_logical_adress(1, false), Some((0, 1)));
+        assert_eq!(buffer.resolve_logical_adress(2, false), Some((0, 2)));
+        assert_eq!(buffer.resolve_logical_adress(3, false), Some((0, 3)));
+        assert_eq!(buffer.resolve_logical_adress(4, false), Some((1, 0)));
+        assert_eq!(buffer.resolve_logical_adress(5, false), Some((1, 1)));
+        assert_eq!(buffer.resolve_logical_adress(6, false), Some((1, 2)));
+        assert_eq!(buffer.resolve_logical_adress(7, false), Some((1, 3)));
+        assert_eq!(buffer.resolve_logical_adress(8, false), Some((1, 4)));
+        assert_eq!(buffer.resolve_logical_adress(9, false), Some((1, 5)));
     }
 
     #[test]
@@ -392,7 +400,14 @@ mod tests {
     fn access_address_out_of_bounds() {
         let file_buffer = "ABCD";
         let buffer = TextBuffer::from_str(file_buffer);
-        let ret = buffer.resolve_logical_adress(4);
+        let ret = buffer.resolve_logical_adress(4, false);
         assert_eq!(ret, None);
+    }
+    #[test]
+    fn access_address_out_of_bounds_append() {
+        let file_buffer = "ABCD";
+        let buffer = TextBuffer::from_str(file_buffer);
+        let ret = buffer.resolve_logical_adress(4, true);
+        assert_eq!(ret, Some((1, 0)));
     }
 }
