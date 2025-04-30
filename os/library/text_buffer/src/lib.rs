@@ -473,7 +473,8 @@ mod tests {
     fn single_insertion_at_beginning() {
         let file_buffer = "B";
         let mut buffer = TextBuffer::from_str(file_buffer);
-        buffer.insert(0, 'A');
+        let res = buffer.insert(0, 'A');
+        assert!(res.is_ok());
         assert_eq!(
             buffer.piece_table,
             vec![
@@ -494,7 +495,8 @@ mod tests {
     fn single_insertion_in_middle() {
         let file_buffer = "AC";
         let mut buffer = TextBuffer::from_str(file_buffer);
-        buffer.insert(1, 'B');
+        let res = buffer.insert(1, 'B');
+        assert!(res.is_ok());
         assert_eq!(
             buffer.piece_table,
             vec![
@@ -521,8 +523,10 @@ mod tests {
     fn multiple_insertion_in_middle() {
         let file_buffer = "AD";
         let mut buffer = TextBuffer::from_str(file_buffer);
-        buffer.insert(1, 'B');
-        buffer.insert(2, 'C');
+        let res = buffer.insert(1, 'B');
+        assert!(res.is_ok());
+        let res = buffer.insert(2, 'C');
+        assert!(res.is_ok());
         assert_eq!(
             buffer.piece_table,
             vec![
