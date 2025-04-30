@@ -53,6 +53,16 @@ impl<'s> TextBuffer<'s> {
                 None => return Err(TextBufferError::AddressOutOfBounds),
             };
         self.add_buffer.push(c);
+        // Enlarge piece_table entry if possible:
+        if piece_table_index > 0
+            && self.piece_table[piece_table_index - 1].buffer == BufferDescr::Add
+            && self.piece_table[piece_table_index - 1].offset
+                + self.piece_table[piece_table_index - 1].length
+                == self.add_buffer.len() - 1
+        {
+            self.piece_table[piece_table_index - 1].length += 1;
+            return Ok(());
+        }
 
         let piece_descr = &mut self.piece_table[piece_table_index];
         if piece_descr_offset == 0 {
@@ -482,6 +492,34 @@ mod tests {
                     buffer: BufferDescr::Add,
                     offset: 0,
                     length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 1,
+                    length: 1
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn multiple_insertion_in_middle() {
+        let file_buffer = "AD";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        buffer.insert(1, 'B');
+        buffer.insert(2, 'C');
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 2
                 },
                 PieceDescr {
                     buffer: BufferDescr::File,
