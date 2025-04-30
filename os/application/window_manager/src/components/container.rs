@@ -10,5 +10,11 @@ pub trait Container: Component {
     fn add_child(&mut self, child: ComponentRef);
 
     /// Scales a relative rect to the container and returns the absolute rect
-    fn scale_to_container(&self, rel_rect: RectData) -> RectData;
+    fn scale_to_container(
+        &self,
+        rel_rect: RectData,
+        min_dim: (u32, u32),
+        max_dim: (u32, u32),
+        aspect_ratio: Option<f64>,
+    ) -> RectData;
 }

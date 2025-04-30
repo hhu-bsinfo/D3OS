@@ -269,7 +269,16 @@ impl Api {
                         // TODO: We should always scale to parent container, as every window has a root container...
                         let abs_rect_data = match &parent {
                             Some(parent) => {
-                                parent.read().as_container().unwrap().scale_to_container(rel_rect_data)
+                                // TODO: Calculate the aspect ratio?
+                                parent.read().as_container().unwrap().scale_to_container(
+                                    rel_rect_data,
+                                    min_dim,
+                                    (1000, 1000),
+                                    styling
+                                        .unwrap_or_default()
+                                        .maintain_aspect_ratio
+                                        .then_some(1.0),
+                                )
                             },
 
                             None => {

@@ -157,16 +157,33 @@ impl Container for BasicContainer {
         self.apply_layout();
     }
 
-    fn scale_to_container(&self, rel_rect: RectData) -> RectData {
+    fn scale_to_container(
+        &self,
+        rel_rect: RectData,
+        min_dim: (u32, u32),
+        max_dim: (u32, u32),
+        aspect_ratio: Option<f64>,
+    ) -> RectData {
+        // Adjust max dimensions based on stretching
+        // TODO: Since the max dimension is always relative to the screen, do components really need
+        // to calculate it themselves?
+        let max_dim = match (&self.layout, &self.stretch) {
+            (LayoutMode::Horizontal, StretchMode::Fill) => (max_dim.0, self.abs_rect_data.height),
+            (LayoutMode::Vertical, StretchMode::Fill) => (self.abs_rect_data.width, max_dim.1),
+            (_, _) => max_dim,
+        };
+
+        // Calculate the new abs rect from the rel rect
         let new_abs_rect = scale_rect_to_window(
             rel_rect,
             self.abs_rect_data,
-            (0, 0),
-            (1000, 1000),
-            false,
-            1.0,
+            min_dim,
+            max_dim,
+            aspect_ratio.is_some(),
+            aspect_ratio.unwrap_or(1.0),
         );
 
+        // Adjust the position and size of the received abs rect
         let layout_abs_rect = match &self.layout {
             LayoutMode::Horizontal => RectData {
                 top_left: self.cursor + rel_rect.top_left, // Orgininal rel = Offset
@@ -278,7 +295,9 @@ impl Component for BasicContainer {
     }
 
     fn rescale_to_container(&mut self, parent: &dyn Container) {
-        self.abs_rect_data = parent.scale_to_container(self.rel_rect_data);
+        // TODO: max_dim should be parent abs, right?
+        self.abs_rect_data =
+            parent.scale_to_container(self.rel_rect_data, (0, 0), (1000, 1000), None);
 
         //self.apply_layout();
     }
