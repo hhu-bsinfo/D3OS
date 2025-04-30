@@ -46,6 +46,21 @@ pub struct TextBuffer<'s> {
 }
 
 impl<'s> TextBuffer<'s> {
+    pub fn get_char(&self, logical_adress: usize) -> Option<char> {
+        let (piece_table_index, piece_descr_offset) =
+            self.resolve_logical_adress(logical_adress, false)?;
+        let piece = self.piece_table.get(piece_table_index)?;
+        match piece.buffer {
+            BufferDescr::Add => self
+                .add_buffer
+                .chars()
+                .nth(piece.offset + piece_descr_offset),
+            BufferDescr::File => self
+                .file_buffer
+                .chars()
+                .nth(piece.offset + piece_descr_offset),
+        }
+    }
     pub fn insert(&mut self, logical_adress: usize, c: char) -> Result<(), TextBufferError> {
         let (piece_table_index, piece_descr_offset) =
             match self.resolve_logical_adress(logical_adress, true) {
@@ -528,5 +543,23 @@ mod tests {
                 },
             ]
         );
+    }
+    // only from file
+    #[test]
+    fn get_i() {
+        let file_buffer = "ab";
+        let buffer = TextBuffer::from_str(file_buffer);
+        assert!(buffer.get_char(0).unwrap() == 'a');
+        assert!(buffer.get_char(1).unwrap() == 'b');
+    }
+    #[test]
+    fn get_ii() {
+        let file_buffer = "ac";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(1, 'b');
+        assert!(res.is_ok());
+        assert!(buffer.get_char(0).unwrap() == 'a');
+        assert!(buffer.get_char(1).unwrap() == 'b');
+        assert!(buffer.get_char(2).unwrap() == 'c');
     }
 }
