@@ -117,25 +117,6 @@ impl BasicContainer {
         }
     }
 
-    fn apply_stretch(&self, child: &ComponentRef) {
-        if self.stretch == StretchMode::Fill {
-            let abs_rect_data = child.read().get_abs_rect_data();
-            if let Some(resizable) = child.write().as_resizable_mut() {
-                match self.layout {
-                    LayoutMode::Horizontal => {
-                        resizable.resize(abs_rect_data.width, self.abs_rect_data.height);
-                    }
-
-                    LayoutMode::Vertical => {
-                        resizable.resize(self.abs_rect_data.width, abs_rect_data.height);
-                    }
-
-                    _ => {}
-                }
-            }
-        }
-    }
-
     fn apply_layout(&mut self) {
         self.cursor = self.abs_rect_data.top_left;
 

@@ -342,6 +342,7 @@ impl WindowManager {
     fn add_window_to_workspace(&mut self, rect_data: RectData, app_name: &str) {
         let window_id = Self::generate_id();
         let window = AppWindow::new(window_id, rect_data);
+        let root_container = window.root_container();
 
         let curr_ws = self.get_current_workspace_mut();
 
@@ -350,7 +351,7 @@ impl WindowManager {
         self.is_dirty = true;
 
         Self::get_api()
-            .register(self.current_workspace, window_id, rect_data, app_name)
+            .register(self.current_workspace, window_id, rect_data, app_name, root_container)
             .expect("Failed to create window!");
     }
 
@@ -414,6 +415,7 @@ impl WindowManager {
 
         let window = AppWindow::new(Self::generate_id(), window_rect_data);
         let window_id = window.id;
+        let root_container = window.root_container();
 
         self.workspace_selection_labels_window
             .insert_label(self.workspaces.len());
@@ -428,6 +430,7 @@ impl WindowManager {
                 window_id,
                 window_rect_data,
                 DEFAULT_APP,
+                root_container,
             )
             .expect("Failed to launch default app!");
 

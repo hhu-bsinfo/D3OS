@@ -125,8 +125,10 @@ pub struct Api {
 pub struct HandleData {
     workspace_index: usize,
     window_id: usize,
+
     /// absolute position on the screen
     abs_pos: RectData,
+    root_container: ComponentRef,
 
     /// ratio to the screen size (abs_size/screen_size)
     ratios: (f64, f64),
@@ -184,6 +186,7 @@ impl Api {
         window_id: usize,
         abs_pos: RectData,
         app_string: &str,
+        root_container: ComponentRef,
     ) -> Result<(), &str> {
         let screen = SCREEN.get().unwrap();
         let app_fn_ptr = self.map_app_string_to_fn(app_string).ok_or("App not found")?;
@@ -193,6 +196,7 @@ impl Api {
             workspace_index,
             window_id,
             abs_pos,
+            root_container,
             ratios: (
                 f64::from(abs_pos.width) / f64::from(screen.0),
                 f64::from(abs_pos.height) / f64::from(screen.1),
@@ -227,6 +231,7 @@ impl Api {
                 workspace_index: 0,
                 window_id: 0,
                 abs_pos: container_rect,
+                root_container: handle_data.root_container.clone(),
                 ratios: (
                     f64::from(container_rect.width) / f64::from(screen.0),
                     f64::from(container_rect.height) / f64::from(screen.1),
@@ -678,23 +683,6 @@ impl Api {
             width: scaled_width.max(min_dim.0),
             height: scaled_height.max(min_dim.1),
         }
-    }
-
-    /// Scales a relative rect (container) to an absolute rect (screen)
-    fn scale_rect_to_container(&self, rel_rect: RectData, container_abs_rect: RectData, min_dim: (u32, u32)) -> RectData {
-        let screen = SCREEN.get().unwrap();
-
-        let fake_handle = HandleData {
-            workspace_index: 0,
-            window_id: 0,
-            abs_pos: container_abs_rect,
-            ratios: (
-                f64::from(container_abs_rect.width) / f64::from(screen.0),
-                f64::from(container_abs_rect.height) / f64::from(screen.1),
-            ),
-        };
-
-        self.scale_rect_to_window(rel_rect, &fake_handle, false, min_dim)
     }
 
     #[allow(unused_variables, unreachable_code)]

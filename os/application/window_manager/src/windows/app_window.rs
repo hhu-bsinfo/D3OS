@@ -18,7 +18,7 @@ pub struct AppWindow {
     /// Indicates whether redrawing of this window is required in next loop-iteration
     pub is_dirty: bool,
 
-    root_container: Box<BasicContainer>,
+    root_container: ComponentRef,
 
     components: HashMap<usize, Rc<RwLock<Box<dyn Component>>>>,
     /// focusable components are stored additionally in ordered fashion in here
@@ -36,15 +36,27 @@ impl AppWindow {
             height: screen_size.1,
         };
 
+        let root_container: ComponentRef = Rc::new(RwLock::new(Box::new(BasicContainer::new(
+            screen_rect,
+            rect_data,
+            LayoutMode::None,
+            StretchMode::None,
+            None,
+        ))));
+
         Self {
             id,
             is_dirty: true,
-            root_container: Box::new(BasicContainer::new(screen_rect, rect_data, LayoutMode::None, StretchMode::None, None)),
+            root_container,
             components: HashMap::new(),
             component_orderer: LinkedList::new(),
             rect_data,
             focused_component_id: None,
         }
+    }
+
+    pub fn root_container(&self) -> ComponentRef {
+        self.root_container.clone()
     }
 
     pub fn mark_component_dirty(&mut self, id: usize) {
@@ -72,7 +84,7 @@ impl AppWindow {
             },
 
             None => {
-                self.root_container.add_child(new_component.clone());
+                self.root_container.write().as_container_mut().unwrap().add_child(new_component.clone());
             }
         }
 
@@ -242,7 +254,7 @@ impl AppWindow {
     }
 
     pub fn rescale_window_in_place(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
-        self.root_container.rescale_after_split(old_rect_data, new_rect_data);
+        self.root_container.write().rescale_after_split(old_rect_data, new_rect_data);
         
         /*let components = self.components.values();
         for component in components {
@@ -256,7 +268,7 @@ impl AppWindow {
     pub fn rescale_window_after_move(&mut self, new_rect_data: RectData) {
         self.rect_data = new_rect_data;
 
-        self.root_container.rescale_after_move(new_rect_data);
+        self.root_container.write().rescale_after_move(new_rect_data);
 
         /*for component in self.components.values_mut() {
             component.write().rescale_after_move(new_rect_data);
@@ -339,7 +351,7 @@ impl AppWindow {
                 Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
             }
 
-            self.root_container.mark_dirty();
+            self.root_container.write().mark_dirty();
         }
 
         // es muss nicht teil bereinigt werden, falls das Fenster dirty ist da dies durch Splitting der Fall sein kann und so  in anderen Fenstern entstehen könnten
@@ -367,7 +379,7 @@ impl AppWindow {
             dirty_component.write().draw(is_focused);
         }*/
 
-        self.root_container.draw(self.focused_component_id);
+        self.root_container.write().draw(self.focused_component_id);
 
         self.is_dirty = false;
     }
