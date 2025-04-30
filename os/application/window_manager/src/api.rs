@@ -142,7 +142,7 @@ pub struct WindowData {
 
 pub struct NewCompData {
     pub window_data: WindowData,
-    pub parent: Option<ComponentRef>,
+    pub parent: ComponentRef,
     pub component: ComponentRef,
 }
 
@@ -220,11 +220,13 @@ impl Api {
             window_id: handle_data.window_id,
         };
 
+        let parent = parent.unwrap_or(handle_data.root_container.clone());
+
         // TODO: This is a hacky solution. Functions that currently accept a HandleDate as
         // parameter should be refactored to accept only the needed data instead. But this
         // will work for now...
         let fake_handle;
-        if let Some(parent_component) = &parent {
+        if let parent_component = &parent {
             let screen = SCREEN.get().unwrap();
             let container_rect = parent_component.read().get_abs_rect_data();
             fake_handle = HandleData {
@@ -270,31 +272,17 @@ impl Api {
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
-                        // Scale the relative rect to the window or parent container
-                        // TODO: We should always scale to parent container, as every window has a root container...
-                        let abs_rect_data = match &parent {
-                            Some(parent) => {
-                                // TODO: Calculate the aspect ratio?
-                                parent.read().as_container().unwrap().scale_to_container(
-                                    rel_rect_data,
-                                    min_dim,
-                                    (1000, 1000),
-                                    styling
-                                        .unwrap_or_default()
-                                        .maintain_aspect_ratio
-                                        .then_some(1.0),
-                                )
-                            },
-
-                            None => {
-                                self.scale_rect_to_window(
-                                    rel_rect_data,
-                                    handle_data,
-                                    styling.unwrap_or_default().maintain_aspect_ratio,
-                                    min_dim
-                                )
-                            },
-                        };
+                        // Scale the relative rect to the parent container
+                        // TODO: Calculate the aspect ratio?
+                        let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
+                            rel_rect_data,
+                            min_dim,
+                            (1000, 1000),
+                            styling
+                                .unwrap_or_default()
+                                .maintain_aspect_ratio
+                                .then_some(1.0),
+                        );
                         //let abs_rect_data = self.scale_rect_to_container(rel_rect_data, container_rect, min_dim);
         
                         let button = Button::new(

@@ -68,7 +68,7 @@ impl AppWindow {
         self.is_dirty = true;
     }
 
-    pub fn insert_component(&mut self, new_component: ComponentRef, parent: Option<ComponentRef>) {
+    pub fn insert_component(&mut self, new_component: ComponentRef, parent: ComponentRef) {
         let id = WindowManager::generate_id();
         new_component.write().set_id(id);
 
@@ -77,16 +77,8 @@ impl AppWindow {
             self.component_orderer.push_back(id);
         }
 
-        // Add the component to the parent or root container
-        match parent {
-            Some(parent) => {
-                parent.write().as_container_mut().expect("parent must be a container").add_child(new_component.clone());
-            },
-
-            None => {
-                self.root_container.write().as_container_mut().unwrap().add_child(new_component.clone());
-            }
-        }
+        // Add the component to the parent container
+        parent.write().as_container_mut().expect("parent must be a container").add_child(new_component.clone());
 
         //self.root_container.add_child(new_component.clone());
         self.components.insert(id, new_component);
