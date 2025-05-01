@@ -255,8 +255,7 @@ impl Api {
                             (1000, 1000),
                             styling
                                 .unwrap_or_default()
-                                .maintain_aspect_ratio
-                                .then_some(1.0),
+                                .maintain_aspect_ratio,
                         );
                         //let abs_rect_data = self.scale_rect_to_container(rel_rect_data, container_rect, min_dim);
         
@@ -353,8 +352,7 @@ impl Api {
                             (1000, 1000),
                             styling
                                 .unwrap_or_default()
-                                .maintain_aspect_ratio
-                                .then_some(1.0),
+                                .maintain_aspect_ratio,
                         );
 
                         let component = InputField::new(
@@ -405,8 +403,7 @@ impl Api {
                             (1000, 1000),
                             styling
                                 .unwrap_or_default()
-                                .maintain_aspect_ratio
-                                .then_some(1.0),
+                                .maintain_aspect_ratio,
                         );
 
                         let checkbox = Checkbox::new(
@@ -453,8 +450,7 @@ impl Api {
                             (1000, 1000),
                             styling
                                 .unwrap_or_default()
-                                .maintain_aspect_ratio
-                                .then_some(1.0),
+                                .maintain_aspect_ratio,
                         );
 
                         let bitmap_graphic = BitmapGraphic::new(
@@ -507,8 +503,7 @@ impl Api {
                             (1000, 1000),
                             styling
                                 .unwrap_or_default()
-                                .maintain_aspect_ratio
-                                .then_some(1.0),
+                                .maintain_aspect_ratio,
                         );
 
                         let slider = Slider::new(
@@ -595,8 +590,7 @@ impl Api {
                     (1000, 1000),
                     styling
                         .unwrap_or_default()
-                        .maintain_aspect_ratio
-                        .then_some(1.0),
+                        .maintain_aspect_ratio,
                 );
 
                 let container = BasicContainer::new(rel_rect_data, abs_rect_data, layout, stretch, styling);

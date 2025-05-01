@@ -143,7 +143,7 @@ impl Container for BasicContainer {
         rel_rect: RectData,
         min_dim: (u32, u32),
         max_dim: (u32, u32),
-        aspect_ratio: Option<f64>,
+        maintain_aspect_ratio: bool,
     ) -> RectData {
         // Adjust max dimensions based on stretching
         // TODO: Since the max dimension is always relative to the screen, do components really need
@@ -160,7 +160,7 @@ impl Container for BasicContainer {
             self.abs_rect_data,
             min_dim,
             max_dim,
-            aspect_ratio.is_some(),
+            maintain_aspect_ratio,
         );
 
         // Adjust the position and size of the received abs rect
@@ -279,8 +279,12 @@ impl Component for BasicContainer {
 
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         // TODO: max_dim should be parent abs, right?
-        self.abs_rect_data =
-            parent.scale_to_container(self.rel_rect_data, (0, 0), (1000, 1000), None);
+        self.abs_rect_data = parent.scale_to_container(
+            self.rel_rect_data,
+            (0, 0),
+            (1000, 1000),
+            self.styling.maintain_aspect_ratio,
+        );
 
         //self.apply_layout();
     }

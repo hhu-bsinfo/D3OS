@@ -15,7 +15,7 @@ pub trait Container: Component {
         rel_rect: RectData,
         min_dim: (u32, u32),
         max_dim: (u32, u32),
-        aspect_ratio: Option<f64>,
+        maintain_aspect_ratio: bool,
     ) -> RectData;
 
     /// Scales a relative vertex to the container and returns the absolute vertex

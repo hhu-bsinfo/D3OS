@@ -213,13 +213,11 @@ impl Component for Button {
             None => 0,
         };
 
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-
         self.abs_rect_data = parent.scale_to_container(
             self.rel_rect_data,
             (min_width, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
             (self.orig_rect_data.width, self.orig_rect_data.height),
-            styling.maintain_aspect_ratio.then_some(aspect_ratio),
+            styling.maintain_aspect_ratio,
         );
 
         self.font_scale = scale_font(
