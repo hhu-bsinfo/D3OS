@@ -19,6 +19,9 @@ pub fn get_element_cursor_from_orderer<T: PartialEq>(
     return None;
 }
 
+// TODO: Make this more generic, as doesn't just scale to a "window"
+// TODO: Cleanup + Review: Why are min/max dimensions checked 3 times lol
+// TODO: Calculate aspect_ratio from relative rect
 pub fn scale_rect_to_window(
     rel_rect_data: RectData,
     abs_rect_data: RectData,

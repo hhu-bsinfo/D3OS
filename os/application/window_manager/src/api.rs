@@ -210,7 +210,7 @@ impl Api {
 
     /// Logical positions need to be contrained by `x <= 1000 && y <= 750`
     pub fn execute(&self, window_handle: usize, parent: Option<ComponentRef>, command: Command) -> Result<ComponentRef, &str> {
-        let mut handle_data = self
+        let handle_data = self
             .handles
             .get(&window_handle)
             .ok_or("Provided handle not found")?;
@@ -220,33 +220,8 @@ impl Api {
             window_id: handle_data.window_id,
         };
 
+        let ratios = handle_data.ratios;
         let parent = parent.unwrap_or(handle_data.root_container.clone());
-
-        // TODO: This is a hacky solution. Functions that currently accept a HandleDate as
-        // parameter should be refactored to accept only the needed data instead. But this
-        // will work for now...
-        let fake_handle;
-        if let parent_component = &parent {
-            let screen = SCREEN.get().unwrap();
-            let container_rect = parent_component.read().get_abs_rect_data();
-            fake_handle = HandleData {
-                workspace_index: 0,
-                window_id: 0,
-                abs_pos: container_rect,
-                root_container: handle_data.root_container.clone(),
-                ratios: (
-                    f64::from(container_rect.width) / f64::from(screen.0),
-                    f64::from(container_rect.height) / f64::from(screen.1),
-                ),
-            };
-
-            handle_data = &fake_handle;
-        }
-
-        /*let container_rect = match &parent {
-            Some(parent_component) => parent_component.read().get_abs_rect_data(),
-            None => handle_data.abs_pos,
-        };*/
 
         let component= match command {
             Command::CreateButton {
@@ -260,7 +235,7 @@ impl Api {
                         let (text, font_size_option) = label.unzip();
                         let font_size = font_size_option.unwrap_or(1);
 
-                        let font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
+                        let font_scale = self.scale_font_to_window(font_size, &ratios);
 
                         let min_dim = match &text {
                             Some(label) => Some((
@@ -317,12 +292,12 @@ impl Api {
                         let rel_pos = self.scale_vertex_to_rel(&log_pos);
 
                         let font_size = font_size.unwrap_or(1);
-                        let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
+                        let scaled_font_scale = self.scale_font_to_window(font_size, &ratios);
 
-                        let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
+                        let abs_pos = parent.read().as_container().unwrap().scale_vertex_to_container(rel_pos);
 
                         let component = Label::new(
-                            scaled_pos,
+                            abs_pos,
                             rel_pos,
                             font_size,
                             text,
@@ -357,7 +332,7 @@ impl Api {
                         self.validate_log_pos(&log_rect_data.top_left)?;
 
                         let font_size = font_size.unwrap_or(1);
-                        let scaled_font_scale = self.scale_font_to_window(font_size, &handle_data.ratios);
+                        let scaled_font_scale = self.scale_font_to_window(font_size, &ratios);
 
                         let min_dim = (
                             DEFAULT_CHAR_WIDTH * width_in_chars as u32 * scaled_font_scale.0 + PADDING_BORDERS_AND_CHARS,
@@ -365,11 +340,21 @@ impl Api {
                         );
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                        let abs_rect_data = self.scale_rect_to_window(
+                        /*let abs_rect_data = self.scale_rect_to_window(
                             rel_rect_data,
                             handle_data,
                             styling.unwrap_or_default().maintain_aspect_ratio,
                             min_dim
+                        );*/
+                        // TODO: Calculate aspect ratio
+                        let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
+                            rel_rect_data,
+                            min_dim,
+                            (1000, 1000),
+                            styling
+                                .unwrap_or_default()
+                                .maintain_aspect_ratio
+                                .then_some(1.0),
                         );
 
                         let component = InputField::new(
@@ -401,17 +386,27 @@ impl Api {
                     } => {
                         self.validate_log_pos(&log_rect_data.top_left)?;
 
-                        let min_dim = Some((
+                        let min_dim = (
                             DEFAULT_CHAR_HEIGHT,
                             DEFAULT_CHAR_HEIGHT,
-                        ));
+                        );
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                        let abs_rect_data = self.scale_rect_to_window(
+                        /*let abs_rect_data = self.scale_rect_to_window(
                             rel_rect_data,
                             handle_data,
                             styling.unwrap_or_default().maintain_aspect_ratio,
                             min_dim.unwrap()
+                        );*/
+                        // TODO: Calculate aspect ratio
+                        let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
+                            rel_rect_data,
+                            min_dim,
+                            (1000, 1000),
+                            styling
+                                .unwrap_or_default()
+                                .maintain_aspect_ratio
+                                .then_some(1.0),
                         );
 
                         let checkbox = Checkbox::new(
@@ -444,11 +439,22 @@ impl Api {
                         self.validate_log_pos(&log_rect_data.top_left)?;
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                        let abs_rect_data = self.scale_rect_to_window(
+                        /*let abs_rect_data = self.scale_rect_to_window(
                             rel_rect_data,
                             handle_data,
                             styling.unwrap_or_default().maintain_aspect_ratio,
                             (10, 10)
+                        );*/
+                        // TODO: Calculate aspect ratio
+                        let min_dim = (10, 10);
+                        let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
+                            rel_rect_data,
+                            min_dim,
+                            (1000, 1000),
+                            styling
+                                .unwrap_or_default()
+                                .maintain_aspect_ratio
+                                .then_some(1.0),
                         );
 
                         let bitmap_graphic = BitmapGraphic::new(
@@ -482,17 +488,27 @@ impl Api {
                     } => {
                         self.validate_log_pos(&log_rect_data.top_left)?;
 
-                        let min_dim = Some((
+                        let min_dim = (
                             DEFAULT_CHAR_HEIGHT,
                             DEFAULT_CHAR_HEIGHT,
-                        ));
+                        );
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                        let abs_rect_data = self.scale_rect_to_window(
+                        /*let abs_rect_data = self.scale_rect_to_window(
                             rel_rect_data,
                             handle_data,
                             styling.unwrap_or_default().maintain_aspect_ratio,
                             min_dim.unwrap()
+                        );*/
+                        // TODO: Calculate aspect ratio
+                        let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
+                            rel_rect_data,
+                            min_dim,
+                            (1000, 1000),
+                            styling
+                                .unwrap_or_default()
+                                .maintain_aspect_ratio
+                                .then_some(1.0),
                         );
 
                         let slider = Slider::new(
@@ -531,13 +547,14 @@ impl Api {
                         let rel_pos = self.scale_vertex_to_rel(&center);
                         let rel_radius = self.scale_radius_to_rel(radius);
 
-                        let abs_radius = self.scale_radius_to_window(rel_radius, 7, handle_data);
+                        let abs_radius = self.scale_radius_to_window(rel_radius, 7, &ratios);
 
-                        let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
+                        //let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
+                        let abs_pos = parent.read().as_container().unwrap().scale_vertex_to_container(rel_pos);
 
                         let radio_buttons = RadioButtonGroup::new(
                             num_buttons,
-                            scaled_pos,
+                            abs_pos,
                             rel_pos,
                             abs_radius,
                             rel_radius,
@@ -563,11 +580,23 @@ impl Api {
                 self.validate_log_pos(&log_rect_data.top_left)?;
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                let abs_rect_data = self.scale_rect_to_window(
+                /*let abs_rect_data = self.scale_rect_to_window(
                     rel_rect_data,
                     handle_data,
                     styling.unwrap_or_default().maintain_aspect_ratio,
                     (10, 10)
+                );*/
+
+                // TODO: Calculate aspect ratio
+                let min_dim = (10, 10);
+                let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
+                    rel_rect_data,
+                    min_dim,
+                    (1000, 1000),
+                    styling
+                        .unwrap_or_default()
+                        .maintain_aspect_ratio
+                        .then_some(1.0),
                 );
 
                 let container = BasicContainer::new(rel_rect_data, abs_rect_data, layout, stretch, styling);
@@ -631,48 +660,7 @@ impl Api {
             .expect("on_loop_iter queue was closed!");
     }
 
-    /// Scales a relative rect (window) to an absolute rect (screen)
-    fn scale_rect_to_window(
-        &self,
-        RectData {
-            top_left,
-            width,
-            height,
-        }: RectData,
-        HandleData {
-            abs_pos, ratios, ..
-        }: &HandleData,
-        maintain_aspect_ratio: bool,
-        min_dim: (u32, u32),
-    ) -> RectData {
-        let aspect_ratio = f64::from(width) / f64::from(height);
-
-        // Skaliere Breite und Höhe basierend auf den Ratios
-        let mut scaled_width = ((f64::from(width) * ratios.0) as u32).max(min_dim.0);
-        let mut scaled_height = ((f64::from(height) * ratios.1) as u32).max(min_dim.1);
-
-        // // Erzwinge das Aspect Ratio
-        if maintain_aspect_ratio {
-            let calculated_height = (f64::from(scaled_width) / aspect_ratio) as u32;
-            let calculated_width = (f64::from(scaled_height) * aspect_ratio) as u32;
-            
-            if calculated_height <= scaled_height {
-                scaled_height = calculated_height;
-            } else {
-                scaled_width = calculated_width;
-            }
-        }
-
-        RectData {
-            top_left: Vertex::new(
-                (f64::from(top_left.x) * ratios.0) as u32 + abs_pos.top_left.x,
-                (f64::from(top_left.y) * ratios.1) as u32 + abs_pos.top_left.y,
-            ),
-            width: scaled_width.max(min_dim.0),
-            height: scaled_height.max(min_dim.1),
-        }
-    }
-
+    // TODO: What's the purpose of this?
     #[allow(unused_variables, unreachable_code)]
     fn scale_font_to_window(&self, original_font_size: usize, ratios: &(f64, f64)) -> (u32, u32) {
         return (1, 1);
@@ -681,19 +669,6 @@ impl Api {
             ((float_font_size * ratios.0) as u32).max(1),
             ((float_font_size * ratios.1) as u32).max(1),
         )
-    }
-
-    fn scale_vertex_to_window(
-        &self,
-        original_vert: Vertex,
-        HandleData {
-            abs_pos, ratios, ..
-        }: &HandleData,
-    ) -> Vertex {
-        let new_x = (f64::from(original_vert.x) * ratios.0 + f64::from(abs_pos.top_left.x)) as u32;
-        let new_y = (f64::from(original_vert.y) * ratios.1 + f64::from(abs_pos.top_left.y)) as u32;
-
-        return Vertex::new(new_x, new_y);
     }
 
     /// Scales a logical rect to a relative rect
@@ -731,9 +706,7 @@ impl Api {
         &self,
         radius: u32,
         min_radius: u32,
-        HandleData {
-            abs_pos, ratios, ..
-        }: &HandleData
+        ratios: &(f64, f64),
     ) -> u32 {    
         let scaled_radius: u32 = (f64::from(radius) * ratios.0.min(ratios.1)) as u32;
     

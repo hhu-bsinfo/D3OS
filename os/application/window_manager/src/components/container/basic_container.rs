@@ -4,7 +4,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use crate::{
     components::component::{Casts, Component, ComponentStyling},
     signal::ComponentRef,
-    utils::scale_rect_to_window,
+    utils::{scale_pos_to_window, scale_rect_to_window},
 };
 
 use super::Container;
@@ -190,6 +190,15 @@ impl Container for BasicContainer {
         };
 
         layout_abs_rect
+    }
+
+    fn scale_vertex_to_container(&self, rel_pos: Vertex) -> Vertex {
+        let abs_pos = scale_pos_to_window(rel_pos, self.abs_rect_data);
+
+        // Adjust the position
+        let abs_pos = abs_pos + self.cursor;
+
+        abs_pos
     }
 }
 

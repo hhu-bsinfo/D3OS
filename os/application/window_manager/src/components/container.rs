@@ -1,4 +1,4 @@
-use drawer::rect_data::RectData;
+use drawer::{rect_data::RectData, vertex::Vertex};
 
 use crate::signal::ComponentRef;
 
@@ -17,4 +17,7 @@ pub trait Container: Component {
         max_dim: (u32, u32),
         aspect_ratio: Option<f64>,
     ) -> RectData;
+
+    /// Scales a relative vertex to the container and returns the absolute vertex
+    fn scale_vertex_to_container(&self, rel_pos: Vertex) -> Vertex;
 }
