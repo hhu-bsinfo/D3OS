@@ -203,7 +203,7 @@ pub trait Component: Casts + {
         //
     }
 
-    fn rescale_to_container(&mut self, parent: &dyn Container) {}
+    fn rescale_to_container(&mut self, parent: &dyn Container);
 
     fn get_abs_rect_data(&self) -> RectData;
 

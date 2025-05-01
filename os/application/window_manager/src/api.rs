@@ -248,7 +248,6 @@ impl Api {
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
                         // Scale the relative rect to the parent container
-                        // TODO: Calculate the aspect ratio?
                         let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
                             rel_rect_data,
                             min_dim,
@@ -345,7 +344,6 @@ impl Api {
                             styling.unwrap_or_default().maintain_aspect_ratio,
                             min_dim
                         );*/
-                        // TODO: Calculate aspect ratio
                         let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
                             rel_rect_data,
                             min_dim,
@@ -396,7 +394,6 @@ impl Api {
                             styling.unwrap_or_default().maintain_aspect_ratio,
                             min_dim.unwrap()
                         );*/
-                        // TODO: Calculate aspect ratio
                         let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
                             rel_rect_data,
                             min_dim,
@@ -442,7 +439,6 @@ impl Api {
                             styling.unwrap_or_default().maintain_aspect_ratio,
                             (10, 10)
                         );*/
-                        // TODO: Calculate aspect ratio
                         let min_dim = (10, 10);
                         let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
                             rel_rect_data,
@@ -496,7 +492,6 @@ impl Api {
                             styling.unwrap_or_default().maintain_aspect_ratio,
                             min_dim.unwrap()
                         );*/
-                        // TODO: Calculate aspect ratio
                         let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
                             rel_rect_data,
                             min_dim,
@@ -582,7 +577,6 @@ impl Api {
                     (10, 10)
                 );*/
 
-                // TODO: Calculate aspect ratio
                 let min_dim = (10, 10);
                 let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
                     rel_rect_data,

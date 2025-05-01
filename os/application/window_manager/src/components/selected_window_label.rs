@@ -8,7 +8,7 @@ use spin::RwLock;
 
 use crate::config::FOCUSED_BG_COLOR;
 
-use super::component::{Casts, Component, ComponentStyling, Hideable};
+use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
 pub const FG_COLOR: Color = WHITE;
 
@@ -93,6 +93,10 @@ impl Component for SelectedWorkspaceLabel {
 
     fn rescale_after_move(&mut self, _new_rect_data: RectData) {
         // Should never be moved
+    }
+
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        // Should never be called
     }
 
     fn get_abs_rect_data(&self) -> RectData {

@@ -10,7 +10,7 @@ use crate::{
     config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, utils::{scale_font, scale_rect_to_window}
 };
 
-use super::component::{Casts, Clearable, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable};
+use super::{component::{Casts, Clearable, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
 
 pub const INPUT_BG_COLOR_ENABLED: Color = Color { red: 80, green: 80, blue: 80, alpha: 255 };
 pub const INPUT_BG_COLOR_DISABLED: Color = Color { red: 50, green: 50, blue: 50, alpha: 255 };
@@ -189,6 +189,32 @@ impl Component for InputField {
                 DEFAULT_CHAR_HEIGHT * self.font_scale.1,
             ),
             (self.orig_rect_data.width, self.orig_rect_data.height),
+            styling.maintain_aspect_ratio,
+        );
+
+        self.mark_dirty();
+    }
+
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        let styling: &ComponentStyling = &self.styling;
+
+        // TODO: Is the font scaling correct?
+        self.font_scale = scale_font(
+            &(self.rel_font_size as u32, self.rel_font_size as u32),
+            &self.rel_rect_data,
+            &self.abs_rect_data,
+        );
+
+        let min_dim = (
+            self.max_chars as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+            DEFAULT_CHAR_HEIGHT * self.font_scale.1,
+        );
+        let max_dim = (self.orig_rect_data.width, self.orig_rect_data.height);
+
+        self.abs_rect_data = parent.scale_to_container(
+            self.rel_rect_data,
+            min_dim,
+            max_dim,
             styling.maintain_aspect_ratio,
         );
 

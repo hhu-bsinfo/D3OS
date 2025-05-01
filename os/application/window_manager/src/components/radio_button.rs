@@ -3,7 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use crate::{config::INTERACT_BUTTON, utils::{scale_pos_to_window, scale_radius_to_window, scale_rect_to_window}};
 
-use super::component::{Casts, Component, ComponentStyling, Interactable};
+use super::{component::{Casts, Component, ComponentStyling, Interactable}, container::Container};
 
 pub struct RadioButton {
     pub id: Option<usize>,
@@ -148,6 +148,10 @@ impl Component for RadioButton {
         // wird in button_group übernommen
         
         self.mark_dirty();
+    }
+
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        // wird in radio_button_group übernommen
     }
 }
 

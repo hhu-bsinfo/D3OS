@@ -3,7 +3,7 @@ use graphic::{bitmap::{Bitmap, ScalingMode}, lfb::DEFAULT_CHAR_HEIGHT};
 
 use crate::{utils::scale_rect_to_window, WindowManager};
 
-use super::component::{Casts, Component, ComponentStyling, Hideable, Resizable};
+use super::{component::{Casts, Component, ComponentStyling, Hideable, Resizable}, container::Container};
 
 pub struct BitmapGraphic {
     pub id: Option<usize>,
@@ -120,6 +120,23 @@ impl Component for BitmapGraphic {
             new_rect_data,
             min_dim,
             (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32),
+            styling.maintain_aspect_ratio,
+        );
+
+        self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);
+        self.mark_dirty();
+    }
+
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        let styling: &ComponentStyling = &self.styling;
+
+        let min_dim = (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT);
+        let max_dim = (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32);
+
+        self.abs_rect_data = parent.scale_to_container(
+            self.rel_rect_data,
+            min_dim,
+            max_dim,
             styling.maintain_aspect_ratio,
         );
 

@@ -5,7 +5,7 @@ use spin::RwLock;
 
 use crate::{config::INTERACT_BUTTON, mouse_state::ButtonState, utils::{scale_pos_to_window, scale_radius_to_window, scale_rect_to_window}};
 
-use super::{component::{Casts, Component, ComponentStyling, Focusable, Interactable}, radio_button::RadioButton};
+use super::{component::{Casts, Component, ComponentStyling, Focusable, Interactable}, container::Container, radio_button::RadioButton};
 
 pub struct RadioButtonGroup {
     id: Option<usize>,
@@ -195,6 +195,17 @@ impl Component for RadioButtonGroup {
         let abs_center = scale_pos_to_window(self.first_rel_center, new_rect_data);
 
         self.abs_radius = scale_radius_to_window(self.first_rel_center, self.rel_radius, 7, new_rect_data);
+
+        for (i, button) in self.buttons.iter_mut().enumerate() {
+            button.write().set_center(abs_center.add(i as u32 * ((self.abs_radius * 2) + self.spacing), 0));
+            button.write().set_radius(self.abs_radius);
+        }
+    }
+
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        let abs_center = parent.scale_vertex_to_container(self.first_rel_center);
+
+        self.abs_radius = scale_radius_to_window(self.first_rel_center, self.rel_radius, 7, parent.get_abs_rect_data());
 
         for (i, button) in self.buttons.iter_mut().enumerate() {
             button.write().set_center(abs_center.add(i as u32 * ((self.abs_radius * 2) + self.spacing), 0));

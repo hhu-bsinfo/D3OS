@@ -4,7 +4,7 @@ use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use libm::roundf;
 use crate::{config::DEFAULT_FONT_SCALE, mouse_state::{ButtonState, MouseEvent, ScrollDirection}, utils::scale_rect_to_window};
 
-use super::component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable};
+use super::{component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
 
 const HANDLE_WIDTH: u32 = 10;
 
@@ -167,6 +167,22 @@ impl Component for Slider {
             new_rect_data,
             (HANDLE_WIDTH * self.steps, DEFAULT_CHAR_HEIGHT),
             (self.orig_rect_data.width, self.orig_rect_data.height),
+            styling.maintain_aspect_ratio,
+        );
+
+        self.mark_dirty();
+    }
+
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        let styling: &ComponentStyling = &self.styling;
+
+        let min_dim = (HANDLE_WIDTH * self.steps, DEFAULT_CHAR_HEIGHT);
+        let max_dim = (self.orig_rect_data.width, self.orig_rect_data.height);
+
+        self.abs_rect_data = parent.scale_to_container(
+            self.rel_rect_data,
+            min_dim,
+            max_dim,
             styling.maintain_aspect_ratio,
         );
 

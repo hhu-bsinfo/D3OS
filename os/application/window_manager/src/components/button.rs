@@ -220,6 +220,7 @@ impl Component for Button {
             styling.maintain_aspect_ratio,
         );
 
+        // TODO: Is the font scaling correct?
         self.font_scale = scale_font(
             &(self.rel_font_size as u32, self.rel_font_size as u32),
             &self.rel_rect_data,

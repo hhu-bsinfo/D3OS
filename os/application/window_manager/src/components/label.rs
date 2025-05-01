@@ -5,7 +5,7 @@ use spin::{rwlock::RwLock};
 
 use crate::{signal::{ComponentRef, Signal, Stateful}, utils::{scale_font, scale_pos_to_window}, SCREEN};
 
-use super::component::{Casts, Component, ComponentStyling, Hideable};
+use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
 pub const TEXT_COLOR: Color = WHITE;
 pub const TEXT_COLOR_FOCUSED: Color = YELLOW;
@@ -115,6 +115,25 @@ impl Component for Label {
             },
             &new_rect_data,
         );
+        self.mark_dirty();
+    }
+
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        self.abs_pos = parent.scale_vertex_to_container(self.rel_pos);
+
+        let screen = SCREEN.get().unwrap();
+
+        // TODO: Is the font scaling correct?
+        self.font_scale = scale_font(
+            &(self.rel_font_size as u32, self.rel_font_size as u32),
+            &RectData {
+                top_left: Vertex::zero(),
+                width: screen.0,
+                height: screen.1,
+            },
+            &parent.get_abs_rect_data(),
+        );
+
         self.mark_dirty();
     }
 
