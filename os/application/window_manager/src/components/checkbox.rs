@@ -116,15 +116,12 @@ impl Component for Checkbox {
             .top_left
             .move_to_new_rect(&old_window, &new_window);
 
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_window,
             (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT),
             (self.orig_rect_data.width, self.orig_rect_data.height),
             styling.maintain_aspect_ratio,
-            aspect_ratio,
         );
 
         self.mark_dirty();
@@ -132,8 +129,6 @@ impl Component for Checkbox {
 
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
         let styling: &ComponentStyling = &self.styling;
-
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
         
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
@@ -141,7 +136,6 @@ impl Component for Checkbox {
             (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT),
             (self.orig_rect_data.width, self.orig_rect_data.height),
             styling.maintain_aspect_ratio,
-            aspect_ratio
         );
         self.mark_dirty();
     }

@@ -161,15 +161,12 @@ impl Component for InputField {
             DEFAULT_CHAR_HEIGHT * self.font_scale.1,
         );
 
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_window,
             (min_dim.0, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
             (self.orig_rect_data.width, self.orig_rect_data.height),
             styling.maintain_aspect_ratio,
-            aspect_ratio,
         );
 
         self.mark_dirty();
@@ -177,8 +174,6 @@ impl Component for InputField {
 
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
         let styling: &ComponentStyling = &self.styling;
-
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
 
         self.font_scale = scale_font(
             &(self.rel_font_size as u32, self.rel_font_size as u32),
@@ -195,7 +190,6 @@ impl Component for InputField {
             ),
             (self.orig_rect_data.width, self.orig_rect_data.height),
             styling.maintain_aspect_ratio,
-            aspect_ratio
         );
 
         self.mark_dirty();

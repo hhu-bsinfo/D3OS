@@ -148,15 +148,12 @@ impl Component for Slider {
             DEFAULT_CHAR_HEIGHT
         );
 
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_window,
             min_dim,
             (self.orig_rect_data.width, self.orig_rect_data.height),
             styling.maintain_aspect_ratio,
-            aspect_ratio,
         );
 
         self.mark_dirty();
@@ -165,15 +162,12 @@ impl Component for Slider {
     fn rescale_after_move(&mut self, new_rect_data: RectData) {
         let styling: &ComponentStyling = &self.styling;
 
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_rect_data,
             (HANDLE_WIDTH * self.steps, DEFAULT_CHAR_HEIGHT),
             (self.orig_rect_data.width, self.orig_rect_data.height),
             styling.maintain_aspect_ratio,
-            aspect_ratio,
         );
 
         self.mark_dirty();

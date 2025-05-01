@@ -161,7 +161,6 @@ impl Container for BasicContainer {
             min_dim,
             max_dim,
             aspect_ratio.is_some(),
-            aspect_ratio.unwrap_or(1.0),
         );
 
         // Adjust the position and size of the received abs rect
@@ -243,15 +242,12 @@ impl Component for BasicContainer {
     }
 
     fn rescale_after_split(&mut self, old_window_rect: RectData, new_window_rect: RectData) {
-        let aspect_ratio = self.rel_rect_data.width as f64 / self.rel_rect_data.height as f64;
-
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_window_rect,
             (10, 10),
             (1000, 1000),
             self.styling.maintain_aspect_ratio,
-            aspect_ratio,
         );
 
         // Rescale all child components
@@ -265,15 +261,12 @@ impl Component for BasicContainer {
     }
 
     fn rescale_after_move(&mut self, new_window_rect: RectData) {
-        let aspect_ratio = self.rel_rect_data.width as f64 / self.rel_rect_data.height as f64;
-
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_window_rect,
             (10, 10),
             (1000, 1000),
             self.styling.maintain_aspect_ratio,
-            aspect_ratio,
         );
 
         // Rescale all child components

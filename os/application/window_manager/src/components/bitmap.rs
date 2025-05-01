@@ -98,15 +98,12 @@ impl Component for BitmapGraphic {
 
         let min_dim = (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT);
 
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
             new_window,
             min_dim,
             (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32),
             styling.maintain_aspect_ratio,
-            aspect_ratio,
         );
 
         self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);
@@ -117,7 +114,6 @@ impl Component for BitmapGraphic {
         let styling: &ComponentStyling = &self.styling;
 
         let min_dim = (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT);
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
         
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,
@@ -125,7 +121,6 @@ impl Component for BitmapGraphic {
             min_dim,
             (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32),
             styling.maintain_aspect_ratio,
-            aspect_ratio,
         );
 
         self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);
