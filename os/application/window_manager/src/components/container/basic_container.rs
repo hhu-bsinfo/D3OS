@@ -35,8 +35,10 @@ pub struct BasicContainer {
     abs_rect_data: RectData,
     drawn_rect_data: RectData,
 
-    is_dirty: bool,
+    /// Absolute offset from (0, 0)
     cursor: Vertex,
+    
+    is_dirty: bool,
     styling: ComponentStyling,
 }
 
@@ -57,10 +59,19 @@ impl BasicContainer {
             rel_rect_data,
             abs_rect_data,
             drawn_rect_data: abs_rect_data.clone(),
+            
+            cursor: Vertex::zero(),
 
             is_dirty: true,
-            cursor: Vertex::zero(),
             styling: styling.unwrap_or_default(),
+        }
+    }
+
+    fn apply_default_layout(&mut self) {
+        for child in &self.childs {
+            child
+                .write()
+                .rescale_to_container(self.as_container().unwrap());
         }
     }
 
@@ -90,42 +101,15 @@ impl BasicContainer {
         }
     }
 
-    fn apply_grid_layout(&mut self, rows: u32, cols: u32) {
-        // TODO: Adjust for the new scaling function
-
-        let mut cursor = Vertex { x: 0, y: 0 };
-        let cell_width = self.abs_rect_data.width / cols;
-        let cell_height = self.abs_rect_data.height / rows;
-
-        for child in &self.childs {
-            // Update layout
-            child.write().rescale_after_move(RectData {
-                top_left: self.abs_rect_data.top_left
-                    + Vertex {
-                        x: cursor.x * cell_width,
-                        y: cursor.y * cell_height,
-                    },
-                width: self.abs_rect_data.width,
-                height: self.abs_rect_data.height,
-            });
-
-            // Update the cursor
-            cursor.x = (cursor.x + 1) % cols;
-            if cursor.x == 0 {
-                cursor.y += 1;
-            }
-        }
-    }
-
     fn apply_layout(&mut self) {
-        self.cursor = self.abs_rect_data.top_left;
+        self.cursor = Vertex::zero();
 
         match self.layout {
             LayoutMode::Horizontal => self.apply_horizontal_layout(),
             LayoutMode::Vertical => self.apply_vertical_layout(),
-            LayoutMode::Grid(rows, cols) => self.apply_grid_layout(rows, cols),
+            LayoutMode::Grid(_, _) => todo!("needs rework for new scaling system"),
 
-            _ => {}
+            _ => self.apply_default_layout(),
         }
     }
 }
@@ -164,9 +148,10 @@ impl Container for BasicContainer {
         );
 
         // Adjust the position and size of the received abs rect
+        // TODO: Use rel_rect as paddding, if stretching is active
         let layout_abs_rect = match &self.layout {
             LayoutMode::Horizontal => RectData {
-                top_left: self.cursor + rel_rect.top_left, // Orgininal rel = Offset
+                top_left: new_abs_rect.top_left + rel_rect.top_left + self.cursor, // Use original rel as offset
                 height: match self.stretch {
                     StretchMode::Fill => self.abs_rect_data.height,
                     _ => new_abs_rect.height,
@@ -176,7 +161,7 @@ impl Container for BasicContainer {
             },
 
             LayoutMode::Vertical => RectData {
-                top_left: self.cursor + rel_rect.top_left, // Orgininal rel = Offset
+                top_left: new_abs_rect.top_left + rel_rect.top_left + self.cursor, // Use original rel as offset
                 width: match self.stretch {
                     StretchMode::Fill => self.abs_rect_data.width,
                     _ => new_abs_rect.width,
@@ -185,7 +170,10 @@ impl Container for BasicContainer {
                 ..new_abs_rect
             },
 
-            _ => new_abs_rect,
+            _ => RectData {
+                top_left: new_abs_rect.top_left + self.cursor,
+                ..new_abs_rect
+            },
         };
 
         layout_abs_rect
@@ -251,11 +239,11 @@ impl Component for BasicContainer {
         );
 
         // Rescale all child components
-        for child in &self.childs {
+        /*for child in &self.childs {
             child
                 .write()
                 .rescale_after_split(old_window_rect, new_window_rect);
-        }
+        }*/
 
         self.apply_layout();
     }
@@ -270,9 +258,9 @@ impl Component for BasicContainer {
         );
 
         // Rescale all child components
-        for child in &self.childs {
+        /*for child in &self.childs {
             child.write().rescale_after_move(new_window_rect);
-        }
+        }*/
 
         self.apply_layout();
     }
@@ -286,7 +274,7 @@ impl Component for BasicContainer {
             self.styling.maintain_aspect_ratio,
         );
 
-        //self.apply_layout();
+        self.apply_layout();
     }
 
     fn get_abs_rect_data(&self) -> RectData {
