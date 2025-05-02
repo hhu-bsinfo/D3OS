@@ -194,15 +194,8 @@ as if the window was occupying the full screen
 pub trait Component: Casts + {
     fn draw(&mut self, focus_id: Option<usize>);
 
-    /// Defines how rescaling the component-geometry works after the containing window has been resized
-    fn rescale_after_split(&mut self, old_rect_data: RectData, new_rect_data: RectData);
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData);
-
-    fn rescale(&mut self, old_window: RectData, new_window: RectData) {
-        //
-    }
-
+    /// Called when the component is required to adjust its absolute bounds during the layout phase.
+    /// The `parent` Container offers methods to scale relative bound to absolute bounds.
     fn rescale_to_container(&mut self, parent: &dyn Container);
 
     fn get_abs_rect_data(&self) -> RectData;

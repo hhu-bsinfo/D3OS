@@ -87,14 +87,6 @@ impl Component for SelectedWorkspaceLabel {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, _old_window: RectData, _new_window: RectData) {
-        // Should never be rescaled
-    }
-
-    fn rescale_after_move(&mut self, _new_rect_data: RectData) {
-        // Should never be moved
-    }
-
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         // Should never be called
     }

@@ -20,4 +20,8 @@ pub trait Container: Component {
 
     /// Scales a relative vertex to the container and returns the absolute vertex
     fn scale_vertex_to_container(&self, rel_pos: Vertex) -> Vertex;
+
+    /// Moves and scales the container to the given absolute rectangle.
+    /// This should only be done on the root container to prevent layout issues.
+    fn move_to(&mut self, abs_rect: RectData);
 }

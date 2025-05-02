@@ -140,16 +140,6 @@ impl Component for RadioButton {
         self.drawn_rect_data
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-       // wird in button_group übernommen
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        // wird in button_group übernommen
-        
-        self.mark_dirty();
-    }
-
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         // wird in radio_button_group übernommen
     }

@@ -246,13 +246,7 @@ impl AppWindow {
     }
 
     pub fn rescale_window_in_place(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
-        self.root_container.write().rescale_after_split(old_rect_data, new_rect_data);
-        
-        /*let components = self.components.values();
-        for component in components {
-            component.write().mark_dirty();
-            component.write().rescale_after_split(old_rect_data, new_rect_data);
-        }*/
+        self.root_container.write().as_container_mut().unwrap().move_to(new_rect_data);
 
         self.mark_window_dirty();
     }
@@ -260,11 +254,7 @@ impl AppWindow {
     pub fn rescale_window_after_move(&mut self, new_rect_data: RectData) {
         self.rect_data = new_rect_data;
 
-        self.root_container.write().rescale_after_move(new_rect_data);
-
-        /*for component in self.components.values_mut() {
-            component.write().rescale_after_move(new_rect_data);
-        }*/
+        self.root_container.write().as_container_mut().unwrap().move_to(new_rect_data);
     }
 
     pub fn merge(&mut self, other_window: &mut AppWindow) {

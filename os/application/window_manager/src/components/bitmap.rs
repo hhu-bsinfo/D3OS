@@ -88,45 +88,6 @@ impl Component for BitmapGraphic {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-        let styling: &ComponentStyling = &self.styling;
-
-        self.abs_rect_data.top_left = self
-            .abs_rect_data
-            .top_left
-            .move_to_new_rect(&old_window, &new_window);
-
-        let min_dim = (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT);
-
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_window,
-            min_dim,
-            (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32),
-            styling.maintain_aspect_ratio,
-        );
-
-        self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);
-        self.mark_dirty();
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        let styling: &ComponentStyling = &self.styling;
-
-        let min_dim = (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT);
-        
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_rect_data,
-            min_dim,
-            (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32),
-            styling.maintain_aspect_ratio,
-        );
-
-        self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);
-        self.mark_dirty();
-    }
-
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         let styling: &ComponentStyling = &self.styling;
 

@@ -157,54 +157,6 @@ impl Component for Button {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-        let styling = &self.styling;
-
-        let min_dim = match &self.label {
-            Some(label) => Some((
-                label.get().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
-                DEFAULT_CHAR_HEIGHT * self.font_scale.1,
-            )),
-            None => None,
-        };
-
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_window,
-            (min_dim.unwrap().0, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
-            (self.orig_rect_data.width, self.orig_rect_data.height),
-            styling.maintain_aspect_ratio,
-        );
-
-        self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
-        self.mark_dirty();
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        let styling = &self.styling;
-
-        let min_width = match &self.label {
-            Some(label) => label.get().len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
-            None => 0,
-        };
-
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_rect_data,
-            (min_width, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
-            (self.orig_rect_data.width, self.orig_rect_data.height),
-            styling.maintain_aspect_ratio,
-        );
-
-        self.font_scale = scale_font(
-            &(self.rel_font_size as u32, self.rel_font_size as u32),
-            &self.rel_rect_data,
-            &self.abs_rect_data,
-        );
-
-        self.mark_dirty();
-    }
-
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         let styling = &self.styling;
 

@@ -146,55 +146,6 @@ impl Component for InputField {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-        let styling: &ComponentStyling = &self.styling;
-
-        self.abs_rect_data.top_left = self
-            .abs_rect_data
-            .top_left
-            .move_to_new_rect(&old_window, &new_window);
-
-        self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
-
-        let min_dim: (u32, u32) = (
-            self.current_text.len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
-            DEFAULT_CHAR_HEIGHT * self.font_scale.1,
-        );
-
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_window,
-            (min_dim.0, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
-            (self.orig_rect_data.width, self.orig_rect_data.height),
-            styling.maintain_aspect_ratio,
-        );
-
-        self.mark_dirty();
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        let styling: &ComponentStyling = &self.styling;
-
-        self.font_scale = scale_font(
-            &(self.rel_font_size as u32, self.rel_font_size as u32),
-            &self.rel_rect_data,
-            &self.abs_rect_data,
-        );
-        
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_rect_data,
-            (
-                self.max_chars as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
-                DEFAULT_CHAR_HEIGHT * self.font_scale.1,
-            ),
-            (self.orig_rect_data.width, self.orig_rect_data.height),
-            styling.maintain_aspect_ratio,
-        );
-
-        self.mark_dirty();
-    }
-
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         let styling: &ComponentStyling = &self.styling;
 

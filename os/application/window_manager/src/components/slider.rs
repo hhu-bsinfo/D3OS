@@ -135,44 +135,6 @@ impl Component for Slider {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-        let styling: &ComponentStyling = &self.styling;
-
-        self.abs_rect_data.top_left = self
-            .abs_rect_data
-            .top_left
-            .move_to_new_rect(&old_window, &new_window);
-
-        let min_dim = (
-            HANDLE_WIDTH * self.steps,
-            DEFAULT_CHAR_HEIGHT
-        );
-
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_window,
-            min_dim,
-            (self.orig_rect_data.width, self.orig_rect_data.height),
-            styling.maintain_aspect_ratio,
-        );
-
-        self.mark_dirty();
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        let styling: &ComponentStyling = &self.styling;
-
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_rect_data,
-            (HANDLE_WIDTH * self.steps, DEFAULT_CHAR_HEIGHT),
-            (self.orig_rect_data.width, self.orig_rect_data.height),
-            styling.maintain_aspect_ratio,
-        );
-
-        self.mark_dirty();
-    }
-
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         let styling: &ComponentStyling = &self.styling;
 

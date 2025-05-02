@@ -187,6 +187,18 @@ impl Container for BasicContainer {
 
         abs_pos
     }
+    
+    fn move_to(&mut self, abs_rect: RectData) {
+        self.abs_rect_data = scale_rect_to_window(
+            self.rel_rect_data,
+            abs_rect,
+            (10, 10),
+            (1000, 1000),
+            self.styling.maintain_aspect_ratio,
+        );
+
+        self.apply_layout();
+    }
 }
 
 impl Component for BasicContainer {
@@ -227,42 +239,6 @@ impl Component for BasicContainer {
         }
 
         self.is_dirty = false;
-    }
-
-    fn rescale_after_split(&mut self, old_window_rect: RectData, new_window_rect: RectData) {
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_window_rect,
-            (10, 10),
-            (1000, 1000),
-            self.styling.maintain_aspect_ratio,
-        );
-
-        // Rescale all child components
-        /*for child in &self.childs {
-            child
-                .write()
-                .rescale_after_split(old_window_rect, new_window_rect);
-        }*/
-
-        self.apply_layout();
-    }
-
-    fn rescale_after_move(&mut self, new_window_rect: RectData) {
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_window_rect,
-            (10, 10),
-            (1000, 1000),
-            self.styling.maintain_aspect_ratio,
-        );
-
-        // Rescale all child components
-        /*for child in &self.childs {
-            child.write().rescale_after_move(new_window_rect);
-        }*/
-
-        self.apply_layout();
     }
 
     fn rescale_to_container(&mut self, parent: &dyn Container) {

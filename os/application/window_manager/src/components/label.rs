@@ -97,27 +97,6 @@ impl Component for Label {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-        self.abs_pos = self.abs_pos.move_to_new_rect(&old_window, &new_window);
-        self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
-        self.mark_dirty();
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        self.abs_pos = scale_pos_to_window(self.rel_pos, new_rect_data);
-        let screen = SCREEN.get().unwrap();
-        self.font_scale = scale_font(
-            &(self.rel_font_size as u32, self.rel_font_size as u32),
-            &RectData {
-                top_left: Vertex::new(0, 0),
-                width: screen.0,
-                height: screen.1,
-            },
-            &new_rect_data,
-        );
-        self.mark_dirty();
-    }
-
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         self.abs_pos = parent.scale_vertex_to_container(self.rel_pos);
 
