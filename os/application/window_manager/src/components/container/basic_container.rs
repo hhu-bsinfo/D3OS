@@ -37,7 +37,7 @@ pub struct BasicContainer {
 
     /// Absolute offset from (0, 0)
     cursor: Vertex,
-    
+
     is_dirty: bool,
     styling: ComponentStyling,
 }
@@ -59,7 +59,7 @@ impl BasicContainer {
             rel_rect_data,
             abs_rect_data,
             drawn_rect_data: abs_rect_data.clone(),
-            
+
             cursor: Vertex::zero(),
 
             is_dirty: true,
@@ -116,9 +116,9 @@ impl BasicContainer {
 
 impl Container for BasicContainer {
     fn add_child(&mut self, child: ComponentRef) {
-        //self.apply_stretch(&child);
         self.childs.push(child);
 
+        // TODO: Don't apply the layout after EVERY child!!!
         self.apply_layout();
     }
 
@@ -187,7 +187,7 @@ impl Container for BasicContainer {
 
         abs_pos
     }
-    
+
     fn move_to(&mut self, abs_rect: RectData) {
         self.abs_rect_data = scale_rect_to_window(
             self.rel_rect_data,

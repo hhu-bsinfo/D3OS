@@ -245,20 +245,23 @@ impl AppWindow {
         self.focus_component(new_component_id);
     }
 
-    pub fn rescale_window_in_place(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
-        self.root_container.write().as_container_mut().unwrap().move_to(new_rect_data);
+    /// Rescales the window and marks it as dirty.
+    pub fn rescale_window_in_place(&mut self, new_abs_rect: RectData) {
+        self.root_container.write().as_container_mut().unwrap().move_to(new_abs_rect);
 
         self.mark_window_dirty();
     }
 
-    pub fn rescale_window_after_move(&mut self, new_rect_data: RectData) {
-        self.rect_data = new_rect_data;
+    /// Rescales and moves the window and marks it as dirty.
+    pub fn rescale_window_after_move(&mut self, new_abs_rect: RectData) {
+        self.rect_data = new_abs_rect;
+        self.root_container.write().as_container_mut().unwrap().move_to(new_abs_rect);
 
-        self.root_container.write().as_container_mut().unwrap().move_to(new_rect_data);
+        self.mark_window_dirty();
     }
 
     pub fn merge(&mut self, other_window: &mut AppWindow) {
-        let old_rect @ RectData {
+        let _old_rect @ RectData {
             top_left: old_top_left,
             width: old_width,
             height: old_height,
@@ -301,8 +304,8 @@ impl AppWindow {
             height: new_height,
         };
 
-        self.rescale_window_in_place(old_rect, self.rect_data);
-        self.mark_window_dirty();
+        self.rescale_window_in_place(self.rect_data);
+
         other_window.mark_window_dirty();
     }
 

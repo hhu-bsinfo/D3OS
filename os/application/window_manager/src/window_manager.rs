@@ -375,7 +375,7 @@ impl WindowManager {
                     };
 
                     // Rescale components for old window
-                    window.rescale_window_in_place(old_rect, window.rect_data.clone());
+                    window.rescale_window_in_place(window.rect_data.clone());
                     self.add_window_to_workspace(new_rect_data, app_name);
                 }
                 ScreenSplitType::Vertical => {
@@ -388,7 +388,7 @@ impl WindowManager {
                     };
 
                     // Rescale components for old window
-                    window.rescale_window_in_place(old_rect, window.rect_data.clone());
+                    window.rescale_window_in_place(window.rect_data.clone());
                     self.add_window_to_workspace(new_rect_data, app_name);
                 }
             }
