@@ -4,9 +4,7 @@ use alloc::{
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 
-use crate::{
-    config::INTERACT_BUTTON, mouse_state::ButtonState, utils::scale_rect_to_window
-};
+use crate::config::INTERACT_BUTTON;
 
 use super::{component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
 

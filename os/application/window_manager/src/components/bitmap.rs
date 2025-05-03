@@ -1,8 +1,6 @@
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::{bitmap::{Bitmap, ScalingMode}, lfb::DEFAULT_CHAR_HEIGHT};
 
-use crate::{utils::scale_rect_to_window, WindowManager};
-
 use super::{component::{Casts, Component, ComponentStyling, Hideable, Resizable}, container::Container};
 
 pub struct BitmapGraphic {

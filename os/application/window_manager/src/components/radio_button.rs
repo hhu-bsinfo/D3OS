@@ -1,7 +1,4 @@
-use alloc::boxed::Box;
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::lfb::DEFAULT_CHAR_HEIGHT;
-use crate::{config::INTERACT_BUTTON, utils::{scale_pos_to_window, scale_radius_to_window, scale_rect_to_window}};
 
 use super::{component::{Casts, Component, ComponentStyling, Interactable}, container::Container};
 

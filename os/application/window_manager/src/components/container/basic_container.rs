@@ -4,7 +4,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use crate::{
     components::component::{Casts, Component, ComponentStyling},
     signal::ComponentRef,
-    utils::{scale_pos_to_window, scale_rect_to_window},
+    utils::{scale_pos_to_rect, scale_rect_to_rect},
 };
 
 use super::Container;
@@ -133,13 +133,13 @@ impl Container for BasicContainer {
         // TODO: Since the max dimension is always relative to the screen, do components really need
         // to calculate it themselves?
         let max_dim = match (&self.layout, &self.stretch) {
-            (LayoutMode::Horizontal, StretchMode::Fill) => (max_dim.0, self.abs_rect_data.height),
-            (LayoutMode::Vertical, StretchMode::Fill) => (self.abs_rect_data.width, max_dim.1),
+            (LayoutMode::Horizontal, StretchMode::Fill) => (max_dim.0, u32::max(self.abs_rect_data.height, min_dim.1)),
+            (LayoutMode::Vertical, StretchMode::Fill) => (u32::max(self.abs_rect_data.width, min_dim.0), max_dim.1),
             (_, _) => max_dim,
         };
 
         // Calculate the new abs rect from the rel rect
-        let new_abs_rect = scale_rect_to_window(
+        let new_abs_rect = scale_rect_to_rect(
             rel_rect,
             self.abs_rect_data,
             min_dim,
@@ -180,7 +180,7 @@ impl Container for BasicContainer {
     }
 
     fn scale_vertex_to_container(&self, rel_pos: Vertex) -> Vertex {
-        let abs_pos = scale_pos_to_window(rel_pos, self.abs_rect_data);
+        let abs_pos = scale_pos_to_rect(rel_pos, self.abs_rect_data);
 
         // Adjust the position
         let abs_pos = abs_pos + self.cursor;
@@ -189,7 +189,7 @@ impl Container for BasicContainer {
     }
 
     fn move_to(&mut self, abs_rect: RectData) {
-        self.abs_rect_data = scale_rect_to_window(
+        self.abs_rect_data = scale_rect_to_rect(
             self.rel_rect_data,
             abs_rect,
             (10, 10),
@@ -242,11 +242,12 @@ impl Component for BasicContainer {
     }
 
     fn rescale_to_container(&mut self, parent: &dyn Container) {
-        // TODO: max_dim should be parent abs, right?
+        let parent_abs_rect = parent.get_abs_rect_data();
+
         self.abs_rect_data = parent.scale_to_container(
             self.rel_rect_data,
-            (0, 0),
-            (1000, 1000),
+            (5, 5),
+            (parent_abs_rect.width, parent_abs_rect.height),
             self.styling.maintain_aspect_ratio,
         );
 

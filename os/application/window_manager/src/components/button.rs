@@ -11,7 +11,7 @@ use crate::{
     config::INTERACT_BUTTON,
     mouse_state::{ButtonState, MouseEvent},
     signal::{ComponentRef, Signal, Stateful},
-    utils::{scale_font, scale_rect_to_window},
+    utils::scale_font,
 };
 
 use super::{

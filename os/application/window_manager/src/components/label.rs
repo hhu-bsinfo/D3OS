@@ -3,7 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{color::{Color, WHITE, YELLOW}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
 use spin::{rwlock::RwLock};
 
-use crate::{signal::{ComponentRef, Signal, Stateful}, utils::{scale_font, scale_pos_to_window}, SCREEN};
+use crate::{signal::{ComponentRef, Signal, Stateful}, utils::scale_font, SCREEN};
 
 use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
