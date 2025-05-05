@@ -325,6 +325,7 @@ name = "graphic"
 version = "0.1.0"
 dependencies = [
  "libm",
+ "syscall",
  "unifont",
 ]
 
@@ -626,6 +627,7 @@ dependencies = [
  "runtime",
  "spin 0.10.0",
  "stream",
+ "syscall",
  "time",
  "uefi",
 ]

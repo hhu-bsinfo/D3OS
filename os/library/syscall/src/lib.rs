@@ -46,6 +46,7 @@ pub enum SystemCall {
     WriteGraphic,
     GetGraphicResolution,
     MouseRead,
+    MapFramebuffer,
     // no syscall, just marking last number, see NUM_SYSCALLS
     // insert any new system calls before this marker
     LastEntryMarker,
@@ -55,7 +56,7 @@ pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
 
 ///
 /// Description:
-///    All syscalls are fired here. Parameters are passed in 
+///    All syscalls are fired here. Parameters are passed in
 ///    registers according to the AMD 64 bit ABI.
 ///
 /// Return: Result \

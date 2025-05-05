@@ -17,6 +17,8 @@ concurrent = { path = "../../library/concurrent" }
 drawer = { path = "../../library/drawer" }
 time = { path = "../../library/time" }
 
+syscall = {path ="../../library/syscall"}
+
 # Extern dependencies
 anstyle-parse = "0.2.6"
 chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }

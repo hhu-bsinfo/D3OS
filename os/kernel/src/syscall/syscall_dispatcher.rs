@@ -25,7 +25,7 @@ use crate::syscall::sys_input::sys_read_mouse;
 
 use crate::{core_local_storage, tss};
 
-use super::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
+use super::sys_graphic::{sys_get_graphic_resolution, sys_map_fb_info, sys_write_graphic};
 use super::sys_terminal::sys_log_debug;
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
@@ -116,6 +116,7 @@ impl SyscallTable {
                 sys_write_graphic as * const _,
                 sys_get_graphic_resolution as * const _,
                 sys_read_mouse as * const _,
+                sys_map_fb_info as * const _,
             ],
         }
     }

@@ -8,14 +8,14 @@ use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
-use concurrent::thread;
+use concurrent::thread::{self};
 use core::cell::RefCell;
 use core::mem::size_of;
 use core::ptr;
 use graphic::ansi::COLOR_TABLE_256;
 use graphic::buffered_lfb::BufferedLFB;
 use graphic::color::{Color, INVISIBLE};
-use graphic::lfb::LFB;
+use graphic::lfb::{LFB, get_lfb_info};
 use graphic::{color, lfb};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
@@ -23,6 +23,9 @@ use spin::Mutex;
 use stream::{InputStream, OutputStream};
 use terminal::Terminal;
 use time::date;
+
+#[allow(unused_imports)]
+use runtime::*;
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) {
     cursor
@@ -1091,5 +1094,16 @@ impl Perform for LFBTerminal {
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    loop {}
+    let lfb_info = get_lfb_info();
+
+    let lfb_terminal = LFBTerminal::new(
+        lfb_info.address as *mut u8,
+        lfb_info.pitch,
+        lfb_info.width,
+        lfb_info.height,
+        lfb_info.bpp,
+    );
+
+    lfb_terminal.clear();
+    lfb_terminal.write_str("Hello there");
 }
