@@ -649,14 +649,14 @@ impl Api {
     }
 
     // TODO: What's the purpose of this?
-    #[allow(unused_variables, unreachable_code)]
-    fn scale_font_to_window(&self, original_font_size: usize, ratios: &(f64, f64)) -> (u32, u32) {
+    fn scale_font_to_window(&self, _original_font_size: usize, _ratios: &(f64, f64)) -> (u32, u32) {
         return (1, 1);
-        let float_font_size = f64::from(original_font_size as u32);
+        
+        /*let float_font_size = f64::from(original_font_size as u32);
         (
             ((float_font_size * ratios.0) as u32).max(1),
             ((float_font_size * ratios.1) as u32).max(1),
-        )
+        )*/
     }
 
     /// Scales a logical rect to a relative rect
@@ -679,6 +679,7 @@ impl Api {
         };
     }
 
+    /// Scales a logical vertex to a relative vertex
     fn scale_vertex_to_rel(&self, log_pos: &Vertex) -> Vertex {
         return Vertex::new(
             (f64::from(log_pos.x) * self.rel_to_log_ratios.0) as u32,

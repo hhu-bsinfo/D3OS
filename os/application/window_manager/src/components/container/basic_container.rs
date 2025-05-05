@@ -117,9 +117,7 @@ impl BasicContainer {
 impl Container for BasicContainer {
     fn add_child(&mut self, child: ComponentRef) {
         self.childs.push(child);
-
-        // TODO: Don't apply the layout after EVERY child!!!
-        self.apply_layout();
+        self.mark_dirty();
     }
 
     fn scale_to_container(
@@ -133,9 +131,13 @@ impl Container for BasicContainer {
         // TODO: Since the max dimension is always relative to the screen, do components really need
         // to calculate it themselves?
         let max_dim = match (&self.layout, &self.stretch) {
-            (LayoutMode::Horizontal, StretchMode::Fill) => (max_dim.0, u32::max(self.abs_rect_data.height, min_dim.1)),
-            (LayoutMode::Vertical, StretchMode::Fill) => (u32::max(self.abs_rect_data.width, min_dim.0), max_dim.1),
-            (_, _) => max_dim,
+            (LayoutMode::Horizontal, StretchMode::Fill) => {
+                (max_dim.0, u32::max(self.abs_rect_data.height, min_dim.1))
+            }
+            (LayoutMode::Vertical, StretchMode::Fill) => {
+                (u32::max(self.abs_rect_data.width, min_dim.0), max_dim.1)
+            }
+            (_, _) => max_dim.max(min_dim),
         };
 
         // Calculate the new abs rect from the rel rect
@@ -197,30 +199,35 @@ impl Container for BasicContainer {
             self.styling.maintain_aspect_ratio,
         );
 
-        self.apply_layout();
+        self.mark_dirty();
     }
 }
 
 impl Component for BasicContainer {
     fn draw(&mut self, focus_id: Option<usize>) {
+        // Apply the layout BEFORE redrawing
+        if self.is_dirty {
+            Drawer::draw_rectangle(self.abs_rect_data, self.styling.border_color);
+            self.drawn_rect_data = self.abs_rect_data.clone();
+
+            self.apply_layout();
+        }
+
+        // Retrieve all dirty components
         let dirty_components = self
             .childs
             .iter()
             .filter(|child| child.read().is_dirty())
             .collect::<Vec<_>>();
 
-        // Bail out if there's nothing to do
-        if dirty_components.is_empty() && !self.is_dirty {
+        // Is there anything to do?
+        if dirty_components.is_empty() {
+            self.is_dirty = false;
             return;
         }
 
-        if self.is_dirty {
-            // Redraw the container, as it has been cleared by now
-            Drawer::draw_rectangle(self.abs_rect_data, self.styling.border_color);
-
-            self.drawn_rect_data = self.abs_rect_data.clone();
-        } else {
-            // Clear the area of dirty child components
+        // Clear the area of dirty child components
+        if !self.is_dirty {
             for child in &dirty_components {
                 // We don't want to redraw entire containers
                 // TODO: Make components responsible for clearing their own area?
@@ -251,7 +258,7 @@ impl Component for BasicContainer {
             self.styling.maintain_aspect_ratio,
         );
 
-        self.apply_layout();
+        self.mark_dirty();
     }
 
     fn get_abs_rect_data(&self) -> RectData {

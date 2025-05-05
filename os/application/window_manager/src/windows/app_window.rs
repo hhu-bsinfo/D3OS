@@ -28,10 +28,9 @@ pub struct AppWindow {
 
 impl AppWindow {
     pub fn new(id: usize, rect_data: RectData) -> Self {
-        // TODO: This is a bit hacky
         let screen_size = SCREEN.get().unwrap();
         let screen_rect = RectData {
-            top_left: Vertex { x: 0, y: 0 },
+            top_left: Vertex::zero(),
             width: screen_size.0,
             height: screen_size.1,
         };
