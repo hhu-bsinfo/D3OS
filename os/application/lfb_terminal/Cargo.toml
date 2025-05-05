@@ -1,0 +1,25 @@
+[package]
+edition = "2024"
+name = "lfb_terminal"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>, Sebastian Keller <sebastian.keller@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/lfb_terminal.rs"
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+graphic = { path = "../../library/graphic" }
+stream = { path = "../../library/stream" }
+concurrent = { path = "../../library/concurrent" }
+drawer = { path = "../../library/drawer" }
+time = { path = "../../library/time" }
+
+# Extern dependencies
+anstyle-parse = "0.2.6"
+chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
+pc-keyboard = "0.8.0"
+spin = "0.10.0"
+uefi = "0.34.1"
