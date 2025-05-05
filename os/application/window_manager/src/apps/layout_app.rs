@@ -33,7 +33,7 @@ impl Runnable for LayoutApp {
                         height: 500,
                     },
                     layout: LayoutMode::Vertical,
-                    stretch: StretchMode::None,
+                    stretch: StretchMode::Fill,
                     styling: Some(
                         ComponentStylingBuilder::new()
                             .maintain_aspect_ratio(false)
@@ -50,7 +50,7 @@ impl Runnable for LayoutApp {
                 Command::CreateContainer {
                     log_rect_data: RectData {
                         top_left: Vertex::zero(),
-                        width: 1000,
+                        width: 0,
                         height: 100,
                     },
                     layout: LayoutMode::Horizontal,
@@ -71,7 +71,7 @@ impl Runnable for LayoutApp {
                 Command::CreateContainer {
                     log_rect_data: RectData {
                         top_left: Vertex::zero(),
-                        width: 1000,
+                        width: 0,
                         height: 400,
                     },
                     layout: LayoutMode::Vertical,
@@ -79,6 +79,7 @@ impl Runnable for LayoutApp {
                     styling: Some(
                         ComponentStylingBuilder::new()
                             .border_color(Color::new(0, 255, 0, 255))
+                            .maintain_aspect_ratio(true)
                             .build(),
                     ),
                 },
@@ -88,7 +89,7 @@ impl Runnable for LayoutApp {
         fn create_button(
             api: &Api,
             window_handle: usize,
-            parent: ComponentRef,
+            parent: Option<ComponentRef>,
             x: u32,
             y: u32,
             width: u32,
@@ -97,7 +98,7 @@ impl Runnable for LayoutApp {
         ) -> Option<ComponentRef> {
             api.execute(
                 window_handle,
-                Some(parent),
+                parent,
                 Command::CreateButton {
                     log_rect_data: RectData {
                         top_left: Vertex { x, y },
@@ -110,7 +111,7 @@ impl Runnable for LayoutApp {
                     })),
                     styling: Some(
                         ComponentStylingBuilder::new()
-                            .maintain_aspect_ratio(false)
+                            .maintain_aspect_ratio(true)
                             .build(),
                     ),
                 },
@@ -129,7 +130,7 @@ impl Runnable for LayoutApp {
             let _ = create_button(
                 &api,
                 window_handle,
-                container_2.clone(),
+                Some(container_2.clone()),
                 0,
                 0,
                 150,
@@ -138,11 +139,22 @@ impl Runnable for LayoutApp {
             );
         }
 
+        /*let _ = create_button(
+            &api,
+            window_handle,
+            None,
+            0,
+            0,
+            200,
+            100,
+            &format!("{}", 0),
+        );*/
+
         for i in 0..3 {
             let _ = create_button(
                 &api,
                 window_handle,
-                container_3.clone(),
+                Some(container_3.clone()),
                 0,
                 0,
                 0,

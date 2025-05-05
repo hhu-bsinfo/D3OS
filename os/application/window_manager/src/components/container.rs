@@ -9,6 +9,8 @@ pub mod basic_container;
 pub trait Container: Component {
     fn add_child(&mut self, child: ComponentRef);
 
+    fn remove_child(&mut self, id: usize);
+
     /// Scales a relative rect to the container and returns the absolute rect
     fn scale_to_container(
         &self,

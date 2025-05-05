@@ -120,6 +120,13 @@ impl Container for BasicContainer {
         self.mark_dirty();
     }
 
+    fn remove_child(&mut self, id: usize) {
+        if let Some(pos) = self.childs.iter().position(|c| c.read().get_id() == Some(id)) {
+            self.childs.remove(pos);
+            self.mark_dirty();
+        }
+    }
+
     fn scale_to_container(
         &self,
         rel_rect: RectData,
