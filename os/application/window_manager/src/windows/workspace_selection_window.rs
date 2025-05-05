@@ -23,8 +23,6 @@ pub struct WorkspaceSelectionWindow {
     abs_rect: RectData,
     root_container: Box<BasicContainer>,
     buttons: Vec<ComponentRef>,
-
-    is_dirty: bool,
 }
 
 impl WorkspaceSelectionWindow {
@@ -48,8 +46,6 @@ impl WorkspaceSelectionWindow {
             abs_rect,
             root_container,
             buttons: Vec::new(),
-
-            is_dirty: true,
         }
     }
 
@@ -140,7 +136,6 @@ impl WorkspaceSelectionWindow {
     }
 
     pub fn mark_dirty(&mut self) {
-        self.is_dirty = true;
         self.root_container.mark_dirty();
     }
 }

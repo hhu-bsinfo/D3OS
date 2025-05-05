@@ -507,26 +507,24 @@ impl WindowManager {
 
         if is_dirty {
             Drawer::full_clear_screen(false);
+            self.workspace_selection_window.mark_dirty();
         }
 
         let focused_window_id = self.get_current_workspace().focused_window_id;
-
-        // // Redraw everything related to workspace-selection-labels
-        self.workspace_selection_window
-            .draw(Some(self.current_workspace));
-
         let curr_ws = self.get_current_workspace_mut();
         
-        
-        // Redraw workspace windows
+        // Redraw all unfocused workspace windows
         for window in curr_ws.windows.values_mut().filter(|w| w.id != focused_window_id) {
             window.draw(focused_window_id, is_dirty);
         }
 
-        // zeichne fokussiertes als letztes
+        // Draw the focused window
         if let Some(window) = curr_ws.windows.get_mut(&focused_window_id) {
             window.draw(focused_window_id, is_dirty);
         }
+
+        // Draw workspace selection window last
+        self.workspace_selection_window.draw(Some(self.current_workspace));
 
         self.is_dirty = false;
     }
