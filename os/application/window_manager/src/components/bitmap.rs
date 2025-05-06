@@ -21,7 +21,6 @@ pub struct BitmapGraphic {
 impl BitmapGraphic {
     pub fn new(
         rel_rect_data: RectData,
-        abs_rect_data: RectData,
         orig_rect_data: RectData,
         bitmap: Bitmap,
         scaling_mode: ScalingMode,
@@ -31,11 +30,11 @@ impl BitmapGraphic {
             id: None,
             is_dirty: true,
             rel_rect_data,
-            abs_rect_data,
-            drawn_rect_data: abs_rect_data.clone(),
+            abs_rect_data: RectData::zero(),
+            drawn_rect_data: RectData::zero(),
             orig_rect_data,
             scaling_mode,
-            bitmap: bitmap.scale(abs_rect_data.width, abs_rect_data.height, scaling_mode.clone()),
+            bitmap: bitmap.clone(),
             orig_bitmap: bitmap,
             scale_factor: 1.0,
             is_hidden: false,

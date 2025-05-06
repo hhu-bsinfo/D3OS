@@ -369,20 +369,9 @@ impl Api {
                         self.validate_log_pos(&log_rect_data.top_left)?;
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                        let min_dim = (10, 10);
-
-                        let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
-                            rel_rect_data,
-                            min_dim,
-                            (1000, 1000),
-                            styling
-                                .unwrap_or_default()
-                                .maintain_aspect_ratio,
-                        );
 
                         let bitmap_graphic = BitmapGraphic::new(
                             rel_rect_data,
-                            abs_rect_data,
                             log_rect_data.clone(),
                             bitmap.clone(),
                             scaling_mode,
