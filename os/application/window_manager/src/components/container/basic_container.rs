@@ -45,7 +45,6 @@ pub struct BasicContainer {
 impl BasicContainer {
     pub fn new(
         rel_rect_data: RectData,
-        abs_rect_data: RectData,
         layout: LayoutMode,
         stretch: StretchMode,
         styling: Option<ComponentStyling>,
@@ -57,8 +56,8 @@ impl BasicContainer {
             stretch,
 
             rel_rect_data,
-            abs_rect_data,
-            drawn_rect_data: abs_rect_data.clone(),
+            abs_rect_data: RectData::zero(),
+            drawn_rect_data: RectData::zero(),
 
             cursor: Vertex::zero(),
 

@@ -234,16 +234,7 @@ impl Api {
 
                         let (text, font_size_option) = label.unzip();
                         let font_size = font_size_option.unwrap_or(1);
-
                         let font_scale = self.scale_font_to_window(font_size, &ratios);
-
-                        let min_dim = match &text {
-                            Some(label) => Some((
-                                label.get().len() as u32 * DEFAULT_CHAR_WIDTH * font_scale.0,
-                                DEFAULT_CHAR_HEIGHT * font_scale.1,
-                            )),
-                            None => None,
-                        }.unwrap();
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
         
@@ -317,11 +308,6 @@ impl Api {
                         let font_size = font_size.unwrap_or(1);
                         let scaled_font_scale = self.scale_font_to_window(font_size, &ratios);
 
-                        let min_dim = (
-                            DEFAULT_CHAR_WIDTH * width_in_chars as u32 * scaled_font_scale.0 + PADDING_BORDERS_AND_CHARS,
-                            DEFAULT_CHAR_HEIGHT * scaled_font_scale.1 + PADDING_BORDERS_AND_CHARS,
-                        );
-
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
                         let component = InputField::new(
@@ -351,11 +337,6 @@ impl Api {
                         styling,
                     } => {
                         self.validate_log_pos(&log_rect_data.top_left)?;
-
-                        let min_dim = (
-                            DEFAULT_CHAR_HEIGHT,
-                            DEFAULT_CHAR_HEIGHT,
-                        );
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
@@ -430,11 +411,6 @@ impl Api {
                     } => {
                         self.validate_log_pos(&log_rect_data.top_left)?;
 
-                        let min_dim = (
-                            DEFAULT_CHAR_HEIGHT,
-                            DEFAULT_CHAR_HEIGHT,
-                        );
-
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
                         let slider = Slider::new(
@@ -506,18 +482,7 @@ impl Api {
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
-                let min_dim = (10, 10);
-                let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
-                    rel_rect_data,
-                    min_dim,
-                    (1000, 1000),
-                    styling
-                        .unwrap_or_default()
-                        .maintain_aspect_ratio,
-                );
-
-                let container = BasicContainer::new(rel_rect_data, abs_rect_data, layout, stretch, styling);
-
+                let container = BasicContainer::new(rel_rect_data, layout, stretch, styling);
                 let component: ComponentRef = Rc::new(RwLock::new(Box::new(container)));
 
                 let dispatch_data = NewCompData {

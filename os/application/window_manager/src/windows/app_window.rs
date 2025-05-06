@@ -35,13 +35,18 @@ impl AppWindow {
             height: screen_size.1,
         };
 
-        let root_container: ComponentRef = Rc::new(RwLock::new(Box::new(BasicContainer::new(
+        // Root container that will hold all components
+        let mut root_container = Box::new(BasicContainer::new(
             screen_rect,
-            rect_data,
             LayoutMode::None,
             StretchMode::None,
             None,
-        ))));
+        ));
+
+        // Initial scaling to window bounds
+        root_container.move_to(rect_data);
+
+        let root_container: ComponentRef = Rc::new(RwLock::new(root_container));
 
         Self {
             id,

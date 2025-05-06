@@ -34,13 +34,16 @@ impl WorkspaceSelectionWindow {
             height: screen_size.1,
         };
 
-        let root_container = Box::new(BasicContainer::new(
+        // Root container that will hold all buttons
+        let mut root_container = Box::new(BasicContainer::new(
             screen_rect,
-            abs_rect,
             LayoutMode::Horizontal,
             StretchMode::Fill,
             None,
         ));
+
+        // Initial scaling to the window bounds
+        root_container.move_to(abs_rect);
 
         Self {
             abs_rect,
@@ -62,12 +65,6 @@ impl WorkspaceSelectionWindow {
             width: 50,
             height: 0,
         };
-
-        /*let abs_rect = self
-            .root_container
-            .as_container()
-            .unwrap()
-            .scale_to_container(rel_rect, (10, 10), (500, 500), true);*/
 
         let button = Button::new(
             rel_rect,
