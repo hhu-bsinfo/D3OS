@@ -52,7 +52,6 @@ pub struct InputField {
 
 impl InputField {
     pub fn new(
-        abs_rect_data: RectData,
         rel_rect_data: RectData,
         rel_font_size: usize,
         font_scale: (u32, u32),
@@ -67,11 +66,11 @@ impl InputField {
                 is_dirty: true,
                 is_selected: false,
                 max_chars,
-                abs_rect_data,
+                abs_rect_data: RectData::zero(),
                 rel_rect_data,
                 rel_font_size,
-                orig_rect_data: abs_rect_data.clone(),
-                drawn_rect_data: abs_rect_data.clone(),
+                orig_rect_data: rel_rect_data.clone(),
+                drawn_rect_data: RectData::zero(),
                 font_scale,
                 current_text: starting_text,
 

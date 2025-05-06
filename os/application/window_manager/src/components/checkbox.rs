@@ -24,7 +24,6 @@ pub struct Checkbox {
 
 impl Checkbox {
     pub fn new(
-        abs_rect_data: RectData,
         rel_rect_data: RectData,
         orig_rect_data: RectData,
         state: bool,
@@ -34,10 +33,10 @@ impl Checkbox {
         Self {
             id: None,
             is_dirty: true,
-            abs_rect_data,
+            abs_rect_data: RectData::zero(),
             rel_rect_data,
             orig_rect_data,
-            drawn_rect_data: abs_rect_data.clone(),
+            drawn_rect_data: RectData::zero(),
             state,
             on_change: Rc::new(on_change.unwrap_or_else(|| Box::new(|_| {}))),
             is_disabled: false,

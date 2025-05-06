@@ -40,7 +40,6 @@ pub struct Button {
 
 impl Button {
     pub fn new(
-        abs_rect_data: RectData,
         rel_rect_data: RectData,
         orig_rect_data: RectData,
         label: Option<Rc<Signal<String>>>,
@@ -54,9 +53,9 @@ impl Button {
         let button = Box::new(Self {
             id: None,
             is_dirty: true,
-            abs_rect_data,
+            abs_rect_data: RectData::zero(),
             orig_rect_data,
-            drawn_rect_data: abs_rect_data.clone(),
+            drawn_rect_data: RectData::zero(),
             rel_rect_data,
             rel_font_size,
             font_scale,

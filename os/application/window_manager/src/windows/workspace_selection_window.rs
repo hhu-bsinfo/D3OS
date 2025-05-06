@@ -63,16 +63,15 @@ impl WorkspaceSelectionWindow {
             height: 0,
         };
 
-        let abs_rect = self
+        /*let abs_rect = self
             .root_container
             .as_container()
             .unwrap()
-            .scale_to_container(rel_rect, (10, 10), (500, 500), true);
+            .scale_to_container(rel_rect, (10, 10), (500, 500), true);*/
 
         let button = Button::new(
-            abs_rect,
             rel_rect,
-            abs_rect,
+            rel_rect,
             Some(Signal::new(workspace_id.to_string())),
             1,
             (1, 1),

@@ -246,20 +246,8 @@ impl Api {
                         }.unwrap();
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-
-                        // Scale the relative rect to the parent container
-                        let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
-                            rel_rect_data,
-                            min_dim,
-                            (1000, 1000),
-                            styling
-                                .unwrap_or_default()
-                                .maintain_aspect_ratio,
-                        );
-                        //let abs_rect_data = self.scale_rect_to_container(rel_rect_data, container_rect, min_dim);
         
                         let button = Button::new(
-                            abs_rect_data,
                             rel_rect_data,
                             log_rect_data.clone(),
                             text,
@@ -292,10 +280,7 @@ impl Api {
                         let font_size = font_size.unwrap_or(1);
                         let scaled_font_scale = self.scale_font_to_window(font_size, &ratios);
 
-                        let abs_pos = parent.read().as_container().unwrap().scale_vertex_to_container(rel_pos);
-
                         let component = Label::new(
-                            abs_pos,
                             rel_pos,
                             font_size,
                             text,
@@ -338,23 +323,8 @@ impl Api {
                         );
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                        /*let abs_rect_data = self.scale_rect_to_window(
-                            rel_rect_data,
-                            handle_data,
-                            styling.unwrap_or_default().maintain_aspect_ratio,
-                            min_dim
-                        );*/
-                        let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
-                            rel_rect_data,
-                            min_dim,
-                            (1000, 1000),
-                            styling
-                                .unwrap_or_default()
-                                .maintain_aspect_ratio,
-                        );
 
                         let component = InputField::new(
-                            abs_rect_data,
                             rel_rect_data,
                             font_size,
                             scaled_font_scale,
@@ -388,23 +358,8 @@ impl Api {
                         );
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                        /*let abs_rect_data = self.scale_rect_to_window(
-                            rel_rect_data,
-                            handle_data,
-                            styling.unwrap_or_default().maintain_aspect_ratio,
-                            min_dim.unwrap()
-                        );*/
-                        let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
-                            rel_rect_data,
-                            min_dim,
-                            (1000, 1000),
-                            styling
-                                .unwrap_or_default()
-                                .maintain_aspect_ratio,
-                        );
 
                         let checkbox = Checkbox::new(
-                            abs_rect_data,
                             rel_rect_data,
                             log_rect_data.clone(),
                             state,
@@ -433,13 +388,8 @@ impl Api {
                         self.validate_log_pos(&log_rect_data.top_left)?;
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                        /*let abs_rect_data = self.scale_rect_to_window(
-                            rel_rect_data,
-                            handle_data,
-                            styling.unwrap_or_default().maintain_aspect_ratio,
-                            (10, 10)
-                        );*/
                         let min_dim = (10, 10);
+
                         let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
                             rel_rect_data,
                             min_dim,
@@ -486,23 +436,8 @@ impl Api {
                         );
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                        /*let abs_rect_data = self.scale_rect_to_window(
-                            rel_rect_data,
-                            handle_data,
-                            styling.unwrap_or_default().maintain_aspect_ratio,
-                            min_dim.unwrap()
-                        );*/
-                        let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(
-                            rel_rect_data,
-                            min_dim,
-                            (1000, 1000),
-                            styling
-                                .unwrap_or_default()
-                                .maintain_aspect_ratio,
-                        );
 
                         let slider = Slider::new(
-                            abs_rect_data,
                             rel_rect_data,
                             log_rect_data.clone(),
                             on_change,
@@ -570,12 +505,6 @@ impl Api {
                 self.validate_log_pos(&log_rect_data.top_left)?;
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
-                /*let abs_rect_data = self.scale_rect_to_window(
-                    rel_rect_data,
-                    handle_data,
-                    styling.unwrap_or_default().maintain_aspect_ratio,
-                    (10, 10)
-                );*/
 
                 let min_dim = (10, 10);
                 let abs_rect_data = parent.read().as_container().unwrap().scale_to_container(

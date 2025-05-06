@@ -25,7 +25,6 @@ pub struct Label {
 
 impl Label {
     pub fn new(
-        abs_pos: Vertex,
         rel_pos: Vertex,
         rel_font_size: usize,
         text: Stateful<String>,
@@ -34,23 +33,17 @@ impl Label {
     ) -> ComponentRef {
         let signal = text.clone();
 
-        let drawn_rect_data = RectData {
-            top_left: abs_pos,
-            width: text.get().len() as u32 * DEFAULT_CHAR_WIDTH * font_scale.0,
-            height: DEFAULT_CHAR_HEIGHT * font_scale.1,
-        };
-
         let label = Box::new(
             Self {
                 id: None,
                 is_dirty: true,
-                abs_pos,
+                abs_pos: Vertex::zero(),
                 rel_pos,
                 rel_font_size,
                 text,
                 font_scale,
                 is_hidden: false,
-                drawn_rect_data,
+                drawn_rect_data: RectData::zero(),
                 styling: styling.unwrap_or_default(),
             }
         );

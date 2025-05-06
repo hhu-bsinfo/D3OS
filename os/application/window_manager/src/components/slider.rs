@@ -33,7 +33,6 @@ pub struct Slider {
 
 impl Slider {
     pub fn new(
-        abs_rect_data: RectData,
         rel_rect_data: RectData,
         orig_rect_data: RectData,
         on_change: Option<Box<dyn Fn(i32) -> ()>>,
@@ -45,10 +44,10 @@ impl Slider {
     ) -> Self {
         Self {
             id: None,
-            abs_rect_data,
+            abs_rect_data: RectData::zero(),
             rel_rect_data,
             orig_rect_data,
-            drawn_rect_data: abs_rect_data.clone(),
+            drawn_rect_data: RectData::zero(),
             on_change: Rc::new(on_change.unwrap_or_else(|| Box::new(|_| {}))),
             steps,
             value,
