@@ -9,7 +9,6 @@
 */
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]
-#![feature(naked_functions)]
 #![feature(exact_size_is_empty)]
 #![feature(fmt_internals)]
 #![feature(abi_x86_interrupt)]

@@ -36,7 +36,7 @@ use crate::consts::MAIN_USER_STACK_START;
 use crate::consts::MAX_USER_STACK_SIZE;
 use crate::consts::{KERNEL_STACK_PAGES, USER_SPACE_ENV_START};
 use crate::memory::kstack::StackAllocator;
-use crate::memory::vmm::{VirtualMemoryArea, VmaType};
+use crate::memory::vmm::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process::process::Process;
 use crate::process::scheduler;
@@ -46,7 +46,7 @@ use alloc::rc::Rc;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::naked_asm;
-use core::{mem, ptr};
+use core::ptr;
 use goblin::elf::Elf;
 use goblin::elf64;
 use log::info;
@@ -542,8 +542,7 @@ impl Thread {
 }
 
 /// Low-level function for starting a thread in kernel mode
-#[naked]
-#[allow(unsafe_op_in_unsafe_fn)]
+#[unsafe(naked)]
 unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
     naked_asm!(
         "mov rsp, rdi", // First parameter -> load 'old_rsp0'
@@ -569,8 +568,7 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
 }
 
 /// Low-level function for starting a thread in user mode
-#[naked]
-#[allow(unsafe_op_in_unsafe_fn)]
+#[unsafe(naked)]
 #[allow(improper_ctypes_definitions)] // 'entry' takes no arguments and has no return value, so we just assume that the "C" and "Rust" ABIs act the same way in this case
 unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
     naked_asm!(
@@ -581,14 +579,8 @@ unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
 }
 
 /// Low-level thread switching function
-#[naked]
-#[allow(unsafe_op_in_unsafe_fn)]
-unsafe extern "C" fn thread_switch(
-    current_rsp0: *mut u64,
-    next_rsp0: u64,
-    next_rsp0_end: u64,
-    next_cr3: u64,
-) {
+#[unsafe(naked)]
+unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_rsp0_end: u64, next_cr3: u64) {
     naked_asm!(
     // Save registers of current thread
     "pushf",

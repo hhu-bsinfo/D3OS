@@ -116,12 +116,10 @@ impl SyscallTable {
 unsafe impl Send for SyscallTable {}
 unsafe impl Sync for SyscallTable {}
 
-#[naked]
-#[unsafe(no_mangle)]
-#[allow(unsafe_op_in_unsafe_fn)]
+#[unsafe(naked)]
 ///
 /// Description: \
-///    This functions does not take any parameters per its declaration,
+///    This function does not take any parameters per its declaration,
 ///    but in reality, it takes at least the system call ID in rax
 ///    and may take additional parameters for the system call in `rdi`, `rsi` ... \
 ///    See AMD64 ABI. 
@@ -198,9 +196,8 @@ unsafe extern "C" fn syscall_handler() {
     );
 }
 
-#[naked]
+#[unsafe(naked)]
 #[unsafe(no_mangle)]
-#[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" fn syscall_disp() {
     naked_asm!(
     "call [{SYSCALL_TABLE} + 8 * rax]",
