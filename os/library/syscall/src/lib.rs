@@ -23,12 +23,14 @@ pub enum SystemCall {
     ProcessExecuteBinary,
     ProcessId,
     ProcessExit,
+    ProcessCount,
     ThreadCreate,
     ThreadId,
     ThreadSwitch,
     ThreadSleep,
     ThreadJoin,
     ThreadExit,
+    ThreadCount,
     GetSystemTime,
     GetDate,
     SetDate,
@@ -47,6 +49,7 @@ pub enum SystemCall {
     GetGraphicResolution,
     MouseRead,
     MapFramebuffer,
+    MapSystemInfo,
     // no syscall, just marking last number, see NUM_SYSCALLS
     // insert any new system calls before this marker
     LastEntryMarker,

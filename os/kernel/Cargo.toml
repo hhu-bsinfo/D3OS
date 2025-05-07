@@ -17,6 +17,7 @@ syscall = { path = "../library/syscall" }
 naming = { path = "../library/naming" }
 terminal = { path = "../library/terminal" }
 drawer = { path = "../library/drawer" }
+system_info = { path = "../library/system_info" }
 
 
 # External depencies

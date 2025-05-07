@@ -65,6 +65,14 @@ pub fn exit() -> ! {
     panic!("System call 'ThreadExit' has returned!")
 }
 
+pub fn count() -> usize {
+    match syscall(SystemCall::ThreadCount, &[]) {
+        Ok(count) => count,
+        Err(_) => 0,
+    }
+    
+}
+
 pub fn start_application(name: &str, args: Vec<&str>) -> Option<Thread> {
     let res = syscall(SystemCall::ProcessExecuteBinary, &[name.as_bytes().as_ptr() as usize,
     name.len(),

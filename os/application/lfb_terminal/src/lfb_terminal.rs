@@ -4,10 +4,12 @@ extern crate alloc;
 
 mod terminal;
 
+use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
+use concurrent::process;
 use concurrent::thread::{self};
 use core::cell::RefCell;
 use core::mem::size_of;
@@ -21,8 +23,9 @@ use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::Mutex;
 use stream::{InputStream, OutputStream};
+use system_info::build_info::{BuildInfo, build_info};
 use terminal::Terminal;
-use time::date;
+use time::{date, systime};
 
 #[allow(unused_imports)]
 use runtime::*;
@@ -374,32 +377,30 @@ impl LFBTerminal {
             }
         }
 
-        // TODO#1 Fix system info access
         // Collect system information
-        // let uptime = TimeDelta::try_milliseconds(timer().systime_ms() as i64)
-        //     .expect("Failed to create TimeDelta struct from systime");
-        // let active_process_ids = process_manager().read().active_process_ids();
-        // let active_thread_ids = scheduler().active_thread_ids();
+        let uptime = systime();
+        let process_count = process::count();
+        let thread_count = thread::count();
 
         // Draw info string
-        // let info_string = format!(
-        //     "D³OS v{} ({}) | Uptime: {:0>2}:{:0>2}:{:0>2} | Processes: {} | Threads: {}",
-        //     built_info::PKG_VERSION,
-        //     built_info::PROFILE,
-        //     uptime.num_hours(),
-        //     uptime.num_minutes() % 60,
-        //     uptime.num_seconds() - (uptime.num_minutes() * 60),
-        //     active_process_ids.len(),
-        //     active_thread_ids.len()
-        // );
+        let info_string = format!(
+            "D³OS v{} ({}) | Uptime: {:0>2}:{:0>2}:{:0>2} | Processes: {} | Threads: {}",
+            build_info(BuildInfo::PkgVersion),
+            build_info(BuildInfo::Profile),
+            uptime.num_hours(),
+            uptime.num_minutes() % 60,
+            uptime.num_seconds() - (uptime.num_minutes() * 60),
+            process_count,
+            thread_count
+        );
 
-        // display.lfb.lfb().draw_string(
-        //     0,
-        //     0,
-        //     color::HHU_BLUE,
-        //     color::INVISIBLE,
-        //     info_string.as_str(),
-        // );
+        display.lfb.lfb().draw_string(
+            0,
+            0,
+            color::HHU_BLUE,
+            color::INVISIBLE,
+            info_string.as_str(),
+        );
 
         // Draw date
         let date_str = date().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -1105,5 +1106,5 @@ pub fn main() {
     );
 
     lfb_terminal.clear();
-    lfb_terminal.write_str("Hello there");
+    lfb_terminal.write_str("Hello there\n");
 }

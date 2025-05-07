@@ -25,7 +25,9 @@ use crate::syscall::sys_input::sys_read_mouse;
 
 use crate::{core_local_storage, tss};
 
+use super::sys_concurrent::{sys_process_count, sys_thread_count};
 use super::sys_graphic::{sys_get_graphic_resolution, sys_map_fb_info, sys_write_graphic};
+use super::sys_system_info::sys_map_build_info;
 use super::sys_terminal::sys_log_debug;
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
@@ -93,12 +95,14 @@ impl SyscallTable {
                 sys_process_execute_binary as *const _,
                 sys_process_id as *const _,
                 sys_process_exit as *const _,
+                sys_process_count as *const _,
                 sys_thread_create as *const _,
                 sys_thread_id as *const _,
                 sys_thread_switch as *const _,
                 sys_thread_sleep as *const _,
                 sys_thread_join as *const _,
                 sys_thread_exit as *const _,
+                sys_thread_count as *const _,
                 sys_get_system_time as *const _,
                 sys_get_date as *const _,
                 sys_set_date as *const _,
@@ -117,6 +121,7 @@ impl SyscallTable {
                 sys_get_graphic_resolution as * const _,
                 sys_read_mouse as * const _,
                 sys_map_fb_info as * const _,
+                sys_map_build_info as * const _,
             ],
         }
     }

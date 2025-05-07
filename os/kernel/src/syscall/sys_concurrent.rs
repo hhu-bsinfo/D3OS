@@ -26,6 +26,10 @@ pub fn sys_process_exit() -> isize {
     0
 }
 
+pub fn sys_process_count() -> isize {
+    process_manager().read().active_process_ids().len() as isize
+}
+
 pub fn sys_thread_create(kickoff_addr: u64, entry: fn()) -> isize {
     let thread = Thread::new_user_thread(process_manager().read().current_process(), VirtAddr::new(kickoff_addr), entry);
     let id = thread.id();
@@ -56,6 +60,10 @@ pub fn sys_thread_join(id: usize) -> isize {
 pub fn sys_thread_exit() -> isize {
     scheduler().exit();
     0
+}
+
+pub fn sys_thread_count() -> isize {
+    scheduler().active_thread_ids().len() as isize
 }
 
 pub fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize, args: *const Vec<&str>) -> isize {
