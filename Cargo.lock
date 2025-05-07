@@ -543,6 +543,7 @@ name = "input"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.9.0",
+ "pc-keyboard",
  "syscall",
 ]
 
@@ -584,6 +585,7 @@ dependencies = [
  "drawer",
  "goblin",
  "graphic",
+ "input",
  "linked_list_allocator",
  "log",
  "mbrs",
@@ -624,6 +626,7 @@ dependencies = [
  "concurrent",
  "drawer",
  "graphic",
+ "input",
  "pc-keyboard",
  "runtime",
  "spin 0.10.0",

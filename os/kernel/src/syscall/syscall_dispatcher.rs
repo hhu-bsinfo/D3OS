@@ -27,6 +27,7 @@ use crate::{core_local_storage, tss};
 
 use super::sys_concurrent::{sys_process_count, sys_thread_count};
 use super::sys_graphic::{sys_get_graphic_resolution, sys_map_fb_info, sys_write_graphic};
+use super::sys_input::sys_read_keyboard;
 use super::sys_system_info::sys_map_build_info;
 use super::sys_terminal::sys_log_debug;
 
@@ -120,6 +121,7 @@ impl SyscallTable {
                 sys_write_graphic as * const _,
                 sys_get_graphic_resolution as * const _,
                 sys_read_mouse as * const _,
+                sys_read_keyboard as * const _,
                 sys_map_fb_info as * const _,
                 sys_map_build_info as * const _,
             ],

@@ -12,6 +12,7 @@ use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use concurrent::process;
 use concurrent::thread::{self};
 use core::cell::RefCell;
+use core::fmt::Write;
 use core::mem::size_of;
 use core::ptr;
 use graphic::ansi::COLOR_TABLE_256;
@@ -19,6 +20,7 @@ use graphic::buffered_lfb::BufferedLFB;
 use graphic::color::{Color, INVISIBLE};
 use graphic::lfb::{LFB, LfbInfo, get_lfb_info};
 use graphic::{color, lfb};
+use input::keyboard;
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::{Mutex, Once};
@@ -224,35 +226,45 @@ impl OutputStream for LFBTerminal {
 
 impl InputStream for LFBTerminal {
     fn read_byte(&self) -> i16 {
-        // TODO#1 Fix keyboard access
-        // if let Some(keyboard) = keyboard() {
-        //     let read_byte;
+        let read_byte;
 
-        //     loop {
-        //         let mut decoder = self.decoder.lock();
-        //         let scancode = keyboard.read_byte();
-        //         if scancode == -1 {
-        //             panic!("Keyboard stream closed!");
-        //         }
+        loop {
+            let mut decoder = self.decoder.lock();
 
-        //         if let Ok(Some(event)) = decoder.add_byte(scancode as u8) {
-        //             if let Some(key) = decoder.process_keyevent(event) {
-        //                 match key {
-        //                     DecodedKey::Unicode(c) => {
-        //                         read_byte = c;
-        //                         break;
-        //                     }
-        //                     _ => {}
-        //                 }
-        //             }
-        //         }
-        //     }
+            let event_result = match keyboard::read_raw() {
+                Some(code) => decoder.add_byte(code),
+                None => continue,
+            };
 
-        //     self.write_byte(read_byte as u8);
-        //     return read_byte as i16;
-        // }
+            let event_option = match event_result {
+                Ok(event) => event,
+                Err(_) => continue,
+            };
 
-        -1
+            let key_result = match event_option {
+                Some(event) => decoder.process_keyevent(event),
+                None => continue,
+            };
+
+            let key = match key_result {
+                Some(key) => key,
+                None => continue,
+            };
+
+            // TODO#2 check for cooked / raw mode
+            match key {
+                DecodedKey::Unicode(ch) => {
+                    read_byte = ch;
+                    break;
+                }
+                _ => continue,
+            }
+        }
+
+        // TODO#2 check for cooked / raw mode
+        self.write_byte(read_byte as u8);
+
+        return read_byte as i16;
     }
 }
 
@@ -1123,9 +1135,11 @@ pub fn terminal() -> Arc<dyn Terminal> {
 #[unsafe(no_mangle)]
 pub fn main() {
     init_terminal();
+
     let lfb_terminal = terminal();
     lfb_terminal.clear();
     lfb_terminal.write_str("Hello there\n");
-
-    loop {}
+    loop {
+        lfb_terminal.read_byte();
+    }
 }

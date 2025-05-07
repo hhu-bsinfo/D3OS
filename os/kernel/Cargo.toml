@@ -18,6 +18,7 @@ naming = { path = "../library/naming" }
 terminal = { path = "../library/terminal" }
 drawer = { path = "../library/drawer" }
 system_info = { path = "../library/system_info" }
+input = { path = "../library/input" }
 
 
 # External depencies

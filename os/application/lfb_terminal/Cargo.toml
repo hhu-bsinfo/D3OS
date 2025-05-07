@@ -17,6 +17,7 @@ concurrent = { path = "../../library/concurrent" }
 drawer = { path = "../../library/drawer" }
 time = { path = "../../library/time" }
 system_info = { path = "../../library/system_info" }
+input = { path = "../../library/input" }
 
 syscall = {path ="../../library/syscall"}
 

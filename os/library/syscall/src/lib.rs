@@ -48,6 +48,7 @@ pub enum SystemCall {
     WriteGraphic,
     GetGraphicResolution,
     MouseRead,
+    KeyboardRead,
     MapFramebuffer,
     MapSystemInfo,
     // no syscall, just marking last number, see NUM_SYSCALLS
