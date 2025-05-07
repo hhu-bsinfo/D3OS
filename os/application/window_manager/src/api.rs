@@ -9,7 +9,7 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{bitmap_app::BitmapApp, calculator::Calculator, clock::Clock, counter::Counter, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
+    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, canvas::Canvas, checkbox::Checkbox, component::{self, Component}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -17,7 +17,7 @@ use self::component::ComponentStyling;
 extern crate alloc;
 
 /// Default app to be used on startup of a new workspace
-pub static DEFAULT_APP: &str = "calculator";
+pub static DEFAULT_APP: &str = "canvas";
 
 /// Logical screen resolution, used by apps for describing component locations
 pub const LOG_SCREEN: (u32, u32) = (1000, 750);
@@ -80,6 +80,11 @@ pub enum Command<'a> {
         selected_option: usize,
         on_change: Option<Box<dyn Fn(usize) -> ()>>,
         styling: Option<ComponentStyling>,
+    },
+    CreateCanvas {
+        styling: Option<ComponentStyling>,
+        width: usize,
+        height: usize,
     }
 }
 
@@ -503,6 +508,10 @@ impl Api {
                 self.add_component(dispatch_data);
 
                 component
+            },
+            Command::CreateCanvas { styling , width, height} => {
+               let canvas = Canvas::new(Vertex::new(0, 0), Vertex::new(0, 0), styling, width, height);
+                Rc::new(RwLock::new(Box::new(canvas) as Box<dyn Component>))
             }
         };
 
@@ -532,6 +541,7 @@ impl Api {
             "bitmap" => Some(BitmapApp::run),
             "calculator" => Some(Calculator::run),
             "radio" => Some(RadioButtonApp::run),
+            "canvas" => Some(CanvasApp::run),
             _ => None,
         }
     }
