@@ -1,5 +1,8 @@
 // Julius Drodofsky
 
+use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
+use super::component::{Casts, Component, ComponentStyling, Interactable};
+use alloc::vec::Vec;
 pub struct Canvas {
     pub id: Option<usize>,
     is_dirty: bool,
@@ -21,22 +24,25 @@ impl Canvas {
     styling: Option<ComponentStyling>,
     width: usize,
     height: usize,
-    ) {
+    ) -> Self{
     let drawn_rect_data = RectData {
-         top_left: abs_center.sub(abs_radius, abs_radius),
-        width: width,
-        height: height,
+         top_left: Vertex::new(0, 0),
+        width: width as u32,
+        height: height as u32,
     };
     Self {
         id: None,
-        is_dirt: false,
+        is_dirty: false,
         abs_pos,
         rel_pos,
         drawn_rect_data,
         styling: styling.unwrap_or_default(),
+        buffer: Vec::with_capacity(width*height),
+        widht: width,
+        height: height,
         }
     }
-
+     
 }
 
 impl Component for Canvas {
@@ -59,10 +65,21 @@ impl Component for Canvas {
         self.id = Some(id);
     }
     fn get_abs_rect_data(&self) -> RectData {
-       self.drawn_rect_data 
+        RectData {
+            top_left: Vertex { x: 0, y: 0 },
+            width: self.widht as u32,
+            height: self.height as u32,
+        }
     }
 
     fn get_drawn_rect_data(&self) -> RectData {
         self.drawn_rect_data
     }
+    fn rescale_after_split(&mut self, old_rect_data: RectData, new_rect_data: RectData) {}
+
+    fn rescale_after_move(&mut self, new_rect_data: RectData) {}
+
 }
+
+
+impl Casts for Canvas {}
