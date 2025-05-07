@@ -17,11 +17,11 @@ use core::ptr;
 use graphic::ansi::COLOR_TABLE_256;
 use graphic::buffered_lfb::BufferedLFB;
 use graphic::color::{Color, INVISIBLE};
-use graphic::lfb::{LFB, get_lfb_info};
+use graphic::lfb::{LFB, LfbInfo, get_lfb_info};
 use graphic::{color, lfb};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
-use spin::Mutex;
+use spin::{Mutex, Once};
 use stream::{InputStream, OutputStream};
 use system_info::build_info::{BuildInfo, build_info};
 use terminal::Terminal;
@@ -1093,18 +1093,39 @@ impl Perform for LFBTerminal {
     fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {}
 }
 
-#[unsafe(no_mangle)]
-pub fn main() {
-    let lfb_info = get_lfb_info();
+static TERMINAL: Once<Arc<dyn Terminal>> = Once::new();
 
-    let lfb_terminal = LFBTerminal::new(
+pub fn init_terminal() {
+    let lfb_info = get_lfb_info();
+    let lfb_terminal = Arc::new(LFBTerminal::new(
         lfb_info.address as *mut u8,
         lfb_info.pitch,
         lfb_info.width,
         lfb_info.height,
         lfb_info.bpp,
-    );
+    ));
+    lfb_terminal.clear();
+    TERMINAL.call_once(|| lfb_terminal);
 
+    thread::create(|| {
+        let mut cursor_thread = CursorThread::new(terminal());
+        cursor_thread.run();
+    });
+}
+
+pub fn terminal() -> Arc<dyn Terminal> {
+    let terminal = TERMINAL
+        .get()
+        .expect("Trying to access terminal before initialization!");
+    Arc::clone(terminal)
+}
+
+#[unsafe(no_mangle)]
+pub fn main() {
+    init_terminal();
+    let lfb_terminal = terminal();
     lfb_terminal.clear();
     lfb_terminal.write_str("Hello there\n");
+
+    loop {}
 }
