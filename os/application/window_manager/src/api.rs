@@ -1,6 +1,6 @@
 use core::{fmt::Debug, num, usize};
 
-use alloc::{boxed::Box, rc::Rc, string::String};
+use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 use concurrent::thread;
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::{bitmap::{Bitmap, ScalingMode}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
@@ -85,6 +85,7 @@ pub enum Command<'a> {
         styling: Option<ComponentStyling>,
         width: usize,
         height: usize,
+        buffer: Rc<RwLock<Vec<u32>>>,
     }
 }
 
@@ -509,8 +510,8 @@ impl Api {
 
                 component
             },
-            Command::CreateCanvas { styling , width, height} => {
-               let canvas = Canvas::new(Vertex::new(0, 0), Vertex::new(0, 0), styling, width, height);
+            Command::CreateCanvas { styling , width, height, buffer} => {
+               let canvas = Canvas::new(Vertex::new(0, 0), Vertex::new(0, 0), styling, width, height, buffer);
                 Rc::new(RwLock::new(Box::new(canvas) as Box<dyn Component>))
             }
         };

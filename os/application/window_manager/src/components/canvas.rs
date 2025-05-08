@@ -3,6 +3,9 @@
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use super::component::{Casts, Component, ComponentStyling, Interactable};
 use alloc::vec::Vec;
+use alloc::rc::Rc;
+use spin::rwlock::RwLock;
+
 pub struct Canvas {
     pub id: Option<usize>,
     is_dirty: bool,
@@ -10,7 +13,7 @@ pub struct Canvas {
     rel_pos: Vertex,
     drawn_rect_data: RectData,
     styling: ComponentStyling,
-    buffer: Vec<u32>,
+    buffer: Rc<RwLock<Vec<u32>>>,
     widht: usize,
     height: usize,
     // default 4
@@ -24,6 +27,7 @@ impl Canvas {
     styling: Option<ComponentStyling>,
     width: usize,
     height: usize,
+    buffer:  Rc<RwLock<Vec<u32>>>, 
     ) -> Self{
     let drawn_rect_data = RectData {
          top_left: Vertex::new(0, 0),
@@ -37,9 +41,9 @@ impl Canvas {
         rel_pos,
         drawn_rect_data,
         styling: styling.unwrap_or_default(),
-        buffer: Vec::with_capacity(width*height),
         widht: width,
         height: height,
+        buffer: buffer,
         }
     }
      
