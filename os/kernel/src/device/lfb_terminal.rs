@@ -228,6 +228,21 @@ impl LFBTerminal {
 
             cursor.pos.0 = 0;
             cursor.pos.1 += 1;
+        } else if c == 0x08 as char {
+            let old_pos = cursor.pos;
+            let old_index = (old_pos.1 * display.size.0 + old_pos.0) as usize;
+            let old_char_value = match display.char_buffer[old_index].value {
+                '\0' => ' ',
+                value => value,
+            };
+            let new_char = Character { value: ' ', fg_color: color.fg_color, bg_color: color.bg_color };
+            
+            cursor.pos.0 -= 1;
+            let new_index = (cursor.pos.1 * display.size.0 + cursor.pos.0) as usize;
+            
+            display.char_buffer[new_index] = new_char;
+            LFBTerminal::print_char_at(&mut display, &mut color, old_char_value, old_pos);
+            LFBTerminal::print_char_at(&mut display, &mut color, new_char.value, cursor.pos);
         } else {
             let char_width = LFBTerminal::print_char_at(&mut display, &mut color, c, cursor.pos);
             if char_width > 0 {
@@ -741,6 +756,7 @@ impl Perform for LFBTerminal {
     fn execute(&mut self, byte: u8) {
         match byte {
             0x07 => LFBTerminal::handle_bell(),
+            0x08 => self.print_char(byte as char),
             0x09 => LFBTerminal::handle_tab(&mut self.display.lock(), &mut self.cursor.lock(), &mut self.color.lock()),
             0x0a => self.print_char('\n'),
             _ => {}
