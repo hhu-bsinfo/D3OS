@@ -11,7 +11,7 @@ use crate::{
     config::INTERACT_BUTTON,
     mouse_state::{ButtonState, MouseEvent},
     signal::{ComponentRef, Signal, Stateful},
-    utils::scale_font,
+    utils::scale_font, WindowManager,
 };
 
 use super::{
@@ -23,7 +23,7 @@ use super::{
 };
 
 pub struct Button {
-    pub id: Option<usize>,
+    pub id: usize,
     pub is_dirty: bool,
     abs_rect_data: RectData,
     rel_rect_data: RectData,
@@ -51,7 +51,7 @@ impl Button {
         let signal_copy = label.clone();
 
         let button = Box::new(Self {
-            id: None,
+            id: WindowManager::generate_id(),
             is_dirty: true,
             abs_rect_data: RectData::zero(),
             orig_rect_data,
@@ -112,7 +112,7 @@ impl Component for Button {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -185,11 +185,7 @@ impl Component for Button {
         self.abs_rect_data
     }
 
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
     }
 

@@ -4,12 +4,12 @@ use alloc::{
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 
-use crate::config::INTERACT_BUTTON;
+use crate::{config::INTERACT_BUTTON, WindowManager};
 
 use super::{component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
 
 pub struct Checkbox {
-    pub id: Option<usize>,
+    pub id: usize,
     pub is_dirty: bool,
     abs_rect_data: RectData,
     rel_rect_data: RectData,
@@ -31,7 +31,7 @@ impl Checkbox {
         styling: Option<ComponentStyling>,
     ) -> Self {
         Self {
-            id: None,
+            id: WindowManager::generate_id(),
             is_dirty: true,
             abs_rect_data: RectData::zero(),
             rel_rect_data,
@@ -70,7 +70,7 @@ impl Component for Checkbox {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -125,11 +125,7 @@ impl Component for Checkbox {
         self.abs_rect_data
     }
 
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
     }
 

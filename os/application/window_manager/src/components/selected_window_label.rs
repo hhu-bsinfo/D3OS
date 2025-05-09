@@ -6,7 +6,7 @@ use graphic::{
 };
 use spin::RwLock;
 
-use crate::config::FOCUSED_BG_COLOR;
+use crate::{config::FOCUSED_BG_COLOR, WindowManager};
 
 use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
@@ -18,7 +18,7 @@ pub const HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW: u32 =
 
 // wird nicht mehr genutzt
 pub struct SelectedWorkspaceLabel {
-    pub id: Option<usize>,
+    pub id: usize,
     pub is_dirty: bool,
     pub pos: Vertex,
     pub text: String,
@@ -37,7 +37,7 @@ impl SelectedWorkspaceLabel {
         styling: Option<ComponentStyling>,
     ) -> Self {
         Self {
-            id: None,
+            id: WindowManager::generate_id(),
             is_dirty: true,
             pos,
             text,
@@ -62,7 +62,7 @@ impl Component for SelectedWorkspaceLabel {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
 
         let bg_color = if is_focused {
             styling.focused_background_color
@@ -99,12 +99,8 @@ impl Component for SelectedWorkspaceLabel {
         }
     }
 
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
-    }
-
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
     }
 
     fn is_dirty(&self) -> bool {

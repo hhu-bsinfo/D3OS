@@ -73,8 +73,7 @@ impl AppWindow {
     }
 
     pub fn insert_component(&mut self, new_component: ComponentRef, parent: ComponentRef) {
-        let id = WindowManager::generate_id();
-        new_component.write().set_id(id);
+        let id = new_component.read().get_id();
 
         // Add focusable components to the orderer
         if new_component.read().as_focusable().is_some() {

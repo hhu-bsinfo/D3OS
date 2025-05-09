@@ -204,9 +204,7 @@ pub trait Component: Casts + {
 
     fn is_dirty(&self) -> bool;
 
-    fn set_id(&mut self, id: usize);
-
-    fn get_id(&self) -> Option<usize>;
+    fn get_id(&self) -> usize;
 
     fn mark_dirty(&mut self);
 }

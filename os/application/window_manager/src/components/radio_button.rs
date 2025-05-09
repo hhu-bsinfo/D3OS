@@ -1,9 +1,11 @@
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 
+use crate::WindowManager;
+
 use super::{component::{Casts, Component, ComponentStyling, Interactable}, container::Container};
 
 pub struct RadioButton {
-    pub id: Option<usize>,
+    pub id: usize,
     
     abs_center: Vertex,
     rel_center: Vertex,
@@ -22,7 +24,6 @@ pub struct RadioButton {
 
 impl RadioButton {
     pub fn new(
-        id: usize,
         abs_center: Vertex,
         rel_center: Vertex,
         abs_radius: u32,
@@ -37,7 +38,7 @@ impl RadioButton {
         };
 
         Self {
-            id: Some(id),
+            id: WindowManager::generate_id(),
             abs_center,
             rel_center,
             abs_radius,
@@ -79,7 +80,7 @@ impl Component for RadioButton {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -117,12 +118,8 @@ impl Component for RadioButton {
         self.is_dirty = true;
     }
 
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
-    }
-
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
     }
 
     fn get_abs_rect_data(&self) -> RectData {

@@ -4,6 +4,7 @@ use alloc::{
     vec::Vec,
 };
 use drawer::{rect_data::RectData, vertex::Vertex};
+use hashbrown::HashMap;
 
 use crate::{
     components::{
@@ -22,7 +23,7 @@ use crate::{
 pub struct WorkspaceSelectionWindow {
     abs_rect: RectData,
     root_container: Box<BasicContainer>,
-    buttons: Vec<ComponentRef>,
+    workspace_buttons: HashMap<usize, ComponentRef>,
 }
 
 impl WorkspaceSelectionWindow {
@@ -48,15 +49,19 @@ impl WorkspaceSelectionWindow {
         Self {
             abs_rect,
             root_container,
-            buttons: Vec::new(),
+            workspace_buttons: HashMap::new(),
         }
     }
 
     pub fn draw(&mut self, active_workspace: Option<usize>) {
+        let focus_id = active_workspace
+            .and_then(|workspace_id| self.workspace_buttons.get(&workspace_id))
+            .map(|button| button.read().get_id());
+
         self.root_container
             .as_container_mut()
             .unwrap()
-            .draw(active_workspace);
+            .draw(focus_id);
     }
 
     pub fn register_workspace(&mut self, workspace_id: usize) {
@@ -78,39 +83,24 @@ impl WorkspaceSelectionWindow {
             None,
         );
 
-        button.write().set_id(workspace_id);
-
-        self.root_container.add_child(button.clone());
-        self.buttons.push(button);
+        self.workspace_buttons.insert(workspace_id, button.clone());
+        self.root_container.add_child(button);
     }
 
     pub fn unregister_workspace(&mut self, workspace_id: usize) {
-        self.root_container
-            .as_container_mut()
-            .unwrap()
-            .remove_child(workspace_id);
-
         // Remove the button from the list
-        if let Some(index) = self
-            .buttons
-            .iter()
-            .position(|button| button.read().get_id() == Some(workspace_id))
-        {
-            self.buttons.remove(index);
-        }
+        let button = self.workspace_buttons.remove(&workspace_id);
 
-        // Update all button ids...
-        // HACK: This is bad, but it is required due to the current workspace system...
-        self.buttons
-            .iter_mut()
-            .enumerate()
-            .for_each(|(idx, button)| {
-                button.write().set_id(idx);
-            });
+        if let Some(button) = button {
+            self.root_container
+                .as_container_mut()
+                .unwrap()
+                .remove_child(button.read().get_id());
+        }
     }
 
     pub fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<usize> {
-        for button in self.buttons.iter_mut() {
+        for (workspace_id, button) in self.workspace_buttons.iter_mut() {
             let mut button = button.write();
 
             if button
@@ -123,7 +113,7 @@ impl WorkspaceSelectionWindow {
                     .consume_mouse_event(mouse_event);
 
                 if result.is_some() {
-                    return button.get_id();
+                    return Some(*workspace_id);
                 }
             }
         }

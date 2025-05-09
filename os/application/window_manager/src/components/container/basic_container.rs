@@ -4,7 +4,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use crate::{
     components::component::{Casts, Component, ComponentStyling},
     signal::ComponentRef,
-    utils::{scale_pos_to_rect, scale_rect_to_rect},
+    utils::{scale_pos_to_rect, scale_rect_to_rect}, WindowManager,
 };
 
 use super::Container;
@@ -26,7 +26,7 @@ pub enum StretchMode {
 }
 
 pub struct BasicContainer {
-    id: Option<usize>,
+    id: usize,
     childs: Vec<ComponentRef>,
     layout: LayoutMode,
     stretch: StretchMode,
@@ -50,7 +50,7 @@ impl BasicContainer {
         styling: Option<ComponentStyling>,
     ) -> Self {
         Self {
-            id: None,
+            id: WindowManager::generate_id(),
             childs: Vec::new(),
             layout,
             stretch,
@@ -120,7 +120,7 @@ impl Container for BasicContainer {
     }
 
     fn remove_child(&mut self, id: usize) {
-        if let Some(pos) = self.childs.iter().position(|c| c.read().get_id() == Some(id)) {
+        if let Some(pos) = self.childs.iter().position(|c| c.read().get_id() == id) {
             self.childs.remove(pos);
             self.mark_dirty();
         }
@@ -280,11 +280,7 @@ impl Component for BasicContainer {
         self.is_dirty || self.childs.iter().any(|child| child.read().is_dirty())
     }
 
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
     }
 

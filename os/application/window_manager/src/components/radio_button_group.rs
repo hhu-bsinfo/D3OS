@@ -3,12 +3,12 @@ use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use spin::RwLock;
 
-use crate::{config::INTERACT_BUTTON, mouse_state::ButtonState, utils::scale_radius_to_rect};
+use crate::{config::INTERACT_BUTTON, mouse_state::ButtonState, utils::scale_radius_to_rect, WindowManager};
 
 use super::{component::{Casts, Component, ComponentStyling, Focusable, Interactable}, container::Container, radio_button::RadioButton};
 
 pub struct RadioButtonGroup {
-    id: Option<usize>,
+    id: usize,
     buttons: Vec<Rc<RwLock<RadioButton>>>,
     focused_button_index: usize,
     selected_button_index: Option<usize>,
@@ -36,7 +36,6 @@ impl RadioButtonGroup {
         let buttons = (0..num_buttons)
             .map(|i| {
                 Rc::new(RwLock::new(RadioButton::new(
-                    i,
                     abs_center.add(i as u32 * ((abs_radius * 2) + spacing), 0),
                     rel_center.add(i as u32 * ((rel_radius * 2) + spacing), 0),
                     abs_radius,
@@ -48,7 +47,7 @@ impl RadioButtonGroup {
             .collect();
 
         Self {
-            id: None,
+            id: WindowManager::generate_id(),
             buttons,
             selected_button_index,
             focused_button_index: 0,
@@ -83,12 +82,13 @@ impl RadioButtonGroup {
 
 impl Component for RadioButtonGroup {
     fn draw(&mut self, focus_id: Option<usize>) {
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
 
         for (i, button) in self.buttons.iter().enumerate() {
             let is_button_focused = is_focused && i == self.focused_button_index;
-            let child_focus_id = if is_button_focused { button.read().id } else { None };
-            button.write().draw(child_focus_id);
+            let child_id = button.read().get_id();
+            
+            button.write().draw(is_button_focused.then_some(child_id));
         }
     }
 
@@ -100,12 +100,8 @@ impl Component for RadioButtonGroup {
         self.buttons.iter().for_each(|button| button.write().mark_dirty());
     }
 
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
-    }
-
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
     }
 
     fn get_abs_rect_data(&self) -> RectData {

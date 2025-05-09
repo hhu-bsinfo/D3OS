@@ -2,14 +2,14 @@ use alloc::{boxed::Box, rc::Rc};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use libm::roundf;
-use crate::{config::DEFAULT_FONT_SCALE, mouse_state::{ButtonState, MouseEvent, ScrollDirection}};
+use crate::{config::DEFAULT_FONT_SCALE, mouse_state::{ButtonState, MouseEvent, ScrollDirection}, WindowManager};
 
 use super::{component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
 
 const HANDLE_WIDTH: u32 = 10;
 
 pub struct Slider {
-    id: Option<usize>,
+    id: usize,
     value: i32,
     min: i32,
     max: i32,
@@ -43,7 +43,7 @@ impl Slider {
         styling: Option<ComponentStyling>,
     ) -> Self {
         Self {
-            id: None,
+            id: WindowManager::generate_id(),
             abs_rect_data: RectData::zero(),
             rel_rect_data,
             orig_rect_data,
@@ -95,7 +95,7 @@ impl Component for Slider {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -158,11 +158,7 @@ impl Component for Slider {
         self.is_dirty = true;
     }
 
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
     }
 

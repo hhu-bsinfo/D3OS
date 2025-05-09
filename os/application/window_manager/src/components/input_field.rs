@@ -7,7 +7,7 @@ use graphic::{
 use spin::RwLock;
 
 use crate::{
-    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, utils::scale_font
+    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, utils::scale_font, WindowManager
 };
 
 use super::{component::{Casts, Clearable, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
@@ -27,7 +27,7 @@ pub struct InputField {
     If we are selected, all keyboard input is redirected to us, unless
     command-line-window is opened
     */
-    pub id: Option<usize>,
+    pub id: usize,
     pub is_dirty: bool,
     is_selected: bool,
     max_chars: usize,
@@ -62,7 +62,7 @@ impl InputField {
     ) -> ComponentRef {
         let input_field = Box::new(
             Self {
-                id: None,
+                id: WindowManager::generate_id(),
                 is_dirty: true,
                 is_selected: false,
                 max_chars,
@@ -101,7 +101,7 @@ impl Component for InputField {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -175,12 +175,8 @@ impl Component for InputField {
         self.abs_rect_data
     }
 
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
-    }
-
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
     }
 
     fn is_dirty(&self) -> bool {

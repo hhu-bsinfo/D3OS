@@ -3,7 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{color::{Color, WHITE, YELLOW}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
 use spin::{rwlock::RwLock};
 
-use crate::{signal::{ComponentRef, Signal, Stateful}, utils::scale_font, SCREEN};
+use crate::{signal::{ComponentRef, Signal, Stateful}, utils::scale_font, WindowManager, SCREEN};
 
 use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
@@ -11,7 +11,7 @@ pub const TEXT_COLOR: Color = WHITE;
 pub const TEXT_COLOR_FOCUSED: Color = YELLOW;
 
 pub struct Label {
-    pub id: Option<usize>,
+    pub id: usize,
     pub is_dirty: bool,
     pub abs_pos: Vertex,
     pub rel_pos: Vertex,
@@ -35,7 +35,7 @@ impl Label {
 
         let label = Box::new(
             Self {
-                id: None,
+                id: WindowManager::generate_id(),
                 is_dirty: true,
                 abs_pos: Vertex::zero(),
                 rel_pos,
@@ -57,7 +57,7 @@ impl Label {
 }
 
 impl Component for Label {
-    fn draw(&mut self, focus_id: Option<usize>) {
+    fn draw(&mut self, _focus_id: Option<usize>) {
         if !self.is_dirty {
             return;
         }
@@ -68,13 +68,7 @@ impl Component for Label {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
-
-        let text_color = if is_focused {
-            styling.focused_border_color
-        } else {
-            styling.text_color
-        };
+        let text_color = styling.text_color;
 
         let text = self.text.get();
         Drawer::draw_string(
@@ -117,12 +111,8 @@ impl Component for Label {
         }
     }
 
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
-    }
-
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
     }
 
     fn is_dirty(&self) -> bool {
