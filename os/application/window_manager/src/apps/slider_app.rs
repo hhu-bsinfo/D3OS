@@ -34,6 +34,7 @@ impl Runnable for SliderApp {
 
         let _label_value = api.execute(
             handle,
+            None,
             Command::CreateLabel {
                 log_pos: Vertex::new(50, 100),
                 text: label,
@@ -46,6 +47,7 @@ impl Runnable for SliderApp {
         let bitmap_slider = Rc::clone(&bitmap);
         let _slider = api.execute(
             handle,
+            None,
             Command::CreateSlider {
                 log_rect_data: RectData {
                     top_left: Vertex::new(50, 150),
@@ -74,6 +76,7 @@ impl Runnable for SliderApp {
         let bitmap_init = Rc::clone(&bitmap);
         *bitmap_init.write() = Some(api.execute(
             handle,
+            None,
             Command::CreateBitmapGraphic {
                 log_rect_data: RectData {
                     top_left: Vertex::new(50, 350),

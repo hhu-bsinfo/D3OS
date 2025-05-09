@@ -4,11 +4,9 @@ use alloc::{
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 
-use crate::{
-    config::INTERACT_BUTTON, mouse_state::ButtonState, utils::scale_rect_to_window
-};
+use crate::config::INTERACT_BUTTON;
 
-use super::component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable};
+use super::{component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
 
 pub struct Checkbox {
     pub id: Option<usize>,
@@ -26,7 +24,6 @@ pub struct Checkbox {
 
 impl Checkbox {
     pub fn new(
-        abs_rect_data: RectData,
         rel_rect_data: RectData,
         orig_rect_data: RectData,
         state: bool,
@@ -36,10 +33,10 @@ impl Checkbox {
         Self {
             id: None,
             is_dirty: true,
-            abs_rect_data,
+            abs_rect_data: RectData::zero(),
             rel_rect_data,
             orig_rect_data,
-            drawn_rect_data: abs_rect_data.clone(),
+            drawn_rect_data: RectData::zero(),
             state,
             on_change: Rc::new(on_change.unwrap_or_else(|| Box::new(|_| {}))),
             is_disabled: false,
@@ -62,7 +59,7 @@ impl Checkbox {
 }
 
 impl Component for Checkbox {
-    fn draw(&mut self, is_focused: bool) {
+    fn draw(&mut self, focus_id: Option<usize>) {
         if !self.is_dirty {
             return;
         }
@@ -73,6 +70,7 @@ impl Component for Checkbox {
         }
 
         let styling = &self.styling;
+        let is_focused = focus_id == self.id;
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -107,41 +105,19 @@ impl Component for Checkbox {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
         let styling: &ComponentStyling = &self.styling;
-
-        self.abs_rect_data.top_left = self
-            .abs_rect_data
-            .top_left
-            .move_to_new_rect(&old_window, &new_window);
-
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_window,
-            (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT),
-            (self.orig_rect_data.width, self.orig_rect_data.height),
-            styling.maintain_aspect_ratio,
-            aspect_ratio,
-        );
-
-        self.mark_dirty();
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        let styling: &ComponentStyling = &self.styling;
-
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
         
-        self.abs_rect_data = scale_rect_to_window(
+        let min_dim = (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT);
+        let max_dim = (self.orig_rect_data.width, self.orig_rect_data.height);
+
+        self.abs_rect_data = parent.scale_to_container(
             self.rel_rect_data,
-            new_rect_data,
-            (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT),
-            (self.orig_rect_data.width, self.orig_rect_data.height),
+            min_dim,
+            max_dim,
             styling.maintain_aspect_ratio,
-            aspect_ratio
         );
+
         self.mark_dirty();
     }
     
@@ -239,7 +215,7 @@ impl Interactable for Checkbox {
     }
 
     fn consume_mouse_event(&mut self, mouse_event: &crate::mouse_state::MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
-        if mouse_event.buttons.left == ButtonState::Pressed && !self.is_disabled {
+        if mouse_event.buttons.left.is_pressed() && !self.is_disabled {
             self.handle_click()
         } else {
             None

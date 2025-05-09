@@ -7,10 +7,10 @@ use graphic::{
 use spin::RwLock;
 
 use crate::{
-    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, utils::{scale_font, scale_rect_to_window}
+    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, utils::scale_font
 };
 
-use super::component::{Casts, Clearable, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable};
+use super::{component::{Casts, Clearable, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
 
 pub const INPUT_BG_COLOR_ENABLED: Color = Color { red: 80, green: 80, blue: 80, alpha: 255 };
 pub const INPUT_BG_COLOR_DISABLED: Color = Color { red: 50, green: 50, blue: 50, alpha: 255 };
@@ -52,7 +52,6 @@ pub struct InputField {
 
 impl InputField {
     pub fn new(
-        abs_rect_data: RectData,
         rel_rect_data: RectData,
         rel_font_size: usize,
         font_scale: (u32, u32),
@@ -67,11 +66,11 @@ impl InputField {
                 is_dirty: true,
                 is_selected: false,
                 max_chars,
-                abs_rect_data,
+                abs_rect_data: RectData::zero(),
                 rel_rect_data,
                 rel_font_size,
-                orig_rect_data: abs_rect_data.clone(),
-                drawn_rect_data: abs_rect_data.clone(),
+                orig_rect_data: rel_rect_data.clone(),
+                drawn_rect_data: RectData::zero(),
                 font_scale,
                 current_text: starting_text,
 
@@ -91,7 +90,7 @@ impl InputField {
 }
 
 impl Component for InputField {
-    fn draw(&mut self, is_focused: bool) {
+    fn draw(&mut self, focus_id: Option<usize>) {
         if !self.is_dirty {
             return;
         }
@@ -102,6 +101,7 @@ impl Component for InputField {
         }
 
         let styling = &self.styling;
+        let is_focused = focus_id == self.id;
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -145,56 +145,27 @@ impl Component for InputField {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
         let styling: &ComponentStyling = &self.styling;
 
-        self.abs_rect_data.top_left = self
-            .abs_rect_data
-            .top_left
-            .move_to_new_rect(&old_window, &new_window);
-
-        self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
-
-        let min_dim: (u32, u32) = (
-            self.current_text.len() as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
-            DEFAULT_CHAR_HEIGHT * self.font_scale.1,
-        );
-
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_window,
-            (min_dim.0, DEFAULT_CHAR_HEIGHT * self.font_scale.1),
-            (self.orig_rect_data.width, self.orig_rect_data.height),
-            styling.maintain_aspect_ratio,
-            aspect_ratio,
-        );
-
-        self.mark_dirty();
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        let styling: &ComponentStyling = &self.styling;
-
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-
+        // TODO: Is the font scaling correct?
         self.font_scale = scale_font(
             &(self.rel_font_size as u32, self.rel_font_size as u32),
             &self.rel_rect_data,
             &self.abs_rect_data,
         );
-        
-        self.abs_rect_data = scale_rect_to_window(
+
+        let min_dim = (
+            self.max_chars as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
+            DEFAULT_CHAR_HEIGHT * self.font_scale.1,
+        );
+        let max_dim = (self.orig_rect_data.width, self.orig_rect_data.height);
+
+        self.abs_rect_data = parent.scale_to_container(
             self.rel_rect_data,
-            new_rect_data,
-            (
-                self.max_chars as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
-                DEFAULT_CHAR_HEIGHT * self.font_scale.1,
-            ),
-            (self.orig_rect_data.width, self.orig_rect_data.height),
+            min_dim,
+            max_dim,
             styling.maintain_aspect_ratio,
-            aspect_ratio
         );
 
         self.mark_dirty();
@@ -326,7 +297,7 @@ impl Interactable for InputField {
     }
 
     fn consume_mouse_event(&mut self, mouse_event: &crate::mouse_state::MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
-        if mouse_event.buttons.left == ButtonState::Pressed && !self.is_disabled {
+        if mouse_event.buttons.left.is_pressed() && !self.is_disabled {
             self.is_selected = !self.is_selected;
             self.mark_dirty();
         }

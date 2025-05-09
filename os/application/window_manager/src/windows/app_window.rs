@@ -5,7 +5,7 @@ use hashbrown::HashMap;
 use spin::RwLock;
 
 use crate::{
-    components::component::Component, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, utils::get_element_cursor_from_orderer, Interaction, WindowManager
+    components::{component::Component, container::{basic_container::{BasicContainer, LayoutMode, StretchMode}, Container}}, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, signal::ComponentRef, utils::get_element_cursor_from_orderer, Interaction, WindowManager, SCREEN
 };
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
@@ -17,6 +17,9 @@ pub struct AppWindow {
     pub rect_data: RectData,
     /// Indicates whether redrawing of this window is required in next loop-iteration
     pub is_dirty: bool,
+
+    root_container: ComponentRef,
+
     components: HashMap<usize, Rc<RwLock<Box<dyn Component>>>>,
     /// focusable components are stored additionally in ordered fashion in here
     component_orderer: LinkedList<usize>,
@@ -25,14 +28,39 @@ pub struct AppWindow {
 
 impl AppWindow {
     pub fn new(id: usize, rect_data: RectData) -> Self {
+        let screen_size = SCREEN.get().unwrap();
+        let screen_rect = RectData {
+            top_left: Vertex::zero(),
+            width: screen_size.0,
+            height: screen_size.1,
+        };
+
+        // Root container that will hold all components
+        let mut root_container = Box::new(BasicContainer::new(
+            screen_rect,
+            LayoutMode::None,
+            StretchMode::None,
+            None,
+        ));
+
+        // Initial scaling to window bounds
+        root_container.move_to(rect_data);
+
+        let root_container: ComponentRef = Rc::new(RwLock::new(root_container));
+
         Self {
             id,
             is_dirty: true,
+            root_container,
             components: HashMap::new(),
             component_orderer: LinkedList::new(),
             rect_data,
             focused_component_id: None,
         }
+    }
+
+    pub fn root_container(&self) -> ComponentRef {
+        self.root_container.clone()
     }
 
     pub fn mark_component_dirty(&mut self, id: usize) {
@@ -44,20 +72,19 @@ impl AppWindow {
         self.is_dirty = true;
     }
 
-    pub fn insert_component(&mut self, new_component: Rc<RwLock<Box<dyn Component>>>) {
+    pub fn insert_component(&mut self, new_component: ComponentRef, parent: ComponentRef) {
         let id = WindowManager::generate_id();
-        let is_focusable = new_component.read().as_focusable().is_some();
-        
-        if is_focusable {
-            self.component_orderer.push_back(id);
-            
-            // Focus new (focusable) component, if it is the first one in the window
-            if self.component_orderer.len() == 1 {
-                self.focused_component_id = Some(id);
-            }
-        }
-        
         new_component.write().set_id(id);
+
+        // Add focusable components to the orderer
+        if new_component.read().as_focusable().is_some() {
+            self.component_orderer.push_back(id);
+        }
+
+        // Add the component to the parent container
+        parent.write().as_container_mut().expect("parent must be a container").add_child(new_component.clone());
+
+        //self.root_container.add_child(new_component.clone());
         self.components.insert(id, new_component);
     }
 
@@ -222,26 +249,23 @@ impl AppWindow {
         self.focus_component(new_component_id);
     }
 
-    pub fn rescale_window_in_place(&mut self, old_rect_data: RectData, new_rect_data: RectData) {
-        let components = self.components.values();
-        for component in components {
-            component.write().mark_dirty();
-            component.write().rescale_after_split(old_rect_data, new_rect_data);
-        }
+    /// Rescales the window and marks it as dirty.
+    pub fn rescale_window_in_place(&mut self, new_abs_rect: RectData) {
+        self.root_container.write().as_container_mut().unwrap().move_to(new_abs_rect);
 
         self.mark_window_dirty();
     }
 
-    pub fn rescale_window_after_move(&mut self, new_rect_data: RectData) {
-        self.rect_data = new_rect_data;
+    /// Rescales and moves the window and marks it as dirty.
+    pub fn rescale_window_after_move(&mut self, new_abs_rect: RectData) {
+        self.rect_data = new_abs_rect;
+        self.root_container.write().as_container_mut().unwrap().move_to(new_abs_rect);
 
-        for component in self.components.values_mut() {
-            component.write().rescale_after_move(new_rect_data);
-        }
+        self.mark_window_dirty();
     }
 
     pub fn merge(&mut self, other_window: &mut AppWindow) {
-        let old_rect @ RectData {
+        let _old_rect @ RectData {
             top_left: old_top_left,
             width: old_width,
             height: old_height,
@@ -284,8 +308,8 @@ impl AppWindow {
             height: new_height,
         };
 
-        self.rescale_window_in_place(old_rect, self.rect_data);
-        self.mark_window_dirty();
+        self.rescale_window_in_place(self.rect_data);
+
         other_window.mark_window_dirty();
     }
 
@@ -295,7 +319,7 @@ impl AppWindow {
         }
 
         // "dirty" Komponenten werden gesammelt
-        let dirty_components: Vec<_> = self.components.iter().filter(|component_entry| {
+        /*let dirty_components: Vec<_> = self.components.iter().filter(|component_entry| {
             component_entry.1.read().is_dirty() || self.is_dirty
         }).map(|(_, value)| value).collect();
 
@@ -303,7 +327,7 @@ impl AppWindow {
         // keine Änderungen in Komponenten oder Fenster
         if dirty_components.is_empty() && !self.is_dirty {
             return;
-        }
+        }*/
 
         let is_focused = self.id == focused_window_id;
 
@@ -315,18 +339,21 @@ impl AppWindow {
             } else {
                 Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
             }
+
+            self.root_container.write().mark_dirty();
         }
 
         // es muss nicht teil bereinigt werden, falls das Fenster dirty ist da dies durch Splitting der Fall sein kann und so  in anderen Fenstern entstehen könnten
-        if !self.is_dirty {  
+        /*if !self.is_dirty {  
             // bereinige zuvor gezeichnete Bereiche, der neu zu zeichnenden Komponenten
             for dirty_component in &dirty_components {
                 Drawer::partial_clear_screen(dirty_component.read().get_drawn_rect_data());
             }
-        }
+        }*/
 
         // Zeichne die aktualisierten Komponenten
-        for dirty_component in &dirty_components {
+        /*for dirty_component in &dirty_components {
+            // This will mark non-dirty components as dirty, when window is dirty
             if self.is_dirty {
                 dirty_component.write().mark_dirty();
             }
@@ -339,7 +366,9 @@ impl AppWindow {
             };
 
             dirty_component.write().draw(is_focused);
-        }
+        }*/
+
+        self.root_container.write().draw(self.focused_component_id);
 
         self.is_dirty = false;
     }

@@ -21,6 +21,7 @@ impl Runnable for Calculator {
         // Display Label
         api.execute(
             handle,
+            None,
             Command::CreateLabel {
                 log_pos: Vertex::new(50, 50),
                 font_size: Some(1),
@@ -36,6 +37,7 @@ impl Runnable for Calculator {
 
             api.execute(
                 handle,
+                None,
                 Command::CreateButton {
                     log_rect_data: RectData {
                         top_left: Vertex::new(x, y),
@@ -75,6 +77,7 @@ impl Runnable for Calculator {
 
         api.execute(
             handle,
+            None,
             Command::CreateButton {
                 log_rect_data: RectData {
                     top_left: Vertex::new(110, 300),
@@ -100,6 +103,7 @@ impl Runnable for Calculator {
 
         api.execute(
             handle,
+            None,
             Command::CreateButton {
                 log_rect_data: RectData {
                     top_left: Vertex::new(170, 300),
@@ -132,6 +136,7 @@ impl Runnable for Calculator {
 
             api.execute(
                 handle,
+                None,
                 Command::CreateButton {
                     log_rect_data: RectData {
                         top_left: Vertex::new(230, 120 + (i as u32 * 60)),
@@ -176,6 +181,7 @@ impl Runnable for Calculator {
         // Clear Button
         api.execute(
             handle,
+            None,
             Command::CreateButton {
                 log_rect_data: RectData {
                     top_left: Vertex::new(50, 360),
@@ -215,6 +221,7 @@ impl Runnable for Calculator {
         let equals_button_init = Rc::clone(&equals_button);
         *equals_button_init.write() = Some(api.execute(
             handle,
+            None,
             Command::CreateButton {
                 log_rect_data: RectData {
                     top_left: Vertex::new(170, 360),

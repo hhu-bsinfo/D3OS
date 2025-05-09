@@ -1,9 +1,6 @@
-use alloc::boxed::Box;
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::lfb::DEFAULT_CHAR_HEIGHT;
-use crate::{config::INTERACT_BUTTON, utils::{scale_pos_to_window, scale_radius_to_window, scale_rect_to_window}};
 
-use super::component::{Casts, Component, ComponentStyling, Interactable};
+use super::{component::{Casts, Component, ComponentStyling, Interactable}, container::Container};
 
 pub struct RadioButton {
     pub id: Option<usize>,
@@ -25,6 +22,7 @@ pub struct RadioButton {
 
 impl RadioButton {
     pub fn new(
+        id: usize,
         abs_center: Vertex,
         rel_center: Vertex,
         abs_radius: u32,
@@ -39,7 +37,7 @@ impl RadioButton {
         };
 
         Self {
-            id: None,
+            id: Some(id),
             abs_center,
             rel_center,
             abs_radius,
@@ -70,7 +68,7 @@ impl RadioButton {
 }
 
 impl Component for RadioButton {
-    fn draw(&mut self, is_focused: bool) {
+    fn draw(&mut self, focus_id: Option<usize>) {
         // if !self.is_dirty {
         //     return;
         // }
@@ -81,6 +79,7 @@ impl Component for RadioButton {
         }
 
         let styling = &self.styling;
+        let is_focused = focus_id == self.id;
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -138,14 +137,8 @@ impl Component for RadioButton {
         self.drawn_rect_data
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-       // wird in button_group übernommen
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        // wird in button_group übernommen
-        
-        self.mark_dirty();
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        // wird in radio_button_group übernommen
     }
 }
 

@@ -24,7 +24,7 @@ use terminal::write::log_debug;
 use terminal::Application;
 use input::mouse::{MousePacket, try_read_mouse};
 use time::systime;
-use windows::workspace_selection_labels_window::WorkspaceSelectionLabelsWindow;
+use windows::workspace_selection_window::WorkspaceSelectionWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
 use workspace::Workspace;
 use mouse_state::{MouseEvent, MouseState};
@@ -63,7 +63,8 @@ struct WindowManager {
     /// Currently selected workspace
     current_workspace: usize,
     /// This window not tied to workspaces, it exists once and persists through workspace-switches
-    workspace_selection_labels_window: WorkspaceSelectionLabelsWindow,
+    //workspace_selection_labels_window: WorkspaceSelectionLabelsWindow,
+    workspace_selection_window: WorkspaceSelectionWindow,
     command_line_window: CommandLineWindow,
     /// Receivers from queues connected with API
     receivers: Receivers,
@@ -110,7 +111,13 @@ impl WindowManager {
             rx_on_loop_iter,
         };
 
-        let workspace_selection_labels_window = WorkspaceSelectionLabelsWindow::new(RectData {
+        /*let workspace_selection_labels_window = WorkspaceSelectionLabelsWindow::new(RectData {
+            top_left: Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
+            width: screen.0 - DIST_TO_SCREEN_EDGE * 2,
+            height: HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
+        });*/
+
+        let workspace_selection_window = WorkspaceSelectionWindow::new(RectData {
             top_left: Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
             width: screen.0 - DIST_TO_SCREEN_EDGE * 2,
             height: HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
@@ -135,7 +142,7 @@ impl WindowManager {
             Self {
                 workspaces: Vec::new(),
                 current_workspace: 0,
-                workspace_selection_labels_window,
+                workspace_selection_window,
                 command_line_window,
                 receivers,
                 is_dirty: true,
@@ -269,7 +276,7 @@ impl WindowManager {
             let mouse_event = self.mouse_state.process(&mouse_packet);
 
             // Ask the workspace manager first
-            if let Some(new_workspace) = self.workspace_selection_labels_window.handle_mouse_event(&mouse_event) {
+            if let Some(new_workspace) = self.workspace_selection_window.handle_mouse_event(&mouse_event) {
                 self.switch_workspace(new_workspace);
                 return;
             }
@@ -323,6 +330,7 @@ impl WindowManager {
                     workspace_index,
                     window_id,
                 },
+            parent,
             component,
         }) = self.receivers.rx_components.try_dequeue()
         {
@@ -333,7 +341,7 @@ impl WindowManager {
             let curr_ws = &mut self.workspaces[workspace_index];
             let window = &mut curr_ws.windows.get_mut(&window_id);
             if let Some(window) = window {
-                window.insert_component(component);
+                window.insert_component(component, parent);
             }
         }
     }
@@ -341,6 +349,7 @@ impl WindowManager {
     fn add_window_to_workspace(&mut self, rect_data: RectData, app_name: &str) {
         let window_id = Self::generate_id();
         let window = AppWindow::new(window_id, rect_data);
+        let root_container = window.root_container();
 
         let curr_ws = self.get_current_workspace_mut();
 
@@ -349,7 +358,7 @@ impl WindowManager {
         self.is_dirty = true;
 
         Self::get_api()
-            .register(self.current_workspace, window_id, rect_data, app_name)
+            .register(self.current_workspace, window_id, rect_data, app_name, root_container)
             .expect("Failed to create window!");
     }
 
@@ -373,7 +382,7 @@ impl WindowManager {
                     };
 
                     // Rescale components for old window
-                    window.rescale_window_in_place(old_rect, window.rect_data.clone());
+                    window.rescale_window_in_place(window.rect_data.clone());
                     self.add_window_to_workspace(new_rect_data, app_name);
                 }
                 ScreenSplitType::Vertical => {
@@ -386,7 +395,7 @@ impl WindowManager {
                     };
 
                     // Rescale components for old window
-                    window.rescale_window_in_place(old_rect, window.rect_data.clone());
+                    window.rescale_window_in_place(window.rect_data.clone());
                     self.add_window_to_workspace(new_rect_data, app_name);
                 }
             }
@@ -413,9 +422,10 @@ impl WindowManager {
 
         let window = AppWindow::new(Self::generate_id(), window_rect_data);
         let window_id = window.id;
+        let root_container = window.root_container();
 
-        self.workspace_selection_labels_window
-            .insert_label(self.workspaces.len());
+        self.workspace_selection_window
+            .register_workspace(self.workspaces.len());
 
         let workspace = Workspace::new_with_single_window((window_id, window), window_id);
 
@@ -427,11 +437,12 @@ impl WindowManager {
                 window_id,
                 window_rect_data,
                 DEFAULT_APP,
+                root_container,
             )
             .expect("Failed to launch default app!");
 
         self.switch_workspace(new_workspace_index);
-        self.workspace_selection_labels_window.mark_dirty();
+        self.workspace_selection_window.mark_dirty();
     }
 
     fn remove_current_workspace(&mut self) {
@@ -441,9 +452,9 @@ impl WindowManager {
 
         // Remove workspace & labels
         self.workspaces.remove(self.current_workspace);
-        self.workspace_selection_labels_window
-            .remove_label(self.current_workspace);
-        self.workspace_selection_labels_window.mark_dirty();
+        self.workspace_selection_window
+            .unregister_workspace(self.current_workspace);
+        self.workspace_selection_window.mark_dirty();
 
         // Update workspace indices
         self.on_loop_iter_fns
@@ -463,7 +474,7 @@ impl WindowManager {
         if self.current_workspace != workspace_index {
             self.current_workspace = workspace_index;
             self.is_dirty = true;
-            self.workspace_selection_labels_window.mark_dirty();
+            self.workspace_selection_window.mark_dirty();
         }
     }
 
@@ -496,26 +507,24 @@ impl WindowManager {
 
         if is_dirty {
             Drawer::full_clear_screen(false);
+            self.workspace_selection_window.mark_dirty();
         }
 
         let focused_window_id = self.get_current_workspace().focused_window_id;
-
-        // // Redraw everything related to workspace-selection-labels
-        self.workspace_selection_labels_window
-            .draw(self.current_workspace, is_dirty);
-
         let curr_ws = self.get_current_workspace_mut();
         
-        
-        // Redraw workspace windows
+        // Redraw all unfocused workspace windows
         for window in curr_ws.windows.values_mut().filter(|w| w.id != focused_window_id) {
             window.draw(focused_window_id, is_dirty);
         }
 
-        // zeichne fokussiertes als letztes
+        // Draw the focused window
         if let Some(window) = curr_ws.windows.get_mut(&focused_window_id) {
             window.draw(focused_window_id, is_dirty);
         }
+
+        // Draw workspace selection window last
+        self.workspace_selection_window.draw(Some(self.current_workspace));
 
         self.is_dirty = false;
     }

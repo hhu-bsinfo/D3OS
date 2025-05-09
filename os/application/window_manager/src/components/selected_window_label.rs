@@ -8,7 +8,7 @@ use spin::RwLock;
 
 use crate::config::FOCUSED_BG_COLOR;
 
-use super::component::{Casts, Component, ComponentStyling, Hideable};
+use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
 pub const FG_COLOR: Color = WHITE;
 
@@ -51,7 +51,7 @@ impl SelectedWorkspaceLabel {
 }
 
 impl Component for SelectedWorkspaceLabel {
-    fn draw(&mut self, is_focused: bool) {
+    fn draw(&mut self, focus_id: Option<usize>) {
         if !self.is_dirty {
             return;
         }
@@ -62,6 +62,7 @@ impl Component for SelectedWorkspaceLabel {
         }
 
         let styling = &self.styling;
+        let is_focused = focus_id == self.id;
 
         let bg_color = if is_focused {
             styling.focused_background_color
@@ -86,12 +87,8 @@ impl Component for SelectedWorkspaceLabel {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, _old_window: RectData, _new_window: RectData) {
-        // Should never be rescaled
-    }
-
-    fn rescale_after_move(&mut self, _new_rect_data: RectData) {
-        // Should never be moved
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        // Should never be called
     }
 
     fn get_abs_rect_data(&self) -> RectData {

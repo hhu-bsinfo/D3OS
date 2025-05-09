@@ -3,16 +3,15 @@ use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use spin::RwLock;
 
-use crate::{config::INTERACT_BUTTON, mouse_state::ButtonState, utils::{scale_pos_to_window, scale_radius_to_window, scale_rect_to_window}};
+use crate::{config::INTERACT_BUTTON, mouse_state::ButtonState, utils::scale_radius_to_rect};
 
-use super::{component::{Casts, Component, ComponentStyling, Focusable, Interactable}, radio_button::RadioButton};
+use super::{component::{Casts, Component, ComponentStyling, Focusable, Interactable}, container::Container, radio_button::RadioButton};
 
 pub struct RadioButtonGroup {
     id: Option<usize>,
     buttons: Vec<Rc<RwLock<RadioButton>>>,
     focused_button_index: usize,
     selected_button_index: Option<usize>,
-    first_abs_center: Vertex,
     first_rel_center: Vertex,
     abs_radius: u32,
     rel_radius: u32,
@@ -37,6 +36,7 @@ impl RadioButtonGroup {
         let buttons = (0..num_buttons)
             .map(|i| {
                 Rc::new(RwLock::new(RadioButton::new(
+                    i,
                     abs_center.add(i as u32 * ((abs_radius * 2) + spacing), 0),
                     rel_center.add(i as u32 * ((rel_radius * 2) + spacing), 0),
                     abs_radius,
@@ -52,7 +52,6 @@ impl RadioButtonGroup {
             buttons,
             selected_button_index,
             focused_button_index: 0,
-            first_abs_center: abs_center,
             first_rel_center: rel_center,
             abs_radius,
             rel_radius,
@@ -83,9 +82,13 @@ impl RadioButtonGroup {
 }
 
 impl Component for RadioButtonGroup {
-    fn draw(&mut self, is_focused: bool) {
+    fn draw(&mut self, focus_id: Option<usize>) {
+        let is_focused = focus_id == self.id;
+
         for (i, button) in self.buttons.iter().enumerate() {
-            button.write().draw(is_focused && i == self.focused_button_index);
+            let is_button_focused = is_focused && i == self.focused_button_index;
+            let child_focus_id = if is_button_focused { button.read().id } else { None };
+            button.write().draw(child_focus_id);
         }
     }
 
@@ -175,21 +178,10 @@ impl Component for RadioButtonGroup {
         }
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-        let abs_center = scale_pos_to_window(self.first_rel_center, new_window);
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        let abs_center = parent.scale_vertex_to_container(self.first_rel_center);
 
-        self.abs_radius = scale_radius_to_window(self.first_rel_center, self.rel_radius, 7, new_window);
-
-        for (i, button) in self.buttons.iter_mut().enumerate() {
-            button.write().set_center(abs_center.add(i as u32 * ((self.abs_radius * 2) + self.spacing), 0));
-            button.write().set_radius(self.abs_radius);
-        }
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        let abs_center = scale_pos_to_window(self.first_rel_center, new_rect_data);
-
-        self.abs_radius = scale_radius_to_window(self.first_rel_center, self.rel_radius, 7, new_rect_data);
+        self.abs_radius = scale_radius_to_rect(self.rel_radius, 7, parent.get_abs_rect_data());
 
         for (i, button) in self.buttons.iter_mut().enumerate() {
             button.write().set_center(abs_center.add(i as u32 * ((self.abs_radius * 2) + self.spacing), 0));
@@ -278,7 +270,7 @@ impl Interactable for RadioButtonGroup {
         }
 
         // Check for mouse click
-        if mouse_event.buttons.left == ButtonState::Pressed {
+        if mouse_event.buttons.left.is_pressed() {
             return self.handle_click();
         }
 

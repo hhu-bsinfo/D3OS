@@ -2,9 +2,11 @@ use alloc::boxed::Box;
 use drawer::rect_data::RectData;
 use graphic::color::Color;
 
-use crate::{config::{DEFAULT_BACKGROUND_COLOR, DEFAULT_BORDER_COLOR, DEFAULT_DISABLED_BACKGROUND_COLOR, DEFAULT_DISABLED_BORDER_COLOR, DEFAULT_DISABLED_TEXT_COLOR, DEFAULT_FOCUSED_BACKGROUND_COLOR, DEFAULT_FOCUSED_BORDER_COLOR, DEFAULT_FOCUSED_TEXT_COLOR, DEFAULT_SELECTED_BACKGROUND_COLOR, DEFAULT_SELECTED_BORDER_COLOR, DEFAULT_SELECTED_TEXT_COLOR, DEFAULT_TEXT_COLOR}};
+use crate::{config::{DEFAULT_BACKGROUND_COLOR, DEFAULT_BORDER_COLOR, DEFAULT_DISABLED_BACKGROUND_COLOR, DEFAULT_DISABLED_BORDER_COLOR, DEFAULT_DISABLED_TEXT_COLOR, DEFAULT_FOCUSED_BACKGROUND_COLOR, DEFAULT_FOCUSED_BORDER_COLOR, DEFAULT_FOCUSED_TEXT_COLOR, DEFAULT_SELECTED_BACKGROUND_COLOR, DEFAULT_SELECTED_BORDER_COLOR, DEFAULT_SELECTED_TEXT_COLOR, DEFAULT_TEXT_COLOR}, signal::ComponentRef};
 
 pub use crate::mouse_state::MouseEvent;
+
+use super::container::Container;
 
 #[derive(Clone, Copy)]
 pub struct ComponentStyling {
@@ -190,16 +192,11 @@ as if the window was occupying the full screen
 // pub trait Component: ComponentBehaviour + Observable {}
 
 pub trait Component: Casts + {
-    fn draw(&mut self, is_focused: bool);
+    fn draw(&mut self, focus_id: Option<usize>);
 
-    /// Defines how rescaling the component-geometry works after the containing window has been resized
-    fn rescale_after_split(&mut self, old_rect_data: RectData, new_rect_data: RectData);
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData);
-
-    fn rescale(&mut self, old_window: RectData, new_window: RectData) {
-        //
-    }
+    /// Called when the component is required to adjust its absolute bounds during the layout phase.
+    /// The `parent` Container offers methods to scale relative bound to absolute bounds.
+    fn rescale_to_container(&mut self, parent: &dyn Container);
 
     fn get_abs_rect_data(&self) -> RectData;
 
@@ -233,7 +230,7 @@ pub trait Hideable {
 pub trait Focusable {
     fn focus(&mut self);
 
-    // Returns true if the component accepted the unfocus
+    /// Returns true if the component accepted the unfocus
     fn unfocus(&mut self) -> bool;
 }
 
@@ -246,6 +243,7 @@ pub trait Interactable {
 pub trait Resizable {
     fn rescale(&mut self, scale_factor: f64);
 
+    /// Resizes the component to the given abs width and height by calculating a scaling factor.
     fn resize(&mut self, width: u32, height: u32);
 }
 
@@ -299,6 +297,14 @@ pub trait Casts {
     }
 
     fn as_clearable_mut(&mut self) -> Option<&mut dyn Clearable> {
+        None
+    }
+
+    fn as_container(&self) -> Option<&dyn Container> {
+        None
+    }
+
+    fn as_container_mut(&mut self) -> Option<&mut dyn Container> {
         None
     }
 }

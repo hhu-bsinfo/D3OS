@@ -1,9 +1,7 @@
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::{bitmap::{Bitmap, ScalingMode}, lfb::DEFAULT_CHAR_HEIGHT};
 
-use crate::{utils::scale_rect_to_window, WindowManager};
-
-use super::component::{Casts, Component, ComponentStyling, Hideable, Resizable};
+use super::{component::{Casts, Component, ComponentStyling, Hideable, Resizable}, container::Container};
 
 pub struct BitmapGraphic {
     pub id: Option<usize>,
@@ -23,7 +21,6 @@ pub struct BitmapGraphic {
 impl BitmapGraphic {
     pub fn new(
         rel_rect_data: RectData,
-        abs_rect_data: RectData,
         orig_rect_data: RectData,
         bitmap: Bitmap,
         scaling_mode: ScalingMode,
@@ -33,11 +30,11 @@ impl BitmapGraphic {
             id: None,
             is_dirty: true,
             rel_rect_data,
-            abs_rect_data,
-            drawn_rect_data: abs_rect_data.clone(),
+            abs_rect_data: RectData::zero(),
+            drawn_rect_data: RectData::zero(),
             orig_rect_data,
             scaling_mode,
-            bitmap: bitmap.scale(abs_rect_data.width, abs_rect_data.height, scaling_mode.clone()),
+            bitmap: bitmap.clone(),
             orig_bitmap: bitmap,
             scale_factor: 1.0,
             is_hidden: false,
@@ -47,7 +44,7 @@ impl BitmapGraphic {
 }
 
 impl Component for BitmapGraphic {
-    fn draw(&mut self, is_focused: bool) {   
+    fn draw(&mut self, focus_id: Option<usize>) {   
         if !self.is_dirty {
             return;
         }
@@ -58,6 +55,7 @@ impl Component for BitmapGraphic {
         }
 
         let styling = &self.styling;
+        let is_focused = focus_id == self.id;
 
         let bg_color = if is_focused {
             styling.focused_background_color
@@ -87,44 +85,17 @@ impl Component for BitmapGraphic {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-        let styling: &ComponentStyling = &self.styling;
-
-        self.abs_rect_data.top_left = self
-            .abs_rect_data
-            .top_left
-            .move_to_new_rect(&old_window, &new_window);
-
-        let min_dim = (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT);
-
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-
-        self.abs_rect_data = scale_rect_to_window(
-            self.rel_rect_data,
-            new_window,
-            min_dim,
-            (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32),
-            styling.maintain_aspect_ratio,
-            aspect_ratio,
-        );
-
-        self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);
-        self.mark_dirty();
-    }
-
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
         let styling: &ComponentStyling = &self.styling;
 
         let min_dim = (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT);
-        let aspect_ratio = self.orig_rect_data.width as f64 / self.orig_rect_data.height as f64;
-        
-        self.abs_rect_data = scale_rect_to_window(
+        let max_dim = (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32);
+
+        self.abs_rect_data = parent.scale_to_container(
             self.rel_rect_data,
-            new_rect_data,
             min_dim,
-            (self.orig_rect_data.width * self.scale_factor as u32, self.orig_rect_data.height * self.scale_factor as u32),
+            max_dim,
             styling.maintain_aspect_ratio,
-            aspect_ratio,
         );
 
         self.bitmap = self.orig_bitmap.scale(self.abs_rect_data.width, self.abs_rect_data.height, self.scaling_mode);

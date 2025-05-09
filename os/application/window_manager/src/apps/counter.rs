@@ -26,6 +26,7 @@ impl Runnable for Counter {
 
         api.execute(
             handle,
+            None,
             Command::CreateCheckbox {
                 log_rect_data: RectData {
                     top_left: Vertex::new(200, 50),
@@ -60,6 +61,7 @@ impl Runnable for Counter {
 
         *counter_button.write() = Some(api.execute(
             handle,
+            None,
             Command::CreateButton {
                 log_rect_data: RectData {
                     top_left: Vertex::new(200, 150),
@@ -77,6 +79,7 @@ impl Runnable for Counter {
 
         *reset_button.write() = Some(api.execute(
             handle,
+            None,
             Command::CreateButton {
                 log_rect_data: RectData {
                     top_left: Vertex::new(200, 250),
