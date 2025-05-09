@@ -42,7 +42,6 @@ use crate::process::process::Process;
 use crate::process::scheduler;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
 use crate::{memory, process_manager, scheduler, tss};
-use alloc::rc::Rc;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::naked_asm;
@@ -89,7 +88,7 @@ impl Stacks {
 impl Thread {
     /// Create a kernel thread. Not started yet, nor registered in the scheduler. \
     /// `entry` is the thread entry function.
-    pub fn new_kernel_thread(entry: fn(), tag_str: &str) -> Rc<Thread> {
+    pub fn new_kernel_thread(entry: fn(), tag_str: &str) -> Arc<Thread> {
         // alocate frames for kernel stack
         let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
             (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
@@ -126,13 +125,13 @@ impl Thread {
         };
 
         thread.prepare_kernel_stack();
-        Rc::new(thread)
+        Arc::new(thread)
     }
 
     /// Load application code from `elf_buffer`, create a process with a main thread. \
     /// `name` is the name of the application, `args` are the arguments passed to the application. \
     /// Returns the main thread of the application which is not yet registered in the scheduler.
-    pub fn load_application(elf_buffer: &[u8], name: &str, args: &Vec<&str>) -> Rc<Thread> {
+    pub fn load_application(elf_buffer: &[u8], name: &str, args: &Vec<&str>) -> Arc<Thread> {
         let process = process_manager().write().create_process();
         //let address_space = process.address_space();
 
@@ -284,7 +283,7 @@ impl Thread {
         info!("***ms thread");
 
         thread.prepare_kernel_stack();
-        Rc::new(thread)
+        Arc::new(thread)
     }
 
     /// Create user thread. Not started yet, nor registered in the scheduler. \
@@ -295,7 +294,7 @@ impl Thread {
         parent: Arc<Process>,
         kickoff_addr: VirtAddr,
         entry: fn(),
-    ) -> Rc<Thread> {
+    ) -> Arc<Thread> {
         // alloc memory for kernel stack
         let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
             (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
@@ -351,7 +350,7 @@ impl Thread {
         info!("Created user stack for thread: {:x?}", user_stack_pages);
 
         thread.prepare_kernel_stack();
-        Rc::new(thread)
+        Arc::new(thread)
     }
 
     /// Called first for both a new kernel and a new user thread
