@@ -1,8 +1,9 @@
 // Julius Drodofsky
 
+use alloc::string::ToString;
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
+use graphic::{bitmap::Bitmap, color::Color};
 use super::component::{Casts, Component, ComponentStyling, Interactable};
-use alloc::vec::Vec;
 use alloc::rc::Rc;
 use spin::rwlock::RwLock;
 use crate::components::container::Container;
@@ -10,40 +11,25 @@ use crate::components::container::Container;
 pub struct Canvas {
     pub id: Option<usize>,
     is_dirty: bool,
-    abs_pos: Vertex,
-    rel_pos: Vertex,
+    abs_rect_data: RectData,
     drawn_rect_data: RectData,
     styling: ComponentStyling,
-    buffer: Rc<RwLock<Vec<u32>>>,
-    widht: usize,
-    height: usize,
-    // default 4
-    // bpp: u8,
+    buffer: Rc<RwLock<Bitmap>>,
 } 
 
 impl Canvas {
     pub fn new (
-    abs_pos: Vertex,
-    rel_pos: Vertex,
     styling: Option<ComponentStyling>,
-    width: usize,
-    height: usize,
-    buffer:  Rc<RwLock<Vec<u32>>>, 
+    abs_rect_data: RectData,
+    buffer:  Rc<RwLock<Bitmap>>, 
     ) -> Self{
-    let drawn_rect_data = RectData {
-         top_left: Vertex::new(0, 0),
-        width: width as u32,
-        height: height as u32,
-    };
+    let drawn_rect_data = RectData::zero();
     Self {
         id: None,
         is_dirty: false,
-        abs_pos,
-        rel_pos,
-        drawn_rect_data,
+        drawn_rect_data: RectData::zero(),
+        abs_rect_data,
         styling: styling.unwrap_or_default(),
-        widht: width,
-        height: height,
         buffer: buffer,
         }
     }
@@ -52,7 +38,12 @@ impl Canvas {
 
 impl Component for Canvas {
     fn draw(&mut self, focus_id: Option<usize>) {
-        todo!()
+        if !self.is_dirty{
+            return;
+        }
+        Drawer::draw_bitmap(self.abs_rect_data.top_left, &self.buffer.read());
+        self.drawn_rect_data = self.abs_rect_data;
+        self.is_dirty = false;
     }
     fn is_dirty(&self) -> bool {
         self.is_dirty
@@ -70,11 +61,7 @@ impl Component for Canvas {
         self.id = Some(id);
     }
     fn get_abs_rect_data(&self) -> RectData {
-        RectData {
-            top_left: Vertex { x: 0, y: 0 },
-            width: self.widht as u32,
-            height: self.height as u32,
-        }
+       self.abs_rect_data 
     }
 
     fn get_drawn_rect_data(&self) -> RectData {

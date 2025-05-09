@@ -84,9 +84,8 @@ pub enum Command<'a> {
     },
     CreateCanvas {
         styling: Option<ComponentStyling>,
-        width: usize,
-        height: usize,
-        buffer: Rc<RwLock<Vec<u32>>>,
+        rect_data: RectData,
+        buffer: Rc<RwLock<Bitmap>>,
     },
     CreateContainer {
         log_rect_data: RectData,
@@ -491,8 +490,8 @@ impl Api {
                 
                 component
             },
-            Command::CreateCanvas { styling , width, height, buffer} => {
-               let canvas = Canvas::new(Vertex::new(0, 0), Vertex::new(0, 0), styling, width, height, buffer);
+            Command::CreateCanvas { styling , rect_data,  buffer} => {
+               let canvas = Canvas::new( styling, rect_data, buffer);
                 Rc::new(RwLock::new(Box::new(canvas) as Box<dyn Component>))
             }
         };
