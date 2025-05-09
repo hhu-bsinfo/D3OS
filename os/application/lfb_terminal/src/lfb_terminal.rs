@@ -4,13 +4,14 @@ extern crate alloc;
 
 mod terminal;
 
-use alloc::format;
-use alloc::string::ToString;
+use alloc::boxed::Box;
+use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use alloc::{format, vec};
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use concurrent::process;
-use concurrent::thread::{self};
+use concurrent::thread::{self, sleep};
 use core::cell::RefCell;
 use core::fmt::Write;
 use core::mem::size_of;
@@ -25,6 +26,7 @@ use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::{Mutex, Once};
 use stream::{InputStream, OutputStream};
+use syscall::{SystemCall, syscall};
 use system_info::build_info::{BuildInfo, build_info};
 use terminal::Terminal;
 use time::{date, systime};
@@ -1132,14 +1134,33 @@ pub fn terminal() -> Arc<dyn Terminal> {
     Arc::clone(terminal)
 }
 
+const WRITE_BUFFER_SIZE: usize = 128;
+const READ_BUFFER_SIZE: usize = 128;
+
 #[unsafe(no_mangle)]
 pub fn main() {
-    init_terminal();
+    let mut write_buffer: [u8; READ_BUFFER_SIZE] = [0; READ_BUFFER_SIZE];
 
+    init_terminal();
     let lfb_terminal = terminal();
+
     lfb_terminal.clear();
-    lfb_terminal.write_str("Hello there\n");
+
+    let mut i = 0;
     loop {
-        lfb_terminal.read_byte();
+        thread::start_application("hello", vec![&i.to_string()]);
+        thread::start_application("helloc", vec![&i.to_string()]);
+        sleep(1000);
+        syscall(
+            SystemCall::TerminalConsumeWrite,
+            &[write_buffer.as_mut_ptr() as usize, WRITE_BUFFER_SIZE],
+        );
+        if write_buffer == [0; WRITE_BUFFER_SIZE] {
+            continue;
+        }
+        let string = String::from_utf8_lossy(&write_buffer);
+        terminal().write_str(&format!("{}", string));
+        write_buffer.fill(0);
+        i += 1
     }
 }

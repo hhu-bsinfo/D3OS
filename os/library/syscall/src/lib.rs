@@ -19,6 +19,7 @@ use return_vals::{SyscallResult, convert_ret_code_to_syscall_result};
 pub enum SystemCall {
     TerminalRead = 0,
     TerminalWrite,
+    TerminalConsumeWrite,
     MapUserHeap,
     ProcessExecuteBinary,
     ProcessId,

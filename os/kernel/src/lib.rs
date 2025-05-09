@@ -37,6 +37,7 @@ use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use crate::syscall::sys_graphic::LfbInfo;
 use crate::syscall::syscall_dispatcher::CoreLocalStorage;
+use device::tty::Tty;
 use ::log::{Level, Log, Record, error};
 use acpi::AcpiTables;
 use alloc::sync::Arc;
@@ -348,6 +349,23 @@ pub fn terminal() -> Arc<dyn Terminal> {
         .get()
         .expect("Trying to access terminal before initialization!");
     Arc::clone(terminal)
+}
+
+/// TTY
+/// TODO#9 tty docs
+/// 
+/// Author: Sebastian Keller
+static TTY: Once<Arc<Mutex<Tty>>> = Once::new();
+
+pub fn init_tty() {
+    TTY.call_once(|| Arc::new(Mutex::new(Tty::new())));
+}
+
+pub fn tty() -> Arc<Mutex<Tty>> {
+    let tty = TTY
+        .get()
+        .expect("Trying to access tty before initialization!");
+    Arc::clone(tty)
 }
 
 /// PS/2 Controller.

@@ -20,7 +20,7 @@ use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_initrd, init_lfb, init_lfb_info, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, mouse, network, process_manager, scheduler, serial_port, terminal, timer, tss
+    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_initrd, init_lfb, init_lfb_info, init_pci, init_serial_port, init_terminal, init_tty, initrd, keyboard, logger, memory, mouse, network, process_manager, scheduler, serial_port, terminal, timer, tss
 };
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
@@ -387,6 +387,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     //     "shell",
     //     &Vec::new(),
     // ));
+
+    //Initialize tty
+    init_tty();
 
     // Create and register the 'lfb_terminal' thread (from app image in ramdisk) in the scheduler
     scheduler().ready(Thread::load_application(
