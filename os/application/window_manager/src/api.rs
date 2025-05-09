@@ -9,7 +9,8 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, LayoutMode, StretchMode}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
+    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, LayoutMode, StretchMode}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN,
+    components::canvas::Canvas
 };
 
 use self::component::ComponentStyling;

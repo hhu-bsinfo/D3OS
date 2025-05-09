@@ -5,6 +5,7 @@ use super::component::{Casts, Component, ComponentStyling, Interactable};
 use alloc::vec::Vec;
 use alloc::rc::Rc;
 use spin::rwlock::RwLock;
+use crate::components::container::Container;
 
 pub struct Canvas {
     pub id: Option<usize>,
@@ -50,7 +51,7 @@ impl Canvas {
 }
 
 impl Component for Canvas {
-    fn draw(&mut self, is_focused: bool) {
+    fn draw(&mut self, focus_id: Option<usize>) {
         todo!()
     }
     fn is_dirty(&self) -> bool {
@@ -79,9 +80,9 @@ impl Component for Canvas {
     fn get_drawn_rect_data(&self) -> RectData {
         self.drawn_rect_data
     }
-    fn rescale_after_split(&mut self, old_rect_data: RectData, new_rect_data: RectData) {}
 
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {}
+
+    fn rescale_to_container(&mut self, parent: &dyn Container) {}
 
 }
 

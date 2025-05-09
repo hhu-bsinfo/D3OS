@@ -14,7 +14,7 @@ impl Runnable for CanvasApp {
         let handle = concurrent::thread::current().expect("Failed to get thread").id();
         let api = WindowManager::get_api();
         let buffer = Rc::new(RwLock::new(vec![0u32; 500 * 200]));
-        let component = api.execute(handle, Command::CreateCanvas { styling: None, width: 500, height: 200, buffer: Rc::clone(&buffer) }).unwrap();
+        let component = api.execute(handle, None,  Command::CreateCanvas { styling: None, width: 500, height: 200, buffer: Rc::clone(&buffer) }).unwrap();
        
     }
 }
