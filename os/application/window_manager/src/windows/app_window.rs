@@ -27,7 +27,7 @@ pub struct AppWindow {
 }
 
 impl AppWindow {
-    pub fn new(id: usize, rect_data: RectData) -> Self {
+    pub fn new(rect_data: RectData) -> Self {
         let screen_size = SCREEN.get().unwrap();
         let screen_rect = RectData {
             top_left: Vertex::zero(),
@@ -49,7 +49,7 @@ impl AppWindow {
         let root_container: ComponentRef = Rc::new(RwLock::new(root_container));
 
         Self {
-            id,
+            id: WindowManager::generate_id(),
             is_dirty: true,
             root_container,
             components: HashMap::new(),

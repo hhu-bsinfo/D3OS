@@ -1,3 +1,5 @@
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 use alloc::collections::LinkedList;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
@@ -7,12 +9,16 @@ use crate::utils::get_element_cursor_from_orderer;
 use crate::window_tree::WindowNode;
 use crate::windows::app_window::AppWindow;
 
+static WORKSPACE_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
+
 /**
 A workspace is a unit of one screen, containing windows. You can switch between workspaces
 and they will retain their state and even continue execution of their threads, but not draw
 anything to the screen while not selected of course.
 */
 pub struct Workspace {
+    id: usize,
+
     pub windows: HashMap<usize, AppWindow>,
     pub focused_window_id: usize,
     // Windows are stored additionally in ordered fashion in here
@@ -34,6 +40,7 @@ impl Workspace {
         let buddy_tree_root = WindowNode::new_leaf(window.0);
 
         Self {
+            id: WORKSPACE_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
             windows,
             focused_window_id,
             window_orderer,
@@ -268,5 +275,9 @@ impl Workspace {
 
     pub fn get_focused_window_mut(&mut self) -> &mut AppWindow {
         self.windows.get_mut(&self.focused_window_id).unwrap()
+    }
+
+    pub fn get_id(&self) -> usize {
+        self.id
     }
 }

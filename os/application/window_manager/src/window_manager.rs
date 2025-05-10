@@ -276,8 +276,10 @@ impl WindowManager {
             let mouse_event = self.mouse_state.process(&mouse_packet);
 
             // Ask the workspace manager first
-            if let Some(new_workspace) = self.workspace_selection_window.handle_mouse_event(&mouse_event) {
-                self.switch_workspace(new_workspace);
+            if let Some(new_workspace_id) = self.workspace_selection_window.handle_mouse_event(&mouse_event) {
+                if let Some(index) = self.workspaces.iter().position(|workspace| workspace.get_id() == new_workspace_id) {
+                    self.switch_workspace(index);
+                }
                 return;
             }
 
@@ -347,8 +349,8 @@ impl WindowManager {
     }
 
     fn add_window_to_workspace(&mut self, rect_data: RectData, app_name: &str) {
-        let window_id = Self::generate_id();
-        let window = AppWindow::new(window_id, rect_data);
+        let window = AppWindow::new(rect_data);
+        let window_id = window.id;
         let root_container = window.root_container();
 
         let curr_ws = self.get_current_workspace_mut();
@@ -420,15 +422,13 @@ impl WindowManager {
                 - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW),
         };
 
-        let window = AppWindow::new(Self::generate_id(), window_rect_data);
+        let window = AppWindow::new(window_rect_data);
         let window_id = window.id;
         let root_container = window.root_container();
 
-        self.workspace_selection_window
-            .register_workspace(self.workspaces.len());
-
         let workspace = Workspace::new_with_single_window((window_id, window), window_id);
 
+        self.workspace_selection_window.register_workspace(workspace.get_id());
         self.workspaces.insert(new_workspace_index, workspace);
 
         Self::get_api()
@@ -450,13 +450,16 @@ impl WindowManager {
             return;
         }
 
-        // Remove workspace & labels
-        self.workspaces.remove(self.current_workspace);
+        // Remove workspace button
         self.workspace_selection_window
-            .unregister_workspace(self.current_workspace);
+            .unregister_workspace(self.get_current_workspace().get_id());
         self.workspace_selection_window.mark_dirty();
 
+        // Remove workspace
+        self.workspaces.remove(self.current_workspace);
+
         // Update workspace indices
+        // TODO: Don't do this! Use the workspace id instead.
         self.on_loop_iter_fns
             .retain_mut(|fun| fun.window_data.workspace_index != self.current_workspace);
         self.on_loop_iter_fns
@@ -524,7 +527,8 @@ impl WindowManager {
         }
 
         // Draw workspace selection window last
-        self.workspace_selection_window.draw(Some(self.current_workspace));
+        let current_workspace_id = curr_ws.get_id();
+        self.workspace_selection_window.draw(Some(current_workspace_id));
 
         self.is_dirty = false;
     }

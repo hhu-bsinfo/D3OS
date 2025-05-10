@@ -53,8 +53,8 @@ impl WorkspaceSelectionWindow {
         }
     }
 
-    pub fn draw(&mut self, active_workspace: Option<usize>) {
-        let focus_id = active_workspace
+    pub fn draw(&mut self, active_workspace_id: Option<usize>) {
+        let focus_id = active_workspace_id
             .and_then(|workspace_id| self.workspace_buttons.get(&workspace_id))
             .map(|button| button.read().get_id());
 
