@@ -6,7 +6,7 @@ use super::component::Component;
 
 pub mod basic_container;
 
-pub trait Container: Component {
+pub trait Container: Component + FocusManager {
     fn add_child(&mut self, child: ComponentRef);
 
     fn remove_child(&mut self, id: usize);
@@ -26,4 +26,14 @@ pub trait Container: Component {
     /// Moves and scales the container to the given absolute rectangle.
     /// This should only be done on the root container to prevent layout issues.
     fn move_to(&mut self, abs_rect: RectData);
+}
+
+pub trait FocusManager {
+    fn get_focused_child(&self) -> Option<ComponentRef>;
+
+    fn focus_next_child(&mut self) -> Option<ComponentRef>;
+
+    fn focus_prev_child(&mut self) -> Option<ComponentRef>;
+
+    fn focus_child_at(&mut self, pos: Vertex) -> Option<ComponentRef>;
 }

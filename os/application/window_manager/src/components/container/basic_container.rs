@@ -4,10 +4,11 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use crate::{
     components::component::{Casts, Component, ComponentStyling},
     signal::ComponentRef,
-    utils::{scale_pos_to_rect, scale_rect_to_rect}, WindowManager,
+    utils::{scale_pos_to_rect, scale_rect_to_rect},
+    WindowManager,
 };
 
-use super::Container;
+use super::{Container, FocusManager};
 
 const CHILD_SPACING: u32 = 5;
 
@@ -37,6 +38,7 @@ pub struct BasicContainer {
 
     /// Absolute offset from (0, 0)
     cursor: Vertex,
+    focused_child_idx: Option<usize>,
 
     is_dirty: bool,
     styling: ComponentStyling,
@@ -60,6 +62,7 @@ impl BasicContainer {
             drawn_rect_data: RectData::zero(),
 
             cursor: Vertex::zero(),
+            focused_child_idx: None,
 
             is_dirty: true,
             styling: styling.unwrap_or_default(),
@@ -291,6 +294,74 @@ impl Component for BasicContainer {
             .for_each(|child| child.write().mark_dirty());
 
         self.is_dirty = true;
+    }
+}
+
+impl FocusManager for BasicContainer {
+    fn get_focused_child(&self) -> Option<ComponentRef> {
+        match self.focused_child_idx {
+            Some(idx) => self.childs.get(idx).cloned(),
+            None => None,
+        }
+    }
+
+    fn focus_next_child(&mut self) -> Option<ComponentRef> {
+        if let Some(current_focus) = self.get_focused_child() {
+            let mut current_focus_lock = current_focus.write();
+
+            // Ask the previous container for its next child
+            if let Some(container) = current_focus_lock.as_container_mut() {
+                if let Some(next_child) = container.focus_next_child() {
+                    return Some(next_child);
+                }
+            }
+
+            // Unfocus the previous focusable
+            else if let Some(focusable) = current_focus_lock.as_focusable_mut() {
+                if !focusable.unfocus() {
+                    return Some(current_focus.clone());
+                }
+            }
+        }
+
+        // Get the next or first child index
+        let next_focus_idx = match self.focused_child_idx {
+            Some(idx) => idx + 1,
+            None => 0,
+        };
+
+        // Find the next focusable child
+        for idx in next_focus_idx..self.childs.len() {
+            let next_child = &self.childs[idx];
+            let mut next_child_mut = next_child.write();
+            
+            // Try to focus container first
+            if let Some(child_container) = next_child_mut.as_container_mut() {
+                if let Some(new_focus_child) = child_container.focus_next_child() {
+                    self.focused_child_idx = Some(idx);
+                    return Some(new_focus_child);
+                }
+            }
+            
+            // Otherwise try to focus directly
+            else if let Some(next_child_focusable) = next_child_mut.as_focusable_mut() {
+                next_child_focusable.focus();
+                self.focused_child_idx = Some(idx);
+                return Some(next_child.clone());
+            }
+        }
+
+        // No focusable child found
+        self.focused_child_idx = None;
+        None
+    }
+
+    fn focus_prev_child(&mut self) -> Option<ComponentRef> {
+        todo!()
+    }
+
+    fn focus_child_at(&mut self, pos: Vertex) -> Option<ComponentRef> {
+        todo!()
     }
 }
 

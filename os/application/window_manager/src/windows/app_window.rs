@@ -170,7 +170,7 @@ impl AppWindow {
     }
 
     pub fn focus_next_component(&mut self) {
-        let total_components = self.component_orderer.len();
+        /*let total_components = self.component_orderer.len();
         
         // Find the cursor for the focused component (or default)
         let cursor = match self.focused_component_id {
@@ -203,7 +203,15 @@ impl AppWindow {
             })
         });
             
-        self.focus_component(next_focus_id);
+        self.focus_component(next_focus_id);*/
+
+        let next_component_id = self.root_container.write()
+            .as_container_mut().unwrap()
+            .focus_next_child()
+            .map(|component| component.read().get_id());
+            
+        //self.focus_component(next_component_id);
+        self.focused_component_id = next_component_id;
     }
 
     pub fn focus_prev_component(&mut self) {
