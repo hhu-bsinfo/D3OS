@@ -316,8 +316,8 @@ impl FocusManager for BasicContainer {
                 }
             }
 
-            // Unfocus the previous focusable
-            else if let Some(focusable) = current_focus_lock.as_focusable_mut() {
+            // Unfocus the previous focusable (if possible)
+            if let Some(focusable) = current_focus_lock.as_focusable_mut() {
                 if !focusable.unfocus() {
                     return Some(current_focus.clone());
                 }
@@ -325,29 +325,29 @@ impl FocusManager for BasicContainer {
         }
 
         // Get the next or first child index
-        let next_focus_idx = match self.focused_child_idx {
-            Some(idx) => idx + 1,
-            None => 0,
-        };
+        let start_idx = self.focused_child_idx.map_or(0, |idx| idx + 1);
 
         // Find the next focusable child
-        for idx in next_focus_idx..self.childs.len() {
-            let next_child = &self.childs[idx];
-            let mut next_child_mut = next_child.write();
-            
-            // Try to focus container first
-            if let Some(child_container) = next_child_mut.as_container_mut() {
-                if let Some(new_focus_child) = child_container.focus_next_child() {
-                    self.focused_child_idx = Some(idx);
-                    return Some(new_focus_child);
+        if start_idx < self.childs.len() {
+            for idx in start_idx..self.childs.len() {
+                let child = &self.childs[idx];
+                let mut child_mut = child.write();
+
+                // Ask the next container for its child
+                if let Some(container) = child_mut.as_container_mut() {
+                    if let Some(next_child) = container.focus_next_child() {
+                        self.focused_child_idx = Some(idx);
+                        return Some(next_child);
+                    }
                 }
-            }
-            
-            // Otherwise try to focus directly
-            else if let Some(next_child_focusable) = next_child_mut.as_focusable_mut() {
-                next_child_focusable.focus();
-                self.focused_child_idx = Some(idx);
-                return Some(next_child.clone());
+
+                // Try to focus the component directly
+                if let Some(focusable) = child_mut.as_focusable_mut() {
+                    focusable.focus();
+                    self.focused_child_idx = Some(idx);
+
+                    return Some(child.clone());
+                }
             }
         }
 
@@ -357,7 +357,54 @@ impl FocusManager for BasicContainer {
     }
 
     fn focus_prev_child(&mut self) -> Option<ComponentRef> {
-        todo!()
+        if let Some(current_focus) = self.get_focused_child() {
+            let mut current_focus_lock = current_focus.write();
+
+            // Ask the previous container for its next child
+            if let Some(container) = current_focus_lock.as_container_mut() {
+                if let Some(next_child) = container.focus_prev_child() {
+                    return Some(next_child);
+                }
+            }
+            // Unfocus the previous focusable (if possible)
+            else if let Some(focusable) = current_focus_lock.as_focusable_mut() {
+                if !focusable.unfocus() {
+                    return Some(current_focus.clone());
+                }
+            }
+        }
+
+        // Get the next or first child index
+        let start_idx = match self.focused_child_idx {
+            Some(0) => { self.focused_child_idx = None; return None; }
+            Some(idx) => Some(idx - 1),
+            None => Some(self.childs.len().saturating_sub(1)),
+        }?;
+
+        // Find the next focusable child
+        for idx in (0..=start_idx).rev() {
+            let child = &self.childs[idx];
+            let mut child_mut = child.write();
+
+            // Ask the next container for its child
+            if let Some(container) = child_mut.as_container_mut() {
+                if let Some(next_child) = container.focus_prev_child() {
+                    self.focused_child_idx = Some(idx);
+                    return Some(next_child);
+                }
+            }
+            // Otherwise try to focus directly
+            else if let Some(focusable) = child_mut.as_focusable_mut() {
+                focusable.focus();
+                self.focused_child_idx = Some(idx);
+
+                return Some(child.clone());
+            }
+        }
+
+        // No focusable child found
+        self.focused_child_idx = None;
+        None
     }
 
     fn focus_child_at(&mut self, pos: Vertex) -> Option<ComponentRef> {
