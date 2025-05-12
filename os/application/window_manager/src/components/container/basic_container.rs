@@ -376,7 +376,10 @@ impl FocusManager for BasicContainer {
 
         // Get the next or first child index
         let start_idx = match self.focused_child_idx {
-            Some(0) => { self.focused_child_idx = None; return None; }
+            Some(0) => {
+                self.focused_child_idx = None;
+                return None;
+            }
             Some(idx) => Some(idx - 1),
             None => Some(self.childs.len().saturating_sub(1)),
         }?;
@@ -408,7 +411,18 @@ impl FocusManager for BasicContainer {
     }
 
     fn focus_child_at(&mut self, pos: Vertex) -> Option<ComponentRef> {
-        todo!()
+        for child in self.childs.iter() {
+            let mut child_lock = child.write();
+            if child_lock.get_abs_rect_data().contains_vertex(&pos) {
+                if let Some(container) = child_lock.as_container_mut() {
+                    return container.focus_child_at(pos);
+                }
+
+                return Some(child.clone());
+            }
+        }
+
+        None
     }
 }
 

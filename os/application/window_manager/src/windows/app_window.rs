@@ -24,6 +24,7 @@ pub struct AppWindow {
     /// focusable components are stored additionally in ordered fashion in here
     component_orderer: LinkedList<usize>,
     focused_component_id: Option<usize>,
+    focused_component: Option<ComponentRef>,
 }
 
 impl AppWindow {
@@ -56,6 +57,7 @@ impl AppWindow {
             component_orderer: LinkedList::new(),
             rect_data,
             focused_component_id: None,
+            focused_component: None,
         }
     }
 
@@ -114,13 +116,16 @@ impl AppWindow {
         None
     }
 
-    fn focus_component(&mut self, id: Option<usize>) {
-        if self.focused_component_id == id {
+    fn focus_component(&mut self, comp: Option<ComponentRef>) {
+        let focused_id = self.focused_component.as_ref().and_then(|comp| Some(comp.read().get_id()));
+        let new_id = comp.as_ref().and_then(|comp| Some(comp.read().get_id()));
+
+        if focused_id == new_id {
             return;
         }
 
         // Unfocus old component
-        if let Some(old_id) = self.focused_component_id {
+        if let Some(old_id) = focused_id {
             if let Some(component) = self.components.get(&old_id) {
                 if let Some(focusable) = component.write().as_focusable_mut() {
                     // Does the component accept the unfocus?
@@ -131,13 +136,14 @@ impl AppWindow {
             }
         }
 
-        self.focused_component_id = None;
+        //self.focused_component_id = None;
+        self.focused_component = None;
 
         // Focus the new component
-        if let Some(new_id) = id {
-            if let Some(component) = self.components.get(&new_id) {
+        if let Some(id) = new_id {
+            if let Some(component) = self.components.get(&id) {
                 if let Some(focusable) = component.write().as_focusable_mut() {
-                    self.focused_component_id = id;
+                    self.focused_component = comp;
                     focusable.focus();
                 }
             }
@@ -145,8 +151,8 @@ impl AppWindow {
     }
 
     pub fn interact_with_focused_component(&mut self, interaction: Interaction) -> bool {
-        if let Some(focused_component_id) = &self.focused_component_id {
-            let focused_component = self.components.get(focused_component_id).unwrap();
+        if let Some(focused_component) = &self.focused_component {
+            //let focused_component = self.components.get(focused_component_id).unwrap();
 
             // prüfe ob Komponente interagierbar ist und bekomme Callback
             let callback: Option<Box<dyn FnOnce()>> = if let Some(interactable) = focused_component.write().as_interactable_mut() {
@@ -205,12 +211,9 @@ impl AppWindow {
             
         self.focus_component(next_focus_id);*/
 
-        let next_component_id = self.root_container.write()
+        self.focused_component = self.root_container.write()
             .as_container_mut().unwrap()
-            .focus_next_child()
-            .map(|component| component.read().get_id());
-
-        self.focused_component_id = next_component_id;
+            .focus_next_child();
     }
 
     pub fn focus_prev_component(&mut self) {
@@ -249,17 +252,16 @@ impl AppWindow {
             
         self.focus_component(next_focus_id);*/
 
-        let next_component_id = self.root_container.write()
+        self.focused_component = self.root_container.write()
             .as_container_mut().unwrap()
-            .focus_prev_child()
-            .map(|component| component.read().get_id());
-
-        self.focused_component_id = next_component_id;
+            .focus_prev_child();
     }
 
     pub fn focus_component_at(&mut self, pos: Vertex) {
-        let new_component_id = self.find_component_at(&pos);
-        self.focus_component(new_component_id);
+        /*let new_component_id = self.find_component_at(&pos);
+        self.focus_component(new_component_id);*/
+        let new_component = self.root_container.write().as_container_mut().unwrap().focus_child_at(pos);
+        self.focus_component(new_component);
     }
 
     /// Rescales the window and marks it as dirty.
@@ -381,7 +383,8 @@ impl AppWindow {
             dirty_component.write().draw(is_focused);
         }*/
 
-        self.root_container.write().draw(self.focused_component_id);
+        let focused_id = self.focused_component.as_ref().and_then(|comp| Some(comp.read().get_id()));
+        self.root_container.write().draw(focused_id);
 
         self.is_dirty = false;
     }
