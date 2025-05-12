@@ -1,5 +1,7 @@
 use alloc::vec::Vec;
 use libm::floorf;
+use unifont::get_glyph;
+use crate::lfb::DEFAULT_CHAR_HEIGHT;
 
 use crate::color::Color;
 
@@ -24,7 +26,78 @@ impl Bitmap {
         }
     }
 
-    // schnell aber schlechte Qualität
+    // Julius Drodofsky
+    pub fn read_pixel(&self, x: u32, y: u32) -> Color {
+        match self.data.get((y*self.width+x) as usize){
+            Some(c) => *c,
+            None => panic!("Bitmap: Trying to read a pixel out of bounds!")
+        }
+    }
+
+    #[inline]  //Julius Drodofsky
+    pub fn draw_pixel(&mut self, x: u32, y: u32, color: Color) {
+        // Check if pixel is outside the framebuffer
+        if x >= self.width || y >= self.height {
+            return;
+        }
+
+        // Do not draw pixels with alpha = 0
+        if color.alpha == 0 {
+            return;
+        }
+
+        // Blend if necessary and draw pixel
+        if color.alpha < 255 {
+            let blend = self.read_pixel(x, y).blend(color);
+            self.data[(self.width*y+x) as usize] = blend;           
+        } else {
+            self.data[(self.width*y+x) as usize] = color;           
+        }
+    }
+
+
+pub fn draw_char_scaled(
+        &mut self,
+        x: u32,
+        y: u32,
+        x_scale: u32,
+        y_scale: u32,
+        fg_color: Color,
+        bg_color: Color,
+        c: char,
+    ) -> u32 {
+        return match get_glyph(c) {
+            Some(glyph) => {
+                let mut x_offset = 0;
+                let mut y_offset = 0;
+
+                for row in 0..DEFAULT_CHAR_HEIGHT {
+                    for col in 0..glyph.get_width() as u32 {
+                        let color = match glyph.get_pixel(col as usize, row as usize) {
+                            true => fg_color,
+                            false => bg_color,
+                        };
+
+                        for i in 0..x_scale {
+                            for j in 0..y_scale {
+                                self.draw_pixel(x + x_offset + i, y + y_offset + j, color);
+                            }
+                        }
+
+                        x_offset += x_scale;
+                    }
+
+                    x_offset = 0;
+                    y_offset += y_scale;
+                }
+
+                glyph.get_width() as u32
+            }
+            None => 0,
+        };
+    }
+
+        // schnell aber schlechte Qualität
     fn scale_nearest_neighbor(&self, target_width: u32, target_height: u32) -> Bitmap {
         if target_height == self.height && target_width == self.width {
             return self.clone();
