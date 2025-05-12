@@ -1,9 +1,20 @@
 use alloc::vec::Vec;
 use libm::floorf;
+use libm::Libm;
 use unifont::get_glyph;
 use crate::lfb::DEFAULT_CHAR_HEIGHT;
 
 use crate::color::Color;
+
+macro_rules! keep_iterating_for_dim {
+    ($stepsize:expr, $curr:expr, $other:expr) => {
+        if $stepsize >= 0.0 {
+            $curr <= $other as f32
+        } else {
+            $curr >= $other as f32
+        }
+    };
+}
 
 #[derive(Clone, Copy)]
 pub enum ScalingMode {
@@ -55,6 +66,51 @@ impl Bitmap {
         }
     }
 
+    pub fn draw_line(&mut self, x1: u32, y1: u32, x2: u32, y2: u32, color: Color) {
+        // Check if pixels are outside the framebuffer
+        if x1 >= self.width || y1 >= self.height || x2 >= self.width || y2 >= self.height {
+            return;
+        }
+
+        // Do not draw pixels with alpha = 0
+        if color.alpha == 0 {
+            return;
+        }
+
+        let (x_dist, y_dist) = (x2 as f32 - x1 as f32, y2 as f32 - y1 as f32);
+        let hypot = Libm::<f32>::hypot(x_dist, y_dist);
+        let (x_stepsize, y_stepsize) = (x_dist / hypot, y_dist / hypot);
+        let (mut x_curr, mut y_curr) = (x1 as f32, y1 as f32);
+
+        // Blend if necessary and draw pixel
+        if color.alpha < 255 {
+            while keep_iterating_for_dim!(x_stepsize, x_curr, x2)
+                && keep_iterating_for_dim!(y_stepsize, y_curr, y2)
+            {
+                let (x_u32, y_u32) = (
+                    Libm::<f32>::round(x_curr) as u32,
+                    Libm::<f32>::round(y_curr) as u32,
+                );
+                let blend = self.read_pixel(x_u32, y_u32).blend(color);
+                self.data[(self.width*y_u32+x_u32) as usize] = blend;           
+                x_curr += x_stepsize;
+                y_curr += y_stepsize;
+            }
+        } else {
+            while keep_iterating_for_dim!(x_stepsize, x_curr, x2)
+                && keep_iterating_for_dim!(y_stepsize, y_curr, y2)
+            {
+                let (x_u32, y_u32) = (
+                    Libm::<f32>::round(x_curr) as u32,
+                    Libm::<f32>::round(y_curr) as u32,
+                );
+                self.data[(self.width*y_u32+x_u32) as usize] = color;           
+                x_curr += x_stepsize;
+                y_curr += y_stepsize;
+            }
+        }
+
+    }
 
 pub fn draw_char_scaled(
         &mut self,
