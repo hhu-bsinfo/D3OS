@@ -6,4 +6,5 @@ pub(crate) mod bitmap_app;
 pub(crate) mod slider_app;
 pub(crate) mod calculator;
 pub(crate) mod radio_buttons;
+pub(crate) mod canvas_example;
 pub(crate) mod layout_app;
