@@ -1,11 +1,16 @@
-use alloc::{boxed::Box, rc::Rc, string::String, vec};
+use alloc::{borrow::ToOwned, boxed::Box, rc::Rc, string::String, vec};
 use crate::{alloc::string::ToString, components::component::ComponentStylingBuilder, config, signal::Signal};
-use graphic::color::Color;
+use graphic::{buffered_lfb, color::{Color, WHITE}};
 use spin::rwlock::RwLock;
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::{bitmap::Bitmap, lfb::DEFAULT_CHAR_HEIGHT};
 use super::runnable::Runnable;
 use crate::{api::Command, WindowManager};
+use crate::apps::text_editor::view::View;
+
+mod view;
+
+// Julius Drodofsky
 pub struct TextEditor;
 
 pub struct TextEditorConfig {
@@ -35,7 +40,10 @@ impl Runnable for TextEditor {
                     height: config.height as u32,
                 },
         buffer: Rc::clone(&canvas) }).unwrap();
-
+        
+        let view = View::Simple{font_scale: 1, fg_color: WHITE, bg_color: Color::new(0, 0, 0, 0) };
+        view.render( &String::from("Das ist ein Text"), &mut canvas.write());
+        component.write().mark_dirty();
 
     }
 }
