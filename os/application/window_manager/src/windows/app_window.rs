@@ -78,9 +78,11 @@ impl AppWindow {
         if let Some(component) = &self.focused_component {
             if let Some(focusable) = component.write().as_focusable_mut() {
                 // Does the component accept the unfocus?
-                if !focusable.unfocus() {
+                if !focusable.can_unfocus() {
                     return;
                 }
+
+                focusable.unfocus();
             }
         }
 
@@ -88,10 +90,10 @@ impl AppWindow {
         self.focused_component = None;
 
         // Focus the new component
-        if let Some(component) = &comp {
+        if let Some(component) = comp {
             if let Some(focusable) = component.write().as_focusable_mut() {
                 focusable.focus();
-                self.focused_component = comp.clone();
+                self.focused_component = Some(component.clone());
             }
         }
     }
@@ -122,15 +124,19 @@ impl AppWindow {
     }
 
     pub fn focus_next_component(&mut self) {
-        self.focused_component = self.root_container.write()
+        let next_component = self.root_container.write()
             .as_container_mut().unwrap()
             .focus_next_child();
+
+        self.focus_component(next_component);
     }
 
     pub fn focus_prev_component(&mut self) {
-        self.focused_component = self.root_container.write()
+        let prev_component = self.root_container.write()
             .as_container_mut().unwrap()
             .focus_prev_child();
+
+        self.focus_component(prev_component);
     }
 
     pub fn focus_component_at(&mut self, pos: Vertex) {

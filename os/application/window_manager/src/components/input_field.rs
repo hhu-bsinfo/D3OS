@@ -231,17 +231,17 @@ impl Casts for InputField {
 }
 
 impl Focusable for InputField {
+    fn can_unfocus(&self) -> bool {
+        !self.is_selected
+    }
+
     fn focus(&mut self) {
         self.mark_dirty();
     }
 
-    fn unfocus(&mut self) -> bool {
-        if self.is_selected {
-            return false;
-        }
-
+    fn unfocus(&mut self) {
+        self.is_selected = false;
         self.mark_dirty();
-        true
     }
 }
 

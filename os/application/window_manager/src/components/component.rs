@@ -226,10 +226,13 @@ pub trait Hideable {
 }
 
 pub trait Focusable {
+    fn can_unfocus(&self) -> bool { true }
+
     fn focus(&mut self);
 
-    /// Returns true if the component accepted the unfocus
-    fn unfocus(&mut self) -> bool;
+    /// This will only be called if `can_unfocus()` returns true, unless the parent
+    /// needs to force the unfocus NOW.
+    fn unfocus(&mut self);
 }
 
 pub trait Interactable {

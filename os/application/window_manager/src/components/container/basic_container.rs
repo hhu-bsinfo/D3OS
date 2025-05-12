@@ -317,8 +317,8 @@ impl FocusManager for BasicContainer {
             }
 
             // Unfocus the previous focusable (if possible)
-            if let Some(focusable) = current_focus_lock.as_focusable_mut() {
-                if !focusable.unfocus() {
+            if let Some(focusable) = current_focus_lock.as_focusable() {
+                if !focusable.can_unfocus() {
                     return Some(current_focus.clone());
                 }
             }
@@ -342,10 +342,8 @@ impl FocusManager for BasicContainer {
                 }
 
                 // Try to focus the component directly
-                if let Some(focusable) = child_mut.as_focusable_mut() {
-                    focusable.focus();
+                if child_mut.as_focusable().is_some() {
                     self.focused_child_idx = Some(idx);
-
                     return Some(child.clone());
                 }
             }
@@ -367,8 +365,8 @@ impl FocusManager for BasicContainer {
                 }
             }
             // Unfocus the previous focusable (if possible)
-            else if let Some(focusable) = current_focus_lock.as_focusable_mut() {
-                if !focusable.unfocus() {
+            else if let Some(focusable) = current_focus_lock.as_focusable() {
+                if !focusable.can_unfocus() {
                     return Some(current_focus.clone());
                 }
             }
@@ -396,11 +394,10 @@ impl FocusManager for BasicContainer {
                     return Some(next_child);
                 }
             }
-            // Otherwise try to focus directly
-            else if let Some(focusable) = child_mut.as_focusable_mut() {
-                focusable.focus();
-                self.focused_child_idx = Some(idx);
 
+            // Otherwise try to focus directly
+            if child_mut.as_focusable().is_some() {
+                self.focused_child_idx = Some(idx);
                 return Some(child.clone());
             }
         }

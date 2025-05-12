@@ -234,17 +234,17 @@ impl Hideable for Slider {
 }
 
 impl Focusable for Slider {
+    fn can_unfocus(&self) -> bool {
+        !self.is_dragging
+    }
+
     fn focus(&mut self) {
         self.mark_dirty();
     }
 
-    fn unfocus(&mut self) -> bool {
-        if self.is_dragging {
-            return false;
-        }
-
+    fn unfocus(&mut self) {
+        self.is_dragging = false;
         self.mark_dirty();
-        true
     }
 }
 

@@ -195,9 +195,8 @@ impl Focusable for Checkbox {
         self.mark_dirty();
     }
 
-    fn unfocus(&mut self) -> bool {
+    fn unfocus(&mut self) {
         self.mark_dirty();
-        true
     }
 }
 
