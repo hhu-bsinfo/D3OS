@@ -97,6 +97,13 @@ pub fn draw_char_scaled(
         };
     }
 
+    // Julius Drodofsky
+    pub fn clear(&mut self, color: Color) {
+        for i in 0..self.width*self.height {
+            self.data[i as usize] = color;
+        }
+    }
+
         // schnell aber schlechte Qualität
     fn scale_nearest_neighbor(&self, target_width: u32, target_height: u32) -> Bitmap {
         if target_height == self.height && target_width == self.width {
