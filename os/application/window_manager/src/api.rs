@@ -490,9 +490,18 @@ impl Api {
                 
                 component
             },
+            // Julius Drodofsky
             Command::CreateCanvas { styling , rect_data,  buffer} => {
-               let canvas = Canvas::new( styling, rect_data, buffer);
-                Rc::new(RwLock::new(Box::new(canvas) as Box<dyn Component>))
+                let rel_rect_data = self.scale_rect_data_to_rel(&rect_data);
+                let canvas = Canvas::new( styling, rel_rect_data, buffer);
+                let component = Rc::new(RwLock::new(Box::new(canvas) as Box<dyn Component>));
+                let dispatch_data = NewCompData {
+                    window_data,
+                    parent,
+                    component: Rc::clone(&component),
+                };
+                self.add_component(dispatch_data);
+                component
             }
         };
 

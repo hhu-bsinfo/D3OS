@@ -9,6 +9,7 @@ use crate::{api::Command, WindowManager};
 
 use super::runnable::Runnable;
 
+// Julius Drodofsky
 pub struct CanvasApp;
 
 impl Runnable for CanvasApp {
@@ -30,8 +31,5 @@ impl Runnable for CanvasApp {
                     height: 50,
                 },
         buffer: Rc::clone(&buffer) }).unwrap();
-        //buffer.try_write().unwrap().scale(target_width, target_height, mode)
-        component.try_write().unwrap().mark_dirty();
-        component.try_write().unwrap().draw(None);
     }
 }

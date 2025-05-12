@@ -26,7 +26,7 @@ impl Canvas {
     let drawn_rect_data = RectData::zero();
     Self {
         id: None,
-        is_dirty: false,
+        is_dirty: true,
         drawn_rect_data: RectData::zero(),
         abs_rect_data,
         styling: styling.unwrap_or_default(),
