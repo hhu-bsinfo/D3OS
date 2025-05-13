@@ -86,7 +86,7 @@ pub enum Command<'a> {
         styling: Option<ComponentStyling>,
         rect_data: RectData,
         buffer: Rc<RwLock<Bitmap>>,
-        on_change: Option<Box<dyn Fn(char) -> ()>>,
+        input: Option<Box<dyn Fn(char) -> ()>>,
     },
     CreateContainer {
         log_rect_data: RectData,
@@ -492,9 +492,8 @@ impl Api {
                 component
             },
             // Julius Drodofsky
-            Command::CreateCanvas { styling , rect_data,  buffer, on_change} => {
-                let rel_rect_data = self.scale_rect_data_to_rel(&rect_data);
-                let canvas = Canvas::new( styling, rel_rect_data, buffer, on_change);
+            Command::CreateCanvas { styling , rect_data,  buffer, input} => {
+                let canvas = Canvas::new( styling, rect_data, buffer, input);
                 let component = Rc::new(RwLock::new(Box::new(canvas) as Box<dyn Component>));
                 let dispatch_data = NewCompData {
                     window_data,

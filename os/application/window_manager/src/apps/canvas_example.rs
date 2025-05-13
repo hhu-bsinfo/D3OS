@@ -3,6 +3,7 @@ use alloc::collections::vec_deque::VecDeque;
 use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use concurrent::thread::sleep;
 use drawer::{rect_data::RectData, vertex::Vertex};
+use graphic::lfb::DEFAULT_CHAR_WIDTH;
 use graphic::{bitmap::Bitmap, lfb::DEFAULT_CHAR_HEIGHT};
 use graphic::color::Color;
 use spin::rwlock::RwLock;
@@ -40,12 +41,10 @@ impl Runnable for CanvasApp {
                     height: 100,
                 },
         buffer: Rc::clone(&canvas),
-        on_change: Some(Box::new(move |c: char| {
-                    println!("Wird überbracht {}",c);
+        input: Some(Box::new(move |c: char| {
                     input_clone.write().push_back(c);
                 })),
          }).unwrap();
-         println!("Now it starts");
         //use component
         let mut x = 0;
         x = canvas.write().draw_char_scaled(x, 0, 1, 1, Color::new(255, 255, 255, 255), Color::new(0, 0, 0, 50), 'R');
@@ -53,9 +52,21 @@ impl Runnable for CanvasApp {
         canvas.write().draw_char_scaled(x*2, 0, 1, 1, Color::new(255, 255, 255, 255), Color::new(0, 0, 0, 50), 't');
         canvas.write().draw_line(0, DEFAULT_CHAR_HEIGHT, x*3, DEFAULT_CHAR_HEIGHT, Color::new(255, 255, 255, 255));
         component.write().mark_dirty();
+        x=0;
+        let mut y=DEFAULT_CHAR_HEIGHT;
         loop {
             while let Some(value) = input.write().pop_front(){
-                canvas.write().draw_char_scaled(x*2, DEFAULT_CHAR_HEIGHT+2, 1, 1, Color::new(255, 255, 255, 255), Color::new(0, 0, 0, 50), value);
+                if value == '\n' {
+                    y+= DEFAULT_CHAR_HEIGHT;
+                    x=0;
+                    continue;
+                }
+                if canvas.read().width - x < DEFAULT_CHAR_WIDTH {
+                    x=0;
+                    y+= DEFAULT_CHAR_HEIGHT;
+                }
+                x+=canvas.write().draw_char_scaled(x, y, 1, 1, Color::new(255, 255, 255, 255), Color::new(0, 0, 0, 50), value);
+                // Die Anwendung ist deutlich schneller wenn nicht nach jedem Buchstaben, sondern nur sobald die queue leer ist gezeichnet wird:)
                 component.write().mark_dirty();
             }
         }

@@ -21,8 +21,8 @@ pub struct Canvas {
     drawn_rect_data: RectData,
     styling: ComponentStyling,
     buffer: Rc<RwLock<Bitmap>>,
-    // get input
-    on_change: Rc<Box<dyn Fn(char) -> ()>>,
+    // function to get user input
+    input: Rc<Box<dyn Fn(char) -> ()>>,
     
 } 
 
@@ -31,18 +31,18 @@ impl Canvas {
         styling: Option<ComponentStyling>,
         abs_rect_data: RectData,
         buffer:  Rc<RwLock<Bitmap>>, 
-        on_change: Option<Box<dyn Fn(char) -> ()>>,
+        input: Option<Box<dyn Fn(char) -> ()>>,
     ) -> Self{
     let drawn_rect_data = RectData::zero();
     Self {
         id: None,
         is_dirty: true,
-        is_selected: true,
+        is_selected: false,
         drawn_rect_data: RectData::zero(),
         abs_rect_data,
         styling: styling.unwrap_or_default(),
         buffer: buffer,
-        on_change: Rc::new(on_change.unwrap_or_else(|| Box::new(|_| {}))),
+        input: Rc::new(input.unwrap_or_else(|| Box::new(|_| {}))),
         }
     }
      
@@ -63,8 +63,8 @@ impl Component for Canvas {
         } else {
             styling.border_color
         };
-        let border_data = RectData{ top_left: Vertex { x: self.abs_rect_data.top_left.x-5, y: self.abs_rect_data.top_left.y-5 }, width: &self.buffer.read().width+10, height: &self.buffer.read().height +10 };
-        Drawer::draw_filled_rectangle(border_data, border_color, Some(border_color));
+        let border_data = RectData{ top_left: Vertex { x: self.abs_rect_data.top_left.x-2, y: self.abs_rect_data.top_left.y-2 }, width: &self.buffer.read().width+4, height: &self.buffer.read().height +4 };
+        Drawer::draw_filled_rectangle(border_data, Color { red: 0, green: 0, blue: 0, alpha: 0 }, Some(border_color));
         Drawer::draw_bitmap(self.abs_rect_data.top_left, &self.buffer.read());
         self.drawn_rect_data = self.abs_rect_data;
         self.is_dirty = false;
@@ -114,13 +114,10 @@ impl Focusable for Canvas {
 
 impl Interactable for Canvas {
     fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
-        println!("starts consuming");
-                   // self.input.write().push_back(keyboard_press); 
-        //return None;
-        let on_change = Rc::clone(&self.on_change);
+        let input = Rc::clone(&self.input);
         return Some(
             Box::new(move || {
-                (on_change)(keyboard_press);
+                (input)(keyboard_press);
             })
         );
     }
