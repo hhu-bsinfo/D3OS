@@ -18,6 +18,8 @@ use return_vals::{SyscallResult, convert_ret_code_to_syscall_result};
 #[allow(dead_code)]
 pub enum SystemCall {
     TerminalRead = 0,
+    TerminalProduceRead,
+    TerminalCanProduceRead,
     TerminalWrite,
     TerminalConsumeWrite,
     MapUserHeap,

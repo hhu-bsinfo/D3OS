@@ -228,6 +228,14 @@ impl OutputStream for LFBTerminal {
 
 impl InputStream for LFBTerminal {
     fn read_byte(&self) -> i16 {
+        // TODO#2 Make this less disgusting
+        if syscall(SystemCall::TerminalCanProduceRead, &[])
+            .expect("Unable to check if to produce read")
+            == 1
+        {
+            return 0;
+        };
+
         let read_byte;
 
         loop {
@@ -262,6 +270,9 @@ impl InputStream for LFBTerminal {
                 _ => continue,
             }
         }
+
+        syscall(SystemCall::TerminalProduceRead, &[read_byte as usize])
+            .expect("Unable to produce read");
 
         // TODO#2 check for cooked / raw mode
         self.write_byte(read_byte as u8);
@@ -1134,23 +1145,35 @@ pub fn terminal() -> Arc<dyn Terminal> {
     Arc::clone(terminal)
 }
 
+fn listen_read() {
+    thread::create(|| {
+        let lfb_terminal = terminal();
+        loop {
+            sleep(100);
+            lfb_terminal.read_byte();
+        }
+    });
+}
+
 const WRITE_BUFFER_SIZE: usize = 128;
-const READ_BUFFER_SIZE: usize = 128;
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mut write_buffer: [u8; READ_BUFFER_SIZE] = [0; READ_BUFFER_SIZE];
+    let mut write_buffer: [u8; WRITE_BUFFER_SIZE] = [0; WRITE_BUFFER_SIZE];
 
     init_terminal();
     let lfb_terminal = terminal();
 
     lfb_terminal.clear();
 
+    listen_read();
+
     let mut i = 0;
+    thread::start_application("shell", vec![]);
+
     loop {
-        thread::start_application("hello", vec![&i.to_string()]);
-        thread::start_application("helloc", vec![&i.to_string()]);
-        sleep(1000);
+        sleep(100);
+        // thread::start_application("helloc", vec![&i.to_string()]);
         syscall(
             SystemCall::TerminalConsumeWrite,
             &[write_buffer.as_mut_ptr() as usize, WRITE_BUFFER_SIZE],
@@ -1161,6 +1184,6 @@ pub fn main() {
         let string = String::from_utf8_lossy(&write_buffer);
         terminal().write_str(&format!("{}", string));
         write_buffer.fill(0);
-        i += 1
+        // i += 1
     }
 }

@@ -6,14 +6,12 @@
    ║ Author: Fabian Ruhland, 30.8.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use crate::{keyboard, terminal, tty};
+use crate::tty;
 use core::slice::from_raw_parts;
 use core::str::from_utf8;
 use core::{ptr::slice_from_raw_parts, slice::from_raw_parts_mut};
 use log::{debug, error};
-use stream::DecodedInputStream;
 use syscall::return_vals::Errno;
-use terminal::Application;
 
 /// For applications
 /// TODO#8 Do proper docs
@@ -65,6 +63,58 @@ pub fn sys_terminal_consume_write(address: *mut u8, length: usize) -> isize {
     0
 }
 
+/// For Terminal
+/// TODO#8 Do proper docs
+/// return 0 => is reading
+/// return 1 => not reading
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_can_produce_read() -> isize {
+    let tty = tty();
+    let tty = tty.lock();
+
+    match tty.is_reading() {
+        true => 0,
+        false => 1,
+    }
+}
+
+/// For Terminal
+/// TODO#8 Do proper docs
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_produce_read(byte: u8) -> isize {
+    let tty = tty();
+    let mut tty = tty.lock();
+
+    if !tty.is_reading() {
+        return 0;
+    }
+
+    tty.produce_read(byte);
+
+    0
+}
+
+/// For Application
+/// TODO#8 Do proper docs
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_read() -> isize {
+    let tty = tty();
+    let mut tty = tty.lock();
+
+    tty.start_reading();
+
+    if !tty.can_read() {
+        return 0;
+    }
+
+    let byte = tty.consume_read();
+    tty.stop_reading();
+    byte as isize
+}
+
 pub fn sys_log_debug(string_addr: *const u8, string_len: usize) {
     let log_string = from_utf8(unsafe {
         slice_from_raw_parts(string_addr, string_len)
@@ -76,31 +126,31 @@ pub fn sys_log_debug(string_addr: *const u8, string_len: usize) {
     debug!("{}", log_string);
 }
 
-pub fn sys_terminal_read(application_ptr: *const Application, blocking: usize) -> isize {
-    let enum_val = unsafe { application_ptr.as_ref().unwrap() };
+// pub fn sys_terminal_read(application_ptr: *const Application, blocking: usize) -> isize {
+//     let enum_val = unsafe { application_ptr.as_ref().unwrap() };
 
-    match enum_val {
-        Application::Shell => {
-            let terminal = terminal();
-            match terminal.read_byte() {
-                -1 => panic!("Input stream closed!"),
-                c => c as isize,
-            }
-        }
-        Application::WindowManager => {
-            if blocking != 0 {
-                return keyboard()
-                    .expect("Failed to read from keyboard!")
-                    .decoded_read_byte() as isize;
-            }
+//     match enum_val {
+//         Application::Shell => {
+//             let terminal = terminal();
+//             match terminal.read_byte() {
+//                 -1 => panic!("Input stream closed!"),
+//                 c => c as isize,
+//             }
+//         }
+//         Application::WindowManager => {
+//             if blocking != 0 {
+//                 return keyboard()
+//                     .expect("Failed to read from keyboard!")
+//                     .decoded_read_byte() as isize;
+//             }
 
-            return keyboard()
-                .expect("Failed to read from keyboard!")
-                .decoded_try_read_byte()
-                .unwrap_or(0) as isize;
-        }
-    }
-}
+//             return keyboard()
+//                 .expect("Failed to read from keyboard!")
+//                 .decoded_try_read_byte()
+//                 .unwrap_or(0) as isize;
+//         }
+//     }
+// }
 
 // pub fn sys_terminal_write(buffer: *const u8, length: usize) -> isize {
 //     let string =

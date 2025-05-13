@@ -29,7 +29,7 @@ use super::sys_concurrent::{sys_process_count, sys_thread_count};
 use super::sys_graphic::{sys_get_graphic_resolution, sys_map_fb_info, sys_write_graphic};
 use super::sys_input::sys_read_keyboard;
 use super::sys_system_info::sys_map_build_info;
-use super::sys_terminal::{sys_log_debug, sys_terminal_consume_write};
+use super::sys_terminal::{sys_log_debug, sys_terminal_can_produce_read, sys_terminal_consume_write, sys_terminal_produce_read};
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -91,6 +91,8 @@ impl SyscallTable {
         SyscallTable {
             handle: [
                 sys_terminal_read as *const _,
+                sys_terminal_produce_read as *const _,
+                sys_terminal_can_produce_read as *const _,
                 sys_terminal_write as *const _,
                 sys_terminal_consume_write as *const _,
                 sys_map_user_heap as *const _,
