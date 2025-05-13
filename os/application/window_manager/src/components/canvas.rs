@@ -1,9 +1,11 @@
 // Julius Drodofsky
+use terminal::print;
 
 use alloc::{collections::vec_deque::VecDeque, string::ToString};
 use alloc::boxed::Box;
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{bitmap::Bitmap, color::Color};
+use terminal::println;
 use super::component::{Casts, Component, ComponentStyling, Interactable};
 use alloc::rc::Rc;
 use spin::rwlock::RwLock;
@@ -51,6 +53,18 @@ impl Component for Canvas {
         if !self.is_dirty{
             return;
         }
+        let is_focused = focus_id == self.id;
+        let styling = &self.styling;
+
+        let border_color = if self.is_selected {
+            styling.selected_border_color
+        }  else if is_focused {
+            styling.focused_border_color
+        } else {
+            styling.border_color
+        };
+        let border_data = RectData{ top_left: Vertex { x: self.abs_rect_data.top_left.x-5, y: self.abs_rect_data.top_left.y-5 }, width: &self.buffer.read().width+10, height: &self.buffer.read().height +10 };
+        Drawer::draw_filled_rectangle(border_data, border_color, Some(border_color));
         Drawer::draw_bitmap(self.abs_rect_data.top_left, &self.buffer.read());
         self.drawn_rect_data = self.abs_rect_data;
         self.is_dirty = false;
@@ -83,9 +97,24 @@ impl Component for Canvas {
 
 }
 
+impl Focusable for Canvas {
+    fn focus(&mut self) {
+        self.mark_dirty();
+    }
+
+    fn unfocus(&mut self) -> bool {
+        if self.is_selected {
+            return false;
+        }
+
+        self.mark_dirty();
+        true
+    }
+}
 
 impl Interactable for Canvas {
     fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
+        println!("starts consuming");
                    // self.input.write().push_back(keyboard_press); 
         //return None;
         let on_change = Rc::clone(&self.on_change);
@@ -117,11 +146,11 @@ impl Casts for Canvas {
     }
 
     fn as_focusable(&self) -> Option<&dyn Focusable> {
-        None
+        Some(self)
     }
 
     fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
-        None
+        Some(self)
     }
 
     fn as_interactable(&self) -> Option<&dyn Interactable> {

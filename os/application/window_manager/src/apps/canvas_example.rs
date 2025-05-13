@@ -6,6 +6,8 @@ use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::{bitmap::Bitmap, lfb::DEFAULT_CHAR_HEIGHT};
 use graphic::color::Color;
 use spin::rwlock::RwLock;
+use terminal::println;
+use terminal::print;
 
 use crate::{api::Command, WindowManager};
 
@@ -39,9 +41,11 @@ impl Runnable for CanvasApp {
                 },
         buffer: Rc::clone(&canvas),
         on_change: Some(Box::new(move |c: char| {
+                    println!("Wird überbracht {}",c);
                     input_clone.write().push_back(c);
                 })),
          }).unwrap();
+         println!("Now it starts");
         //use component
         let mut x = 0;
         x = canvas.write().draw_char_scaled(x, 0, 1, 1, Color::new(255, 255, 255, 255), Color::new(0, 0, 0, 50), 'R');
