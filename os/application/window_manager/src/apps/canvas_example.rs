@@ -51,7 +51,7 @@ impl Runnable for CanvasApp {
         component.write().mark_dirty();
         loop {
             while let Some(value) = input.write().pop_front(){
-                canvas.write().draw_char_scaled(x*2, DEFAULT_CHAR_HEIGHT+2, 1, 1, Color::new(255, 255, 255, 255), Color::new(0, 0, 0, 50), 't');
+                canvas.write().draw_char_scaled(x*2, DEFAULT_CHAR_HEIGHT+2, 1, 1, Color::new(255, 255, 255, 255), Color::new(0, 0, 0, 50), value);
                 component.write().mark_dirty();
             }
         }

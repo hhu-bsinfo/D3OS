@@ -9,6 +9,7 @@ use alloc::rc::Rc;
 use spin::rwlock::RwLock;
 use crate::components::container::Container;
 use crate::config::INTERACT_BUTTON;
+use crate::components::component::*;
 
 pub struct Canvas {
     pub id: Option<usize>,
@@ -106,4 +107,40 @@ impl Interactable for Canvas {
 }
 
 
-impl Casts for Canvas {}
+impl Casts for Canvas {
+    fn as_disableable(&self) -> Option<&dyn Disableable> {
+        None
+    }
+
+    fn as_hideable(&self) -> Option<&dyn Hideable> {
+        None
+    }
+
+    fn as_focusable(&self) -> Option<&dyn Focusable> {
+        None
+    }
+
+    fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
+        None
+    }
+
+    fn as_interactable(&self) -> Option<&dyn Interactable> {
+        Some(self)
+    }
+
+    fn as_disableable_mut(&mut self) -> Option<&mut dyn Disableable> {
+        None
+    }
+
+    fn as_hideable_mut(&mut self) -> Option<&mut dyn Hideable> {
+        None
+    }
+
+    fn as_interactable_mut(&mut self) -> Option<&mut dyn Interactable> {
+        Some(self)
+    }
+
+    fn as_clearable_mut(&mut self) -> Option<&mut dyn Clearable> {
+        None
+    }
+}
