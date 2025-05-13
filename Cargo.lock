@@ -1300,6 +1300,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "text_buffer"
+version = "0.1.0"
+
+[[package]]
 name = "thiserror"
 version = "2.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1675,6 +1679,7 @@ dependencies = [
  "runtime",
  "spin",
  "terminal",
+ "text_buffer",
  "time",
 ]
 

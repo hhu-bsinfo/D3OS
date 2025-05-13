@@ -7,6 +7,7 @@ use graphic::{bitmap::Bitmap, lfb::DEFAULT_CHAR_HEIGHT};
 use super::runnable::Runnable;
 use crate::{api::Command, WindowManager};
 use crate::apps::text_editor::view::View;
+use text_buffer::TextBuffer;
 
 mod view;
 
@@ -41,8 +42,10 @@ impl Runnable for TextEditor {
                 },
         buffer: Rc::clone(&canvas) }).unwrap();
         
+
+        let mut text_buffer = TextBuffer::from_str("Das ist ein Text!");
         let view = View::Simple{font_scale: 1, fg_color: WHITE, bg_color: Color::new(0, 0, 0, 0) };
-        view.render( &String::from("Das ist ein Text"), &mut canvas.write());
+        view.render( &text_buffer, &mut canvas.write());
         component.write().mark_dirty();
 
     }
