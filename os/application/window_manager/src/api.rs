@@ -1,6 +1,6 @@
 use core::{fmt::Debug, num, usize};
 
-use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::vec_deque::VecDeque, rc::Rc, string::String, vec::Vec};
 use concurrent::thread;
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::{bitmap::{Bitmap, ScalingMode}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
@@ -85,6 +85,7 @@ pub enum Command<'a> {
         styling: Option<ComponentStyling>,
         rect_data: RectData,
         buffer: Rc<RwLock<Bitmap>>,
+        input: Option<Box<dyn Fn(char) -> ()>>,
     },
     CreateContainer {
         log_rect_data: RectData,
@@ -490,9 +491,8 @@ impl Api {
                 component
             },
             // Julius Drodofsky
-            Command::CreateCanvas { styling , rect_data,  buffer} => {
-                let rel_rect_data = self.scale_rect_data_to_rel(&rect_data);
-                let canvas = Canvas::new( styling, rel_rect_data, buffer);
+            Command::CreateCanvas { styling , rect_data,  buffer, input} => {
+                let canvas = Canvas::new( styling, rect_data, buffer, input);
                 let component = Rc::new(RwLock::new(Box::new(canvas) as Box<dyn Component>));
                 let dispatch_data = NewCompData {
                     window_data,
