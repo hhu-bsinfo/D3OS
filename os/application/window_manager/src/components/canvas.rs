@@ -63,7 +63,8 @@ impl Component for Canvas {
         } else {
             styling.border_color
         };
-        let border_data = RectData{ top_left: Vertex { x: self.abs_rect_data.top_left.x-2, y: self.abs_rect_data.top_left.y-2 }, width: &self.buffer.read().width+4, height: &self.buffer.read().height +4 };
+        // only small corner to save render time
+        let border_data = RectData{ top_left: Vertex { x: self.abs_rect_data.top_left.x-2, y: self.abs_rect_data.top_left.y-2 }, width: 20, height: 20 };
         Drawer::draw_filled_rectangle(border_data, Color { red: 0, green: 0, blue: 0, alpha: 0 }, Some(border_color));
         Drawer::draw_bitmap(self.abs_rect_data.top_left, &self.buffer.read());
         self.drawn_rect_data = self.abs_rect_data;
