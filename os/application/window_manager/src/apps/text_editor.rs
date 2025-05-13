@@ -8,6 +8,7 @@ use super::runnable::Runnable;
 use crate::{api::Command, WindowManager};
 use crate::apps::text_editor::view::View;
 use text_buffer::TextBuffer;
+use alloc::collections::VecDeque;
 
 mod view;
 
@@ -32,21 +33,48 @@ impl Runnable for TextEditor {
                 config.widht*config.height
             ],
         };
+        let deque = VecDeque::<char>::new();
         let handle = concurrent::thread::current().expect("Failed to get thread").id();
         let api = WindowManager::get_api();
         let canvas = Rc::new(RwLock::new(bitmap));
+        let input = Rc::new(RwLock::<VecDeque<char>>::new(deque));
+        let input_clone = Rc::clone(&input);
         let component = api.execute(handle, None,  Command::CreateCanvas { styling: None,  rect_data: RectData {
                     top_left: Vertex::new(50, 80),
                     width: config.widht as u32,
                     height: config.height as u32,
                 },
-        buffer: Rc::clone(&canvas) }).unwrap();
+                input: Some(Box::new(move |c: char| {
+                    input_clone.write().push_back(c);
+                })),
+                buffer: Rc::clone(&canvas),
+            }).unwrap();
         
 
         let mut text_buffer = TextBuffer::from_str("Das ist ein Text!");
-        let view = View::Simple{font_scale: 1, fg_color: WHITE, bg_color: Color::new(0, 0, 0, 0) };
+        
+        let mut view = View::Simple{font_scale: 1, fg_color: WHITE, bg_color: Color::new(0, 0, 0, 255) };
         view.render( &text_buffer, &mut canvas.write());
         component.write().mark_dirty();
-
+        let mut c = 16;
+        let mut dirty = false;
+        loop {
+            while let Some(value) = input.write().pop_front(){
+                if value == '\x08'{
+                    text_buffer.delete(c);
+                    c-=1;
+                    dirty=true;
+                    continue;
+                }
+                text_buffer.insert(c, value);
+                c+=1;
+                view.render(&text_buffer, &mut canvas.write());
+                dirty = true;
+            }
+            if dirty {
+                component.write().mark_dirty();
+                dirty = false;
+            }   
+        }
     }
 }
