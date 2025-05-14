@@ -46,6 +46,21 @@ pub struct TextBuffer<'s> {
 }
 
 impl<'s> TextBuffer<'s> {
+    pub fn get_char(&self, logical_adress: usize) -> Option<char> {
+        let (piece_table_index, piece_descr_offset) =
+            self.resolve_logical_adress(logical_adress, false)?;
+        let piece = self.piece_table.get(piece_table_index)?;
+        match piece.buffer {
+            BufferDescr::Add => self
+                .add_buffer
+                .chars()
+                .nth(piece.offset + piece_descr_offset),
+            BufferDescr::File => self
+                .file_buffer
+                .chars()
+                .nth(piece.offset + piece_descr_offset),
+        }
+    }
     pub fn insert(&mut self, logical_adress: usize, c: char) -> Result<(), TextBufferError> {
         let (piece_table_index, piece_descr_offset) =
             match self.resolve_logical_adress(logical_adress, true) {
@@ -53,11 +68,36 @@ impl<'s> TextBuffer<'s> {
                 None => return Err(TextBufferError::AddressOutOfBounds),
             };
         self.add_buffer.push(c);
+        // Enlarge piece_table entry if possible:
+        if piece_table_index > 0
+            && self.piece_table[piece_table_index - 1].buffer == BufferDescr::Add
+            && self.piece_table[piece_table_index - 1].offset
+                + self.piece_table[piece_table_index - 1].length
+                == self.add_buffer.len() - 1
+        {
+            self.piece_table[piece_table_index - 1].length += 1;
+            return Ok(());
+        }
 
         let piece_descr = &mut self.piece_table[piece_table_index];
         if piece_descr_offset == 0 {
             self.piece_table.insert(
                 piece_table_index,
+                PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
+            );
+        } else {
+            let length = piece_descr.length;
+            piece_descr.length = piece_descr_offset;
+            self.piece_table.insert(
+                piece_table_index + 1,
+                PieceDescr::new(
+                    BufferDescr::File,
+                    self.piece_table[piece_table_index].offset + piece_descr_offset,
+                    length - piece_descr_offset,
+                ),
+            );
+            self.piece_table.insert(
+                piece_table_index + 1,
                 PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
             );
         }
@@ -433,7 +473,8 @@ mod tests {
     fn single_insertion_at_beginning() {
         let file_buffer = "B";
         let mut buffer = TextBuffer::from_str(file_buffer);
-        buffer.insert(0, 'A');
+        let res = buffer.insert(0, 'A');
+        assert!(res.is_ok());
         assert_eq!(
             buffer.piece_table,
             vec![
@@ -449,5 +490,80 @@ mod tests {
                 }
             ]
         );
+    }
+    #[test]
+    fn single_insertion_in_middle() {
+        let file_buffer = "AC";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(1, 'B');
+        assert!(res.is_ok());
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 1,
+                    length: 1
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn multiple_insertion_in_middle() {
+        let file_buffer = "AD";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(1, 'B');
+        assert!(res.is_ok());
+        let res = buffer.insert(2, 'C');
+        assert!(res.is_ok());
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 2
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 1,
+                    length: 1
+                },
+            ]
+        );
+    }
+    // only from file
+    #[test]
+    fn get_i() {
+        let file_buffer = "ab";
+        let buffer = TextBuffer::from_str(file_buffer);
+        assert!(buffer.get_char(0).unwrap() == 'a');
+        assert!(buffer.get_char(1).unwrap() == 'b');
+    }
+    #[test]
+    fn get_ii() {
+        let file_buffer = "ac";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(1, 'b');
+        assert!(res.is_ok());
+        assert!(buffer.get_char(0).unwrap() == 'a');
+        assert!(buffer.get_char(1).unwrap() == 'b');
+        assert!(buffer.get_char(2).unwrap() == 'c');
     }
 }

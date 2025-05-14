@@ -20,6 +20,7 @@ impl Runnable for SubmitLabel {
 
         let input_field = api.execute(
             handle,
+            None,
             Command::CreateInputField {
                 log_rect_data: RectData {
                     top_left: Vertex::new(50, 100),
@@ -38,6 +39,7 @@ impl Runnable for SubmitLabel {
 
         let _submitted_text_label= api.execute(
             handle,
+            None,
             Command::CreateLabel {
                 log_pos: Vertex::new(50, 200),
                 text: Signal::new(String::from("Submitted Text: ")),
@@ -49,6 +51,7 @@ impl Runnable for SubmitLabel {
 
         let _submitted_text = api.execute(
             handle,
+            None,
             Command::CreateLabel {
                 log_pos: Vertex::new(500, 200),
                 text: Rc::clone(&submitted_text),
@@ -60,6 +63,7 @@ impl Runnable for SubmitLabel {
 
         let _on_change_text = api.execute(
             handle,
+            None,
             Command::CreateLabel {
                 log_pos: Vertex::new(500, 300),
                 text: Rc::clone(&input_text),
@@ -71,6 +75,7 @@ impl Runnable for SubmitLabel {
 
         let _submit = api.execute(
             handle,
+            None,
             Command::CreateButton {
                 log_rect_data: RectData {
                     top_left: Vertex::new(50, 300),

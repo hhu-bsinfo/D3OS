@@ -20,6 +20,10 @@ impl Display for RectData {
 }
 
 impl RectData {
+    pub fn zero() -> Self {
+        RectData { top_left: Vertex::zero(), width: 0, height: 0 }
+    }
+
     pub fn sub_border(&self) -> Self {
         let mut new_rect = self.clone();
         new_rect.top_left += Vertex::new(1, 1);

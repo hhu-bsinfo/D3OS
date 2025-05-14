@@ -3,6 +3,7 @@ use drawer::{rect_data::RectData, vertex::Vertex};
 
 use crate::SCREEN;
 
+// TODO: Shouldn't this be inside a trait or something?
 pub fn get_element_cursor_from_orderer<T: PartialEq>(
     linked_list: &mut LinkedList<T>,
     needle: T,
@@ -19,68 +20,80 @@ pub fn get_element_cursor_from_orderer<T: PartialEq>(
     return None;
 }
 
-pub fn scale_rect_to_window(
-    rel_rect_data: RectData,
-    abs_rect_data: RectData,
+/// Scales a rect (`rel_rect`) relative to a an absolute rect (`abs_container`) and returns the scaled absolute rect. \
+/// The absolute rect will **always** be constrained by the absolute `min_dim` and `max_dim` sizes, disregarding the
+/// aspect ratio if neccessary.
+pub fn scale_rect_to_rect(
+    rel_rect: RectData,
+    abs_container: RectData,
     min_dim: (u32, u32),
     max_dim: (u32, u32),
     maintain_aspect_ratio: bool,
-    aspect_ratio: f64,
 ) -> RectData {
-    let RectData {
-        top_left: rel_top_left,
-        width: rel_width,
-        height: rel_height,
-    } = rel_rect_data;
-
     let screen = SCREEN.get().unwrap();
 
+    // Calculate container-to-screen ratios
     let ratios = (
-        f64::from(abs_rect_data.width) / f64::from(screen.0),
-        f64::from(abs_rect_data.height) / f64::from(screen.1),
+        f64::from(abs_container.width) / f64::from(screen.0),
+        f64::from(abs_container.height) / f64::from(screen.1),
     );
 
-    let mut scaled_width = ((f64::from(rel_width) * ratios.0) as u32).max(min_dim.0);
-    let mut scaled_height = ((f64::from(rel_height) * ratios.1) as u32).max(min_dim.1);
-
-    // Erzwinge das Aspect Ratio
-    if maintain_aspect_ratio {
-        let calculated_height = (f64::from(scaled_width) / aspect_ratio) as u32;
-        let calculated_width = (f64::from(scaled_height) * aspect_ratio) as u32;
-        
-        if calculated_height <= scaled_height {
-            scaled_height = calculated_height;
+    let abs_size = {
+        // Scale to absolute sizes
+        let abs_width = if rel_rect.width == 0 {
+            abs_container.width
         } else {
-            scaled_width = calculated_width;
-        }
-    }
+            (f64::from(rel_rect.width) * ratios.0) as u32
+        };
 
-    // Begrenze auf maximale Dimensionen
-    if scaled_width > max_dim.0 {
-        scaled_width = max_dim.0;
-        scaled_height = (f64::from(scaled_width) / aspect_ratio) as u32;
-    }
-    if scaled_height > max_dim.1 {
-        scaled_height = max_dim.1;
-        scaled_width = (f64::from(scaled_height) * aspect_ratio) as u32;
-    }
+        let abs_height = if rel_rect.height == 0 {
+            abs_container.height
+        } else {
+            (f64::from(rel_rect.height) * ratios.1) as u32
+        };
+
+        if maintain_aspect_ratio {
+            // Calculate the aspect ratio while taking stretching (w/h = 0) into account
+            let aspect_ratio = match (rel_rect.width, rel_rect.height) {
+                (0, 0) => f64::from(abs_container.width) / f64::from(abs_container.height),
+                (0, h) => f64::from(abs_container.width) / f64::from(h),
+                (w, 0) => f64::from(w) / f64::from(abs_container.height),
+                (w, h) => f64::from(w) / f64::from(h),
+            };
+            
+            let scaled_height = (f64::from(abs_width) / aspect_ratio) as u32;
+            let scaled_width = (f64::from(abs_height) * aspect_ratio) as u32;
+
+            // Shrink one side to maintain aspect ratio
+            let scaled_size = if scaled_height <= abs_height {
+                (abs_width, scaled_height)
+            } else {
+                (scaled_width, abs_height)
+            };
+
+            scaled_size
+        } else {
+            (abs_width, abs_height)
+        }
+    };
 
     RectData {
         top_left: Vertex::new(
-            (f64::from(rel_top_left.x) * ratios.0) as u32 + abs_rect_data.top_left.x,
-            (f64::from(rel_top_left.y) * ratios.1) as u32 + abs_rect_data.top_left.y,
+            (f64::from(rel_rect.top_left.x) * ratios.0) as u32 + abs_container.top_left.x,
+            (f64::from(rel_rect.top_left.y) * ratios.1) as u32 + abs_container.top_left.y,
         ),
-        width: scaled_width.max(min_dim.0),
-        height: scaled_height.max(min_dim.1),
+        width: abs_size.0.clamp(min_dim.0, max_dim.0),
+        height: abs_size.1.clamp(min_dim.1, max_dim.1),
     }
 }
 
-pub fn scale_radius_to_window(rel_pos: Vertex, radius: u32, min_radius: u32, abs_rect_data: RectData) -> u32 {
+/// Scales a radius to be relative to an absolute rect.
+pub fn scale_radius_to_rect(radius: u32, min_radius: u32, abs_rect: RectData) -> u32 {
     let screen = SCREEN.get().unwrap();
 
     let ratios = (
-        f64::from(abs_rect_data.width) / f64::from(screen.0),
-        f64::from(abs_rect_data.height) / f64::from(screen.1),
+        f64::from(abs_rect.width) / f64::from(screen.0),
+        f64::from(abs_rect.height) / f64::from(screen.1),
     );
 
     let scaled_radius = (f64::from(radius) * ratios.0.min(ratios.1)) as u32;
@@ -88,28 +101,30 @@ pub fn scale_radius_to_window(rel_pos: Vertex, radius: u32, min_radius: u32, abs
     scaled_radius.max(min_radius)
 }
 
-pub fn scale_pos_to_window(rel_pos: Vertex, abs_window_rect_data: RectData) -> Vertex {
+/// Scales a position relative to an absolute rect and returns the absolute position.
+pub fn scale_pos_to_rect(rel_pos: Vertex, abs_rect: RectData) -> Vertex {
     let screen = SCREEN.get().unwrap();
 
     let ratios = (
-        f64::from(abs_window_rect_data.width) / f64::from(screen.0),
-        f64::from(abs_window_rect_data.height) / f64::from(screen.1),
+        f64::from(abs_rect.width) / f64::from(screen.0),
+        f64::from(abs_rect.height) / f64::from(screen.1),
     );
 
     Vertex::new(
-        (f64::from(rel_pos.x) * ratios.0) as u32 + abs_window_rect_data.top_left.x,
-        (f64::from(rel_pos.y) * ratios.1) as u32 + abs_window_rect_data.top_left.y,
+        (f64::from(rel_pos.x) * ratios.0) as u32 + abs_rect.top_left.x,
+        (f64::from(rel_pos.y) * ratios.1) as u32 + abs_rect.top_left.y,
     )
 }
 
-#[allow(unused_variables, unreachable_code)]
+/// TODO: Is this even needed?
 pub fn scale_font(
-    old_scale: &(u32, u32),
-    old_rect_data: &RectData,
-    new_rect_data: &RectData,
+    _old_scale: &(u32, u32),
+    _old_rect_data: &RectData,
+    _new_rect_data: &RectData,
 ) -> (u32, u32) {
     return (1, 1);
-    let ratios = (
+
+    /*let ratios = (
         f64::from(new_rect_data.width) / f64::from(old_rect_data.width),
         f64::from(new_rect_data.height) / f64::from(old_rect_data.height),
     );
@@ -117,5 +132,5 @@ pub fn scale_font(
     (
         ((f64::from(old_scale.0) * ratios.0) as u32).max(1),
         ((f64::from(old_scale.1) * ratios.1) as u32).max(1),
-    )
+    )*/
 }

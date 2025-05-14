@@ -3,9 +3,9 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{color::{Color, WHITE, YELLOW}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
 use spin::{rwlock::RwLock};
 
-use crate::{signal::{ComponentRef, Signal, Stateful}, utils::{scale_font, scale_pos_to_window}, SCREEN};
+use crate::{signal::{ComponentRef, Signal, Stateful}, utils::scale_font, SCREEN};
 
-use super::component::{Casts, Component, ComponentStyling, Hideable};
+use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
 pub const TEXT_COLOR: Color = WHITE;
 pub const TEXT_COLOR_FOCUSED: Color = YELLOW;
@@ -25,7 +25,6 @@ pub struct Label {
 
 impl Label {
     pub fn new(
-        abs_pos: Vertex,
         rel_pos: Vertex,
         rel_font_size: usize,
         text: Stateful<String>,
@@ -34,23 +33,17 @@ impl Label {
     ) -> ComponentRef {
         let signal = text.clone();
 
-        let drawn_rect_data = RectData {
-            top_left: abs_pos,
-            width: text.get().len() as u32 * DEFAULT_CHAR_WIDTH * font_scale.0,
-            height: DEFAULT_CHAR_HEIGHT * font_scale.1,
-        };
-
         let label = Box::new(
             Self {
                 id: None,
                 is_dirty: true,
-                abs_pos,
+                abs_pos: Vertex::zero(),
                 rel_pos,
                 rel_font_size,
                 text,
                 font_scale,
                 is_hidden: false,
-                drawn_rect_data,
+                drawn_rect_data: RectData::zero(),
                 styling: styling.unwrap_or_default(),
             }
         );
@@ -64,7 +57,7 @@ impl Label {
 }
 
 impl Component for Label {
-    fn draw(&mut self, is_focused: bool) {
+    fn draw(&mut self, focus_id: Option<usize>) {
         if !self.is_dirty {
             return;
         }
@@ -75,6 +68,7 @@ impl Component for Label {
         }
 
         let styling = &self.styling;
+        let is_focused = focus_id == self.id;
 
         let text_color = if is_focused {
             styling.focused_border_color
@@ -96,24 +90,22 @@ impl Component for Label {
         self.is_dirty = false;
     }
 
-    fn rescale_after_split(&mut self, old_window: RectData, new_window: RectData) {
-        self.abs_pos = self.abs_pos.move_to_new_rect(&old_window, &new_window);
-        self.font_scale = scale_font(&self.font_scale, &old_window, &new_window);
-        self.mark_dirty();
-    }
+    fn rescale_to_container(&mut self, parent: &dyn Container) {
+        self.abs_pos = parent.scale_vertex_to_container(self.rel_pos);
 
-    fn rescale_after_move(&mut self, new_rect_data: RectData) {
-        self.abs_pos = scale_pos_to_window(self.rel_pos, new_rect_data);
         let screen = SCREEN.get().unwrap();
+
+        // TODO: Is the font scaling correct?
         self.font_scale = scale_font(
             &(self.rel_font_size as u32, self.rel_font_size as u32),
             &RectData {
-                top_left: Vertex::new(0, 0),
+                top_left: Vertex::zero(),
                 width: screen.0,
                 height: screen.1,
             },
-            &new_rect_data,
+            &parent.get_abs_rect_data(),
         );
+
         self.mark_dirty();
     }
 

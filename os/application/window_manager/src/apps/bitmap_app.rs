@@ -86,6 +86,7 @@ impl Runnable for BitmapApp {
         
         let _bitmap_red_graphic = api.execute(
             handle,
+            None,
             Command::CreateBitmapGraphic {
                 log_rect_data: RectData {
                     top_left: Vertex::new(50, 50),
@@ -100,6 +101,7 @@ impl Runnable for BitmapApp {
 
         let _checkerboard_bitmap_graphic = api.execute(
             handle,
+            None,
             Command::CreateBitmapGraphic {
                 log_rect_data: RectData {
                     top_left: Vertex::new(150, 50),
@@ -114,6 +116,7 @@ impl Runnable for BitmapApp {
 
         let _transparent_bitmap_graphic = api.execute(
             handle,
+            None,
             Command::CreateBitmapGraphic {
                 log_rect_data: RectData {
                     top_left: Vertex::new(50, 150),
@@ -131,6 +134,7 @@ impl Runnable for BitmapApp {
 
         let _gradient_bitmap_graphic = api.execute(
             handle,
+            None,
             Command::CreateBitmapGraphic {
                 log_rect_data: RectData {
                     top_left: Vertex::new(150, 150),

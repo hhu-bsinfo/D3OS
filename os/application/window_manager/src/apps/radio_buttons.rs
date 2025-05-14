@@ -18,6 +18,7 @@ impl Runnable for RadioButtonApp {
         let option_radio_buttons = Rc::clone(&option);
         api.execute(
             handle,
+            None,
             Command::CreateRadioButtonGroup {
                 center: Vertex::new(100, 50),
                 radius: 20,
@@ -33,6 +34,7 @@ impl Runnable for RadioButtonApp {
 
         api.execute(
             handle,
+            None,
             Command::CreateLabel {
                 log_pos: Vertex::new(80, 100),
                 text: Signal::new(String::from("Selected option: ")),
@@ -44,6 +46,7 @@ impl Runnable for RadioButtonApp {
 
         api.execute(
             handle,
+            None,
             Command::CreateLabel {
                 log_pos: Vertex::new(450, 100),
                 text: Rc::clone(&option),

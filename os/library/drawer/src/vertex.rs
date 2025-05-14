@@ -36,6 +36,10 @@ impl Vertex {
         Self { x, y }
     }
 
+    pub fn zero() -> Self {
+        Self { x: 0, y: 0 }
+    }
+
     pub fn as_tuple(&self) -> (u32, u32) {
         (self.x, self.y)
     }

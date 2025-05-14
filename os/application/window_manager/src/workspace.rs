@@ -1,4 +1,5 @@
 use alloc::collections::LinkedList;
+use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
 use hashbrown::HashMap;
 
@@ -52,7 +53,8 @@ impl Workspace {
     }
 
     pub fn focus_next_window(&mut self) {
-        self.get_focused_window_mut().mark_window_dirty();
+        self.get_focused_window_mut().mark_window_dirty(); // old window
+        
         let mut cursor =
             get_element_cursor_from_orderer(&mut self.window_orderer, self.focused_window_id)
                 .unwrap();
@@ -67,11 +69,11 @@ impl Workspace {
             }
         };
 
-        self.get_focused_window_mut().mark_window_dirty();
+        self.get_focused_window_mut().mark_window_dirty(); // new window
     }
 
     pub fn focus_prev_window(&mut self) {
-        self.get_focused_window_mut().mark_window_dirty();
+        self.get_focused_window_mut().mark_window_dirty(); // old window
 
         let mut cursor =
             get_element_cursor_from_orderer(&mut self.window_orderer, self.focused_window_id)
@@ -87,7 +89,7 @@ impl Workspace {
             }
         };
 
-        self.get_focused_window_mut().mark_window_dirty();
+        self.get_focused_window_mut().mark_window_dirty(); // new window
     }
 
     pub fn focus_window_at(&mut self, pos: Vertex) {
@@ -178,7 +180,6 @@ impl Workspace {
         let focused_rect_data = {
             let focused_window = self.get_focused_window_mut();
             let focused_rect_data = focused_window.rect_data.clone();
-            focused_window.mark_window_dirty();
 
             focused_rect_data
         };
@@ -201,8 +202,7 @@ impl Workspace {
             let swapped_id = cursor.current().unwrap().clone();
 
             let swapped_window = self.windows.get_mut(&swapped_id).unwrap();
-            let swapped_rect_data: drawer::rect_data::RectData = swapped_window.rect_data.clone();
-            swapped_window.mark_window_dirty();
+            let swapped_rect_data: RectData = swapped_window.rect_data.clone();
             swapped_window.rescale_window_after_move(focused_rect_data);
 
             self.buddy_tree_root
@@ -224,7 +224,6 @@ impl Workspace {
         let focused_rect_data = {
             let focused_window = self.get_focused_window_mut();
             let focused_rect_data = focused_window.rect_data.clone();
-            focused_window.mark_window_dirty();
 
             focused_rect_data
         };
@@ -249,7 +248,6 @@ impl Workspace {
 
             let swapped_window = self.windows.get_mut(&swapped_id).unwrap();
             let swapped_rect_data = swapped_window.rect_data.clone();
-            swapped_window.mark_window_dirty();
             swapped_window.rescale_window_after_move(focused_rect_data);
 
             self.buddy_tree_root

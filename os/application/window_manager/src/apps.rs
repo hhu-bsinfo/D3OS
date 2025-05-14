@@ -1,8 +1,10 @@
+pub(crate) mod runnable;
 pub(crate) mod clock;
 pub(crate) mod counter;
-pub(crate) mod runnable;
 pub(crate) mod submit_label;
 pub(crate) mod bitmap_app;
 pub(crate) mod slider_app;
 pub(crate) mod calculator;
 pub(crate) mod radio_buttons;
+pub(crate) mod canvas_example;
+pub(crate) mod layout_app;
