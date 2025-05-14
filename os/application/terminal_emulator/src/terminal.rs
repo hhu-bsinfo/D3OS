@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use core::fmt;
 use core::fmt::Write;
 use core::ops::Deref;
@@ -5,6 +6,9 @@ use stream::{InputStream, OutputStream};
 
 pub trait Terminal: OutputStream + InputStream {
     fn clear(&self);
+    fn read_raw(&self) -> Option<Vec<u8>>;
+    fn read_mixed(&self) -> Option<Vec<u8>>;
+    fn read_cooked(&self) -> Option<Vec<u8>>;
 }
 
 // Implementation of the 'core::fmt::Write' trait for our Terminal

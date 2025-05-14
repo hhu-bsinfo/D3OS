@@ -7,19 +7,21 @@ pub mod color;
 pub mod cursor;
 pub mod display;
 pub mod lfb_terminal;
+pub mod mode;
 pub mod terminal;
 
-use alloc::sync::Arc;
-use alloc::vec;
+use alloc::{format, vec};
+use alloc::{string::String, sync::Arc};
 use concurrent::thread::{self};
 use core::usize;
 use cursor::CursorThread;
 use graphic::lfb::get_lfb_info;
 use lfb_terminal::LFBTerminal;
+use pc_keyboard::{DecodedKey, KeyCode};
 use spin::Once;
 use syscall::{SystemCall, syscall};
 use terminal::Terminal;
-use terminal_lib::TerminalInputState;
+use terminal_lib::{DecodedKeyType, TerminalInputState};
 
 #[allow(unused_imports)]
 use runtime::*;
@@ -110,10 +112,56 @@ pub fn main() {
     let terminal = terminal();
     terminal.clear();
 
-    observe_output();
-    observe_input();
+    // observe_output();
+    // observe_input();
 
-    thread::start_application("shell", vec![]);
+    // thread::start_application("shell", vec![]);
 
-    loop {}
+    loop {
+        // COOKED
+        terminal.write_str("Enter cooked line:\n");
+        let bytes = terminal.read_cooked().unwrap();
+        let string = String::from_utf8(bytes).unwrap();
+        terminal.write_str(&format!("Received: {}\n\n", string));
+
+        // MIXED
+        // terminal.write_str("Enter key (mixed):\n");
+        // let bytes = match terminal.read_mixed() {
+        //     Some(b) => b,
+        //     None => continue,
+        // };
+        // let key_type = match bytes.first() {
+        //     Some(k) => *k,
+        //     None => continue,
+        // };
+        // let key = match bytes.last() {
+        //     Some(k) => *k,
+        //     None => continue,
+        // };
+        // if DecodedKeyType::from(key_type) == DecodedKeyType::RawKey {
+        //     terminal.write_str(&format!(
+        //         "Received RawKey: {:?}\n\n",
+        //         DecodedKey::RawKey(unsafe { core::mem::transmute(key) })
+        //     ));
+        // };
+        // if DecodedKeyType::from(key_type) == DecodedKeyType::Unicode {
+        //     // terminal.write_str(&format!(
+        //     //     "Received Unicode: {:?}\n\n",
+        //     //     DecodedKey::Unicode(key as char)
+        //     // ));
+        //     terminal.write_byte(key);
+        // };
+
+        // RAW
+        // terminal.write_str("Enter key (raw):\n");
+        // let bytes = match terminal.read_raw() {
+        //     Some(b) => b,
+        //     None => continue,
+        // };
+        // let key = match bytes.first() {
+        //     Some(k) => *k,
+        //     None => continue,
+        // };
+        // terminal.write_str(&format!("Received Raw key: {:?}\n\n", key));
+    }
 }

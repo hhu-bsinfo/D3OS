@@ -1,6 +1,10 @@
 use core::{cell::RefCell, ptr};
 
-use alloc::{format, string::ToString};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use concurrent::{process, thread};
 use graphic::{
@@ -10,18 +14,20 @@ use graphic::{
 };
 use input::keyboard;
 use pc_keyboard::{
-    DecodedKey, HandleControl, Keyboard, ScancodeSet1,
+    DecodedKey, HandleControl, KeyState, Keyboard, ScancodeSet1,
     layouts::{AnyLayout, De105Key},
 };
 use spin::Mutex;
 use stream::{InputStream, OutputStream};
 use system_info::build_info::{BuildInfo, build_info};
+use terminal_lib::{DecodedKeyType, TerminalMode};
 use time::{date, systime};
 
 use crate::{
     color::ColorState,
     cursor::CursorState,
     display::{Character, DisplayState},
+    mode::Mode,
     terminal::Terminal,
 };
 
@@ -33,6 +39,7 @@ pub struct LFBTerminal {
     pub(crate) color: Mutex<ColorState>,
     pub(crate) parser: Mutex<RefCell<Parser>>,
     pub(crate) decoder: Mutex<Keyboard<AnyLayout, ScancodeSet1>>,
+    pub(crate) mode: Mutex<Mode>,
 }
 
 unsafe impl Send for LFBTerminal {}
@@ -74,40 +81,54 @@ impl InputStream for LFBTerminal {
         let read_byte;
 
         loop {
-            let mut decoder = self.decoder.lock();
+            // let mut decoder = self.decoder.lock();
+            // let mode = self.mode.lock().get();
 
-            let event_result = match keyboard::read_raw() {
-                Some(code) => decoder.add_byte(code),
-                None => continue,
-            };
-
-            let event_option = match event_result {
-                Ok(event) => event,
-                Err(_) => continue,
-            };
-
-            let key_result = match event_option {
-                Some(event) => decoder.process_keyevent(event),
-                None => continue,
-            };
-
-            let key = match key_result {
-                Some(key) => key,
-                None => continue,
-            };
-
-            // TODO#2 check for cooked / raw mode
-            match key {
-                DecodedKey::Unicode(ch) => {
-                    read_byte = ch;
+            match keyboard::read_raw() {
+                Some(byte) => {
+                    read_byte = byte;
                     break;
                 }
-                _ => continue,
-            }
+                None => continue,
+            };
+
+            // if mode == TerminalMode::Raw {
+            //     read_byte = byte;
+            //     break;
+            // }
+
+            // let event_option = match decoder.add_byte(byte) {
+            //     Ok(event) => event,
+            //     Err(_) => continue,
+            // };
+
+            // let key_result = match event_option {
+            //     Some(event) => decoder.process_keyevent(event),
+            //     None => continue,
+            // };
+
+            // let key = match key_result {
+            //     Some(key) => key,
+            //     None => continue,
+            // };
+
+            // if mode == TerminalMode::Mixed {
+            //     read_byte = key as i16;
+            //     break;
+            // }
+
+            // // TODO#2 check for cooked / raw mode
+            // match key {
+            //     DecodedKey::Unicode(ch) => {
+            //         read_byte = ch;
+            //         break;
+            //     }
+            //     _ => continue,
+            // }
         }
 
         // TODO#2 check for cooked / raw mode
-        self.write_byte(read_byte as u8);
+        // self.write_byte(read_byte as u8);
 
         return read_byte as i16;
     }
@@ -121,6 +142,65 @@ impl Terminal for LFBTerminal {
 
         LFBTerminal::clear_screen(&mut display, &mut color);
         LFBTerminal::position(&mut display, &mut cursor, &mut color, (0, 0));
+    }
+
+    /// TODO do proper docs
+    /// Returns option of vec with only one byte (raw key)
+    fn read_raw(&self) -> Option<Vec<u8>> {
+        let mut bytes = Vec::with_capacity(1);
+        match self.read_byte() {
+            ..0 => return None,
+            byte => bytes.push(byte as u8),
+        };
+
+        Some(bytes)
+    }
+
+    /// TODO do proper docs
+    /// Returns option of vec with two bytes (key type, decoded key)
+    fn read_mixed(&self) -> Option<Vec<u8>> {
+        let key_result = self.read_decoded();
+        let mut bytes = Vec::with_capacity(2);
+
+        match key_result {
+            Some(DecodedKey::Unicode(key)) => {
+                bytes.push(DecodedKeyType::Unicode as u8);
+                bytes.push(key as u8);
+            }
+            Some(DecodedKey::RawKey(key)) => {
+                bytes.push(DecodedKeyType::RawKey as u8);
+                bytes.push(key as u8);
+            }
+            None => return None,
+        };
+
+        Some(bytes)
+    }
+
+    /// TODO do proper docs
+    /// Echoes and returns vec with line of unicodes (key type, decoded key)
+    fn read_cooked(&self) -> Option<Vec<u8>> {
+        let mut bytes = Vec::new();
+        loop {
+            let ch = match self.read_decoded() {
+                Some(DecodedKey::Unicode(ch)) => ch,
+                _ => continue,
+            };
+
+            self.write_byte(ch as u8);
+
+            match ch {
+                '\n' => break,
+                '\x08' => {
+                    if bytes.pop().is_some() {
+                        self.write_str("\x1b[1D \x1b[1D");
+                    }
+                }
+                _ => bytes.push(ch as u8),
+            };
+        }
+
+        Some(bytes)
     }
 }
 
@@ -136,6 +216,30 @@ impl LFBTerminal {
                 AnyLayout::De105Key(De105Key),
                 HandleControl::Ignore,
             )),
+            mode: Mutex::new(Mode::new(TerminalMode::Cooked)),
+        }
+    }
+
+    /// TODO do proper docs
+    /// Helper for read_mixed & read_cooked
+    fn read_decoded(&self) -> Option<DecodedKey> {
+        let mut decoder = self.decoder.lock();
+
+        let bytes = match self.read_raw() {
+            Some(bytes) => bytes,
+            None => return None,
+        };
+
+        let byte = *bytes
+            .first()
+            .expect("Expected raw bytes to have at least one byte");
+        let event_option = match decoder.add_byte(byte) {
+            Ok(event) => event,
+            Err(_) => return None,
+        };
+        match event_option {
+            Some(event) => decoder.process_keyevent(event),
+            None => return None,
         }
     }
 
@@ -819,6 +923,7 @@ impl LFBTerminal {
             }
             _ => {}
         }
+        &display.lfb.flush(); // Fixes trailing cursor
     }
 
     fn handle_ansi_erase_sequence(
