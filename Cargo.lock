@@ -627,12 +627,14 @@ dependencies = [
  "drawer",
  "graphic",
  "input",
+ "num_enum",
  "pc-keyboard",
  "runtime",
  "spin 0.10.0",
  "stream",
  "syscall",
  "system_info",
+ "terminal",
  "time",
  "uefi",
 ]
@@ -1336,6 +1338,7 @@ dependencies = [
 name = "terminal"
 version = "0.1.0"
 dependencies = [
+ "num_enum",
  "spin 0.9.8",
  "syscall",
 ]

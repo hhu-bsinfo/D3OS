@@ -1,6 +1,7 @@
 #![no_std]
 
 extern crate alloc;
+extern crate terminal as terminal_lib;
 
 mod terminal;
 
@@ -15,13 +16,14 @@ use concurrent::thread::{self, sleep};
 use core::cell::RefCell;
 use core::fmt::Write;
 use core::mem::size_of;
-use core::ptr;
+use core::{isize, ptr, usize};
 use graphic::ansi::COLOR_TABLE_256;
 use graphic::buffered_lfb::BufferedLFB;
 use graphic::color::{Color, INVISIBLE};
 use graphic::lfb::{LFB, LfbInfo, get_lfb_info};
 use graphic::{color, lfb};
 use input::keyboard;
+use num_enum::FromPrimitive;
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::{Mutex, Once};
@@ -29,6 +31,7 @@ use stream::{InputStream, OutputStream};
 use syscall::{SystemCall, syscall};
 use system_info::build_info::{BuildInfo, build_info};
 use terminal::Terminal;
+use terminal_lib::TerminalInputState;
 use time::{date, systime};
 
 #[allow(unused_imports)]
@@ -228,13 +231,14 @@ impl OutputStream for LFBTerminal {
 
 impl InputStream for LFBTerminal {
     fn read_byte(&self) -> i16 {
-        // TODO#2 Make this less disgusting
-        if syscall(SystemCall::TerminalCanProduceRead, &[])
-            .expect("Unable to check if to produce read")
-            == 1
-        {
-            return 0;
-        };
+        match TerminalInputState::from(
+            syscall(SystemCall::TerminalInputState, &[]).unwrap() as usize
+        ) {
+            TerminalInputState::Idle => return 0,
+            TerminalInputState::InputReaderWaiting => {}
+        }
+
+        if TerminalInputState::Idle as usize == 0 {}
 
         let read_byte;
 
@@ -271,7 +275,7 @@ impl InputStream for LFBTerminal {
             }
         }
 
-        syscall(SystemCall::TerminalProduceRead, &[read_byte as usize])
+        syscall(SystemCall::TerminalWriteInput, &[read_byte as usize])
             .expect("Unable to produce read");
 
         // TODO#2 check for cooked / raw mode
@@ -1175,7 +1179,7 @@ pub fn main() {
         sleep(100);
         // thread::start_application("helloc", vec![&i.to_string()]);
         syscall(
-            SystemCall::TerminalConsumeWrite,
+            SystemCall::TerminalReadOutput,
             &[write_buffer.as_mut_ptr() as usize, WRITE_BUFFER_SIZE],
         );
         if write_buffer == [0; WRITE_BUFFER_SIZE] {

@@ -6,93 +6,79 @@
    ║ Author: Fabian Ruhland, 30.8.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use crate::tty;
 use core::slice::from_raw_parts;
 use core::str::from_utf8;
 use core::{ptr::slice_from_raw_parts, slice::from_raw_parts_mut};
 use log::{debug, error};
 use syscall::return_vals::Errno;
+use terminal::TerminalInputState;
+
+use crate::{tty_input, tty_output};
 
 /// For applications
 /// TODO#8 Do proper docs
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_write(address: *const u8, length: usize) -> isize {
-    let tty = tty();
-    let mut tty = tty.lock();
+pub fn sys_terminal_write_output(address: *const u8, length: usize) -> isize {
+    let tty_output = tty_output();
+    let mut tty_output = tty_output.lock();
 
     if address.is_null() {
         error!("Write buffer must not be null");
         return Errno::EINVAL as isize;
     }
 
-    let write = unsafe { from_raw_parts(address, length) };
+    let bytes = unsafe { from_raw_parts(address, length) };
 
-    match tty.push_write(write) {
-        Ok(_) => 0,
-        Err(_) => Errno::EINVAL as isize,
-    }
+    tty_output.write(bytes) as isize
 }
 
 /// For Terminal
 /// TODO#8 Do proper docs
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_consume_write(address: *mut u8, length: usize) -> isize {
-    let tty = tty();
-    let mut tty = tty.lock();
-    let tty_index = tty.write_index();
+pub fn sys_terminal_read_output(address: *mut u8, length: usize) -> isize {
+    let tty_output = tty_output();
+    let mut tty_output = tty_output.lock();
 
     if address.is_null() {
         error!("Write buffer must not be null");
         return Errno::EINVAL as isize;
     }
 
-    if tty_index > length {
-        error!(
-            "Write buffer is to small (required: {}, received: {})",
-            tty_index, length
-        );
-        return Errno::EINVAL as isize;
-    };
-
-    let write = tty.consume_write();
     let buffer = unsafe { from_raw_parts_mut(address, length) };
-    buffer[..tty_index].copy_from_slice(&write[..tty_index]);
 
-    0
-}
-
-/// For Terminal
-/// TODO#8 Do proper docs
-/// return 0 => is reading
-/// return 1 => not reading
-///
-/// Author: Sebastian Keller
-pub fn sys_terminal_can_produce_read() -> isize {
-    let tty = tty();
-    let tty = tty.lock();
-
-    match tty.is_reading() {
-        true => 0,
-        false => 1,
-    }
+    tty_output.read(buffer) as isize
 }
 
 /// For Terminal
 /// TODO#8 Do proper docs
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_produce_read(byte: u8) -> isize {
-    let tty = tty();
-    let mut tty = tty.lock();
+pub fn sys_terminal_input_state() -> isize {
+    let tty_input = tty_input();
+    let tty_input = tty_input.lock();
 
-    if !tty.is_reading() {
-        return 0;
+    if tty_input.can_write() {
+        return TerminalInputState::InputReaderWaiting as isize;
     }
 
-    tty.produce_read(byte);
+    TerminalInputState::Idle as isize
+}
 
+/// For Terminal
+/// TODO#8 Do proper docs
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_write_input(byte: u8) -> isize {
+    let tty_input = tty_input();
+    let mut tty_input = tty_input.lock();
+
+    if !tty_input.can_write() {
+        return Errno::EUNKN as isize;
+    }
+
+    tty_input.write(byte);
     0
 }
 
@@ -100,18 +86,19 @@ pub fn sys_terminal_produce_read(byte: u8) -> isize {
 /// TODO#8 Do proper docs
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_read() -> isize {
-    let tty = tty();
-    let mut tty = tty.lock();
+pub fn sys_terminal_read_input() -> isize {
+    let tty_input = tty_input();
+    let mut tty_input = tty_input.lock();
 
-    tty.start_reading();
+    tty_input.start_read();
 
-    if !tty.can_read() {
+    if !tty_input.can_read() {
         return 0;
     }
 
-    let byte = tty.consume_read();
-    tty.stop_reading();
+    let byte = tty_input.read();
+    tty_input.end_read();
+
     byte as isize
 }
 

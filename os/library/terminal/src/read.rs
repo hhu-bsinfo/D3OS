@@ -12,7 +12,7 @@ use crate::Application;
 
 pub fn try_read(application: Application) -> Option<char> {
     let application_addr = core::ptr::addr_of!(application) as usize;
-    let res = syscall(SystemCall::TerminalRead, &[application_addr /*, 0*/]);
+    let res = syscall(SystemCall::TerminalReadInput, &[application_addr /*, 0*/]);
 
     match res {
         Ok(0) => None,
@@ -23,7 +23,7 @@ pub fn try_read(application: Application) -> Option<char> {
 
 pub fn read(application: Application) -> Option<char> {
     let application_addr = core::ptr::addr_of!(application) as usize;
-    let res = syscall(SystemCall::TerminalRead, &[application_addr /*, 1*/]);
+    let res = syscall(SystemCall::TerminalReadInput, &[application_addr /*, 1*/]);
 
     match res {
         Ok(0) => None,

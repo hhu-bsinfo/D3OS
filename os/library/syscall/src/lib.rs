@@ -17,11 +17,11 @@ use return_vals::{SyscallResult, convert_ret_code_to_syscall_result};
 #[repr(usize)]
 #[allow(dead_code)]
 pub enum SystemCall {
-    TerminalRead = 0,
-    TerminalProduceRead,
-    TerminalCanProduceRead,
-    TerminalWrite,
-    TerminalConsumeWrite,
+    TerminalReadInput = 0,
+    TerminalWriteInput,
+    TerminalInputState,
+    TerminalWriteOutput,
+    TerminalReadOutput,
     MapUserHeap,
     ProcessExecuteBinary,
     ProcessId,

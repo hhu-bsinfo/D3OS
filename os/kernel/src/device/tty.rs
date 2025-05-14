@@ -1,83 +1,82 @@
-use log::{debug, error};
-
-const WRITE_BUFFER_SIZE: usize = 128;
+use alloc::collections::vec_deque::VecDeque;
 
 #[derive(Debug)]
-pub struct Tty {
-    write_index: usize,
-    write_buffer: [u8; WRITE_BUFFER_SIZE],
-    read_buffer: u8,
-    is_reading: bool,
+pub struct TtyInput {
+    buffer: u8,
+    has_reader: bool,
 }
 
-impl Tty {
+#[derive(Debug)]
+pub struct TtyOutput {
+    buffer: VecDeque<u8>,
+    current_index: usize,
+}
+
+impl TtyInput {
     pub const fn new() -> Self {
         Self {
-            write_index: 0,
-            write_buffer: [0; WRITE_BUFFER_SIZE],
-            read_buffer: 0,
-            is_reading: false,
+            buffer: 0,
+            has_reader: false,
         }
     }
 
-    pub fn produce_read(&mut self, byte: u8) {
-        self.read_buffer = byte;
+    pub fn write(&mut self, byte: u8) {
+        self.buffer = byte;
     }
 
-    pub fn consume_read(&mut self) -> u8 {
-        let byte = self.read_buffer;
-        self.read_buffer = 0;
+    pub fn read(&mut self) -> u8 {
+        let byte = self.buffer;
+        self.buffer = 0;
         byte
     }
 
+    pub fn start_read(&mut self) {
+        self.has_reader = true;
+    }
+
+    pub fn end_read(&mut self) {
+        self.has_reader = false;
+    }
+
+    pub fn can_write(&self) -> bool {
+        self.has_reader == true
+    }
+
     pub fn can_read(&self) -> bool {
-        self.read_buffer > 0
+        self.buffer > 0
+    }
+}
+
+impl TtyOutput {
+    pub const fn new() -> Self {
+        Self {
+            buffer: VecDeque::new(),
+            current_index: 0,
+        }
     }
 
-    pub fn is_reading(&self) -> bool {
-        self.is_reading
+    pub fn write(&mut self, bytes: &[u8]) -> usize {
+        let mut count = 0;
+        for byte in bytes {
+            self.buffer.push_back(*byte);
+            count += 1;
+        }
+
+        count
     }
 
-    pub fn start_reading(&mut self) {
-        self.is_reading = true
-    }
+    pub fn read(&mut self, buffer: &mut [u8]) -> usize {
+        let mut count = 0;
+        for byte in buffer {
+            *byte = match self.buffer.pop_front() {
+                Some(read_byte) => {
+                    count += 1;
+                    read_byte
+                }
+                None => break,
+            };
+        }
 
-    pub fn stop_reading(&mut self) {
-        self.is_reading = false;
-        self.read_buffer = 0;
-    }
-
-    pub fn push_write(&mut self, buffer: &[u8]) -> Result<(), ()> {
-        let free = self.write_buffer.len() - self.write_index;
-        if free < buffer.len() {
-            error!(
-                "Unable to write string, buffer length exceeded (length: {}, free: {}, received: {})",
-                self.write_buffer.len(),
-                free,
-                buffer.len()
-            );
-            return Err(());
-        };
-
-        let end = self.write_index + buffer.len();
-        self.write_buffer[self.write_index..end].copy_from_slice(buffer);
-        self.write_index = end;
-
-        Ok(())
-    }
-
-    pub fn consume_write(&mut self) -> [u8; WRITE_BUFFER_SIZE] {
-        let copy = self.write_buffer;
-        self.write_buffer.fill(0);
-        self.write_index = 0;
-        copy
-    }
-
-    pub fn write_len(&self) -> usize {
-        self.write_buffer.len()
-    }
-
-    pub fn write_index(&self) -> usize {
-        self.write_index
+        count
     }
 }

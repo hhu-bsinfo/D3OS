@@ -37,7 +37,7 @@ use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use crate::syscall::sys_graphic::LfbInfo;
 use crate::syscall::syscall_dispatcher::CoreLocalStorage;
-use device::tty::Tty;
+use device::tty::{TtyInput, TtyOutput};
 use ::log::{Level, Log, Record, error};
 use acpi::AcpiTables;
 use alloc::sync::Arc;
@@ -355,17 +355,26 @@ pub fn terminal() -> Arc<dyn Terminal> {
 /// TODO#9 tty docs
 /// 
 /// Author: Sebastian Keller
-static TTY: Once<Arc<Mutex<Tty>>> = Once::new();
+static TTY_INPUT: Once<Arc<Mutex<TtyInput>>> = Once::new();
+static TTY_OUTPUT: Once<Arc<Mutex<TtyOutput>>> = Once::new();
 
 pub fn init_tty() {
-    TTY.call_once(|| Arc::new(Mutex::new(Tty::new())));
+    TTY_INPUT.call_once(|| Arc::new(Mutex::new(TtyInput::new())));
+    TTY_OUTPUT.call_once(|| Arc::new(Mutex::new(TtyOutput::new())));
 }
 
-pub fn tty() -> Arc<Mutex<Tty>> {
-    let tty = TTY
+pub fn tty_input() -> Arc<Mutex<TtyInput>> {
+    let tty_input = TTY_INPUT
         .get()
-        .expect("Trying to access tty before initialization!");
-    Arc::clone(tty)
+        .expect("Trying to access tty input before initialization!");
+    Arc::clone(tty_input)
+}
+
+pub fn tty_output() -> Arc<Mutex<TtyOutput>> {
+    let tty_output = TTY_OUTPUT
+        .get()
+        .expect("Trying to access tty output before initialization!");
+    Arc::clone(tty_output)
 }
 
 /// PS/2 Controller.
