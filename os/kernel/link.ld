@@ -1,7 +1,17 @@
 ENTRY(start)
 
 SECTIONS {
-    . = 1M;   /* load kernel at 1 MiB */
+    /*
+     * load the kernel to the following address
+     *
+     * a QEMU VM with OVMF roughly has the following memory layout:
+     *   0KB to 640KB: free
+     * 640KB to 1MB:   devices
+     *   1MB to 8MB:   free
+     *   8MB to 9MB:   ACPI
+     *   9MB to 24MB:  Boot Services
+     */
+    . = 25M;
 
     ___KERNEL_DATA_START__ = .;
 
