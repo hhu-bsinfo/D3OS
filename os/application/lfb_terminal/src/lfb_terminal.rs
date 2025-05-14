@@ -5,25 +5,22 @@ extern crate terminal as terminal_lib;
 
 mod terminal;
 
-use alloc::boxed::Box;
-use alloc::string::{String, ToString};
+use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::{format, vec};
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use concurrent::process;
-use concurrent::thread::{self, sleep};
+use concurrent::thread::{self};
 use core::cell::RefCell;
-use core::fmt::Write;
 use core::mem::size_of;
 use core::{isize, ptr, usize};
 use graphic::ansi::COLOR_TABLE_256;
 use graphic::buffered_lfb::BufferedLFB;
 use graphic::color::{Color, INVISIBLE};
-use graphic::lfb::{LFB, LfbInfo, get_lfb_info};
+use graphic::lfb::{LFB, get_lfb_info};
 use graphic::{color, lfb};
 use input::keyboard;
-use num_enum::FromPrimitive;
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::{Mutex, Once};
@@ -231,15 +228,6 @@ impl OutputStream for LFBTerminal {
 
 impl InputStream for LFBTerminal {
     fn read_byte(&self) -> i16 {
-        match TerminalInputState::from(
-            syscall(SystemCall::TerminalInputState, &[]).unwrap() as usize
-        ) {
-            TerminalInputState::Idle => return 0,
-            TerminalInputState::InputReaderWaiting => {}
-        }
-
-        if TerminalInputState::Idle as usize == 0 {}
-
         let read_byte;
 
         loop {
@@ -274,9 +262,6 @@ impl InputStream for LFBTerminal {
                 _ => continue,
             }
         }
-
-        syscall(SystemCall::TerminalWriteInput, &[read_byte as usize])
-            .expect("Unable to produce read");
 
         // TODO#2 check for cooked / raw mode
         self.write_byte(read_byte as u8);
@@ -1149,45 +1134,69 @@ pub fn terminal() -> Arc<dyn Terminal> {
     Arc::clone(terminal)
 }
 
-fn listen_read() {
+const OUTPUT_BUFFER_SIZE: usize = 128;
+
+fn observe_output() {
     thread::create(|| {
-        let lfb_terminal = terminal();
+        let mut buffer: [u8; OUTPUT_BUFFER_SIZE] = [0; OUTPUT_BUFFER_SIZE];
+        let terminal = terminal();
+
         loop {
-            sleep(100);
-            lfb_terminal.read_byte();
+            let result = syscall(
+                SystemCall::TerminalReadOutput,
+                &[buffer.as_mut_ptr() as usize, buffer.len()],
+            );
+
+            let byte_count = match result {
+                Ok(0) => {
+                    thread::switch();
+                    continue;
+                }
+                Ok(count) => count,
+                Err(_) => {
+                    thread::switch();
+                    continue;
+                }
+            };
+
+            for byte in &mut buffer[0..byte_count] {
+                terminal.write_byte(*byte);
+                *byte = 0;
+            }
         }
     });
 }
 
-const WRITE_BUFFER_SIZE: usize = 128;
+fn observe_input() {
+    thread::create(|| {
+        let terminal = terminal();
+
+        loop {
+            let result = syscall(SystemCall::TerminalInputState, &[]).unwrap() as usize;
+
+            if TerminalInputState::from(result) == TerminalInputState::Idle {
+                thread::switch();
+                continue;
+            }
+
+            match terminal.read_byte() {
+                ..0 => continue,
+                byte => syscall(SystemCall::TerminalWriteInput, &[byte as usize]),
+            };
+        }
+    });
+}
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mut write_buffer: [u8; WRITE_BUFFER_SIZE] = [0; WRITE_BUFFER_SIZE];
-
     init_terminal();
     let lfb_terminal = terminal();
-
     lfb_terminal.clear();
 
-    listen_read();
+    observe_output();
+    observe_input();
 
-    let mut i = 0;
     thread::start_application("shell", vec![]);
 
-    loop {
-        sleep(100);
-        // thread::start_application("helloc", vec![&i.to_string()]);
-        syscall(
-            SystemCall::TerminalReadOutput,
-            &[write_buffer.as_mut_ptr() as usize, WRITE_BUFFER_SIZE],
-        );
-        if write_buffer == [0; WRITE_BUFFER_SIZE] {
-            continue;
-        }
-        let string = String::from_utf8_lossy(&write_buffer);
-        terminal().write_str(&format!("{}", string));
-        write_buffer.fill(0);
-        // i += 1
-    }
+    loop {}
 }
