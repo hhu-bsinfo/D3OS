@@ -6,27 +6,28 @@
    ║ Author: Fabian Ruhland, 31.8.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use syscall::{syscall, SystemCall};
+use syscall::{SystemCall, syscall};
 
 use crate::Application;
 
 pub fn try_read(application: Application) -> Option<char> {
     let application_addr = core::ptr::addr_of!(application) as usize;
-    let res = syscall(SystemCall::TerminalRead, &[application_addr, 0]);
-    
+    let res = syscall(SystemCall::TerminalReadInput, &[application_addr /*, 0*/]);
+
     match res {
         Ok(0) => None,
         Ok(ch) => Some(char::from_u32(ch as u32).unwrap()),
         Err(_) => None,
-    }    
+    }
 }
 
 pub fn read(application: Application) -> Option<char> {
     let application_addr = core::ptr::addr_of!(application) as usize;
-    let res = syscall(SystemCall::TerminalRead, &[application_addr, 1]);
+    let res = syscall(SystemCall::TerminalReadInput, &[application_addr /*, 1*/]);
 
     match res {
+        Ok(0) => None,
         Ok(ch) => Some(char::from_u32(ch as u32).unwrap()),
         Err(_) => None,
-    }    
+    }
 }

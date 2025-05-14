@@ -17,18 +17,23 @@ use return_vals::{SyscallResult, convert_ret_code_to_syscall_result};
 #[repr(usize)]
 #[allow(dead_code)]
 pub enum SystemCall {
-    TerminalRead = 0,
-    TerminalWrite,
+    TerminalReadInput = 0,
+    TerminalWriteInput,
+    TerminalInputState,
+    TerminalWriteOutput,
+    TerminalReadOutput,
     MapUserHeap,
     ProcessExecuteBinary,
     ProcessId,
     ProcessExit,
+    ProcessCount,
     ThreadCreate,
     ThreadId,
     ThreadSwitch,
     ThreadSleep,
     ThreadJoin,
     ThreadExit,
+    ThreadCount,
     GetSystemTime,
     GetDate,
     SetDate,
@@ -46,6 +51,9 @@ pub enum SystemCall {
     WriteGraphic,
     GetGraphicResolution,
     MouseRead,
+    KeyboardRead,
+    MapFramebuffer,
+    MapSystemInfo,
     // no syscall, just marking last number, see NUM_SYSCALLS
     // insert any new system calls before this marker
     LastEntryMarker,
@@ -55,7 +63,7 @@ pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
 
 ///
 /// Description:
-///    All syscalls are fired here. Parameters are passed in 
+///    All syscalls are fired here. Parameters are passed in
 ///    registers according to the AMD 64 bit ABI.
 ///
 /// Return: Result \

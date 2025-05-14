@@ -10,7 +10,8 @@ members = [
     "os/application/date",
     "os/application/ls",
     "os/application/ntest",
-    "os/application/window_manager"
+    "os/application/window_manager",
+    "os/application/terminal_emulator"
 ]
 
 # [profile.release]

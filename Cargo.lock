@@ -258,7 +258,7 @@ version = "0.1.0"
 dependencies = [
  "graphic",
  "nolock",
- "spin",
+ "spin 0.9.8",
  "syscall",
 ]
 
@@ -325,6 +325,7 @@ name = "graphic"
 version = "0.1.0"
 dependencies = [
  "libm",
+ "syscall",
  "unifont",
 ]
 
@@ -542,6 +543,7 @@ name = "input"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.9.0",
+ "pc-keyboard",
  "syscall",
 ]
 
@@ -583,6 +585,7 @@ dependencies = [
  "drawer",
  "goblin",
  "graphic",
+ "input",
  "linked_list_allocator",
  "log",
  "mbrs",
@@ -596,9 +599,10 @@ dependencies = [
  "raw-cpuid 11.5.0",
  "smallmap",
  "smoltcp",
- "spin",
+ "spin 0.9.8",
  "stream",
  "syscall",
+ "system_info",
  "tar-no-std",
  "terminal",
  "uefi",
@@ -1220,6 +1224,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
+dependencies = [
+ "lock_api",
+]
+
+[[package]]
 name = "spinning_top"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1280,6 +1293,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "system_info"
+version = "0.1.0"
+dependencies = [
+ "spin 0.9.8",
+ "syscall",
+]
+
+[[package]]
 name = "tar-no-std"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1295,8 +1316,31 @@ dependencies = [
 name = "terminal"
 version = "0.1.0"
 dependencies = [
- "spin",
+ "num_enum",
+ "spin 0.9.8",
  "syscall",
+]
+
+[[package]]
+name = "terminal_emulator"
+version = "0.1.0"
+dependencies = [
+ "anstyle-parse",
+ "chrono",
+ "concurrent",
+ "drawer",
+ "graphic",
+ "input",
+ "num_enum",
+ "pc-keyboard",
+ "runtime",
+ "spin 0.10.0",
+ "stream",
+ "syscall",
+ "system_info",
+ "terminal",
+ "time",
+ "uefi",
 ]
 
 [[package]]
@@ -1673,7 +1717,7 @@ dependencies = [
  "libm",
  "nolock",
  "runtime",
- "spin",
+ "spin 0.9.8",
  "terminal",
  "time",
 ]

@@ -19,14 +19,16 @@ use crate::syscall::sys_vmem::sys_map_user_heap;
 use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, };
 use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
     sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch};
-use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write};
 use crate::syscall::sys_naming::*;
 use crate::syscall::sys_input::sys_read_mouse;
 
 use crate::{core_local_storage, tss};
 
-use super::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
-use super::sys_terminal::sys_log_debug;
+use super::sys_concurrent::{sys_process_count, sys_thread_count};
+use super::sys_graphic::{sys_get_graphic_resolution, sys_map_fb_info, sys_write_graphic};
+use super::sys_input::sys_read_keyboard;
+use super::sys_system_info::sys_map_build_info;
+use super::sys_terminal::{sys_log_debug, sys_terminal_input_state, sys_terminal_read_input, sys_terminal_read_output, sys_terminal_write_input, sys_terminal_write_output};
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -87,18 +89,23 @@ impl SyscallTable {
     pub const fn new() -> Self {
         SyscallTable {
             handle: [
-                sys_terminal_read as *const _,
-                sys_terminal_write as *const _,
+                sys_terminal_read_input as *const _,
+                sys_terminal_write_input as *const _,
+                sys_terminal_input_state as *const _,
+                sys_terminal_write_output as *const _,
+                sys_terminal_read_output as *const _,
                 sys_map_user_heap as *const _,
                 sys_process_execute_binary as *const _,
                 sys_process_id as *const _,
                 sys_process_exit as *const _,
+                sys_process_count as *const _,
                 sys_thread_create as *const _,
                 sys_thread_id as *const _,
                 sys_thread_switch as *const _,
                 sys_thread_sleep as *const _,
                 sys_thread_join as *const _,
                 sys_thread_exit as *const _,
+                sys_thread_count as *const _,
                 sys_get_system_time as *const _,
                 sys_get_date as *const _,
                 sys_set_date as *const _,
@@ -116,6 +123,9 @@ impl SyscallTable {
                 sys_write_graphic as * const _,
                 sys_get_graphic_resolution as * const _,
                 sys_read_mouse as * const _,
+                sys_read_keyboard as * const _,
+                sys_map_fb_info as * const _,
+                sys_map_build_info as * const _,
             ],
         }
     }
