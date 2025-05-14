@@ -1,12 +1,12 @@
 [package]
 edition = "2024"
-name = "lfb_terminal"
+name = "terminal_emulator"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>, Sebastian Keller <sebastian.keller@hhu.de>"]
 
 [lib]
 crate-type = ["staticlib"]
-path = "src/lfb_terminal.rs"
+path = "src/terminal_emulator.rs"
 
 [dependencies]
 # Local dependencies

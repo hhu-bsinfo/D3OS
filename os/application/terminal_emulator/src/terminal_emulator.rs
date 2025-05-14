@@ -1190,8 +1190,8 @@ fn observe_input() {
 #[unsafe(no_mangle)]
 pub fn main() {
     init_terminal();
-    let lfb_terminal = terminal();
-    lfb_terminal.clear();
+    let terminal = terminal();
+    terminal.clear();
 
     observe_output();
     observe_input();

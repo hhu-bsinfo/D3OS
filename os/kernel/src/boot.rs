@@ -391,14 +391,14 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     //Initialize tty
     init_tty();
 
-    // Create and register the 'lfb_terminal' thread (from app image in ramdisk) in the scheduler
+    // Create and register the 'terminal_emulator' thread (from app image in ramdisk) in the scheduler
     scheduler().ready(Thread::load_application(
         initrd()
             .entries()
-            .find(|entry| entry.filename().as_str().unwrap() == "lfb_terminal")
+            .find(|entry| entry.filename().as_str().unwrap() == "terminal_emulator")
             .expect("Lfb Terminal application not available!")
             .data(),
-        "lfb_terminal",
+        "terminal_emulator",
         &Vec::new(),
     ));
 

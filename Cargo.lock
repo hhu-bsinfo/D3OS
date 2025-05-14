@@ -618,28 +618,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
-name = "lfb_terminal"
-version = "0.1.0"
-dependencies = [
- "anstyle-parse",
- "chrono",
- "concurrent",
- "drawer",
- "graphic",
- "input",
- "num_enum",
- "pc-keyboard",
- "runtime",
- "spin 0.10.0",
- "stream",
- "syscall",
- "system_info",
- "terminal",
- "time",
- "uefi",
-]
-
-[[package]]
 name = "libc"
 version = "0.1.0"
 dependencies = [
@@ -1341,6 +1319,28 @@ dependencies = [
  "num_enum",
  "spin 0.9.8",
  "syscall",
+]
+
+[[package]]
+name = "terminal_emulator"
+version = "0.1.0"
+dependencies = [
+ "anstyle-parse",
+ "chrono",
+ "concurrent",
+ "drawer",
+ "graphic",
+ "input",
+ "num_enum",
+ "pc-keyboard",
+ "runtime",
+ "spin 0.10.0",
+ "stream",
+ "syscall",
+ "system_info",
+ "terminal",
+ "time",
+ "uefi",
 ]
 
 [[package]]
