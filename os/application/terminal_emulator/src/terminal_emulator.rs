@@ -28,7 +28,7 @@ const OUTPUT_BUFFER_SIZE: usize = 128;
 
 static TERMINAL: Once<Arc<dyn Terminal>> = Once::new();
 
-pub fn init_terminal() {
+pub fn init_terminal(visible: bool) {
     let lfb_info = get_lfb_info();
     let lfb_terminal = Arc::new(LFBTerminal::new(
         lfb_info.address as *mut u8,
@@ -36,6 +36,7 @@ pub fn init_terminal() {
         lfb_info.width,
         lfb_info.height,
         lfb_info.bpp,
+        visible,
     ));
     lfb_terminal.clear();
     TERMINAL.call_once(|| lfb_terminal);
@@ -89,9 +90,11 @@ fn observe_input() {
         let terminal = terminal();
 
         loop {
-            let result = syscall(SystemCall::TerminalCheckInputState, &[]).unwrap() as usize;
+            let result = TerminalInputState::from(
+                syscall(SystemCall::TerminalCheckInputState, &[]).unwrap() as usize,
+            );
 
-            let mode = match TerminalInputState::from(result) {
+            let mode = match result {
                 TerminalInputState::InputReaderAwaitsCooked => TerminalMode::Cooked,
                 TerminalInputState::InputReaderAwaitsMixed => TerminalMode::Mixed,
                 TerminalInputState::InputReaderAwaitsRaw => TerminalMode::Raw,
@@ -113,16 +116,42 @@ fn observe_input() {
     });
 }
 
-#[unsafe(no_mangle)]
-pub fn main() {
-    init_terminal();
+fn start_text_session() {
+    init_terminal(true);
     let terminal = terminal();
     terminal.clear();
-
-    observe_output();
     observe_input();
+    observe_output();
+    thread::start_application("shell", vec![]).unwrap().join();
+}
 
-    thread::start_application("shell", vec![]);
+fn start_window_manager_session() {
+    init_terminal(false);
+    observe_input();
+    thread::start_application("window_manager", vec![])
+        .unwrap()
+        .join();
+}
 
-    loop {}
+enum Session {
+    Text,
+    WindowManager,
+}
+
+#[unsafe(no_mangle)]
+pub fn main() {
+    let args = env::args();
+    let mut session = Session::Text;
+
+    for arg in args {
+        match arg.as_str() {
+            "--wm" => session = Session::WindowManager,
+            _ => {}
+        }
+    }
+
+    match session {
+        Session::Text => start_text_session(),
+        Session::WindowManager => start_window_manager_session(),
+    }
 }

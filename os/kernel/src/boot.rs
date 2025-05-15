@@ -146,20 +146,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         "framebuffer",
     );
 
-    // Initialize lfb info
+    // Initialize lfb info (For terminal_emulator)
     init_lfb_info(fb_info.address(), fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
-    // Initialize framebuffer
-    // init_lfb(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
-
-    // Initialize terminal kernel thread and enable terminal logging
-    // init_terminal(
-    //     fb_info.address() as *mut u8,
-    //     fb_info.pitch(),
-    //     fb_info.width(),
-    //     fb_info.height(),
-    //     fb_info.bpp(),
-    // );
+    // Initialize framebuffer (For window_manager)
+    init_lfb(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
     
     // Terminal output uses locks => hangs up when used for debugging
     // MS logger().register(terminal());
@@ -371,23 +362,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         "cleanup",
     ));
 
-    // Create and register the 'window_manager' thread in the scheduler
-    // scheduler().ready(Thread::load_application(initrd().entries()
-    //     .find(|entry| entry.filename().as_str().unwrap() == "window_manager")
-    //     .expect("Window Manager application not available!")
-    //     .data(), "window_manager", &Vec::new()));
-
-    // // Create and register the 'shell' thread (from app image in ramdisk) in the scheduler
-    // scheduler().ready(Thread::load_application(
-    //     initrd()
-    //         .entries()
-    //         .find(|entry| entry.filename().as_str().unwrap() == "shell")
-    //         .expect("Shell application not available!")
-    //         .data(),
-    //     "shell",
-    //     &Vec::new(),
-    // ));
-
     //Initialize tty
     init_tty();
 
@@ -399,7 +373,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             .expect("Lfb Terminal application not available!")
             .data(),
         "terminal_emulator",
-        &Vec::new(),
+        &["--wm"].to_vec(), // UNCOMMENT TO RUN WINDOW MANAGER
+        // &[].to_vec(), // UNCOMMENT TO RUN TEXT TERMINAL
     ));
 
     // // Disable terminal logging (remove terminal output stream)
