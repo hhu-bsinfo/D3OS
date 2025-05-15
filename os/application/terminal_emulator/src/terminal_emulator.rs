@@ -9,18 +9,17 @@ pub mod display;
 pub mod lfb_terminal;
 pub mod terminal;
 
-use alloc::{format, vec};
-use alloc::{string::String, sync::Arc};
+use alloc::sync::Arc;
+use alloc::vec;
 use concurrent::thread::{self};
 use core::usize;
 use cursor::CursorThread;
 use graphic::lfb::get_lfb_info;
 use lfb_terminal::LFBTerminal;
-use pc_keyboard::{DecodedKey, KeyCode};
 use spin::Once;
 use syscall::{SystemCall, syscall};
 use terminal::Terminal;
-use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode};
+use terminal_lib::{TerminalInputState, TerminalMode};
 
 #[allow(unused_imports)]
 use runtime::*;
@@ -90,17 +89,23 @@ fn observe_input() {
         let terminal = terminal();
 
         loop {
-            let result = syscall(SystemCall::TerminalInputState, &[]).unwrap() as usize;
+            let result = syscall(SystemCall::TerminalCheckInputState, &[]).unwrap() as usize;
 
-            if TerminalInputState::from(result) == TerminalInputState::Idle {
-                thread::switch();
-                continue;
-            }
-
-            match terminal.read_byte() {
-                ..0 => continue,
-                byte => syscall(SystemCall::TerminalWriteInput, &[byte as usize]),
+            let mode = match TerminalInputState::from(result) {
+                TerminalInputState::InputReaderAwaitsCooked => TerminalMode::Cooked,
+                TerminalInputState::InputReaderAwaitsMixed => TerminalMode::Mixed,
+                TerminalInputState::InputReaderAwaitsRaw => TerminalMode::Raw,
+                TerminalInputState::Idle => {
+                    thread::switch();
+                    continue;
+                }
             };
+
+            let bytes = terminal.read(mode);
+            syscall(
+                SystemCall::TerminalWriteInput,
+                &[bytes.as_ptr() as usize, bytes.len(), mode as usize],
+            );
         }
     });
 }
@@ -111,17 +116,17 @@ pub fn main() {
     let terminal = terminal();
     terminal.clear();
 
-    // observe_output();
-    // observe_input();
+    observe_output();
+    observe_input();
 
-    // thread::start_application("shell", vec![]);
+    thread::start_application("shell", vec![]);
 
     loop {
-        // COOKED
-        terminal.write_str("Enter cooked line:\n");
-        let bytes = terminal.read(TerminalMode::Cooked);
-        let string = String::from_utf8(bytes).unwrap();
-        terminal.write_str(&format!("Received: {}\n\n", string));
+        // // COOKED
+        // terminal.write_str("Enter cooked line:\n");
+        // let bytes = terminal.read(TerminalMode::Cooked);
+        // let string = String::from_utf8(bytes).unwrap();
+        // terminal.write_str(&format!("Received: {}\n\n", string));
 
         // // MIXED
         // terminal.write_str("Enter key (mixed):\n");

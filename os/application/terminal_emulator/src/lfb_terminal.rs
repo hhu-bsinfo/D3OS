@@ -1,10 +1,6 @@
 use core::{cell::RefCell, ptr};
 
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{format, string::ToString, vec::Vec};
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use concurrent::{process, thread};
 use graphic::{
@@ -14,7 +10,7 @@ use graphic::{
 };
 use input::keyboard;
 use pc_keyboard::{
-    DecodedKey, HandleControl, KeyState, Keyboard, ScancodeSet1,
+    DecodedKey, HandleControl, Keyboard, ScancodeSet1,
     layouts::{AnyLayout, De105Key},
 };
 use spin::Mutex;

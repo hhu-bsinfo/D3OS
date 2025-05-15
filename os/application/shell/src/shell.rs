@@ -5,21 +5,20 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use concurrent::thread;
-use naming::{mkdir, touch, cwd, cd};
+use naming::{cd, cwd, mkdir, touch};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::read::read;
-use terminal::{print, println, Application};
-
+use terminal::{Application, print, println};
 
 fn process_pwd(split: &Vec<&str>) {
     if split.len() != 1 {
         println!("usage: pwd");
-        return ;
+        return;
     }
     let res = cwd();
     match res {
-        Ok(path) =>  println!("{}", path),
+        Ok(path) => println!("{}", path),
         Err(_) => println!("usage: pwd"),
     }
 }
@@ -27,7 +26,7 @@ fn process_pwd(split: &Vec<&str>) {
 fn process_mkdir(split: &Vec<&str>) {
     if split.len() != 2 {
         println!("usage: mkdir directory_name");
-        return ;
+        return;
     }
     let res = mkdir(&split[1]);
     if res.is_err() {
@@ -38,7 +37,7 @@ fn process_mkdir(split: &Vec<&str>) {
 fn process_cd(split: &Vec<&str>) {
     if split.len() != 2 {
         println!("usage: cd directory_name");
-        return ;
+        return;
     }
     let res = cd(&split[1]);
     if res.is_err() {
@@ -66,40 +65,27 @@ fn process_internal_command(split: &Vec<&str>) -> bool {
     return false;
 }
 
-fn process_next_char(line: &mut String, ch: char) {
-    match ch {
-        '\n' => {
-            let split = line.split_whitespace().collect::<Vec<&str>>();
-            if !split.is_empty() {
-                if !process_internal_command(&split) {
-                    match thread::start_application(split[0], split[1..].iter().map(|&s| s).collect()) {
-                        Some(app) => app.join(),
-                        None => println!("Command not found!"),
-                    }
-                }
-            }
+fn process_line(line: String) {
+    if line.is_empty() {
+        return;
+    }
 
-            line.clear();
-            print!("> ");
-        }
-        '\x08' => {
-            line.pop();
-        }
-        _ => {
-            line.push(ch);
+    let split = line.split_whitespace().collect::<Vec<&str>>();
+    if !split.is_empty() {
+        if !process_internal_command(&split) {
+            match thread::start_application(split[0], split[1..].iter().map(|&s| s).collect()) {
+                Some(app) => app.join(),
+                None => println!("Command not found!"),
+            }
         }
     }
 }
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mut line = String::new();
-    print!("> ");
-
     loop {
-        match read(Application::Shell) {
-            Some(ch) => process_next_char(&mut line, ch),
-            None => (),
-        }
+        print!("> ");
+        let line = read();
+        process_line(line);
     }
 }

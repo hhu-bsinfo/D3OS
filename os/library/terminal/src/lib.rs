@@ -1,5 +1,7 @@
 #![no_std]
 
+extern crate alloc;
+
 pub mod read;
 pub mod write;
 
@@ -15,7 +17,9 @@ pub enum Application {
 pub enum TerminalInputState {
     #[num_enum(default)]
     Idle = 0,
-    InputReaderWaiting = 1,
+    InputReaderAwaitsCooked = 1,
+    InputReaderAwaitsMixed = 2,
+    InputReaderAwaitsRaw = 3,
 }
 
 #[derive(Debug, PartialEq, IntoPrimitive, FromPrimitive, Clone, Copy)]

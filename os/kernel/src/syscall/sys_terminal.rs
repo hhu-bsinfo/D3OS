@@ -11,8 +11,9 @@ use core::str::from_utf8;
 use core::{ptr::slice_from_raw_parts, slice::from_raw_parts_mut};
 use log::{debug, error};
 use syscall::return_vals::Errno;
-use terminal::TerminalInputState;
+use terminal::{TerminalInputState, TerminalMode};
 
+use crate::device::tty::TtyInputState;
 use crate::{tty_input, tty_output};
 
 /// For applications
@@ -55,51 +56,42 @@ pub fn sys_terminal_read_output(address: *mut u8, length: usize) -> isize {
 /// TODO#8 Do proper docs
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_input_state() -> isize {
+pub fn sys_terminal_check_input_state() -> isize {
     let tty_input = tty_input();
-    let tty_input = tty_input.lock();
 
-    if tty_input.can_write() {
-        return TerminalInputState::InputReaderWaiting as isize;
+    if tty_input.state() != TtyInputState::Waiting {
+        return TerminalInputState::Idle as isize;
     }
 
-    TerminalInputState::Idle as isize
+    match tty_input.mode() {
+        TerminalMode::Cooked => TerminalInputState::InputReaderAwaitsCooked as isize,
+        TerminalMode::Mixed => TerminalInputState::InputReaderAwaitsMixed as isize,
+        TerminalMode::Raw => TerminalInputState::InputReaderAwaitsRaw as isize,
+    }
 }
 
 /// For Terminal
 /// TODO#8 Do proper docs
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_write_input(byte: u8) -> isize {
+pub fn sys_terminal_write_input(address: *mut u8, length: usize, mode: usize) -> isize {
+    let mode = TerminalMode::from(mode);
     let tty_input = tty_input();
-    let mut tty_input = tty_input.lock();
 
-    if !tty_input.can_write() {
-        return Errno::EUNKN as isize;
-    }
-
-    tty_input.write(byte);
-    0
+    let bytes = unsafe { from_raw_parts(address, length) };
+    tty_input.write(bytes, mode) as isize
 }
 
 /// For Application
 /// TODO#8 Do proper docs
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_read_input() -> isize {
+pub fn sys_terminal_read_input(address: *mut u8, length: usize, mode: usize) -> isize {
+    let mode = TerminalMode::from(mode);
     let tty_input = tty_input();
-    let mut tty_input = tty_input.lock();
 
-    tty_input.start_read();
-
-    if !tty_input.can_read() {
-        return 0;
-    }
-
-    let byte = tty_input.read();
-    tty_input.end_read();
-
-    byte as isize
+    let buffer = unsafe { from_raw_parts_mut(address, length) };
+    tty_input.read(buffer, mode) as isize
 }
 
 pub fn sys_log_debug(string_addr: *const u8, string_len: usize) {
