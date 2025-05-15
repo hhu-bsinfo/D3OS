@@ -27,7 +27,6 @@ use crate::{
     color::ColorState,
     cursor::CursorState,
     display::{Character, DisplayState},
-    mode::Mode,
     terminal::Terminal,
 };
 
@@ -39,7 +38,6 @@ pub struct LFBTerminal {
     pub(crate) color: Mutex<ColorState>,
     pub(crate) parser: Mutex<RefCell<Parser>>,
     pub(crate) decoder: Mutex<Keyboard<AnyLayout, ScancodeSet1>>,
-    pub(crate) mode: Mutex<Mode>,
 }
 
 unsafe impl Send for LFBTerminal {}
@@ -144,6 +142,36 @@ impl Terminal for LFBTerminal {
         LFBTerminal::position(&mut display, &mut cursor, &mut color, (0, 0));
     }
 
+    fn read(&self, mode: TerminalMode) -> Vec<u8> {
+        loop {
+            let bytes = match mode {
+                TerminalMode::Cooked => self.read_cooked(),
+                TerminalMode::Mixed => self.read_mixed(),
+                TerminalMode::Raw => self.read_raw(),
+            };
+            match bytes {
+                Some(bytes) => return bytes,
+                None => continue,
+            }
+        }
+    }
+}
+
+impl LFBTerminal {
+    pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
+        Self {
+            display: Mutex::new(DisplayState::new(buffer, pitch, width, height, bpp)),
+            cursor: Mutex::new(CursorState::new()),
+            color: Mutex::new(ColorState::new()),
+            parser: Mutex::new(RefCell::new(Parser::<Utf8Parser>::new())),
+            decoder: Mutex::new(Keyboard::new(
+                ScancodeSet1::new(),
+                AnyLayout::De105Key(De105Key),
+                HandleControl::Ignore,
+            )),
+        }
+    }
+
     /// TODO do proper docs
     /// Returns option of vec with only one byte (raw key)
     fn read_raw(&self) -> Option<Vec<u8>> {
@@ -201,23 +229,6 @@ impl Terminal for LFBTerminal {
         }
 
         Some(bytes)
-    }
-}
-
-impl LFBTerminal {
-    pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
-        Self {
-            display: Mutex::new(DisplayState::new(buffer, pitch, width, height, bpp)),
-            cursor: Mutex::new(CursorState::new()),
-            color: Mutex::new(ColorState::new()),
-            parser: Mutex::new(RefCell::new(Parser::<Utf8Parser>::new())),
-            decoder: Mutex::new(Keyboard::new(
-                ScancodeSet1::new(),
-                AnyLayout::De105Key(De105Key),
-                HandleControl::Ignore,
-            )),
-            mode: Mutex::new(Mode::new(TerminalMode::Cooked)),
-        }
     }
 
     /// TODO do proper docs
