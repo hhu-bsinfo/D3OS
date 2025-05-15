@@ -4,7 +4,7 @@ use alloc::{format, string::ToString, vec::Vec};
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use concurrent::{
     process,
-    thread::{self, sleep},
+    thread::{self},
 };
 use graphic::{
     ansi::COLOR_TABLE_256,
