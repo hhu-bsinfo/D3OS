@@ -101,7 +101,10 @@ fn observe_input() {
                 }
             };
 
-            let bytes = terminal.read(mode);
+            let bytes = match terminal.read(mode) {
+                Some(bytes) => bytes,
+                None => vec![],
+            };
             syscall(
                 SystemCall::TerminalWriteInput,
                 &[bytes.as_ptr() as usize, bytes.len(), mode as usize],

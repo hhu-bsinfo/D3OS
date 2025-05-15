@@ -72,19 +72,10 @@ impl OutputStream for LFBTerminal {
 
 impl InputStream for LFBTerminal {
     fn read_byte(&self) -> i16 {
-        let read_byte;
-
-        loop {
-            match keyboard::read_raw() {
-                Some(byte) => {
-                    read_byte = byte;
-                    break;
-                }
-                None => continue,
-            };
+        match keyboard::read_raw() {
+            Some(byte) => byte as i16,
+            None => 0,
         }
-
-        return read_byte as i16;
     }
 }
 
@@ -98,17 +89,11 @@ impl Terminal for LFBTerminal {
         LFBTerminal::position(&mut display, &mut cursor, &mut color, (0, 0));
     }
 
-    fn read(&self, mode: TerminalMode) -> Vec<u8> {
-        loop {
-            let bytes = match mode {
-                TerminalMode::Cooked => self.read_cooked(),
-                TerminalMode::Mixed => self.read_mixed(),
-                TerminalMode::Raw => self.read_raw(),
-            };
-            match bytes {
-                Some(bytes) => return bytes,
-                None => continue,
-            }
+    fn read(&self, mode: TerminalMode) -> Option<Vec<u8>> {
+        match mode {
+            TerminalMode::Cooked => self.read_cooked(),
+            TerminalMode::Mixed => self.read_mixed(),
+            TerminalMode::Raw => self.read_raw(),
         }
     }
 }
@@ -161,6 +146,7 @@ impl LFBTerminal {
         Some(bytes)
     }
 
+    /// TODO#4 BUG: Terminal will continue to wait for user input, even if reading thread no longer exists, other threads wont be able to read on a different mode until the user hits enter (same mode should be fine)
     /// TODO do proper docs
     /// Echoes and returns vec with line of unicodes (key type, decoded key)
     fn read_cooked(&self) -> Option<Vec<u8>> {

@@ -49,12 +49,12 @@ pub fn read() -> String {
 /// Author: Sebastian Keller
 ///
 /// No echo
-/// No blocking TODO?????
+/// No blocking
 /// Returns Option of DecodedKey (RawKey or Unicode)
 pub fn read_mixed() -> Option<DecodedKey> {
     let mut buffer: [u8; 2] = [0; 2];
 
-    syscall(
+    let written_bytes = syscall(
         SystemCall::TerminalReadInput,
         &[
             buffer.as_mut_ptr() as usize,
@@ -63,6 +63,10 @@ pub fn read_mixed() -> Option<DecodedKey> {
         ],
     )
     .expect("Unable to read input");
+
+    if written_bytes != 2 {
+        return None;
+    }
 
     let key_type = DecodedKeyType::from(*buffer.first().unwrap());
     let key = *buffer.last().unwrap();
@@ -81,7 +85,7 @@ pub fn read_mixed() -> Option<DecodedKey> {
 /// Author: Sebastian Keller
 ///
 /// No echo
-/// No blocking TODO?????
+/// No blocking
 /// Returns Option of raw undecoded u8
 pub fn read_raw() -> Option<u8> {
     let mut buffer: [u8; 1] = [0; 1];

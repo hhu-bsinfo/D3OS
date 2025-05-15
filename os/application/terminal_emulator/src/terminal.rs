@@ -7,7 +7,7 @@ use terminal_lib::TerminalMode;
 
 pub trait Terminal: OutputStream + InputStream {
     fn clear(&self);
-    fn read(&self, mode: TerminalMode) -> Vec<u8>;
+    fn read(&self, mode: TerminalMode) -> Option<Vec<u8>>;
 }
 
 // Implementation of the 'core::fmt::Write' trait for our Terminal

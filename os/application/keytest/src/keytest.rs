@@ -5,7 +5,7 @@ extern crate alloc;
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::{
-    DecodedKey, KeyCode, print, println,
+    DecodedKey, print, println,
     read::{read, read_mixed, read_raw},
 };
 
