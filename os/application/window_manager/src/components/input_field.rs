@@ -5,6 +5,7 @@ use graphic::{
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
 use spin::RwLock;
+use terminal::DecodedKey;
 
 use crate::{
     config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, utils::scale_font
@@ -250,14 +251,14 @@ impl Focusable for InputField {
 }
 
 impl Interactable for InputField {
-    fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
+    fn consume_keyboard_press(&mut self, keyboard_press: DecodedKey) -> Option<Box<dyn FnOnce() -> ()>> {
         if keyboard_press == INTERACT_BUTTON && !self.is_selected && !self.is_disabled {
             self.is_selected = true;
             self.mark_dirty();
         } else if self.is_selected {
             self.mark_dirty();
             match keyboard_press {
-                '\n' => {
+                DecodedKey::Unicode('\n') => {
                     self.is_selected = false;
                     self.mark_dirty();
                 }
@@ -274,7 +275,7 @@ impl Interactable for InputField {
                         })
                     );
                 }
-                c => {
+                DecodedKey::Unicode(c) => {
                     if self.current_text.len() < self.max_chars {
                         self.current_text.push(c);
                         self.mark_dirty();
@@ -289,7 +290,8 @@ impl Interactable for InputField {
                             (on_change)(value);
                         })
                     );
-                }
+                },
+                _ => {}
             }
         }
 

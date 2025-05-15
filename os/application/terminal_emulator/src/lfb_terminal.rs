@@ -1,8 +1,11 @@
 use core::{cell::RefCell, ptr};
 
-use alloc::{format, string::ToString};
+use alloc::{format, string::ToString, vec::Vec};
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
-use concurrent::{process, thread};
+use concurrent::{
+    process,
+    thread::{self},
+};
 use graphic::{
     ansi::COLOR_TABLE_256,
     color::{self, Color, INVISIBLE},
@@ -16,6 +19,7 @@ use pc_keyboard::{
 use spin::Mutex;
 use stream::{InputStream, OutputStream};
 use system_info::build_info::{BuildInfo, build_info};
+use terminal_lib::{DecodedKeyType, TerminalMode};
 use time::{date, systime};
 
 use crate::{
@@ -71,45 +75,10 @@ impl OutputStream for LFBTerminal {
 
 impl InputStream for LFBTerminal {
     fn read_byte(&self) -> i16 {
-        let read_byte;
-
-        loop {
-            let mut decoder = self.decoder.lock();
-
-            let event_result = match keyboard::read_raw() {
-                Some(code) => decoder.add_byte(code),
-                None => continue,
-            };
-
-            let event_option = match event_result {
-                Ok(event) => event,
-                Err(_) => continue,
-            };
-
-            let key_result = match event_option {
-                Some(event) => decoder.process_keyevent(event),
-                None => continue,
-            };
-
-            let key = match key_result {
-                Some(key) => key,
-                None => continue,
-            };
-
-            // TODO#2 check for cooked / raw mode
-            match key {
-                DecodedKey::Unicode(ch) => {
-                    read_byte = ch;
-                    break;
-                }
-                _ => continue,
-            }
+        match keyboard::read_raw() {
+            Some(byte) => byte as i16,
+            None => 0,
         }
-
-        // TODO#2 check for cooked / raw mode
-        self.write_byte(read_byte as u8);
-
-        return read_byte as i16;
     }
 }
 
@@ -122,12 +91,29 @@ impl Terminal for LFBTerminal {
         LFBTerminal::clear_screen(&mut display, &mut color);
         LFBTerminal::position(&mut display, &mut cursor, &mut color, (0, 0));
     }
+
+    fn read(&self, mode: TerminalMode) -> Option<Vec<u8>> {
+        match mode {
+            TerminalMode::Cooked => self.read_cooked(),
+            TerminalMode::Mixed => self.read_mixed(),
+            TerminalMode::Raw => self.read_raw(),
+        }
+    }
 }
 
 impl LFBTerminal {
-    pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
+    pub fn new(
+        buffer: *mut u8,
+        pitch: u32,
+        width: u32,
+        height: u32,
+        bpp: u8,
+        visible: bool,
+    ) -> Self {
         Self {
-            display: Mutex::new(DisplayState::new(buffer, pitch, width, height, bpp)),
+            display: Mutex::new(DisplayState::new(
+                buffer, pitch, width, height, bpp, visible,
+            )),
             cursor: Mutex::new(CursorState::new()),
             color: Mutex::new(ColorState::new()),
             parser: Mutex::new(RefCell::new(Parser::<Utf8Parser>::new())),
@@ -136,6 +122,89 @@ impl LFBTerminal {
                 AnyLayout::De105Key(De105Key),
                 HandleControl::Ignore,
             )),
+        }
+    }
+
+    /// TODO do proper docs
+    /// Returns option of vec with only one byte (raw key)
+    fn read_raw(&self) -> Option<Vec<u8>> {
+        let mut bytes = Vec::with_capacity(1);
+        match self.read_byte() {
+            ..0 => return None,
+            byte => bytes.push(byte as u8),
+        };
+
+        Some(bytes)
+    }
+
+    /// TODO do proper docs
+    /// Returns option of vec with two bytes (key type, decoded key)
+    fn read_mixed(&self) -> Option<Vec<u8>> {
+        let key_result = self.read_decoded();
+        let mut bytes = Vec::with_capacity(2);
+
+        match key_result {
+            Some(DecodedKey::Unicode(key)) => {
+                bytes.push(DecodedKeyType::Unicode as u8);
+                bytes.push(key as u8);
+            }
+            Some(DecodedKey::RawKey(key)) => {
+                bytes.push(DecodedKeyType::RawKey as u8);
+                bytes.push(key as u8);
+            }
+            None => return None,
+        };
+
+        Some(bytes)
+    }
+
+    /// TODO#4 BUG: Terminal will continue to wait for user input, even if reading thread no longer exists, other threads wont be able to read on a different mode until the user hits enter (same mode should be fine)
+    /// TODO do proper docs
+    /// Echoes and returns vec with line of unicodes (key type, decoded key)
+    fn read_cooked(&self) -> Option<Vec<u8>> {
+        let mut bytes = Vec::new();
+        loop {
+            let ch = match self.read_decoded() {
+                Some(DecodedKey::Unicode(ch)) => ch,
+                _ => continue,
+            };
+
+            self.write_byte(ch as u8);
+
+            match ch {
+                '\n' => break,
+                '\x08' => {
+                    if bytes.pop().is_some() {
+                        self.write_str("\x1b[1D \x1b[1D");
+                    }
+                }
+                _ => bytes.push(ch as u8),
+            };
+        }
+
+        Some(bytes)
+    }
+
+    /// TODO do proper docs
+    /// Helper for read_mixed & read_cooked
+    fn read_decoded(&self) -> Option<DecodedKey> {
+        let mut decoder = self.decoder.lock();
+
+        let bytes = match self.read_raw() {
+            Some(bytes) => bytes,
+            None => return None,
+        };
+
+        let byte = *bytes
+            .first()
+            .expect("Expected raw bytes to have at least one byte");
+        let event_option = match decoder.add_byte(byte) {
+            Ok(event) => event,
+            Err(_) => return None,
+        };
+        match event_option {
+            Some(event) => decoder.process_keyevent(event),
+            None => return None,
         }
     }
 
@@ -210,14 +279,14 @@ impl LFBTerminal {
         c: char,
         pos: (u16, u16),
     ) -> u32 {
-        display.lfb.lfb().draw_char(
+        display.draw_char(
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             color.fg_color,
             color.bg_color,
             c,
         );
-        display.lfb.direct_lfb().draw_char(
+        display.draw_direct_char(
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             color.fg_color,
@@ -230,7 +299,7 @@ impl LFBTerminal {
         // Draw background
         for i in 0..display.size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH {
             for j in 0..lfb::DEFAULT_CHAR_HEIGHT {
-                display.lfb.lfb().draw_pixel(i, j, color::HHU_GREEN);
+                display.draw_pixel(i, j, color::HHU_GREEN);
             }
         }
 
@@ -251,7 +320,7 @@ impl LFBTerminal {
             thread_count
         );
 
-        display.lfb.lfb().draw_string(
+        display.draw_string(
             0,
             0,
             color::HHU_BLUE,
@@ -262,7 +331,7 @@ impl LFBTerminal {
         // Draw date
         let date_str = date().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        display.lfb.lfb().draw_string(
+        display.draw_string(
             (display.size.0 as u32 - date_str.len() as u32) * lfb::DEFAULT_CHAR_WIDTH,
             0,
             color::HHU_BLUE,
@@ -270,7 +339,7 @@ impl LFBTerminal {
             &date_str,
         );
 
-        display.lfb.flush_lines(0, lfb::DEFAULT_CHAR_HEIGHT);
+        display.flush_lines(0, lfb::DEFAULT_CHAR_HEIGHT);
     }
 
     fn scroll_up(display: &mut DisplayState, color: &mut ColorState) {
@@ -290,8 +359,8 @@ impl LFBTerminal {
         });
 
         let size = display.size;
-        display.lfb.lfb().scroll_up(lfb::DEFAULT_CHAR_HEIGHT);
-        display.lfb.lfb().fill_rect(
+        display.scroll_up(lfb::DEFAULT_CHAR_HEIGHT);
+        display.fill_rect(
             0,
             (size.1 - 1) as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -300,7 +369,7 @@ impl LFBTerminal {
         );
 
         LFBTerminal::draw_status_bar(display);
-        display.lfb.flush();
+        display.flush();
     }
 
     fn position(
@@ -347,7 +416,7 @@ impl LFBTerminal {
     fn clear_screen(display: &mut DisplayState, color: &mut ColorState) {
         // Clear screen
         let size = display.size;
-        display.lfb.lfb().fill_rect(
+        display.fill_rect(
             0,
             0,
             size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -363,7 +432,7 @@ impl LFBTerminal {
         });
 
         LFBTerminal::draw_status_bar(display);
-        display.lfb.flush();
+        display.flush();
     }
 
     fn clear_screen_to_cursor(
@@ -375,7 +444,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear from start of line to cursor
-        display.lfb.lfb().fill_rect(
+        display.fill_rect(
             0,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -384,7 +453,7 @@ impl LFBTerminal {
         );
 
         // Clear from start of screen to line before cursor
-        display.lfb.lfb().fill_rect(
+        display.fill_rect(
             0,
             0,
             size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -405,7 +474,7 @@ impl LFBTerminal {
             });
 
         LFBTerminal::draw_status_bar(display);
-        display.lfb.flush();
+        display.flush();
     }
 
     fn clear_screen_from_cursor(
@@ -417,7 +486,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear from cursor to end of line
-        display.lfb.lfb().fill_rect(
+        display.fill_rect(
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             (size.0 - pos.0) as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -426,7 +495,7 @@ impl LFBTerminal {
         );
 
         // Clear from next line to end of screen
-        display.lfb.lfb().fill_rect(
+        display.fill_rect(
             0,
             (pos.1 + 1) as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -446,7 +515,7 @@ impl LFBTerminal {
             });
 
         LFBTerminal::draw_status_bar(display);
-        display.lfb.flush();
+        display.flush();
     }
 
     fn clear_line(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
@@ -454,7 +523,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.lfb.lfb().fill_rect(
+        display.fill_rect(
             0,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -477,7 +546,7 @@ impl LFBTerminal {
         if pos.1 == 0 {
             LFBTerminal::draw_status_bar(display);
         }
-        display.lfb.flush();
+        display.flush();
     }
 
     fn clear_line_to_cursor(
@@ -489,7 +558,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.lfb.lfb().fill_rect(
+        display.fill_rect(
             0,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -513,7 +582,7 @@ impl LFBTerminal {
         if pos.1 == 0 {
             LFBTerminal::draw_status_bar(display);
         }
-        display.lfb.flush();
+        display.flush();
     }
 
     fn clear_line_from_cursor(
@@ -525,7 +594,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.lfb.lfb().fill_rect(
+        display.fill_rect(
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             (size.0 - pos.0) as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -549,7 +618,7 @@ impl LFBTerminal {
         if pos.1 == 0 {
             LFBTerminal::draw_status_bar(display);
         }
-        display.lfb.flush();
+        display.flush();
     }
 
     fn handle_ansi_color(color: &mut ColorState, params: &Params) {
@@ -819,6 +888,7 @@ impl LFBTerminal {
             }
             _ => {}
         }
+        &display.flush(); // Fixes trailing cursor
     }
 
     fn handle_ansi_erase_sequence(

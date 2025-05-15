@@ -355,15 +355,15 @@ pub fn terminal() -> Arc<dyn Terminal> {
 /// TODO#9 tty docs
 /// 
 /// Author: Sebastian Keller
-static TTY_INPUT: Once<Arc<Mutex<TtyInput>>> = Once::new();
+static TTY_INPUT: Once<Arc<TtyInput>> = Once::new();
 static TTY_OUTPUT: Once<Arc<Mutex<TtyOutput>>> = Once::new();
 
 pub fn init_tty() {
-    TTY_INPUT.call_once(|| Arc::new(Mutex::new(TtyInput::new())));
+    TTY_INPUT.call_once(|| Arc::new(TtyInput::new()));
     TTY_OUTPUT.call_once(|| Arc::new(Mutex::new(TtyOutput::new())));
 }
 
-pub fn tty_input() -> Arc<Mutex<TtyInput>> {
+pub fn tty_input() -> Arc<TtyInput> {
     let tty_input = TTY_INPUT
         .get()
         .expect("Trying to access tty input before initialization!");

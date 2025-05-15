@@ -1,8 +1,9 @@
 use graphic::color::{Color, CYAN, GREY, HHU_BLUE, WHITE, YELLOW};
+use terminal::DecodedKey;
 
-pub const INTERACT_BUTTON: char = 'f';
-pub const BACKSPACE_UNICODE: char = '\u{0008}';
-pub const ESCAPE_UNICODE: char = '\u{001b}';
+pub const INTERACT_BUTTON: DecodedKey = DecodedKey::Unicode('f');
+pub const BACKSPACE_UNICODE: DecodedKey = DecodedKey::Unicode('\u{0008}');
+pub const ESCAPE_UNICODE: DecodedKey = DecodedKey::Unicode('\u{001b}');
 
 pub const DEFAULT_FG_COLOR: Color = WHITE;
 pub const FOCUSED_FG_COLOR: Color = YELLOW;

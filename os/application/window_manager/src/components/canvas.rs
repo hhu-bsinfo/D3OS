@@ -1,5 +1,5 @@
 // Julius Drodofsky
-use terminal::print;
+use terminal::{print, DecodedKey};
 
 use alloc::{collections::vec_deque::VecDeque, string::ToString};
 use alloc::boxed::Box;
@@ -22,7 +22,7 @@ pub struct Canvas {
     styling: ComponentStyling,
     buffer: Rc<RwLock<Bitmap>>,
     // function to get user input
-    input: Rc<Box<dyn Fn(char) -> ()>>,
+    input: Rc<Box<dyn Fn(DecodedKey) -> ()>>,
     
 } 
 
@@ -31,7 +31,7 @@ impl Canvas {
         styling: Option<ComponentStyling>,
         abs_rect_data: RectData,
         buffer:  Rc<RwLock<Bitmap>>, 
-        input: Option<Box<dyn Fn(char) -> ()>>,
+        input: Option<Box<dyn Fn(DecodedKey) -> ()>>,
     ) -> Self{
     let drawn_rect_data = RectData::zero();
     Self {
@@ -113,7 +113,7 @@ impl Focusable for Canvas {
 }
 
 impl Interactable for Canvas {
-    fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
+    fn consume_keyboard_press(&mut self, keyboard_press: DecodedKey) -> Option<Box<dyn FnOnce() -> ()>> {
         let input = Rc::clone(&self.input);
         return Some(
             Box::new(move || {

@@ -2,6 +2,7 @@ use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use spin::RwLock;
+use terminal::DecodedKey;
 
 use crate::{config::INTERACT_BUTTON, mouse_state::ButtonState, utils::scale_radius_to_rect};
 
@@ -220,8 +221,8 @@ impl Focusable for RadioButtonGroup {
 }
 
 impl Interactable for RadioButtonGroup {
-    fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
-        if keyboard_press == 'w' {
+    fn consume_keyboard_press(&mut self, keyboard_press: DecodedKey) -> Option<Box<dyn FnOnce() -> ()>> {
+        if keyboard_press == DecodedKey::Unicode('w') {
             if self.focused_button_index == self.buttons.len() - 1 {
                 // kein Callback damit Window Manager das Event nicht registriert
                 return None;
@@ -233,7 +234,7 @@ impl Interactable for RadioButtonGroup {
                 return Some(Box::new(|| {
                 }));
             }
-        } else if keyboard_press == 's' {
+        } else if keyboard_press == DecodedKey::Unicode('s') {
             if self.focused_button_index == 0 {
                 // kein Callback damit Window Manager das Event nicht registriert
                 return None;
