@@ -4,7 +4,7 @@
    ║ Descr.: Boot sequence of the OS. First Rust function called after       ║
    ║         assembly code: 'start'.                                         ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, HHU                                             ║
+   ║ Author: Fabian Ruhland & Michael Schoettner, HHU                        ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -20,7 +20,7 @@ use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_initrd,
+    acpi_tables, allocator, apic, built_info, gdt, init_cpu_info, init_acpi_tables, init_apic, init_initrd,
     init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network,
     process_manager, scheduler, serial_port, terminal, timer, tss,
 };
@@ -112,6 +112,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         heap_region.end.start_address().as_u64()
     );
     debug!("Page frame allocator:\n{}", memory::frames::dump());
+
+    /// Initialize CPU information
+    init_cpu_info();
 
     // Create kernel process (and initialize virtual memory management)
     info!("Create kernel process and initialize paging");

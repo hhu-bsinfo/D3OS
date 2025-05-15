@@ -4,7 +4,7 @@
    ║ Descr.: Main rust file of OS. Includes the panic handler as well as all ║
    ║         globals with init functions.                                    ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, HHU                                             ║
+   ║ Author: Fabian Ruhland & Michael Schoettner, HHU                        ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![feature(allocator_api)]
@@ -18,6 +18,7 @@
 #![no_std]
 
 use crate::device::apic::Apic;
+use crate::device::cpu::Cpu;
 use crate::device::lfb_terminal::{CursorThread, LFBTerminal};
 use crate::device::pci::PciBus;
 use crate::device::pit::Timer;
@@ -88,11 +89,30 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-/* ╔═════════════════════════════════════════════════════════════════════════╗
+/*
+╔═════════════════════════════════════════════════════════════════════════╗
 ║ Static kernel structures.                                               ║
 ║ These structures are need for the kernel to work. Since they only exist ║
 ║ once, they are shared as static lifetime references.                    ║
 ╚═════════════════════════════════════════════════════════════════════════╝ */
+
+/// CPU caps.
+static CPU: Once<Mutex<Cpu>> = Once::new();
+
+
+pub fn init_cpu_info() {
+    CPU.call_once(|| {
+        let cpu = Cpu::new();
+        Mutex::new(cpu)
+    });
+}
+
+/// Returns a reference to the CPU info struct.
+pub fn cpu() -> &'static  Mutex<Cpu> {
+    CPU.get()
+        .expect("Trying to access CPU info before initialization!")
+}
+
 
 /// Check if EFI system table (and thus runtime services) are available.
 pub fn efi_services_available() -> bool {
@@ -244,7 +264,8 @@ pub fn interrupt_dispatcher() -> &'static InterruptDispatcher {
     INTERRUPT_DISPATCHER.get().unwrap()
 }
 
-/* ╔═════════════════════════════════════════════════════════════════════════╗
+/*
+╔═════════════════════════════════════════════════════════════════════════╗
 ║ Device driver instances.                                                ║
 ║ We currently do not have a device driver framework, so all driver       ║
 ║ instances are created here.                                             ║

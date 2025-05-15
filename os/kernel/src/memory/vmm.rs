@@ -30,6 +30,15 @@ use crate::memory::pages::Paging;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process_manager;
 
+
+/*static LAST_VIRT_ADDR: Once<Mutex<Cell<VirtAddr>>> = Once::new();
+
+pub fn intit() {
+    LAST_VIRT_ADDR.call_once(|| Mutex::new(Cell::new(VirtAddr::new(0).unwrap())));
+}
+*/
+
+
 /// Clone address space. Used during process creation.
 pub fn clone_address_space(other: &VirtualAddressSpace) -> Arc<Paging> {
     Arc::new(Paging::from_other(&&other.page_tables()))
@@ -52,9 +61,12 @@ pub fn create_kernel_address_space() -> Arc<Paging> {
     Arc::new(address_space)
 }
 
+/// All data related to a virtual address space of a process.
 pub struct VirtualAddressSpace {
     virtual_memory_areas: RwLock<Vec<VirtualMemoryArea>>,
     page_tables: Arc<Paging>,
+    first_usable_user_addr: VirtAddr,
+    last_usable_user_addr: VirtAddr,
 }
 
 impl VirtualAddressSpace {
@@ -62,6 +74,8 @@ impl VirtualAddressSpace {
         Self {
             page_tables,
             virtual_memory_areas: RwLock::new(Vec::new()),
+            first_usable_user_addr: VirtAddr::new(crate::consts::USER_SPACE_START as u64),
+            last_usable_user_addr: VirtAddr::new(0),
         }
     }
 
@@ -73,7 +87,16 @@ impl VirtualAddressSpace {
         self.page_tables.load();
     }
 
-    pub fn add_vma(&self, new_area: VirtualMemoryArea) {
+    pub fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
+        self.page_tables.set_flags(pages, flags);
+    }
+
+    pub fn page_table_address(&self) -> PhysAddr {
+        self.page_tables.page_table_address()
+    }
+
+    /// Add the new vma `new_area` to this address space. 
+    fn add_vma(&self, new_area: VirtualMemoryArea) {
         let mut areas = self.virtual_memory_areas.write();
         match areas.iter().find(|area| area.overlaps_with(&new_area)) {
             Some(_) => panic!("Process: Trying to add a VMA, which overlaps with an existing one!"),
@@ -81,6 +104,7 @@ impl VirtualAddressSpace {
         }
     }
 
+    /// Return all vmas with the given type `typ` in his address space. 
     pub fn find_vmas(&self, typ: VmaType) -> Vec<VirtualMemoryArea> {
         let mut found = Vec::<VirtualMemoryArea>::new();
         let areas = self.virtual_memory_areas.read();
@@ -90,10 +114,11 @@ impl VirtualAddressSpace {
             }
         }
 
+        // MS WARUM?
         found.sort_by(|first, second| {
             return if first.start().as_u64() < second.start().as_u64() {
                 Ordering::Less
-            } else if first.start().as_u64() < second.start().as_u64() {
+            } else if first.start().as_u64() > second.start().as_u64() {
                 Ordering::Greater
             } else {
                 Ordering::Equal
@@ -103,7 +128,8 @@ impl VirtualAddressSpace {
         found
     }
 
-    pub fn update_vma(&self, vma: VirtualMemoryArea, update: impl Fn(&mut VirtualMemoryArea)) {
+    /// Update the vma `vma` in this address space with the given `update` function.
+    fn update_vma(&self, vma: VirtualMemoryArea, update: impl Fn(&mut VirtualMemoryArea)) {
         let mut areas = self.virtual_memory_areas.write();
         match areas.iter_mut().find(|area| **area == vma) {
             Some(area) => update(area),
@@ -111,6 +137,8 @@ impl VirtualAddressSpace {
         }
     }
 
+    /// map a new virtual memory area `pages` in this address space with the given `flags`
+    /// MS: warum sind hier die pages schon gegeben?
     pub fn map(
         &self,
         pages: PageRange,
@@ -123,6 +151,7 @@ impl VirtualAddressSpace {
         self.page_tables.map(pages, space, flags);
     }
 
+    /// Map the given physical frames `frames` to the virtual memory area `pages` in this address space
     pub fn map_physical(
         &self,
         frames: PhysFrameRange,
@@ -136,11 +165,13 @@ impl VirtualAddressSpace {
         self.page_tables.map_physical(frames, pages, space, flags);
     }
 
+    /// Map the given physical frames `frames` to any virtual memory area in this address space
     pub fn map_io(&self, _frames: PhysFrameRange) { 
         // self.add_vma(VirtualMemoryArea::new(pages, mem_type));
         // self.page_tables.map_physical(frames, pages, space, flags);
     }
 
+    /// Map kernel stack of a thread 
     pub fn map_kernel_stack(&self, pages: PageRange, tag_str: &str) {
         self.add_vma(VirtualMemoryArea::new_with_tag(
             pages,
@@ -150,14 +181,8 @@ impl VirtualAddressSpace {
         // no need for mapping in page tables because all frames are already identity mapped
     }
 
-    pub fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
-        self.page_tables.set_flags(pages, flags);
-    }
 
-    pub fn page_table_address(&self) -> PhysAddr {
-        self.page_tables.page_table_address()
-    }
-
+    /// Dump all virtual memory areas of this address space
     pub fn dump(&self, pid: usize) {
         info!("VMAs of process [{}]", pid);
         let areas = self.virtual_memory_areas.read();
@@ -185,10 +210,10 @@ pub enum VmaType {
     KernelStack,
 }
 
-///
-/// Description: Address space for a process
-///
-pub const TAG_SIZE: usize = 8; // Define a constant for tag size
+
+
+
+pub const TAG_SIZE: usize = 8; // Define a constant for tag size in bytes
 
 #[derive(Copy, Clone, PartialEq)]
 pub struct VirtualMemoryArea {
@@ -198,6 +223,7 @@ pub struct VirtualMemoryArea {
 }
 
 impl VirtualMemoryArea {
+    /// Create a new VirtualMemoryArea with a given range and type and a tag name 
     pub const fn new_with_tag(range: PageRange, typ: VmaType, tag_str: &str) -> Self {
         let mut tag: [u8; TAG_SIZE] = [b'-'; TAG_SIZE];
         let tag_bytes = tag_str.as_bytes();
@@ -217,6 +243,7 @@ impl VirtualMemoryArea {
         Self { range, typ, tag }
     }
 
+    /// Alternatively, create a new VirtualMemoryArea using the thread id `tid` as tag
     pub const fn new_with_id(range: PageRange, typ: VmaType, tid: usize) -> Self {
         let mut tag: [u8; TAG_SIZE] = [b'-'; TAG_SIZE]; // Default to dashes ('------')
         let mut num = tid;
