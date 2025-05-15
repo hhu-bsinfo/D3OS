@@ -9,7 +9,7 @@ use naming::{cd, cwd, mkdir, touch};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::read::read;
-use terminal::{Application, print, println};
+use terminal::{print, println};
 
 fn process_pwd(split: &Vec<&str>) {
     if split.len() != 1 {

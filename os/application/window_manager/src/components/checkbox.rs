@@ -3,6 +3,7 @@ use alloc::{
 };
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
+use terminal::DecodedKey;
 
 use crate::config::INTERACT_BUTTON;
 
@@ -206,7 +207,7 @@ impl Focusable for Checkbox {
 }
 
 impl Interactable for Checkbox {
-    fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
+    fn consume_keyboard_press(&mut self, keyboard_press: DecodedKey) -> Option<Box<dyn FnOnce() -> ()>> {
         if keyboard_press == INTERACT_BUTTON && !self.is_disabled {
             self.handle_click()
         } else {

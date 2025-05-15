@@ -11,11 +11,6 @@ pub use pc_keyboard::KeyCode;
 
 use num_enum::{FromPrimitive, IntoPrimitive};
 
-pub enum Application {
-    Shell,
-    WindowManager,
-}
-
 #[derive(Debug, PartialEq, IntoPrimitive, FromPrimitive)]
 #[repr(usize)]
 pub enum TerminalInputState {

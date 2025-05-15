@@ -10,18 +10,7 @@ use pc_keyboard::DecodedKey;
 */
 use syscall::{SystemCall, syscall};
 
-use crate::{Application, DecodedKeyType, TerminalMode};
-
-pub fn try_read(application: Application) -> Option<char> {
-    let application_addr = core::ptr::addr_of!(application) as usize;
-    let res = syscall(SystemCall::TerminalReadInput, &[application_addr /*, 0*/]);
-
-    match res {
-        Ok(0) => None,
-        Ok(ch) => Some(char::from_u32(ch as u32).unwrap()),
-        Err(_) => None,
-    }
-}
+use crate::{DecodedKeyType, TerminalMode};
 
 /// TODO proper docs
 /// Author: Sebastian Keller
