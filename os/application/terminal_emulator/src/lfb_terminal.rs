@@ -75,9 +75,6 @@ impl InputStream for LFBTerminal {
         let read_byte;
 
         loop {
-            // let mut decoder = self.decoder.lock();
-            // let mode = self.mode.lock().get();
-
             match keyboard::read_raw() {
                 Some(byte) => {
                     read_byte = byte;
@@ -85,44 +82,7 @@ impl InputStream for LFBTerminal {
                 }
                 None => continue,
             };
-
-            // if mode == TerminalMode::Raw {
-            //     read_byte = byte;
-            //     break;
-            // }
-
-            // let event_option = match decoder.add_byte(byte) {
-            //     Ok(event) => event,
-            //     Err(_) => continue,
-            // };
-
-            // let key_result = match event_option {
-            //     Some(event) => decoder.process_keyevent(event),
-            //     None => continue,
-            // };
-
-            // let key = match key_result {
-            //     Some(key) => key,
-            //     None => continue,
-            // };
-
-            // if mode == TerminalMode::Mixed {
-            //     read_byte = key as i16;
-            //     break;
-            // }
-
-            // // TODO#2 check for cooked / raw mode
-            // match key {
-            //     DecodedKey::Unicode(ch) => {
-            //         read_byte = ch;
-            //         break;
-            //     }
-            //     _ => continue,
-            // }
         }
-
-        // TODO#2 check for cooked / raw mode
-        // self.write_byte(read_byte as u8);
 
         return read_byte as i16;
     }

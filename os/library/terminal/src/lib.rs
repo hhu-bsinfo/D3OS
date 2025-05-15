@@ -1,9 +1,13 @@
 #![no_std]
 
 extern crate alloc;
+extern crate pc_keyboard;
 
 pub mod read;
 pub mod write;
+
+pub use pc_keyboard::DecodedKey;
+pub use pc_keyboard::KeyCode;
 
 use num_enum::{FromPrimitive, IntoPrimitive};
 

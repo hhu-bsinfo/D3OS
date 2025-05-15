@@ -612,6 +612,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "keytest"
+version = "0.1.0"
+dependencies = [
+ "runtime",
+ "terminal",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1317,6 +1325,7 @@ name = "terminal"
 version = "0.1.0"
 dependencies = [
  "num_enum",
+ "pc-keyboard",
  "spin 0.9.8",
  "syscall",
 ]

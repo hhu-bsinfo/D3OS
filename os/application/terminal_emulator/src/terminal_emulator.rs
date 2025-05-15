@@ -121,44 +121,5 @@ pub fn main() {
 
     thread::start_application("shell", vec![]);
 
-    loop {
-        // // COOKED
-        // terminal.write_str("Enter cooked line:\n");
-        // let bytes = terminal.read(TerminalMode::Cooked);
-        // let string = String::from_utf8(bytes).unwrap();
-        // terminal.write_str(&format!("Received: {}\n\n", string));
-
-        // // MIXED
-        // terminal.write_str("Enter key (mixed):\n");
-        // let bytes = terminal.read(TerminalMode::Mixed);
-        // let key_type = match bytes.first() {
-        //     Some(k) => *k,
-        //     None => continue,
-        // };
-        // let key = match bytes.last() {
-        //     Some(k) => *k,
-        //     None => continue,
-        // };
-        // if DecodedKeyType::from(key_type) == DecodedKeyType::RawKey {
-        //     terminal.write_str(&format!(
-        //         "Received RawKey: {:?}\n\n",
-        //         DecodedKey::RawKey(unsafe { core::mem::transmute(key) })
-        //     ));
-        // };
-        // if DecodedKeyType::from(key_type) == DecodedKeyType::Unicode {
-        //     terminal.write_str(&format!(
-        //         "Received Unicode: {:?}\n\n",
-        //         DecodedKey::Unicode(key as char)
-        //     ));
-        // };
-
-        // // RAW
-        // terminal.write_str("Enter key (raw):\n");
-        // let bytes = terminal.read(TerminalMode::Raw);
-        // let key = match bytes.first() {
-        //     Some(k) => *k,
-        //     None => continue,
-        // };
-        // terminal.write_str(&format!("Received Raw key: {:?}\n\n", key));
-    }
+    loop {}
 }
