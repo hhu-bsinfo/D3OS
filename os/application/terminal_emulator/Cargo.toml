@@ -20,6 +20,7 @@ system_info = { path = "../../library/system_info" }
 input = { path = "../../library/input" }
 syscall = {path ="../../library/syscall"}
 terminal = {path ="../../library/terminal"}
+globals = {path ="../../library/globals"}
 
 # Extern dependencies
 anstyle-parse = "0.2.6"

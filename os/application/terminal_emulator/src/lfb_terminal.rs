@@ -1,6 +1,6 @@
 use core::{cell::RefCell, ptr};
 
-use alloc::{format, string::ToString, vec::Vec};
+use alloc::{format, string::ToString};
 use anstyle_parse::{Params, ParamsIter, Parser, Perform, Utf8Parser};
 use concurrent::{
     process,
@@ -12,14 +12,10 @@ use graphic::{
     lfb,
 };
 use input::keyboard;
-use pc_keyboard::{
-    DecodedKey, HandleControl, Keyboard, ScancodeSet1,
-    layouts::{AnyLayout, De105Key},
-};
+
 use spin::Mutex;
 use stream::{InputStream, OutputStream};
 use system_info::build_info::{BuildInfo, build_info};
-use terminal_lib::{DecodedKeyType, TerminalMode};
 use time::{date, systime};
 
 use crate::{
@@ -36,7 +32,6 @@ pub struct LFBTerminal {
     pub(crate) cursor: Mutex<CursorState>,
     pub(crate) color: Mutex<ColorState>,
     pub(crate) parser: Mutex<RefCell<Parser>>,
-    pub(crate) decoder: Mutex<Keyboard<AnyLayout, ScancodeSet1>>,
 }
 
 unsafe impl Send for LFBTerminal {}
@@ -92,21 +87,12 @@ impl Terminal for LFBTerminal {
         LFBTerminal::position(&mut display, &mut cursor, &mut color, (0, 0));
     }
 
-    fn read(&self, mode: TerminalMode) -> Option<Vec<u8>> {
-        match mode {
-            TerminalMode::Cooked => self.read_cooked(),
-            TerminalMode::Mixed => self.read_mixed(),
-            TerminalMode::Raw => self.read_raw(),
-        }
-    }
-
     fn hide(&self) {
         self.display.lock().disable();
     }
 
     fn show(&self) {
         self.display.lock().enable();
-        unsafe { self.decoder.force_unlock() }; // TODO Decoder always locked (find solid fix)
     }
 }
 
@@ -126,98 +112,6 @@ impl LFBTerminal {
             cursor: Mutex::new(CursorState::new()),
             color: Mutex::new(ColorState::new()),
             parser: Mutex::new(RefCell::new(Parser::<Utf8Parser>::new())),
-            decoder: Mutex::new(Keyboard::new(
-                ScancodeSet1::new(),
-                AnyLayout::De105Key(De105Key),
-                HandleControl::Ignore,
-            )),
-        }
-    }
-
-    /// TODO do proper docs
-    /// Returns option of vec with only one byte (raw key)
-    fn read_raw(&self) -> Option<Vec<u8>> {
-        let mut bytes = Vec::with_capacity(1);
-        match self.read_byte() {
-            // TODO Find a better place for this (Create a proper processing pipeline)
-            59 /* F1 */ => {
-                // terminal_emulator().disable_visibility(); // TODO#1 fix
-                return None;
-            },
-            ..0 => return None,
-            byte => bytes.push(byte as u8),
-        };
-
-        Some(bytes)
-    }
-
-    /// TODO do proper docs
-    /// Returns option of vec with two bytes (key type, decoded key)
-    fn read_mixed(&self) -> Option<Vec<u8>> {
-        let key_result = self.read_decoded();
-        let mut bytes = Vec::with_capacity(2);
-
-        match key_result {
-            Some(DecodedKey::Unicode(key)) => {
-                bytes.push(DecodedKeyType::Unicode as u8);
-                bytes.push(key as u8);
-            }
-            Some(DecodedKey::RawKey(key)) => {
-                bytes.push(DecodedKeyType::RawKey as u8);
-                bytes.push(key as u8);
-            }
-            None => return None,
-        };
-
-        Some(bytes)
-    }
-
-    /// TODO#4 BUG: Terminal will continue to wait for user input, even if reading thread no longer exists, other threads wont be able to read on a different mode until the user hits enter (same mode should be fine)
-    /// TODO do proper docs
-    /// Echoes and returns vec with line of unicodes (key type, decoded key)
-    fn read_cooked(&self) -> Option<Vec<u8>> {
-        let mut bytes = Vec::new();
-        loop {
-            let ch = match self.read_decoded() {
-                Some(DecodedKey::Unicode(ch)) => ch,
-                _ => continue,
-            };
-
-            self.write_byte(ch as u8);
-
-            match ch {
-                '\n' => break,
-                '\x08' => {
-                    if bytes.pop().is_some() {
-                        self.write_str("\x1b[1D \x1b[1D");
-                    }
-                }
-                _ => bytes.push(ch as u8),
-            };
-        }
-
-        Some(bytes)
-    }
-
-    /// TODO do proper docs
-    /// Helper for read_mixed & read_cooked
-    fn read_decoded(&self) -> Option<DecodedKey> {
-        let mut decoder = self.decoder.lock();
-        let bytes = match self.read_raw() {
-            Some(bytes) => bytes,
-            None => return None,
-        };
-
-        let byte = *bytes
-            .first()
-            .expect("Expected raw bytes to have at least one byte");
-        let event_option = match decoder.add_byte(byte) {
-            Ok(event) => event,
-            Err(_) => return None,
-        };
-        match event_option {
-            Some(event) => decoder.process_keyevent(event),
-            None => return None,
         }
     }
 

@@ -1323,6 +1323,7 @@ dependencies = [
  "chrono",
  "concurrent",
  "drawer",
+ "globals",
  "graphic",
  "input",
  "num_enum",

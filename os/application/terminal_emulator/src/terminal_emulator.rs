@@ -5,8 +5,10 @@ extern crate terminal as terminal_lib;
 
 pub mod color;
 pub mod cursor;
+pub mod decoder;
 pub mod display;
 pub mod lfb_terminal;
+mod observer;
 pub mod terminal;
 
 use alloc::sync::Arc;
@@ -16,21 +18,22 @@ use concurrent::thread::{self};
 use cursor::start_cursor_thread;
 use graphic::lfb::get_lfb_info;
 use lfb_terminal::LFBTerminal;
+use observer::input_observer::start_input_observer_thread;
 use spin::Once;
 use syscall::{SystemCall, syscall};
 use terminal::Terminal;
-use terminal_lib::{TerminalInputState, TerminalMode};
 
 #[allow(unused_imports)]
 use runtime::*;
 
 const OUTPUT_BUFFER_SIZE: usize = 128;
 
-static TERMINAL_EMULATOR: Once<TerminalEmulator> = Once::new();
+static TERMINAL_EMULATOR: Once<Arc<TerminalEmulator>> = Once::new();
 
 pub struct TerminalEmulator {
     terminal: Arc<dyn Terminal>,
     cursor: Option<Thread>,
+    input_observer: Option<Thread>,
     operator: Option<Thread>,
 }
 
@@ -39,6 +42,7 @@ impl TerminalEmulator {
         let terminal = LFBTerminal::new(address, pitch, width, height, bpp, true);
         Self {
             terminal: Arc::new(terminal),
+            input_observer: None,
             cursor: None,
             operator: None,
         }
@@ -47,6 +51,7 @@ impl TerminalEmulator {
     pub fn init(&mut self) {
         self.terminal().clear();
         self.cursor = start_cursor_thread();
+        self.input_observer = start_input_observer_thread();
         self.operator = thread::start_application("shell", vec![]);
     }
 
@@ -101,43 +106,14 @@ impl TerminalEmulator {
         }
     }
 
-    fn observe_input(&self) {
-        let terminal = self.terminal();
-        let result = TerminalInputState::from(
-            syscall(SystemCall::TerminalCheckInputState, &[]).unwrap() as usize,
-        );
-
-        let mode = match result {
-            TerminalInputState::InputReaderAwaitsCooked => TerminalMode::Cooked,
-            TerminalInputState::InputReaderAwaitsMixed => TerminalMode::Mixed,
-            TerminalInputState::InputReaderAwaitsRaw => TerminalMode::Raw,
-            TerminalInputState::Idle => TerminalMode::Raw,
-        };
-
-        let bytes = match terminal.read(mode) {
-            Some(bytes) => bytes,
-            None => vec![],
-        };
-
-        if result == TerminalInputState::Idle {
-            return;
-        }
-
-        syscall(
-            SystemCall::TerminalWriteInput,
-            &[bytes.as_ptr() as usize, bytes.len(), mode as usize],
-        );
-    }
-
     fn run(&self) {
         loop {
             self.observe_output();
-            self.observe_input();
         }
     }
 }
 
-fn init_terminal_emulator() -> &'static TerminalEmulator {
+fn init_terminal_emulator() {
     TERMINAL_EMULATOR.call_once(|| {
         let lfb_info = get_lfb_info();
         let mut emulator = TerminalEmulator::new(
@@ -148,22 +124,22 @@ fn init_terminal_emulator() -> &'static TerminalEmulator {
             lfb_info.bpp,
         );
         emulator.init();
-        emulator
-    })
+        Arc::new(emulator)
+    });
 }
 
-pub fn terminal_emulator() -> &'static TerminalEmulator {
-    TERMINAL_EMULATOR
+pub fn terminal_emulator() -> Arc<TerminalEmulator> {
+    let emulator = TERMINAL_EMULATOR
         .get()
-        .expect("Trying to access terminal emulator before initialization!")
+        .expect("Trying to access terminal emulator before initialization!");
+    Arc::clone(emulator)
 }
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let emulator = init_terminal_emulator();
+    init_terminal_emulator();
+    let emulator = terminal_emulator();
     emulator.run()
-
-    // terminal.clear();
 
     // terminal.write_str("Press 'F1' to toggle between text and gui mode\n\n");
 }

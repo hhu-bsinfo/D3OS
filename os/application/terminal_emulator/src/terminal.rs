@@ -1,13 +1,10 @@
-use alloc::vec::Vec;
 use core::fmt;
 use core::fmt::Write;
 use core::ops::Deref;
 use stream::{InputStream, OutputStream};
-use terminal_lib::TerminalMode;
 
 pub trait Terminal: OutputStream + InputStream {
     fn clear(&self);
-    fn read(&self, mode: TerminalMode) -> Option<Vec<u8>>;
     fn hide(&self);
     fn show(&self);
 }
