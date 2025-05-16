@@ -8,3 +8,4 @@ pub(crate) mod calculator;
 pub(crate) mod radio_buttons;
 pub(crate) mod canvas_example;
 pub(crate) mod layout_app;
+pub(crate) mod text_editor;

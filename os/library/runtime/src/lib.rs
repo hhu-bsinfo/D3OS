@@ -21,7 +21,7 @@ unsafe extern "C" {
     fn main(argc: isize, argv: *const *const u8) -> isize;
 }
 
-const HEAP_SIZE: usize = 0x800000; // TODO#? 0x100000 is causing allocation error (heap to small for fb, why is it not allocating more???)
+const HEAP_SIZE: usize = 0x1000000; // TODO#? 0x100000 is causing allocation error (heap to small for fb, why is it not allocating more???)
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();

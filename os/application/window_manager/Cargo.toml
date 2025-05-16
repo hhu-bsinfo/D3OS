@@ -19,6 +19,7 @@ graphic = { path = "../../library/graphic" }
 time = { path = "../../library/time" }
 input = { path = "../../library/input" }
 globals = { path = "../../library/globals" }
+text_buffer = { path = "../../library/text_buffer" }
 
 hashbrown = "0.14.5"
 spin = "0.9.8"
