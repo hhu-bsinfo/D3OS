@@ -595,4 +595,29 @@ mod tests {
         assert!(buffer.get_char(1).unwrap() == 'b');
         assert!(buffer.get_char(2).unwrap() == 'c');
     }
+    #[test]
+    fn delete_in_add() {
+        let file_buffer = "B";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(0, 'A');
+        assert!(res.is_ok());
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 1
+                }
+            ]
+        );
+        let res = buffer.delete(0);
+        assert!(res.is_ok());
+        assert_eq!(String::from("B"), generate_string(&buffer));
+    }
 }
