@@ -75,10 +75,11 @@ fn panic(info: &PanicInfo) -> ! {
     if terminal_initialized() {
         println!("Panic: {}", info);
     } else {
-        let args = [info.message().as_str().unwrap()];
+        let args = [info.message().as_str().unwrap_or("(no message provided)")];
         let record = Record::builder()
             .level(Level::Error)
-            .file(Some("panic"))
+            .file(info.location().map(|l| l.file()))
+            .line(info.location().map(|l| l.line()))
             .args(Arguments::new_const(&args))
             .build();
 
