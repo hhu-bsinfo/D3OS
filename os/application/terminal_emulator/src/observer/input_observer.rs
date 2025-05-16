@@ -4,9 +4,9 @@ use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
 use pc_keyboard::DecodedKey;
 use spin::Mutex;
 use syscall::{SystemCall, syscall};
-use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode};
+use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode, write::log_debug};
 
-use crate::{TerminalEmulator, decoder::Decoder, terminal_emulator};
+use crate::{TerminalEmulator, decoder::Decoder, event_handler::Event, terminal_emulator};
 
 struct InputObserverThread {
     emulator: Arc<TerminalEmulator>,
@@ -31,7 +31,10 @@ impl InputObserverThread {
 
             let decoded = match self.intercept(decoded) {
                 Some(key) => key,
-                None => continue,
+                None => {
+                    thread::switch();
+                    continue;
+                }
             };
 
             let state = TerminalInputState::from(
@@ -58,14 +61,21 @@ impl InputObserverThread {
         }
     }
 
+    // TODO Does not work once we entered cooked mode loop (intercept also there or only read from intercepted function)
     fn intercept(&self, key: Option<DecodedKey>) -> Option<DecodedKey> {
         if key.is_none() {
             return None;
         }
 
         match key.unwrap() {
-            /* TODO create a event handler in emulator, with mutex, where we push to a queue here and pop it in the main thread that performs an action*/
-            DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => return None,
+            DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => {
+                log_debug("F1");
+                self.emulator
+                    .event_handler
+                    .lock()
+                    .trigger(Event::EnterGuiMode);
+                return None;
+            }
             key => return Some(key),
         }
     }

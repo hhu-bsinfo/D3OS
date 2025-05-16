@@ -7,6 +7,7 @@ pub mod color;
 pub mod cursor;
 pub mod decoder;
 pub mod display;
+pub mod event_handler;
 pub mod lfb_terminal;
 mod observer;
 pub mod terminal;
@@ -16,15 +17,17 @@ use alloc::vec;
 use concurrent::thread::Thread;
 use concurrent::thread::{self};
 use cursor::start_cursor_thread;
+use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
 use lfb_terminal::LFBTerminal;
 use observer::input_observer::start_input_observer_thread;
-use spin::Once;
+use spin::{Mutex, Once};
 use syscall::{SystemCall, syscall};
 use terminal::Terminal;
 
 #[allow(unused_imports)]
 use runtime::*;
+use terminal_lib::write::log_debug;
 
 const OUTPUT_BUFFER_SIZE: usize = 128;
 
@@ -32,9 +35,10 @@ static TERMINAL_EMULATOR: Once<Arc<TerminalEmulator>> = Once::new();
 
 pub struct TerminalEmulator {
     terminal: Arc<dyn Terminal>,
-    cursor: Option<Thread>,
-    input_observer: Option<Thread>,
-    operator: Option<Thread>,
+    cursor: Mutex<Option<Thread>>,
+    input_observer: Mutex<Option<Thread>>,
+    operator: Mutex<Option<Thread>>,
+    event_handler: Mutex<EventHandler>,
 }
 
 impl TerminalEmulator {
@@ -42,43 +46,67 @@ impl TerminalEmulator {
         let terminal = LFBTerminal::new(address, pitch, width, height, bpp, true);
         Self {
             terminal: Arc::new(terminal),
-            input_observer: None,
-            cursor: None,
-            operator: None,
+            input_observer: Mutex::new(None),
+            cursor: Mutex::new(None),
+            operator: Mutex::new(None),
+            event_handler: Mutex::new(EventHandler::new()),
         }
     }
 
     pub fn init(&mut self) {
         self.terminal().clear();
-        self.cursor = start_cursor_thread();
-        self.input_observer = start_input_observer_thread();
-        self.operator = thread::start_application("shell", vec![]);
+        *self.cursor.lock() = start_cursor_thread();
+        *self.input_observer.lock() = start_input_observer_thread();
+        *self.operator.lock() = thread::start_application("shell", vec![]);
     }
 
     pub fn terminal(&self) -> Arc<dyn Terminal> {
         Arc::clone(&self.terminal)
     }
 
-    pub fn disable_visibility(&mut self) {
+    pub fn disable_visibility(&self) {
         self.terminal().hide();
 
-        if self.operator.is_some() {
-            let _ = syscall(SystemCall::TerminalTerminateOperator, &[1, 0]);
-            self.operator = None;
+        {
+            let mut operator = self.operator.lock();
+            if operator.is_some() {
+                let _ = syscall(SystemCall::TerminalTerminateOperator, &[1, 0]);
+                *operator = None;
+            }
+        }
+
+        {
+            let mut input_observer = self.input_observer.lock();
+            if input_observer.is_some() {
+                input_observer.as_mut().unwrap().kill();
+                *input_observer = None;
+            }
         }
 
         thread::start_application("window_manager", vec![])
             .unwrap()
             .join();
+
         // Reenable visibility when window manager exits
         self.enable_visibility();
     }
 
-    pub fn enable_visibility(&mut self) {
+    pub fn enable_visibility(&self) {
         self.terminal().show();
 
-        if self.operator.is_none() {
-            self.operator = Some(thread::start_application("shell", vec![]).unwrap());
+        {
+            let mut operator = self.operator.lock();
+            log_debug("About to show");
+            if operator.is_none() {
+                *operator = Some(thread::start_application("shell", vec![]).unwrap());
+            }
+        }
+
+        {
+            let mut input_observer = self.input_observer.lock();
+            if input_observer.is_none() {
+                *input_observer = start_input_observer_thread();
+            }
         }
     }
 
@@ -108,8 +136,22 @@ impl TerminalEmulator {
 
     fn run(&self) {
         loop {
+            self.handle_events();
             self.observe_output();
         }
+    }
+
+    fn handle_events(&self) {
+        let event = match self.event_handler.lock().handle() {
+            Some(event) => event,
+            None => return,
+        };
+
+        match event {
+            Event::EnterGuiMode => self.disable_visibility(),
+        }
+
+        self.handle_events();
     }
 }
 
