@@ -10,6 +10,7 @@ pub mod display;
 pub mod event_handler;
 pub mod lfb_terminal;
 mod observer;
+mod operator;
 pub mod terminal;
 
 use alloc::sync::Arc;
@@ -20,14 +21,14 @@ use cursor::start_cursor_thread;
 use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
 use lfb_terminal::LFBTerminal;
-use observer::input_observer::start_input_observer_thread;
+use observer::input_observer::InputObserver;
+use operator::Operator;
 use spin::{Mutex, Once};
 use syscall::{SystemCall, syscall};
 use terminal::Terminal;
 
 #[allow(unused_imports)]
 use runtime::*;
-use terminal_lib::write::log_debug;
 
 const OUTPUT_BUFFER_SIZE: usize = 128;
 
@@ -36,8 +37,8 @@ static TERMINAL_EMULATOR: Once<Arc<TerminalEmulator>> = Once::new();
 pub struct TerminalEmulator {
     terminal: Arc<dyn Terminal>,
     cursor: Mutex<Option<Thread>>,
-    input_observer: Mutex<Option<Thread>>,
-    operator: Mutex<Option<Thread>>,
+    input_observer: Mutex<InputObserver>,
+    operator: Mutex<Operator>,
     event_handler: Mutex<EventHandler>,
 }
 
@@ -46,9 +47,9 @@ impl TerminalEmulator {
         let terminal = LFBTerminal::new(address, pitch, width, height, bpp, true);
         Self {
             terminal: Arc::new(terminal),
-            input_observer: Mutex::new(None),
+            input_observer: Mutex::new(InputObserver::new()),
             cursor: Mutex::new(None),
-            operator: Mutex::new(None),
+            operator: Mutex::new(Operator::new()),
             event_handler: Mutex::new(EventHandler::new()),
         }
     }
@@ -56,58 +57,33 @@ impl TerminalEmulator {
     pub fn init(&mut self) {
         self.terminal().clear();
         *self.cursor.lock() = start_cursor_thread();
-        *self.input_observer.lock() = start_input_observer_thread();
-        *self.operator.lock() = thread::start_application("shell", vec![]);
+        self.input_observer.lock().create();
+        self.operator.lock().create();
     }
 
     pub fn terminal(&self) -> Arc<dyn Terminal> {
         Arc::clone(&self.terminal)
     }
 
-    pub fn disable_visibility(&self) {
+    pub fn disable(&self) {
         self.terminal().hide();
-
         {
-            let mut operator = self.operator.lock();
-            if operator.is_some() {
-                let _ = syscall(SystemCall::TerminalTerminateOperator, &[1, 0]);
-                *operator = None;
-            }
+            /* Separate block, because lock would extend into self.enable() causing infinite lock */
+            self.operator.lock().kill();
+            self.input_observer.lock().kill();
         }
 
-        {
-            let mut input_observer = self.input_observer.lock();
-            if input_observer.is_some() {
-                input_observer.as_mut().unwrap().kill();
-                *input_observer = None;
-            }
-        }
-
+        // Reenable visibility when window manager exits
         thread::start_application("window_manager", vec![])
             .unwrap()
             .join();
-
-        // Reenable visibility when window manager exits
-        self.enable_visibility();
+        self.enable();
     }
 
-    pub fn enable_visibility(&self) {
+    pub fn enable(&self) {
         self.terminal().show();
-
-        {
-            let mut operator = self.operator.lock();
-            log_debug("About to show");
-            if operator.is_none() {
-                *operator = Some(thread::start_application("shell", vec![]).unwrap());
-            }
-        }
-
-        {
-            let mut input_observer = self.input_observer.lock();
-            if input_observer.is_none() {
-                *input_observer = start_input_observer_thread();
-            }
-        }
+        self.operator.lock().create();
+        self.input_observer.lock().create();
     }
 
     fn observe_output(&self) {
@@ -148,7 +124,7 @@ impl TerminalEmulator {
         };
 
         match event {
-            Event::EnterGuiMode => self.disable_visibility(),
+            Event::EnterGuiMode => self.disable(),
         }
 
         self.handle_events();

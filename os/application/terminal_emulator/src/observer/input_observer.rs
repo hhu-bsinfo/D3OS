@@ -8,10 +8,41 @@ use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode, write::log_
 
 use crate::{TerminalEmulator, decoder::Decoder, event_handler::Event, terminal_emulator};
 
+pub struct InputObserver {
+    thread: Option<Thread>,
+}
+
 struct InputObserverThread {
     emulator: Arc<TerminalEmulator>,
     decoder: Mutex<Decoder>,
     mode: TerminalMode,
+}
+
+impl InputObserver {
+    pub const fn new() -> Self {
+        Self { thread: None }
+    }
+
+    pub fn create(&mut self) {
+        if self.thread.is_some() {
+            return;
+        }
+
+        let thread = thread::create(|| {
+            let mut observer = InputObserverThread::new(terminal_emulator());
+            observer.run();
+        })
+        .expect("Unable to start input observer thread");
+        self.thread = Some(thread);
+    }
+
+    pub fn kill(&mut self) {
+        if self.thread.is_none() {
+            return;
+        }
+        self.thread.as_mut().unwrap().kill();
+        self.thread = None;
+    }
 }
 
 impl InputObserverThread {
@@ -23,7 +54,7 @@ impl InputObserverThread {
         }
     }
 
-    pub fn run(&mut self) {
+    fn run(&mut self) {
         let terminal = self.emulator.terminal();
         loop {
             let raw = terminal.read_byte() as u8;
@@ -129,11 +160,4 @@ impl InputObserverThread {
         }
         buffer
     }
-}
-
-pub fn start_input_observer_thread() -> Option<Thread> {
-    thread::create(|| {
-        let mut observer = InputObserverThread::new(terminal_emulator());
-        observer.run();
-    })
 }
