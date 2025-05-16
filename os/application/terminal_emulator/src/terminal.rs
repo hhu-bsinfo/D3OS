@@ -8,6 +8,8 @@ use terminal_lib::TerminalMode;
 pub trait Terminal: OutputStream + InputStream {
     fn clear(&self);
     fn read(&self, mode: TerminalMode) -> Option<Vec<u8>>;
+    fn hide(&self);
+    fn show(&self);
 }
 
 // Implementation of the 'core::fmt::Write' trait for our Terminal

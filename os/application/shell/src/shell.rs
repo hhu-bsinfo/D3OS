@@ -4,10 +4,11 @@ extern crate alloc;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use concurrent::thread;
+use concurrent::{process, thread};
 use naming::{cd, cwd, mkdir, touch};
 #[allow(unused_imports)]
 use runtime::*;
+use syscall::{SystemCall, syscall};
 use terminal::read::read;
 use terminal::{print, println};
 
@@ -84,6 +85,10 @@ fn process_line(line: String) {
 #[unsafe(no_mangle)]
 pub fn main() {
     loop {
+        if syscall(SystemCall::TerminalTerminateOperator, &[0, 1]).unwrap() == 1 {
+            process::exit();
+        }
+
         print!("> ");
         let line = read();
         process_line(line);

@@ -26,6 +26,10 @@ impl Thread {
     pub fn join(&self) {
         let _ = syscall(SystemCall::ThreadJoin, &[self.id]);
     }
+
+    pub fn kill(&self) {
+        let _ = syscall(SystemCall::ThreadKill, &[self.id]);
+    }
 }
 
 fn kickoff_user_thread(entry: fn()) {

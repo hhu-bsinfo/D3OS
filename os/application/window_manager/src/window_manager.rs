@@ -569,10 +569,7 @@ impl WindowManager {
     }
 
     fn enter_text_mode(&mut self) {
-        // TODO Check why screen is not clearing
-        // TODO Check why window manager freezes when pressing a key after F1 and before termination
         Drawer::full_clear_screen(true);
-        thread::start_application("terminal_emulator", vec![]);
         process::exit();
     }
 }

@@ -8,13 +8,16 @@
 */
 use core::slice::from_raw_parts;
 use core::str::from_utf8;
+use core::sync::atomic::{AtomicBool, Ordering};
 use core::{ptr::slice_from_raw_parts, slice::from_raw_parts_mut};
-use log::{debug, error};
+use log::{debug, error, info};
 use syscall::return_vals::Errno;
 use terminal::{TerminalInputState, TerminalMode};
 
 use crate::device::tty::TtyInputState;
 use crate::{tty_input, tty_output};
+
+static KILL_OPERATOR_FLAG: AtomicBool = AtomicBool::new(false);
 
 /// For applications
 /// TODO#8 Do proper docs
@@ -102,5 +105,27 @@ pub fn sys_log_debug(string_addr: *const u8, string_len: usize) {
     })
     .unwrap();
 
-    debug!("{}", log_string);
+    // debug!("{}", log_string); // Use info while dev profile is broken (towboot bug)
+    info!("{}", log_string);
+}
+
+/// For Application & Terminal
+/// TODO#8 Do proper docs
+///
+/// Order the operator process (usually shell) to exit (Workaround due to missing ipc)
+///
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_terminate_operator(cmd: bool, ack: bool) -> isize {
+    if cmd {
+        KILL_OPERATOR_FLAG.store(true, Ordering::SeqCst);
+        return 0;
+    }
+
+    if ack && KILL_OPERATOR_FLAG.load(Ordering::SeqCst) {
+        KILL_OPERATOR_FLAG.store(false, Ordering::SeqCst);
+        return 1;
+    }
+
+    0
 }

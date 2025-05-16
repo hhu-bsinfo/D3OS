@@ -27,6 +27,7 @@ use crate::{
     cursor::CursorState,
     display::{Character, DisplayState},
     terminal::Terminal,
+    terminal_emulator,
 };
 
 const TAB_SPACES: u16 = 8;
@@ -99,6 +100,15 @@ impl Terminal for LFBTerminal {
             TerminalMode::Raw => self.read_raw(),
         }
     }
+
+    fn hide(&self) {
+        self.display.lock().disable();
+    }
+
+    fn show(&self) {
+        self.display.lock().enable();
+        unsafe { self.decoder.force_unlock() }; // TODO Decoder always locked (find solid fix)
+    }
 }
 
 impl LFBTerminal {
@@ -125,19 +135,16 @@ impl LFBTerminal {
         }
     }
 
-    fn enter_gui_mode(&self) {
-        self.display.lock().disable();
-        thread::start_application("window_manager", Vec::new());
-        process::exit();
-    }
-
     /// TODO do proper docs
     /// Returns option of vec with only one byte (raw key)
     fn read_raw(&self) -> Option<Vec<u8>> {
         let mut bytes = Vec::with_capacity(1);
         match self.read_byte() {
             // TODO Find a better place for this (Create a proper processing pipeline)
-            59 /* F1 */ => self.enter_gui_mode(),
+            59 /* F1 */ => {
+                terminal_emulator().lock().disable_visibility();
+                return None;
+            },
             ..0 => return None,
             byte => bytes.push(byte as u8),
         };
@@ -197,7 +204,6 @@ impl LFBTerminal {
     /// Helper for read_mixed & read_cooked
     fn read_decoded(&self) -> Option<DecodedKey> {
         let mut decoder = self.decoder.lock();
-
         let bytes = match self.read_raw() {
             Some(bytes) => bytes,
             None => return None,

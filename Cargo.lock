@@ -1167,6 +1167,7 @@ dependencies = [
  "concurrent",
  "naming",
  "runtime",
+ "syscall",
  "terminal",
 ]
 

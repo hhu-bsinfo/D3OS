@@ -57,6 +57,11 @@ pub fn sys_thread_join(id: usize) -> isize {
     0
 }
 
+pub fn sys_thread_kill(id: usize) -> isize {
+    scheduler().kill(id);
+    0
+}
+
 pub fn sys_thread_exit() -> isize {
     scheduler().exit();
     0
