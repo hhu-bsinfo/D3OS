@@ -73,7 +73,11 @@ impl VirtualAddressSpace {
         self.page_tables.load();
     }
 
+    /// Add a [`VirtualMemoryArea`] to this address space.
+    /// 
+    /// This doesn't actually map it in, this only happens on memory access.
     pub fn add_vma(&self, new_area: VirtualMemoryArea) {
+        // TODO: return an error instead of panicking
         let mut areas = self.virtual_memory_areas.write();
         match areas.iter().find(|area| area.overlaps_with(&new_area)) {
             Some(_) => panic!("Process: Trying to add a VMA, which overlaps with an existing one!"),
@@ -111,29 +115,33 @@ impl VirtualAddressSpace {
         }
     }
 
+    /// Map a [`VirtualMemoryArea`] to this address space.
+    /// 
+    /// This randomly allocates and maps some available frames.
+    /// TODO: make this lazy
     pub fn map(
         &self,
-        pages: PageRange,
+        vma: VirtualMemoryArea,
         space: MemorySpace,
         flags: PageTableFlags,
-        mem_type: VmaType,
-        tag_str: &str,
     ) {
-        self.add_vma(VirtualMemoryArea::new_with_tag(pages, mem_type, tag_str));
-        self.page_tables.map(pages, space, flags);
+        let areas = self.virtual_memory_areas.read();
+        areas.iter().find(|area| **area == vma)
+            .expect("tried to map a non-existent VMA!");
+        self.page_tables.map(vma.range, space, flags);
     }
 
     pub fn map_physical(
         &self,
+        vma: VirtualMemoryArea,
         frames: PhysFrameRange,
-        pages: PageRange,
         space: MemorySpace,
         flags: PageTableFlags,
-        mem_type: VmaType,
-        tag_str: &str,
     ) {
-        self.add_vma(VirtualMemoryArea::new_with_tag(pages, mem_type, tag_str));
-        self.page_tables.map_physical(frames, pages, space, flags);
+        let areas = self.virtual_memory_areas.read();
+        areas.iter().find(|area| **area == vma)
+            .expect("tried to map a non-existent VMA!");
+        self.page_tables.map_physical(frames, vma.range, space, flags);
     }
 
     pub fn map_io(&self, _frames: PhysFrameRange) { 

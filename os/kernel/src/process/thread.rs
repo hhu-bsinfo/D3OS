@@ -36,6 +36,7 @@ use crate::consts::MAIN_USER_STACK_START;
 use crate::consts::MAX_USER_STACK_SIZE;
 use crate::consts::{KERNEL_STACK_PAGES, USER_SPACE_ENV_START};
 use crate::memory::kstack::StackAllocator;
+use crate::memory::vmm::VirtualMemoryArea;
 use crate::memory::vmm::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process::process::Process;
@@ -162,15 +163,13 @@ impl Thread {
                         .offset(header.p_filesz as isize)
                         .write_bytes(0, (header.p_memsz - header.p_filesz) as usize);
                 }
+                let vma = VirtualMemoryArea::new_with_tag(pages, VmaType::Code, name);
+                process.virtual_address_space.add_vma(vma);
                 process.virtual_address_space.map_physical(
+                    vma,
                     frames,
-                    pages,
                     MemorySpace::User,
-                    PageTableFlags::PRESENT
-                        | PageTableFlags::WRITABLE
-                        | PageTableFlags::USER_ACCESSIBLE,
-                    VmaType::Code,
-                    name
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
                 );
             });
 
@@ -201,12 +200,12 @@ impl Thread {
         };
 
         // map user stack of the application
+        let stack_vma = VirtualMemoryArea::new_with_tag(user_stack_pages, VmaType::UserStack, "");
+        process.virtual_address_space.add_vma(stack_vma);
         process.virtual_address_space.map(
-            user_stack_pages,
+            stack_vma,
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-            VmaType::UserStack,
-            ""
         );
 
         info!("Created user stack for thread: {:x?}", user_stack_pages);
@@ -228,13 +227,13 @@ impl Thread {
         };
 
         // map environment of the application
+        let env_vma = VirtualMemoryArea::new_with_tag(env_pages, VmaType::Environment, "");
+        process.virtual_address_space.add_vma(env_vma);
         process.virtual_address_space.map_physical(
+            env_vma,
             env_frames,
-            env_pages,
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-            VmaType::Environment,
-            ""
         );
 
         // create argc and argv in the user space environment
@@ -330,12 +329,12 @@ impl Thread {
         let tid = scheduler::next_thread_id();
 
         // map one page as PRESENT for the allocated user stack
+        let stack_vma = VirtualMemoryArea::new_with_tag(user_stack_pages, VmaType::UserStack, "");
+        parent.virtual_address_space.add_vma(stack_vma);
         parent.virtual_address_space.map(
-            user_stack_pages,
+            stack_vma,
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-            VmaType::UserStack,
-            ""
         );
 
         // create user thread and prepare the stack for starting it later

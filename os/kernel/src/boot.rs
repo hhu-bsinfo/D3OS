@@ -15,6 +15,7 @@ use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
 use crate::memory::pages::page_table_index;
+use crate::memory::vmm::{VirtualMemoryArea, VmaType};
 use crate::memory::{MemorySpace, PAGE_SIZE, nvmem};
 use crate::network::rtl8139;
 use crate::process::thread::Thread;
@@ -136,15 +137,16 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             .align_up(PAGE_SIZE as u64),
     )
     .unwrap();
+    let vma = VirtualMemoryArea::new_with_tag(
+        PageRange { start: fb_start_page, end: fb_end_page },
+        VmaType::DeviceMemory,
+        "framebuffer",
+    );
+    kernel_process.virtual_address_space.add_vma(vma);
     kernel_process.virtual_address_space.map(
-        PageRange {
-            start: fb_start_page,
-            end: fb_end_page,
-        },
+        vma,
         MemorySpace::Kernel,
         PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
-        memory::vmm::VmaType::DeviceMemory,
-        "framebuffer",
     );
 
     // Initialize terminal kernel thread and enable terminal logging

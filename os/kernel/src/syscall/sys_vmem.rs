@@ -22,7 +22,15 @@ pub fn sys_map_user_heap(size: usize) -> isize {
     let heap_start = highest_code_area.end().align_up(PAGE_SIZE as u64);
     let heap_area = VirtualMemoryArea::from_address(heap_start, size, VmaType::Heap);
     
-    process.virtual_address_space.map(heap_area.range(), MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE, VmaType::Heap, "");
+    let vma = VirtualMemoryArea::new_with_tag(
+        heap_area.range(), VmaType::Heap, "",
+    );
+    process.virtual_address_space.add_vma(vma);
+    process.virtual_address_space.map(
+        vma,
+        MemorySpace::User,
+        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
+    );
     heap_start.as_u64() as isize
 }
 
