@@ -118,7 +118,6 @@ impl VirtualAddressSpace {
     /// Map a [`VirtualMemoryArea`] to this address space.
     /// 
     /// This randomly allocates and maps some available frames.
-    /// TODO: make this lazy
     pub fn map(
         &self,
         vma: VirtualMemoryArea,
@@ -129,6 +128,22 @@ impl VirtualAddressSpace {
         areas.iter().find(|area| **area == vma)
             .expect("tried to map a non-existent VMA!");
         self.page_tables.map(vma.range, space, flags);
+    }
+
+    /// Map a single page to this address space.
+    pub fn map_single(
+        &self,
+        vma: VirtualMemoryArea,
+        page: Page,
+        space: MemorySpace,
+        flags: PageTableFlags,
+    ) {
+        let areas = self.virtual_memory_areas.read();
+        areas.iter().find(|area| **area == vma)
+            .expect("tried to map a non-existent VMA!");
+        assert!(page.start_address() >= vma.start());
+        assert!(page.start_address() + page.size() < vma.end());
+        self.page_tables.map(PageRange { start: page, end: page + 1 }, space, flags);
     }
 
     pub fn map_physical(
