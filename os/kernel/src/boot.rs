@@ -370,11 +370,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         initrd()
             .entries()
             .find(|entry| entry.filename().as_str().unwrap() == "terminal_emulator")
-            .expect("Lfb Terminal application not available!")
+            .expect("Terminal application not available!")
             .data(),
         "terminal_emulator",
-        &["--wm"].to_vec(), // UNCOMMENT TO RUN WINDOW MANAGER
-        // &[].to_vec(), // UNCOMMENT TO RUN TEXT TERMINAL
+        &[].to_vec(),
     ));
 
     // // Disable terminal logging (remove terminal output stream)
