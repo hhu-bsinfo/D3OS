@@ -1725,6 +1725,7 @@ dependencies = [
  "input",
  "libm",
  "nolock",
+ "pc-keyboard",
  "runtime",
  "spin 0.9.8",
  "terminal",

@@ -15,12 +15,12 @@ use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
+use keyboard_decoder::KeyboardDecoder;
 use nolock::queues::mpsc::jiffy;
 
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
-use terminal::read::{read_mixed};
 use terminal::write::log_debug;
 use terminal::{DecodedKey, KeyCode};
 use input::mouse::{ try_read_mouse};
@@ -40,6 +40,7 @@ mod windows;
 mod workspace;
 mod signal;
 mod mouse_state;
+mod keyboard_decoder;
 
 // IDs are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -78,6 +79,7 @@ struct WindowManager {
     frames: i64,
 
     mouse_state: MouseState,
+    keyboard_decoder: KeyboardDecoder
 }
 
 impl WindowManager {
@@ -152,6 +154,7 @@ impl WindowManager {
                 start_time: time,
                 frames: 0,
                 mouse_state: MouseState::new(),
+                keyboard_decoder: KeyboardDecoder::new()
             },
             senders,
         )
@@ -200,7 +203,7 @@ impl WindowManager {
     }
 
     fn process_keyboard_input(&mut self) {
-        let read_option = read_mixed();
+        let read_option = self.keyboard_decoder.read_decoded();
 
         if let Some(keyboard_press) = read_option {
             // `enter_app_mode` overrides all other keyboard-interactions
