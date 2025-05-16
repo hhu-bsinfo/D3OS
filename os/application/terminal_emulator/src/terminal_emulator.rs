@@ -116,42 +116,15 @@ fn observe_input() {
     });
 }
 
-fn start_text_session() {
+#[unsafe(no_mangle)]
+pub fn main() {
     init_terminal(true);
     let terminal = terminal();
     terminal.clear();
+
+    terminal.write_str("Press 'F1' to toggle between text and gui mode\n\n");
+
     observe_input();
     observe_output();
     thread::start_application("shell", vec![]).unwrap().join();
-}
-
-fn start_window_manager_session() {
-    init_terminal(false);
-    observe_input();
-    thread::start_application("window_manager", vec![])
-        .unwrap()
-        .join();
-}
-
-enum Session {
-    Text,
-    WindowManager,
-}
-
-#[unsafe(no_mangle)]
-pub fn main() {
-    let args = env::args();
-    let mut session = Session::Text;
-
-    for arg in args {
-        match arg.as_str() {
-            "--wm" => session = Session::WindowManager,
-            _ => {}
-        }
-    }
-
-    match session {
-        Session::Text => start_text_session(),
-        Session::WindowManager => start_window_manager_session(),
-    }
 }

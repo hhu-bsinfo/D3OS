@@ -1,0 +1,11 @@
+[package]
+edition = "2024"
+name = "globals"
+version = "0.1.0"
+authors = ["Sebastian Keller <sebastian.keller@hhu.de>"]
+
+[dependencies]
+# Local dependencies
+
+# Extern dependencies
+pc-keyboard = "0.8.0"

@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use alloc::format;
+use alloc::{format, vec};
 use alloc::{borrow::ToOwned, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
 use chrono::{format, TimeDelta};
@@ -14,6 +14,7 @@ use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DEFAULT_BACKGROUN
 use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
+use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use keyboard_decoder::KeyboardDecoder;
 use nolock::queues::mpsc::jiffy;
@@ -220,6 +221,9 @@ impl WindowManager {
                 }
 
                 match keyboard_press {
+                    DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => {
+                        self.enter_text_mode();
+                    }
                     DecodedKey::Unicode('c') => {
                         self.create_new_workspace();
                     }
@@ -562,6 +566,14 @@ impl WindowManager {
                 Some(0)
             }).unwrap();
         }
+    }
+
+    fn enter_text_mode(&mut self) {
+        // TODO Check why screen is not clearing
+        // TODO Check why window manager freezes when pressing a key after F1 and before termination
+        Drawer::full_clear_screen(true);
+        thread::start_application("terminal_emulator", vec![]);
+        process::exit();
     }
 }
 

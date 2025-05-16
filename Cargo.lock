@@ -310,6 +310,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "globals"
+version = "0.1.0"
+dependencies = [
+ "pc-keyboard",
+]
+
+[[package]]
 name = "goblin"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1720,6 +1727,7 @@ dependencies = [
  "chrono",
  "concurrent",
  "drawer",
+ "globals",
  "graphic",
  "hashbrown",
  "input",

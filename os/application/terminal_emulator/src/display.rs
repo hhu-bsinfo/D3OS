@@ -121,18 +121,23 @@ impl DisplayState {
         }
     }
 
-    pub fn toggle_visibility(&mut self) {
-        match self.visible {
-            true => {
-                self.lfb.direct_lfb().clear();
-                self.visible = false;
-            }
-            false => {
-                self.lfb.direct_lfb().clear();
-                self.lfb.flush();
-                self.visible = true;
-            }
+    pub fn disable(&mut self) {
+        if !self.visible {
+            return;
         }
+
+        self.lfb.direct_lfb().clear();
+        self.visible = false;
+    }
+
+    pub fn enable(&mut self) {
+        if self.visible {
+            return;
+        }
+
+        self.lfb.direct_lfb().clear();
+        self.lfb.flush();
+        self.visible = true;
     }
 
     pub fn is_visible(&self) -> bool {

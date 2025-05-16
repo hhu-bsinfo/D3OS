@@ -125,11 +125,19 @@ impl LFBTerminal {
         }
     }
 
+    fn enter_gui_mode(&self) {
+        self.display.lock().disable();
+        thread::start_application("window_manager", Vec::new());
+        process::exit();
+    }
+
     /// TODO do proper docs
     /// Returns option of vec with only one byte (raw key)
     fn read_raw(&self) -> Option<Vec<u8>> {
         let mut bytes = Vec::with_capacity(1);
         match self.read_byte() {
+            // TODO Find a better place for this (Create a proper processing pipeline)
+            59 /* F1 */ => self.enter_gui_mode(),
             ..0 => return None,
             byte => bytes.push(byte as u8),
         };
