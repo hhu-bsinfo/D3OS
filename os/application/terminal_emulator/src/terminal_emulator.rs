@@ -13,12 +13,10 @@ use alloc::sync::Arc;
 use alloc::vec;
 use concurrent::thread::Thread;
 use concurrent::thread::{self};
-use core::usize;
-use cursor::CursorThread;
+use cursor::start_cursor_thread;
 use graphic::lfb::get_lfb_info;
 use lfb_terminal::LFBTerminal;
 use spin::Once;
-use spin::mutex::Mutex;
 use syscall::{SystemCall, syscall};
 use terminal::Terminal;
 use terminal_lib::{TerminalInputState, TerminalMode};
@@ -28,25 +26,36 @@ use runtime::*;
 
 const OUTPUT_BUFFER_SIZE: usize = 128;
 
-static TERMINAL: Once<Arc<dyn Terminal>> = Once::new();
-static STATE: Once<Arc<Mutex<TerminalEmulator>>> = Once::new();
+static TERMINAL_EMULATOR: Once<TerminalEmulator> = Once::new();
 
 pub struct TerminalEmulator {
+    terminal: Arc<dyn Terminal>,
+    cursor: Option<Thread>,
     operator: Option<Thread>,
 }
 
 impl TerminalEmulator {
-    pub const fn new() -> Self {
-        Self { operator: None }
+    pub fn new(address: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
+        let terminal = LFBTerminal::new(address, pitch, width, height, bpp, true);
+        Self {
+            terminal: Arc::new(terminal),
+            cursor: None,
+            operator: None,
+        }
     }
 
     pub fn init(&mut self) {
-        let shell = thread::start_application("shell", vec![]).unwrap();
-        self.operator = Some(shell);
+        self.terminal().clear();
+        self.cursor = start_cursor_thread();
+        self.operator = thread::start_application("shell", vec![]);
+    }
+
+    pub fn terminal(&self) -> Arc<dyn Terminal> {
+        Arc::clone(&self.terminal)
     }
 
     pub fn disable_visibility(&mut self) {
-        terminal().hide();
+        self.terminal().hide();
 
         if self.operator.is_some() {
             let _ = syscall(SystemCall::TerminalTerminateOperator, &[1, 0]);
@@ -61,118 +70,100 @@ impl TerminalEmulator {
     }
 
     pub fn enable_visibility(&mut self) {
-        terminal().show();
+        self.terminal().show();
 
         if self.operator.is_none() {
             self.operator = Some(thread::start_application("shell", vec![]).unwrap());
         }
     }
+
+    fn observe_output(&self) {
+        let mut buffer: [u8; OUTPUT_BUFFER_SIZE] = [0; OUTPUT_BUFFER_SIZE];
+        let terminal = self.terminal();
+        let result = syscall(
+            SystemCall::TerminalReadOutput,
+            &[buffer.as_mut_ptr() as usize, buffer.len()],
+        );
+
+        let byte_count = match result {
+            Ok(0) => {
+                return;
+            }
+            Ok(count) => count,
+            Err(_) => {
+                return;
+            }
+        };
+
+        for byte in &mut buffer[0..byte_count] {
+            terminal.write_byte(*byte);
+            *byte = 0;
+        }
+    }
+
+    fn observe_input(&self) {
+        let terminal = self.terminal();
+        let result = TerminalInputState::from(
+            syscall(SystemCall::TerminalCheckInputState, &[]).unwrap() as usize,
+        );
+
+        let mode = match result {
+            TerminalInputState::InputReaderAwaitsCooked => TerminalMode::Cooked,
+            TerminalInputState::InputReaderAwaitsMixed => TerminalMode::Mixed,
+            TerminalInputState::InputReaderAwaitsRaw => TerminalMode::Raw,
+            TerminalInputState::Idle => TerminalMode::Raw,
+        };
+
+        let bytes = match terminal.read(mode) {
+            Some(bytes) => bytes,
+            None => vec![],
+        };
+
+        if result == TerminalInputState::Idle {
+            return;
+        }
+
+        syscall(
+            SystemCall::TerminalWriteInput,
+            &[bytes.as_ptr() as usize, bytes.len(), mode as usize],
+        );
+    }
+
+    fn run(&self) {
+        loop {
+            self.observe_output();
+            self.observe_input();
+        }
+    }
 }
 
-fn init_terminal_emulator() {
-    STATE.call_once(|| Arc::new(Mutex::new(TerminalEmulator::new())));
+fn init_terminal_emulator() -> &'static TerminalEmulator {
+    TERMINAL_EMULATOR.call_once(|| {
+        let lfb_info = get_lfb_info();
+        let mut emulator = TerminalEmulator::new(
+            lfb_info.address as *mut u8,
+            lfb_info.pitch,
+            lfb_info.width,
+            lfb_info.height,
+            lfb_info.bpp,
+        );
+        emulator.init();
+        emulator
+    })
 }
 
-pub fn terminal_emulator() -> Arc<Mutex<TerminalEmulator>> {
-    STATE.get().unwrap().clone()
-}
-
-pub fn init_terminal(visible: bool) {
-    let lfb_info = get_lfb_info();
-    let lfb_terminal = Arc::new(LFBTerminal::new(
-        lfb_info.address as *mut u8,
-        lfb_info.pitch,
-        lfb_info.width,
-        lfb_info.height,
-        lfb_info.bpp,
-        visible,
-    ));
-    lfb_terminal.clear();
-    TERMINAL.call_once(|| lfb_terminal);
-
-    thread::create(|| {
-        let mut cursor_thread = CursorThread::new(terminal());
-        cursor_thread.run();
-    });
-}
-
-pub fn terminal() -> Arc<dyn Terminal> {
-    let terminal = TERMINAL
+pub fn terminal_emulator() -> &'static TerminalEmulator {
+    TERMINAL_EMULATOR
         .get()
-        .expect("Trying to access terminal before initialization!");
-    Arc::clone(terminal)
-}
-
-fn observe_output() {
-    let mut buffer: [u8; OUTPUT_BUFFER_SIZE] = [0; OUTPUT_BUFFER_SIZE];
-    let terminal = terminal();
-    let result = syscall(
-        SystemCall::TerminalReadOutput,
-        &[buffer.as_mut_ptr() as usize, buffer.len()],
-    );
-
-    let byte_count = match result {
-        Ok(0) => {
-            return;
-        }
-        Ok(count) => count,
-        Err(_) => {
-            return;
-        }
-    };
-
-    for byte in &mut buffer[0..byte_count] {
-        terminal.write_byte(*byte);
-        *byte = 0;
-    }
-}
-
-fn observe_input() {
-    let terminal = terminal();
-    let result = TerminalInputState::from(
-        syscall(SystemCall::TerminalCheckInputState, &[]).unwrap() as usize,
-    );
-
-    let mode = match result {
-        TerminalInputState::InputReaderAwaitsCooked => TerminalMode::Cooked,
-        TerminalInputState::InputReaderAwaitsMixed => TerminalMode::Mixed,
-        TerminalInputState::InputReaderAwaitsRaw => TerminalMode::Raw,
-        TerminalInputState::Idle => TerminalMode::Raw,
-    };
-
-    let bytes = match terminal.read(mode) {
-        Some(bytes) => bytes,
-        None => vec![],
-    };
-
-    if result == TerminalInputState::Idle {
-        return;
-    }
-
-    syscall(
-        SystemCall::TerminalWriteInput,
-        &[bytes.as_ptr() as usize, bytes.len(), mode as usize],
-    );
-}
-
-fn run() {
-    loop {
-        observe_output();
-        observe_input();
-    }
+        .expect("Trying to access terminal emulator before initialization!")
 }
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    init_terminal_emulator();
-    init_terminal(true);
-    let terminal_emulator = terminal_emulator();
-    terminal_emulator.lock().init();
-    let terminal = terminal();
+    let emulator = init_terminal_emulator();
+    emulator.run()
 
-    terminal.clear();
+    // terminal.clear();
 
-    terminal.write_str("Press 'F1' to toggle between text and gui mode\n\n");
-
-    run()
+    // terminal.write_str("Press 'F1' to toggle between text and gui mode\n\n");
 }

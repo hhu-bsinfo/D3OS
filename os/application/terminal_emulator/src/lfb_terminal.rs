@@ -27,7 +27,6 @@ use crate::{
     cursor::CursorState,
     display::{Character, DisplayState},
     terminal::Terminal,
-    terminal_emulator,
 };
 
 const TAB_SPACES: u16 = 8;
@@ -142,7 +141,7 @@ impl LFBTerminal {
         match self.read_byte() {
             // TODO Find a better place for this (Create a proper processing pipeline)
             59 /* F1 */ => {
-                terminal_emulator().lock().disable_visibility();
+                // terminal_emulator().disable_visibility(); // TODO#1 fix
                 return None;
             },
             ..0 => return None,

@@ -1,10 +1,10 @@
 use core::ptr;
 
 use alloc::sync::Arc;
-use concurrent::thread;
+use concurrent::thread::{self, Thread};
 use graphic::lfb;
 
-use crate::{lfb_terminal::LFBTerminal, terminal::Terminal};
+use crate::{lfb_terminal::LFBTerminal, terminal::Terminal, terminal_emulator};
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) {
     cursor
@@ -19,7 +19,7 @@ pub struct CursorState {
     pub(crate) saved_pos: (u16, u16),
 }
 
-pub struct CursorThread {
+struct CursorThread {
     terminal: Arc<dyn Terminal>,
     visible: bool,
 }
@@ -83,4 +83,11 @@ impl CursorThread {
             }
         }
     }
+}
+
+pub fn start_cursor_thread() -> Option<Thread> {
+    thread::create(|| {
+        let mut cursor_thread = CursorThread::new(terminal_emulator().terminal());
+        cursor_thread.run();
+    })
 }
