@@ -190,6 +190,18 @@ impl PieceDescr {
 mod tests {
     use super::*;
 
+    fn generate_string(text: &TextBuffer) -> String {
+        let mut i = 0;
+        let mut ret = String::new();
+        while let Some(c) = text.get_char(i) {
+            ret.push(c);
+            i+=1;
+        }
+        ret
+    }
+
+
+
     #[test]
     fn initiate_textbuffer() {
         let file_buffer = "Hello World";
@@ -204,6 +216,7 @@ mod tests {
                 length: 11
             }]
         );
+        assert_eq!(String::from(file_buffer), generate_string(&buffer));
     }
     #[test]
     fn resolve_adress() {
@@ -262,6 +275,7 @@ mod tests {
                 length: 1
             }]
         );
+        assert_eq!(String::from("b"), generate_string(&buffer));
     }
 
     #[test]
@@ -278,6 +292,7 @@ mod tests {
                 length: 1
             }]
         );
+        assert_eq!(String::from("a"), generate_string(&buffer));
     }
 
     #[test]
@@ -301,6 +316,7 @@ mod tests {
                 }
             ]
         );
+        assert_eq!(String::from("abde"), generate_string(&buffer));
     }
     #[test]
     fn muliple_deletion1() {
@@ -323,6 +339,7 @@ mod tests {
                 }
             ]
         );
+        assert_eq!(String::from("acdef"), generate_string(&buffer));
         let res = buffer.delete(3);
         assert!(res.is_ok());
         assert_eq!(
@@ -345,6 +362,7 @@ mod tests {
                 }
             ]
         );
+        assert_eq!(String::from("acdf"), generate_string(&buffer));
     }
 
     #[test]
@@ -368,6 +386,7 @@ mod tests {
                 }
             ]
         );
+        assert_eq!(String::from("abdef"), generate_string(&buffer));
         let res = buffer.delete(2);
         assert!(res.is_ok());
         assert_eq!(
@@ -385,6 +404,7 @@ mod tests {
                 }
             ]
         );
+        assert_eq!(String::from("abef"), generate_string(&buffer));
         let res = buffer.delete(3);
         assert!(res.is_ok());
         assert_eq!(
@@ -402,6 +422,7 @@ mod tests {
                 }
             ]
         );
+        assert_eq!(String::from("abe"), generate_string(&buffer));
     }
     #[test]
     fn multiple_deletion3() {
@@ -424,6 +445,7 @@ mod tests {
                 }
             ]
         );
+        assert_eq!(String::from("acd"), generate_string(&buffer));
         let res = buffer.delete(0);
         assert!(res.is_ok());
         assert_eq!(
@@ -434,6 +456,7 @@ mod tests {
                 length: 2
             }]
         );
+        assert_eq!(String::from("cd"), generate_string(&buffer));
         let res = buffer.delete(1);
         assert!(res.is_ok());
         assert_eq!(
@@ -444,9 +467,11 @@ mod tests {
                 length: 1
             }]
         );
+        assert_eq!(String::from("c"), generate_string(&buffer));
         let res = buffer.delete(0);
         assert!(res.is_ok());
         assert_eq!(buffer.piece_table, vec![]);
+        assert_eq!(String::from(""), generate_string(&buffer));
     }
     #[test]
     fn delete_address_out_of_bounds() {
@@ -490,6 +515,7 @@ mod tests {
                 }
             ]
         );
+        assert_eq!(String::from("AB"), generate_string(&buffer));
     }
     #[test]
     fn single_insertion_in_middle() {
@@ -517,6 +543,7 @@ mod tests {
                 },
             ]
         );
+        assert_eq!(String::from("ABC"), generate_string(&buffer));
     }
 
     #[test]
@@ -525,6 +552,7 @@ mod tests {
         let mut buffer = TextBuffer::from_str(file_buffer);
         let res = buffer.insert(1, 'B');
         assert!(res.is_ok());
+        assert_eq!(String::from("ABD"), generate_string(&buffer));
         let res = buffer.insert(2, 'C');
         assert!(res.is_ok());
         assert_eq!(
@@ -547,6 +575,7 @@ mod tests {
                 },
             ]
         );
+        assert_eq!(String::from("ABCD"), generate_string(&buffer));
     }
     // only from file
     #[test]
