@@ -27,8 +27,9 @@ use crate::{core_local_storage, tss};
 use super::sys_concurrent::{sys_process_count, sys_thread_count, sys_thread_kill};
 use super::sys_graphic::{sys_get_graphic_resolution, sys_map_fb_info, sys_write_graphic};
 use super::sys_input::sys_read_keyboard;
+use super::sys_logger::sys_log;
 use super::sys_system_info::sys_map_build_info;
-use super::sys_terminal::{sys_log_debug, sys_terminal_check_input_state, sys_terminal_read_input, sys_terminal_read_output, sys_terminal_terminate_operator, sys_terminal_write_input, sys_terminal_write_output};
+use super::sys_terminal::{sys_terminal_check_input_state, sys_terminal_read_input, sys_terminal_read_output, sys_terminal_terminate_operator, sys_terminal_write_input, sys_terminal_write_output};
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -121,13 +122,13 @@ impl SyscallTable {
                 sys_readdir as *const _,
                 sys_cwd as *const _,
                 sys_cd as *const _,
-                sys_log_debug as *const _,
                 sys_write_graphic as * const _,
                 sys_get_graphic_resolution as * const _,
                 sys_read_mouse as * const _,
                 sys_read_keyboard as * const _,
                 sys_map_fb_info as * const _,
                 sys_map_build_info as * const _,
+                sys_log as * const _,
             ],
         }
     }

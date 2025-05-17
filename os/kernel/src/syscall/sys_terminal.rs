@@ -115,15 +115,3 @@ pub fn sys_terminal_terminate_operator(cmd: bool, ack: bool) -> isize {
 
     0
 }
-
-pub fn sys_log_debug(string_addr: *const u8, string_len: usize) {
-    let log_string = from_utf8(unsafe {
-        slice_from_raw_parts(string_addr, string_len)
-            .as_ref()
-            .unwrap()
-    })
-    .unwrap();
-
-    // debug!("{}", log_string); // Use info while dev profile is broken (towboot bug)
-    info!("{}", log_string);
-}

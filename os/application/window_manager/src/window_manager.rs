@@ -17,12 +17,12 @@ use drawer::vertex::Vertex;
 use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use keyboard_decoder::KeyboardDecoder;
+use logger::debug;
 use nolock::queues::mpsc::jiffy;
 
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
-use terminal::write::log_debug;
 use terminal::{DecodedKey, KeyCode};
 use input::mouse::{ try_read_mouse};
 use time::systime;
@@ -177,7 +177,7 @@ impl WindowManager {
 
             self.mouse_state.draw_cursor();
             
-            // log_debug(&format!("loop"));
+            // debug!("loop");
 
             self.process_keyboard_input();
 

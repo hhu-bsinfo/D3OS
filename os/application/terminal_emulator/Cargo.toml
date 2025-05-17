@@ -21,6 +21,7 @@ input = { path = "../../library/input" }
 syscall = {path ="../../library/syscall"}
 terminal = {path ="../../library/terminal"}
 globals = {path ="../../library/globals"}
+logger = {path ="../../library/logger"}
 
 # Extern dependencies
 anstyle-parse = "0.2.6"
