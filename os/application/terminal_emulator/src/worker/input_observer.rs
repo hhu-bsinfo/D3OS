@@ -8,6 +8,8 @@ use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode, write::log_
 
 use crate::{TerminalEmulator, decoder::Decoder, event_handler::Event, terminal_emulator};
 
+use super::worker::Worker;
+
 pub struct InputObserver {
     thread: Option<Thread>,
 }
@@ -22,8 +24,10 @@ impl InputObserver {
     pub const fn new() -> Self {
         Self { thread: None }
     }
+}
 
-    pub fn create(&mut self) {
+impl Worker for InputObserver {
+    fn create(&mut self) {
         if self.thread.is_some() {
             return;
         }
@@ -36,7 +40,7 @@ impl InputObserver {
         self.thread = Some(thread);
     }
 
-    pub fn kill(&mut self) {
+    fn kill(&mut self) {
         if self.thread.is_none() {
             return;
         }

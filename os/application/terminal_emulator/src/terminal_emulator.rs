@@ -9,9 +9,8 @@ pub mod decoder;
 pub mod display;
 pub mod event_handler;
 pub mod lfb_terminal;
-mod observer;
-mod operator;
 pub mod terminal;
+mod worker;
 
 use alloc::sync::Arc;
 use alloc::vec;
@@ -21,14 +20,15 @@ use cursor::start_cursor_thread;
 use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
 use lfb_terminal::LFBTerminal;
-use observer::input_observer::InputObserver;
-use operator::Operator;
 use spin::{Mutex, Once};
 use syscall::{SystemCall, syscall};
 use terminal::Terminal;
+use worker::input_observer::InputObserver;
 
 #[allow(unused_imports)]
 use runtime::*;
+use worker::operator::Operator;
+use worker::worker::Worker;
 
 const OUTPUT_BUFFER_SIZE: usize = 128;
 
