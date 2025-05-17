@@ -4,7 +4,6 @@ extern crate alloc;
 extern crate terminal as terminal_lib;
 
 pub mod color;
-pub mod cursor;
 pub mod decoder;
 pub mod display;
 pub mod event_handler;
@@ -14,14 +13,13 @@ mod worker;
 
 use alloc::sync::Arc;
 use alloc::vec;
-use concurrent::thread::Thread;
-use concurrent::thread::{self};
-use cursor::start_cursor_thread;
+use concurrent::thread;
 use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
 use lfb_terminal::LFBTerminal;
 use spin::{Mutex, Once};
 use terminal::Terminal;
+use worker::cursor::Cursor;
 use worker::input_observer::InputObserver;
 
 #[allow(unused_imports)]
@@ -34,7 +32,7 @@ static TERMINAL_EMULATOR: Once<Arc<TerminalEmulator>> = Once::new();
 
 pub struct TerminalEmulator {
     terminal: Arc<dyn Terminal>,
-    cursor: Mutex<Option<Thread>>,
+    cursor: Mutex<Cursor>,
     input_observer: Mutex<InputObserver>,
     output_observer: Mutex<OutputObserver>,
     operator: Mutex<Operator>,
@@ -48,7 +46,7 @@ impl TerminalEmulator {
             terminal: Arc::new(terminal),
             input_observer: Mutex::new(InputObserver::new()),
             output_observer: Mutex::new(OutputObserver::new()),
-            cursor: Mutex::new(None),
+            cursor: Mutex::new(Cursor::new()),
             operator: Mutex::new(Operator::new()),
             event_handler: Mutex::new(EventHandler::new()),
         }
@@ -56,7 +54,8 @@ impl TerminalEmulator {
 
     pub fn init(&mut self) {
         self.terminal().clear();
-        *self.cursor.lock() = start_cursor_thread();
+
+        self.cursor.lock().create();
         self.input_observer.lock().create();
         self.output_observer.lock().create();
         self.operator.lock().create();
@@ -70,6 +69,7 @@ impl TerminalEmulator {
         self.terminal().hide();
         {
             /* Separate block, because lock would extend into self.enable() causing infinite lock */
+            self.cursor.lock().kill();
             self.operator.lock().kill();
             self.input_observer.lock().kill();
             self.output_observer.lock().kill();
@@ -84,6 +84,7 @@ impl TerminalEmulator {
 
     pub fn enable(&self) {
         self.terminal().show();
+        self.cursor.lock().create();
         self.operator.lock().create();
         self.input_observer.lock().create();
         self.output_observer.lock().create();

@@ -20,9 +20,9 @@ use time::{date, systime};
 
 use crate::{
     color::ColorState,
-    cursor::CursorState,
     display::{Character, DisplayState},
     terminal::Terminal,
+    worker::cursor::CursorState,
 };
 
 const TAB_SPACES: u16 = 8;
