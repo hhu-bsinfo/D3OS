@@ -4,7 +4,7 @@ use alloc::{
 };
 use logger::info;
 
-use super::{parser::Parser, token::Token};
+use super::{command_line::CommandLine, parser::Parser, token::Token};
 
 #[derive(Debug)]
 pub struct LexicalParser {
@@ -130,8 +130,21 @@ impl Parser for LexicalParser {
         info!("{:?}", self.tokens);
     }
 
-    fn parse(&mut self) {
-        info!("Parsing: {:?}", self.tokens);
+    fn parse(&mut self) -> CommandLine {
+        let mut command_line = CommandLine::new();
+
+        self.tokens.iter().for_each(|token| match token {
+            Token::Command(command) => {
+                command_line.create_job(command.to_string());
+            }
+            Token::Argument(argument) => {
+                command_line.add_argument_to_latest_job(argument.to_string());
+            }
+            _ => {}
+        });
+
+        info!("{:?}", &command_line);
+        command_line
     }
 
     fn reset(&mut self) {
