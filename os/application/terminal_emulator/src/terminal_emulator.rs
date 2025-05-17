@@ -21,16 +21,14 @@ use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
 use lfb_terminal::LFBTerminal;
 use spin::{Mutex, Once};
-use syscall::{SystemCall, syscall};
 use terminal::Terminal;
 use worker::input_observer::InputObserver;
 
 #[allow(unused_imports)]
 use runtime::*;
 use worker::operator::Operator;
+use worker::output_observer::OutputObserver;
 use worker::worker::Worker;
-
-const OUTPUT_BUFFER_SIZE: usize = 128;
 
 static TERMINAL_EMULATOR: Once<Arc<TerminalEmulator>> = Once::new();
 
@@ -38,6 +36,7 @@ pub struct TerminalEmulator {
     terminal: Arc<dyn Terminal>,
     cursor: Mutex<Option<Thread>>,
     input_observer: Mutex<InputObserver>,
+    output_observer: Mutex<OutputObserver>,
     operator: Mutex<Operator>,
     event_handler: Mutex<EventHandler>,
 }
@@ -48,6 +47,7 @@ impl TerminalEmulator {
         Self {
             terminal: Arc::new(terminal),
             input_observer: Mutex::new(InputObserver::new()),
+            output_observer: Mutex::new(OutputObserver::new()),
             cursor: Mutex::new(None),
             operator: Mutex::new(Operator::new()),
             event_handler: Mutex::new(EventHandler::new()),
@@ -58,6 +58,7 @@ impl TerminalEmulator {
         self.terminal().clear();
         *self.cursor.lock() = start_cursor_thread();
         self.input_observer.lock().create();
+        self.output_observer.lock().create();
         self.operator.lock().create();
     }
 
@@ -71,6 +72,7 @@ impl TerminalEmulator {
             /* Separate block, because lock would extend into self.enable() causing infinite lock */
             self.operator.lock().kill();
             self.input_observer.lock().kill();
+            self.output_observer.lock().kill();
         }
 
         // Reenable visibility when window manager exits
@@ -84,36 +86,12 @@ impl TerminalEmulator {
         self.terminal().show();
         self.operator.lock().create();
         self.input_observer.lock().create();
-    }
-
-    fn observe_output(&self) {
-        let mut buffer: [u8; OUTPUT_BUFFER_SIZE] = [0; OUTPUT_BUFFER_SIZE];
-        let terminal = self.terminal();
-        let result = syscall(
-            SystemCall::TerminalReadOutput,
-            &[buffer.as_mut_ptr() as usize, buffer.len()],
-        );
-
-        let byte_count = match result {
-            Ok(0) => {
-                return;
-            }
-            Ok(count) => count,
-            Err(_) => {
-                return;
-            }
-        };
-
-        for byte in &mut buffer[0..byte_count] {
-            terminal.write_byte(*byte);
-            *byte = 0;
-        }
+        self.output_observer.lock().create();
     }
 
     fn run(&self) {
         loop {
             self.handle_events();
-            self.observe_output();
         }
     }
 
