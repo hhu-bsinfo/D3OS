@@ -13,7 +13,7 @@ use core::cell::RefCell;
 use alloc::rc::Rc;
 use concurrent::process;
 use executor::executor::Executor;
-use input_reader::InputReader;
+use input_reader::input_reader::InputReader;
 use module::Module;
 use parser::lexical_parser::LexicalParser;
 #[allow(unused_imports)]
