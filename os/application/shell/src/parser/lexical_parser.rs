@@ -1,19 +1,27 @@
+use core::cell::RefCell;
+
 use alloc::{
+    rc::Rc,
     string::{String, ToString},
     vec::Vec,
 };
 use logger::info;
 
+use crate::{module::Module, state::State};
+
 use super::{command_line::CommandLine, parser::Parser, token::Token};
 
-#[derive(Debug)]
 pub struct LexicalParser {
+    state: Rc<RefCell<State>>,
     tokens: Vec<Token>,
 }
 
 impl LexicalParser {
-    pub const fn new() -> Self {
-        Self { tokens: Vec::new() }
+    pub const fn new(state: Rc<RefCell<State>>) -> Self {
+        Self {
+            state,
+            tokens: Vec::new(),
+        }
     }
 
     fn add_token_from_string(&mut self, string: &str) {
@@ -152,11 +160,32 @@ impl Parser for LexicalParser {
     }
 }
 
+impl Module for LexicalParser {
+    fn run(&mut self) {
+        if self.state.borrow().submit {
+            let command_line = self.parse();
+            self.state.borrow_mut().command_line = Some(command_line);
+            self.reset();
+            return;
+        }
+
+        let read_char = { self.state.borrow().read_char };
+        match read_char {
+            Some('\n') => panic!("Input parser should catch linebreaks"),
+            Some('\x08') => self.pop(),
+            Some(ch) => self.push(ch),
+            None => {}
+        };
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use alloc::{string::String, vec};
+    use alloc::vec;
 
     use super::*;
+
+    const DUMMY_STATE: Rc<RefCell<State>> = Rc::new(RefCell::new(State::new()));
 
     //////////////////////////////////////////////////
     // General
@@ -164,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_empty_input_returns_empty_vec() {
-        let parser = LexicalParser::new();
+        let parser = LexicalParser::new(DUMMY_STATE);
         assert_eq!(parser.tokens, vec![]);
     }
 
@@ -174,7 +203,7 @@ mod tests {
 
     #[test]
     fn test_push_single_word_input_returns_command_token() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
         parser.push('e');
         parser.push('x');
         parser.push('i');
@@ -184,7 +213,7 @@ mod tests {
 
     #[test]
     fn test_push_multi_word_input_returns_command_first_and_else_arg_tokens() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
         parser.push('c');
         parser.push(' ');
         parser.push('a');
@@ -202,7 +231,7 @@ mod tests {
 
     #[test]
     fn test_push_whitespace_input_returns_single_whitespace_token() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
         parser.push(' ');
         parser.push(' ');
         parser.push(' ');
@@ -211,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_push_leading_whitespaces_are_ignored() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
         parser.push(' ');
         parser.push(' ');
         parser.push('c');
@@ -220,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_push_trailing_whitespaces_are_whitespace_tokens() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
         parser.push('c');
         parser.push(' ');
         parser.push(' ');
@@ -232,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_push_in_between_whitespaces_are_ignored() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
         parser.push('c');
         parser.push(' ');
         parser.push('a');
@@ -251,14 +280,14 @@ mod tests {
 
     #[test]
     fn test_pop_empty_parser_stays_empty() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
         parser.pop();
         assert_eq!(parser.tokens, vec![]);
     }
 
     #[test]
     fn test_pop_removing_first_word_results_in_no_tokens() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
         parser.push('c');
         parser.pop();
         assert_eq!(parser.tokens, vec![]);
@@ -266,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_pop_removing_other_word_removes_the_token() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
         parser.push('c');
         parser.push(' ');
         parser.push('a');
@@ -276,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_pop_removing_part_of_word_results_updates_the_token() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
         parser.push('e');
         parser.push('x');
         parser.push('i');
@@ -291,14 +320,14 @@ mod tests {
 
     #[test]
     fn test_parse_no_input_should_return_no_jobs() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
 
         assert_eq!(parser.parse().jobs, vec![]);
     }
 
     #[test]
     fn test_parse_only_command_input_should_return_job_without_arguments() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
 
         parser.push('l');
         parser.push('s');
@@ -312,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_parse_command_and_arguments_input_should_return_job_with_arguments() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
 
         parser.push('c');
         parser.push('d');
@@ -329,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_parse_whitespace_tokens_are_ignored() {
-        let mut parser = LexicalParser::new();
+        let mut parser = LexicalParser::new(DUMMY_STATE);
 
         parser.push('l');
         parser.push('s');
