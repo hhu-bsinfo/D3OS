@@ -20,13 +20,12 @@ use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_boot_info, init_initrd, init_lfb, init_lfb_info, init_pci, init_serial_port, init_terminal, init_tty, initrd, keyboard, logger, memory, mouse, network, process_manager, scheduler, serial_port, terminal, timer, tss
+    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_boot_info, init_initrd, init_lfb, init_lfb_info, init_pci, init_serial_port, init_tty, initrd, keyboard, logger, memory, mouse, network, process_manager, scheduler, serial_port, timer, tss
 };
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use chrono::DateTime;
 use core::ffi::c_void;
 use core::mem::size_of;
@@ -148,12 +147,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize lfb info (For terminal_emulator)
     init_lfb_info(fb_info.address(), fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
-
     // Initialize framebuffer (For window_manager)
     init_lfb(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
-    
-    // Terminal output uses locks => hangs up when used for debugging
-    // MS logger().register(terminal());
 
     // Dumping basic infos
     info!("Welcome to D3OS!");
@@ -163,7 +158,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         built_info::PROFILE,
         built_info::OPT_LEVEL
     );
-    let git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
+    let _git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("Unknown");
     let build_date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
         Ok(date_time) => date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -379,24 +374,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         "terminal_emulator",
         &[].to_vec(),
     ));
-
-    // // Disable terminal logging (remove terminal output stream)
-    // logger().remove(terminal().as_ref());
-    // terminal().clear();
-
-    // println!(
-    //     include_str!("banner.txt"),
-    //     version,
-    //     git_ref.rsplit("/").next().unwrap_or(git_ref),
-    //     git_commit,
-    //     build_date,
-    //     built_info::RUSTC_VERSION
-    //         .split_once("(")
-    //         .unwrap_or((built_info::RUSTC_VERSION, ""))
-    //         .0
-    //         .trim(),
-    //     bootloader_name
-    // );
 
     // Dump information about all processes (including VMAs) 
     process_manager().read().dump();

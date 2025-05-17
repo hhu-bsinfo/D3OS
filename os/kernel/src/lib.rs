@@ -19,14 +19,12 @@
 #![no_std]
 
 use crate::device::apic::Apic;
-use crate::device::lfb_terminal::{CursorThread, LFBTerminal};
 use crate::device::pci::PciBus;
 use crate::device::pit::Timer;
 use crate::device::ps2::{Keyboard, Mouse, PS2};
 use crate::device::serial;
 use crate::device::serial::{BaudRate, ComPort, SerialPort};
 use crate::device::speaker::Speaker;
-use crate::device::terminal::Terminal;
 use crate::interrupt::interrupt_dispatcher::InterruptDispatcher;
 use crate::log::Logger;
 use crate::memory::PAGE_SIZE;
@@ -34,7 +32,6 @@ use crate::memory::acpi_handler::AcpiHandler;
 use crate::memory::kheap::KernelAllocator;
 use crate::process::process_manager::ProcessManager;
 use crate::process::scheduler::Scheduler;
-use crate::process::thread::Thread;
 use crate::syscall::sys_graphic::LfbInfo;
 use crate::syscall::syscall_dispatcher::CoreLocalStorage;
 use ::log::{Level, Log, Record, error};
@@ -78,18 +75,14 @@ pub mod built_info {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if terminal_initialized() {
-        println!("Panic: {}", info);
-    } else {
-        let args = [info.message().as_str().unwrap()];
-        let record = Record::builder()
-            .level(Level::Error)
-            .file(Some("panic"))
-            .args(Arguments::new_const(&args))
-            .build();
+    let args = [info.message().as_str().unwrap()];
+    let record = Record::builder()
+        .level(Level::Error)
+        .file(Some("panic"))
+        .args(Arguments::new_const(&args))
+        .build();
 
-        logger().log(&record);
-    }
+    logger().log(&record);
 
     loop {}
 }
@@ -320,36 +313,6 @@ pub fn serial_port() -> Option<Arc<SerialPort>> {
         Some(port) => Some(Arc::clone(port)),
         None => None,
     }
-}
-
-/// Terminal.
-/// The terminal is the main input/output device of the kernel. It can print text to the screen and
-/// reads keyboard input. Applications can use the 'read' system call to get keyboard input from the terminal.
-static TERMINAL: Once<Arc<dyn Terminal>> = Once::new();
-
-pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
-    let lfb_terminal = Arc::new(LFBTerminal::new(buffer, pitch, width, height, bpp));
-    lfb_terminal.clear();
-    TERMINAL.call_once(|| lfb_terminal);
-
-    scheduler().ready(Thread::new_kernel_thread(
-        || {
-            let mut cursor_thread = CursorThread::new(terminal());
-            cursor_thread.run();
-        },
-        "cursor",
-    ));
-}
-
-pub fn terminal_initialized() -> bool {
-    TERMINAL.get().is_some()
-}
-
-pub fn terminal() -> Arc<dyn Terminal> {
-    let terminal = TERMINAL
-        .get()
-        .expect("Trying to access terminal before initialization!");
-    Arc::clone(terminal)
 }
 
 /// TTY
