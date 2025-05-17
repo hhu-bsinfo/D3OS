@@ -4,9 +4,10 @@ use alloc::{
 };
 use chrono::DateTime;
 
-use super::system_info::SystemInfo;
+use crate::util::system_info::system_info;
 
-pub fn create_banner_string(info: &SystemInfo) -> String {
+pub fn create_banner_string() -> String {
+    let info = system_info();
     let version = format!(
         "v{} ({} - O{})",
         info.pkg_version, info.profile, info.opt_level

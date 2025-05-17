@@ -17,7 +17,6 @@ use spin::{Mutex, Once};
 use terminal::lfb_terminal::LFBTerminal;
 use terminal::terminal::Terminal;
 use util::banner::create_banner_string;
-use util::system_info::SystemInfo;
 use worker::cursor::Cursor;
 use worker::input_observer::InputObserver;
 
@@ -36,7 +35,6 @@ pub struct TerminalEmulator {
     output_observer: Mutex<OutputObserver>,
     operator: Mutex<Operator>,
     event_handler: Mutex<EventHandler>,
-    system_info: SystemInfo,
 }
 
 impl TerminalEmulator {
@@ -49,14 +47,12 @@ impl TerminalEmulator {
             cursor: Mutex::new(Cursor::new()),
             operator: Mutex::new(Operator::new()),
             event_handler: Mutex::new(EventHandler::new()),
-            system_info: SystemInfo::new(),
         }
     }
 
     pub fn init(&mut self) {
         self.terminal().clear();
-        self.terminal()
-            .write_str(&create_banner_string(&self.system_info));
+        self.terminal().write_str(&create_banner_string());
 
         sleep(1000); // Give terminal time to initialize before stating worker threads
 

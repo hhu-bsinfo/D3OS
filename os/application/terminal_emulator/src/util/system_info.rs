@@ -1,5 +1,8 @@
 use alloc::string::String;
+use spin::Once;
 use system_info::build_info::{BuildInfo, build_info};
+
+static SYSTEM_INFO: Once<SystemInfo> = Once::new();
 
 pub struct SystemInfo {
     pub pkg_version: String,
@@ -25,4 +28,8 @@ impl SystemInfo {
             bootloader_name: build_info(BuildInfo::BootloaderName),
         }
     }
+}
+
+pub fn system_info() -> &'static SystemInfo {
+    SYSTEM_INFO.call_once(|| SystemInfo::new())
 }

@@ -15,10 +15,9 @@ use input::keyboard;
 
 use spin::Mutex;
 use stream::{InputStream, OutputStream};
-use system_info::build_info::{BuildInfo, build_info};
 use time::{date, systime};
 
-use crate::worker::cursor::CursorState;
+use crate::{util::system_info::system_info, worker::cursor::CursorState};
 
 use super::{
     color::ColorState,
@@ -215,12 +214,13 @@ impl LFBTerminal {
         let uptime = systime();
         let process_count = process::count();
         let thread_count = thread::count();
+        let system_info = system_info();
 
         // Draw info string
         let info_string = format!(
             "D³OS v{} ({}) | Uptime: {:0>2}:{:0>2}:{:0>2} | Processes: {} | Threads: {}",
-            build_info(BuildInfo::PkgVersion),
-            build_info(BuildInfo::Profile),
+            system_info.pkg_version,
+            system_info.profile,
             uptime.num_hours(),
             uptime.num_minutes() % 60,
             uptime.num_seconds() - (uptime.num_minutes() * 60),
