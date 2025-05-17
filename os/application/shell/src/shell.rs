@@ -2,95 +2,63 @@
 
 extern crate alloc;
 
-use alloc::string::String;
-use alloc::vec::Vec;
-use concurrent::{process, thread};
-use naming::{cd, cwd, mkdir, touch};
+mod executor;
+mod input_reader;
+pub mod module;
+mod parser;
+pub mod state;
+
+use core::cell::RefCell;
+
+use alloc::rc::Rc;
+use concurrent::process;
+use executor::executor::Executor;
+use input_reader::input_reader::InputReader;
+use module::Module;
+use parser::lexical_parser::LexicalParser;
 #[allow(unused_imports)]
 use runtime::*;
+use state::State;
 use syscall::{SystemCall, syscall};
-use terminal::read::read;
-use terminal::{print, println};
 
-fn process_pwd(split: &Vec<&str>) {
-    if split.len() != 1 {
-        println!("usage: pwd");
-        return;
-    }
-    let res = cwd();
-    match res {
-        Ok(path) => println!("{}", path),
-        Err(_) => println!("usage: pwd"),
-    }
+struct Shell {
+    state: Rc<RefCell<State>>,
+    input_reader: InputReader,
+    parser: LexicalParser,
+    executor: Executor,
 }
 
-fn process_mkdir(split: &Vec<&str>) {
-    if split.len() != 2 {
-        println!("usage: mkdir directory_name");
-        return;
-    }
-    let res = mkdir(&split[1]);
-    if res.is_err() {
-        println!("usage: mkdir directory_name");
-    }
-}
+impl Shell {
+    pub fn new() -> Self {
+        let state = Rc::new(RefCell::new(State::new()));
+        let input_reader = InputReader::new(state.clone());
+        let parser = LexicalParser::new(state.clone());
+        let executor = Executor::new(state.clone());
 
-fn process_cd(split: &Vec<&str>) {
-    if split.len() != 2 {
-        println!("usage: cd directory_name");
-        return;
-    }
-    let res = cd(&split[1]);
-    if res.is_err() {
-        println!("usage: cd directory_name");
-    }
-}
-
-fn process_internal_command(split: &Vec<&str>) -> bool {
-    if split[0] == "pwd" {
-        process_pwd(split);
-        return true;
-    } else if split[0] == "cd" {
-        process_cd(split);
-        return true;
-    } else if split[0] == "mkdir" {
-        process_mkdir(split);
-        return true;
-    } else if split[0] == "touch" {
-        let res = touch(&split[1]);
-        if res.is_err() {
-            println!("{:?}", res);
+        Self {
+            state,
+            input_reader,
+            parser,
+            executor,
         }
-        return true;
-    }
-    return false;
-}
-
-fn process_line(line: String) {
-    if line.is_empty() {
-        return;
     }
 
-    let split = line.split_whitespace().collect::<Vec<&str>>();
-    if !split.is_empty() {
-        if !process_internal_command(&split) {
-            match thread::start_application(split[0], split[1..].iter().map(|&s| s).collect()) {
-                Some(app) => app.join(),
-                None => println!("Command not found!"),
+    pub fn run(&mut self) {
+        loop {
+            if syscall(SystemCall::TerminalTerminateOperator, &[0, 1]).unwrap() == 1 {
+                process::exit();
             }
+
+            self.input_reader.run();
+            self.parser.run();
+            self.executor.run();
+            self.state.borrow_mut().clear();
         }
     }
 }
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    loop {
-        if syscall(SystemCall::TerminalTerminateOperator, &[0, 1]).unwrap() == 1 {
-            process::exit();
-        }
-
-        print!("> ");
-        let line = read();
-        process_line(line);
-    }
+    let mut shell = Shell::new();
+    shell.run()
 }
