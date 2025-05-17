@@ -6,6 +6,7 @@ members = [
     "os/application/hello",
     "os/application/helloc",
     "os/application/shell",
+    "os/application/legacy_shell",
     "os/application/uptime",
     "os/application/date",
     "os/application/ls",

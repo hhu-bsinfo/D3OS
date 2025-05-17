@@ -1,12 +1,12 @@
 [package]
 edition = "2024"
-name = "shell"
+name = "legacy_shell"
 version = "0.1.0"
-authors = ["Sebastian Keller <sebastian.keller@hhu.de>"]
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
 
 [lib]
 crate-type = ["staticlib"]
-path = "src/shell.rs"
+path = "src/legacy_shell.rs"
 
 [dependencies]
 # Local dependencies
@@ -15,4 +15,3 @@ terminal = { path = "../../library/terminal" }
 concurrent = { path = "../../library/concurrent" }
 naming = { path = "../../library/naming" }
 syscall = { path = "../../library/syscall" }
-logger = { path = "../../library/logger" }
