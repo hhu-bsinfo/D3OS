@@ -17,8 +17,7 @@ pub struct TtyInput {
 
 #[derive(Debug)]
 pub struct TtyOutput {
-    buffer: VecDeque<u8>,
-    current_index: usize,
+    buffer: Mutex<VecDeque<u8>>,
 }
 
 #[derive(Debug, PartialEq, IntoPrimitive, FromPrimitive, Clone, Copy)]
@@ -97,25 +96,26 @@ impl TtyInput {
 impl TtyOutput {
     pub const fn new() -> Self {
         Self {
-            buffer: VecDeque::new(),
-            current_index: 0,
+            buffer: Mutex::new(VecDeque::new()),
         }
     }
 
-    pub fn write(&mut self, bytes: &[u8]) -> usize {
+    pub fn write(&self, bytes: &[u8]) -> usize {
+        let mut output_buffer = self.buffer.lock();
         let mut count = 0;
         for byte in bytes {
-            self.buffer.push_back(*byte);
+            output_buffer.push_back(*byte);
             count += 1;
         }
 
         count
     }
 
-    pub fn read(&mut self, buffer: &mut [u8]) -> usize {
+    pub fn read(&self, buffer: &mut [u8]) -> usize {
+        let mut output_buffer = self.buffer.lock();
         let mut count = 0;
         for byte in buffer {
-            *byte = match self.buffer.pop_front() {
+            *byte = match output_buffer.pop_front() {
                 Some(read_byte) => {
                     count += 1;
                     read_byte
