@@ -4,9 +4,9 @@ use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
 use pc_keyboard::DecodedKey;
 use spin::Mutex;
 use syscall::{SystemCall, syscall};
-use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode, write::log_debug};
+use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode};
 
-use crate::{TerminalEmulator, decoder::Decoder, event_handler::Event, terminal_emulator};
+use crate::{TerminalEmulator, event_handler::Event, terminal_emulator, util::decoder::Decoder};
 
 use super::worker::Worker;
 
@@ -104,7 +104,6 @@ impl InputObserverThread {
 
         match key.unwrap() {
             DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => {
-                log_debug("F1");
                 self.emulator
                     .event_handler
                     .lock()

@@ -3,12 +3,9 @@
 extern crate alloc;
 extern crate terminal as terminal_lib;
 
-pub mod color;
-pub mod decoder;
-pub mod display;
 pub mod event_handler;
-pub mod lfb_terminal;
 pub mod terminal;
+pub mod util;
 mod worker;
 
 use alloc::sync::Arc;
@@ -16,9 +13,9 @@ use alloc::vec;
 use concurrent::thread;
 use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
-use lfb_terminal::LFBTerminal;
 use spin::{Mutex, Once};
-use terminal::Terminal;
+use terminal::lfb_terminal::LFBTerminal;
+use terminal::terminal::Terminal;
 use worker::cursor::Cursor;
 use worker::input_observer::InputObserver;
 

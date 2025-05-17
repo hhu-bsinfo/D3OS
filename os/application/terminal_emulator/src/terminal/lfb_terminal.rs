@@ -18,11 +18,12 @@ use stream::{InputStream, OutputStream};
 use system_info::build_info::{BuildInfo, build_info};
 use time::{date, systime};
 
-use crate::{
+use crate::worker::cursor::CursorState;
+
+use super::{
     color::ColorState,
     display::{Character, DisplayState},
     terminal::Terminal,
-    worker::cursor::CursorState,
 };
 
 const TAB_SPACES: u16 = 8;

@@ -4,7 +4,10 @@ use alloc::sync::Arc;
 use concurrent::thread::{self, Thread};
 use graphic::lfb;
 
-use crate::{lfb_terminal::LFBTerminal, terminal::Terminal, terminal_emulator};
+use crate::{
+    terminal::{lfb_terminal::LFBTerminal, terminal::Terminal},
+    terminal_emulator,
+};
 
 use super::worker::Worker;
 
