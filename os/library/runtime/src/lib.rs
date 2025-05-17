@@ -21,7 +21,7 @@ unsafe extern "C" {
     fn main(argc: isize, argv: *const *const u8) -> isize;
 }
 
-const HEAP_SIZE: usize = 0x100000;
+const HEAP_SIZE: usize = 0x1000000;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();

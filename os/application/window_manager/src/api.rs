@@ -1,6 +1,6 @@
 use core::{fmt::Debug, num, usize};
 
-use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::vec_deque::VecDeque, rc::Rc, string::String, vec::Vec};
 use concurrent::thread;
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::{bitmap::{Bitmap, ScalingMode}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
@@ -9,8 +9,7 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel}, components::{bitmap::BitmapGraphic, button::Button, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, LayoutMode, StretchMode}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN,
-    components::canvas::Canvas
+    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel, text_editor::TextEditor}, components::{bitmap::BitmapGraphic, button::Button, canvas::Canvas, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, LayoutMode, StretchMode}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -18,7 +17,7 @@ use self::component::ComponentStyling;
 extern crate alloc;
 
 /// Default app to be used on startup of a new workspace
-pub static DEFAULT_APP: &str = "canvas";
+pub static DEFAULT_APP: &str = "editor";
 
 /// Logical screen resolution, used by apps for describing component locations
 pub const LOG_SCREEN: (u32, u32) = (1000, 750);
@@ -86,6 +85,7 @@ pub enum Command<'a> {
         styling: Option<ComponentStyling>,
         rect_data: RectData,
         buffer: Rc<RwLock<Bitmap>>,
+        input: Option<Box<dyn Fn(char) -> ()>>,
     },
     CreateContainer {
         log_rect_data: RectData,
@@ -491,9 +491,8 @@ impl Api {
                 component
             },
             // Julius Drodofsky
-            Command::CreateCanvas { styling , rect_data,  buffer} => {
-                let rel_rect_data = self.scale_rect_data_to_rel(&rect_data);
-                let canvas = Canvas::new( styling, rel_rect_data, buffer);
+            Command::CreateCanvas { styling , rect_data,  buffer, input} => {
+                let canvas = Canvas::new( styling, rect_data, buffer, input);
                 let component = Rc::new(RwLock::new(Box::new(canvas) as Box<dyn Component>));
                 let dispatch_data = NewCompData {
                     window_data,
@@ -532,6 +531,7 @@ impl Api {
             "calculator" => Some(Calculator::run),
             "radio" => Some(RadioButtonApp::run),
             "canvas" => Some(CanvasApp::run),
+            "editor" => Some(TextEditor::run),
             "layout" => Some(LayoutApp::run),
             _ => None,
         }
