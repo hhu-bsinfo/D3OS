@@ -49,7 +49,6 @@ pub enum SystemCall {
     Readdir,
     Cwd,
     Cd,
-    LogDebug,
     WriteGraphic,
     GetGraphicResolution,
     MouseRead,

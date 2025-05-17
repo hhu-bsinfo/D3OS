@@ -6,7 +6,7 @@
 use drawer::drawer::Drawer;
 use alloc::{format, vec};
 use input::mouse::MousePacket;
-use terminal::write::log_debug;
+use logger::debug;
 
 use crate::config::DEFAULT_FG_COLOR;
 
@@ -132,10 +132,7 @@ impl MouseState {
         };
 
         // Print button states
-        /*log_debug(&format!(
-            "Scroll: {:?}, Button 4: {}, Button 5: {}",
-            scroll_direction, mouse_packet.button4_down(), mouse_packet.button5_down()
-        ));*/
+        // debug!("Scroll: {:?}, Button 4: {}, Button 5: {}", scroll_direction, mouse_packet.button4_down(), mouse_packet.button5_down());
 
         MouseEvent {
             buttons: self.buttons,

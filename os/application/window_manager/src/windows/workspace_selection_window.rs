@@ -4,6 +4,7 @@ use alloc::{
     vec::Vec,
 };
 use drawer::{rect_data::RectData, vertex::Vertex};
+use logger::debug;
 
 use crate::{
     components::{
@@ -73,7 +74,7 @@ impl WorkspaceSelectionWindow {
             1,
             (1, 1),
             Some(Box::new(move || {
-                terminal::write::log_debug("click!");
+                debug!("click!");
             })),
             None,
         );
