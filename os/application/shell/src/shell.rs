@@ -2,10 +2,12 @@
 
 extern crate alloc;
 
+mod executor;
 mod input_reader;
 mod parser;
 
 use concurrent::process;
+use executor::executor::Executor;
 use input_reader::InputReader;
 use parser::lexical_parser::LexicalParser;
 #[allow(unused_imports)]
@@ -15,6 +17,7 @@ use syscall::{SystemCall, syscall};
 struct Shell {
     input_reader: InputReader,
     parser: LexicalParser,
+    executor: Executor,
 }
 
 impl Shell {
@@ -22,6 +25,7 @@ impl Shell {
         Self {
             input_reader: InputReader::new(),
             parser: LexicalParser::new(),
+            executor: Executor::new(),
         }
     }
 
@@ -31,7 +35,7 @@ impl Shell {
                 process::exit();
             }
 
-            self.input_reader.read(&mut self.parser);
+            self.input_reader.read(&mut self.parser, &self.executor);
         }
     }
 }
