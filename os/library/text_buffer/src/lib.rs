@@ -78,7 +78,14 @@ impl<'s> TextBuffer<'s> {
             self.piece_table[piece_table_index - 1].length += 1;
             return Ok(());
         }
-
+        // Appen if piece_table index = n:
+        if piece_table_index == self.piece_table.len() {
+            self.piece_table.insert(
+                piece_table_index,
+                PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
+            );
+            return Ok(());
+        }
         let piece_descr = &mut self.piece_table[piece_table_index];
         if piece_descr_offset == 0 {
             self.piece_table.insert(
@@ -619,5 +626,28 @@ mod tests {
         let res = buffer.delete(0);
         assert!(res.is_ok());
         assert_eq!(String::from("B"), generate_string(&buffer));
+    }
+    #[test]
+    fn append() {
+        let file_buffer = "a";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(1, 'b');
+        assert!(res.is_ok());
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 1
+                }
+            ]
+        );
+        assert_eq!(String::from("ab"), generate_string(&buffer));
     }
 }
