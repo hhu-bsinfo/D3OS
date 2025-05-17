@@ -1,6 +1,8 @@
 use concurrent::thread;
 use terminal::{DecodedKey, print, read::read_mixed};
 
+use crate::parser::parser::Parser;
+
 pub struct InputReader {}
 
 impl InputReader {
@@ -8,12 +10,12 @@ impl InputReader {
         Self {}
     }
 
-    pub fn read(&self) -> DecodedKey {
+    pub fn read(&self, parser: &mut impl Parser) -> DecodedKey {
         let key = match read_mixed() {
             Some(key) => key,
             None => {
                 thread::switch();
-                self.read() // TODO#? block thread for now until we read something
+                self.read(parser) // TODO#? block thread for now until we read something
             }
         };
 
@@ -21,15 +23,17 @@ impl InputReader {
         match key {
             DecodedKey::Unicode('\n') => {
                 print!("\n");
-                // TODO Send parse command to parser
+                parser.parse();
+                parser.reset();
+                // TODO#? Remember line here and add to history???
             }
             DecodedKey::Unicode('\x08') => {
                 print!("\x1b[1D \x1b[1D");
-                // TODO Pop from parser
+                parser.pop();
             }
             DecodedKey::Unicode(ch) => {
                 print!("{}", ch);
-                // TODO Push to parser
+                parser.push(ch);
             }
             // TODO handle raw keys
             _ => {}
