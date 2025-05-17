@@ -20,7 +20,7 @@ use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_initrd, init_lfb, init_lfb_info, init_pci, init_serial_port, init_terminal, init_tty, initrd, keyboard, logger, memory, mouse, network, process_manager, scheduler, serial_port, terminal, timer, tss
+    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_boot_info, init_initrd, init_lfb, init_lfb_info, init_pci, init_serial_port, init_terminal, init_tty, initrd, keyboard, logger, memory, mouse, network, process_manager, scheduler, serial_port, terminal, timer, tss
 };
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
@@ -179,6 +179,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         }
         None => "Unknown",
     };
+
+    // Remember boot info
+    init_boot_info(bootloader_name.to_string());
+
     info!("OS Version: [{}]", version);
     info!(
         "Git Version: [{} - {}]",

@@ -1289,6 +1289,7 @@ dependencies = [
 name = "system_info"
 version = "0.1.0"
 dependencies = [
+ "num_enum",
  "spin 0.9.8",
  "syscall",
 ]

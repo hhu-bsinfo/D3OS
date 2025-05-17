@@ -37,12 +37,13 @@ use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use crate::syscall::sys_graphic::LfbInfo;
 use crate::syscall::syscall_dispatcher::CoreLocalStorage;
-use device::tty::{TtyInput, TtyOutput};
 use ::log::{Level, Log, Record, error};
 use acpi::AcpiTables;
+use alloc::string::String;
 use alloc::sync::Arc;
 use core::fmt::Arguments;
 use core::panic::PanicInfo;
+use device::tty::{TtyInput, TtyOutput};
 use graphic::buffered_lfb::BufferedLFB;
 use graphic::lfb::LFB;
 use multiboot2::ModuleTag;
@@ -353,7 +354,7 @@ pub fn terminal() -> Arc<dyn Terminal> {
 
 /// TTY
 /// TODO#9 tty docs
-/// 
+///
 /// Author: Sebastian Keller
 static TTY_INPUT: Once<Arc<TtyInput>> = Once::new();
 static TTY_OUTPUT: Once<Arc<TtyOutput>> = Once::new();
@@ -463,4 +464,21 @@ pub fn lfb_info() -> &'static LfbInfo {
     LFB_INFO
         .get()
         .expect("Trying to access lfb info before initialization")
+}
+
+/// Remember boot info
+pub struct BootInfo {
+    pub bootloader_name: String,
+}
+
+static BOOT_INFO: Once<BootInfo> = Once::new();
+
+pub fn init_boot_info(bootloader_name: String) {
+    BOOT_INFO.call_once(|| BootInfo { bootloader_name });
+}
+
+pub fn boot_info() -> &'static BootInfo {
+    BOOT_INFO
+        .get()
+        .expect("Trying to access boot info before initialization")
 }
