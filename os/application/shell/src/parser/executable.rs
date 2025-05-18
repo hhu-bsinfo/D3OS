@@ -20,11 +20,11 @@ impl Job {
 }
 
 #[derive(Debug)]
-pub struct CommandLine {
+pub struct Executable {
     pub jobs: Vec<Job>,
 }
 
-impl CommandLine {
+impl Executable {
     pub const fn new() -> Self {
         Self { jobs: Vec::new() }
     }
