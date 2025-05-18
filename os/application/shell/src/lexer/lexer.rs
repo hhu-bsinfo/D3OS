@@ -29,8 +29,10 @@ impl Lexer {
         Ok(())
     }
 
-    pub fn get_tokens(&self) -> Vec<Token> {
-        self.tokens.clone()
+    pub fn flush(&mut self) -> Vec<Token> {
+        let tokens = self.tokens.clone();
+        self.tokens.clear();
+        tokens
     }
 
     fn push(&mut self, item: &str) {

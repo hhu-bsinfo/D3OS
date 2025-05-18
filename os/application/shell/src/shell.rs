@@ -26,6 +26,10 @@ impl Shell {
         }
     }
 
+    pub fn init(&mut self) {
+        self.controller.init();
+    }
+
     pub fn run(&mut self) {
         loop {
             if syscall(SystemCall::TerminalTerminateOperator, &[0, 1]).unwrap() == 1 {
@@ -45,5 +49,6 @@ impl Shell {
 #[unsafe(no_mangle)]
 pub fn main() {
     let mut shell = Shell::new();
+    shell.init();
     shell.run()
 }

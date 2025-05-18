@@ -34,16 +34,16 @@ impl Controller {
     fn handle_enter(&mut self) {
         self.command_line.submit();
 
-        let tokens = self.lexer.get_tokens();
+        let tokens = self.lexer.flush();
         let executable = match self.parser.parse(&tokens) {
             Ok(exec) => exec,
             Err(_) => return,
         };
 
         match self.executor.execute(&executable) {
-            Ok(_) => return,
+            Ok(_) => self.command_line.create_new_line(),
             Err(msg) => println!("{}", msg),
-        }
+        };
     }
 
     fn handle_other_char(&mut self, ch: char) {
@@ -61,6 +61,10 @@ impl Controller {
 
     fn handle_arrow_right(&mut self) {
         self.command_line.move_cursor_right();
+    }
+
+    pub fn init(&mut self) {
+        self.command_line.create_new_line();
     }
 
     pub fn run(&mut self, key: DecodedKey) {

@@ -23,6 +23,10 @@ impl CommandLine {
         print!("\n");
     }
 
+    pub fn create_new_line(&self) {
+        print!("⮞ ");
+    }
+
     /// TODO docs: NOT FOR '\n', '\x08'
     pub fn add_char(&mut self, ch: char) -> Result<String, ()> {
         self.current_line.insert(self.cursor_position, ch);
