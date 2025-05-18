@@ -43,6 +43,18 @@ impl CommandLine {
         Ok(self.current_line.clone())
     }
 
+    pub fn remove_at_cursor(&mut self) -> Result<String, ()> {
+        if self.cursor_position == self.current_line.len() {
+            return Err(());
+        }
+
+        self.current_line.remove(self.cursor_position);
+        let line_since_cursor = self.current_line.get(self.cursor_position..).unwrap();
+        let cursor_offset = line_since_cursor.len() + 1; // line_since_cursor.len() + 1 (we added whitespace to remove trailing char)
+        print!("{} \x1b[{}D", line_since_cursor, cursor_offset);
+        Ok(self.current_line.clone())
+    }
+
     pub fn remove_before_cursor(&mut self) -> Result<String, ()> {
         if self.cursor_position == 0 {
             return Err(());

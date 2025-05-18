@@ -31,6 +31,15 @@ impl Controller {
         self.lexer.tokenize(current_string); // TODO#? disable onChange updates when facing performance hits
     }
 
+    fn handle_del(&mut self) {
+        let current_string = match self.command_line.remove_at_cursor() {
+            Ok(pos) => pos,
+            Err(_) => return,
+        };
+
+        self.lexer.tokenize(current_string); // TODO#? disable onChange updates when facing performance hits
+    }
+
     fn handle_enter(&mut self) {
         self.command_line.submit();
 
@@ -85,6 +94,7 @@ impl Controller {
         match key {
             // Unicodes
             DecodedKey::Unicode('\x08') => self.handle_backspace(),
+            DecodedKey::Unicode('\x7F') => self.handle_del(),
             DecodedKey::Unicode('\n') => self.handle_enter(),
             DecodedKey::Unicode(ch) => self.handle_other_char(ch),
             // RawKeys
