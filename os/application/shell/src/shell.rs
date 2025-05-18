@@ -13,7 +13,7 @@ use controller::Controller;
 #[allow(unused_imports)]
 use runtime::*;
 use syscall::{SystemCall, syscall};
-use terminal::read::read_mixed;
+use terminal::{print, read::read_mixed};
 
 struct Shell {
     controller: Controller,
@@ -27,6 +27,7 @@ impl Shell {
     }
 
     pub fn init(&mut self) {
+        print!("\n");
         self.controller.init();
     }
 

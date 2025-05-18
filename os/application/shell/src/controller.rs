@@ -63,6 +63,20 @@ impl Controller {
         self.command_line.move_cursor_right();
     }
 
+    fn handle_arrow_up(&mut self) {
+        match self.command_line.move_history_up() {
+            Ok(line) => self.lexer.tokenize(line),
+            Err(_) => return,
+        };
+    }
+
+    fn handle_arrow_down(&mut self) {
+        match self.command_line.move_history_down() {
+            Ok(line) => self.lexer.tokenize(line),
+            Err(_) => return,
+        };
+    }
+
     pub fn init(&mut self) {
         self.command_line.create_new_line();
     }
@@ -76,6 +90,8 @@ impl Controller {
             // RawKeys
             DecodedKey::RawKey(KeyCode::ArrowLeft) => self.handle_arrow_left(),
             DecodedKey::RawKey(KeyCode::ArrowRight) => self.handle_arrow_right(),
+            DecodedKey::RawKey(KeyCode::ArrowUp) => self.handle_arrow_up(),
+            DecodedKey::RawKey(KeyCode::ArrowDown) => self.handle_arrow_down(),
             DecodedKey::RawKey(_) => {}
         }
     }

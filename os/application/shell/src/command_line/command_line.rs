@@ -1,10 +1,12 @@
 use alloc::{string::String, vec::Vec};
+use logger::info;
 use terminal::print;
 
 pub struct CommandLine {
     history: Vec<String>,
     current_line: String,
     cursor_position: usize,
+    history_position: isize,
 }
 
 impl CommandLine {
@@ -13,11 +15,13 @@ impl CommandLine {
             history: Vec::new(),
             current_line: String::new(),
             cursor_position: 0,
+            history_position: -1,
         }
     }
 
     pub fn submit(&mut self) {
         self.history.push(self.current_line.clone());
+        self.history_position = -1;
         self.current_line.clear();
         self.cursor_position = 0;
         print!("\n");
@@ -68,5 +72,44 @@ impl CommandLine {
 
         self.cursor_position += 1;
         print!("\x1b[1C");
+    }
+
+    pub fn move_history_up(&mut self) -> Result<String, ()> {
+        if self.history_position == self.history.len() as isize - 1 {
+            return Err(());
+        }
+        Ok(self.move_history(1))
+    }
+
+    pub fn move_history_down(&mut self) -> Result<String, ()> {
+        if self.history_position <= -1 {
+            return Err(());
+        }
+        if self.history_position == 0 {
+            self.history_position = -1;
+            self.clear_line();
+            return Ok(self.current_line.clone());
+        }
+        Ok(self.move_history(-1))
+    }
+
+    fn move_history(&mut self, step: isize) -> String {
+        self.history_position += step;
+        let history = self.history.as_slice()[self.history_position as usize].clone();
+        self.clear_line();
+        print!("{}", history);
+        self.cursor_position = history.len();
+        self.current_line = history;
+        info!("Current history position: {}", self.history_position);
+        self.current_line.clone()
+    }
+
+    pub fn clear_line(&mut self) {
+        match self.cursor_position {
+            0 => print!("\x1b[0K \x1b[1D"), // Note: \x1b[0D will still do \x1b[1D
+            offset => print!("\x1b[{}D\x1b[0K \x1b[1D", offset),
+        };
+        self.cursor_position = 0;
+        self.current_line.clear();
     }
 }
