@@ -1,14 +1,14 @@
 use terminal::{DecodedKey, KeyCode, print, println};
 
 use crate::{
-    command_line::command_line::CommandLine,
-    executor::executor::Executor,
-    parser::{lexical_parser::LexicalParser, parser::Parser},
+    command_line::command_line::CommandLine, executor::executor::Executor, lexer::lexer::Lexer,
+    parser::parser::Parser,
 };
 
 pub struct Controller {
     command_line: CommandLine,
-    parser: LexicalParser,
+    lexer: Lexer,
+    parser: Parser,
     executor: Executor,
 }
 
@@ -16,24 +16,26 @@ impl Controller {
     pub const fn new() -> Self {
         Self {
             command_line: CommandLine::new(),
-            parser: LexicalParser::new(),
+            lexer: Lexer::new(),
+            parser: Parser::new(),
             executor: Executor::new(),
         }
     }
 
     fn handle_backspace(&mut self) {
-        let _cursor_position = match self.command_line.remove_before_cursor() {
+        let current_string = match self.command_line.remove_before_cursor() {
             Ok(pos) => pos,
             Err(_) => return,
         };
 
-        self.parser.pop(); //TODO#1 THIS ONLY WORKS WHEN CURSOR IS AT LAST POS
+        self.lexer.tokenize(current_string); // TODO#? disable onChange updates when facing performance hits
     }
 
     fn handle_enter(&mut self) {
         self.command_line.submit();
 
-        let executable = match self.parser.parse() {
+        let tokens = self.lexer.get_tokens();
+        let executable = match self.parser.parse(&tokens) {
             Ok(exec) => exec,
             Err(_) => return,
         };
@@ -45,12 +47,12 @@ impl Controller {
     }
 
     fn handle_other_char(&mut self, ch: char) {
-        let _cursor_position = match self.command_line.add_char(ch) {
+        let current_string = match self.command_line.add_char(ch) {
             Ok(pos) => pos,
             Err(_) => return,
         };
 
-        self.parser.push(ch); //TODO#1 THIS ONLY WORKS WHEN CURSOR IS AT LAST POS
+        self.lexer.tokenize(current_string); // TODO#? disable onChange updates when facing performance hits
     }
 
     fn handle_arrow_left(&mut self) {

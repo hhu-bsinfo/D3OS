@@ -24,7 +24,7 @@ impl CommandLine {
     }
 
     /// TODO docs: NOT FOR '\n', '\x08'
-    pub fn add_char(&mut self, ch: char) -> Result<usize, ()> {
+    pub fn add_char(&mut self, ch: char) -> Result<String, ()> {
         self.current_line.insert(self.cursor_position, ch);
         let line_since_cursor = self.current_line.get(self.cursor_position..).unwrap();
         match line_since_cursor.len() - 1 {
@@ -32,10 +32,10 @@ impl CommandLine {
             cursor_offset => print!("{}\x1b[{}D", line_since_cursor, cursor_offset),
         }
         self.cursor_position += 1;
-        Ok(self.cursor_position)
+        Ok(self.current_line.clone())
     }
 
-    pub fn remove_before_cursor(&mut self) -> Result<usize, ()> {
+    pub fn remove_before_cursor(&mut self) -> Result<String, ()> {
         if self.cursor_position == 0 {
             return Err(());
         }
@@ -45,7 +45,7 @@ impl CommandLine {
         let line_since_cursor = self.current_line.get(self.cursor_position..).unwrap();
         let cursor_offset = line_since_cursor.len() + 1; // line_since_cursor.len() - 1 + (1 + 1) (we moved cursor already & we added whitespace to remove trailing char)
         print!("\x1b[1D{} \x1b[{}D", line_since_cursor, cursor_offset);
-        Ok(self.cursor_position)
+        Ok(self.current_line.clone())
     }
 
     pub fn move_cursor_left(&mut self) {

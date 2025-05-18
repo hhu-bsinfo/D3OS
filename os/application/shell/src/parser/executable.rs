@@ -36,7 +36,7 @@ impl Executable {
     pub fn add_argument_to_latest_job(&mut self, argument: String) {
         self.jobs
             .last_mut()
-            .expect("Expected at least one job, to add arguments to")
+            .expect("Expected at least one job, to add arguments too")
             .add_argument(argument);
     }
 }
