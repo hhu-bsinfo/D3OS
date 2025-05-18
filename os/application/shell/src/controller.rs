@@ -1,4 +1,4 @@
-use terminal::{DecodedKey, print, println};
+use terminal::{DecodedKey, KeyCode, print, println};
 
 use crate::{
     command_line::command_line::CommandLine,
@@ -53,12 +53,24 @@ impl Controller {
         self.parser.push(ch); //TODO#1 THIS ONLY WORKS WHEN CURSOR IS AT LAST POS
     }
 
+    fn handle_arrow_left(&mut self) {
+        self.command_line.move_cursor_left();
+    }
+
+    fn handle_arrow_right(&mut self) {
+        self.command_line.move_cursor_right();
+    }
+
     pub fn run(&mut self, key: DecodedKey) {
         match key {
+            // Unicodes
             DecodedKey::Unicode('\x08') => self.handle_backspace(),
             DecodedKey::Unicode('\n') => self.handle_enter(),
             DecodedKey::Unicode(ch) => self.handle_other_char(ch),
-            _ => {}
+            // RawKeys
+            DecodedKey::RawKey(KeyCode::ArrowLeft) => self.handle_arrow_left(),
+            DecodedKey::RawKey(KeyCode::ArrowRight) => self.handle_arrow_right(),
+            DecodedKey::RawKey(_) => {}
         }
     }
 }
