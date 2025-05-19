@@ -2,7 +2,7 @@ use alloc::{string::String, vec::Vec};
 use concurrent::thread::{self, Thread};
 
 use crate::{
-    build_in::{build_in::BuildIn, echo::EchoBuildIn},
+    build_in::{build_in::BuildIn, clear::ClearBuildIn, echo::EchoBuildIn},
     parser::executable::{Executable, Job},
 };
 
@@ -39,6 +39,7 @@ impl Executor {
     fn try_execute_build_in(&self, name: &str, args: Vec<&str>) -> Option<Thread> {
         match name {
             "echo" => EchoBuildIn::start(args),
+            "clear" => ClearBuildIn::start(args),
             _ => return None,
         }
     }
