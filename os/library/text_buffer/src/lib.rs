@@ -44,9 +44,13 @@ pub struct TextBuffer<'s> {
     file_buffer: &'s str,
     add_buffer: String,
     piece_table: Vec<PieceDescr>,
+    lenght: usize,
 }
 
 impl<'s> TextBuffer<'s> {
+    pub fn len(&self) -> usize {
+        self.lenght
+    }
     pub fn get_char(&self, logical_adress: usize) -> Option<char> {
         let (piece_table_index, piece_descr_offset) =
             self.resolve_logical_adress(logical_adress, false)?;
@@ -77,6 +81,7 @@ impl<'s> TextBuffer<'s> {
                 == self.add_buffer.len() - 1
         {
             self.piece_table[piece_table_index - 1].length += 1;
+            self.lenght+=1;
             return Ok(());
         }
         // Appen if piece_table index = n:
@@ -85,6 +90,7 @@ impl<'s> TextBuffer<'s> {
                 piece_table_index,
                 PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
             );
+            self.lenght+=1;
             return Ok(());
         }
         let piece_descr = &mut self.piece_table[piece_table_index];
@@ -110,6 +116,7 @@ impl<'s> TextBuffer<'s> {
             );
         }
 
+        self.lenght+=1;
         Ok(())
     }
 
@@ -166,6 +173,7 @@ impl<'s> TextBuffer<'s> {
         if self.piece_table.get(piece_table_index).unwrap().length == 0 {
             self.piece_table.remove(piece_table_index);
         }
+        self.lenght-=1;
         Ok(())
     }
 
@@ -174,6 +182,7 @@ impl<'s> TextBuffer<'s> {
             file_buffer,
             add_buffer: String::new(),
             piece_table: vec![PieceDescr::new(BufferDescr::File, 0, file_buffer.len())],
+            lenght: file_buffer.len(),
         }
     }
     pub fn to_string(&self) -> String {

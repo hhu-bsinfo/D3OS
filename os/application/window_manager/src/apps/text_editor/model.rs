@@ -19,7 +19,8 @@ pub struct Document<'b>{
 
 impl <'b>Document<'b> {
     pub fn new(path: Option<String>, text_buffer: TextBuffer<'b>) -> Document<'b> {
-        Document {path: path, text_buffer: text_buffer, caret: 0 , edit_mode: EditMode::Insert}
+        let length = text_buffer.len();
+        Document {path: path, text_buffer: text_buffer, caret: length , edit_mode: EditMode::Insert}
     }
     pub fn text_buffer(&self) -> &TextBuffer {
         &self.text_buffer
@@ -51,6 +52,9 @@ impl <'b>Document<'b> {
             'l' => self.caret +=1,
             'i' => self.edit_mode = EditMode::Insert,
             _ => (),
+        }
+        if self.caret > self.text_buffer.len() {
+            self.caret = self.text_buffer.len();
         }
     }
 
