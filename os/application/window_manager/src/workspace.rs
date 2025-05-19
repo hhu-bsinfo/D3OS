@@ -49,7 +49,7 @@ impl Workspace {
     }
 
     pub fn insert_window(&mut self, window: AppWindow, after: usize) {
-        let new_window_id = window.id;
+        let new_window_id = window.get_id();
         self.windows.insert(new_window_id, window);
 
         self.buddy_tree_root.insert_value(after, new_window_id);

@@ -350,7 +350,7 @@ impl WindowManager {
 
     fn add_window_to_workspace(&mut self, rect_data: RectData, app_name: &str) {
         let window = AppWindow::new(rect_data);
-        let window_id = window.id;
+        let window_id = window.get_id();
         let root_container = window.root_container();
 
         let curr_ws = self.get_current_workspace_mut();
@@ -423,7 +423,7 @@ impl WindowManager {
         };
 
         let window = AppWindow::new(window_rect_data);
-        let window_id = window.id;
+        let window_id = window.get_id();
         let root_container = window.root_container();
 
         let workspace = Workspace::new_with_single_window((window_id, window), window_id);
@@ -517,7 +517,7 @@ impl WindowManager {
         let curr_ws = self.get_current_workspace_mut();
         
         // Redraw all unfocused workspace windows
-        for window in curr_ws.windows.values_mut().filter(|w| w.id != focused_window_id) {
+        for window in curr_ws.windows.values_mut().filter(|w| w.get_id() != focused_window_id) {
             window.draw(focused_window_id, is_dirty);
         }
 

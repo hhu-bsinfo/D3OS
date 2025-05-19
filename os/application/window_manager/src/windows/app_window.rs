@@ -13,10 +13,10 @@ pub const FOCUSED_INDICATOR_LENGTH: u32 = 24;
 
 /// This is the window used in workspaces to contains components from different apps
 pub struct AppWindow {
-    pub id: usize,
+    id: usize,
     pub rect_data: RectData,
     /// Indicates whether redrawing of this window is required in next loop-iteration
-    pub is_dirty: bool,
+    is_dirty: bool,
 
     root_container: ComponentRef,
     focused_component: Option<ComponentRef>,
@@ -53,6 +53,10 @@ impl AppWindow {
         }
     }
 
+    pub fn get_id(&self) -> usize {
+        self.id
+    }
+
     pub fn root_container(&self) -> ComponentRef {
         self.root_container.clone()
     }
@@ -86,7 +90,6 @@ impl AppWindow {
             }
         }
 
-        //self.focused_component_id = None;
         self.focused_component = None;
 
         // Focus the new component
@@ -98,13 +101,11 @@ impl AppWindow {
         }
     }
 
+    /// Passes the interaction to the focused component and returns, whether the interaction has been handled.
     pub fn interact_with_focused_component(&mut self, interaction: Interaction) -> bool {
         if let Some(focused_component) = &self.focused_component {
-            //let focused_component = self.components.get(focused_component_id).unwrap();
-
             // prüfe ob Komponente interagierbar ist und bekomme Callback
             let callback: Option<Box<dyn FnOnce()>> = if let Some(interactable) = focused_component.write().as_interactable_mut() {
-                //interactable.consume_keyboard_press(keyboard_press)
                 match interaction {
                     Interaction::Keyboard(keyboard_press) => interactable.consume_keyboard_press(keyboard_press),
                     Interaction::Mouse(mouse_event) => interactable.consume_mouse_event(&mouse_event),
@@ -237,19 +238,9 @@ impl AppWindow {
             self.is_dirty = true;
         }
 
-        // "dirty" Komponenten werden gesammelt
-        /*let dirty_components: Vec<_> = self.components.iter().filter(|component_entry| {
-            component_entry.1.read().is_dirty() || self.is_dirty
-        }).map(|(_, value)| value).collect();
-
-
-        // keine Änderungen in Komponenten oder Fenster
-        if dirty_components.is_empty() && !self.is_dirty {
-            return;
-        }*/
-
         let is_focused = self.id == focused_window_id;
 
+        // Clear the entire window if it is dirty
         if self.is_dirty {
             Drawer::partial_clear_screen(self.rect_data);
 
@@ -262,45 +253,10 @@ impl AppWindow {
             self.root_container.write().mark_dirty();
         }
 
-        // es muss nicht teil bereinigt werden, falls das Fenster dirty ist da dies durch Splitting der Fall sein kann und so  in anderen Fenstern entstehen könnten
-        /*if !self.is_dirty {  
-            // bereinige zuvor gezeichnete Bereiche, der neu zu zeichnenden Komponenten
-            for dirty_component in &dirty_components {
-                Drawer::partial_clear_screen(dirty_component.read().get_drawn_rect_data());
-            }
-        }*/
-
-        // Zeichne die aktualisierten Komponenten
-        /*for dirty_component in &dirty_components {
-            // This will mark non-dirty components as dirty, when window is dirty
-            if self.is_dirty {
-                dirty_component.write().mark_dirty();
-            }
-
-            // prüfe ob die Komponente fokussiert ist
-            let is_focused = if let Some(focused_component_id) = self.focused_component_id {
-                focused_component_id == dirty_component.read().get_id().unwrap()
-            } else {
-                false
-            };
-
-            dirty_component.write().draw(is_focused);
-        }*/
-
+        // Draw components
         let focused_id = self.focused_component.as_ref().and_then(|comp| Some(comp.read().get_id()));
         self.root_container.write().draw(focused_id);
 
         self.is_dirty = false;
-    }
-
-    fn draw_is_focused_indicator(&self) {
-        let top_left = self.rect_data.top_left;
-        let side_length = FOCUSED_INDICATOR_LENGTH;
-        let vertices = [
-            top_left.add(1, 1),
-            top_left.add(side_length, 1),
-            top_left.add(1, side_length),
-        ];
-        Drawer::draw_filled_triangle(vertices, FOCUSED_INDICATOR_COLOR);
     }
 }
