@@ -123,7 +123,23 @@ impl AppWindow {
         return false;
     }
 
+    /// Returns whether the focused component wants to hold the focus.
+    /// The window should not be unfocused as long as that's the case.
+    pub fn can_unfocus(&self) -> bool {
+        if let Some(focused) = &self.focused_component {
+            if let Some(focusable) = focused.read().as_focusable() {
+                return focusable.can_unfocus();
+            }
+        }
+
+        return true;
+    }
+
     pub fn focus_next_component(&mut self) {
+        if !self.can_unfocus() {
+            return;
+        }
+
         let next_component = self.root_container.write()
             .as_container_mut().unwrap()
             .focus_next_child();
@@ -132,6 +148,10 @@ impl AppWindow {
     }
 
     pub fn focus_prev_component(&mut self) {
+        if !self.can_unfocus() {
+            return;
+        }
+
         let prev_component = self.root_container.write()
             .as_container_mut().unwrap()
             .focus_prev_child();
@@ -140,8 +160,10 @@ impl AppWindow {
     }
 
     pub fn focus_component_at(&mut self, pos: Vertex) {
-        /*let new_component_id = self.find_component_at(&pos);
-        self.focus_component(new_component_id);*/
+        if !self.can_unfocus() {
+            return;
+        }
+
         let new_component = self.root_container.write().as_container_mut().unwrap().focus_child_at(pos);
         self.focus_component(new_component);
     }

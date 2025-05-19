@@ -315,13 +315,6 @@ impl FocusManager for BasicContainer {
                     return Some(next_child);
                 }
             }
-
-            // Check if the prevous component allows unfocus
-            if let Some(focusable) = current_focus_lock.as_focusable() {
-                if !focusable.can_unfocus() {
-                    return Some(current_focus.clone());
-                }
-            }
         }
 
         // Get the next or first child index
@@ -364,12 +357,6 @@ impl FocusManager for BasicContainer {
             if let Some(container) = current_focus_lock.as_container_mut() {
                 if let Some(next_child) = container.focus_prev_child() {
                     return Some(next_child);
-                }
-            }
-            // Unfocus the previous focusable (if possible)
-            else if let Some(focusable) = current_focus_lock.as_focusable() {
-                if !focusable.can_unfocus() {
-                    return Some(current_focus.clone());
                 }
             }
         }
