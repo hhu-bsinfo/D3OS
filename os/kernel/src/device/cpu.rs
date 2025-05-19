@@ -50,4 +50,18 @@ impl Cpu {
             supports_1gib_pages: has_1gib_pages,
         }
     }
+
+    pub fn physical_address_bits(&self) -> u8 {
+        self.physical_address_bits
+    }
+
+    pub fn linear_address_bits(&self) -> u8 {
+        self.linear_address_bits
+    }
+    
+    pub fn supports_1gib_pages(&self) -> bool {
+        self.supports_1gib_pages
+    }
+
+
 }

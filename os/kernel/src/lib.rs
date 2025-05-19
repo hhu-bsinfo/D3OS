@@ -97,18 +97,17 @@ fn panic(info: &PanicInfo) -> ! {
 ╚═════════════════════════════════════════════════════════════════════════╝ */
 
 /// CPU caps.
-static CPU: Once<Mutex<Cpu>> = Once::new();
+static CPU: Once<Cpu> = Once::new();
 
 
 pub fn init_cpu_info() {
     CPU.call_once(|| {
-        let cpu = Cpu::new();
-        Mutex::new(cpu)
+        Cpu::new()
     });
 }
 
 /// Returns a reference to the CPU info struct.
-pub fn cpu() -> &'static  Mutex<Cpu> {
+pub fn cpu() -> &'static Cpu {
     CPU.get()
         .expect("Trying to access CPU info before initialization!")
 }

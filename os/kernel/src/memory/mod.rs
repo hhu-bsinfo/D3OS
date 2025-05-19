@@ -5,9 +5,10 @@ pub mod frames;
 pub mod nvmem;
 
 pub mod kheap;
-pub mod kstack;
+pub mod stack;
 pub mod acpi_handler;
 
+#[derive(PartialEq)]
 #[derive(Clone, Copy)]
 pub enum MemorySpace {
     Kernel,

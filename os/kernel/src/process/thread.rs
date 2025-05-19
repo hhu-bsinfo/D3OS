@@ -35,7 +35,8 @@
 use crate::consts::MAIN_USER_STACK_START;
 use crate::consts::MAX_USER_STACK_SIZE;
 use crate::consts::{KERNEL_STACK_PAGES, USER_SPACE_ENV_START};
-use crate::memory::kstack::StackAllocator;
+use crate::memory::stack::StackAllocator;
+use crate::memory::vmm::VirtualMemoryArea;
 use crate::memory::vmm::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process::process::Process;
@@ -55,6 +56,7 @@ use x86_64::VirtAddr;
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB};
+
 
 /// kernel & user stack of a thread
 struct Stacks {
@@ -102,10 +104,12 @@ impl Thread {
             .virtual_address_space
             .map_kernel_stack(
                 PageRange {
-                    start: Page::from_start_address(VirtAddr::new(kernel_stack.as_ptr() as u64)).unwrap(),
+                    start: Page::from_start_address(VirtAddr::new(kernel_stack.as_ptr() as u64))
+                        .unwrap(),
                     end: Page::from_start_address(VirtAddr::new(
                         kernel_stack.as_ptr() as u64 + kernel_stack.capacity() as u64 * 8,
-                    )).unwrap(),
+                    ))
+                    .unwrap(),
                 },
                 tag_str,
             );
@@ -133,7 +137,6 @@ impl Thread {
     /// Returns the main thread of the application which is not yet registered in the scheduler.
     pub fn load_application(elf_buffer: &[u8], name: &str, args: &Vec<&str>) -> Arc<Thread> {
         let process = process_manager().write().create_process();
-        //let address_space = process.address_space();
 
         // Parse elf file headers and map code vma if successful
         let elf = Elf::parse(elf_buffer).expect("Failed to parse application");
@@ -146,7 +149,7 @@ impl Thread {
                 } else {
                     (header.p_memsz as usize / PAGE_SIZE) + 1
                 };
-                let frames = memory::frames::alloc(page_count);
+
                 let virt_start = Page::from_start_address(VirtAddr::new(header.p_vaddr))
                     .expect("ELF: Program section not page aligned");
                 let pages = PageRange {
@@ -154,6 +157,19 @@ impl Thread {
                     end: virt_start + page_count as u64,
                 };
 
+                // Map pages for the code and allocate frames for all pages
+                let frames = process.virtual_address_space.map_and_allocate(
+                    pages,
+                    pages,
+                    MemorySpace::User,
+                    PageTableFlags::PRESENT
+                        | PageTableFlags::WRITABLE
+                        | PageTableFlags::USER_ACCESSIBLE,
+                    VmaType::Code,
+                    name,
+                );
+
+                // copy code from the ELF file to the allocated frames
                 unsafe {
                     let code = elf_buffer.as_ptr().offset(header.p_offset as isize);
                     let target = frames.start.start_address().as_u64() as *mut u8;
@@ -162,23 +178,20 @@ impl Thread {
                         .offset(header.p_filesz as isize)
                         .write_bytes(0, (header.p_memsz - header.p_filesz) as usize);
                 }
-                process.virtual_address_space.map_physical(
-                    frames,
-                    pages,
-                    MemorySpace::User,
-                    PageTableFlags::PRESENT
-                        | PageTableFlags::WRITABLE
-                        | PageTableFlags::USER_ACCESSIBLE,
-                    VmaType::Code,
-                    name
-                );
             });
 
-        // create kernel stack for the application
+//        info!("*** load_application: mapped code vma");
+
+        
+        // Create kernel stack for the application 
+        // Does not require mapping, because full physical memory is mapped 1:1 in kernel space
+        info!("   create kernel stack");
         let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
             (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
             StackAllocator::default(),
         );
+
+
 
         // create user stack for the application
         let user_stack_end = Page::from_start_address(VirtAddr::new(
@@ -186,11 +199,13 @@ impl Thread {
         ))
         .unwrap();
     
+        // last page of the user stack
         let user_stack_pages = PageRange {
             start: user_stack_end - 1,
             end: user_stack_end,
         };
 
+        // Create Vec for user stack (backed by stack allocator)
         let user_stack = unsafe {
             Vec::from_raw_parts_in(
                 user_stack_pages.start.start_address().as_u64() as *mut u64,
@@ -201,15 +216,18 @@ impl Thread {
         };
 
         // map user stack of the application
+        info!("   map user stack: {:x?}, #pages: {:?}", user_stack_pages, user_stack_pages.len());
         process.virtual_address_space.map(
             user_stack_pages,
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
             VmaType::UserStack,
-            ""
+            "",
         );
 
-        info!("Created user stack for thread: {:x?}", user_stack_pages);
+//        info!("Created user stack for thread: {:x?}", user_stack_pages);
+
+
 
         // create environment for the application
         let args_size = args.iter().map(|arg| arg.len()).sum::<usize>();
@@ -234,8 +252,11 @@ impl Thread {
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
             VmaType::Environment,
-            ""
+            "",
         );
+
+
+
 
         // create argc and argv in the user space environment
         let env_addr = VirtAddr::new(env_frames.start.start_address().as_u64()); // Start address of user space environment
@@ -276,11 +297,9 @@ impl Thread {
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process,
             entry: || {},
-// old           entry: unsafe { mem::transmute(ptr::null::<fn()>()) },
+            // old           entry: unsafe { mem::transmute(ptr::null::<fn()>()) },
             user_rip: VirtAddr::new(elf.entry),
         };
-
-        info!("***ms thread");
 
         thread.prepare_kernel_stack();
         Arc::new(thread)
@@ -335,7 +354,7 @@ impl Thread {
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
             VmaType::UserStack,
-            ""
+            "",
         );
 
         // create user thread and prepare the stack for starting it later
@@ -392,7 +411,11 @@ impl Thread {
         let current_rsp0 = ptr::from_ref(&current.stacks.lock().old_rsp0) as *mut u64;
         let next_rsp0 = next.stacks.lock().old_rsp0.as_u64();
         let next_rsp0_end = next.kernel_stack_addr().as_u64();
-        let next_address_space = next.process.virtual_address_space.page_table_address().as_u64();
+        let next_address_space = next
+            .process
+            .virtual_address_space
+            .page_table_address()
+            .as_u64();
 
         unsafe {
             thread_switch(current_rsp0, next_rsp0, next_rsp0_end, next_address_space);
@@ -410,7 +433,7 @@ impl Thread {
 
         // Grow stack area -> Allocate one page right below the stack
         self.process
-             .virtual_address_space
+            .virtual_address_space
             .find_vmas(VmaType::UserStack)
             .iter()
             .find(|vma| vma.start().as_u64() == stacks.user_stack.as_ptr() as u64)
@@ -424,6 +447,7 @@ impl Thread {
         }
 
         let user_stack_start = stacks.user_stack.as_ptr() as usize - PAGE_SIZE;
+        // Fix me 
         stacks.user_stack = unsafe {
             Vec::from_raw_parts_in(
                 user_stack_start as *mut u64,
@@ -579,7 +603,12 @@ unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
 
 /// Low-level thread switching function
 #[unsafe(naked)]
-unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_rsp0_end: u64, next_cr3: u64) {
+unsafe extern "C" fn thread_switch(
+    current_rsp0: *mut u64,
+    next_rsp0: u64,
+    next_rsp0_end: u64,
+    next_cr3: u64,
+) {
     naked_asm!(
     // Save registers of current thread
     "pushf",

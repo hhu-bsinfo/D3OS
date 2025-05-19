@@ -174,7 +174,7 @@ impl Scheduler {
             if let Some(mut sleep_list) = self.sleep_list.try_lock() {
                 Scheduler::check_sleep_list(&mut state, &mut sleep_list);
             }
-
+     
             let current = Scheduler::current(&state);
             let next = match state.ready_queue.pop_back() {
                 Some(thread) => thread,

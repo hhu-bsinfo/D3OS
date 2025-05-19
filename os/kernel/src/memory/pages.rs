@@ -1,7 +1,7 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: paging                                                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Functions related to paging, protection, and memory mapping.            ║
+   ║ Public functions related to paging, protection, and memory mapping.     ║
    ║   - map           map a range of pages to the given memory space        ║
    ║   - map_physical  map a range of frames to the given page range in the  ║ 
    ║                   in the given memory space                             ║
@@ -90,7 +90,10 @@ impl Paging {
         PhysAddr::new(root_table as u64)
     }
 
-    /// Map page range `pages` to the given memory `space` with the given page table entry `flags`
+    /// Map page range `pages` to the given memory `space` with the given page table entry `flags` \
+    /// If `space` is `MemorySpace::Kernel`, the frames are not allocated but pages are identity mapped. \
+    /// If `space` is `MemorySpace::User` and if frames.start = frames.end: frames are allocated from the frame allocator. 
+    /// Otherwise the given `frames` are used for the mapping
     pub(super) fn map(&self, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
@@ -100,7 +103,8 @@ impl Paging {
         Paging::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
-    /// Map a range of `frames` to the given page range `pages` in the given memory `space` with the given page table entry `flags`
+    /// Map a range of `frames` to the given page range `pages` in the given memory `space` with the given page table entry `flags` \
+    /// This is only allowed for `space`set to `MemorySpace::User` 
     pub(super) fn map_physical(&self, frames: PhysFrameRange, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
@@ -178,7 +182,10 @@ impl Paging {
         }
     }
 
-    /// Internal recursive function to map a range of `frames` to the given page range `pages` in the given memory `space` with the given page table entry `flags`.
+    /// Internal recursive function to map a range of `frames` to the given page range `pages` in the given memory `space` with the given page table entry `flags`. \
+    /// If `space` is `MemorySpace::Kernel`, the frames are not allocated but pages are identity mapped. \
+    /// If `space` is `MemorySpace::User` and if frames.start = frames.end: frames are allocated from the frame allocator. 
+    /// Otherwise the given `frames` are used for the mapping
     fn map_in_table(table: &mut PageTable, mut frames: PhysFrameRange, mut pages: PageRange, space: MemorySpace, flags: PageTableFlags, level: usize) -> usize {
         let mut total_allocated_pages: usize = 0;
         let start_index = usize::from(page_table_index(pages.start.start_address(), level));

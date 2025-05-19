@@ -25,11 +25,12 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags};
 
+use crate::cpu;
+use crate::memory::frames;
 use crate::memory::frames::phys_limit;
 use crate::memory::pages::Paging;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process_manager;
-
 
 /*static LAST_VIRT_ADDR: Once<Mutex<Cell<VirtAddr>>> = Once::new();
 
@@ -70,21 +71,34 @@ pub struct VirtualAddressSpace {
 }
 
 impl VirtualAddressSpace {
+
     pub fn new(page_tables: Arc<Paging>) -> Self {
+        let first_usable_user_addr = VirtAddr::new(crate::consts::USER_SPACE_START as u64);
+        let last_usable_user_addr: VirtAddr = VirtAddr::new( Self::last_usable_virtual_address());
+        info!("VirtualAddressSpace: first usable user address: 0x{:x}, last usable user address: 0x{:x}", first_usable_user_addr.as_u64(), last_usable_user_addr.as_u64());
+ 
         Self {
             page_tables,
             virtual_memory_areas: RwLock::new(Vec::new()),
-            first_usable_user_addr: VirtAddr::new(crate::consts::USER_SPACE_START as u64),
-            last_usable_user_addr: VirtAddr::new(0),
+            first_usable_user_addr,
+            last_usable_user_addr,
         }
     }
 
-    pub fn page_tables(&self) -> Arc<Paging> {
-        Arc::clone(&self.page_tables)
+    /// Return the last useable virtual address in canonical form	
+    fn last_usable_virtual_address() -> u64 {
+        let virtual_bits = cpu().linear_address_bits();
+        (1u64 << (virtual_bits - 1)) - 1
     }
 
     pub fn load_address_space(&self) {
         self.page_tables.load();
+    }
+
+    
+
+    pub fn page_tables(&self) -> Arc<Paging> {
+        Arc::clone(&self.page_tables)
     }
 
     pub fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
@@ -137,18 +151,31 @@ impl VirtualAddressSpace {
         }
     }
 
-    /// map a new virtual memory area `pages` in this address space with the given `flags`
-    /// MS: warum sind hier die pages schon gegeben?
-    pub fn map(
+    /// Create a mapping for the given page range `pages` in this address space with the given `flags`
+    /// and allocate frames for the `pages_to_alloc` (sub-)range.\
+    /// This function is only for `MemorySpace::User`. 
+    pub fn map_and_allocate(
         &self,
         pages: PageRange,
+        pages_to_alloc: PageRange,
         space: MemorySpace,
         flags: PageTableFlags,
         mem_type: VmaType,
         tag_str: &str,
-    ) {
+    ) -> PhysFrameRange {
+        assert!(space == MemorySpace::User, "map_and_allocate: space must be MemorySpace::User");
+        assert!(pages_to_alloc.start >= pages.start && pages_to_alloc.start < pages.end, "map_and_allocate: pages_to_alloc.start invalid");
+        assert!(pages_to_alloc.end > pages_to_alloc.start && pages_to_alloc.end <= pages.end, "map_and_allocate: pages_to_alloc.end invalid");
+        
+        let page_count = pages_to_alloc.len();
+        let frames = frames::alloc(page_count as usize);
+
+        info!("map_and_allocate: page_count: {:?}, pages: {:?}, frames: {:?}", page_count, pages, frames);
+
+
         self.add_vma(VirtualMemoryArea::new_with_tag(pages, mem_type, tag_str));
-        self.page_tables.map(pages, space, flags);
+        self.page_tables.map_physical(frames, pages, space, flags);
+        frames
     }
 
     /// Map the given physical frames `frames` to the virtual memory area `pages` in this address space
@@ -161,9 +188,33 @@ impl VirtualAddressSpace {
         mem_type: VmaType,
         tag_str: &str,
     ) {
+
+        let page_count = frames.len();
+
+        info!("map_physical: pages: {:?}, frames: {:?}, page_count: {:?}", pages, frames, page_count);
+
         self.add_vma(VirtualMemoryArea::new_with_tag(pages, mem_type, tag_str));
         self.page_tables.map_physical(frames, pages, space, flags);
     }
+
+
+
+
+    /// map a new virtual memory area `pages` in this address space with the given `flags`
+    /// MS: warum sind hier die pages schon gegeben?
+    pub fn map(
+        &self,
+        pages: PageRange,
+        space: MemorySpace,
+        flags: PageTableFlags,
+        mem_type: VmaType,
+        tag_str: &str,
+    ) {
+        
+        self.add_vma(VirtualMemoryArea::new_with_tag(pages, mem_type, tag_str));
+        self.page_tables.map(pages, space, flags);
+    }
+
 
     /// Map the given physical frames `frames` to any virtual memory area in this address space
     pub fn map_io(&self, _frames: PhysFrameRange) { 
@@ -322,10 +373,11 @@ impl fmt::Debug for VirtualMemoryArea {
 
         write!(
             f,
-            "   VMA [0x{:x}; 0x{:x}], type: {:?}, tag: {:?}",
+            "   VMA {:?}, [0x{:x}; 0x{:x}], #pages: {}, tag: {:?}",
+            self.typ,
             self.range.start.start_address().as_u64(),
             self.range.end.start_address().as_u64(),
-            self.typ,
+            (self.range.end.start_address().as_u64() - self.range.start.start_address().as_u64()) / PAGE_SIZE as u64,
             tag_str
         )
     }

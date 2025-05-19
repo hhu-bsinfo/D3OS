@@ -11,10 +11,11 @@
 use core::alloc::{AllocError, Allocator, Layout};
 use core::ptr::NonNull;
 use x86_64::PhysAddr;
-use x86_64::structures::paging::frame::PhysFrameRange;
+use x86_64::structures::paging::frame::{self, PhysFrameRange};
 use x86_64::structures::paging::PhysFrame;
 use crate::memory::{PAGE_SIZE, frames};
 use crate::memory::frames::phys_limit;
+use log::info;
 
 
 #[derive(Default)]
@@ -29,7 +30,6 @@ unsafe impl Allocator for StackAllocator {
 
         let frame_count = if layout.size() % PAGE_SIZE == 0 { layout.size() / PAGE_SIZE } else { (layout.size() / PAGE_SIZE) + 1 };
         let frames = frames::alloc(frame_count);
-
         Ok(NonNull::slice_from_raw_parts(NonNull::new(frames.start.start_address().as_u64() as *mut u8).unwrap(), (frames.end - frames.start) as usize * PAGE_SIZE))
     }
 
