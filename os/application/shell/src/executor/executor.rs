@@ -2,7 +2,7 @@ use alloc::{string::String, vec::Vec};
 use concurrent::thread::{self};
 
 use crate::{
-    build_in::{build_in::BuildIn, clear::ClearBuildIn, echo::EchoBuildIn},
+    build_in::{build_in::BuildIn, clear::ClearBuildIn, echo::EchoBuildIn, exit::ExitBuildIn},
     parser::executable::{Executable, Job},
 };
 
@@ -40,6 +40,7 @@ impl Executor {
         match name {
             "echo" => EchoBuildIn::start(args),
             "clear" => ClearBuildIn::start(args),
+            "exit" => ExitBuildIn::start(args),
             _ => return Err(()),
         }
     }
