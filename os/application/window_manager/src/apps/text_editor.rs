@@ -1,4 +1,5 @@
 use alloc::{borrow::ToOwned, boxed::Box, rc::Rc, string::String, vec};
+use model::Document;
 use crate::{alloc::string::ToString, components::component::ComponentStylingBuilder, config, signal::Signal};
 use graphic::{buffered_lfb, color::{Color, WHITE}};
 use spin::rwlock::RwLock;
@@ -11,6 +12,7 @@ use text_buffer::TextBuffer;
 use alloc::collections::VecDeque;
 
 mod view;
+mod model;
 
 // Julius Drodofsky
 pub struct TextEditor;
@@ -52,23 +54,17 @@ impl Runnable for TextEditor {
         
 
         let mut text_buffer = TextBuffer::from_str("Das ist ein Text!");
+        let mut document: Document = Document::new(Some(String::from("scratch")), text_buffer);
         
-        let mut view = View::Simple{font_scale: 1, fg_color: WHITE, bg_color: Color::new(0, 0, 0, 255) };
-        view.render( &text_buffer, &mut canvas.write());
+        let mut view = View::Simple{font_scale: 1, fg_color: WHITE, bg_color: config.background_color};
+        view.render(&document, &mut canvas.write());
         component.write().mark_dirty();
-        let mut c = 16;
         let mut dirty = false;
         loop {
             while let Some(value) = input.write().pop_front(){
-                if value == '\x08'{
-                    text_buffer.delete(c);
-                    c-=1;
-                    dirty=true;
-                    continue;
-                }
-                text_buffer.insert(c, value);
-                c+=1;
-                view.render(&text_buffer, &mut canvas.write());
+                canvas.write().clear(config.background_color);
+                document.update(value); 
+                view.render(&document, &mut canvas.write());
                 dirty = true;
             }
             if dirty {
