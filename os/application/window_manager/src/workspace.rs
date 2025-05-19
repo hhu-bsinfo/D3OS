@@ -60,6 +60,10 @@ impl Workspace {
     }
 
     pub fn focus_next_window(&mut self) {
+        if !self.get_focused_window().can_unfocus() {
+            return;
+        }
+        
         self.get_focused_window_mut().mark_window_dirty(); // old window
         
         let mut cursor =
@@ -80,6 +84,10 @@ impl Workspace {
     }
 
     pub fn focus_prev_window(&mut self) {
+        if !self.get_focused_window().can_unfocus() {
+            return;
+        }
+        
         self.get_focused_window_mut().mark_window_dirty(); // old window
 
         let mut cursor =
@@ -100,6 +108,10 @@ impl Workspace {
     }
 
     pub fn focus_window_at(&mut self, pos: Vertex) {
+        if !self.get_focused_window().can_unfocus() {
+            return;
+        }
+
         // Find the window that contains the position
         let new_window_id = self.window_orderer.iter()
             .find(|id| self.windows.get(*id).unwrap().rect_data.contains_vertex(&pos))
