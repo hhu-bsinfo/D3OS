@@ -1,4 +1,4 @@
-use crate::memory::vmm::VmaType;
+use crate::memory::vmm::{VirtualMemoryArea, VmaType};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::{acpi_tables, process_manager};
 use acpi::AcpiTable;
@@ -229,20 +229,22 @@ pub fn init() {
 
             // Map non-volatile memory range to kernel address space
             let start_page = Page::from_start_address(VirtAddr::new(address)).unwrap();
-            process_manager()
+            let vma = VirtualMemoryArea::new_with_tag(
+                PageRange { start: start_page, end: start_page + (length / PAGE_SIZE as u64) },
+                VmaType::DeviceMemory,
+                "nfit",
+            );
+            let process = process_manager()
                 .read()
                 .kernel_process()
-                .expect("Failed to get kernel process")
+                .expect("Failed to get kernel process");
+            process.virtual_address_space.add_vma(vma);
+            process
                 .virtual_address_space
                 .map(
-                    PageRange {
-                        start: start_page,
-                        end: start_page + (length / PAGE_SIZE as u64),
-                    },
+                    vma,
                     MemorySpace::Kernel,
                     PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                    VmaType::DeviceMemory,
-                    "nfit",
                 );
         }
     }

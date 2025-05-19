@@ -16,7 +16,7 @@ use x86_64::structures::paging::{Page, PageTableFlags};
 use crate::{acpi_tables, allocator, interrupt_dispatcher, process_manager, scheduler, timer};
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::MemorySpace;
-use crate::memory::vmm::VmaType;
+use crate::memory::vmm::{VirtualMemoryArea, VmaType};
 
 pub struct Apic {
     local_apic: Mutex<LocalApic>,
@@ -184,7 +184,18 @@ impl Apic {
     fn create_local_apic(madt: &Madt) -> LocalApic {
         // Read physical APIC MMIO base address and map it to the kernel address space
         let registers = Page::from_start_address(VirtAddr::new(madt.local_apic_address as u64)).expect("Local Apic MMIO address is not page aligned");
-        process_manager().read().kernel_process().unwrap().virtual_address_space.map(PageRange { start: registers, end: registers + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, VmaType::DeviceMemory, "lapic");
+        let vma = VirtualMemoryArea::new_with_tag(
+            PageRange { start: registers, end: registers + 1 },
+            VmaType::DeviceMemory,
+            "lapic",
+        );
+        let process = process_manager().read().kernel_process().unwrap();
+        process.virtual_address_space.add_vma(vma);
+        process.virtual_address_space.map(
+            vma,
+            MemorySpace::Kernel,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
+        );
         
         LocalApicBuilder::new()
             .timer_vector(InterruptVector::ApicTimer as usize)
@@ -198,7 +209,18 @@ impl Apic {
     fn create_io_apic(io_apic_desc: &acpi::platform::interrupt::IoApic) -> IoApic {
         // Read physical IO APIC MMIO base address and map it to the kernel address space
         let registers = Page::from_start_address(VirtAddr::new(io_apic_desc.address as u64)).expect("IO Apic MMIO address is not page aligned");
-        process_manager().read().kernel_process().unwrap().virtual_address_space.map(PageRange { start: registers, end: registers + 1 }, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, VmaType::DeviceMemory, "ioapic");
+        let vma = VirtualMemoryArea::new_with_tag(
+            PageRange { start: registers, end: registers + 1 },
+            VmaType::DeviceMemory,
+            "ioapic",
+        );
+        let process = process_manager().read().kernel_process().unwrap();
+        process.virtual_address_space.add_vma(vma);
+        process.virtual_address_space.map(
+            vma,
+            MemorySpace::Kernel,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
+        );
         
         unsafe {
             let mut io_apic = IoApic::new(registers.start_address().as_u64());

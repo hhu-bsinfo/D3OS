@@ -95,22 +95,16 @@ impl VirtualAddressSpace {
         self.page_tables.load();
     }
 
-    
 
     pub fn page_tables(&self) -> Arc<Paging> {
         Arc::clone(&self.page_tables)
     }
 
-    pub fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
-        self.page_tables.set_flags(pages, flags);
-    }
-
-    pub fn page_table_address(&self) -> PhysAddr {
-        self.page_tables.page_table_address()
-    }
-
-    /// Add the new vma `new_area` to this address space. 
-    fn add_vma(&self, new_area: VirtualMemoryArea) {
+    /// Add a [`VirtualMemoryArea`] to this address space.
+    /// 
+    /// This doesn't actually map it in, this only happens on memory access.
+    pub fn add_vma(&self, new_area: VirtualMemoryArea) {
+        // TODO: return an error instead of panicking
         let mut areas = self.virtual_memory_areas.write();
         match areas.iter().find(|area| area.overlaps_with(&new_area)) {
             Some(_) => panic!("Process: Trying to add a VMA, which overlaps with an existing one!"),
@@ -151,6 +145,21 @@ impl VirtualAddressSpace {
         }
     }
 
+    /// Map a [`VirtualMemoryArea`] to this address space.
+    /// 
+    /// This randomly allocates and maps some available frames.
+    pub fn map(
+        &self,
+        vma: VirtualMemoryArea,
+        space: MemorySpace,
+        flags: PageTableFlags,
+    ) {
+        let areas = self.virtual_memory_areas.read();
+        areas.iter().find(|area| **area == vma)
+            .expect("tried to map a non-existent VMA!");
+        self.page_tables.map(vma.range, space, flags);
+    }
+
     /// Create a mapping for the given page range `pages` in this address space with the given `flags`
     /// and allocate frames for the `pages_to_alloc` (sub-)range.\
     /// This function is only for `MemorySpace::User`. 
@@ -173,48 +182,45 @@ impl VirtualAddressSpace {
         info!("map_and_allocate: page_count: {:?}, pages: {:?}, frames: {:?}", page_count, pages, frames);
 
 
-        self.add_vma(VirtualMemoryArea::new_with_tag(pages, mem_type, tag_str));
-        self.page_tables.map_physical(frames, pages, space, flags);
+        let vma = VirtualMemoryArea::new_with_tag(pages, mem_type, tag_str);
+        self.add_vma(vma);
+        // TODO: this allocates the whole VMA and not just pages_to_alloc
+        self.map_physical(vma, frames, space, flags);
         frames
+    }
+
+
+    /// Map a single page to this address space.
+    pub fn map_single(
+        &self,
+        vma: VirtualMemoryArea,
+        page: Page,
+        space: MemorySpace,
+        flags: PageTableFlags,
+    ) {
+        let areas = self.virtual_memory_areas.read();
+        areas.iter().find(|area| **area == vma)
+            .expect("tried to map a non-existent VMA!");
+        assert!(page.start_address() >= vma.start());
+        assert!(page.start_address() + page.size() < vma.end());
+        self.page_tables.map(PageRange { start: page, end: page + 1 }, space, flags);
     }
 
     /// Map the given physical frames `frames` to the virtual memory area `pages` in this address space
     pub fn map_physical(
         &self,
+        vma: VirtualMemoryArea,
         frames: PhysFrameRange,
-        pages: PageRange,
         space: MemorySpace,
         flags: PageTableFlags,
-        mem_type: VmaType,
-        tag_str: &str,
     ) {
-
         let page_count = frames.len();
-
-        info!("map_physical: pages: {:?}, frames: {:?}, page_count: {:?}", pages, frames, page_count);
-
-        self.add_vma(VirtualMemoryArea::new_with_tag(pages, mem_type, tag_str));
-        self.page_tables.map_physical(frames, pages, space, flags);
+        info!("map_physical: vma: {:?}, frames: {:?}, page_count: {:?}", vma, frames, page_count);
+        let areas = self.virtual_memory_areas.read();
+        areas.iter().find(|area| **area == vma)
+            .expect("tried to map a non-existent VMA!");
+        self.page_tables.map_physical(frames, vma.range, space, flags);
     }
-
-
-
-
-    /// map a new virtual memory area `pages` in this address space with the given `flags`
-    /// MS: warum sind hier die pages schon gegeben?
-    pub fn map(
-        &self,
-        pages: PageRange,
-        space: MemorySpace,
-        flags: PageTableFlags,
-        mem_type: VmaType,
-        tag_str: &str,
-    ) {
-        
-        self.add_vma(VirtualMemoryArea::new_with_tag(pages, mem_type, tag_str));
-        self.page_tables.map(pages, space, flags);
-    }
-
 
     /// Map the given physical frames `frames` to any virtual memory area in this address space
     pub fn map_io(&self, _frames: PhysFrameRange) { 
@@ -232,6 +238,13 @@ impl VirtualAddressSpace {
         // no need for mapping in page tables because all frames are already identity mapped
     }
 
+    pub fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
+        self.page_tables.set_flags(pages, flags);
+    }
+
+    pub fn page_table_address(&self) -> PhysAddr {
+        self.page_tables.page_table_address()
+    }
 
     /// Dump all virtual memory areas of this address space
     pub fn dump(&self, pid: usize) {

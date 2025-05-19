@@ -8,11 +8,15 @@
 */
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use log::trace;
+use x86_64::structures::paging::{Page, PageTableFlags};
+use x86_64::VirtAddr;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
+use crate::memory::MemorySpace;
 use crate::{ process_manager, scheduler};
 use crate::memory::pages::Paging;
-use crate::memory::vmm::VirtualAddressSpace;
+use crate::memory::vmm::{VirtualAddressSpace, VirtualMemoryArea};
 
 static PROCESS_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -53,6 +57,21 @@ impl Process {
         self.thread_ids().iter()
             .filter(|&&thread_id| thread_id != scheduler().current_thread().id())
             .for_each(|&thread_id| scheduler().kill(thread_id));
+    }
+
+    /// Grow the heap.
+    /// 
+    /// This is called from the page fault handler if we have a page fault in
+    /// memory that is part of the heap VMA, but not yet mapped.
+    pub fn grow_heap(&self, heap: VirtualMemoryArea, fault_addr: VirtAddr) {
+        let page = Page::containing_address(fault_addr);
+        trace!("lazily mapping heap page {page:?} at 0x{fault_addr:x}");
+        self.virtual_address_space.map_single(
+            heap,
+            page,
+            MemorySpace::User,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
+        );
     }
 
 
