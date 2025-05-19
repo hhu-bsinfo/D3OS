@@ -1,9 +1,10 @@
 /*
-
     piece table text buffer  --  Julius Drodofsky
 
-    from_str()
+    from_str(&str)
     delete(logical_adress)
+    // if logical_adress > n 
+        append
     insert(logical_adress, char)
     to_string()
     get_char()
@@ -175,6 +176,16 @@ impl<'s> TextBuffer<'s> {
             piece_table: vec![PieceDescr::new(BufferDescr::File, 0, file_buffer.len())],
         }
     }
+    pub fn to_string(&self) -> String {
+        let mut i = 0;
+        let mut ret = String::new();
+        while let Some(c) = self.get_char(i) {
+            ret.push(c);
+            i+=1;
+        }
+        ret
+    }
+
 }
 
 impl PieceDescr {
