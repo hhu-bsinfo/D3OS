@@ -1,9 +1,9 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{collections::vec_deque::VecDeque, string::String};
 use logger::info;
 use terminal::print;
 
 pub struct CommandLine {
-    history: Vec<String>,
+    history: VecDeque<String>,
     current_line: String,
     cursor_position: usize,
     history_position: isize,
@@ -12,7 +12,7 @@ pub struct CommandLine {
 impl CommandLine {
     pub const fn new() -> Self {
         Self {
-            history: Vec::new(),
+            history: VecDeque::new(),
             current_line: String::new(),
             cursor_position: 0,
             history_position: -1,
@@ -20,7 +20,7 @@ impl CommandLine {
     }
 
     pub fn submit(&mut self) {
-        self.history.push(self.current_line.clone());
+        self.history.push_front(self.current_line.clone());
         self.history_position = -1;
         self.current_line.clear();
         self.cursor_position = 0;
@@ -107,7 +107,11 @@ impl CommandLine {
 
     fn move_history(&mut self, step: isize) -> String {
         self.history_position += step;
-        let history = self.history.as_slice()[self.history_position as usize].clone();
+        let history = self
+            .history
+            .get(self.history_position as usize)
+            .unwrap()
+            .clone();
         self.clear_line();
         print!("{}", history);
         self.cursor_position = history.len();
