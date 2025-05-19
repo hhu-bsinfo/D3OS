@@ -20,11 +20,11 @@ impl Job {
 }
 
 #[derive(Debug)]
-pub struct CommandLine {
+pub struct Executable {
     pub jobs: Vec<Job>,
 }
 
-impl CommandLine {
+impl Executable {
     pub const fn new() -> Self {
         Self { jobs: Vec::new() }
     }
@@ -36,7 +36,7 @@ impl CommandLine {
     pub fn add_argument_to_latest_job(&mut self, argument: String) {
         self.jobs
             .last_mut()
-            .expect("Expected at least one job, to add arguments to")
+            .expect("Expected at least one job, to add arguments too")
             .add_argument(argument);
     }
 }
