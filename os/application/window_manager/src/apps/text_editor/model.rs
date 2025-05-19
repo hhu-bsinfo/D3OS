@@ -28,6 +28,7 @@ impl <'b>Document<'b> {
         self.caret
     }
     fn update_insert(&mut self, c: char) {
+        //delete
         if c == '\x08'{
             self.text_buffer.delete(self.caret-1);
             self.caret -=1;
