@@ -1,7 +1,10 @@
-use alloc::string::String;
-use concurrent::thread;
+use alloc::{string::String, vec::Vec};
+use concurrent::thread::{self, Thread};
 
-use crate::parser::executable::{Executable, Job};
+use crate::{
+    build_in::{build_in::BuildIn, echo::EchoBuildIn},
+    parser::executable::{Executable, Job},
+};
 
 pub struct Executor {}
 
@@ -21,11 +24,22 @@ impl Executor {
     }
 
     fn execute_job(&self, job: &Job) -> Result<(), &'static str> {
-        let args = job.arguments.iter().map(String::as_str).collect();
-        match thread::start_application(&job.command, args) {
+        let arguments: Vec<&str> = job.arguments.iter().map(String::as_str).collect();
+        let thread = match self.try_execute_build_in(&job.command, arguments.clone()) {
+            Some(thread) => Some(thread),
+            None => thread::start_application(&job.command, arguments),
+        };
+        match thread {
             Some(thread) => thread.join(),
             None => return Err("Command not found!"),
         };
         Ok(())
+    }
+
+    fn try_execute_build_in(&self, name: &str, args: Vec<&str>) -> Option<Thread> {
+        match name {
+            "echo" => EchoBuildIn::start(args),
+            _ => return None,
+        }
     }
 }

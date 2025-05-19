@@ -2,6 +2,7 @@
 
 extern crate alloc;
 
+mod build_in;
 mod command_line;
 mod controller;
 mod executor;
