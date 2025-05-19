@@ -9,7 +9,7 @@ use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
 
 use crate::{
-    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel, text_editor::TextEditor}, components::{bitmap::BitmapGraphic, button::Button, canvas::Canvas, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, LayoutMode, StretchMode}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
+    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel, text_editor::TextEditor}, components::{bitmap::BitmapGraphic, button::Button, canvas::Canvas, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, LayoutMode, StretchMode}, Container, ContainerStyling}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -91,7 +91,7 @@ pub enum Command<'a> {
         log_rect_data: RectData,
         layout: LayoutMode,
         stretch: StretchMode,
-        styling: Option<ComponentStyling>,
+        styling: Option<ContainerStyling>,
     }
 }
 

@@ -8,7 +8,7 @@ use crate::{
     WindowManager,
 };
 
-use super::{Container, FocusManager};
+use super::{Container, ContainerStyling, FocusManager};
 
 const CHILD_SPACING: u32 = 5;
 
@@ -41,7 +41,7 @@ pub struct BasicContainer {
     focused_child_idx: Option<usize>,
 
     is_dirty: bool,
-    styling: ComponentStyling,
+    styling: ContainerStyling,
 }
 
 impl BasicContainer {
@@ -49,7 +49,7 @@ impl BasicContainer {
         rel_rect_data: RectData,
         layout: LayoutMode,
         stretch: StretchMode,
-        styling: Option<ComponentStyling>,
+        styling: Option<ContainerStyling>,
     ) -> Self {
         Self {
             id: WindowManager::generate_id(),
@@ -216,9 +216,11 @@ impl Component for BasicContainer {
     fn draw(&mut self, focus_id: Option<usize>) {
         // Apply the layout BEFORE redrawing
         if self.is_dirty {
-            Drawer::draw_rectangle(self.abs_rect_data, self.styling.border_color);
-            self.drawn_rect_data = self.abs_rect_data.clone();
+            if self.styling.show_border {
+                Drawer::draw_rectangle(self.abs_rect_data, self.styling.border_color);
+            }
 
+            self.drawn_rect_data = self.abs_rect_data.clone();
             self.apply_layout();
         }
 

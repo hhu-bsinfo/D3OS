@@ -6,7 +6,10 @@ use crate::{
     api::{Api, Command},
     components::{
         component::ComponentStylingBuilder,
-        container::basic_container::{LayoutMode, StretchMode},
+        container::{
+            basic_container::{LayoutMode, StretchMode},
+            ContainerStylingBuilder,
+        },
     },
     signal::{ComponentRef, Signal},
     WindowManager,
@@ -34,11 +37,7 @@ impl Runnable for LayoutApp {
                     },
                     layout: LayoutMode::Vertical,
                     stretch: StretchMode::Fill,
-                    styling: Some(
-                        ComponentStylingBuilder::new()
-                            .maintain_aspect_ratio(false)
-                            .build(),
-                    ),
+                    styling: None,
                 },
             )
             .expect("failed to create container");
@@ -56,7 +55,7 @@ impl Runnable for LayoutApp {
                     layout: LayoutMode::Horizontal,
                     stretch: StretchMode::Fill,
                     styling: Some(
-                        ComponentStylingBuilder::new()
+                        ContainerStylingBuilder::new()
                             .border_color(Color::new(255, 0, 0, 255))
                             .build(),
                     ),
@@ -77,7 +76,7 @@ impl Runnable for LayoutApp {
                     layout: LayoutMode::Vertical,
                     stretch: StretchMode::Fill,
                     styling: Some(
-                        ComponentStylingBuilder::new()
+                        ContainerStylingBuilder::new()
                             .border_color(Color::new(0, 255, 0, 255))
                             .maintain_aspect_ratio(true)
                             .build(),

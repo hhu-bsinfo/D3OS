@@ -5,7 +5,7 @@ use hashbrown::HashMap;
 use spin::RwLock;
 
 use crate::{
-    components::{component::Component, container::{basic_container::{BasicContainer, LayoutMode, StretchMode}, Container}}, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, signal::ComponentRef, utils::get_element_cursor_from_orderer, Interaction, WindowManager, SCREEN
+    components::{component::Component, container::{basic_container::{BasicContainer, LayoutMode, StretchMode}, Container, ContainerStylingBuilder}}, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, signal::ComponentRef, utils::get_element_cursor_from_orderer, Interaction, WindowManager, SCREEN
 };
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
@@ -36,7 +36,7 @@ impl AppWindow {
             screen_rect,
             LayoutMode::None,
             StretchMode::None,
-            None,
+            Some(ContainerStylingBuilder::new().show_border(false).build()),
         ));
 
         // Initial scaling to window bounds

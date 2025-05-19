@@ -1,10 +1,71 @@
 use drawer::{rect_data::RectData, vertex::Vertex};
+use graphic::color::Color;
 
-use crate::signal::ComponentRef;
+use crate::{config::DEFAULT_BORDER_COLOR, signal::ComponentRef};
 
 use super::component::Component;
 
 pub mod basic_container;
+
+#[derive(Clone, Copy)]
+pub struct ContainerStyling {
+    pub maintain_aspect_ratio: bool,
+    pub show_border: bool,
+
+    pub border_color: Color,
+}
+
+impl Default for ContainerStyling {
+    fn default() -> Self {
+        Self {
+            maintain_aspect_ratio: false,
+            show_border: true,
+            border_color: DEFAULT_BORDER_COLOR,
+        }
+    }
+}
+
+pub struct ContainerStylingBuilder {
+    maintain_aspect_ratio: Option<bool>,
+    show_border: Option<bool>,
+
+    border_color: Option<Color>,
+}
+
+impl ContainerStylingBuilder {
+    pub fn new() -> Self {
+        Self {
+            maintain_aspect_ratio: None,
+            show_border: None,
+
+            border_color: None,
+        }
+    }
+
+    pub fn maintain_aspect_ratio(&mut self, maintain_aspect_ratio: bool) -> &mut Self {
+        self.maintain_aspect_ratio = Some(maintain_aspect_ratio);
+        self
+    }
+
+    pub fn show_border(&mut self, show_border: bool) -> &mut Self {
+        self.show_border = Some(show_border);
+        self
+    }
+
+    pub fn border_color(&mut self, color: Color) -> &mut Self {
+        self.border_color = Some(color);
+        self
+    }
+
+    pub fn build(&mut self) -> ContainerStyling {
+        ContainerStyling {
+            maintain_aspect_ratio: self.maintain_aspect_ratio.unwrap_or(false),
+            show_border: self.show_border.unwrap_or(true),
+            
+            border_color: self.border_color.unwrap_or(DEFAULT_BORDER_COLOR),
+        }
+    }
+}
 
 /// A Component that can hold multiple child components.
 pub trait Container: Component + FocusManager {
