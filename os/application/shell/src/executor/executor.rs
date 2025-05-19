@@ -1,5 +1,5 @@
 use alloc::{string::String, vec::Vec};
-use concurrent::thread::{self, Thread};
+use concurrent::thread::{self};
 
 use crate::{
     build_in::{build_in::BuildIn, clear::ClearBuildIn, echo::EchoBuildIn},
@@ -26,8 +26,8 @@ impl Executor {
     fn execute_job(&self, job: &Job) -> Result<(), &'static str> {
         let arguments: Vec<&str> = job.arguments.iter().map(String::as_str).collect();
         let thread = match self.try_execute_build_in(&job.command, arguments.clone()) {
-            Some(thread) => Some(thread),
-            None => thread::start_application(&job.command, arguments),
+            Ok(_) => return Ok(()),
+            Err(_) => thread::start_application(&job.command, arguments),
         };
         match thread {
             Some(thread) => thread.join(),
@@ -36,11 +36,11 @@ impl Executor {
         Ok(())
     }
 
-    fn try_execute_build_in(&self, name: &str, args: Vec<&str>) -> Option<Thread> {
+    fn try_execute_build_in(&self, name: &str, args: Vec<&str>) -> Result<(), ()> {
         match name {
             "echo" => EchoBuildIn::start(args),
             "clear" => ClearBuildIn::start(args),
-            _ => return None,
+            _ => return Err(()),
         }
     }
 }

@@ -1,11 +1,7 @@
 use alloc::{string::String, vec::Vec};
-use concurrent::thread::{self, Thread};
 use terminal::print;
 
-use super::{
-    args_cache::{cache_args, flush_args},
-    build_in::BuildIn,
-};
+use super::build_in::BuildIn;
 
 pub struct ClearBuildIn {}
 
@@ -14,14 +10,10 @@ pub struct Clear {
 }
 
 impl BuildIn for ClearBuildIn {
-    fn start(args: Vec<&str>) -> Option<Thread> {
-        let thread = thread::create(|| {
-            let args = flush_args(thread::current().unwrap().id());
-            let echo = Clear::new(args.to_vec());
-            echo.run();
-        });
-
-        thread.inspect(|t| cache_args(t.id(), args))
+    fn start(args: Vec<&str>) -> Result<(), ()> {
+        let echo = Clear::new(args.into_iter().map(String::from).collect());
+        echo.run();
+        Ok(())
     }
 }
 
