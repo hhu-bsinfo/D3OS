@@ -1,15 +1,18 @@
 use alloc::{
-    boxed::Box, rc::Rc, string::{String, ToString}, vec::Vec
+    boxed::Box,
+    rc::Rc,
+    string::{String, ToString},
+    vec::Vec,
 };
 use drawer::{rect_data::RectData, vertex::Vertex};
-use graphic::color::Color;
+use graphic::color::{Color, BLUE, RED};
 use hashbrown::HashMap;
 use spin::RwLock;
 
 use crate::{
     components::{
         button::Button,
-        component::{Casts, Component},
+        component::{Casts, Component, ComponentStylingBuilder},
         container::{
             basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
             Container, ContainerStylingBuilder,
@@ -53,15 +56,19 @@ impl WorkspaceSelectionWindow {
             screen_rect,
             LayoutMode::Horizontal(AlignmentMode::Left),
             StretchMode::Fill,
-            None),
-        );
+            None,
+        ));
 
         // Initial scaling to the window bounds
         root_container.move_to(abs_rect);
 
         // Container for the workspace buttons
         let button_container = Box::new(BasicContainer::new(
-            RectData { top_left: Vertex::zero(), width: 600, height: 0 },
+            RectData {
+                top_left: Vertex::zero(),
+                width: 600,
+                height: 0,
+            },
             LayoutMode::Horizontal(AlignmentMode::Left),
             StretchMode::Fill,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
@@ -69,7 +76,11 @@ impl WorkspaceSelectionWindow {
 
         // Container for workspace actions (new, close)
         let mut action_container = Box::new(BasicContainer::new(
-            RectData { top_left: Vertex::zero(), width: 190, height: 0 },
+            RectData {
+                top_left: Vertex::zero(),
+                width: 195,
+                height: 0,
+            },
             LayoutMode::Horizontal(AlignmentMode::Right),
             StretchMode::Fill,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
@@ -89,7 +100,12 @@ impl WorkspaceSelectionWindow {
             1,
             (1, 1),
             Some(Box::new(move || {})),
-            None,
+            Some(
+                ComponentStylingBuilder::new()
+                    .border_color(BLUE)
+                    .background_color(BLUE.dim())
+                    .build(),
+            ),
         );
 
         let close_workspace_button = Button::new(
@@ -99,7 +115,12 @@ impl WorkspaceSelectionWindow {
             1,
             (1, 1),
             Some(Box::new(move || {})),
-            None,
+            Some(
+                ComponentStylingBuilder::new()
+                    .border_color(RED)
+                    .background_color(RED.dim())
+                    .build(),
+            ),
         );
 
         action_container.add_child(close_workspace_button.clone());
@@ -153,7 +174,11 @@ impl WorkspaceSelectionWindow {
         );
 
         self.workspace_buttons.insert(workspace_id, button.clone());
-        self.button_container.write().as_container_mut().unwrap().add_child(button);
+        self.button_container
+            .write()
+            .as_container_mut()
+            .unwrap()
+            .add_child(button);
     }
 
     pub fn unregister_workspace(&mut self, workspace_id: usize) {
@@ -171,18 +196,42 @@ impl WorkspaceSelectionWindow {
 
     pub fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) -> WorkspaceSelectionEvent {
         // Action buttons
-        if self.new_workspace_button.read().get_abs_rect_data().contains_vertex(&mouse_event.position) {
-            if self.new_workspace_button.write().as_interactable_mut().unwrap().consume_mouse_event(mouse_event).is_some() {
+        if self
+            .new_workspace_button
+            .read()
+            .get_abs_rect_data()
+            .contains_vertex(&mouse_event.position)
+        {
+            if self
+                .new_workspace_button
+                .write()
+                .as_interactable_mut()
+                .unwrap()
+                .consume_mouse_event(mouse_event)
+                .is_some()
+            {
                 return WorkspaceSelectionEvent::New;
             }
         }
 
-        if self.close_workspace_button.read().get_abs_rect_data().contains_vertex(&mouse_event.position) {
-            if self.close_workspace_button.write().as_interactable_mut().unwrap().consume_mouse_event(mouse_event).is_some() {
+        if self
+            .close_workspace_button
+            .read()
+            .get_abs_rect_data()
+            .contains_vertex(&mouse_event.position)
+        {
+            if self
+                .close_workspace_button
+                .write()
+                .as_interactable_mut()
+                .unwrap()
+                .consume_mouse_event(mouse_event)
+                .is_some()
+            {
                 return WorkspaceSelectionEvent::Close;
             }
         }
-        
+
         // Switch workspace
         for (workspace_id, button) in self.workspace_buttons.iter_mut() {
             let mut button = button.write();
