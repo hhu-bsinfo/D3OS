@@ -35,7 +35,7 @@ impl Runnable for LayoutApp {
                         width: 300,
                         height: 500,
                     },
-                    layout: LayoutMode::Vertical,
+                    layout: LayoutMode::Vertical(AlignmentMode::Top),
                     stretch: StretchMode::Fill,
                     styling: None,
                 },
@@ -73,7 +73,7 @@ impl Runnable for LayoutApp {
                         width: 0,
                         height: 400,
                     },
-                    layout: LayoutMode::Vertical,
+                    layout: LayoutMode::Vertical(AlignmentMode::Bottom),
                     stretch: StretchMode::Fill,
                     styling: Some(
                         ContainerStylingBuilder::new()

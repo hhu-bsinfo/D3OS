@@ -24,7 +24,7 @@ pub enum AlignmentMode {
 pub enum LayoutMode {
     None,
     Horizontal(AlignmentMode),
-    Vertical,
+    Vertical(AlignmentMode),
     Grid(u32, u32),
 }
 
@@ -95,7 +95,7 @@ impl BasicContainer {
         }
     }
 
-    fn apply_horizontal_layout(&mut self, alignment: AlignmentMode) {
+    fn apply_horizontal_layout(&mut self) {
         //self.cursor = self.get_cursor_start(alignment);
 
         for child in &self.childs {
@@ -127,8 +127,8 @@ impl BasicContainer {
         self.cursor = Vertex::zero();
 
         match self.layout {
-            LayoutMode::Horizontal(alignment) => self.apply_horizontal_layout(alignment),
-            LayoutMode::Vertical => self.apply_vertical_layout(),
+            LayoutMode::Horizontal(_) => self.apply_horizontal_layout(),
+            LayoutMode::Vertical(_) => self.apply_vertical_layout(),
             LayoutMode::Grid(_, _) => todo!("needs rework for new scaling system"),
 
             _ => self.apply_default_layout(),
@@ -163,7 +163,7 @@ impl Container for BasicContainer {
             (LayoutMode::Horizontal(_), StretchMode::Fill) => {
                 (max_dim.0, u32::max(self.abs_rect_data.height, min_dim.1))
             }
-            (LayoutMode::Vertical, StretchMode::Fill) => {
+            (LayoutMode::Vertical(_), StretchMode::Fill) => {
                 (u32::max(self.abs_rect_data.width, min_dim.0), max_dim.1)
             }
             (_, _) => max_dim.max(min_dim),
@@ -180,13 +180,17 @@ impl Container for BasicContainer {
 
         // Adjust the position based on the layout/alignment
         let new_abs_pos = match &self.layout {
-            LayoutMode::Horizontal(AlignmentMode::Left) | LayoutMode::Vertical => {
-                (new_abs_rect.top_left + rel_rect.top_left) + self.cursor
-            }
+            LayoutMode::Horizontal(AlignmentMode::Left)
+            | LayoutMode::Vertical(AlignmentMode::Top) => new_abs_rect.top_left + self.cursor,
 
             LayoutMode::Horizontal(AlignmentMode::Right) => {
-                (new_abs_rect.top_left.add(self.abs_rect_data.width, 0) + rel_rect.top_left)
+                new_abs_rect.top_left.add(self.abs_rect_data.width, 0)
                     - self.cursor.add(new_abs_rect.width, 0)
+            }
+
+            LayoutMode::Vertical(AlignmentMode::Bottom) => {
+                new_abs_rect.top_left.add(0, self.abs_rect_data.height)
+                    - self.cursor.add(0, new_abs_rect.height)
             }
 
             _ => new_abs_rect.top_left + self.cursor,
@@ -205,7 +209,7 @@ impl Container for BasicContainer {
                 ..new_abs_rect
             },
 
-            LayoutMode::Vertical => RectData {
+            LayoutMode::Vertical(_) => RectData {
                 top_left: new_abs_pos, // Use original rel as offset
                 width: match self.stretch {
                     StretchMode::Fill => self.abs_rect_data.width,
