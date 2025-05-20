@@ -1188,6 +1188,7 @@ dependencies = [
  "logger",
  "naming",
  "runtime",
+ "spin 0.10.0",
  "syscall",
  "terminal",
 ]

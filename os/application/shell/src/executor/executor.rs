@@ -1,7 +1,13 @@
-use alloc::string::String;
-use concurrent::thread;
+use alloc::{string::String, vec::Vec};
+use concurrent::thread::{self};
 
-use crate::parser::executable::{Executable, Job};
+use crate::{
+    build_in::{
+        build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn, echo::EchoBuildIn,
+        exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn,
+    },
+    parser::executable::{Executable, Job},
+};
 
 pub struct Executor {}
 
@@ -21,10 +27,27 @@ impl Executor {
     }
 
     fn execute_job(&self, job: &Job) -> Result<(), &'static str> {
-        let args = job.arguments.iter().map(String::as_str).collect();
-        match thread::start_application(&job.command, args) {
+        let arguments: Vec<&str> = job.arguments.iter().map(String::as_str).collect();
+        let thread = match self.try_execute_build_in(&job.command, arguments.clone()) {
+            Ok(_) => return Ok(()),
+            Err(_) => thread::start_application(&job.command, arguments),
+        };
+        match thread {
             Some(thread) => thread.join(),
             None => return Err("Command not found!"),
+        };
+        Ok(())
+    }
+
+    fn try_execute_build_in(&self, name: &str, args: Vec<&str>) -> Result<(), ()> {
+        match name {
+            "echo" => EchoBuildIn::start(args),
+            "clear" => ClearBuildIn::start(args),
+            "exit" => ExitBuildIn::start(args),
+            "mkdir" => MkdirBuildIn::start(args),
+            "pwd" => PwdBuildIn::start(args),
+            "cd" => CdBuildIn::start(args),
+            _ => return Err(()),
         };
         Ok(())
     }
