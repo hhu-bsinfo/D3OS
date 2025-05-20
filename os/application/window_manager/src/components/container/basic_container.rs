@@ -12,10 +12,18 @@ use super::{Container, ContainerStyling, FocusManager};
 
 const CHILD_SPACING: u32 = 5;
 
+#[derive(Copy, Clone, PartialEq)]
+pub enum AlignmentMode {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
 #[derive(PartialEq)]
 pub enum LayoutMode {
     None,
-    Horizontal,
+    Horizontal(AlignmentMode),
     Vertical,
     Grid(u32, u32),
 }
@@ -69,6 +77,16 @@ impl BasicContainer {
         }
     }
 
+    fn get_cursor_start(&self, alignment: AlignmentMode) -> Vertex {
+        match alignment {
+            AlignmentMode::Right => Vertex {
+                x: self.abs_rect_data.width,
+                y: 0,
+            },
+            _ => Vertex::zero(),
+        }
+    }
+
     fn apply_default_layout(&mut self) {
         for child in &self.childs {
             child
@@ -77,7 +95,9 @@ impl BasicContainer {
         }
     }
 
-    fn apply_horizontal_layout(&mut self) {
+    fn apply_horizontal_layout(&mut self, alignment: AlignmentMode) {
+        //self.cursor = self.get_cursor_start(alignment);
+
         for child in &self.childs {
             // Apply layout & scaling
             child
@@ -107,7 +127,7 @@ impl BasicContainer {
         self.cursor = Vertex::zero();
 
         match self.layout {
-            LayoutMode::Horizontal => self.apply_horizontal_layout(),
+            LayoutMode::Horizontal(alignment) => self.apply_horizontal_layout(alignment),
             LayoutMode::Vertical => self.apply_vertical_layout(),
             LayoutMode::Grid(_, _) => todo!("needs rework for new scaling system"),
 
@@ -140,7 +160,7 @@ impl Container for BasicContainer {
         // TODO: Since the max dimension is always relative to the screen, do components really need
         // to calculate it themselves?
         let max_dim = match (&self.layout, &self.stretch) {
-            (LayoutMode::Horizontal, StretchMode::Fill) => {
+            (LayoutMode::Horizontal(_), StretchMode::Fill) => {
                 (max_dim.0, u32::max(self.abs_rect_data.height, min_dim.1))
             }
             (LayoutMode::Vertical, StretchMode::Fill) => {
@@ -158,11 +178,25 @@ impl Container for BasicContainer {
             maintain_aspect_ratio,
         );
 
+        // Adjust the position based on the layout/alignment
+        let new_abs_pos = match &self.layout {
+            LayoutMode::Horizontal(AlignmentMode::Left) | LayoutMode::Vertical => {
+                (new_abs_rect.top_left + rel_rect.top_left) + self.cursor
+            }
+
+            LayoutMode::Horizontal(AlignmentMode::Right) => {
+                (new_abs_rect.top_left.add(self.abs_rect_data.width, 0) + rel_rect.top_left)
+                    - self.cursor.add(new_abs_rect.width, 0)
+            }
+
+            _ => new_abs_rect.top_left + self.cursor,
+        };
+
         // Adjust the position and size of the received abs rect
         // TODO: Use rel_rect as paddding, if stretching is active
         let layout_abs_rect = match &self.layout {
-            LayoutMode::Horizontal => RectData {
-                top_left: new_abs_rect.top_left + rel_rect.top_left + self.cursor, // Use original rel as offset
+            LayoutMode::Horizontal(_) => RectData {
+                top_left: new_abs_pos, // Use original rel as offset
                 height: match self.stretch {
                     StretchMode::Fill => self.abs_rect_data.height,
                     _ => new_abs_rect.height,
@@ -172,7 +206,7 @@ impl Container for BasicContainer {
             },
 
             LayoutMode::Vertical => RectData {
-                top_left: new_abs_rect.top_left + rel_rect.top_left + self.cursor, // Use original rel as offset
+                top_left: new_abs_pos, // Use original rel as offset
                 width: match self.stretch {
                     StretchMode::Fill => self.abs_rect_data.width,
                     _ => new_abs_rect.width,
@@ -182,7 +216,7 @@ impl Container for BasicContainer {
             },
 
             _ => RectData {
-                top_left: new_abs_rect.top_left + self.cursor,
+                top_left: new_abs_pos,
                 ..new_abs_rect
             },
         };

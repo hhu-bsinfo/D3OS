@@ -7,7 +7,7 @@ use crate::{
     components::{
         component::ComponentStylingBuilder,
         container::{
-            basic_container::{LayoutMode, StretchMode},
+            basic_container::{AlignmentMode, LayoutMode, StretchMode},
             ContainerStylingBuilder,
         },
     },
@@ -52,7 +52,7 @@ impl Runnable for LayoutApp {
                         width: 0,
                         height: 100,
                     },
-                    layout: LayoutMode::Horizontal,
+                    layout: LayoutMode::Horizontal(AlignmentMode::Right),
                     stretch: StretchMode::Fill,
                     styling: Some(
                         ContainerStylingBuilder::new()

@@ -1,7 +1,5 @@
 use core::{
-    fmt::Display,
-    ops::{Add, AddAssign},
-    cmp::Ordering
+    cmp::Ordering, fmt::Display, ops::{Add, AddAssign, Sub}
 };
 
 use crate::rect_data::RectData;
@@ -20,6 +18,17 @@ impl Add for Vertex {
         Self {
             x: self.x.saturating_add(rhs.x),
             y: self.y.saturating_add(rhs.y),
+        }
+    }
+}
+
+impl Sub for Vertex {
+    type Output = Self;
+    
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self {
+            x: self.x.saturating_sub(rhs.x),
+            y: self.y.saturating_sub(rhs.y),
         }
     }
 }

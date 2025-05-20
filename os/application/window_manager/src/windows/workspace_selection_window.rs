@@ -11,7 +11,7 @@ use crate::{
         button::Button,
         component::{Casts, Component},
         container::{
-            basic_container::{BasicContainer, LayoutMode, StretchMode},
+            basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
             Container,
         },
     },
@@ -38,7 +38,7 @@ impl WorkspaceSelectionWindow {
         // Root container that will hold all buttons
         let mut root_container = Box::new(BasicContainer::new(
             screen_rect,
-            LayoutMode::Horizontal,
+            LayoutMode::Horizontal(AlignmentMode::Left),
             StretchMode::Fill,
             None,
         ));
