@@ -2,7 +2,10 @@ use alloc::{string::String, vec::Vec};
 use concurrent::thread::{self};
 
 use crate::{
-    build_in::{build_in::BuildIn, clear::ClearBuildIn, echo::EchoBuildIn, exit::ExitBuildIn},
+    build_in::{
+        build_in::BuildIn, clear::ClearBuildIn, echo::EchoBuildIn, exit::ExitBuildIn,
+        mkdir::MkdirBuildIn,
+    },
     parser::executable::{Executable, Job},
 };
 
@@ -41,7 +44,9 @@ impl Executor {
             "echo" => EchoBuildIn::start(args),
             "clear" => ClearBuildIn::start(args),
             "exit" => ExitBuildIn::start(args),
+            "mkdir" => MkdirBuildIn::start(args),
             _ => return Err(()),
-        }
+        };
+        Ok(())
     }
 }
