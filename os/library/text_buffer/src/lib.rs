@@ -3,7 +3,7 @@
 
     from_str(&str)
     delete(logical_adress)
-    // if logical_adress > n 
+    // if logical_adress > n
         append
     insert(logical_adress, char)
     to_string()
@@ -81,7 +81,7 @@ impl<'s> TextBuffer<'s> {
                 == self.add_buffer.len() - 1
         {
             self.piece_table[piece_table_index - 1].length += 1;
-            self.lenght+=1;
+            self.lenght += 1;
             return Ok(());
         }
         // Appen if piece_table index = n:
@@ -90,7 +90,7 @@ impl<'s> TextBuffer<'s> {
                 piece_table_index,
                 PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
             );
-            self.lenght+=1;
+            self.lenght += 1;
             return Ok(());
         }
         let piece_descr = &mut self.piece_table[piece_table_index];
@@ -101,11 +101,12 @@ impl<'s> TextBuffer<'s> {
             );
         } else {
             let length = piece_descr.length;
+            let buffer = piece_descr.buffer;
             piece_descr.length = piece_descr_offset;
             self.piece_table.insert(
                 piece_table_index + 1,
                 PieceDescr::new(
-                    BufferDescr::File,
+                    buffer,
                     self.piece_table[piece_table_index].offset + piece_descr_offset,
                     length - piece_descr_offset,
                 ),
@@ -116,7 +117,7 @@ impl<'s> TextBuffer<'s> {
             );
         }
 
-        self.lenght+=1;
+        self.lenght += 1;
         Ok(())
     }
 
@@ -173,7 +174,7 @@ impl<'s> TextBuffer<'s> {
         if self.piece_table.get(piece_table_index).unwrap().length == 0 {
             self.piece_table.remove(piece_table_index);
         }
-        self.lenght-=1;
+        self.lenght -= 1;
         Ok(())
     }
 
@@ -190,11 +191,10 @@ impl<'s> TextBuffer<'s> {
         let mut ret = String::new();
         while let Some(c) = self.get_char(i) {
             ret.push(c);
-            i+=1;
+            i += 1;
         }
         ret
     }
-
 }
 
 impl PieceDescr {
@@ -222,12 +222,10 @@ mod tests {
         let mut ret = String::new();
         while let Some(c) = text.get_char(i) {
             ret.push(c);
-            i+=1;
+            i += 1;
         }
         ret
     }
-
-
 
     #[test]
     fn initiate_textbuffer() {
@@ -669,5 +667,61 @@ mod tests {
             ]
         );
         assert_eq!(String::from("ab"), generate_string(&buffer));
+    }
+    #[test]
+    fn multiple_insertion_in_add_buffer() {
+        let file_buffer = "";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(0, 'a');
+        assert!(res.is_ok());
+        let res = buffer.insert(1, 'b');
+        assert!(res.is_ok());
+        let res = buffer.insert(2, 'c');
+        assert!(res.is_ok());
+        assert_eq!(String::from("abc"), generate_string(&buffer));
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 0
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 3
+                }
+            ]
+        );
+        let res = buffer.insert(1, '1');
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 0
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 3,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 1,
+                    length: 2
+                }
+            ]
+        );
+
+        assert_eq!(String::from("a1bc"), generate_string(&buffer));
+        assert!(res.is_ok());
     }
 }
