@@ -1,5 +1,9 @@
-use alloc::{collections::vec_deque::VecDeque, string::String};
+use alloc::{
+    collections::vec_deque::VecDeque,
+    string::{String, ToString},
+};
 use logger::info;
+use naming::cwd;
 use terminal::print;
 
 pub struct CommandLine {
@@ -28,7 +32,10 @@ impl CommandLine {
     }
 
     pub fn create_new_line(&self) {
-        print!("⮞ ");
+        print!(
+            "[38;2;140;177;16m{} > [0m",
+            cwd().unwrap_or("/".to_string())
+        );
     }
 
     /// TODO docs: NOT FOR '\n', '\x08'

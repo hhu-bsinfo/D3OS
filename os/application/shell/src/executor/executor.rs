@@ -3,8 +3,8 @@ use concurrent::thread::{self};
 
 use crate::{
     build_in::{
-        build_in::BuildIn, clear::ClearBuildIn, echo::EchoBuildIn, exit::ExitBuildIn,
-        mkdir::MkdirBuildIn, pwd::PwdBuildIn,
+        build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn, echo::EchoBuildIn,
+        exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn,
     },
     parser::executable::{Executable, Job},
 };
@@ -46,6 +46,7 @@ impl Executor {
             "exit" => ExitBuildIn::start(args),
             "mkdir" => MkdirBuildIn::start(args),
             "pwd" => PwdBuildIn::start(args),
+            "cd" => CdBuildIn::start(args),
             _ => return Err(()),
         };
         Ok(())
