@@ -6,10 +6,11 @@ use core::ops::Deref;
 use core::ptr;
 use spin::Mutex;
 use x86_64::registers::control::Cr2;
-use x86_64::set_general_handler;
+use x86_64::{set_general_handler, VirtAddr};
 use x86_64::structures::idt::InterruptStackFrame;
+use x86_64::structures::paging::{Page, PageTableFlags};
 use crate::{apic, idt, interrupt_dispatcher, scheduler};
-use crate::memory::PAGE_SIZE;
+use crate::memory::{MemorySpace, PAGE_SIZE};
 
 #[repr(u8)]
 #[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
@@ -206,25 +207,38 @@ fn handle_exception(frame: InterruptStackFrame, index: u8, error: Option<u64>) {
 }
 
 fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>) {
+    let mut fault_handled = false;
     let fault_addr = Cr2::read().expect("Invalid address in CR2 during page fault");
     let thread = scheduler().current_thread();
 
     if !thread.is_kernel_thread() {
-        // Check if page fault occurred right below the user stack
-        if !thread.stacks_locked() && fault_addr > (thread.user_stack_start() - PAGE_SIZE as u64) && fault_addr < thread.user_stack_start() {
-            thread.grow_user_stack(); // Grow stack by one page
-            return;
-        }
+        // Check if page fault occurred inside a user stack
+        thread.process().virtual_address_space
+            .find_vmas(VmaType::UserStack, |stack| {
+                if stack.start() <= fault_addr && fault_addr < stack.end() {
+                    // Found a user stack in which the page fault occurred
+
+                    let fault_page = Page::containing_address(fault_addr);
+                    thread.process().virtual_address_space
+                        .map_single(*stack, fault_page, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+
+                    fault_handled = true;
+                }
+            });
+
         // Check if page fault occurred inside the allocated, but not yet mapped heap.
-        let heaps = thread.process().virtual_address_space.find_vmas(VmaType::Heap);
-        assert_eq!(heaps.len(), 1);
-        let heap = heaps[0];
-        if fault_addr >= heap.start() && fault_addr < heap.end() {
-            thread.process().grow_heap(heap, fault_addr);
-            return;
-        }
+        thread.process().virtual_address_space.find_vmas(VmaType::Heap, |heap| {
+            if heap.start() <= fault_addr && fault_addr < heap.end() {
+                thread.process().grow_heap(*heap, fault_addr);
+
+                fault_handled = true;
+            }
+        });
     }
-    panic!("Page Fault!\nError code: [{:?}]\nAddress: [0x{:0>16x}]\n{:?}", error, fault_addr, frame);
+
+    if !fault_handled {
+        panic!("Page Fault!\nError code: [{:?}]\nAddress: [0x{:0>16x}]\n{:?}", error, fault_addr, frame);
+    }
 }
 
 fn handle_interrupt(_frame: InterruptStackFrame, index: u8, _error: Option<u64>) {

@@ -6,7 +6,7 @@
    ║ Author: Michael Schoettner, HHU                                         ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use log::{info, warn};
+use log::info;
 use raw_cpuid::CpuId;
 
 pub struct Cpu {

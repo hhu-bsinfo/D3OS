@@ -37,8 +37,8 @@ use crate::consts::MAX_USER_STACK_SIZE;
 use crate::consts::{KERNEL_STACK_PAGES, USER_SPACE_ENV_START};
 use crate::memory::stack::StackAllocator;
 use crate::memory::vmm;
-use crate::memory::vmm::{VirtualMemoryArea, VmaType, create_kernel_address_space};
-use crate::memory::{MemorySpace, PAGE_SIZE, frames, stack};
+use crate::memory::vmm::{VirtualMemoryArea, VmaType};
+use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process::process::Process;
 use crate::process::scheduler;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
@@ -216,35 +216,30 @@ impl Thread {
         //
 
         // create user stack for the main thread of the application
-        let user_stack_end = Page::from_start_address(VirtAddr::new(
-            (MAIN_USER_STACK_START + MAX_USER_STACK_SIZE) as u64,
-        ))
-        .unwrap();
-
-        // last page of the user stack
         let user_stack_pages = PageRange {
-            start: user_stack_end - 1,
-            end: user_stack_end,
+            start: Page::from_start_address(VirtAddr::new(
+                MAIN_USER_STACK_START as u64,
+            )).unwrap(),
+            end: Page::from_start_address(VirtAddr::new(
+                (MAIN_USER_STACK_START + MAX_USER_STACK_SIZE) as u64,
+            )).unwrap()
         };
 
         // Create Vec for user stack (backed by stack allocator)
         let user_stack = unsafe {
             Vec::from_raw_parts_in(
                 user_stack_pages.start.start_address().as_u64() as *mut u64,
-                0,
-                PAGE_SIZE / 8,
-                StackAllocator::default(),
+                MAX_USER_STACK_SIZE / 8,
+                MAX_USER_STACK_SIZE / 8,
+                StackAllocator::new(pid, tid),
             )
         };
 
         // map user stack of the application
         let stack_vma = VirtualMemoryArea::new_with_tag(user_stack_pages, VmaType::UserStack, "");
         process.virtual_address_space.add_vma(stack_vma);
-        process.virtual_address_space.map(
-            stack_vma,
-            MemorySpace::User,
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-        );
+        process.virtual_address_space.map_single(stack_vma, user_stack_pages.end - 1,
+             MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
         //        info!("Created user stack for thread: {:x?}", user_stack_pages);
 
@@ -337,26 +332,36 @@ impl Thread {
         );
 
         // get highest stack vma in my address space
-        let stack_vmas = parent.virtual_address_space.find_vmas(VmaType::UserStack);
-        let highest_stack_vma = stack_vmas
-            .last()
-            .expect("Trying to create a user thread, before the main thread has been created!");
-
+        let mut highest_stack_vma = None;
+        parent.virtual_address_space.find_vmas(VmaType::UserStack, |stack| {
+            match highest_stack_vma {
+                None => highest_stack_vma = Some(*stack),
+                Some(ref mut highest) => {
+                    if stack.end() > highest.end() {
+                        *highest = *stack;
+                    }
+                }
+            }
+        });
+        
         // from there allocate new user stack
-        let user_stack_end = Page::<Size4KiB>::from_start_address(
-            highest_stack_vma.end() + MAX_USER_STACK_SIZE as u64,
-        )
-        .unwrap();
+        let user_stack_start = Page::from_start_address(
+            highest_stack_vma
+                .expect("Trying to create a user thread, before the main thread has been created!")
+                .end(),
+        ).unwrap();
+        let user_stack_end = user_stack_start + (MAX_USER_STACK_SIZE / PAGE_SIZE) as u64;
+        
         let user_stack_pages = PageRange {
-            start: user_stack_end - 1,
+            start: user_stack_start,
             end: user_stack_end,
         };
 
         let user_stack = unsafe {
             Vec::from_raw_parts_in(
                 user_stack_pages.start.start_address().as_u64() as *mut u64,
-                0,
-                PAGE_SIZE / 8,
+                MAX_USER_STACK_SIZE / 8,
+                MAX_USER_STACK_SIZE / 8,
                 StackAllocator::default(),
             )
         };
@@ -367,11 +372,8 @@ impl Thread {
         // map one page as PRESENT for the allocated user stack
         let stack_vma = VirtualMemoryArea::new_with_tag(user_stack_pages, VmaType::UserStack, "");
         parent.virtual_address_space.add_vma(stack_vma);
-        parent.virtual_address_space.map(
-            stack_vma,
-            MemorySpace::User,
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-        );
+        parent.virtual_address_space.map_single(stack_vma, user_stack_pages.end - 1,
+             MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
@@ -441,37 +443,6 @@ impl Thread {
     /// Check if stacks are locked
     pub fn stacks_locked(&self) -> bool {
         self.stacks.is_locked()
-    }
-
-    /// Grow user stack on demand
-    pub fn grow_user_stack(&self) {
-        let mut stacks = self.stacks.lock();
-
-        // Grow stack area -> Allocate one page right below the stack
-        self.process
-            .virtual_address_space
-            .find_vmas(VmaType::UserStack)
-            .iter()
-            .find(|vma| vma.start().as_u64() == stacks.user_stack.as_ptr() as u64)
-            .expect("Failed to find VMA for growing stack")
-            .grow_downwards(1);
-
-        // Adapt stack Vec to new start address
-        let user_stack_capacity = stacks.user_stack.capacity() + (PAGE_SIZE / 8);
-        if user_stack_capacity > MAX_USER_STACK_SIZE / 8 {
-            panic!("Stack overflow!");
-        }
-
-        let user_stack_start = stacks.user_stack.as_ptr() as usize - PAGE_SIZE;
-        // Fix me
-        stacks.user_stack = unsafe {
-            Vec::from_raw_parts_in(
-                user_stack_start as *mut u64,
-                0,
-                user_stack_capacity,
-                StackAllocator::default(),
-            )
-        };
     }
 
     /// Check if self is a kernel only thread or not
@@ -554,11 +525,6 @@ impl Thread {
             let kernel_stack_addr = stacks.kernel_stack.as_ptr() as u64;
             let user_stack_addr = stacks.user_stack.as_ptr() as u64;
             let capacity = stacks.kernel_stack.capacity();
-
-            // init stack with 0s
-            for _ in 0..stacks.user_stack.capacity() {
-                stacks.user_stack.push(0);
-            }
 
             stacks.kernel_stack[capacity - 6] = self.user_rip.as_u64(); // Address of entry point for user thread
 

@@ -124,27 +124,13 @@ impl VirtualAddressSpace {
     }
 
     /// Return all vmas with the given type `typ` in his address space.
-    pub fn find_vmas(&self, typ: VmaType) -> Vec<VirtualMemoryArea> {
-        let mut found = Vec::<VirtualMemoryArea>::new();
-        let areas = self.virtual_memory_areas.read();
-        for area in areas.iter() {
-            if area.typ() == typ {
-                found.push(*area);
-            }
-        }
-
-        // MS WARUM?
-        found.sort_by(|first, second| {
-            return if first.start().as_u64() < second.start().as_u64() {
-                Ordering::Less
-            } else if first.start().as_u64() > second.start().as_u64() {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            };
-        });
-
-        found
+    pub fn find_vmas<F>(&self, typ: VmaType, f: F)
+        where F: FnMut(&VirtualMemoryArea)
+    {
+        self.virtual_memory_areas.read()
+            .iter()
+            .filter(|area| area.typ() == typ)
+            .for_each(f);
     }
 
     /// Update the vma `vma` in this address space with the given `update` function.
@@ -222,7 +208,7 @@ impl VirtualAddressSpace {
             .find(|area| **area == vma)
             .expect("tried to map a non-existent VMA!");
         assert!(page.start_address() >= vma.start());
-        assert!(page.start_address() + page.size() < vma.end());
+        assert!(page.start_address() + page.size() <= vma.end());
         self.page_tables.map(
             PageRange {
                 start: page,
@@ -391,23 +377,6 @@ impl VirtualMemoryArea {
 
     pub fn overlaps_with(&self, other: &VirtualMemoryArea) -> bool {
         self.range.end > other.range.start && self.range.start < other.range.end
-    }
-
-    pub fn grow_downwards(&self, pages: usize) {
-        let new_pages = PageRange {
-            start: self.range.start - pages as u64,
-            end: self.range.start,
-        };
-        let process = process_manager().read().current_process();
-
-        process.virtual_address_space.page_tables().map(
-            new_pages,
-            MemorySpace::User,
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-        );
-        process
-            .virtual_address_space
-            .update_vma(*self, |vma| vma.range.start = new_pages.start);
     }
 }
 

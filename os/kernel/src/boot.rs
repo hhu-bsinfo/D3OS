@@ -114,7 +114,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     );
     debug!("Page frame allocator:\n{}", memory::frames::dump());
 
-    /// Initialize CPU information
+    // Initialize CPU information
     init_cpu_info();
 
     // Create kernel process (and initialize virtual memory management)

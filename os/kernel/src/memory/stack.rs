@@ -7,8 +7,7 @@
    ║ Author: Fabian Ruhland & Michael Schoettner, HHU, 20.05.2025            ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use alloc::vec::Vec;
-use uefi_raw::protocol::scsi::ScsiIoScsiRequestPacket;
+
 use crate::memory::frames::phys_limit;
 use crate::memory::{PAGE_SIZE, frames};
 use core::alloc::{AllocError, Allocator, Layout};
@@ -18,7 +17,7 @@ use core::sync::atomic::Ordering;
 use log::info;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::PhysFrame;
-use x86_64::structures::paging::frame::{self, PhysFrameRange};
+use x86_64::structures::paging::frame::PhysFrameRange;
 
 
 #[derive(Default)]
