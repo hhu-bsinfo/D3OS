@@ -62,7 +62,6 @@ impl Runnable for TextEditor {
         let mut dirty = false;
         loop {
             while let Some(value) = input.write().pop_front(){
-                canvas.write().clear(config.background_color);
                 document.update(value); 
                 view.render(&document, &mut canvas.write());
                 dirty = true;
