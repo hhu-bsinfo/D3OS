@@ -36,9 +36,9 @@ use crate::consts::MAIN_USER_STACK_START;
 use crate::consts::MAX_USER_STACK_SIZE;
 use crate::consts::{KERNEL_STACK_PAGES, USER_SPACE_ENV_START};
 use crate::memory::stack::StackAllocator;
-use crate::memory::vmm::VirtualMemoryArea;
-use crate::memory::vmm::VmaType;
-use crate::memory::{MemorySpace, PAGE_SIZE};
+use crate::memory::vmm;
+use crate::memory::vmm::{VirtualMemoryArea, VmaType, create_kernel_address_space};
+use crate::memory::{MemorySpace, PAGE_SIZE, frames, stack};
 use crate::process::process::Process;
 use crate::process::scheduler;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
@@ -56,7 +56,6 @@ use x86_64::VirtAddr;
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB};
-
 
 /// kernel & user stack of a thread
 struct Stacks {
@@ -88,37 +87,41 @@ impl Stacks {
 }
 
 impl Thread {
+
     /// Create a kernel thread. Not started yet, nor registered in the scheduler. \
     /// `entry` is the thread entry function.
     pub fn new_kernel_thread(entry: fn(), tag_str: &str) -> Arc<Thread> {
-        // alocate frames for kernel stack
+        let pid = process_manager().read().current_process().id();
+        let tid = scheduler::next_thread_id();
+
+        // Allocate the kernel stack for the kernel thread 
         let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
             (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
-            StackAllocator::default(),
+            StackAllocator::new(pid, tid),
         );
 
-        // add kernel stack to the virtual address space
+        // Get frame range for kernel stack
+        let kernel_frames = kernel_stack
+            .allocator()
+            .get_frame_range(); // Get frame range for kernel stack
+
+        // Add VMA for kernel stack to the virtual address space
         process_manager()
             .read()
             .current_process()
             .virtual_address_space
-            .map_kernel_stack(
-                PageRange {
-                    start: Page::from_start_address(VirtAddr::new(kernel_stack.as_ptr() as u64))
-                        .unwrap(),
-                    end: Page::from_start_address(VirtAddr::new(
-                        kernel_stack.as_ptr() as u64 + kernel_stack.capacity() as u64 * 8,
-                    ))
-                    .unwrap(),
-                },
+            .add_vma(VirtualMemoryArea::new_with_tag(
+                vmm::kernel_page_range(kernel_frames),
+                VmaType::KernelStack,
                 tag_str,
-            );
+            ));
 
-        // empty user stack, so need to add it to the virtual address space
-        let user_stack = Vec::with_capacity_in(0, StackAllocator::default()); // Dummy stack
+        // Create empty user stack, so need to add it to the virtual address space
+        let user_stack = Vec::with_capacity_in(0, StackAllocator::new(pid, tid)); // Dummy stack
 
+        // Create the thread struct
         let thread = Thread {
-            id: scheduler::next_thread_id(),
+            id: tid,
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: process_manager()
                 .read()
@@ -132,11 +135,19 @@ impl Thread {
         Arc::new(thread)
     }
 
+
     /// Load application code from `elf_buffer`, create a process with a main thread. \
     /// `name` is the name of the application, `args` are the arguments passed to the application. \
     /// Returns the main thread of the application which is not yet registered in the scheduler.
     pub fn load_application(elf_buffer: &[u8], name: &str, args: &Vec<&str>) -> Arc<Thread> {
         let process = process_manager().write().create_process();
+        let pid = process.id();
+        let tid = scheduler::next_thread_id();
+
+        info!(
+            "load_application: pid = {}, tid = {}, name = {}",
+            pid, tid, name
+        );
 
         // Parse elf file headers and map code vma if successful
         let elf = Elf::parse(elf_buffer).expect("Failed to parse application");
@@ -180,25 +191,36 @@ impl Thread {
                 }
             });
 
-//        info!("*** load_application: mapped code vma");
-
-        
-        // Create kernel stack for the application 
-        // Does not require mapping, because full physical memory is mapped 1:1 in kernel space
-        info!("   create kernel stack");
+        // Create kernel stack for the main thread of the application and add a VMA
         let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
             (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
-            StackAllocator::default(),
+            StackAllocator::new(pid, tid),
         );
 
+        // Get frame range for kernel stack
+        let kernel_frames = kernel_stack
+            .allocator()
+            .get_frame_range(); // Get frame range for kernel stack
 
+        // Add VMA for kernel stack to the virtual address space
+        process
+            .virtual_address_space
+            .add_vma(VirtualMemoryArea::new_with_tag(
+                vmm::kernel_page_range(kernel_frames),
+                VmaType::KernelStack,
+                "",
+            ));
 
-        // create user stack for the application
+        //
+        // Create user stack for the application
+        //
+
+        // create user stack for the main thread of the application
         let user_stack_end = Page::from_start_address(VirtAddr::new(
             (MAIN_USER_STACK_START + MAX_USER_STACK_SIZE) as u64,
         ))
         .unwrap();
-    
+
         // last page of the user stack
         let user_stack_pages = PageRange {
             start: user_stack_end - 1,
@@ -216,7 +238,6 @@ impl Thread {
         };
 
         // map user stack of the application
-        info!("   map user stack: {:x?}, #pages: {:?}", user_stack_pages, user_stack_pages.len());
         let stack_vma = VirtualMemoryArea::new_with_tag(user_stack_pages, VmaType::UserStack, "");
         process.virtual_address_space.add_vma(stack_vma);
         process.virtual_address_space.map(
@@ -225,9 +246,7 @@ impl Thread {
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
         );
 
-//        info!("Created user stack for thread: {:x?}", user_stack_pages);
-
-
+        //        info!("Created user stack for thread: {:x?}", user_stack_pages);
 
         // create environment for the application
         let args_size = args.iter().map(|arg| arg.len()).sum::<usize>();
@@ -254,9 +273,6 @@ impl Thread {
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
         );
-
-
-
 
         // create argc and argv in the user space environment
         let env_addr = VirtAddr::new(env_frames.start.start_address().as_u64()); // Start address of user space environment
@@ -293,7 +309,7 @@ impl Thread {
 
         // create thread
         let thread = Thread {
-            id: scheduler::next_thread_id(),
+            id: tid,
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process,
             entry: || {},
@@ -447,7 +463,7 @@ impl Thread {
         }
 
         let user_stack_start = stacks.user_stack.as_ptr() as usize - PAGE_SIZE;
-        // Fix me 
+        // Fix me
         stacks.user_stack = unsafe {
             Vec::from_raw_parts_in(
                 user_stack_start as *mut u64,
