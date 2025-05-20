@@ -24,7 +24,7 @@ use terminal::write::log_debug;
 use terminal::Application;
 use input::mouse::{MousePacket, try_read_mouse};
 use time::systime;
-use windows::workspace_selection_window::WorkspaceSelectionWindow;
+use windows::workspace_selection_window::{WorkspaceSelectionEvent, WorkspaceSelectionWindow};
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
 use workspace::Workspace;
 use mouse_state::{MouseEvent, MouseState};
@@ -276,11 +276,26 @@ impl WindowManager {
             let mouse_event = self.mouse_state.process(&mouse_packet);
 
             // Ask the workspace manager first
-            if let Some(new_workspace_id) = self.workspace_selection_window.handle_mouse_event(&mouse_event) {
-                if let Some(index) = self.workspaces.iter().position(|workspace| workspace.get_id() == new_workspace_id) {
-                    self.switch_workspace(index);
-                }
-                return;
+            match self.workspace_selection_window.handle_mouse_event(&mouse_event) {
+                WorkspaceSelectionEvent::Switch(id) => {
+                    if let Some(index) = self.workspaces.iter().position(|workspace| workspace.get_id() == id) {
+                        self.switch_workspace(index);
+                    }
+                    
+                    return;
+                },
+                
+                WorkspaceSelectionEvent::New => {
+                    self.create_new_workspace();
+                    return;
+                },
+
+                WorkspaceSelectionEvent::Close => {
+                    self.remove_current_workspace();
+                    return;
+                },
+
+                _ => (),
             }
 
             // Focus component under the cursor
