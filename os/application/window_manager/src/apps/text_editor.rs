@@ -1,5 +1,6 @@
 use alloc::{borrow::ToOwned, boxed::Box, rc::Rc, string::String, vec};
 use model::Document;
+use terminal::DecodedKey;
 use crate::{alloc::string::ToString, components::component::ComponentStylingBuilder, config, signal::Signal};
 use graphic::{buffered_lfb, color::{Color, WHITE}};
 use spin::rwlock::RwLock;
