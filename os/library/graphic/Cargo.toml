@@ -5,5 +5,9 @@ version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
 
 [dependencies]
+# Local dependencies
+syscall = { path = "../../library/syscall" }
+
+# Extern dependencies
 libm = "0.2.8"
 unifont = "1.1.0"

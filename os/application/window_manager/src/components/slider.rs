@@ -2,6 +2,7 @@ use alloc::{boxed::Box, rc::Rc};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use libm::roundf;
+use terminal::DecodedKey;
 use crate::{config::DEFAULT_FONT_SCALE, mouse_state::{ButtonState, MouseEvent, ScrollDirection}};
 
 use super::{component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
@@ -253,17 +254,17 @@ impl Focusable for Slider {
 }
 
 impl Interactable for Slider {
-    fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
+    fn consume_keyboard_press(&mut self, keyboard_press: DecodedKey) -> Option<Box<dyn FnOnce() -> ()>> {
         if self.is_disabled {
             return None;
         }
 
         match keyboard_press {
-            '+' => {
+            DecodedKey::Unicode('+') => {
                 let new_value = self.value + self.steps as i32;
                 self.update_value(new_value)
             }
-            '-' => {
+            DecodedKey::Unicode('-') => {
                 let new_value: i32 = self.value - self.steps as i32;
                 self.update_value(new_value)
             }

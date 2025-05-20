@@ -2,7 +2,7 @@
 edition = "2024"
 name = "shell"
 version = "0.1.0"
-authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+authors = ["Sebastian Keller <sebastian.keller@hhu.de>"]
 
 [lib]
 crate-type = ["staticlib"]
@@ -14,3 +14,5 @@ runtime = { path = "../../library/runtime" }
 terminal = { path = "../../library/terminal" }
 concurrent = { path = "../../library/concurrent" }
 naming = { path = "../../library/naming" }
+syscall = { path = "../../library/syscall" }
+logger = { path = "../../library/logger" }

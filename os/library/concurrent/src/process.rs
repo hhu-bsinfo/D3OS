@@ -33,3 +33,11 @@ pub fn current() -> Option<Process> {
 pub fn exit() {
     syscall(SystemCall::ProcessExit, &[]).expect("Failed to exit process");
 }
+
+pub fn count() -> usize {
+    match syscall(SystemCall::ProcessCount, &[]) {
+        Ok(count) => count,
+        Err(_) => 0,
+    }
+    
+}

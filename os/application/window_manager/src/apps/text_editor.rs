@@ -35,18 +35,18 @@ impl Runnable for TextEditor {
                 config.widht*config.height
             ],
         };
-        let deque = VecDeque::<char>::new();
+        let deque = VecDeque::<DecodedKey>::new();
         let handle = concurrent::thread::current().expect("Failed to get thread").id();
         let api = WindowManager::get_api();
         let canvas = Rc::new(RwLock::new(bitmap));
-        let input = Rc::new(RwLock::<VecDeque<char>>::new(deque));
+        let input = Rc::new(RwLock::<VecDeque<DecodedKey>>::new(deque));
         let input_clone = Rc::clone(&input);
         let component = api.execute(handle, None,  Command::CreateCanvas { styling: None,  rect_data: RectData {
                     top_left: Vertex::new(50, 80),
                     width: config.widht as u32,
                     height: config.height as u32,
                 },
-                input: Some(Box::new(move |c: char| {
+                input: Some(Box::new(move |c: DecodedKey| {
                     input_clone.write().push_back(c);
                 })),
                 buffer: Rc::clone(&canvas),

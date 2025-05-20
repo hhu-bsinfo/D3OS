@@ -2,104 +2,54 @@
 
 extern crate alloc;
 
-use alloc::string::String;
-use alloc::vec::Vec;
-use concurrent::thread;
-use naming::{mkdir, touch, cwd, cd};
+mod command_line;
+mod controller;
+mod executor;
+mod lexer;
+mod parser;
+
+use concurrent::process;
+use controller::Controller;
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::read::read;
-use terminal::{print, println, Application};
+use syscall::{SystemCall, syscall};
+use terminal::{print, read::read_mixed};
 
-
-fn process_pwd(split: &Vec<&str>) {
-    if split.len() != 1 {
-        println!("usage: pwd");
-        return ;
-    }
-    let res = cwd();
-    match res {
-        Ok(path) =>  println!("{}", path),
-        Err(_) => println!("usage: pwd"),
-    }
+struct Shell {
+    controller: Controller,
 }
 
-fn process_mkdir(split: &Vec<&str>) {
-    if split.len() != 2 {
-        println!("usage: mkdir directory_name");
-        return ;
-    }
-    let res = mkdir(&split[1]);
-    if res.is_err() {
-        println!("usage: mkdir directory_name");
-    }
-}
-
-fn process_cd(split: &Vec<&str>) {
-    if split.len() != 2 {
-        println!("usage: cd directory_name");
-        return ;
-    }
-    let res = cd(&split[1]);
-    if res.is_err() {
-        println!("usage: cd directory_name");
-    }
-}
-
-fn process_internal_command(split: &Vec<&str>) -> bool {
-    if split[0] == "pwd" {
-        process_pwd(split);
-        return true;
-    } else if split[0] == "cd" {
-        process_cd(split);
-        return true;
-    } else if split[0] == "mkdir" {
-        process_mkdir(split);
-        return true;
-    } else if split[0] == "touch" {
-        let res = touch(&split[1]);
-        if res.is_err() {
-            println!("{:?}", res);
+impl Shell {
+    pub fn new() -> Self {
+        Self {
+            controller: Controller::new(),
         }
-        return true;
     }
-    return false;
-}
 
-fn process_next_char(line: &mut String, ch: char) {
-    match ch {
-        '\n' => {
-            let split = line.split_whitespace().collect::<Vec<&str>>();
-            if !split.is_empty() {
-                if !process_internal_command(&split) {
-                    match thread::start_application(split[0], split[1..].iter().map(|&s| s).collect()) {
-                        Some(app) => app.join(),
-                        None => println!("Command not found!"),
-                    }
-                }
+    pub fn init(&mut self) {
+        print!("\n");
+        self.controller.init();
+    }
+
+    pub fn run(&mut self) {
+        loop {
+            if syscall(SystemCall::TerminalTerminateOperator, &[0, 1]).unwrap() == 1 {
+                process::exit();
             }
 
-            line.clear();
-            print!("> ");
-        }
-        '\x08' => {
-            line.pop();
-        }
-        _ => {
-            line.push(ch);
+            let key = match read_mixed() {
+                Some(key) => key,
+                None => continue,
+            };
+
+            self.controller.run(key);
         }
     }
 }
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mut line = String::new();
-    print!("> ");
-
-    loop {
-        match read(Application::Shell) {
-            Some(ch) => process_next_char(&mut line, ch),
-            None => (),
-        }
-    }
+    let mut shell = Shell::new();
+    shell.init();
+    shell.run()
 }

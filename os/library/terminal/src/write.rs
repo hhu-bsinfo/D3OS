@@ -9,7 +9,7 @@
 use core::fmt;
 use core::fmt::Write;
 use spin::Mutex;
-use syscall::{syscall, SystemCall};
+use syscall::{SystemCall, syscall};
 
 #[macro_export]
 macro_rules! print {
@@ -38,21 +38,10 @@ impl Writer {
     }
 }
 
-pub fn log_debug(s: &str) {
-    let res = syscall(
-        SystemCall::LogDebug,
-        &[s.as_bytes().as_ptr() as usize, s.len()],
-    );
-    match res {
-        Ok(_) => (),
-        Err(_) => (),
-    }
-}
-
 impl Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let res = syscall(
-            SystemCall::TerminalWrite,
+            SystemCall::TerminalWriteOutput,
             &[s.as_bytes().as_ptr() as usize, s.len()],
         );
         match res {

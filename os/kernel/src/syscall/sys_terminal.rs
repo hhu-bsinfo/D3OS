@@ -6,54 +6,111 @@
    ║ Author: Fabian Ruhland, 30.8.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use core::ptr::slice_from_raw_parts;
+use core::slice::from_raw_parts;
 use core::str::from_utf8;
-use crate::{keyboard, terminal, terminal_initialized};
-use log::{debug, info};
-use stream::{DecodedInputStream, InputStream};
-use terminal::Application;
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::{ptr::slice_from_raw_parts, slice::from_raw_parts_mut};
+use log::{error, info};
+use syscall::return_vals::Errno;
+use terminal::{TerminalInputState, TerminalMode};
 
-pub fn sys_log_debug(string_addr: *const u8, string_len: usize) {
-    let log_string = from_utf8(unsafe {
-        slice_from_raw_parts(string_addr, string_len)
-            .as_ref()
-            .unwrap()
-    })
-    .unwrap();
+use crate::device::tty::TtyInputState;
+use crate::{tty_input, tty_output};
 
-    debug!("{}", log_string);
+static KILL_OPERATOR_FLAG: AtomicBool = AtomicBool::new(false);
+
+/// For applications
+/// TODO#8 Do proper docs
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_write_output(address: *const u8, length: usize) -> isize {
+    if address.is_null() {
+        error!("Output buffer must not be null");
+        return Errno::EINVAL as isize;
+    }
+
+    let bytes = unsafe { from_raw_parts(address, length) };
+    tty_output().write(bytes) as isize
 }
 
-pub fn sys_terminal_read(application_ptr: *const Application, blocking: usize) -> isize {
-    let enum_val = unsafe { application_ptr.as_ref().unwrap() };
-    
-    match enum_val {
-        Application::Shell => {
-            let terminal = terminal();
-            match terminal.read_byte() {
-                -1 => panic!("Input stream closed!"),
-                c => c as isize
-            }
-        },
-        Application::WindowManager => {
-            if blocking != 0 {
-                return keyboard().expect("Failed to read from keyboard!").decoded_read_byte() as isize;
-            }
+/// For Terminal
+/// TODO#8 Do proper docs
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_read_output(address: *mut u8, length: usize) -> isize {
+    if address.is_null() {
+        error!("Output buffer must not be null");
+        return Errno::EINVAL as isize;
+    }
 
-            return keyboard().expect("Failed to read from keyboard!").decoded_try_read_byte().unwrap_or(0) as isize;
-        }
+    let buffer = unsafe { from_raw_parts_mut(address, length) };
+    tty_output().read(buffer) as isize
+}
+
+/// For Terminal
+/// TODO#8 Do proper docs
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_write_input(address: *mut u8, length: usize, mode: usize) -> isize {
+    if address.is_null() {
+        error!("Input buffer must not be null");
+        return Errno::EINVAL as isize;
+    }
+
+    let mode = TerminalMode::from(mode);
+    let bytes = unsafe { from_raw_parts(address, length) };
+    tty_input().write(bytes, mode) as isize
+}
+
+/// For Application
+/// TODO#8 Do proper docs
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_read_input(address: *mut u8, length: usize, mode: usize) -> isize {
+    if address.is_null() {
+        error!("Input buffer must not be null");
+        return Errno::EINVAL as isize;
+    }
+
+    let mode = TerminalMode::from(mode);
+    let buffer = unsafe { from_raw_parts_mut(address, length) };
+    tty_input().read(buffer, mode) as isize
+}
+
+/// For Terminal
+/// TODO#8 Do proper docs
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_check_input_state() -> isize {
+    let tty_input = tty_input();
+
+    if tty_input.state() != TtyInputState::Waiting {
+        return TerminalInputState::Idle as isize;
+    }
+
+    match tty_input.mode() {
+        TerminalMode::Cooked => TerminalInputState::InputReaderAwaitsCooked as isize,
+        TerminalMode::Mixed => TerminalInputState::InputReaderAwaitsMixed as isize,
+        TerminalMode::Raw => TerminalInputState::InputReaderAwaitsRaw as isize,
     }
 }
 
-pub fn sys_terminal_write(buffer: *const u8, length: usize) -> isize {
-    let string = from_utf8(unsafe { slice_from_raw_parts(buffer, length).as_ref().unwrap() }).unwrap();
+/// For Application & Terminal
+/// TODO#8 Do proper docs
+///
+/// Order the operator process (usually shell) to exit (Workaround due to missing ipc)
+///
+///
+/// Author: Sebastian Keller
+pub fn sys_terminal_terminate_operator(cmd: bool, ack: bool) -> isize {
+    if cmd {
+        KILL_OPERATOR_FLAG.store(true, Ordering::SeqCst);
+        return 0;
+    }
 
-    // Prevent crashes when no terminal is available (window manager replaces the shell)
-    if terminal_initialized() {
-        let terminal = terminal();
-        terminal.write_str(string);
-    } else {
-        debug!("{}", string);
+    if ack && KILL_OPERATOR_FLAG.load(Ordering::SeqCst) {
+        KILL_OPERATOR_FLAG.store(false, Ordering::SeqCst);
+        return 1;
     }
 
     0
