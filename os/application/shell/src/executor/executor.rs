@@ -4,7 +4,7 @@ use concurrent::thread::{self};
 use crate::{
     build_in::{
         build_in::BuildIn, clear::ClearBuildIn, echo::EchoBuildIn, exit::ExitBuildIn,
-        mkdir::MkdirBuildIn,
+        mkdir::MkdirBuildIn, pwd::PwdBuildIn,
     },
     parser::executable::{Executable, Job},
 };
@@ -45,6 +45,7 @@ impl Executor {
             "clear" => ClearBuildIn::start(args),
             "exit" => ExitBuildIn::start(args),
             "mkdir" => MkdirBuildIn::start(args),
+            "pwd" => PwdBuildIn::start(args),
             _ => return Err(()),
         };
         Ok(())
