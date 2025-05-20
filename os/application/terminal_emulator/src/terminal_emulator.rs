@@ -50,11 +50,9 @@ impl TerminalEmulator {
         }
     }
 
-    pub fn init(&mut self) {
+    pub fn init(&self) {
         self.terminal().clear();
         self.terminal().write_str(&create_banner_string());
-
-        sleep(1000); // Give terminal time to initialize before stating worker threads
 
         self.cursor.lock().create();
         self.input_observer.lock().create();
@@ -114,14 +112,14 @@ impl TerminalEmulator {
 fn init_terminal_emulator() {
     TERMINAL_EMULATOR.call_once(|| {
         let lfb_info = get_lfb_info();
-        let mut emulator = TerminalEmulator::new(
+        let emulator = TerminalEmulator::new(
             lfb_info.address as *mut u8,
             lfb_info.pitch,
             lfb_info.width,
             lfb_info.height,
             lfb_info.bpp,
         );
-        emulator.init();
+
         Arc::new(emulator)
     });
 }
@@ -137,6 +135,7 @@ pub fn terminal_emulator() -> Arc<TerminalEmulator> {
 pub fn main() {
     init_terminal_emulator();
     let emulator = terminal_emulator();
+    emulator.init();
     emulator.run()
 
     // terminal.write_str("Press 'F1' to toggle between text and gui mode\n\n");
