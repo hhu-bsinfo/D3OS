@@ -7,6 +7,7 @@ use crate::{
     build_in::{
         alias::AliasBuildIn, build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn,
         echo::EchoBuildIn, exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn,
+        unalias::UnaliasBuildIn,
     },
     parser::executable::{Executable, Job},
     sub_module::alias::Alias,
@@ -53,6 +54,7 @@ impl Executor {
             "pwd" => PwdBuildIn::start(args),
             "cd" => CdBuildIn::start(args),
             "alias" => AliasBuildIn::new(args, &self.alias).start(),
+            "unalias" => UnaliasBuildIn::new(args, &self.alias).start(),
             _ => return Err(()),
         };
         Ok(())
