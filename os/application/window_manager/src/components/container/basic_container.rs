@@ -77,16 +77,6 @@ impl BasicContainer {
         }
     }
 
-    fn get_cursor_start(&self, alignment: AlignmentMode) -> Vertex {
-        match alignment {
-            AlignmentMode::Right => Vertex {
-                x: self.abs_rect_data.width,
-                y: 0,
-            },
-            _ => Vertex::zero(),
-        }
-    }
-
     fn apply_default_layout(&mut self) {
         for child in &self.childs {
             child
@@ -96,8 +86,6 @@ impl BasicContainer {
     }
 
     fn apply_horizontal_layout(&mut self) {
-        //self.cursor = self.get_cursor_start(alignment);
-
         for child in &self.childs {
             // Apply layout & scaling
             child
@@ -166,6 +154,10 @@ impl Container for BasicContainer {
             (LayoutMode::Vertical(_), StretchMode::Fill) => {
                 (u32::max(self.abs_rect_data.width, min_dim.0), max_dim.1)
             }
+            (LayoutMode::None, StretchMode::Fill) => (
+                u32::max(self.abs_rect_data.width, min_dim.0),
+                u32::max(self.abs_rect_data.height, min_dim.1),
+            ),
             (_, _) => max_dim.max(min_dim),
         };
 
@@ -196,7 +188,7 @@ impl Container for BasicContainer {
             _ => new_abs_rect.top_left + self.cursor,
         };
 
-        // Adjust the position and size of the received abs rect
+        // Adjust the size of the received abs rect
         // TODO: Use rel_rect as paddding, if stretching is active
         let layout_abs_rect = match &self.layout {
             LayoutMode::Horizontal(_) => RectData {
@@ -219,9 +211,17 @@ impl Container for BasicContainer {
                 ..new_abs_rect
             },
 
-            _ => RectData {
-                top_left: new_abs_pos,
-                ..new_abs_rect
+            _ => match self.stretch {
+                StretchMode::Fill => RectData {
+                    top_left: new_abs_pos,
+                    width: self.abs_rect_data.width,
+                    height: self.abs_rect_data.height,
+                },
+
+                _ => RectData {
+                    top_left: new_abs_pos,
+                    ..new_abs_rect
+                },
             },
         };
 
@@ -279,7 +279,6 @@ impl Component for BasicContainer {
         if !self.is_dirty {
             for child in &dirty_components {
                 // We don't want to redraw entire containers
-                // TODO: Make components responsible for clearing their own area?
                 if child.read().as_container().is_some() {
                     continue;
                 }

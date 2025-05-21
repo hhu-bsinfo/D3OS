@@ -195,7 +195,7 @@ impl WorkspaceSelectionWindow {
     }
 
     pub fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) -> WorkspaceSelectionEvent {
-        // Action buttons
+        // New workspace button
         if self
             .new_workspace_button
             .read()
@@ -214,6 +214,7 @@ impl WorkspaceSelectionWindow {
             }
         }
 
+        // Close workspace button
         if self
             .close_workspace_button
             .read()

@@ -85,6 +85,27 @@ impl Runnable for LayoutApp {
             )
             .expect("failed to create container");
 
+        let container_4 = api
+            .execute(
+                window_handle,
+                Some(container_1.clone()),
+                Command::CreateContainer {
+                    log_rect_data: RectData {
+                        top_left: Vertex::zero(),
+                        width: 0,
+                        height: 100,
+                    },
+                    layout: LayoutMode::None,
+                    stretch: StretchMode::Fill,
+                    styling: Some(
+                        ContainerStylingBuilder::new()
+                            .border_color(Color::new(255, 0, 255, 255))
+                            .build(),
+                    ),
+                },
+            )
+            .expect("failed to create container");
+
         fn create_button(
             api: &Api,
             window_handle: usize,
@@ -161,5 +182,16 @@ impl Runnable for LayoutApp {
                 &format!("{}", i),
             );
         }
+
+        create_button(
+                &api,
+                window_handle,
+                Some(container_4.clone()),
+                0,
+                0,
+                0,
+                0,
+                "Hello!",
+            );
     }
 }
