@@ -8,6 +8,7 @@ mod controller;
 mod executor;
 mod lexer;
 mod parser;
+mod sub_module;
 
 use concurrent::process;
 use controller::Controller;
