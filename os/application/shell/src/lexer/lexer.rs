@@ -140,8 +140,8 @@ impl Lexer {
                 self.quote_state = QuoteState::None;
             }
             QuoteState::None => {
-                // Enter double quote
-                self.quote_state = QuoteState::Double
+                // Enter single quote
+                self.quote_state = QuoteState::Single
             }
         }
     }
