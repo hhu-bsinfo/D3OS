@@ -55,3 +55,5 @@ pub fn main() {
     shell.init();
     shell.run()
 }
+
+// TODO BUG typed command at cursor disappears when hitting enter while cursor is not at the end of line

@@ -36,7 +36,7 @@ impl Controller {
             Err(_) => return,
         };
 
-        self.lexer.tokenize(current_string); // TODO#? disable onChange updates when facing performance hits
+        self.lexer.tokenize(&current_string); // TODO#? disable onChange updates when facing performance hits
     }
 
     fn handle_del(&mut self) {
@@ -45,21 +45,28 @@ impl Controller {
             Err(_) => return,
         };
 
-        self.lexer.tokenize(current_string); // TODO#? disable onChange updates when facing performance hits
+        self.lexer.tokenize(&current_string); // TODO#? disable onChange updates when facing performance hits
     }
 
     fn handle_enter(&mut self) {
         self.command_line.submit();
 
-        let tokens = self.lexer.flush();
+        // Read tokens from lexer
+        let tokens = match self.lexer.flush() {
+            Ok(tokens) => tokens,
+            Err(msg) => return self.handle_error(msg),
+        };
+
+        // Parse tokens into executables
         let executable = match self.parser.parse(&tokens) {
             Ok(exec) => exec,
             Err(_) => return,
         };
 
+        // Execute
         match self.executor.execute(&executable) {
             Ok(_) => self.command_line.create_new_line(),
-            Err(msg) => println!("{}", msg),
+            Err(msg) => self.handle_error(msg),
         };
     }
 
@@ -69,7 +76,7 @@ impl Controller {
             Err(_) => return,
         };
 
-        self.lexer.tokenize(current_string); // TODO#? disable onChange updates when facing performance hits
+        self.lexer.tokenize(&current_string); // TODO#? disable onChange updates when facing performance hits
     }
 
     fn handle_arrow_left(&mut self) {
@@ -82,16 +89,21 @@ impl Controller {
 
     fn handle_arrow_up(&mut self) {
         match self.command_line.move_history_up() {
-            Ok(line) => self.lexer.tokenize(line),
+            Ok(line) => self.lexer.tokenize(&line),
             Err(_) => return,
         };
     }
 
     fn handle_arrow_down(&mut self) {
         match self.command_line.move_history_down() {
-            Ok(line) => self.lexer.tokenize(line),
+            Ok(line) => self.lexer.tokenize(&line),
             Err(_) => return,
         };
+    }
+
+    fn handle_error(&mut self, msg: &'static str) {
+        println!("{}", msg);
+        self.command_line.create_new_line();
     }
 
     pub fn init(&mut self) {
