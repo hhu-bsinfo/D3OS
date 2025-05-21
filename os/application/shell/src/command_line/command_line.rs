@@ -23,8 +23,9 @@ impl CommandLine {
         }
     }
 
-    pub fn submit(&mut self) {
-        self.history.push_front(self.current_line.clone());
+    pub fn submit(&mut self) -> String {
+        let line = self.current_line.clone();
+        self.history.push_front(line.clone());
         self.history_position = -1;
         match self.current_line.len() - self.cursor_position {
             0 => print!("\n"),
@@ -32,6 +33,7 @@ impl CommandLine {
         };
         self.current_line.clear();
         self.cursor_position = 0;
+        line
     }
 
     pub fn create_new_line(&self) {

@@ -16,10 +16,18 @@ pub struct AliasEntry {
 }
 
 impl Alias {
-    pub const fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
+    pub fn new() -> Self {
+        let mut entries = Vec::new();
+        // TODO Initial aliases for debugging, remove later or create proper defaults
+        entries.push(AliasEntry {
+            key: "hhu".to_string(),
+            value: "Heinrich Heine Universitaet".to_string(),
+        });
+        entries.push(AliasEntry {
+            key: "hi".to_string(),
+            value: "hello there".to_string(),
+        });
+        Self { entries }
     }
 
     pub fn add(&mut self, key: &str, value: &str) -> Result<(), ()> {

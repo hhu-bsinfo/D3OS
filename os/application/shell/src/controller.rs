@@ -9,13 +9,10 @@ use crate::{
 };
 
 pub struct Controller {
-    // Main Modules
     command_line: CommandLine,
     lexer: Lexer,
     parser: Parser,
     executor: Executor,
-    // Sub Modules
-    alias: Rc<RefCell<Alias>>,
 }
 
 impl Controller {
@@ -23,10 +20,9 @@ impl Controller {
         let alias = Rc::new(RefCell::new(Alias::new()));
         Self {
             command_line: CommandLine::new(),
-            lexer: Lexer::new(),
+            lexer: Lexer::new(alias.clone()),
             parser: Parser::new(),
-            executor: Executor::new(alias.clone()),
-            alias,
+            executor: Executor::new(alias),
         }
     }
 
@@ -36,7 +32,8 @@ impl Controller {
             Err(_) => return,
         };
 
-        self.lexer.tokenize(&current_string); // TODO#? disable onChange updates when facing performance hits
+        self.lexer.tokenize(&current_string);
+        self.lexer.reset(); // TODO Just for debugging, remove later
     }
 
     fn handle_del(&mut self) {
@@ -45,13 +42,15 @@ impl Controller {
             Err(_) => return,
         };
 
-        self.lexer.tokenize(&current_string); // TODO#? disable onChange updates when facing performance hits
+        self.lexer.tokenize(&current_string);
+        self.lexer.reset(); // TODO Just for debugging, remove later
     }
 
     fn handle_enter(&mut self) {
-        self.command_line.submit();
+        let line = self.command_line.submit();
 
         // Read tokens from lexer
+        self.lexer.tokenize(&line);
         let tokens = match self.lexer.flush() {
             Ok(tokens) => tokens,
             Err(msg) => return self.handle_error(msg),
@@ -76,7 +75,8 @@ impl Controller {
             Err(_) => return,
         };
 
-        self.lexer.tokenize(&current_string); // TODO#? disable onChange updates when facing performance hits
+        self.lexer.tokenize(&current_string);
+        self.lexer.reset(); // TODO Just for debugging, remove later
     }
 
     fn handle_arrow_left(&mut self) {
