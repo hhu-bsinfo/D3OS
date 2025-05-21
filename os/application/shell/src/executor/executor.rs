@@ -1,19 +1,24 @@
-use alloc::{string::String, vec::Vec};
+use core::cell::RefCell;
+
+use alloc::{rc::Rc, string::String, vec::Vec};
 use concurrent::thread::{self};
 
 use crate::{
     build_in::{
-        build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn, echo::EchoBuildIn,
-        exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn,
+        alias::AliasBuildIn, build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn,
+        echo::EchoBuildIn, exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn,
     },
     parser::executable::{Executable, Job},
+    sub_module::alias::Alias,
 };
 
-pub struct Executor {}
+pub struct Executor {
+    alias: Rc<RefCell<Alias>>,
+}
 
 impl Executor {
-    pub const fn new() -> Self {
-        Self {}
+    pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
+        Self { alias }
     }
 
     pub fn execute(&self, executable: &Executable) -> Result<(), &'static str> {
@@ -47,6 +52,7 @@ impl Executor {
             "mkdir" => MkdirBuildIn::start(args),
             "pwd" => PwdBuildIn::start(args),
             "cd" => CdBuildIn::start(args),
+            "alias" => AliasBuildIn::new(args, &self.alias).start(),
             _ => return Err(()),
         };
         Ok(())

@@ -1,24 +1,32 @@
+use core::cell::RefCell;
+
+use alloc::rc::Rc;
 use terminal::{DecodedKey, KeyCode, print, println};
 
 use crate::{
     command_line::command_line::CommandLine, executor::executor::Executor, lexer::lexer::Lexer,
-    parser::parser::Parser,
+    parser::parser::Parser, sub_module::alias::Alias,
 };
 
 pub struct Controller {
+    // Main Modules
     command_line: CommandLine,
     lexer: Lexer,
     parser: Parser,
     executor: Executor,
+    // Sub Modules
+    alias: Rc<RefCell<Alias>>,
 }
 
 impl Controller {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
+        let alias = Rc::new(RefCell::new(Alias::new()));
         Self {
             command_line: CommandLine::new(),
             lexer: Lexer::new(),
             parser: Parser::new(),
-            executor: Executor::new(),
+            executor: Executor::new(alias.clone()),
+            alias,
         }
     }
 

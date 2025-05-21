@@ -10,9 +10,9 @@ pub struct Alias {
 }
 
 #[derive(Debug)]
-struct AliasEntry {
-    key: String,
-    value: String,
+pub struct AliasEntry {
+    pub(crate) key: String,
+    pub(crate) value: String,
 }
 
 impl Alias {
@@ -24,6 +24,7 @@ impl Alias {
 
     pub fn add(&mut self, key: &str, value: &str) -> Result<(), ()> {
         if self.exist(key) {
+            // TODO don't throw error, update value
             return Err(());
         }
 
@@ -57,6 +58,10 @@ impl Alias {
             Some(entry) => Some(&entry.value),
             None => None,
         }
+    }
+
+    pub fn get_all(&self) -> &Vec<AliasEntry> {
+        &self.entries
     }
 
     pub fn exist(&self, key: &str) -> bool {
