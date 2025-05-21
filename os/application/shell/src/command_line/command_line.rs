@@ -26,9 +26,12 @@ impl CommandLine {
     pub fn submit(&mut self) {
         self.history.push_front(self.current_line.clone());
         self.history_position = -1;
+        match self.current_line.len() - self.cursor_position {
+            0 => print!("\n"),
+            x => print!("\x1b[{}C\n", x),
+        };
         self.current_line.clear();
         self.cursor_position = 0;
-        print!("\n");
     }
 
     pub fn create_new_line(&self) {
