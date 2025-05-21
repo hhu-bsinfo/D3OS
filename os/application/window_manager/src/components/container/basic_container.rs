@@ -25,7 +25,7 @@ pub enum LayoutMode {
     None,
     Horizontal(AlignmentMode),
     Vertical(AlignmentMode),
-    Grid(u32, u32),
+    Grid(u32),
 }
 
 #[derive(PartialEq)]
@@ -111,13 +111,35 @@ impl BasicContainer {
         }
     }
 
+    fn apply_grid_layout(&mut self, cols: u32) {
+        let mut last_row_height: u32 = 0;
+        
+        for (i, child) in self.childs.iter().enumerate() {
+            // Apply layout & scaling
+            child
+                .write()
+                .rescale_to_container(self.as_container().unwrap());
+
+            // Update the cursor position
+            let abs_rect_data = child.read().get_abs_rect_data();
+            if (i + 1) % cols as usize == 0 {
+                self.cursor.x = 0;
+                self.cursor.y += last_row_height + CHILD_SPACING;
+                last_row_height = 0;
+            } else {
+                self.cursor.x += abs_rect_data.width + CHILD_SPACING;
+                last_row_height = last_row_height.max(abs_rect_data.height);
+            }
+        }
+    }
+
     fn apply_layout(&mut self) {
         self.cursor = Vertex::zero();
 
         match self.layout {
             LayoutMode::Horizontal(_) => self.apply_horizontal_layout(),
             LayoutMode::Vertical(_) => self.apply_vertical_layout(),
-            LayoutMode::Grid(_, _) => todo!("needs rework for new scaling system"),
+            LayoutMode::Grid(cols) => self.apply_grid_layout(cols),
 
             _ => self.apply_default_layout(),
         }

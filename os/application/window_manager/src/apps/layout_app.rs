@@ -139,6 +139,23 @@ impl Runnable for LayoutApp {
             .ok()
         }
 
+        let grid_container = api
+            .execute(
+                window_handle,
+                None,
+                Command::CreateContainer {
+                    log_rect_data: RectData {
+                        top_left: Vertex { x: 400, y: 50 },
+                        width: 250,
+                        height: 250,
+                    },
+                    layout: LayoutMode::Grid(3),
+                    stretch: StretchMode::None,
+                    styling: Some(ContainerStylingBuilder::new().maintain_aspect_ratio(true).build()),
+                },
+            )
+            .expect("failed to create container");
+
         // Buttons
         //let button_1 = create_button(&api, window_handle, container_1.clone(), 0, 0, 100, 750, "A");
         //let button_2 = create_button(&api, window_handle, container_1.clone(), 0, 0, 100, 750, "B");
@@ -184,14 +201,27 @@ impl Runnable for LayoutApp {
         }
 
         create_button(
+            &api,
+            window_handle,
+            Some(container_4.clone()),
+            0,
+            0,
+            0,
+            0,
+            "Hello!",
+        );
+        
+        for i in 0..9 {
+            let _ = create_button(
                 &api,
                 window_handle,
-                Some(container_4.clone()),
+                Some(grid_container.clone()),
                 0,
                 0,
-                0,
-                0,
-                "Hello!",
+                200,
+                200,
+                &format!("{}", i),
             );
+        }
     }
 }
