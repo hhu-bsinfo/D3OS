@@ -91,6 +91,10 @@ impl <'b>Document<'b> {
                 self.text_buffer.insert(self.caret, ch);
                 self.caret+=1;
             }
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.caret -=1,
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret +=1,
+            DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             DecodedKey::RawKey(_) => todo!()
         }
     }
@@ -104,6 +108,10 @@ impl <'b>Document<'b> {
             DecodedKey::Unicode('j') => self.move_cursor_down(),
             DecodedKey::Unicode('k') => self.move_cursor_up(),
             DecodedKey::Unicode('i') => self.edit_mode = EditMode::Insert,
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.caret -=1,
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret +=1,
+            DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             _ => (),
         }
         if self.caret > self.text_buffer.len() {
