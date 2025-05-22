@@ -6,6 +6,7 @@ use alloc::{
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 use spin::RwLock;
+use terminal::DecodedKey;
 
 use crate::{
     config::INTERACT_BUTTON,
@@ -249,7 +250,7 @@ impl Focusable for Button {
 }
 
 impl Interactable for Button {
-    fn consume_keyboard_press(&mut self, keyboard_press: char) -> Option<Box<dyn FnOnce() -> ()>> {
+    fn consume_keyboard_press(&mut self, keyboard_press: DecodedKey) -> Option<Box<dyn FnOnce() -> ()>> {
         if keyboard_press == INTERACT_BUTTON && !self.is_disabled {
             self.handle_click()
         } else {

@@ -105,13 +105,12 @@ impl DecodedInputStream for Keyboard {
 }
 
 impl InputStream for Keyboard {
+    // <Sebastian Keller> Removed loop so applications won't block when there is no keyboard input
     fn read_byte(&self) -> i16 {
-        loop {
-            match self.buffer.0.try_dequeue() {
-                Ok(code) => return code as i16,
-                Err(DequeueError::Closed) => return -1,
-                Err(_) => {}
-            }
+        match self.buffer.0.try_dequeue() {
+            Ok(code) => return code as i16,
+            Err(DequeueError::Closed) => return -1,
+            Err(_) => 0
         }
     }
 }

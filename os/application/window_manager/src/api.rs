@@ -7,6 +7,7 @@ use graphic::{bitmap::{Bitmap, ScalingMode}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_
 use hashbrown::HashMap;
 use nolock::queues::mpsc::jiffy::{Receiver, Sender};
 use spin::rwlock::RwLock;
+use terminal::DecodedKey;
 
 use crate::{
     apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel, text_editor::TextEditor}, components::{bitmap::BitmapGraphic, button::Button, canvas::Canvas, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, LayoutMode, StretchMode}, Container, ContainerStyling}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
@@ -85,7 +86,7 @@ pub enum Command<'a> {
         styling: Option<ComponentStyling>,
         rect_data: RectData,
         buffer: Rc<RwLock<Bitmap>>,
-        input: Option<Box<dyn Fn(char) -> ()>>,
+        input: Option<Box<dyn Fn(DecodedKey) -> ()>>,
     },
     CreateContainer {
         log_rect_data: RectData,

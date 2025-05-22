@@ -19,14 +19,12 @@
 #![no_std]
 
 use crate::device::apic::Apic;
-use crate::device::lfb_terminal::{CursorThread, LFBTerminal};
 use crate::device::pci::PciBus;
 use crate::device::pit::Timer;
 use crate::device::ps2::{Keyboard, Mouse, PS2};
 use crate::device::serial;
 use crate::device::serial::{BaudRate, ComPort, SerialPort};
 use crate::device::speaker::Speaker;
-use crate::device::terminal::Terminal;
 use crate::interrupt::interrupt_dispatcher::InterruptDispatcher;
 use crate::log::Logger;
 use crate::memory::PAGE_SIZE;
@@ -34,15 +32,17 @@ use crate::memory::acpi_handler::AcpiHandler;
 use crate::memory::kheap::KernelAllocator;
 use crate::process::process_manager::ProcessManager;
 use crate::process::scheduler::Scheduler;
-use crate::process::thread::Thread;
+use crate::syscall::sys_graphic::LfbInfo;
 use crate::syscall::syscall_dispatcher::CoreLocalStorage;
 use ::log::{Level, Log, Record, error};
 use acpi::AcpiTables;
+use alloc::string::String;
 use alloc::sync::Arc;
-use graphic::buffered_lfb::BufferedLFB;
-use graphic::lfb::LFB;
 use core::fmt::Arguments;
 use core::panic::PanicInfo;
+use device::tty::{TtyInput, TtyOutput};
+use graphic::buffered_lfb::BufferedLFB;
+use graphic::lfb::LFB;
 use multiboot2::ModuleTag;
 use spin::{Mutex, Once, RwLock};
 use tar_no_std::TarArchiveRef;
@@ -75,27 +75,23 @@ pub mod built_info {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if terminal_initialized() {
-        println!("Panic: {}", info);
-    } else {
-        let args = [info.message().as_str().unwrap()];
-        let record = Record::builder()
-            .level(Level::Error)
-            .file(Some("panic"))
-            .args(Arguments::new_const(&args))
-            .build();
+    let args = [info.message().as_str().unwrap()];
+    let record = Record::builder()
+        .level(Level::Error)
+        .file(Some("panic"))
+        .args(Arguments::new_const(&args))
+        .build();
 
-        logger().log(&record);
-    }
+    logger().log(&record);
 
     loop {}
 }
 
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Static kernel structures.                                               ║
-   ║ These structures are need for the kernel to work. Since they only exist ║
-   ║ once, they are shared as static lifetime references.                    ║
-   ╚═════════════════════════════════════════════════════════════════════════╝ */
+║ Static kernel structures.                                               ║
+║ These structures are need for the kernel to work. Since they only exist ║
+║ once, they are shared as static lifetime references.                    ║
+╚═════════════════════════════════════════════════════════════════════════╝ */
 
 /// Check if EFI system table (and thus runtime services) are available.
 pub fn efi_services_available() -> bool {
@@ -248,14 +244,14 @@ pub fn interrupt_dispatcher() -> &'static InterruptDispatcher {
 }
 
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Device driver instances.                                                ║
-   ║ We currently do not have a device driver framework, so all driver       ║
-   ║ instances are created here.                                             ║
-   ║ Most device drivers use reference counting, which will (hopefully)      ║
-   ║ make it easier to integrate them into a dynamic driver framework later. ║
-   ║ Our current plan is to use the name service for holding driver          ║
-   ║ instances, allowing us to load/unload device drivers at runtime.        ║
-   ╚═════════════════════════════════════════════════════════════════════════╝ */
+║ Device driver instances.                                                ║
+║ We currently do not have a device driver framework, so all driver       ║
+║ instances are created here.                                             ║
+║ Most device drivers use reference counting, which will (hopefully)      ║
+║ make it easier to integrate them into a dynamic driver framework later. ║
+║ Our current plan is to use the name service for holding driver          ║
+║ instances, allowing us to load/unload device drivers at runtime.        ║
+╚═════════════════════════════════════════════════════════════════════════╝ */
 
 /// Advanced Programmable Interrupt Controller.
 /// The APIC consists of an IO-APIC for device interrupts and one Local APIC per core.
@@ -319,34 +315,30 @@ pub fn serial_port() -> Option<Arc<SerialPort>> {
     }
 }
 
-/// Terminal.
-/// The terminal is the main input/output device of the kernel. It can print text to the screen and
-/// reads keyboard input. Applications can use the 'read' system call to get keyboard input from the terminal.
-static TERMINAL: Once<Arc<dyn Terminal>> = Once::new();
+/// TTY
+/// TODO#9 tty docs
+///
+/// Author: Sebastian Keller
+static TTY_INPUT: Once<Arc<TtyInput>> = Once::new();
+static TTY_OUTPUT: Once<Arc<TtyOutput>> = Once::new();
 
-pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
-    let lfb_terminal = Arc::new(LFBTerminal::new(buffer, pitch, width, height, bpp));
-    lfb_terminal.clear();
-    TERMINAL.call_once(|| lfb_terminal);
-
-    scheduler().ready(Thread::new_kernel_thread(
-        || {
-            let mut cursor_thread = CursorThread::new(terminal());
-            cursor_thread.run();
-        },
-        "cursor",
-    ));
+pub fn init_tty() {
+    TTY_INPUT.call_once(|| Arc::new(TtyInput::new()));
+    TTY_OUTPUT.call_once(|| Arc::new(TtyOutput::new()));
 }
 
-pub fn terminal_initialized() -> bool {
-    TERMINAL.get().is_some()
-}
-
-pub fn terminal() -> Arc<dyn Terminal> {
-    let terminal = TERMINAL
+pub fn tty_input() -> Arc<TtyInput> {
+    let tty_input = TTY_INPUT
         .get()
-        .expect("Trying to access terminal before initialization!");
-    Arc::clone(terminal)
+        .expect("Trying to access tty input before initialization!");
+    Arc::clone(tty_input)
+}
+
+pub fn tty_output() -> Arc<TtyOutput> {
+    let tty_output = TTY_OUTPUT
+        .get()
+        .expect("Trying to access tty output before initialization!");
+    Arc::clone(tty_output)
 }
 
 /// PS/2 Controller.
@@ -366,7 +358,7 @@ fn init_ps2() -> Arc<PS2> {
                 Ok(_) => {}
                 Err(error) => error!("Mouse initialization failed: {:?}", error),
             }
-        },
+        }
         Err(error) => error!("PS/2 controller initialization failed: {:?}", error),
     }
 
@@ -399,20 +391,57 @@ pub fn init_pci() {
 }
 
 pub fn pci_bus() -> &'static PciBus {
-    PCI.get().expect("Trying to access PCI bus before initialization!")
+    PCI.get()
+        .expect("Trying to access PCI bus before initialization!")
 }
 
 static BUFFERED_LFB: Once<Mutex<BufferedLFB>> = Once::new();
 
 pub fn init_lfb(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) {
-    BUFFERED_LFB.call_once(|| Mutex::new(
-        BufferedLFB::new(
-            LFB::new(buffer, pitch, width, height, bpp)
-        )
-    ));
+    BUFFERED_LFB.call_once(|| {
+        Mutex::new(BufferedLFB::new(LFB::new(
+            buffer, pitch, width, height, bpp,
+        )))
+    });
 }
 
 pub fn buffered_lfb() -> &'static Mutex<BufferedLFB> {
-    BUFFERED_LFB.get()
+    BUFFERED_LFB
+        .get()
         .expect("Trying to access buffered LFB before initialization!")
+}
+
+static LFB_INFO: Once<LfbInfo> = Once::new();
+
+pub fn init_lfb_info(address: u64, pitch: u32, width: u32, height: u32, bpp: u8) {
+    LFB_INFO.call_once(|| LfbInfo {
+        address,
+        pitch,
+        width,
+        height,
+        bpp,
+    });
+}
+
+pub fn lfb_info() -> &'static LfbInfo {
+    LFB_INFO
+        .get()
+        .expect("Trying to access lfb info before initialization")
+}
+
+/// Remember boot info
+pub struct BootInfo {
+    pub bootloader_name: String,
+}
+
+static BOOT_INFO: Once<BootInfo> = Once::new();
+
+pub fn init_boot_info(bootloader_name: String) {
+    BOOT_INFO.call_once(|| BootInfo { bootloader_name });
+}
+
+pub fn boot_info() -> &'static BootInfo {
+    BOOT_INFO
+        .get()
+        .expect("Trying to access boot info before initialization")
 }

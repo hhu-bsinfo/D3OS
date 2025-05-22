@@ -5,6 +5,7 @@ use alloc::{
     vec::Vec,
 };
 use drawer::{rect_data::RectData, vertex::Vertex};
+use logger::debug;
 use graphic::color::{Color, BLUE, RED};
 use hashbrown::HashMap;
 use spin::RwLock;

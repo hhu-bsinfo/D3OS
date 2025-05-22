@@ -4,25 +4,27 @@
 extern crate alloc;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use alloc::format;
+use alloc::{format, vec};
 use alloc::{borrow::ToOwned, vec::Vec};
 use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
 use chrono::{format, TimeDelta};
 use components::selected_window_label::HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW;
+use concurrent::{process, thread};
 use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DEFAULT_BACKGROUND_COLOR, DEFAULT_FG_COLOR, DIST_TO_SCREEN_EDGE, ESCAPE_UNICODE, FLUSHING_DELAY_MS};
 use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
+use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
+use keyboard_decoder::KeyboardDecoder;
+use logger::debug;
 use nolock::queues::mpsc::jiffy;
 
 #[allow(unused_imports)]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
-use terminal::read::{read, try_read};
-use terminal::write::log_debug;
-use terminal::Application;
-use input::mouse::{MousePacket, try_read_mouse};
+use terminal::{DecodedKey, KeyCode};
+use input::mouse::{ try_read_mouse};
 use time::systime;
 use windows::workspace_selection_window::{WorkspaceSelectionEvent, WorkspaceSelectionWindow};
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
@@ -39,6 +41,7 @@ mod windows;
 mod workspace;
 mod signal;
 mod mouse_state;
+mod keyboard_decoder;
 
 // IDs are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -48,7 +51,7 @@ static SCREEN: Once<(u32, u32)> = Once::new();
 static mut API: Once<Mutex<Api>> = Once::new();
 
 pub enum Interaction {
-    Keyboard(char),
+    Keyboard(DecodedKey),
     Mouse(MouseEvent),
 }
 
@@ -77,6 +80,7 @@ struct WindowManager {
     frames: i64,
 
     mouse_state: MouseState,
+    keyboard_decoder: KeyboardDecoder
 }
 
 impl WindowManager {
@@ -151,6 +155,7 @@ impl WindowManager {
                 start_time: time,
                 frames: 0,
                 mouse_state: MouseState::new(),
+                keyboard_decoder: KeyboardDecoder::new()
             },
             senders,
         )
@@ -172,7 +177,7 @@ impl WindowManager {
 
             self.mouse_state.draw_cursor();
             
-            // log_debug(&format!("loop"));
+            // debug!("loop");
 
             self.process_keyboard_input();
 
@@ -199,7 +204,7 @@ impl WindowManager {
     }
 
     fn process_keyboard_input(&mut self) {
-        let read_option = try_read(Application::WindowManager);
+        let read_option = self.keyboard_decoder.read_decoded();
 
         if let Some(keyboard_press) = read_option {
             // `enter_app_mode` overrides all other keyboard-interactions
@@ -216,47 +221,50 @@ impl WindowManager {
                 }
 
                 match keyboard_press {
-                    'c' => {
+                    DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => {
+                        self.enter_text_mode();
+                    }
+                    DecodedKey::Unicode('c') => {
                         self.create_new_workspace();
                     }
-                    'x' => {
+                    DecodedKey::Unicode('x') => {
                         self.remove_current_workspace();
                     }
-                    'q' => {
+                    DecodedKey::Unicode('q') => {
                         self.switch_prev_workspace();
                     }
-                    'e' => {
+                    DecodedKey::Unicode('e') => {
                         self.switch_next_workspace();
                     }
-                    'o' => {
+                    DecodedKey::Unicode('o') => {
                         self.get_current_workspace_mut()
                             .move_focused_window_forward();
                     }
-                    'i' => {
+                    DecodedKey::Unicode('i') => {
                         self.get_current_workspace_mut()
                             .move_focused_window_backward();
                     }
-                    'h' => {
+                    DecodedKey::Unicode('h') => {
                         self.command_line_window
                             .activate_enter_app_mode(ScreenSplitType::Horizontal);
                     }
-                    'v' => {
+                    DecodedKey::Unicode('v') => {
                         self.command_line_window
                             .activate_enter_app_mode(ScreenSplitType::Vertical);
                     }
-                    'w' => {
+                    DecodedKey::Unicode('w') => {
                         self.get_current_workspace_mut().focus_next_component();
                     }
-                    's' => {
+                    DecodedKey::Unicode('s') => {
                         self.get_current_workspace_mut().focus_prev_component();
                     }
-                    'a' => {
+                    DecodedKey::Unicode('a') => {
                         self.get_current_workspace_mut().focus_prev_window();
                     }
-                    'd' => {
+                    DecodedKey::Unicode('d') => {
                         self.get_current_workspace_mut().focus_next_window();
                     }
-                    'm' => {
+                    DecodedKey::Unicode('m') => {
                         /* Only works, if both buddies don't have subwindows inside them.
                         Move windows up before merging, if that is a problem */
                         let was_closed = self.get_current_workspace_mut().close_focused_window();
@@ -308,9 +316,9 @@ impl WindowManager {
         }
     }
 
-    fn process_enter_app_mode(&mut self, keyboard_press: char) {
+    fn process_enter_app_mode(&mut self, keyboard_press: DecodedKey) {
         match keyboard_press {
-            '\n' => {
+            DecodedKey::Unicode('\n') => {
                 if !self.command_line_window.command.is_empty()
                     && Self::get_api().is_app_name_valid(&self.command_line_window.command)
                 {
@@ -333,10 +341,11 @@ impl WindowManager {
                 self.command_line_window.deactivate_enter_app_mode();
                 self.is_dirty = true;
             }
-            c => {
+            DecodedKey::Unicode(c) => {
                 self.command_line_window.is_dirty = true;
                 self.command_line_window.push_char(c);
             }
+            _ => {}
         }
     }
 
@@ -593,6 +602,11 @@ impl WindowManager {
                 Some(0)
             }).unwrap();
         }
+    }
+
+    fn enter_text_mode(&mut self) {
+        Drawer::full_clear_screen(true);
+        process::exit();
     }
 }
 

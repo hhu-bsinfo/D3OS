@@ -1,6 +1,7 @@
 use alloc::{boxed::Box, format, string::String};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
+use logger::debug;
 
 use crate::{
     api::{Api, Command},
@@ -127,7 +128,7 @@ impl Runnable for LayoutApp {
                     },
                     label: Some((Signal::new(String::from(label)), 1)),
                     on_click: Some(Box::new(move || {
-                        terminal::write::log_debug("click!");
+                        debug!("click!");
                     })),
                     styling: Some(
                         ComponentStylingBuilder::new()

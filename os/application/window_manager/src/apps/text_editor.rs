@@ -1,4 +1,6 @@
 use alloc::{borrow::ToOwned, boxed::Box, rc::Rc, string::String, vec};
+use model::Document;
+use terminal::DecodedKey;
 use crate::{alloc::string::ToString, components::component::ComponentStylingBuilder, config, signal::Signal};
 use graphic::{buffered_lfb, color::{Color, WHITE}};
 use spin::rwlock::RwLock;
@@ -11,6 +13,7 @@ use text_buffer::TextBuffer;
 use alloc::collections::VecDeque;
 
 mod view;
+mod model;
 
 // Julius Drodofsky
 pub struct TextEditor;
@@ -33,18 +36,18 @@ impl Runnable for TextEditor {
                 config.widht*config.height
             ],
         };
-        let deque = VecDeque::<char>::new();
+        let deque = VecDeque::<DecodedKey>::new();
         let handle = concurrent::thread::current().expect("Failed to get thread").id();
         let api = WindowManager::get_api();
         let canvas = Rc::new(RwLock::new(bitmap));
-        let input = Rc::new(RwLock::<VecDeque<char>>::new(deque));
+        let input = Rc::new(RwLock::<VecDeque<DecodedKey>>::new(deque));
         let input_clone = Rc::clone(&input);
         let component = api.execute(handle, None,  Command::CreateCanvas { styling: None,  rect_data: RectData {
                     top_left: Vertex::new(50, 80),
                     width: config.widht as u32,
                     height: config.height as u32,
                 },
-                input: Some(Box::new(move |c: char| {
+                input: Some(Box::new(move |c: DecodedKey| {
                     input_clone.write().push_back(c);
                 })),
                 buffer: Rc::clone(&canvas),
@@ -52,26 +55,26 @@ impl Runnable for TextEditor {
         
 
         let mut text_buffer = TextBuffer::from_str("Das ist ein Text!");
+        let mut document: Document = Document::new(Some(String::from("scratch")), text_buffer);
         
-        let mut view = View::Simple{font_scale: 1, fg_color: WHITE, bg_color: Color::new(0, 0, 0, 255) };
-        view.render( &text_buffer, &mut canvas.write());
+        let mut view = View::Simple{font_scale: 1, fg_color: WHITE, bg_color: config.background_color};
+        view.render(&document, &mut canvas.write());
         component.write().mark_dirty();
-        let mut c = 16;
         let mut dirty = false;
         loop {
+            let mut tmp_queue = VecDeque::<DecodedKey>::new();
             while let Some(value) = input.write().pop_front(){
-                if value == '\x08'{
-                    text_buffer.delete(c);
-                    c-=1;
-                    dirty=true;
-                    continue;
-                }
-                text_buffer.insert(c, value);
-                c+=1;
-                view.render(&text_buffer, &mut canvas.write());
+                tmp_queue.push_back(value);
                 dirty = true;
             }
+            while let Some(value) = tmp_queue.pop_front() {
+                document.update(value);
+            }
             if dirty {
+                {
+                    // extra block to release canvas lock bevore calling mark_dirty
+                    view.render(&document, &mut canvas.write());
+                }
                 component.write().mark_dirty();
                 dirty = false;
             }   

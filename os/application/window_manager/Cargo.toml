@@ -18,10 +18,13 @@ drawer = { path = "../../library/drawer" }
 graphic = { path = "../../library/graphic" }
 time = { path = "../../library/time" }
 input = { path = "../../library/input" }
+globals = { path = "../../library/globals" }
 text_buffer = { path = "../../library/text_buffer" }
+logger = { path = "../../library/logger" }
 
 hashbrown = "0.14.5"
 spin = "0.9.8"
 nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
 chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
 libm = "0.2.8"
+pc-keyboard = "0.8.0"

@@ -1,7 +1,7 @@
 ENTRY(start)
 
 SECTIONS {
-    . = 1M;   /* load kernel at 1 MiB */
+    . = 100M;   /* load kernel at 100 MiB */
 
     ___KERNEL_DATA_START__ = .;
 

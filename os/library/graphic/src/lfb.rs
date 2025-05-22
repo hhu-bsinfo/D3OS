@@ -1,6 +1,39 @@
 use crate::color::Color;
 use libm::Libm;
+use syscall::syscall;
 use unifont::get_glyph;
+
+#[derive(Debug)]
+pub struct LfbInfo {
+    pub address: u64,
+    pub pitch: u32,
+    pub width: u32,
+    pub height: u32,
+    pub bpp: u8,
+}
+
+impl LfbInfo {
+    pub const fn new() -> Self {
+        Self {
+            address: 0,
+            pitch: 0,
+            width: 0,
+            height: 0,
+            bpp: 0,
+        }
+    }
+}
+
+pub fn get_lfb_info() -> LfbInfo {
+    let mut info = LfbInfo::new();
+
+    syscall(
+        syscall::SystemCall::MapFramebuffer,
+        &[&mut info as *mut _ as usize],
+    ).expect("Unable to map framebuffer to userspace");
+
+    info
+}
 
 #[derive(Clone, Copy)]
 pub struct LFB {

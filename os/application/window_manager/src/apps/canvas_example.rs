@@ -7,7 +7,7 @@ use graphic::lfb::DEFAULT_CHAR_WIDTH;
 use graphic::{bitmap::Bitmap, lfb::DEFAULT_CHAR_HEIGHT};
 use graphic::color::Color;
 use spin::rwlock::RwLock;
-use terminal::println;
+use terminal::{println, DecodedKey};
 use terminal::print;
 
 use crate::{api::Command, WindowManager};
@@ -28,11 +28,11 @@ impl Runnable for CanvasApp {
                 20000 // 10 * 10
             ],
         };
-        let deque = VecDeque::<char>::new();
+        let deque = VecDeque::<DecodedKey>::new();
         let handle = concurrent::thread::current().expect("Failed to get thread").id();
         let api = WindowManager::get_api();
         let canvas = Rc::new(RwLock::new(bitmap_red));
-        let input = Rc::new(RwLock::<VecDeque<char>>::new(deque));
+        let input = Rc::new(RwLock::<VecDeque<DecodedKey>>::new(deque));
         let input_clone = Rc::clone(&input);
         //create component
         let component = api.execute(handle, None,  Command::CreateCanvas { styling: None,  rect_data: RectData {
@@ -41,7 +41,7 @@ impl Runnable for CanvasApp {
                     height: 100,
                 },
         buffer: Rc::clone(&canvas),
-        input: Some(Box::new(move |c: char| {
+        input: Some(Box::new(move |c: DecodedKey| {
                     input_clone.write().push_back(c);
                 })),
          }).unwrap();
@@ -55,7 +55,7 @@ impl Runnable for CanvasApp {
         x=0;
         let mut y=DEFAULT_CHAR_HEIGHT;
         loop {
-            while let Some(value) = input.write().pop_front(){
+            while let Some(DecodedKey::Unicode(value)) = input.write().pop_front(){
                 if value == '\n' {
                     y+= DEFAULT_CHAR_HEIGHT;
                     x=0;
