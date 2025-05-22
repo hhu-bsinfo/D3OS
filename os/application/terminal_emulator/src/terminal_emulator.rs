@@ -13,11 +13,13 @@ use core::cell::RefCell;
 
 use alloc::rc::Rc;
 use alloc::vec;
-use concurrent::thread;
+use concurrent::thread::{self, sleep};
 use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
+use logger::info;
 use operator::Operator;
 use stream::OutputStream;
+use terminal::display;
 use terminal::lfb_terminal::LFBTerminal;
 use terminal::terminal::Terminal;
 use util::banner::create_banner_string;
@@ -62,10 +64,14 @@ impl TerminalEmulator {
     }
 
     pub fn enter_gui(&self) {
+        let mut display = self.terminal.display.lock();
+        display.lfb.direct_lfb().draw_loader();
         thread::start_application("window_manager", vec![])
             .unwrap()
             .join(); // Wait for window manager to exit, then continue
-        self.terminal.display.lock().lfb.flush();
+        display.lfb.direct_lfb().draw_loader();
+        sleep(500); // Solves an issue where sometimes workspaces from window manager are still visible when toggling quickly between text and gui
+        display.lfb.flush();
     }
 
     fn run(&mut self) {
