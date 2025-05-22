@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 
-use alloc::rc::Rc;
+use alloc::{rc::Rc, string::ToString};
 use terminal::{DecodedKey, KeyCode, print, println};
 
 use crate::{
@@ -121,6 +121,23 @@ impl Controller {
         self.auto_complete.select_or_cycle();
     }
 
+    fn handle_whitespace(&mut self) {
+        let completion = self.auto_complete.flush();
+
+        // TODO add add_str function to command line
+        for ch in completion.to_string().chars() {
+            self.command_line.add_char(ch);
+        }
+
+        let current_string = match self.command_line.add_char(' ') {
+            Ok(pos) => pos,
+            Err(_) => return,
+        };
+
+        self.lexer.tokenize(&current_string);
+        self.lexer.reset(); // TODO Just for debugging, remove later
+    }
+
     fn handle_error(&mut self, msg: &'static str) {
         println!("{}", msg);
         self.command_line.create_new_line();
@@ -137,6 +154,7 @@ impl Controller {
             DecodedKey::Unicode('\x7F') => self.handle_del(),
             DecodedKey::Unicode('\n') => self.handle_enter(),
             DecodedKey::Unicode('\t') => self.handle_tab(),
+            DecodedKey::Unicode(' ') => self.handle_whitespace(),
             DecodedKey::Unicode(ch) => self.handle_other_char(ch),
             // RawKeys
             DecodedKey::RawKey(KeyCode::ArrowLeft) => self.handle_arrow_left(),

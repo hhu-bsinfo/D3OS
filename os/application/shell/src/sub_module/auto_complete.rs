@@ -51,7 +51,6 @@ impl AutoComplete {
     }
 
     pub fn select_or_cycle(&mut self) {
-        info!("{:?}", self);
         if self.completion.is_empty() {
             self.cycle_command();
         }
@@ -60,6 +59,24 @@ impl AutoComplete {
             SelectionState::Selected => self.cycle_command(),
         };
         self.print(CursorPosition::Right);
+    }
+
+    pub fn flush(&mut self) -> &'static str {
+        info!("{:?}", self);
+        let completion = self.completion.clone();
+        self.last_completion = self.completion;
+        self.cleanup_last_completion();
+        self.reset();
+        completion
+    }
+
+    fn reset(&mut self) {
+        self.current_index = 0;
+        self.last_completion = "";
+        self.completion = "";
+        self.current_command.clear();
+        self.selection_state = SelectionState::Unselected;
+        self.cursor_position = CursorPosition::Left;
     }
 
     pub fn remove_command(&mut self) {
