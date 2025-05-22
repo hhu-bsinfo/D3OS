@@ -1,13 +1,14 @@
 /*
     piece table text buffer  --  Julius Drodofsky
-
+    implements Iterator,
+    undo()
     from_str(&str)
-    delete(logical_adress)
+    delete(logical_adress, false)
     // if logical_adress > n
         append
     insert(logical_adress, char)
     to_string()
-    get_char()
+    get_char(u)
 */
 
 #![no_std]
@@ -34,6 +35,19 @@ enum BufferDescr {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
+enum UndoRedoOperation {
+    Undo,
+    Redo,
+    None,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum Operation {
+    Insert(usize, char),
+    Delete(usize, char),
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
 struct PieceDescr {
     buffer: BufferDescr,
     offset: usize,
@@ -45,6 +59,9 @@ pub struct TextBuffer<'s> {
     add_buffer: String,
     piece_table: Vec<PieceDescr>,
     lenght: usize,
+    pos: usize,
+    history: Vec<Operation>,
+    redo: Vec<Operation>,
 }
 
 impl<'s> TextBuffer<'s> {
@@ -66,7 +83,36 @@ impl<'s> TextBuffer<'s> {
                 .nth(piece.offset + piece_descr_offset),
         }
     }
+
+    pub fn undo(&mut self) -> Result<(), TextBufferError> {
+        match self.history.pop() {
+            Some(o) => match o {
+                Operation::Insert(la, _) => return self._delete(la, UndoRedoOperation::Undo),
+                Operation::Delete(la, c) => return self._insert(la, c, UndoRedoOperation::Undo),
+            },
+            None => return Ok(()),
+        };
+    }
+
+    pub fn redo(&mut self) -> Result<(), TextBufferError> {
+        match self.redo.pop() {
+            Some(o) => match o {
+                Operation::Insert(la, _) => return self._delete(la, UndoRedoOperation::Redo),
+                Operation::Delete(la, c) => return self._insert(la, c, UndoRedoOperation::Redo),
+            },
+            None => return Ok(()),
+        };
+    }
+
     pub fn insert(&mut self, logical_adress: usize, c: char) -> Result<(), TextBufferError> {
+        self._insert(logical_adress, c, UndoRedoOperation::None)
+    }
+    fn _insert(
+        &mut self,
+        logical_adress: usize,
+        c: char,
+        operation: UndoRedoOperation,
+    ) -> Result<(), TextBufferError> {
         let (piece_table_index, piece_descr_offset) =
             match self.resolve_logical_adress(logical_adress, true) {
                 Some((i, o)) => (i, o),
@@ -82,6 +128,14 @@ impl<'s> TextBuffer<'s> {
         {
             self.piece_table[piece_table_index - 1].length += 1;
             self.lenght += 1;
+            match operation {
+                UndoRedoOperation::Undo => self.redo.push(Operation::Insert(logical_adress, c)),
+                UndoRedoOperation::None => {
+                    self.history.push(Operation::Insert(logical_adress, c));
+                    self.redo.clear();
+                }
+                UndoRedoOperation::Redo => self.history.push(Operation::Insert(logical_adress, c)),
+            }
             return Ok(());
         }
         // Appen if piece_table index = n:
@@ -91,6 +145,14 @@ impl<'s> TextBuffer<'s> {
                 PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
             );
             self.lenght += 1;
+            match operation {
+                UndoRedoOperation::Undo => self.redo.push(Operation::Insert(logical_adress, c)),
+                UndoRedoOperation::None => {
+                    self.history.push(Operation::Insert(logical_adress, c));
+                    self.redo.clear();
+                }
+                UndoRedoOperation::Redo => self.history.push(Operation::Insert(logical_adress, c)),
+            }
             return Ok(());
         }
         let piece_descr = &mut self.piece_table[piece_table_index];
@@ -118,6 +180,14 @@ impl<'s> TextBuffer<'s> {
         }
 
         self.lenght += 1;
+        match operation {
+            UndoRedoOperation::Undo => self.redo.push(Operation::Insert(logical_adress, c)),
+            UndoRedoOperation::None => {
+                self.history.push(Operation::Insert(logical_adress, c));
+                self.redo.clear();
+            }
+            UndoRedoOperation::Redo => self.history.push(Operation::Insert(logical_adress, c)),
+        }
         Ok(())
     }
 
@@ -144,11 +214,22 @@ impl<'s> TextBuffer<'s> {
     }
 
     pub fn delete(&mut self, logical_adress: usize) -> Result<(), TextBufferError> {
+        self._delete(logical_adress, UndoRedoOperation::None)
+    }
+    fn _delete(
+        &mut self,
+        logical_adress: usize,
+        operation: UndoRedoOperation,
+    ) -> Result<(), TextBufferError> {
         let (piece_table_index, piece_descr_offset) =
             match self.resolve_logical_adress(logical_adress, false) {
                 Some((i, o)) => (i, o),
                 None => return Err(TextBufferError::AddressOutOfBounds),
             };
+        let c = match self.get_char(logical_adress) {
+            Some(s) => s,
+            None => return Err(TextBufferError::AddressOutOfBounds),
+        };
         let piece_descr = &mut self.piece_table[piece_table_index];
         // delete at beginning
         if piece_descr_offset == 0 {
@@ -175,6 +256,14 @@ impl<'s> TextBuffer<'s> {
             self.piece_table.remove(piece_table_index);
         }
         self.lenght -= 1;
+        match operation {
+            UndoRedoOperation::Undo => self.redo.push(Operation::Delete(logical_adress, c)),
+            UndoRedoOperation::None => {
+                self.history.push(Operation::Delete(logical_adress, c));
+                self.redo.clear();
+            }
+            UndoRedoOperation::Redo => self.history.push(Operation::Delete(logical_adress, c)),
+        }
         Ok(())
     }
 
@@ -184,6 +273,9 @@ impl<'s> TextBuffer<'s> {
             add_buffer: String::new(),
             piece_table: vec![PieceDescr::new(BufferDescr::File, 0, file_buffer.len())],
             lenght: file_buffer.len(),
+            pos: 0,
+            history: Vec::new(),
+            redo: Vec::new(),
         }
     }
     pub fn to_string(&self) -> String {
@@ -194,6 +286,19 @@ impl<'s> TextBuffer<'s> {
             i += 1;
         }
         ret
+    }
+}
+
+impl Iterator for TextBuffer<'_> {
+    type Item = char;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos < self.lenght {
+            let result = self.get_char(self.pos);
+            self.pos += 1;
+            result
+        } else {
+            None
+        }
     }
 }
 
@@ -723,5 +828,93 @@ mod tests {
 
         assert_eq!(String::from("a1bc"), generate_string(&buffer));
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn undo_delete_file() {
+        let file_buffer = "AB";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.delete(0);
+        assert!(res.is_ok());
+
+        let res = buffer.undo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("AB"), generate_string(&buffer));
+    }
+    #[test]
+    fn double_undo_delete_file() {
+        let file_buffer = "AB";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.delete(0);
+        assert!(res.is_ok());
+
+        let res = buffer.undo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("AB"), generate_string(&buffer));
+        let res = buffer.undo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("AB"), generate_string(&buffer));
+    }
+    #[test]
+    fn undo_insertion() {
+        let file_buffer = "A";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(1, 'B');
+        assert!(res.is_ok());
+
+        let res = buffer.undo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("A"), generate_string(&buffer));
+    }
+
+    #[test]
+    fn redo_deletion() {
+        let file_buffer = "AB";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.delete(1);
+        assert!(res.is_ok());
+
+        let res = buffer.undo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("AB"), generate_string(&buffer));
+
+        let res = buffer.redo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("A"), generate_string(&buffer));
+    }
+    #[test]
+    fn double_redo_deletion() {
+        let file_buffer = "AB";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.delete(1);
+        assert!(res.is_ok());
+
+        let res = buffer.undo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("AB"), generate_string(&buffer));
+
+        let res = buffer.redo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("A"), generate_string(&buffer));
+
+        let res = buffer.redo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("A"), generate_string(&buffer));
+    }
+
+    #[test]
+    fn redo_insertion() {
+        let file_buffer = "A";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(1, 'B');
+        assert!(res.is_ok());
+
+        let res = buffer.undo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("A"), generate_string(&buffer));
+
+        let res = buffer.redo();
+        assert!(res.is_ok());
+        assert_eq!(String::from("AB"), generate_string(&buffer));
     }
 }
