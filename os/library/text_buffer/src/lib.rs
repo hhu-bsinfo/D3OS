@@ -1,5 +1,6 @@
 /*
     piece table text buffer  --  Julius Drodofsky
+    implements Iterator,
 
     from_str(&str)
     delete(logical_adress)
@@ -7,7 +8,7 @@
         append
     insert(logical_adress, char)
     to_string()
-    get_char()
+    get_char(u)
 */
 
 #![no_std]
@@ -45,6 +46,7 @@ pub struct TextBuffer<'s> {
     add_buffer: String,
     piece_table: Vec<PieceDescr>,
     lenght: usize,
+    pos: usize,
 }
 
 impl<'s> TextBuffer<'s> {
@@ -184,6 +186,7 @@ impl<'s> TextBuffer<'s> {
             add_buffer: String::new(),
             piece_table: vec![PieceDescr::new(BufferDescr::File, 0, file_buffer.len())],
             lenght: file_buffer.len(),
+            pos: 0,
         }
     }
     pub fn to_string(&self) -> String {
@@ -194,6 +197,19 @@ impl<'s> TextBuffer<'s> {
             i += 1;
         }
         ret
+    }
+}
+
+impl Iterator for TextBuffer<'_> {
+    type Item = char;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos < self.lenght {
+            let result = self.get_char(self.pos);
+            self.pos += 1;
+            result
+        } else {
+            None
+        }
     }
 }
 
