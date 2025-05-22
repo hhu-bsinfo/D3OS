@@ -5,8 +5,6 @@ use stream::{InputStream, OutputStream};
 
 pub trait Terminal: OutputStream + InputStream {
     fn clear(&self);
-    fn hide(&self);
-    fn show(&self);
 }
 
 // Implementation of the 'core::fmt::Write' trait for our Terminal

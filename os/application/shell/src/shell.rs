@@ -10,11 +10,9 @@ mod lexer;
 mod parser;
 mod sub_module;
 
-use concurrent::process;
 use controller::Controller;
 #[allow(unused_imports)]
 use runtime::*;
-use syscall::{SystemCall, syscall};
 use terminal::{print, read::read_mixed};
 
 struct Shell {
@@ -35,10 +33,6 @@ impl Shell {
 
     pub fn run(&mut self) {
         loop {
-            if syscall(SystemCall::TerminalTerminateOperator, &[0, 1]).unwrap() == 1 {
-                process::exit();
-            }
-
             let key = match read_mixed() {
                 Some(key) => key,
                 None => continue,
