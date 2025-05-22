@@ -4,8 +4,11 @@ use alloc::rc::Rc;
 use terminal::{DecodedKey, KeyCode, print, println};
 
 use crate::{
-    command_line::command_line::CommandLine, executor::executor::Executor, lexer::lexer::Lexer,
-    parser::parser::Parser, sub_module::alias::Alias,
+    command_line::command_line::CommandLine,
+    executor::executor::Executor,
+    lexer::lexer::Lexer,
+    parser::parser::Parser,
+    sub_module::{alias::Alias, auto_complete::AutoComplete},
 };
 
 pub struct Controller {
@@ -13,6 +16,7 @@ pub struct Controller {
     lexer: Lexer,
     parser: Parser,
     executor: Executor,
+    auto_complete: AutoComplete,
 }
 
 impl Controller {
@@ -23,10 +27,12 @@ impl Controller {
             lexer: Lexer::new(alias.clone()),
             parser: Parser::new(),
             executor: Executor::new(alias),
+            auto_complete: AutoComplete::new(),
         }
     }
 
     fn handle_backspace(&mut self) {
+        self.auto_complete.clear_completion();
         let current_string = match self.command_line.remove_before_cursor() {
             Ok(pos) => pos,
             Err(_) => return,
@@ -37,6 +43,7 @@ impl Controller {
     }
 
     fn handle_del(&mut self) {
+        self.auto_complete.clear_completion();
         let current_string = match self.command_line.remove_at_cursor() {
             Ok(pos) => pos,
             Err(_) => return,
@@ -47,6 +54,7 @@ impl Controller {
     }
 
     fn handle_enter(&mut self) {
+        self.auto_complete.clear_completion();
         let line = self.command_line.submit();
 
         // Read tokens from lexer
@@ -75,19 +83,24 @@ impl Controller {
             Err(_) => return,
         };
 
+        self.auto_complete.complete_command(&current_string);
+
         self.lexer.tokenize(&current_string);
         self.lexer.reset(); // TODO Just for debugging, remove later
     }
 
     fn handle_arrow_left(&mut self) {
+        self.auto_complete.clear_completion();
         self.command_line.move_cursor_left();
     }
 
     fn handle_arrow_right(&mut self) {
+        self.auto_complete.clear_completion();
         self.command_line.move_cursor_right();
     }
 
     fn handle_arrow_up(&mut self) {
+        self.auto_complete.clear_completion();
         match self.command_line.move_history_up() {
             Ok(line) => self.lexer.tokenize(&line),
             Err(_) => return,
@@ -95,6 +108,7 @@ impl Controller {
     }
 
     fn handle_arrow_down(&mut self) {
+        self.auto_complete.clear_completion();
         match self.command_line.move_history_down() {
             Ok(line) => self.lexer.tokenize(&line),
             Err(_) => return,
