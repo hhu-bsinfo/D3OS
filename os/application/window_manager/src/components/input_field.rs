@@ -54,7 +54,6 @@ impl InputField {
     pub fn new(
         rel_rect_data: RectData,
         rel_font_size: usize,
-        font_scale: (u32, u32),
         max_chars: usize,
         starting_text: String,
         on_submit: Option<Box<dyn Fn(String) -> ()>>,
@@ -71,7 +70,7 @@ impl InputField {
                 rel_font_size,
                 orig_rect_data: rel_rect_data.clone(),
                 drawn_rect_data: RectData::zero(),
-                font_scale,
+                font_scale: (1, 1),
                 current_text: starting_text,
 
                 on_change: Rc::new(on_submit.unwrap_or_else(|| Box::new(|_| {}))),

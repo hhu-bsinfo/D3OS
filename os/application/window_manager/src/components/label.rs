@@ -28,7 +28,6 @@ impl Label {
         rel_pos: Vertex,
         rel_font_size: usize,
         text: Stateful<String>,
-        font_scale: (u32, u32),
         styling: Option<ComponentStyling>
     ) -> ComponentRef {
         let signal = text.clone();
@@ -41,7 +40,7 @@ impl Label {
                 rel_pos,
                 rel_font_size,
                 text,
-                font_scale,
+                font_scale: (1, 1),
                 is_hidden: false,
                 drawn_rect_data: RectData::zero(),
                 styling: styling.unwrap_or_default(),

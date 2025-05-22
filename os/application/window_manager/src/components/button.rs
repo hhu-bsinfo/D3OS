@@ -44,7 +44,6 @@ impl Button {
         orig_rect_data: RectData,
         label: Option<Rc<Signal<String>>>,
         rel_font_size: usize,
-        font_scale: (u32, u32),
         on_click: Option<Box<dyn Fn() -> ()>>,
         styling: Option<ComponentStyling>,
     ) -> ComponentRef {
@@ -58,7 +57,7 @@ impl Button {
             drawn_rect_data: RectData::zero(),
             rel_rect_data,
             rel_font_size,
-            font_scale,
+            font_scale: (1, 1),
             label,
             on_click: Rc::new(on_click.unwrap_or_else(|| Box::new(|| {}))),
             is_disabled: false,

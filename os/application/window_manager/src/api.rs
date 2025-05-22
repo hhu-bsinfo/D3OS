@@ -240,7 +240,6 @@ impl Api {
 
                         let (text, font_size_option) = label.unzip();
                         let font_size = font_size_option.unwrap_or(1);
-                        let font_scale = self.scale_font_to_window(font_size, &ratios);
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
         
@@ -249,7 +248,6 @@ impl Api {
                             log_rect_data.clone(),
                             text,
                             font_size,
-                            font_scale,
                             on_click,
                             styling,
                         );
@@ -275,13 +273,11 @@ impl Api {
                         let rel_pos = self.scale_vertex_to_rel(&log_pos);
 
                         let font_size = font_size.unwrap_or(1);
-                        let scaled_font_scale = self.scale_font_to_window(font_size, &ratios);
 
                         let component = Label::new(
                             rel_pos,
                             font_size,
                             text,
-                            scaled_font_scale,
                             styling,
                         );
                
@@ -312,14 +308,11 @@ impl Api {
                         self.validate_log_pos(&log_rect_data.top_left)?;
 
                         let font_size = font_size.unwrap_or(1);
-                        let scaled_font_scale = self.scale_font_to_window(font_size, &ratios);
-
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
                         let component = InputField::new(
                             rel_rect_data,
                             font_size,
-                            scaled_font_scale,
                             width_in_chars,
                             starting_text,
                             on_change,
@@ -549,17 +542,6 @@ impl Api {
             .tx_on_loop_iter
             .enqueue(fun)
             .expect("on_loop_iter queue was closed!");
-    }
-
-    // TODO: What's the purpose of this?
-    fn scale_font_to_window(&self, _original_font_size: usize, _ratios: &(f64, f64)) -> (u32, u32) {
-        return (1, 1);
-        
-        /*let float_font_size = f64::from(original_font_size as u32);
-        (
-            ((float_font_size * ratios.0) as u32).max(1),
-            ((float_font_size * ratios.1) as u32).max(1),
-        )*/
     }
 
     /// Scales a logical rect to a relative rect

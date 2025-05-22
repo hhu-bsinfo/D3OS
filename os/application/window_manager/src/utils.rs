@@ -3,7 +3,6 @@ use drawer::{rect_data::RectData, vertex::Vertex};
 
 use crate::SCREEN;
 
-// TODO: Shouldn't this be inside a trait or something?
 pub fn get_element_cursor_from_orderer<T: PartialEq>(
     linked_list: &mut LinkedList<T>,
     needle: T,

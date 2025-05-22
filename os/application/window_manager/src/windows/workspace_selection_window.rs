@@ -98,7 +98,6 @@ impl WorkspaceSelectionWindow {
             rel_rect,
             Some(Signal::new(String::from("+"))),
             1,
-            (1, 1),
             Some(Box::new(move || {})),
             Some(
                 ComponentStylingBuilder::new()
@@ -113,7 +112,6 @@ impl WorkspaceSelectionWindow {
             rel_rect,
             Some(Signal::new(String::from("X"))),
             1,
-            (1, 1),
             Some(Box::new(move || {})),
             Some(
                 ComponentStylingBuilder::new()
@@ -168,7 +166,6 @@ impl WorkspaceSelectionWindow {
             rel_rect,
             Some(Signal::new(workspace_id.to_string())),
             1,
-            (1, 1),
             Some(Box::new(move || {})),
             None,
         );
