@@ -32,29 +32,31 @@ impl Controller {
     }
 
     fn handle_backspace(&mut self) {
-        self.auto_complete.clear_completion();
+        self.auto_complete.remove_command();
         let current_string = match self.command_line.remove_before_cursor() {
             Ok(pos) => pos,
             Err(_) => return,
         };
+        self.auto_complete.complete_command(&current_string);
 
         self.lexer.tokenize(&current_string);
         self.lexer.reset(); // TODO Just for debugging, remove later
     }
 
     fn handle_del(&mut self) {
-        self.auto_complete.clear_completion();
+        self.auto_complete.remove_command();
         let current_string = match self.command_line.remove_at_cursor() {
             Ok(pos) => pos,
             Err(_) => return,
         };
+        self.auto_complete.complete_command(&current_string);
 
         self.lexer.tokenize(&current_string);
         self.lexer.reset(); // TODO Just for debugging, remove later
     }
 
     fn handle_enter(&mut self) {
-        self.auto_complete.clear_completion();
+        self.auto_complete.remove_command();
         let line = self.command_line.submit();
 
         // Read tokens from lexer
@@ -90,17 +92,17 @@ impl Controller {
     }
 
     fn handle_arrow_left(&mut self) {
-        self.auto_complete.clear_completion();
+        self.auto_complete.remove_command();
         self.command_line.move_cursor_left();
     }
 
     fn handle_arrow_right(&mut self) {
-        self.auto_complete.clear_completion();
+        self.auto_complete.remove_command();
         self.command_line.move_cursor_right();
     }
 
     fn handle_arrow_up(&mut self) {
-        self.auto_complete.clear_completion();
+        self.auto_complete.remove_command();
         match self.command_line.move_history_up() {
             Ok(line) => self.lexer.tokenize(&line),
             Err(_) => return,
@@ -108,7 +110,7 @@ impl Controller {
     }
 
     fn handle_arrow_down(&mut self) {
-        self.auto_complete.clear_completion();
+        self.auto_complete.remove_command();
         match self.command_line.move_history_down() {
             Ok(line) => self.lexer.tokenize(&line),
             Err(_) => return,
@@ -116,7 +118,7 @@ impl Controller {
     }
 
     fn handle_tab(&mut self) {
-        self.auto_complete.toggle_command();
+        self.auto_complete.select_or_cycle();
     }
 
     fn handle_error(&mut self, msg: &'static str) {
