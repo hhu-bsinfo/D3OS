@@ -43,7 +43,7 @@ pub struct TerminalEmulator {
 impl TerminalEmulator {
     pub fn new(address: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         let terminal = Rc::new(RefCell::new(LFBTerminal::new(
-            address, pitch, width, height, bpp, true,
+            address, pitch, width, height, bpp,
         )));
         let event_handler = Rc::new(RefCell::new(EventHandler::new()));
         Self {
@@ -65,11 +65,10 @@ impl TerminalEmulator {
     }
 
     pub fn enter_gui(&self) {
-        // Reenable visibility when window manager exits
         thread::start_application("window_manager", vec![])
             .unwrap()
-            .join();
-        self.terminal.borrow().clear();
+            .join(); // Wait for window manager to exit, then continue
+        self.terminal.borrow().display.lock().lfb.flush();
     }
 
     fn run(&mut self) {
@@ -108,6 +107,4 @@ pub fn main() {
     );
     emulator.init();
     emulator.run()
-
-    // terminal.write_str("Press 'F1' to toggle between text and gui mode\n\n");
 }

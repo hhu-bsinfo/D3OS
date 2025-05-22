@@ -59,7 +59,7 @@ impl Worker for Cursor {
             false => CURSOR,
         };
 
-        display.draw_direct_char(
+        display.lfb.direct_lfb().draw_char(
             cursor.pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
             cursor.pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             character.fg_color,

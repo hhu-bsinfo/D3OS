@@ -86,29 +86,12 @@ impl Terminal for LFBTerminal {
         LFBTerminal::clear_screen(&mut display, &mut color);
         LFBTerminal::position(&mut display, &mut cursor, &mut color, (0, 0));
     }
-
-    fn hide(&self) {
-        self.display.lock().disable();
-    }
-
-    fn show(&self) {
-        self.display.lock().enable();
-    }
 }
 
 impl LFBTerminal {
-    pub fn new(
-        buffer: *mut u8,
-        pitch: u32,
-        width: u32,
-        height: u32,
-        bpp: u8,
-        visible: bool,
-    ) -> Self {
+    pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         Self {
-            display: Mutex::new(DisplayState::new(
-                buffer, pitch, width, height, bpp, visible,
-            )),
+            display: Mutex::new(DisplayState::new(buffer, pitch, width, height, bpp)),
             cursor: Mutex::new(CursorState::new()),
             color: Mutex::new(ColorState::new()),
             parser: Mutex::new(RefCell::new(Parser::<Utf8Parser>::new())),
@@ -186,14 +169,14 @@ impl LFBTerminal {
         c: char,
         pos: (u16, u16),
     ) -> u32 {
-        display.draw_char(
+        display.lfb.lfb().draw_char(
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             color.fg_color,
             color.bg_color,
             c,
         );
-        display.draw_direct_char(
+        display.lfb.direct_lfb().draw_char(
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             color.fg_color,
@@ -206,7 +189,7 @@ impl LFBTerminal {
         // Draw background
         for i in 0..display.size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH {
             for j in 0..lfb::DEFAULT_CHAR_HEIGHT {
-                display.draw_pixel(i, j, color::HHU_GREEN);
+                display.lfb.lfb().draw_pixel(i, j, color::HHU_GREEN);
             }
         }
 
@@ -228,7 +211,7 @@ impl LFBTerminal {
             thread_count
         );
 
-        display.draw_string(
+        display.lfb.lfb().draw_string(
             0,
             0,
             color::HHU_BLUE,
@@ -239,7 +222,7 @@ impl LFBTerminal {
         // Draw date
         let date_str = date().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        display.draw_string(
+        display.lfb.lfb().draw_string(
             (display.size.0 as u32 - date_str.len() as u32) * lfb::DEFAULT_CHAR_WIDTH,
             0,
             color::HHU_BLUE,
@@ -247,7 +230,7 @@ impl LFBTerminal {
             &date_str,
         );
 
-        display.flush_lines(0, lfb::DEFAULT_CHAR_HEIGHT);
+        display.lfb.flush_lines(0, lfb::DEFAULT_CHAR_HEIGHT);
     }
 
     fn scroll_up(display: &mut DisplayState, color: &mut ColorState) {
@@ -267,8 +250,8 @@ impl LFBTerminal {
         });
 
         let size = display.size;
-        display.scroll_up(lfb::DEFAULT_CHAR_HEIGHT);
-        display.fill_rect(
+        display.lfb.lfb().scroll_up(lfb::DEFAULT_CHAR_HEIGHT);
+        display.lfb.lfb().fill_rect(
             0,
             (size.1 - 1) as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -277,7 +260,7 @@ impl LFBTerminal {
         );
 
         LFBTerminal::draw_status_bar(display);
-        display.flush();
+        display.lfb.flush();
     }
 
     fn position(
@@ -324,7 +307,7 @@ impl LFBTerminal {
     fn clear_screen(display: &mut DisplayState, color: &mut ColorState) {
         // Clear screen
         let size = display.size;
-        display.fill_rect(
+        display.lfb.lfb().fill_rect(
             0,
             0,
             size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -340,7 +323,7 @@ impl LFBTerminal {
         });
 
         LFBTerminal::draw_status_bar(display);
-        display.flush();
+        display.lfb.flush();
     }
 
     fn clear_screen_to_cursor(
@@ -352,7 +335,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear from start of line to cursor
-        display.fill_rect(
+        display.lfb.lfb().fill_rect(
             0,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -361,7 +344,7 @@ impl LFBTerminal {
         );
 
         // Clear from start of screen to line before cursor
-        display.fill_rect(
+        display.lfb.lfb().fill_rect(
             0,
             0,
             size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -382,7 +365,7 @@ impl LFBTerminal {
             });
 
         LFBTerminal::draw_status_bar(display);
-        display.flush();
+        display.lfb.flush();
     }
 
     fn clear_screen_from_cursor(
@@ -394,7 +377,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear from cursor to end of line
-        display.fill_rect(
+        display.lfb.lfb().fill_rect(
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             (size.0 - pos.0) as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -403,7 +386,7 @@ impl LFBTerminal {
         );
 
         // Clear from next line to end of screen
-        display.fill_rect(
+        display.lfb.lfb().fill_rect(
             0,
             (pos.1 + 1) as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -423,7 +406,7 @@ impl LFBTerminal {
             });
 
         LFBTerminal::draw_status_bar(display);
-        display.flush();
+        display.lfb.flush();
     }
 
     fn clear_line(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
@@ -431,7 +414,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.fill_rect(
+        display.lfb.lfb().fill_rect(
             0,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             size.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -454,7 +437,7 @@ impl LFBTerminal {
         if pos.1 == 0 {
             LFBTerminal::draw_status_bar(display);
         }
-        display.flush();
+        display.lfb.flush();
     }
 
     fn clear_line_to_cursor(
@@ -466,7 +449,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.fill_rect(
+        display.lfb.lfb().fill_rect(
             0,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -490,7 +473,7 @@ impl LFBTerminal {
         if pos.1 == 0 {
             LFBTerminal::draw_status_bar(display);
         }
-        display.flush();
+        display.lfb.flush();
     }
 
     fn clear_line_from_cursor(
@@ -502,7 +485,7 @@ impl LFBTerminal {
         let size = display.size;
 
         // Clear line in lfb
-        display.fill_rect(
+        display.lfb.lfb().fill_rect(
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
             (size.0 - pos.0) as u32 * lfb::DEFAULT_CHAR_WIDTH,
@@ -526,7 +509,7 @@ impl LFBTerminal {
         if pos.1 == 0 {
             LFBTerminal::draw_status_bar(display);
         }
-        display.flush();
+        display.lfb.flush();
     }
 
     fn handle_ansi_color(color: &mut ColorState, params: &Params) {
@@ -796,7 +779,7 @@ impl LFBTerminal {
             }
             _ => {}
         }
-        &display.flush(); // Fixes trailing cursor
+        &display.lfb.flush(); // Fixes trailing cursor
     }
 
     fn handle_ansi_erase_sequence(
