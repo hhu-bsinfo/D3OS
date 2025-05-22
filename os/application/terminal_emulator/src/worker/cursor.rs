@@ -1,5 +1,3 @@
-use core::cell::RefCell;
-
 use alloc::rc::Rc;
 use graphic::lfb;
 use time::systime;
@@ -16,7 +14,7 @@ const CURSOR: char = match char::from_u32(0x2588) {
 };
 
 pub struct Cursor {
-    terminal: Rc<RefCell<LFBTerminal>>,
+    terminal: Rc<LFBTerminal>,
     visible: bool,
     last_tick: i64,
 }
@@ -27,7 +25,7 @@ pub struct CursorState {
 }
 
 impl Cursor {
-    pub fn new(terminal: Rc<RefCell<LFBTerminal>>) -> Self {
+    pub fn new(terminal: Rc<LFBTerminal>) -> Self {
         Self {
             terminal,
             visible: true,
@@ -38,7 +36,6 @@ impl Cursor {
 
 impl Worker for Cursor {
     fn run(&mut self) {
-        let terminal = self.terminal.borrow();
         let systime = systime().num_milliseconds();
 
         if systime < self.last_tick + UPDATE_INTERVAL {
@@ -46,8 +43,8 @@ impl Worker for Cursor {
         }
         self.last_tick = systime;
 
-        let mut display = terminal.display.lock();
-        let cursor = terminal.cursor.lock();
+        let mut display = self.terminal.display.lock();
+        let cursor = self.terminal.cursor.lock();
         let character =
             display.char_buffer[(cursor.pos.1 * display.size.0 + cursor.pos.0) as usize];
 

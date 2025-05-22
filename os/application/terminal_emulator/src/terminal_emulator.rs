@@ -31,7 +31,7 @@ use worker::status_bar::StatusBar;
 use worker::worker::Worker;
 
 pub struct TerminalEmulator {
-    terminal: Rc<RefCell<LFBTerminal>>,
+    terminal: Rc<LFBTerminal>,
     event_handler: Rc<RefCell<EventHandler>>,
     input_observer: InputObserver,
     output_observer: OutputObserver,
@@ -42,9 +42,7 @@ pub struct TerminalEmulator {
 
 impl TerminalEmulator {
     pub fn new(address: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
-        let terminal = Rc::new(RefCell::new(LFBTerminal::new(
-            address, pitch, width, height, bpp,
-        )));
+        let terminal = Rc::new(LFBTerminal::new(address, pitch, width, height, bpp));
         let event_handler = Rc::new(RefCell::new(EventHandler::new()));
         Self {
             terminal: terminal.clone(),
@@ -58,9 +56,8 @@ impl TerminalEmulator {
     }
 
     pub fn init(&mut self) {
-        let terminal = self.terminal.borrow();
-        terminal.clear();
-        terminal.write_str(&create_banner_string());
+        self.terminal.clear();
+        self.terminal.write_str(&create_banner_string());
         self.operator.create();
     }
 
@@ -68,7 +65,7 @@ impl TerminalEmulator {
         thread::start_application("window_manager", vec![])
             .unwrap()
             .join(); // Wait for window manager to exit, then continue
-        self.terminal.borrow().display.lock().lfb.flush();
+        self.terminal.display.lock().lfb.flush();
     }
 
     fn run(&mut self) {

@@ -16,7 +16,7 @@ use crate::{
 use super::worker::Worker;
 
 pub struct InputObserver {
-    terminal: Rc<RefCell<LFBTerminal>>,
+    terminal: Rc<LFBTerminal>,
     event_handler: Rc<RefCell<EventHandler>>,
     decoder: Decoder,
     mode: TerminalMode,
@@ -24,10 +24,7 @@ pub struct InputObserver {
 }
 
 impl InputObserver {
-    pub const fn new(
-        terminal: Rc<RefCell<LFBTerminal>>,
-        event_handler: Rc<RefCell<EventHandler>>,
-    ) -> Self {
+    pub const fn new(terminal: Rc<LFBTerminal>, event_handler: Rc<RefCell<EventHandler>>) -> Self {
         Self {
             terminal,
             event_handler,
@@ -40,7 +37,7 @@ impl InputObserver {
 
 impl Worker for InputObserver {
     fn run(&mut self) {
-        let raw = self.terminal.borrow().read_byte() as u8;
+        let raw = self.terminal.read_byte() as u8;
         let decoded = self.decoder.decode(raw);
 
         let decoded = match self.intercept(decoded) {
@@ -104,20 +101,18 @@ impl InputObserver {
     }
 
     fn buffer_cooked(&mut self, key: DecodedKey) -> Option<Vec<u8>> {
-        let terminal = self.terminal.borrow();
-
         let ch = match key {
             DecodedKey::Unicode(ch) => ch,
             _ => return None,
         };
 
-        terminal.write_byte(ch as u8);
+        self.terminal.write_byte(ch as u8);
 
         match ch {
             '\n' => return Some(self.cooked_buffer.clone()),
             '\x08' => {
                 if self.cooked_buffer.pop().is_some() {
-                    terminal.write_str("\x1b[1D \x1b[1D");
+                    self.terminal.write_str("\x1b[1D \x1b[1D");
                 }
             }
             _ => self.cooked_buffer.push(ch as u8),
