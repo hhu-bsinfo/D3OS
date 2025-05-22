@@ -16,6 +16,7 @@ concurrent = { path = "../../library/concurrent" }
 naming = { path = "../../library/naming" }
 syscall = { path = "../../library/syscall" }
 logger = { path = "../../library/logger" }
+globals = { path = "../../library/globals" }
 
 # Extern dependencies
 spin = "0.10.0"

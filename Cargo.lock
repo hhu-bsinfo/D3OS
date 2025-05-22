@@ -1185,6 +1185,7 @@ name = "shell"
 version = "0.1.0"
 dependencies = [
  "concurrent",
+ "globals",
  "logger",
  "naming",
  "runtime",

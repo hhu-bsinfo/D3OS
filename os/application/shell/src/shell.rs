@@ -12,6 +12,8 @@ mod sub_module;
 
 use concurrent::process;
 use controller::Controller;
+use globals::application::APPLICATION_REGISTRY;
+use logger::info;
 #[allow(unused_imports)]
 use runtime::*;
 use syscall::{SystemCall, syscall};
@@ -29,6 +31,7 @@ impl Shell {
     }
 
     pub fn init(&mut self) {
+        info!("{:?}", APPLICATION_REGISTRY);
         print!("\n");
         self.controller.init();
     }
