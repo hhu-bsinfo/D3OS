@@ -11,7 +11,7 @@ use crate::{
     config::INTERACT_BUTTON,
     mouse_state::{ButtonState, MouseEvent},
     signal::{ComponentRef, Signal, Stateful},
-    utils::scale_font, WindowManager,
+    WindowManager,
 };
 
 use super::{
@@ -170,12 +170,7 @@ impl Component for Button {
             styling.maintain_aspect_ratio,
         );
 
-        // TODO: Is the font scaling correct?
-        self.font_scale = scale_font(
-            &(self.rel_font_size as u32, self.rel_font_size as u32),
-            &self.rel_rect_data,
-            &self.abs_rect_data,
-        );
+        self.font_scale = parent.scale_font_to_container(self.rel_font_size);
 
         self.mark_dirty();
     }

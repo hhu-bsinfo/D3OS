@@ -113,7 +113,7 @@ impl BasicContainer {
 
     fn apply_grid_layout(&mut self, cols: u32) {
         let mut last_row_height: u32 = 0;
-        
+
         for (i, child) in self.childs.iter().enumerate() {
             // Apply layout & scaling
             child
@@ -269,6 +269,10 @@ impl Container for BasicContainer {
         );
 
         self.mark_dirty();
+    }
+
+    fn scale_font_to_container(&self, _font_size: usize) -> (u32, u32) {
+        (1, 1)
     }
 }
 

@@ -114,22 +114,3 @@ pub fn scale_pos_to_rect(rel_pos: Vertex, abs_rect: RectData) -> Vertex {
         (f64::from(rel_pos.y) * ratios.1) as u32 + abs_rect.top_left.y,
     )
 }
-
-/// TODO: Is this even needed?
-pub fn scale_font(
-    _old_scale: &(u32, u32),
-    _old_rect_data: &RectData,
-    _new_rect_data: &RectData,
-) -> (u32, u32) {
-    return (1, 1);
-
-    /*let ratios = (
-        f64::from(new_rect_data.width) / f64::from(old_rect_data.width),
-        f64::from(new_rect_data.height) / f64::from(old_rect_data.height),
-    );
-
-    (
-        ((f64::from(old_scale.0) * ratios.0) as u32).max(1),
-        ((f64::from(old_scale.1) * ratios.1) as u32).max(1),
-    )*/
-}

@@ -3,7 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{color::{Color, WHITE, YELLOW}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
 use spin::{rwlock::RwLock};
 
-use crate::{signal::{ComponentRef, Signal, Stateful}, utils::scale_font, WindowManager, SCREEN};
+use crate::{signal::{ComponentRef, Signal, Stateful}, WindowManager, SCREEN};
 
 use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
@@ -85,19 +85,7 @@ impl Component for Label {
 
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         self.abs_pos = parent.scale_vertex_to_container(self.rel_pos);
-
-        let screen = SCREEN.get().unwrap();
-
-        // TODO: Is the font scaling correct?
-        self.font_scale = scale_font(
-            &(self.rel_font_size as u32, self.rel_font_size as u32),
-            &RectData {
-                top_left: Vertex::zero(),
-                width: screen.0,
-                height: screen.1,
-            },
-            &parent.get_abs_rect_data(),
-        );
+        self.font_scale = parent.scale_font_to_container(self.rel_font_size);
 
         self.mark_dirty();
     }

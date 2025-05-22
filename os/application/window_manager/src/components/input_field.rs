@@ -7,7 +7,7 @@ use graphic::{
 use spin::RwLock;
 
 use crate::{
-    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, utils::scale_font, WindowManager
+    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, WindowManager
 };
 
 use super::{component::{Casts, Clearable, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
@@ -147,12 +147,7 @@ impl Component for InputField {
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         let styling: &ComponentStyling = &self.styling;
 
-        // TODO: Is the font scaling correct?
-        self.font_scale = scale_font(
-            &(self.rel_font_size as u32, self.rel_font_size as u32),
-            &self.rel_rect_data,
-            &self.abs_rect_data,
-        );
+        self.font_scale = parent.scale_font_to_container(self.rel_font_size);
 
         let min_dim = (
             self.max_chars as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
