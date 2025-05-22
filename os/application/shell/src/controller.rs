@@ -115,6 +115,10 @@ impl Controller {
         };
     }
 
+    fn handle_tab(&mut self) {
+        self.auto_complete.toggle_command();
+    }
+
     fn handle_error(&mut self, msg: &'static str) {
         println!("{}", msg);
         self.command_line.create_new_line();
@@ -130,6 +134,7 @@ impl Controller {
             DecodedKey::Unicode('\x08') => self.handle_backspace(),
             DecodedKey::Unicode('\x7F') => self.handle_del(),
             DecodedKey::Unicode('\n') => self.handle_enter(),
+            DecodedKey::Unicode('\t') => self.handle_tab(),
             DecodedKey::Unicode(ch) => self.handle_other_char(ch),
             // RawKeys
             DecodedKey::RawKey(KeyCode::ArrowLeft) => self.handle_arrow_left(),

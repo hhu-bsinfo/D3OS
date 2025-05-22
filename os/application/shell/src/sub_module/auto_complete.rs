@@ -1,4 +1,7 @@
-use alloc::vec::Vec;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use globals::application::{APPLICATION_REGISTRY, Application};
 use terminal::print;
 
@@ -6,6 +9,7 @@ pub struct AutoComplete {
     applications: Vec<Application>,
     current_index: usize,
     current_complete: &'static str,
+    current_command: String,
 }
 
 impl AutoComplete {
@@ -14,13 +18,21 @@ impl AutoComplete {
             applications: Vec::from(APPLICATION_REGISTRY.applications),
             current_index: 0,
             current_complete: "",
+            current_command: String::new(),
         }
     }
 
     pub fn complete_command(&mut self, partial_command: &str) {
+        self.current_command = partial_command.to_string();
+        self.current_index = 0;
+        self.toggle_command();
+    }
+
+    pub fn toggle_command(&mut self) {
         self.clear_completion();
-        self.current_complete = match self.find_next(|app| app.name.starts_with(partial_command)) {
-            Some(app) => &app.name[partial_command.len()..],
+        let current_command = self.current_command.clone();
+        self.current_complete = match self.find_next(|app| app.name.starts_with(&current_command)) {
+            Some(app) => &app.name[self.current_command.len()..],
             None => "",
         };
         self.print_completion();
@@ -48,7 +60,7 @@ impl AutoComplete {
         );
     }
 
-    fn find_next<F>(&self, mut predicate: F) -> Option<&Application>
+    fn find_next<F>(&mut self, mut predicate: F) -> Option<&Application>
     where
         F: FnMut(&Application) -> bool,
     {
@@ -61,6 +73,7 @@ impl AutoComplete {
             let index = (self.current_index + offset) % length;
             let application = &self.applications[index];
             if predicate(application) {
+                self.current_index = index;
                 return Some(application);
             }
         }
