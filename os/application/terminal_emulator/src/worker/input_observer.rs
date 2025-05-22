@@ -1,16 +1,13 @@
 use core::cell::RefCell;
 
-use alloc::{rc::Rc, sync::Arc, vec::Vec};
-use concurrent::thread::{self, Thread};
+use alloc::{rc::Rc, vec::Vec};
 use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
 use pc_keyboard::DecodedKey;
-use spin::Mutex;
-use stream::InputStream;
+use stream::{InputStream, OutputStream};
 use syscall::{SystemCall, syscall};
 use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode};
 
 use crate::{
-    TerminalEmulator,
     event_handler::{Event, EventHandler},
     terminal::lfb_terminal::LFBTerminal,
     util::decoder::Decoder,
@@ -23,6 +20,7 @@ pub struct InputObserver {
     event_handler: Rc<RefCell<EventHandler>>,
     decoder: Decoder,
     mode: TerminalMode,
+    cooked_buffer: Vec<u8>,
 }
 
 impl InputObserver {
@@ -35,14 +33,14 @@ impl InputObserver {
             event_handler,
             decoder: Decoder::new(),
             mode: TerminalMode::Raw,
+            cooked_buffer: Vec::new(),
         }
     }
 }
 
 impl Worker for InputObserver {
     fn run(&mut self) {
-        let terminal = self.terminal.borrow();
-        let raw = terminal.read_byte() as u8;
+        let raw = self.terminal.borrow().read_byte() as u8;
         let decoded = self.decoder.decode(raw);
 
         let decoded = match self.intercept(decoded) {
@@ -67,6 +65,11 @@ impl Worker for InputObserver {
             TerminalInputState::Idle => return,
         };
 
+        let buffer = match buffer {
+            Some(buffer) => buffer,
+            None => return,
+        };
+
         syscall(
             SystemCall::TerminalWriteInput,
             &[buffer.as_ptr() as usize, buffer.len(), mode as usize],
@@ -75,7 +78,6 @@ impl Worker for InputObserver {
 }
 
 impl InputObserver {
-    // TODO Does not work once we entered cooked mode loop (intercept also there or only read from intercepted function)
     fn intercept(&self, key: Option<DecodedKey>) -> Option<DecodedKey> {
         if key.is_none() {
             return None;
@@ -90,53 +92,36 @@ impl InputObserver {
         }
     }
 
-    fn buffer_raw(&self, raw: u8) -> Vec<u8> {
-        [raw].to_vec()
+    fn buffer_raw(&mut self, raw: u8) -> Option<Vec<u8>> {
+        Some([raw].to_vec())
     }
 
-    fn buffer_mixed(&self, key: DecodedKey) -> Vec<u8> {
+    fn buffer_mixed(&mut self, key: DecodedKey) -> Option<Vec<u8>> {
         match key {
-            DecodedKey::Unicode(key) => [DecodedKeyType::Unicode as u8, key as u8].to_vec(),
-            DecodedKey::RawKey(key) => [DecodedKeyType::RawKey as u8, key as u8].to_vec(),
+            DecodedKey::Unicode(key) => Some([DecodedKeyType::Unicode as u8, key as u8].to_vec()),
+            DecodedKey::RawKey(key) => Some([DecodedKeyType::RawKey as u8, key as u8].to_vec()),
         }
     }
 
-    fn buffer_cooked(&self, first_key: DecodedKey) -> Vec<u8> {
+    fn buffer_cooked(&mut self, key: DecodedKey) -> Option<Vec<u8>> {
         let terminal = self.terminal.borrow();
-        let mut buffer: Vec<u8> = Vec::new();
-        // TODO#1 FIX
-        // match first_key {
-        //     DecodedKey::Unicode('\x08') => {}
-        //     DecodedKey::Unicode('\n') => {
-        //         terminal.write_byte('\n' as u8);
-        //         return buffer;
-        //     }
-        //     DecodedKey::Unicode(ch) => {
-        //         terminal.write_byte(ch as u8);
-        //         buffer.push(ch as u8);
-        //     }
-        //     _ => {}
-        // }
 
-        // loop {
-        //     let raw = terminal.read_byte() as u8;
-        //     let ch = match self.decoder.decode(raw) {
-        //         Some(DecodedKey::Unicode(ch)) => ch,
-        //         _ => continue,
-        //     };
+        let ch = match key {
+            DecodedKey::Unicode(ch) => ch,
+            _ => return None,
+        };
 
-        //     terminal.write_byte(ch as u8);
+        terminal.write_byte(ch as u8);
 
-        //     match ch {
-        //         '\n' => break,
-        //         '\x08' => {
-        //             if buffer.pop().is_some() {
-        //                 terminal.write_str("\x1b[1D \x1b[1D");
-        //             }
-        //         }
-        //         _ => buffer.push(ch as u8),
-        //     };
-        // }
-        buffer
+        match ch {
+            '\n' => return Some(self.cooked_buffer.clone()),
+            '\x08' => {
+                if self.cooked_buffer.pop().is_some() {
+                    terminal.write_str("\x1b[1D \x1b[1D");
+                }
+            }
+            _ => self.cooked_buffer.push(ch as u8),
+        };
+        None
     }
 }
