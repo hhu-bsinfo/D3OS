@@ -6,8 +6,9 @@ use time::systime;
 
 use crate::terminal::lfb_terminal::LFBTerminal;
 
-const CURSOR_UPDATE_INTERVAL: i64 = 250;
-const INFO_BAR_UPDATE_INTERVAL: i64 = 1000;
+use super::worker::Worker;
+
+const UPDATE_INTERVAL: i64 = 250;
 
 const CURSOR: char = match char::from_u32(0x2588) {
     Some(cursor) => cursor,
@@ -17,8 +18,7 @@ const CURSOR: char = match char::from_u32(0x2588) {
 pub struct Cursor {
     terminal: Rc<RefCell<LFBTerminal>>,
     visible: bool,
-    last_cursor_tick: i64,
-    last_info_bar_tick: i64,
+    last_tick: i64,
 }
 
 pub struct CursorState {
@@ -31,27 +31,20 @@ impl Cursor {
         Self {
             terminal,
             visible: true,
-            last_cursor_tick: 0,
-            last_info_bar_tick: 0,
+            last_tick: 0,
         }
     }
 }
 
-impl Cursor {
-    pub fn init(&mut self) {
-        let systime = systime().num_milliseconds();
-        self.last_cursor_tick = systime;
-        self.last_info_bar_tick = systime;
-    }
-
-    pub fn run(&mut self) {
+impl Worker for Cursor {
+    fn run(&mut self) {
         let terminal = self.terminal.borrow();
         let systime = systime().num_milliseconds();
 
-        if systime < self.last_cursor_tick + CURSOR_UPDATE_INTERVAL {
+        if systime < self.last_tick + UPDATE_INTERVAL {
             return;
         }
-        self.last_cursor_tick = systime;
+        self.last_tick = systime;
 
         let mut display = terminal.display.lock();
         let cursor = terminal.cursor.lock();
@@ -74,13 +67,6 @@ impl Cursor {
             draw_character,
         );
         self.visible = !self.visible;
-
-        // TODO put info bar update in own worker
-        if systime < self.last_info_bar_tick + INFO_BAR_UPDATE_INTERVAL {
-            return;
-        }
-        self.last_info_bar_tick = systime;
-        LFBTerminal::draw_status_bar(&mut display);
     }
 }
 

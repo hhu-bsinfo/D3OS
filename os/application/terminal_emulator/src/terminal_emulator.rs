@@ -11,13 +11,10 @@ mod worker;
 use core::cell::RefCell;
 
 use alloc::rc::Rc;
-use alloc::sync::Arc;
 use alloc::vec;
 use concurrent::thread;
 use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
-use logger::info;
-use spin::{Mutex, Once};
 use stream::OutputStream;
 use terminal::lfb_terminal::LFBTerminal;
 use terminal::terminal::Terminal;
@@ -29,15 +26,17 @@ use worker::input_observer::InputObserver;
 use runtime::*;
 use worker::operator::Operator;
 use worker::output_observer::OutputObserver;
+use worker::status_bar::StatusBar;
 use worker::worker::Worker;
 
 pub struct TerminalEmulator {
     terminal: Rc<RefCell<LFBTerminal>>,
-    cursor: Cursor,
+    event_handler: Rc<RefCell<EventHandler>>,
     input_observer: InputObserver,
     output_observer: OutputObserver,
+    cursor: Cursor,
     operator: Operator,
-    event_handler: Rc<RefCell<EventHandler>>,
+    status_bar: StatusBar,
 }
 
 impl TerminalEmulator {
@@ -50,9 +49,10 @@ impl TerminalEmulator {
             terminal: terminal.clone(),
             input_observer: InputObserver::new(terminal.clone(), event_handler.clone()),
             output_observer: OutputObserver::new(terminal.clone()),
-            cursor: Cursor::new(terminal),
+            cursor: Cursor::new(terminal.clone()),
             operator: Operator::new(),
             event_handler: event_handler,
+            status_bar: StatusBar::new(terminal),
         }
     }
 
@@ -77,7 +77,7 @@ impl TerminalEmulator {
             self.output_observer.run();
             self.input_observer.run();
             self.cursor.run();
-            LFBTerminal::draw_status_bar(&mut self.terminal.borrow().display.lock());
+            self.status_bar.run();
         }
     }
 

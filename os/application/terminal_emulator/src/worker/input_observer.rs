@@ -5,7 +5,7 @@ use concurrent::thread::{self, Thread};
 use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
 use pc_keyboard::DecodedKey;
 use spin::Mutex;
-use stream::{InputStream, OutputStream};
+use stream::InputStream;
 use syscall::{SystemCall, syscall};
 use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode};
 
