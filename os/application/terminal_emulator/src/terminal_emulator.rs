@@ -4,6 +4,7 @@ extern crate alloc;
 extern crate terminal as terminal_lib;
 
 pub mod event_handler;
+mod operator;
 pub mod terminal;
 pub mod util;
 mod worker;
@@ -15,6 +16,7 @@ use alloc::vec;
 use concurrent::thread;
 use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
+use operator::Operator;
 use stream::OutputStream;
 use terminal::lfb_terminal::LFBTerminal;
 use terminal::terminal::Terminal;
@@ -24,7 +26,6 @@ use worker::input_observer::InputObserver;
 
 #[allow(unused_imports)]
 use runtime::*;
-use worker::operator::Operator;
 use worker::output_observer::OutputObserver;
 use worker::status_bar::StatusBar;
 use worker::worker::Worker;

@@ -1,8 +1,5 @@
 use alloc::vec;
 use concurrent::thread::{self, Thread};
-use syscall::{SystemCall, syscall};
-
-use crate::worker::worker::Worker;
 
 pub struct Operator {
     thread: Option<Thread>,
@@ -17,6 +14,7 @@ impl Operator {
         if self.thread.is_some() {
             return;
         }
-        self.thread = Some(thread::start_application("shell", vec![]).unwrap());
+        self.thread =
+            Some(thread::start_application("shell", vec![]).expect("Unable to start operator"));
     }
 }
