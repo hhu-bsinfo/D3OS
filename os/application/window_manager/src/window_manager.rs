@@ -340,6 +340,8 @@ impl WindowManager {
         }
     }
 
+    /// Adds all components to the window that have been queued by the api
+    /// since the last frame.
     fn add_new_components_from_api(&mut self) {
         while let Ok(NewCompData {
             window_data:
@@ -379,11 +381,12 @@ impl WindowManager {
             .expect("Failed to create window!");
     }
 
+    /// Opens a new app window in split mode.
     fn split_window(&mut self, window_id: usize, split_type: ScreenSplitType, app_name: &str) {
         let curr_ws = self.get_current_workspace_mut();
 
         if let Some(window) = curr_ws.windows.get_mut(&window_id) {
-            let old_rect @ RectData {
+            let _old_rect @ RectData {
                 top_left: old_top_left,
                 width: old_width,
                 height: old_height,
@@ -402,6 +405,7 @@ impl WindowManager {
                     window.rescale_window_in_place(window.rect_data.clone());
                     self.add_window_to_workspace(new_rect_data, app_name);
                 }
+
                 ScreenSplitType::Vertical => {
                     window.rect_data.width /= 2;
                     let new_top_left = old_top_left.add(window.rect_data.width, 0);
@@ -426,6 +430,7 @@ impl WindowManager {
 
         let new_workspace_index = self.workspaces.len();
 
+        // Calculate the rect for the workspace
         let screen_res = Self::get_screen_res();
         let window_rect_data = RectData {
             top_left: Vertex::new(
@@ -437,10 +442,12 @@ impl WindowManager {
                 - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW),
         };
 
+        // Create a new window for the workspace
         let window = AppWindow::new(window_rect_data);
         let window_id = window.get_id();
         let root_container = window.root_container();
 
+        // Create the workspace
         let workspace = Workspace::new_with_single_window((window_id, window), window_id);
 
         self.workspace_selection_window.register_workspace(workspace.get_id());
@@ -460,10 +467,15 @@ impl WindowManager {
         self.workspace_selection_window.mark_dirty();
     }
 
+    /// Removes the currently active workspace and switches to the previous workspace.
+    /// This will only work if more than one workspace is available.
     fn remove_current_workspace(&mut self) {
+        // Keep at least one workspace
         if self.workspaces.len() <= 1 {
             return;
         }
+
+        let current_workspace_index = self.current_workspace;
 
         // Remove workspace button
         self.workspace_selection_window
@@ -471,19 +483,20 @@ impl WindowManager {
         self.workspace_selection_window.mark_dirty();
 
         // Remove workspace
-        self.workspaces.remove(self.current_workspace);
+        self.workspaces.remove(current_workspace_index);
 
         // Update workspace indices
         // TODO: Don't do this! Use the workspace id instead.
         self.on_loop_iter_fns
-            .retain_mut(|fun| fun.window_data.workspace_index != self.current_workspace);
+            .retain_mut(|fun| fun.window_data.workspace_index != current_workspace_index);
         self.on_loop_iter_fns
             .iter_mut()
-            .filter(|fun| fun.window_data.workspace_index > self.current_workspace)
+            .filter(|fun| fun.window_data.workspace_index > current_workspace_index)
             .for_each(|fun| fun.window_data.workspace_index -= 1);
 
-        Self::get_api().remove_all_handles_tied_to_workspace(self.current_workspace);
+        Self::get_api().remove_all_handles_tied_to_workspace(current_workspace_index);
 
+        // Switch to the previous workspace
         self.switch_prev_workspace();
         self.is_dirty = true;
     }
@@ -559,6 +572,8 @@ impl WindowManager {
         }
     }
 
+    /// Returns, whether it is time to flush the screen.
+    /// This depends on the target frame time specified in `FLUSHING_DELAY_MS`.
     fn should_flush(&self) -> bool {
         let time = systime();
         let elapsed = time.checked_sub(&self.last_frame_time).unwrap().num_milliseconds() as u32;
@@ -566,6 +581,8 @@ impl WindowManager {
         elapsed >= FLUSHING_DELAY_MS
     }
 
+    /// Flushes the changes from the backbuffer and displays them on the front buffer,
+    /// if allowed by `should_flush()`.
     fn flush(&mut self) {
         if self.should_flush() {
             Drawer::flush();

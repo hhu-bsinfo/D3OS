@@ -186,6 +186,7 @@ impl Api {
         }
     }
 
+    /// Registers a new window in the given workspace and launches the given app.
     pub fn register(
         &mut self,
         workspace_index: usize,
