@@ -7,10 +7,9 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use core::slice::from_raw_parts;
-use core::str::from_utf8;
+use core::slice::from_raw_parts_mut;
 use core::sync::atomic::{AtomicBool, Ordering};
-use core::{ptr::slice_from_raw_parts, slice::from_raw_parts_mut};
-use log::{error, info};
+use log::error;
 use syscall::return_vals::Errno;
 use terminal::{TerminalInputState, TerminalMode};
 
@@ -93,25 +92,4 @@ pub fn sys_terminal_check_input_state() -> isize {
         TerminalMode::Mixed => TerminalInputState::InputReaderAwaitsMixed as isize,
         TerminalMode::Raw => TerminalInputState::InputReaderAwaitsRaw as isize,
     }
-}
-
-/// For Application & Terminal
-/// TODO#8 Do proper docs
-///
-/// Order the operator process (usually shell) to exit (Workaround due to missing ipc)
-///
-///
-/// Author: Sebastian Keller
-pub fn sys_terminal_terminate_operator(cmd: bool, ack: bool) -> isize {
-    if cmd {
-        KILL_OPERATOR_FLAG.store(true, Ordering::SeqCst);
-        return 0;
-    }
-
-    if ack && KILL_OPERATOR_FLAG.load(Ordering::SeqCst) {
-        KILL_OPERATOR_FLAG.store(false, Ordering::SeqCst);
-        return 1;
-    }
-
-    0
 }

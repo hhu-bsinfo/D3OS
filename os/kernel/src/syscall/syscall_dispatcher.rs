@@ -6,6 +6,14 @@
    ║ Author: Fabian Ruhland, 27.12.2024, HHU                                 ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+use crate::syscall::sys_concurrent::{
+    sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create,
+    sys_thread_exit, sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch,
+};
+use crate::syscall::sys_input::sys_read_mouse;
+use crate::syscall::sys_naming::*;
+use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date};
+use crate::syscall::sys_vmem::sys_map_user_heap;
 use core::arch::{asm, naked_asm};
 use core::mem::size_of;
 use core::ops::Deref;
@@ -15,12 +23,6 @@ use x86_64::registers::control::{Efer, EferFlags};
 use x86_64::registers::model_specific::{KernelGsBase, LStar, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
-use crate::syscall::sys_vmem::sys_map_user_heap;
-use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, };
-use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
-    sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch};
-use crate::syscall::sys_naming::*;
-use crate::syscall::sys_input::sys_read_mouse;
 
 use crate::{core_local_storage, tss};
 
@@ -29,7 +31,7 @@ use super::sys_graphic::{sys_get_graphic_resolution, sys_map_fb_info, sys_write_
 use super::sys_input::sys_read_keyboard;
 use super::sys_logger::sys_log;
 use super::sys_system_info::sys_map_build_info;
-use super::sys_terminal::{sys_terminal_check_input_state, sys_terminal_read_input, sys_terminal_read_output, sys_terminal_terminate_operator, sys_terminal_write_input, sys_terminal_write_output};
+use super::sys_terminal::{sys_terminal_check_input_state, sys_terminal_read_input, sys_terminal_read_output, sys_terminal_write_input, sys_terminal_write_output};
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -95,7 +97,6 @@ impl SyscallTable {
                 sys_terminal_check_input_state as *const _,
                 sys_terminal_write_output as *const _,
                 sys_terminal_read_output as *const _,
-                sys_terminal_terminate_operator as *const _,
                 sys_map_user_heap as *const _,
                 sys_process_execute_binary as *const _,
                 sys_process_id as *const _,
@@ -122,13 +123,13 @@ impl SyscallTable {
                 sys_readdir as *const _,
                 sys_cwd as *const _,
                 sys_cd as *const _,
-                sys_write_graphic as * const _,
-                sys_get_graphic_resolution as * const _,
-                sys_read_mouse as * const _,
-                sys_read_keyboard as * const _,
-                sys_map_fb_info as * const _,
-                sys_map_build_info as * const _,
-                sys_log as * const _,
+                sys_write_graphic as *const _,
+                sys_get_graphic_resolution as *const _,
+                sys_read_mouse as *const _,
+                sys_read_keyboard as *const _,
+                sys_map_fb_info as *const _,
+                sys_map_build_info as *const _,
+                sys_log as *const _,
             ],
         }
     }
@@ -145,7 +146,7 @@ unsafe impl Sync for SyscallTable {}
 ///    This functions does not take any parameters per its declaration,
 ///    but in reality, it takes at least the system call ID in rax
 ///    and may take additional parameters for the system call in `rdi`, `rsi` ... \
-///    See AMD64 ABI. 
+///    See AMD64 ABI.
 ///
 /// Return: \
 ///    Two values in `rax`, `rdx` to reconstruct `Result`in user mode
@@ -166,7 +167,7 @@ unsafe extern "C" fn syscall_handler() {
     // Store registers (except rax, which is used for system call ID and return value)
     "push rbx",
     "push rcx", // Contains rip for returning to ring 3
-    "push rdx", 
+    "push rdx",
     "push rdi",
     "push rsi",
     "push r8",
