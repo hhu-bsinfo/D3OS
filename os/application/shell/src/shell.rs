@@ -4,6 +4,7 @@ extern crate alloc;
 
 mod build_in;
 mod command_line;
+mod context;
 mod controller;
 mod executor;
 mod lexer;

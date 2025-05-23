@@ -19,6 +19,16 @@ pub struct Controller {
     auto_complete: AutoComplete,
 }
 
+// read
+// command_line
+// history
+// lexer
+// auto_complete
+// drawer
+// parser
+// executor
+// janitor
+
 impl Controller {
     pub fn new() -> Self {
         let alias = Rc::new(RefCell::new(Alias::new()));

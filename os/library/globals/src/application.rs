@@ -10,7 +10,7 @@ pub struct Application {
     /// Subroutine or mode of the application (Example: 'git <commit>', or 'git <branch>')
     pub sub_commands: &'static [&'static str],
     /// Option of the application, that requires a value, commonly '-KEY VALUE' (Example: 'git commit <-m> <"My message">')
-    pub short_flags: &'static [(&'static str, &'static str)],
+    pub short_flags: &'static [(&'static str, Option<&'static str>)],
     /// Option of the application, that doesn't require a value, commonly '--KEY' (Example: 'git merge master <--no-ff>')
     pub long_flags: &'static [&'static str],
 }
