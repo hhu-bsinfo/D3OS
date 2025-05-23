@@ -16,12 +16,9 @@ use alloc::vec;
 use concurrent::thread::{self, sleep};
 use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
-use logger::info;
 use operator::Operator;
 use stream::OutputStream;
-use terminal::display;
 use terminal::lfb_terminal::LFBTerminal;
-use terminal::terminal::Terminal;
 use util::banner::create_banner_string;
 use worker::cursor::Cursor;
 use worker::input_observer::InputObserver;
@@ -58,8 +55,7 @@ impl TerminalEmulator {
     }
 
     pub fn init(&mut self) {
-        self.terminal.clear();
-        self.terminal.write_str(&create_banner_string());
+        self.terminal.write_str(&create_banner_string()); // TODO move into terminal to be able to redraw after clearing screen
         self.operator.create();
     }
 

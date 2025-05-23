@@ -13,15 +13,15 @@ pub struct Character {
 }
 
 pub struct DisplayState {
-    pub size: (u16, u16),
-    pub lfb: BufferedLFB,
-    pub char_buffer: Vec<Character>,
+    pub(crate) size: (u16, u16),
+    pub(crate) lfb: BufferedLFB,
+    pub(crate) char_buffer: Vec<Character>,
 }
 
 impl DisplayState {
     pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         let raw_lfb = LFB::new(buffer, pitch, width, height, bpp);
-        let lfb = BufferedLFB::new(raw_lfb);
+        let mut lfb = BufferedLFB::new(raw_lfb);
         let size = (
             (width / lfb::DEFAULT_CHAR_WIDTH) as u16,
             (height / lfb::DEFAULT_CHAR_HEIGHT) as u16,
@@ -36,6 +36,9 @@ impl DisplayState {
                 bg_color: color::BLACK,
             });
         }
+
+        lfb.lfb().clear();
+        lfb.flush();
 
         Self {
             size,

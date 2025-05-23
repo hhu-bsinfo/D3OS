@@ -29,7 +29,7 @@ impl Cursor {
         Self {
             terminal,
             visible: true,
-            last_tick: 0,
+            last_tick: -UPDATE_INTERVAL,
         }
     }
 }
