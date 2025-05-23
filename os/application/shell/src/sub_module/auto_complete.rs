@@ -118,8 +118,8 @@ impl AutoComplete {
     fn cycle_command(&mut self) {
         let current_command = self.current_command.clone();
         self.last_completion = self.completion.clone();
-        self.completion = match self.find_next(|app| app.name.starts_with(&current_command)) {
-            Some(app) => &app.name[self.current_command.len()..],
+        self.completion = match self.find_next(|app| app.command.starts_with(&current_command)) {
+            Some(app) => &app.command[self.current_command.len()..],
             None => "",
         };
     }

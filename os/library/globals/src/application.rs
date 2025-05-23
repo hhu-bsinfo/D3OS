@@ -1,43 +1,132 @@
-#[derive(Debug)]
-pub struct ApplicationRegistry<const N: usize> {
-    pub applications: [Application; N],
+#[derive(Debug, Clone)]
+pub struct ApplicationRegistry {
+    pub applications: &'static [Application],
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Application {
-    pub name: &'static str,
+    /// Name of the application (Example: '<git>')
+    pub command: &'static str,
+    /// Subroutine or mode of the application (Example: 'git <commit>', or 'git <branch>')
+    pub sub_commands: &'static [&'static str],
+    /// Option of the application, that requires a value, commonly '-KEY VALUE' (Example: 'git commit <-m> <"My message">')
+    pub short_flags: &'static [(&'static str, &'static str)],
+    /// Option of the application, that doesn't require a value, commonly '--KEY' (Example: 'git merge master <--no-ff>')
+    pub long_flags: &'static [&'static str],
 }
 
 /**
  * Register applications here, for the shell interpret them.
- * Note: Update N to the number of  
  */
 
-pub const APPLICATION_REGISTRY: ApplicationRegistry<17> = ApplicationRegistry {
-    applications: [
+pub const APPLICATION_REGISTRY: ApplicationRegistry = ApplicationRegistry {
+    applications: &[
         //////////////////////
         // Extern Applications
-        Application { name: "shell" },
-        Application { name: "date" },
-        Application { name: "hello" },
-        Application { name: "helloc" },
-        Application { name: "keytest" },
         Application {
-            name: "legacy_shell",
+            command: "shell",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
         },
-        Application { name: "ls" },
-        Application { name: "ntest" },
-        Application { name: "uptime" },
+        Application {
+            command: "date",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "hello",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "helloc",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "keytest",
+            sub_commands: &["cooked", "mixed", "raw"],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "legacy_shell",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "ls",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "ntest",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "uptime",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
         /////////////////
         // Shell BuildIns
-        Application { name: "alias" },
-        Application { name: "cd" },
-        Application { name: "clear" },
-        Application { name: "echo" },
-        Application { name: "exit" },
-        Application { name: "mkdir" },
-        Application { name: "pwd" },
-        Application { name: "unalias" },
+        Application {
+            command: "alias",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "cd",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "clear",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "echo",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "exit",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "mkdir",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "pwd",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
+        Application {
+            command: "unalias",
+            sub_commands: &[],
+            short_flags: &[],
+            long_flags: &[],
+        },
         //////////////////////////
         // Window Manager BuildIns
         // TODO SUPPORT
