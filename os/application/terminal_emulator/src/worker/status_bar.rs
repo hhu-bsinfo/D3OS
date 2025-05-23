@@ -15,7 +15,7 @@ impl StatusBar {
     pub const fn new(terminal: Rc<LFBTerminal>) -> Self {
         Self {
             terminal,
-            last_tick: 0,
+            last_tick: -UPDATE_INTERVAL,
         }
     }
 }
