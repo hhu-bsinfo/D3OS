@@ -2,14 +2,14 @@ use alloc::vec::Vec;
 
 use crate::lexer::lexer::Token;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum VisualType {
     Indicator(char),
     Default(char),
     AutoCompleteHint(char),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ContextItem<T> {
     is_dirty: bool,
     data: T,
@@ -47,7 +47,7 @@ impl<T> ContextItem<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Context {
     pub(crate) line: ContextItem<Vec<char>>,
     pub(crate) cursor_position: ContextItem<usize>,

@@ -17,7 +17,7 @@ use logger::info;
 use runtime::*;
 use service::{
     command_line_service::CommandLineService, drawer_service::DrawerService,
-    janitor_service::JanitorService, service::Service,
+    history_service::HistoryService, janitor_service::JanitorService, service::Service,
 };
 use terminal::read::read_mixed;
 
@@ -29,7 +29,7 @@ struct Shell {
     drawer_service: DrawerService,
     janitor_service: JanitorService,
     // Optional services
-    // TODO
+    history_service: Option<HistoryService>,
 }
 
 impl Shell {
@@ -42,7 +42,7 @@ impl Shell {
             drawer_service: DrawerService::new(),
             janitor_service: JanitorService::new(),
             // Optional services
-            // TODO
+            history_service: Some(HistoryService::new()),
         }
     }
 
@@ -59,10 +59,19 @@ impl Shell {
             };
 
             info!("Read key: {:?}", key);
+
             self.command_line_service.run(key, &mut self.context);
             info!("Command line: {:?}", self.context);
+
+            self.history_service
+                .as_mut()
+                .unwrap() // TODO Check properly if enabled
+                .run(key, &mut self.context);
+            info!("History: {:?}", self.context);
+
             self.drawer_service.run(key, &mut self.context);
             info!("Drawer: {:?}", self.context);
+
             self.janitor_service.run(key, &mut self.context);
             info!("Janitor: {:?}", self.context);
         }
