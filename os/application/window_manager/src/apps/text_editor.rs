@@ -62,12 +62,19 @@ impl Runnable for TextEditor {
         component.write().mark_dirty();
         let mut dirty = false;
         loop {
+            let mut tmp_queue = VecDeque::<DecodedKey>::new();
             while let Some(value) = input.write().pop_front(){
-                document.update(value); 
-                view.render(&document, &mut canvas.write());
+                tmp_queue.push_back(value);
                 dirty = true;
             }
+            while let Some(value) = tmp_queue.pop_front() {
+                document.update(value);
+            }
             if dirty {
+                {
+                    // extra block to release canvas lock bevore calling mark_dirty
+                    view.render(&document, &mut canvas.write());
+                }
                 component.write().mark_dirty();
                 dirty = false;
             }   

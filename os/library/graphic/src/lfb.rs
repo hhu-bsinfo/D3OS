@@ -1,4 +1,4 @@
-use crate::color::Color;
+use crate::color::{Color, BLACK, WHITE};
 use libm::Libm;
 use syscall::syscall;
 use unifont::get_glyph;
@@ -303,6 +303,14 @@ impl LFB {
             self.buffer
                 .write_bytes(0, (self.pitch * self.height) as usize);
         }
+    }
+
+    pub fn draw_loader(&mut self) {
+        let string = "loading ...";
+        let x = (self.width - (DEFAULT_CHAR_WIDTH * string.len() as u32 )) / 2;
+        let y = (self.height - DEFAULT_CHAR_HEIGHT) / 2;
+        self.clear();
+        self.draw_string( x, y, WHITE, BLACK, string);
     }
 
     pub fn scroll_up(&mut self, lines: u32) {

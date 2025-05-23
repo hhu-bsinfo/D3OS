@@ -22,7 +22,6 @@ pub enum SystemCall {
     TerminalCheckInputState,
     TerminalWriteOutput,
     TerminalReadOutput,
-    TerminalTerminateOperator,
     MapUserHeap,
     ProcessExecuteBinary,
     ProcessId,

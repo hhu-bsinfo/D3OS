@@ -4,16 +4,22 @@ extern crate alloc;
 extern crate terminal as terminal_lib;
 
 pub mod event_handler;
+mod operator;
 pub mod terminal;
 pub mod util;
 mod worker;
 
-use alloc::sync::Arc;
+use core::cell::RefCell;
+
+use alloc::rc::Rc;
 use alloc::vec;
 use concurrent::thread::{self, sleep};
 use event_handler::{Event, EventHandler};
 use graphic::lfb::get_lfb_info;
-use spin::{Mutex, Once};
+use logger::info;
+use operator::Operator;
+use stream::OutputStream;
+use terminal::display;
 use terminal::lfb_terminal::LFBTerminal;
 use terminal::terminal::Terminal;
 use util::banner::create_banner_string;
@@ -22,121 +28,86 @@ use worker::input_observer::InputObserver;
 
 #[allow(unused_imports)]
 use runtime::*;
-use worker::operator::Operator;
 use worker::output_observer::OutputObserver;
+use worker::status_bar::StatusBar;
 use worker::worker::Worker;
 
-static TERMINAL_EMULATOR: Once<Arc<TerminalEmulator>> = Once::new();
-
 pub struct TerminalEmulator {
-    terminal: Arc<dyn Terminal>,
-    cursor: Mutex<Cursor>,
-    input_observer: Mutex<InputObserver>,
-    output_observer: Mutex<OutputObserver>,
-    operator: Mutex<Operator>,
-    event_handler: Mutex<EventHandler>,
+    terminal: Rc<LFBTerminal>,
+    event_handler: Rc<RefCell<EventHandler>>,
+    input_observer: InputObserver,
+    output_observer: OutputObserver,
+    cursor: Cursor,
+    operator: Operator,
+    status_bar: StatusBar,
 }
 
 impl TerminalEmulator {
     pub fn new(address: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
-        let terminal = LFBTerminal::new(address, pitch, width, height, bpp, true);
+        let terminal = Rc::new(LFBTerminal::new(address, pitch, width, height, bpp));
+        let event_handler = Rc::new(RefCell::new(EventHandler::new()));
         Self {
-            terminal: Arc::new(terminal),
-            input_observer: Mutex::new(InputObserver::new()),
-            output_observer: Mutex::new(OutputObserver::new()),
-            cursor: Mutex::new(Cursor::new()),
-            operator: Mutex::new(Operator::new()),
-            event_handler: Mutex::new(EventHandler::new()),
+            terminal: terminal.clone(),
+            input_observer: InputObserver::new(terminal.clone(), event_handler.clone()),
+            output_observer: OutputObserver::new(terminal.clone()),
+            cursor: Cursor::new(terminal.clone()),
+            operator: Operator::new(),
+            event_handler: event_handler,
+            status_bar: StatusBar::new(terminal),
         }
     }
 
-    pub fn init(&self) {
-        self.terminal().clear();
-        self.terminal().write_str(&create_banner_string());
-
-        self.cursor.lock().create();
-        self.input_observer.lock().create();
-        self.output_observer.lock().create();
-        self.operator.lock().create();
+    pub fn init(&mut self) {
+        self.terminal.clear();
+        self.terminal.write_str(&create_banner_string());
+        self.operator.create();
     }
 
-    pub fn terminal(&self) -> Arc<dyn Terminal> {
-        Arc::clone(&self.terminal)
-    }
-
-    pub fn disable(&self) {
-        self.terminal().hide();
-        {
-            /* Separate block, because lock would extend into self.enable() causing infinite lock */
-            self.cursor.lock().kill();
-            self.operator.lock().kill();
-            self.input_observer.lock().kill();
-            self.output_observer.lock().kill();
-        }
-
-        // Reenable visibility when window manager exits
+    pub fn enter_gui(&self) {
+        let mut display = self.terminal.display.lock();
+        display.lfb.direct_lfb().draw_loader();
         thread::start_application("window_manager", vec![])
             .unwrap()
-            .join();
-        self.enable();
+            .join(); // Wait for window manager to exit, then continue
+        display.lfb.direct_lfb().draw_loader();
+        sleep(500); // Solves an issue where sometimes workspaces from window manager are still visible when toggling quickly between text and gui
+        display.lfb.flush();
     }
 
-    pub fn enable(&self) {
-        self.terminal().show();
-        self.cursor.lock().create();
-        self.operator.lock().create();
-        self.input_observer.lock().create();
-        self.output_observer.lock().create();
-    }
-
-    fn run(&self) {
+    fn run(&mut self) {
         loop {
             self.handle_events();
+            self.output_observer.run();
+            self.input_observer.run();
+            self.cursor.run();
+            self.status_bar.run();
         }
     }
 
     fn handle_events(&self) {
-        let event = match self.event_handler.lock().handle() {
+        let event = match self.event_handler.borrow_mut().handle() {
             Some(event) => event,
             None => return,
         };
 
         match event {
-            Event::EnterGuiMode => self.disable(),
+            Event::EnterGuiMode => self.enter_gui(),
         }
 
         self.handle_events();
     }
 }
 
-fn init_terminal_emulator() {
-    TERMINAL_EMULATOR.call_once(|| {
-        let lfb_info = get_lfb_info();
-        let emulator = TerminalEmulator::new(
-            lfb_info.address as *mut u8,
-            lfb_info.pitch,
-            lfb_info.width,
-            lfb_info.height,
-            lfb_info.bpp,
-        );
-
-        Arc::new(emulator)
-    });
-}
-
-pub fn terminal_emulator() -> Arc<TerminalEmulator> {
-    let emulator = TERMINAL_EMULATOR
-        .get()
-        .expect("Trying to access terminal emulator before initialization!");
-    Arc::clone(emulator)
-}
-
 #[unsafe(no_mangle)]
 pub fn main() {
-    init_terminal_emulator();
-    let emulator = terminal_emulator();
+    let lfb_info = get_lfb_info();
+    let mut emulator = TerminalEmulator::new(
+        lfb_info.address as *mut u8,
+        lfb_info.pitch,
+        lfb_info.width,
+        lfb_info.height,
+        lfb_info.bpp,
+    );
     emulator.init();
     emulator.run()
-
-    // terminal.write_str("Press 'F1' to toggle between text and gui mode\n\n");
 }
