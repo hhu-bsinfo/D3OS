@@ -15,14 +15,19 @@ use context::Context;
 use logger::info;
 #[allow(unused_imports)]
 use runtime::*;
-use service::{command_line_service::CommandLineService, service::Service};
-use terminal::{print, read::read_mixed};
+use service::{
+    command_line_service::CommandLineService, drawer_service::DrawerService,
+    janitor_service::JanitorService, service::Service,
+};
+use terminal::read::read_mixed;
 
 struct Shell {
     // Context
     context: Context,
     // Required services
     command_line_service: CommandLineService,
+    drawer_service: DrawerService,
+    janitor_service: JanitorService,
     // Optional services
     // TODO
 }
@@ -34,13 +39,15 @@ impl Shell {
             context: Context::new(),
             // Required services
             command_line_service: CommandLineService::new(),
+            drawer_service: DrawerService::new(),
+            janitor_service: JanitorService::new(),
             // Optional services
             // TODO
         }
     }
 
     pub fn init(&mut self) {
-        print!("\n");
+        // print!("\n");
         // self.controller.init();
     }
 
@@ -51,10 +58,13 @@ impl Shell {
                 None => continue,
             };
 
-            self.context.event = key;
-            info!("Read key: {:?}", self.context);
-            self.command_line_service.run(&mut self.context);
+            info!("Read key: {:?}", key);
+            self.command_line_service.run(key, &mut self.context);
             info!("Command line: {:?}", self.context);
+            self.drawer_service.run(key, &mut self.context);
+            info!("Drawer: {:?}", self.context);
+            self.janitor_service.run(key, &mut self.context);
+            info!("Janitor: {:?}", self.context);
         }
     }
 }

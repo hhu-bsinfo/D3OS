@@ -13,8 +13,8 @@ pub struct CommandLineService {
 }
 
 impl Service for CommandLineService {
-    fn run(&mut self, context: &mut Context) -> Result<(), ServiceError> {
-        match { context.event } {
+    fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
+        match event {
             DecodedKey::Unicode('\n') => self.on_submit(context),
             DecodedKey::Unicode('\x08') => self.on_backspace(context),
             DecodedKey::Unicode('\x7F') => self.on_del(context),

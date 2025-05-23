@@ -1,5 +1,4 @@
 use alloc::vec::Vec;
-use terminal::DecodedKey;
 
 use crate::lexer::lexer::Token;
 
@@ -43,14 +42,13 @@ impl<T> ContextItem<T> {
         self.is_dirty
     }
 
-    fn cleanup(&mut self) {
+    pub fn cleanup(&mut self) {
         self.is_dirty = false;
     }
 }
 
 #[derive(Debug)]
 pub struct Context {
-    pub(crate) event: DecodedKey,
     pub(crate) line: ContextItem<Vec<char>>,
     pub(crate) cursor_position: ContextItem<usize>,
     pub(crate) visual_line: ContextItem<Vec<VisualType>>,
@@ -60,7 +58,6 @@ pub struct Context {
 impl Context {
     pub const fn new() -> Self {
         Self {
-            event: DecodedKey::Unicode('\0'),
             line: ContextItem::new(Vec::new()),
             cursor_position: ContextItem::new(0),
             visual_line: ContextItem::new(Vec::new()),

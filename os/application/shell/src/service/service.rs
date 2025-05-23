@@ -1,3 +1,5 @@
+use terminal::DecodedKey;
+
 use crate::context::Context;
 
 pub struct ServiceError {
@@ -21,5 +23,5 @@ impl ServiceError {
 }
 
 pub trait Service {
-    fn run(&mut self, context: &mut Context) -> Result<(), ServiceError>;
+    fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError>;
 }
