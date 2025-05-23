@@ -3,12 +3,14 @@ use terminal::DecodedKey;
 
 use crate::lexer::lexer::Token;
 
+#[derive(Debug, PartialEq)]
 pub enum VisualType {
     Indicator(char),
     Default(char),
     AutoCompleteHint(char),
 }
 
+#[derive(Debug)]
 pub struct ContextItem<T> {
     is_dirty: bool,
     data: T,
@@ -22,13 +24,19 @@ impl<T> ContextItem<T> {
         }
     }
 
-    pub fn update(&mut self, data: T) {
+    pub fn set(&mut self, data: T) {
         self.is_dirty = true;
         self.data = data;
     }
 
     pub fn get(&self) -> &T {
         &self.data
+    }
+
+    /// When modifying existing data instead of overwriting
+    pub fn dirty_mut(&mut self) -> &mut T {
+        self.is_dirty = true;
+        &mut self.data
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -40,6 +48,7 @@ impl<T> ContextItem<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct Context {
     pub(crate) event: DecodedKey,
     pub(crate) line: ContextItem<Vec<char>>,

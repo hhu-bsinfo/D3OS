@@ -3,33 +3,45 @@
 extern crate alloc;
 
 mod build_in;
-mod command_line;
 mod context;
 mod controller;
 mod executor;
 mod lexer;
 mod parser;
+mod service;
 mod sub_module;
 
-use controller::Controller;
+use context::Context;
+use logger::info;
 #[allow(unused_imports)]
 use runtime::*;
+use service::{command_line_service::CommandLineService, service::Service};
 use terminal::{print, read::read_mixed};
 
 struct Shell {
-    controller: Controller,
+    // Context
+    context: Context,
+    // Required services
+    command_line_service: CommandLineService,
+    // Optional services
+    // TODO
 }
 
 impl Shell {
     pub fn new() -> Self {
         Self {
-            controller: Controller::new(),
+            // Context
+            context: Context::new(),
+            // Required services
+            command_line_service: CommandLineService::new(),
+            // Optional services
+            // TODO
         }
     }
 
     pub fn init(&mut self) {
         print!("\n");
-        self.controller.init();
+        // self.controller.init();
     }
 
     pub fn run(&mut self) {
@@ -39,7 +51,10 @@ impl Shell {
                 None => continue,
             };
 
-            self.controller.run(key);
+            self.context.event = key;
+            info!("Read key: {:?}", self.context);
+            self.command_line_service.run(&mut self.context);
+            info!("Command line: {:?}", self.context);
         }
     }
 }
