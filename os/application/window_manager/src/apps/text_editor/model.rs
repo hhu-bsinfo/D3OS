@@ -103,6 +103,8 @@ impl <'b>Document<'b> {
         // funktioniert irgendwie nicht
         println!("Ausgabe: {}",self.text_buffer.to_string());
         match k {
+            DecodedKey::Unicode('u') => {self.text_buffer.undo();},
+            DecodedKey::Unicode('r') => {self.text_buffer.redo();},
             DecodedKey::Unicode('h') => self.caret -=1,
             DecodedKey::Unicode('l') => self.caret +=1,
             DecodedKey::Unicode('j') => self.move_cursor_down(),
