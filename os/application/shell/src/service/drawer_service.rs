@@ -2,7 +2,6 @@ use alloc::{
     format,
     string::{String, ToString},
 };
-use logger::info;
 use terminal::{DecodedKey, print};
 
 use crate::context::Context;
@@ -49,19 +48,11 @@ impl DrawerService {
 
     fn move_cursor_to_dirty_offset(&mut self, context: &mut Context) -> String {
         let step = self.terminal_cursor_pos as isize - context.dirty_offset as isize;
-        info!(
-            "terminal_cursor({}) - dirty_offset({}) = {}",
-            self.terminal_cursor_pos, context.dirty_offset, step
-        );
         self.move_cursor(step)
     }
 
     fn move_cursor_to_cursor_position(&mut self, context: &mut Context) -> String {
         let step = self.terminal_cursor_pos as isize - context.cursor_position as isize;
-        info!(
-            "terminal_cursor({}) - cursor_pos({}) = {}",
-            self.terminal_cursor_pos, context.cursor_position, step
-        );
         self.move_cursor(step)
     }
 

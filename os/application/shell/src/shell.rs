@@ -17,7 +17,8 @@ use logger::info;
 use runtime::*;
 use service::{
     command_line_service::CommandLineService, drawer_service::DrawerService,
-    history_service::HistoryService, janitor_service::JanitorService, service::Service,
+    history_service::HistoryService, janitor_service::JanitorService, lexer_service::LexerService,
+    service::Service,
 };
 use terminal::read::read_mixed;
 
@@ -26,6 +27,7 @@ struct Shell {
     context: Context,
     // Required services
     command_line_service: CommandLineService,
+    lexer_service: LexerService,
     drawer_service: DrawerService,
     janitor_service: JanitorService,
     // Optional services
@@ -39,6 +41,7 @@ impl Shell {
             context: Context::new(),
             // Required services
             command_line_service: CommandLineService::new(),
+            lexer_service: LexerService::new(),
             drawer_service: DrawerService::new(),
             janitor_service: JanitorService::new(),
             // Optional services
@@ -62,18 +65,21 @@ impl Shell {
 
             self.command_line_service.run(key, &mut self.context);
             info!(
-                "Command line: [ cursor: {:?} ]",
-                self.context.cursor_position
+                "After Command line: [ cursor: {:?}, dirty_offset: {:?}, line: {:?} ]",
+                self.context.cursor_position, self.context.dirty_offset, self.context.line
             );
-            info!(
-                "Command line: [ dirty_offset: {:?} ]",
-                self.context.dirty_offset
-            );
-            info!("Command line: [ line: {:?} ]", self.context.line);
+
             self.history_service
                 .as_mut()
                 .unwrap() // TODO Check properly if enabled
                 .run(key, &mut self.context);
+            // info!(
+            //     "After History: [ cursor: {:?}, dirty_offset: {:?}, line: {:?} ]",
+            //     self.context.cursor_position, self.context.dirty_offset, self.context.line
+            // );
+
+            self.lexer_service.run(key, &mut self.context);
+
             self.drawer_service.run(key, &mut self.context);
             self.janitor_service.run(key, &mut self.context);
         }

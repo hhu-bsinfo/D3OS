@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::lexer::lexer::Token;
+use crate::service::lexer_service::Token;
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -65,5 +65,17 @@ impl Context {
     /// Returns total line len including prefix and suffix
     pub fn total_line_len(&self) -> usize {
         self.line_prefix.len() + self.line.len() + self.line_suffix.len()
+    }
+
+    /// Returns the length of tokens, including inner lengths
+    pub fn inner_tokens_len(&self) -> usize {
+        self.tokens
+            .iter()
+            .map(|token| match token {
+                Token::Command(s) => s.len(),
+                Token::Argument(s) => s.len(),
+                _ => 1,
+            })
+            .sum()
     }
 }
