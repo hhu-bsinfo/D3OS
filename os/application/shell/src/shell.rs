@@ -6,20 +6,23 @@ mod build_in;
 mod context;
 mod controller;
 mod executable;
-mod executor;
-mod lexer;
 mod service;
 mod sub_module;
 
+use core::cell::RefCell;
+
+use alloc::rc::Rc;
 use context::Context;
 use logger::info;
 #[allow(unused_imports)]
 use runtime::*;
 use service::{
     command_line_service::CommandLineService, drawer_service::DrawerService,
-    history_service::HistoryService, janitor_service::JanitorService, lexer_service::LexerService,
-    parser_service::ParserService, service::Service,
+    executor_service::ExecutorService, history_service::HistoryService,
+    janitor_service::JanitorService, lexer_service::LexerService, parser_service::ParserService,
+    service::Service,
 };
+use sub_module::alias::Alias;
 use terminal::read::read_mixed;
 
 struct Shell {
@@ -31,12 +34,15 @@ struct Shell {
     drawer_service: DrawerService,
     parser_service: ParserService,
     janitor_service: JanitorService,
+    executor_service: ExecutorService,
     // Optional services
     history_service: Option<HistoryService>,
+    alias_service: Rc<RefCell<Alias>>,
 }
 
 impl Shell {
     pub fn new() -> Self {
+        let alias_service = Rc::new(RefCell::new(Alias::new()));
         Self {
             // Context
             context: Context::new(),
@@ -45,9 +51,11 @@ impl Shell {
             lexer_service: LexerService::new(),
             drawer_service: DrawerService::new(),
             parser_service: ParserService::new(),
+            executor_service: ExecutorService::new(alias_service.clone()),
             janitor_service: JanitorService::new(),
             // Optional services
             history_service: Some(HistoryService::new()),
+            alias_service,
         }
     }
 
@@ -85,6 +93,8 @@ impl Shell {
             self.drawer_service.run(key, &mut self.context);
 
             self.parser_service.run(key, &mut self.context);
+
+            self.executor_service.run(key, &mut self.context);
 
             self.janitor_service.run(key, &mut self.context);
         }
