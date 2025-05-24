@@ -9,7 +9,7 @@ use crate::{
         echo::EchoBuildIn, exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn,
         unalias::UnaliasBuildIn,
     },
-    parser::executable::{Executable, Job},
+    executable::{Executable, Job},
     sub_module::alias::Alias,
 };
 

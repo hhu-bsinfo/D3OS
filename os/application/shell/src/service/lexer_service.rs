@@ -49,9 +49,11 @@ pub struct LexerService {
 }
 
 impl Service for LexerService {
-    fn run(&mut self, _event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
-        self.try_detokenize(context);
-        return self.tokenize(context);
+    fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
+        match event {
+            DecodedKey::Unicode('\n') => self.on_enter(),
+            _ => self.on_other_key(context),
+        }
     }
 }
 
@@ -63,6 +65,17 @@ impl LexerService {
             // alias,
             // alias_state: AliasState::Pending,
         }
+    }
+
+    fn on_enter(&mut self) -> Result<(), ServiceError> {
+        self.quote_state = QuoteState::Pending;
+        self.ambiguous_state.clear();
+        Ok(())
+    }
+
+    fn on_other_key(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+        self.try_detokenize(context);
+        return self.tokenize(context);
     }
 
     fn try_detokenize(&mut self, context: &mut Context) -> Result<(), ServiceError> {

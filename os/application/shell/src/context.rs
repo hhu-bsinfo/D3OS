@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::service::lexer_service::Token;
+use crate::{executable::Executable, service::lexer_service::Token};
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -16,6 +16,8 @@ pub struct Context {
     pub(crate) cursor_position: usize,
     /// Generated tokens based on line (does not contain prefix and suffix)
     pub(crate) tokens: Vec<Token>,
+    /// Generated executable based on tokens
+    pub(crate) executable: Option<Executable>,
 }
 
 impl Context {
@@ -27,6 +29,7 @@ impl Context {
             dirty_offset: 0,
             cursor_position: 0,
             tokens: Vec::new(),
+            executable: None,
         }
     }
 

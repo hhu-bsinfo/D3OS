@@ -5,9 +5,9 @@ extern crate alloc;
 mod build_in;
 mod context;
 mod controller;
+mod executable;
 mod executor;
 mod lexer;
-mod parser;
 mod service;
 mod sub_module;
 
@@ -18,7 +18,7 @@ use runtime::*;
 use service::{
     command_line_service::CommandLineService, drawer_service::DrawerService,
     history_service::HistoryService, janitor_service::JanitorService, lexer_service::LexerService,
-    service::Service,
+    parser_service::ParserService, service::Service,
 };
 use terminal::read::read_mixed;
 
@@ -29,6 +29,7 @@ struct Shell {
     command_line_service: CommandLineService,
     lexer_service: LexerService,
     drawer_service: DrawerService,
+    parser_service: ParserService,
     janitor_service: JanitorService,
     // Optional services
     history_service: Option<HistoryService>,
@@ -43,6 +44,7 @@ impl Shell {
             command_line_service: CommandLineService::new(),
             lexer_service: LexerService::new(),
             drawer_service: DrawerService::new(),
+            parser_service: ParserService::new(),
             janitor_service: JanitorService::new(),
             // Optional services
             history_service: Some(HistoryService::new()),
@@ -81,6 +83,9 @@ impl Shell {
             self.lexer_service.run(key, &mut self.context);
 
             self.drawer_service.run(key, &mut self.context);
+
+            self.parser_service.run(key, &mut self.context);
+
             self.janitor_service.run(key, &mut self.context);
         }
     }

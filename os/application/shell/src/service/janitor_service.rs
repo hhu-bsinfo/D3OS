@@ -31,6 +31,7 @@ impl JanitorService {
         context.line_prefix.clear();
         context.line_suffix.clear();
         context.tokens.clear();
+        context.executable = None;
         context.cursor_position = 0;
         context.dirty_offset = 0;
         Ok(())
