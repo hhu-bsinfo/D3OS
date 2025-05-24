@@ -43,9 +43,9 @@ impl HistoryService {
         }
         if self.history_position == 0 {
             self.history_position = -1;
-            context.line.dirty_mut().clear();
-            context.visual_line.dirty_mut().clear();
-            context.cursor_position.set(0);
+            context.line.clear();
+            context.set_dirty_offset_from_line(0);
+            context.cursor_position = 0;
             return Ok(());
         }
 
@@ -65,12 +65,12 @@ impl HistoryService {
 
     fn move_history(&mut self, context: &mut Context, step: isize) -> Result<(), ServiceError> {
         self.history_position += step;
-        let history = self
+        *context = self
             .history
             .get(self.history_position as usize)
             .unwrap()
             .clone();
-        *context = history;
+        context.set_dirty_offset_from_line(0);
 
         Ok(())
     }

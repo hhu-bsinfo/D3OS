@@ -61,19 +61,21 @@ impl Shell {
             info!("Read key: {:?}", key);
 
             self.command_line_service.run(key, &mut self.context);
-            info!("Command line: {:?}", self.context);
-
+            info!(
+                "Command line: [ cursor: {:?} ]",
+                self.context.cursor_position
+            );
+            info!(
+                "Command line: [ dirty_offset: {:?} ]",
+                self.context.dirty_offset
+            );
+            info!("Command line: [ line: {:?} ]", self.context.line);
             self.history_service
                 .as_mut()
                 .unwrap() // TODO Check properly if enabled
                 .run(key, &mut self.context);
-            info!("History: {:?}", self.context);
-
             self.drawer_service.run(key, &mut self.context);
-            info!("Drawer: {:?}", self.context);
-
             self.janitor_service.run(key, &mut self.context);
-            info!("Janitor: {:?}", self.context);
         }
     }
 }

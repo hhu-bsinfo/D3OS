@@ -2,73 +2,68 @@ use alloc::vec::Vec;
 
 use crate::lexer::lexer::Token;
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum VisualType {
-    Indicator(char),
-    Default(char),
-    AutoCompleteHint(char),
-}
-
-#[derive(Debug, Clone)]
-pub struct ContextItem<T> {
-    is_dirty: bool,
-    data: T,
-}
-
-impl<T> ContextItem<T> {
-    pub const fn new(data: T) -> Self {
-        Self {
-            is_dirty: true,
-            data,
-        }
-    }
-
-    pub fn set(&mut self, data: T) {
-        self.is_dirty = true;
-        self.data = data;
-    }
-
-    pub fn get(&self) -> &T {
-        &self.data
-    }
-
-    /// When modifying existing data instead of overwriting
-    pub fn dirty_mut(&mut self) -> &mut T {
-        self.is_dirty = true;
-        &mut self.data
-    }
-
-    pub fn is_dirty(&self) -> bool {
-        self.is_dirty
-    }
-
-    pub fn cleanup(&mut self) {
-        self.is_dirty = false;
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Context {
-    pub(crate) line: ContextItem<Vec<char>>,
-    pub(crate) cursor_position: ContextItem<usize>,
-    pub(crate) visual_line: ContextItem<Vec<VisualType>>,
-    pub(crate) tokens: ContextItem<Vec<Token>>,
+    /// Current command line
+    pub(crate) line: Vec<char>,
+    /// Prefix for command line (Indicator)
+    pub(crate) line_prefix: Vec<char>,
+    /// Suffix for command line (Auto complete)
+    pub(crate) line_suffix: Vec<char>,
+    /// Tells a service to skip validation until reached (INCLUDING PREFIX AND SUFFIX)
+    pub(crate) dirty_offset: usize,
+    /// Current cursor position (INCLUDING PREFIX AND SUFFIX)
+    pub(crate) cursor_position: usize,
+    /// Generated tokens based on line (does not contain prefix and suffix)
+    pub(crate) tokens: Vec<Token>,
 }
 
 impl Context {
     pub const fn new() -> Self {
         Self {
-            line: ContextItem::new(Vec::new()),
-            cursor_position: ContextItem::new(0),
-            visual_line: ContextItem::new(Vec::new()),
-            tokens: ContextItem::new(Vec::new()),
+            line: Vec::new(),
+            line_prefix: Vec::new(),
+            line_suffix: Vec::new(),
+            dirty_offset: 0,
+            cursor_position: 0,
+            tokens: Vec::new(),
         }
     }
 
-    pub fn cleanup(&mut self) {
-        self.line.cleanup();
-        self.cursor_position.cleanup();
-        self.visual_line.cleanup();
-        self.tokens.cleanup();
+    /// Returns index, at which item line_prefix is dirty
+    pub fn get_dirty_line_prefix_offset(&self) -> usize {
+        self.dirty_offset.min(self.line_prefix.len())
+    }
+
+    /// Returns index, at which item line is dirty
+    pub fn get_dirty_line_offset(&self) -> usize {
+        self.dirty_offset.min(self.line.len())
+    }
+
+    /// Returns index, at which item line_suffix is dirty
+    pub fn get_dirty_line_suffix_offset(&self) -> usize {
+        self.dirty_offset.min(self.line_suffix.len())
+    }
+
+    /// Set dirty offset to index relative to line_prefix
+    pub fn set_dirty_offset_from_line_prefix(&mut self, index: usize) {
+        self.dirty_offset = index;
+    }
+
+    /// Set dirty offset to index relative to line
+    pub fn set_dirty_offset_from_line(&mut self, index: usize) {
+        let offset = self.line_prefix.len();
+        self.dirty_offset = offset + index;
+    }
+
+    /// Set dirty offset to index relative to line_suffix
+    pub fn set_dirty_offset_from_line_suffix(&mut self, index: usize) {
+        let offset = self.line_prefix.len() + self.line.len();
+        self.dirty_offset = offset + index;
+    }
+
+    /// Returns total line len including prefix and suffix
+    pub fn total_line_len(&self) -> usize {
+        self.line_prefix.len() + self.line.len() + self.line_suffix.len()
     }
 }

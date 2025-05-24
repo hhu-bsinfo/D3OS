@@ -1,4 +1,4 @@
-use terminal::{DecodedKey, print};
+use terminal::DecodedKey;
 
 use crate::context::Context;
 
@@ -10,7 +10,7 @@ impl Service for JanitorService {
     fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
         match event {
             DecodedKey::Unicode('\n') => self.on_enter(context),
-            _ => Ok(()),
+            _ => self.on_other_key(context),
         }
     }
 }
@@ -20,13 +20,19 @@ impl JanitorService {
         Self {}
     }
 
+    fn on_other_key(&self, context: &mut Context) -> Result<(), ServiceError> {
+        context.dirty_offset = context.total_line_len();
+
+        Ok(())
+    }
+
     fn on_enter(&self, context: &mut Context) -> Result<(), ServiceError> {
-        context.line.dirty_mut().clear();
-        context.visual_line.dirty_mut().clear();
-        context.cursor_position.set(0);
-        context.tokens.dirty_mut().clear();
-        context.cleanup();
-        print!("\n");
+        context.line.clear();
+        context.line_prefix.clear();
+        context.line_suffix.clear();
+        context.tokens.clear();
+        context.cursor_position = 0;
+        context.dirty_offset = 0;
         Ok(())
     }
 }
