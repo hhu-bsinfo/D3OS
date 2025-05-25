@@ -1,4 +1,5 @@
 use concurrent::thread::switch;
+use logger::{error, warn};
 use terminal::{println, DecodedKey};
 use text_buffer::TextBuffer;
 use alloc::string::String;
@@ -95,7 +96,7 @@ impl <'b>Document<'b> {
             DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret +=1,
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
-            DecodedKey::RawKey(_) => todo!()
+            DecodedKey::RawKey(k) => warn!("TextEditor can't process input: {:?}", k)
         }
     }
 
