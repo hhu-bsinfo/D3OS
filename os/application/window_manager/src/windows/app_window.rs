@@ -1,11 +1,17 @@
-use alloc::{boxed::Box, collections::LinkedList, rc::Rc, vec::Vec};
+use alloc::boxed::Box;
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
-use hashbrown::HashMap;
-use spin::RwLock;
 
 use crate::{
-    components::{component::Component, container::{basic_container::{BasicContainer, LayoutMode, StretchMode}, Container, ContainerStylingBuilder}}, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, signal::{ComponentRef, ComponentRefExt}, utils::get_element_cursor_from_orderer, Interaction, WindowManager, SCREEN
+    components::{
+        container::{
+            basic_container::{BasicContainer, LayoutMode, StretchMode},
+            Container, ContainerStylingBuilder,
+        },
+    },
+    config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR},
+    signal::{ComponentRef, ComponentRefExt},
+    Interaction, WindowManager, SCREEN,
 };
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
@@ -66,11 +72,18 @@ impl AppWindow {
 
     pub fn insert_component(&mut self, new_component: ComponentRef, parent: ComponentRef) {
         // Add the component to the parent container
-        parent.write().as_container_mut().expect("parent must be a container").add_child(new_component.clone());
+        parent
+            .write()
+            .as_container_mut()
+            .expect("parent must be a container")
+            .add_child(new_component.clone());
     }
 
     fn focus_component(&mut self, comp: Option<ComponentRef>) {
-        let focused_id = self.focused_component.as_ref().and_then(|comp| Some(comp.read().get_id()));
+        let focused_id = self
+            .focused_component
+            .as_ref()
+            .and_then(|comp| Some(comp.read().get_id()));
         let new_id = comp.as_ref().and_then(|comp| Some(comp.read().get_id()));
 
         if focused_id == new_id {
@@ -104,14 +117,19 @@ impl AppWindow {
     pub fn interact_with_focused_component(&mut self, interaction: Interaction) -> bool {
         if let Some(focused_component) = &self.focused_component {
             // prüfe ob Komponente interagierbar ist und bekomme Callback
-            let callback: Option<Box<dyn FnOnce()>> = if let Some(interactable) = focused_component.write().as_interactable_mut() {
-                match interaction {
-                    Interaction::Keyboard(keyboard_press) => interactable.consume_keyboard_press(keyboard_press),
-                    Interaction::Mouse(mouse_event) => interactable.consume_mouse_event(&mouse_event),
-                }
-            } else {
-                None
-            };
+            let callback: Option<Box<dyn FnOnce()>> =
+                if let Some(interactable) = focused_component.write().as_interactable_mut() {
+                    match interaction {
+                        Interaction::Keyboard(keyboard_press) => {
+                            interactable.consume_keyboard_press(keyboard_press)
+                        }
+                        Interaction::Mouse(mouse_event) => {
+                            interactable.consume_mouse_event(&mouse_event)
+                        }
+                    }
+                } else {
+                    None
+                };
 
             // führe Callback aus
             if let Some(callback) = callback {
@@ -140,8 +158,11 @@ impl AppWindow {
             return;
         }
 
-        let next_component = self.root_container.write()
-            .as_container_mut().unwrap()
+        let next_component = self
+            .root_container
+            .write()
+            .as_container_mut()
+            .unwrap()
             .focus_next_child();
 
         self.focus_component(next_component);
@@ -152,8 +173,11 @@ impl AppWindow {
             return;
         }
 
-        let prev_component = self.root_container.write()
-            .as_container_mut().unwrap()
+        let prev_component = self
+            .root_container
+            .write()
+            .as_container_mut()
+            .unwrap()
             .focus_prev_child();
 
         self.focus_component(prev_component);
@@ -164,13 +188,23 @@ impl AppWindow {
             return;
         }
 
-        let new_component = self.root_container.write().as_container_mut().unwrap().focus_child_at(pos);
+        let new_component = self
+            .root_container
+            .write()
+            .as_container_mut()
+            .unwrap()
+            .focus_child_at(pos);
+        
         self.focus_component(new_component);
     }
 
     /// Rescales the window and marks it as dirty.
     pub fn rescale_window_in_place(&mut self, new_abs_rect: RectData) {
-        self.root_container.write().as_container_mut().unwrap().move_to(new_abs_rect);
+        self.root_container
+            .write()
+            .as_container_mut()
+            .unwrap()
+            .move_to(new_abs_rect);
 
         self.mark_window_dirty();
     }
@@ -178,7 +212,11 @@ impl AppWindow {
     /// Rescales and moves the window and marks it as dirty.
     pub fn rescale_window_after_move(&mut self, new_abs_rect: RectData) {
         self.rect_data = new_abs_rect;
-        self.root_container.write().as_container_mut().unwrap().move_to(new_abs_rect);
+        self.root_container
+            .write()
+            .as_container_mut()
+            .unwrap()
+            .move_to(new_abs_rect);
 
         self.mark_window_dirty();
     }
@@ -253,7 +291,10 @@ impl AppWindow {
         }
 
         // Draw components
-        let focused_id = self.focused_component.as_ref().and_then(|comp| Some(comp.read().get_id()));
+        let focused_id = self
+            .focused_component
+            .as_ref()
+            .and_then(|comp| Some(comp.read().get_id()));
         self.root_container.write().draw(focused_id);
 
         self.is_dirty = false;
