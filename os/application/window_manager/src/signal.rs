@@ -9,6 +9,16 @@ use crate::components::component::Component;
 pub type ComponentRef = Rc<RwLock<Box<dyn Component>>>; // Referenz zu einer Komponente
 pub type Stateful<T> = Rc<Signal<T>>;
 
+pub trait ComponentRefExt {
+    fn from_component(component: Box<dyn Component>) -> ComponentRef;
+}
+
+impl ComponentRefExt for ComponentRef {
+    fn from_component(component: Box<dyn Component>) -> ComponentRef {
+        Rc::new(RwLock::new(component))
+    }
+}
+
 pub struct Signal<T> {
     value: RwLock<T>,
     dependents: RwLock<HashSet<HashedWeak<RwLock<Box<dyn Component>>>>>, // Abhängige Komponenten

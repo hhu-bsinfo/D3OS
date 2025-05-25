@@ -3,7 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{color::{Color, WHITE, YELLOW}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
 use spin::{rwlock::RwLock};
 
-use crate::{signal::{ComponentRef, Signal, Stateful}, WindowManager, SCREEN};
+use crate::{signal::{ComponentRef, ComponentRefExt, Signal, Stateful}, WindowManager, SCREEN};
 
 use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
@@ -47,7 +47,7 @@ impl Label {
             }
         );
 
-        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(label));
+        let component = ComponentRef::from_component(label);
 
         signal.register_component(Rc::clone(&component));
 

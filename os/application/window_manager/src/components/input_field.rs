@@ -8,7 +8,7 @@ use spin::RwLock;
 use terminal::DecodedKey;
 
 use crate::{
-    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, WindowManager
+    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::{ComponentRef, ComponentRefExt}, WindowManager
 };
 
 use super::{component::{Casts, Clearable, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
@@ -83,7 +83,7 @@ impl InputField {
             }
         );
 
-        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(input_field));
+        let component = ComponentRef::from_component(input_field);
 
         component
     }

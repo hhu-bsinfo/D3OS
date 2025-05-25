@@ -20,7 +20,7 @@ use crate::{
         },
     },
     mouse_state::MouseEvent,
-    signal::{ComponentRef, Signal},
+    signal::{ComponentRef, ComponentRefExt, Signal},
     SCREEN,
 };
 
@@ -125,8 +125,8 @@ impl WorkspaceSelectionWindow {
         action_container.add_child(close_workspace_button.clone());
         action_container.add_child(new_workspace_button.clone());
 
-        let button_container: ComponentRef = Rc::new(RwLock::new(button_container));
-        let action_container: ComponentRef = Rc::new(RwLock::new(action_container));
+        let button_container = ComponentRef::from_component(button_container);
+        let action_container = ComponentRef::from_component(action_container);
 
         root_container.add_child(button_container.clone());
         root_container.add_child(action_container.clone());

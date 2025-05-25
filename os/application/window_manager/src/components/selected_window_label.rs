@@ -6,7 +6,7 @@ use graphic::{
 };
 use spin::RwLock;
 
-use crate::{config::FOCUSED_BG_COLOR, WindowManager};
+use crate::{config::FOCUSED_BG_COLOR, signal::ComponentRef, WindowManager};
 
 use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
@@ -23,7 +23,7 @@ pub struct SelectedWorkspaceLabel {
     pub pos: Vertex,
     pub text: String,
     pub tied_workspace: usize,
-    state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+    state_dependencies: Vec<ComponentRef>,
     is_hidden: bool,
     styling: ComponentStyling,
 }
@@ -33,7 +33,7 @@ impl SelectedWorkspaceLabel {
         pos: Vertex,
         text: String,
         tied_workspace: usize,
-        state_dependencies: Vec<Rc<RwLock<Box<dyn Component>>>>,
+        state_dependencies: Vec<ComponentRef>,
         styling: Option<ComponentStyling>,
     ) -> Self {
         Self {

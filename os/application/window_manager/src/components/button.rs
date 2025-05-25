@@ -11,7 +11,7 @@ use terminal::DecodedKey;
 use crate::{
     config::INTERACT_BUTTON,
     mouse_state::{ButtonState, MouseEvent},
-    signal::{ComponentRef, Signal, Stateful},
+    signal::{ComponentRef, ComponentRefExt, Signal, Stateful},
     WindowManager,
 };
 
@@ -66,7 +66,7 @@ impl Button {
             styling: styling.unwrap_or_default(),
         });
 
-        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(button));
+        let component = ComponentRef::from_component(button);
 
         if let Some(signal) = signal_copy {
             signal.register_component(Rc::clone(&component));
