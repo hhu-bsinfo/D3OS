@@ -1,14 +1,15 @@
+/*
+    The workspace selection window is displayed above the windows
+    and allows the user to switch workspaces or create/close them.
+*/
+
 use alloc::{
     boxed::Box,
-    rc::Rc,
     string::{String, ToString},
-    vec::Vec,
 };
 use drawer::{rect_data::RectData, vertex::Vertex};
-use logger::debug;
-use graphic::color::{Color, BLUE, RED};
+use graphic::color::{BLUE, RED};
 use hashbrown::HashMap;
-use spin::RwLock;
 
 use crate::{
     components::{
@@ -55,7 +56,7 @@ impl WorkspaceSelectionWindow {
         // Root container that will hold all buttons
         let mut root_container = Box::new(BasicContainer::new(
             screen_rect,
-            LayoutMode::Horizontal(AlignmentMode::Left),
+            LayoutMode::None,
             StretchMode::Fill,
             None,
         ));
@@ -67,7 +68,7 @@ impl WorkspaceSelectionWindow {
         let button_container = Box::new(BasicContainer::new(
             RectData {
                 top_left: Vertex::zero(),
-                width: 600,
+                width: 0,
                 height: 0,
             },
             LayoutMode::Horizontal(AlignmentMode::Left),
@@ -79,7 +80,7 @@ impl WorkspaceSelectionWindow {
         let mut action_container = Box::new(BasicContainer::new(
             RectData {
                 top_left: Vertex::zero(),
-                width: 195,
+                width: 0,
                 height: 0,
             },
             LayoutMode::Horizontal(AlignmentMode::Right),
@@ -90,7 +91,7 @@ impl WorkspaceSelectionWindow {
         // Action buttons
         let rel_rect = RectData {
             top_left: Vertex::zero(),
-            width: 170,
+            width: 50,
             height: 0,
         };
 
@@ -155,6 +156,7 @@ impl WorkspaceSelectionWindow {
             .draw(focus_id);
     }
 
+    /// Adds a new buttons for the given workspace id
     pub fn register_workspace(&mut self, workspace_id: usize) {
         let rel_rect = RectData {
             top_left: Vertex::zero(),
@@ -179,6 +181,7 @@ impl WorkspaceSelectionWindow {
             .add_child(button);
     }
 
+    /// Removes the designated button the the given workspace id
     pub fn unregister_workspace(&mut self, workspace_id: usize) {
         // Remove the button from the list
         let button = self.workspace_buttons.remove(&workspace_id);
