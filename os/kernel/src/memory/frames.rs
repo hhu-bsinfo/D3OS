@@ -9,8 +9,9 @@
    ║   - insert             insert free frame region detected during boot    ║
    ║   - phys_limit         get the highest phys. addr. managed by the alloc.║
    ║   - reserve            permanently reserve a range of frames            ║
+   ║   - frame_from_u64     convert a u64 address to a PhysFrame             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 20.2.2025                    ║
+   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 24.5.2025                    ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use alloc::format;
@@ -22,7 +23,7 @@ use spin::Mutex;
 use spin::once::Once;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::PhysFrame;
+use x86_64::structures::paging::{PhysFrame, Size4KiB};
 use crate::memory::PAGE_SIZE;
 
 static PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> = Mutex::new(PageFrameListAllocator::new());
@@ -32,6 +33,15 @@ static PHYS_LIMIT: Once<Mutex<Cell<PhysFrame>>> = Once::new();
 pub fn allocator_locked() -> bool {
     PAGE_FRAME_ALLOCATOR.is_locked()
 }
+
+/// Helper function to convert a u64 address to a PhysFrame.
+/// The given address is aligned up to the page size (4 KiB).
+pub fn frame_from_u64(addr: u64) -> Result<PhysFrame<Size4KiB>, x86_64::structures::paging::page::AddressNotAligned> {
+    let pa = PhysAddr::new(addr).align_up(PAGE_SIZE as u64);
+    PhysFrame::from_start_address(pa)
+}
+
+
 
 /// Insert an available memory `region` obtained during the boot process.
 pub unsafe fn insert(mut region: PhysFrameRange) {

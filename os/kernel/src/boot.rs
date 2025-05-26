@@ -13,17 +13,19 @@ use crate::device::ps2::Keyboard;
 use crate::device::qemu_cfg;
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
+use crate::memory::frames;
 use crate::memory::nvmem::Nfit;
+use crate::memory::pages;
 use crate::memory::pages::page_table_index;
-use crate::memory::vmm::{VirtualMemoryArea, VmaType};
+use crate::memory::vmm::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE, nvmem};
 use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, init_cpu_info, init_acpi_tables, init_apic, init_initrd,
-    init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network,
-    process_manager, scheduler, serial_port, terminal, timer, tss,
+    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_cpu_info,
+    init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory,
+    network, process_manager, scheduler, serial_port, terminal, timer, tss,
 };
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
@@ -58,8 +60,7 @@ use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::page::PageRange;
-use x86_64::structures::paging::{Page, PageTable, PageTableFlags, PhysFrame};
+use x86_64::structures::paging::{PageTable, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
 
 // import labels from linker script 'link.ld'
@@ -133,24 +134,47 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         .framebuffer_tag()
         .expect("No framebuffer information provided by bootloader!")
         .expect("Unknown framebuffer type!");
-    let fb_start_page = Page::from_start_address(VirtAddr::new(fb_info.address()))
-        .expect("Framebuffer address is not page aligned");
-    let fb_end_page = Page::from_start_address(
-        VirtAddr::new(fb_info.address() + (fb_info.height() * fb_info.pitch()) as u64)
-            .align_up(PAGE_SIZE as u64),
-    )
-    .unwrap();
-    let vma = VirtualMemoryArea::new_with_tag(
-        PageRange { start: fb_start_page, end: fb_end_page },
-        VmaType::DeviceMemory,
-        "framebuffer",
-    );
-    kernel_process.virtual_address_space.add_vma(vma);
-    kernel_process.virtual_address_space.map(
-        vma,
-        MemorySpace::Kernel,
-        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
-    );
+    let fb_start_phys_addr = fb_info.address();
+    let fb_end_phys_addr = fb_start_phys_addr + (fb_info.height() * fb_info.pitch()) as u64;
+
+    // Start PhysFrame for the Framebuffer
+    let fb_start_page_frame = frames::frame_from_u64(fb_start_phys_addr)
+        .expect("Framebuffer start address is not page aligned");
+
+    // End PhysFrame for the Framebuffer
+    let fb_end_page_frame = frames::frame_from_u64(fb_end_phys_addr)
+        .expect("Framebuffer end address is not page aligned");
+
+    let fb_frame_range = PhysFrameRange {
+        start: fb_start_page_frame,
+        end: fb_end_page_frame,
+    };
+
+    // Start Page for the Framebuffer
+    let fb_start_page = pages::page_from_u64(fb_start_phys_addr)
+        .expect("Framebuffer start address is not page aligned");
+
+    // Allocate virtual memory area for the Framebuffer and add it to the kernel process
+    let vma = kernel_process
+        .virtual_address_space
+        .alloc_vma(
+            Some(fb_start_page),
+            fb_frame_range.len(),
+            MemorySpace::Kernel,
+            VmaType::DeviceMemory,
+            "framebuffer",
+        )
+        .expect("alloc_vma failed");
+
+    // Map linear framebuffer in the kernel process address space
+    kernel_process
+        .virtual_address_space
+        .map_pfr_for_vma(
+            &vma,
+            fb_frame_range,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
+        )
+        .expect("map_pfr_for_vma failed for LAPIC");
 
     // Initialize terminal kernel thread and enable terminal logging
     init_terminal(
@@ -371,7 +395,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         bootloader_name
     );
 
-    // Dump information about all processes (including VMAs) 
+    // Dump information about all processes (including VMAs)
     process_manager().read().dump();
 
     // Start APIC timer & scheduler

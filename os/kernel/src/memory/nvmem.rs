@@ -1,4 +1,15 @@
-use crate::memory::vmm::{VirtualMemoryArea, VmaType};
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: nvmem                                                           ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Support of NVRAM.                                                       ║
+   ║   - init   find and map NVRAM in kernel space                           ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 24.5.2025                    ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
+use crate::memory::frames;
+use crate::memory::pages;
+use crate::memory::vmm::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::{acpi_tables, process_manager};
 use acpi::AcpiTable;
@@ -9,9 +20,8 @@ use core::cmp::PartialEq;
 use core::ptr;
 use log::info;
 use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::page::PageRange;
-use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
-use x86_64::{PhysAddr, VirtAddr};
+use x86_64::structures::paging::{PageTableFlags, PhysFrame};
+use x86_64::PhysAddr;
 
 #[allow(dead_code)]
 #[repr(u16)]
@@ -213,9 +223,14 @@ impl FlushHintAddressStructure {
 }
 
 pub fn init() {
-    if let Ok(nfit) = acpi_tables().lock().find_table::<Nfit>() {
         info!("Found NFIT table");
 
+        let process = process_manager()
+                .read()
+                .kernel_process()
+                .expect("Failed to get kernel process");
+                if let Ok(nfit) = acpi_tables().lock().find_table::<Nfit>() {
+        
         // Search NFIT table for non-volatile memory ranges
         for spa in nfit.get_phys_addr_ranges() {
             // Copy values to avoid unaligned access of packed struct fields
@@ -228,24 +243,27 @@ pub fn init() {
             );
 
             // Map non-volatile memory range to kernel address space
-            let start_page = Page::from_start_address(VirtAddr::new(address)).unwrap();
-            let vma = VirtualMemoryArea::new_with_tag(
-                PageRange { start: start_page, end: start_page + (length / PAGE_SIZE as u64) },
+            let start_page = pages::page_from_u64(address).expect("NVRAM address is not page aligned");
+            let start_page_frame = frames::frame_from_u64(address).expect("NVRAM address is not page aligned");
+
+            // Allocate virtual memory area for the non-volatile memory 
+            let vma = process.virtual_address_space.alloc_vma(
+                Some(start_page),
+                length / PAGE_SIZE as u64,
+                MemorySpace::Kernel,
                 VmaType::DeviceMemory,
-                "nfit",
-            );
-            let process = process_manager()
-                .read()
-                .kernel_process()
-                .expect("Failed to get kernel process");
-            process.virtual_address_space.add_vma(vma);
-            process
-                .virtual_address_space
-                .map(
-                    vma,
-                    MemorySpace::Kernel,
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                );
+                "NVRAM",
+            ).expect("alloc_vma failed for NVRAM");
+
+            // Map non-volatile memory to the kernel address space
+            process.virtual_address_space.map_pfr_for_vma(
+                &vma,
+                PhysFrameRange {
+                    start: start_page_frame,
+                    end: start_page_frame + (length / PAGE_SIZE as u64),
+                },
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+            ).expect("map_pfr_for_vma failed for NVRAM");
         }
     }
 }

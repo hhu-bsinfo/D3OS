@@ -8,8 +8,9 @@
    ║   - set_flags     set flags of page table entries for a range of pages  ║
    ║   - translate     translate a virtual address to a physical address     ║
    ║   - unmap         unmap a range of pages                                ║
+   ║   - page_from_u64 convert a u64 address to a Page                       ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 20.2.2025                    ║
+   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 24.5.2025                    ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -22,8 +23,16 @@ use x86_64::{PhysAddr, VirtAddr};
 use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::{PageRange,Page};
+use x86_64::structures::paging::Size4KiB;
 
 use crate::memory::{MemorySpace, PAGE_SIZE, frames};
+
+
+/// Helper function to convert a u64 address to a PhysFrame.
+pub fn page_from_u64(addr: u64) -> Result<Page<Size4KiB>, x86_64::structures::paging::page::AddressNotAligned> {
+    Page::from_start_address(VirtAddr::new(addr))
+}
+
 
 /// Address space for a process
 pub struct Paging {
