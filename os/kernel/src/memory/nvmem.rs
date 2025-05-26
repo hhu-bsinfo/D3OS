@@ -9,7 +9,7 @@
 */
 use crate::memory::frames;
 use crate::memory::pages;
-use crate::memory::vmm::VmaType;
+use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::{acpi_tables, process_manager};
 use acpi::AcpiTable;

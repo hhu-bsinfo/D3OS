@@ -11,7 +11,7 @@ use x86_64::VirtAddr;
 use x86_64::structures::paging::Page;
 use log::info;
 
-use crate::memory::vmm::VmaType;
+use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process_manager;
 use syscall::return_vals::Errno;

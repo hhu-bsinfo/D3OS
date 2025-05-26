@@ -31,7 +31,7 @@ use crate::interrupt::interrupt_dispatcher::InterruptDispatcher;
 use crate::log::Logger;
 use crate::memory::PAGE_SIZE;
 use crate::memory::acpi_handler::AcpiHandler;
-use crate::memory::kheap::KernelAllocator;
+use crate::memory::heap::KernelAllocator;
 use crate::process::process_manager::ProcessManager;
 use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;

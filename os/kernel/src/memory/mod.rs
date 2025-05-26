@@ -1,10 +1,11 @@
 pub mod vmm;
+pub mod vma;
 pub mod pages;
 pub mod frames;
 
 pub mod nvmem;
 
-pub mod kheap;
+pub mod heap;
 pub mod stack;
 pub mod acpi_handler;
 

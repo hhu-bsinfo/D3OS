@@ -1,7 +1,7 @@
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::{frames,pages,MemorySpace};
-use crate::memory::vmm::VmaType;
+use crate::memory::vma::VmaType;
 use crate::{acpi_tables, allocator, interrupt_dispatcher, process_manager, scheduler, timer};
 use acpi::InterruptModel;
 use acpi::madt::Madt;

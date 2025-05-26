@@ -1,16 +1,17 @@
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::memory::vmm::VmaType;
+use crate::memory::vma::VmaType;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr;
 use spin::Mutex;
 use x86_64::registers::control::Cr2;
-use x86_64::{set_general_handler, VirtAddr};
+use x86_64::set_general_handler;
 use x86_64::structures::idt::InterruptStackFrame;
 use x86_64::structures::paging::{Page, PageTableFlags};
+use x86_64::structures::paging::page::PageRange;
 use crate::{apic, idt, interrupt_dispatcher, scheduler};
-use crate::memory::{MemorySpace, PAGE_SIZE};
+use crate::memory::MemorySpace;
 
 #[repr(u8)]
 #[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
@@ -219,8 +220,7 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
                     // Found a user stack in which the page fault occurred
 
                     let fault_page = Page::containing_address(fault_addr);
-                    thread.process().virtual_address_space
-                        .map_single(*stack, fault_page, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+                    thread.process().virtual_address_space.map_partial_vma(*stack, PageRange { start: fault_page, end: fault_page + 1, }, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
                     fault_handled = true;
                 }

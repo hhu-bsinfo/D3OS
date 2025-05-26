@@ -17,7 +17,7 @@ use crate::memory::frames;
 use crate::memory::nvmem::Nfit;
 use crate::memory::pages;
 use crate::memory::pages::page_table_index;
-use crate::memory::vmm::VmaType;
+use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE, nvmem};
 use crate::network::rtl8139;
 use crate::process::thread::Thread;

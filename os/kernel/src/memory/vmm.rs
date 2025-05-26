@@ -11,32 +11,37 @@
    ║   - alloc_pfr_for_partial_vma alloc pf range for a subrange of a vma    ║
    ║   - map_pfr_for_vma           map pf range for full vma                 ║
    ║   - map_pfr_for_partial_vma   map pf range for subrange of a vma        ║
+   ║   - map_partial_vma           map a sub page range of a vma by          ║
+   ║                               allocating frames as needed               ║
    ║                                                                         ║
-   ║   - clone_address_space       Used for process creation                 ║
-   ║   - create_kernel_space  add a kernel vma to the address space     ║
+   ║   - clone_address_space       used for process creation                 ║
+   ║   - create_kernel_address_space   used for process creation             ║
+   ║   - find_vmas                 return VMAs for a give type               ║
+   ║   - dump                      dump all VMAs of an address space         ║
+   ║   - page_table_address        get root page table address               ║
+   ║   - set_flags                 set page table flags                      ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland and Michael Schoettner                           ║
-   ║         Univ. Duesseldorf, 23.05.2025                                   ║
+   ║         Univ. Duesseldorf, 26.05.2025                                   ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
 ///
-/// This module provides functions to manage virtual memory areas (VMAs) in 
+/// This module provides functions to manage virtual memory areas (VMAs) in
 /// a process address space. Below is a description of steps for typical
 /// memory allocations.
-/// 
-///     Device memory: 
-///     1. alloc_vma 
+///
+///     Device memory:
+///     1. alloc_vma
 ///     2. map_pfr_for_vma
 ///  
-/// User stack: 
-///     1. alloc_vma 
+/// User stack:
+///     1. alloc_vma
 ///     2. alloc_pfr_for_partial_vma
 ///     3, map_pfr_for_partial_vma
-/// 
+///
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::fmt;
 use log::info;
 use spin::RwLock;
 
@@ -51,7 +56,7 @@ use crate::memory::frames;
 use crate::memory::frames::phys_limit;
 use crate::memory::pages::Paging;
 use crate::memory::{MemorySpace, PAGE_SIZE};
-
+use crate::memory::vma::{VirtualMemoryArea, VmaType};
 
 /// Clone address space. Used during process creation.
 pub fn clone_address_space(other: &VirtualAddressSpace) -> Arc<Paging> {
@@ -173,7 +178,8 @@ impl VirtualAddressSpace {
         flags |= PageTableFlags::PRESENT;
 
         // Do the mapping
-        self.map_physical(*vma, frame_range, vma.space, flags);
+        self.page_tables
+            .map_physical(frame_range, vma.range, vma.space, flags);
         Ok(())
     }
 
@@ -233,7 +239,7 @@ impl VirtualAddressSpace {
             }
         // Bounds check against usable kernel address range
         } else {
-            if end_addr > self.last_usable_user_addr { 
+            if end_addr > self.last_usable_user_addr {
                 return None;
             }
         }
@@ -324,12 +330,11 @@ impl VirtualAddressSpace {
             .for_each(f);
     }
 
-
-    /// Map a single page to this address space.
-    pub fn map_single(
+    /// Map the sub `page_range` of the given `vma` by allocating frames as needed. 
+    pub fn map_partial_vma(
         &self,
         vma: VirtualMemoryArea,
-        page: Page,
+        page_range: PageRange,
         space: MemorySpace,
         flags: PageTableFlags,
     ) {
@@ -338,53 +343,17 @@ impl VirtualAddressSpace {
             .iter()
             .find(|area| **area == vma)
             .expect("tried to map a non-existent VMA!");
-        assert!(page.start_address() >= vma.start());
-        assert!(page.start_address() + page.size() <= vma.end());
-        self.page_tables.map(
-            PageRange {
-                start: page,
-                end: page + 1,
-            },
-            space,
-            flags,
-        );
-
-        info!("map_single: vma: {:?}, page: {:?}, flags: {:?}", 
-            vma, page, flags);
+        assert!(page_range.start.start_address() >= vma.start());
+        assert!(page_range.end.start_address() <= vma.end());
+        self.page_tables.map(page_range, space, flags);
     }
 
-    /// Map the given physical frames `frames` to the virtual memory area `pages` in this address space
-    pub fn map_physical(
-        &self,
-        vma: VirtualMemoryArea,
-        frames: PhysFrameRange,
-        space: MemorySpace,
-        flags: PageTableFlags,
-    ) {
-        let page_count = frames.len();
-        info!(
-            "map_physical: vma: {:?}, frames: {:?}, page_count: {:?}",
-            vma, frames, page_count
-        );
-        let areas = self.virtual_memory_areas.read();
-        areas
-            .iter()
-            .find(|area| **area == vma)
-            .expect("tried to map a non-existent VMA!");
-        self.page_tables
-            .map_physical(frames, vma.range, space, flags);
-    }
-
-    /// Map the given physical frames `frames` to any virtual memory area in this address space
-    pub fn map_io(&self, _frames: PhysFrameRange) {
-        // self.add_vma(VirtualMemoryArea::new(pages, mem_type));
-        // self.page_tables.map_physical(frames, pages, space, flags);
-    }
-
+    /// Set page table `flags` for the give page range `pages`  
     pub fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
         self.page_tables.set_flags(pages, flags);
     }
 
+    /// Get physical address of root page table
     pub fn page_table_address(&self) -> PhysAddr {
         self.page_tables.page_table_address()
     }
@@ -404,160 +373,5 @@ impl Drop for VirtualAddressSpace {
         for vma in self.virtual_memory_areas.read().iter() {
             self.page_tables.unmap(vma.range(), true);
         }
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum VmaType {
-    Code,
-    Heap,
-    Environment,
-    DeviceMemory,
-    UserStack,
-    KernelStack,
-    Anonymous,
-}
-
-pub const TAG_SIZE: usize = 8; // Define a constant for tag size in bytes
-
-#[derive(Copy, Clone, PartialEq)]
-pub struct VirtualMemoryArea {
-    pub space: MemorySpace,
-    pub range: PageRange,
-    pub typ: VmaType,
-    pub tag: [u8; TAG_SIZE], // 6-byte tag name (for debugging)
-}
-
-impl VirtualMemoryArea {
-    /// Create a new VirtualMemoryArea with a given range and type and a tag name
-    pub const fn new_with_tag(
-        space: MemorySpace,
-        range: PageRange,
-        typ: VmaType,
-        tag_str: &str,
-    ) -> Self {
-        let mut tag: [u8; TAG_SIZE] = [b'-'; TAG_SIZE];
-        let tag_bytes = tag_str.as_bytes();
-        let len = if tag_bytes.len() > TAG_SIZE {
-            TAG_SIZE
-        } else {
-            tag_bytes.len()
-        };
-
-        if len > 0 {
-            let mut i = 0;
-            while i < len {
-                tag[i] = tag_bytes[i];
-                i += 1;
-            }
-        }
-        Self {
-            space,
-            range,
-            typ,
-            tag,
-        }
-    }
-
-    /// Alternatively, create a new VirtualMemoryArea using the thread id `tid` as tag
-    pub const fn new_with_id(
-        space: MemorySpace,
-        range: PageRange,
-        typ: VmaType,
-        tid: usize,
-    ) -> Self {
-        let mut tag: [u8; TAG_SIZE] = [b'-'; TAG_SIZE]; // Default to dashes ('------')
-        let mut num = tid;
-        let mut i = TAG_SIZE;
-
-        while num > 0 && i > 0 {
-            i -= 1;
-            tag[i] = b'0' + (num % 10) as u8; // Convert last digit to ASCII
-            num /= 10;
-        }
-
-        Self {
-            space,
-            range,
-            typ,
-            tag,
-        }
-    }
-
-    /// Create a new VirtualMemoryArea from a virtual `start` address and `size` with `typ`
-    pub fn from_address(start: VirtAddr, size: usize, space: MemorySpace, typ: VmaType) -> Self {
-        let start_page = Page::from_start_address(start)
-            .expect("VirtualMemoryArea: Address is not page aligned");
-
-        // Calculate the number of pages needed
-        let mut count_pages = (size / PAGE_SIZE) as u64;
-        if size % PAGE_SIZE != 0 {
-            count_pages += 1;
-        }
-
-        // Init PageRange
-        let range = PageRange {
-            start: start_page,
-            end: start_page + count_pages, // PageRange end is exclusive
-        };
-
-        let tag: [u8; TAG_SIZE] = [b'-'; TAG_SIZE];
-        Self {
-            space,
-            range,
-            typ,
-            tag,
-        }
-    }
-
-    pub fn start(&self) -> VirtAddr {
-        self.range.start.start_address()
-    }
-
-    pub fn end(&self) -> VirtAddr {
-        self.range.end.start_address()
-    }
-
-    pub fn range(&self) -> PageRange {
-        self.range
-    }
-
-    pub fn typ(&self) -> VmaType {
-        self.typ
-    }
-
-    pub fn overlaps_with(&self, other: &VirtualMemoryArea) -> bool {
-        self.range.end > other.range.start && self.range.start < other.range.end
-    }
-
-    /// Helper function to check if flags are consistent with the vma
-    pub fn check_and_enforce_consistency(&self, mut flags: PageTableFlags) -> PageTableFlags {
-        match self.space {
-            MemorySpace::User => {
-                flags |= PageTableFlags::USER_ACCESSIBLE;
-            }
-            MemorySpace::Kernel => {
-                flags &= !PageTableFlags::USER_ACCESSIBLE;
-            }
-        }
-        flags
-    }
-}
-
-impl fmt::Debug for VirtualMemoryArea {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Convert tag bytes to a readable string
-        let tag_str = core::str::from_utf8(&self.tag).unwrap_or("<invalid>"); // Handle potential invalid UTF-8
-
-        write!(
-            f,
-            "   VMA {:?}, [0x{:x}; 0x{:x}], #pages: {}, tag: {:?}",
-            self.typ,
-            self.range.start.start_address().as_u64(),
-            self.range.end.start_address().as_u64(),
-            (self.range.end.start_address().as_u64() - self.range.start.start_address().as_u64())
-                / PAGE_SIZE as u64,
-            tag_str
-        )
     }
 }

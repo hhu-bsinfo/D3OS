@@ -37,7 +37,7 @@ use crate::consts::MAX_USER_STACK_SIZE;
 use crate::consts::USER_SPACE_ENV_START;
 use crate::memory::stack;
 use crate::memory::stack::StackAllocator;
-use crate::memory::vmm::VmaType;
+use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process::process::Process;
 use crate::process::scheduler;
@@ -247,12 +247,7 @@ impl Thread {
             )
             .expect("alloc_vma failed for user stack of main thread");
 
-        process.virtual_address_space.map_single(
-            user_stack_vma,
-            user_stack_vma.range.end - 1,
-            MemorySpace::User,
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-        );
+        process.virtual_address_space.map_partial_vma(user_stack_vma, PageRange {start: user_stack_vma.range.end - 1, end: user_stack_vma.range.end} , MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
         //
         // Create and init environment for the application
@@ -422,13 +417,13 @@ impl Thread {
             )
             .expect("alloc_vma failed for user stack of user thread");
 
-        parent.virtual_address_space.map_single(
+        parent.virtual_address_space.map_partial_vma(
             user_stack_vma,
-            user_stack_vma.range.end - 1,
+            PageRange {start: user_stack_vma.range.end - 1, end: user_stack_vma.range.end},
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
         );
-
+        
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
             id: tid,
