@@ -86,8 +86,25 @@ impl Runnable for TextEditor {
                 },
             )
             .unwrap();
+        let markdown_example = r#"
+# Heading 1
 
-        let mut text_buffer = TextBuffer::from_str("Das ist ein Text!");
+## Heading 2
+
+This is a paragraph with **bold text** and *italic text*.
+
+---
+
+Another paragraph after a horizontal rule.
+
+Some **Strong** Text.
+
+Some *Emphasis* Text.
+
+### Heading3
+"#;
+
+        let mut text_buffer = TextBuffer::from_str(markdown_example);
         let mut document: Document = Document::new(Some(String::from("scratch")), text_buffer);
 
         let view  = config.markdown_view;

@@ -1,10 +1,11 @@
 use core::usize;
-use pulldown_cmark::{Event, OffsetIter, Parser, TextMergeStream};
+use logger::warn;
+use pulldown_cmark::{Event, HeadingLevel, OffsetIter, Parser, TextMergeStream};
 use alloc::{vec::Vec, string::{String, ToString}};
 use drawer::vertex::Vertex;
 use graphic::{
     bitmap::{self, Bitmap},
-    color::{Color, YELLOW},
+    color::{Color, WHITE, YELLOW},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
 use text_buffer::TextBuffer;
@@ -19,6 +20,14 @@ pub struct Font {
     pub bg_color: Color,
     pub char_width: u32,
     pub char_height: u32,
+}
+
+impl Font {
+    pub fn add_scale(&self, add:u32) -> Font {
+        let mut  ret = *self;
+        ret.scale+=add;
+        ret
+    }
 }
 
 pub enum View {
@@ -118,24 +127,58 @@ impl View {
         let iterator = Parser::new(&raw_text).into_offset_iter();
         let mut position = Vertex::zero();
         let mut font = Vec::<Font>::new();
+        let mut heading = false;
         font.push(normal);
         for (event, range) in iterator {
             match event {
                 Event::Text(text) => {
                     let rel_caret = document.caret().checked_sub(range.start);
+                    if heading {
+                        position = self.render_string(&String::from("\n"), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
+                    }
                     position = self.render_string(&text.to_string(), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
+                    if heading {
+                        position = self.render_string(&String::from("\n"), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
+                    }
                 },
+                Event::HardBreak  | Event::SoftBreak=> {
+                    let rel_caret = document.caret().checked_sub(range.start);
+                    position = self.render_string(&String::from("\n"), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
+                }
                 Event::Start(t) => {
                     match t {
                        pulldown_cmark::Tag::Emphasis => font.push(emphasis),
                        pulldown_cmark::Tag::Strong => font.push(strong),
+                       pulldown_cmark::Tag::Heading { level, id, classes, attrs } => {
+                        heading = true;
+                        match level {
+                            HeadingLevel::H1 => font.push(strong.add_scale(1)),
+                            HeadingLevel::H2 => font.push(emphasis.add_scale(1)),
+                            HeadingLevel::H3 => font.push(normal.add_scale(1)),
+                            HeadingLevel::H4 => font.push(strong),
+                            HeadingLevel::H5 => font.push(emphasis),
+                            HeadingLevel::H6 => font.push(normal),
+                        }
+                       }
                        _ => (),
                     }
+                }
+                Event::Rule => {
+                    let rel_caret = document.caret().checked_sub(range.start);
+                    position = self.render_string(&String::from("\n"), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
+                    buffer.draw_line(((buffer.width as f32 *0.1) as u32), position.y + (normal.char_height*normal.scale/2) , ((buffer.width as f32)*0.9) as u32, position.y + (normal.char_height*normal.scale/2), WHITE);
+                    position = self.render_string(&String::from("\n"), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
                 }
                 Event::End(t) => {
                     match t {
                        pulldown_cmark::TagEnd::Emphasis => {font.pop();},
                        pulldown_cmark::TagEnd::Strong => {font.pop();},
+                       pulldown_cmark::TagEnd::Heading(l) => {
+                        heading = false;
+                            match l {
+                                _ => {font.pop();}    
+                            }
+                       }
                        _ => (),
                     }
                 }
