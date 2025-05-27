@@ -314,6 +314,16 @@ impl WindowManager {
                     if was_closed {
                         self.is_dirty = true;
                     }
+                },
+
+                AppWindowAction::MoveForward => {
+                    self.get_current_workspace_mut()
+                        .move_focused_window_forward();
+                },
+
+                AppWindowAction::MoveBackward => {
+                    self.get_current_workspace_mut()
+                        .move_focused_window_backward();
                 }
 
                 _ => (),

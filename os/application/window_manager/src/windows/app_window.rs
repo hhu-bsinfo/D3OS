@@ -23,6 +23,8 @@ pub const FOCUSED_INDICATOR_LENGTH: u32 = 24;
 pub enum AppWindowAction {
     None,
     Close,
+    MoveForward,
+    MoveBackward,
 }
 
 /// This is the window used in workspaces to contains components from different apps
@@ -31,12 +33,15 @@ pub struct AppWindow {
     pub rect_data: RectData,
     /// Indicates whether redrawing of this window is required in next loop-iteration
     is_dirty: bool,
+    is_dragging: bool,
 
     root_container: ComponentRef,
     action_container: ComponentRef,
     component_container: ComponentRef,
 
     close_button: ComponentRef,
+    next_button: ComponentRef,
+    prev_button: ComponentRef,
 
     focused_component: Option<ComponentRef>,
 }
@@ -55,7 +60,12 @@ impl AppWindow {
             screen_rect,
             LayoutMode::Vertical(AlignmentMode::Top),
             StretchMode::Fill,
-            Some(ContainerStylingBuilder::new().show_border(false).child_padding(0).build()),
+            Some(
+                ContainerStylingBuilder::new()
+                    .show_border(false)
+                    .child_padding(0)
+                    .build(),
+            ),
         ));
 
         // Action container for the window buttons
@@ -75,16 +85,50 @@ impl AppWindow {
             width: 30,
             height: 0,
         };
+
         let close_button = Button::new(
             button_rect,
             button_rect,
             Some(Signal::new(String::from("X"))),
             1,
             Some(Box::new(move || {})),
-            Some(ComponentStylingBuilder::new().maintain_aspect_ratio(true).build()),
+            Some(
+                ComponentStylingBuilder::new()
+                    .maintain_aspect_ratio(true)
+                    .build(),
+            ),
+        );
+
+        let next_button = Button::new(
+            button_rect,
+            button_rect,
+            Some(Signal::new(String::from(">"))),
+            1,
+            Some(Box::new(move || {})),
+            Some(
+                ComponentStylingBuilder::new()
+                    .maintain_aspect_ratio(true)
+                    .build(),
+            ),
+        );
+
+        let prev_button = Button::new(
+            button_rect,
+            button_rect,
+            Some(Signal::new(String::from("<"))),
+            1,
+            Some(Box::new(move || {})),
+            Some(
+                ComponentStylingBuilder::new()
+                    .maintain_aspect_ratio(true)
+                    .build(),
+            ),
         );
 
         action_container.add_child(close_button.clone());
+        action_container.add_child(next_button.clone());
+        action_container.add_child(prev_button.clone());
+
         let action_container = ComponentRef::from_component(action_container);
 
         // Component container that holds all API components
@@ -109,10 +153,13 @@ impl AppWindow {
         Self {
             id: WindowManager::generate_id(),
             is_dirty: true,
+            is_dragging: false,
             root_container,
             action_container,
             component_container,
             close_button,
+            next_button,
+            prev_button,
             rect_data,
             focused_component: None,
         }
@@ -348,6 +395,44 @@ impl AppWindow {
                 .is_some()
             {
                 return AppWindowAction::Close;
+            }
+        }
+
+        // Next window button
+        if self
+            .next_button
+            .read()
+            .get_abs_rect_data()
+            .contains_vertex(&mouse_event.position)
+        {
+            if self
+                .next_button
+                .write()
+                .as_interactable_mut()
+                .unwrap()
+                .consume_mouse_event(mouse_event)
+                .is_some()
+            {
+                return AppWindowAction::MoveForward;
+            }
+        }
+
+        // Prev window button
+        if self
+            .prev_button
+            .read()
+            .get_abs_rect_data()
+            .contains_vertex(&mouse_event.position)
+        {
+            if self
+                .prev_button
+                .write()
+                .as_interactable_mut()
+                .unwrap()
+                .consume_mouse_event(mouse_event)
+                .is_some()
+            {
+                return AppWindowAction::MoveBackward;
             }
         }
 
