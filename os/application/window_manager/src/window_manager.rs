@@ -26,6 +26,7 @@ use spin::{once::Once, Mutex, MutexGuard};
 use terminal::{DecodedKey, KeyCode};
 use input::mouse::{ try_read_mouse};
 use time::systime;
+use windows::app_window::AppWindowAction;
 use windows::workspace_selection_window::{WorkspaceSelectionEvent, WorkspaceSelectionWindow};
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
 use workspace::Workspace;
@@ -302,6 +303,18 @@ impl WindowManager {
                     self.remove_current_workspace();
                     return;
                 },
+
+                _ => (),
+            }
+
+            // Ask the window for an action
+            match self.get_current_workspace_mut().get_focused_window_mut().get_window_action(&mouse_event) {
+                AppWindowAction::Close => {
+                    let was_closed = self.get_current_workspace_mut().close_focused_window();
+                    if was_closed {
+                        self.is_dirty = true;
+                    }
+                }
 
                 _ => (),
             }

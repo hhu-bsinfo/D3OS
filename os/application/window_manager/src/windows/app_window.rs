@@ -1,21 +1,29 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::String};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
 
 use crate::{
     components::{
+        button::Button,
+        component::ComponentStylingBuilder,
         container::{
-            basic_container::{BasicContainer, LayoutMode, StretchMode},
+            basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
             Container, ContainerStylingBuilder,
         },
     },
     config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR},
-    signal::{ComponentRef, ComponentRefExt},
+    mouse_state::MouseEvent,
+    signal::{ComponentRef, ComponentRefExt, Signal},
     Interaction, WindowManager, SCREEN,
 };
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
 pub const FOCUSED_INDICATOR_LENGTH: u32 = 24;
+
+pub enum AppWindowAction {
+    None,
+    Close,
+}
 
 /// This is the window used in workspaces to contains components from different apps
 pub struct AppWindow {
@@ -25,6 +33,11 @@ pub struct AppWindow {
     is_dirty: bool,
 
     root_container: ComponentRef,
+    action_container: ComponentRef,
+    component_container: ComponentRef,
+
+    close_button: ComponentRef,
+
     focused_component: Option<ComponentRef>,
 }
 
@@ -37,13 +50,57 @@ impl AppWindow {
             height: screen_size.1,
         };
 
-        // Root container that will hold all components
+        // Root container for the window
         let mut root_container = Box::new(BasicContainer::new(
             screen_rect,
+            LayoutMode::Vertical(AlignmentMode::Top),
+            StretchMode::Fill,
+            Some(ContainerStylingBuilder::new().show_border(false).build()),
+        ));
+
+        // Action container for the window buttons
+        let mut action_container = Box::new(BasicContainer::new(
+            RectData {
+                top_left: Vertex::zero(),
+                width: 0,
+                height: 45,
+            },
+            LayoutMode::Horizontal(AlignmentMode::Right),
+            StretchMode::Fill,
+            Some(ContainerStylingBuilder::new().show_border(true).build()),
+        ));
+
+        let button_rect = RectData {
+            top_left: Vertex::zero(),
+            width: 30,
+            height: 0,
+        };
+        let close_button = Button::new(
+            button_rect,
+            button_rect,
+            Some(Signal::new(String::from("X"))),
+            1,
+            Some(Box::new(move || {})),
+            Some(ComponentStylingBuilder::new().maintain_aspect_ratio(true).build()),
+        );
+
+        action_container.add_child(close_button.clone());
+        let action_container = ComponentRef::from_component(action_container);
+
+        // Component container that holds all API components
+        let component_container = ComponentRef::from_component(Box::new(BasicContainer::new(
+            RectData {
+                top_left: Vertex::zero(),
+                width: 0,
+                height: 550,
+            },
             LayoutMode::None,
             StretchMode::None,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
-        ));
+        )));
+
+        root_container.add_child(ComponentRef::clone(&action_container));
+        root_container.add_child(ComponentRef::clone(&component_container));
 
         // Initial scaling to window bounds
         root_container.move_to(rect_data);
@@ -53,6 +110,9 @@ impl AppWindow {
             id: WindowManager::generate_id(),
             is_dirty: true,
             root_container,
+            action_container,
+            component_container,
+            close_button,
             rect_data,
             focused_component: None,
         }
@@ -63,7 +123,8 @@ impl AppWindow {
     }
 
     pub fn root_container(&self) -> ComponentRef {
-        self.root_container.clone()
+        //self.root_container.clone()
+        self.component_container.clone()
     }
 
     pub fn mark_window_dirty(&mut self) {
@@ -194,7 +255,7 @@ impl AppWindow {
             .as_container_mut()
             .unwrap()
             .focus_child_at(pos);
-        
+
         self.focus_component(new_component);
     }
 
@@ -270,6 +331,29 @@ impl AppWindow {
         other_window.mark_window_dirty();
     }
 
+    pub fn get_window_action(&mut self, mouse_event: &MouseEvent) -> AppWindowAction {
+        // Close window button
+        if self
+            .close_button
+            .read()
+            .get_abs_rect_data()
+            .contains_vertex(&mouse_event.position)
+        {
+            if self
+                .close_button
+                .write()
+                .as_interactable_mut()
+                .unwrap()
+                .consume_mouse_event(mouse_event)
+                .is_some()
+            {
+                return AppWindowAction::Close;
+            }
+        }
+
+        return AppWindowAction::None;
+    }
+
     pub fn draw(&mut self, focused_window_id: usize, full: bool) {
         if full {
             self.is_dirty = true;
@@ -280,13 +364,6 @@ impl AppWindow {
         // Clear the entire window if it is dirty
         if self.is_dirty {
             Drawer::partial_clear_screen(self.rect_data);
-
-            if is_focused {
-                Drawer::draw_rectangle(self.rect_data, FOCUSED_BG_COLOR);
-            } else {
-                Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
-            }
-
             self.root_container.write().mark_dirty();
         }
 
@@ -296,6 +373,15 @@ impl AppWindow {
             .as_ref()
             .and_then(|comp| Some(comp.read().get_id()));
         self.root_container.write().draw(focused_id);
+
+        // Draw window border
+        if self.is_dirty {
+            if is_focused {
+                Drawer::draw_rectangle(self.rect_data, FOCUSED_BG_COLOR);
+            } else {
+                Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
+            }
+        }
 
         self.is_dirty = false;
     }
