@@ -11,6 +11,7 @@ pub mod basic_container;
 pub struct ContainerStyling {
     pub maintain_aspect_ratio: bool,
     pub show_border: bool,
+    pub child_padding: u32,
 
     pub border_color: Color,
 }
@@ -20,6 +21,8 @@ impl Default for ContainerStyling {
         Self {
             maintain_aspect_ratio: false,
             show_border: true,
+            child_padding: 5,
+
             border_color: DEFAULT_BORDER_COLOR,
         }
     }
@@ -28,6 +31,7 @@ impl Default for ContainerStyling {
 pub struct ContainerStylingBuilder {
     maintain_aspect_ratio: Option<bool>,
     show_border: Option<bool>,
+    child_padding: Option<u32>,
 
     border_color: Option<Color>,
 }
@@ -37,6 +41,7 @@ impl ContainerStylingBuilder {
         Self {
             maintain_aspect_ratio: None,
             show_border: None,
+            child_padding: None,
 
             border_color: None,
         }
@@ -52,6 +57,11 @@ impl ContainerStylingBuilder {
         self
     }
 
+    pub fn child_padding(&mut self, child_padding: u32) -> &mut Self {
+        self.child_padding = Some(child_padding);
+        self
+    }
+
     pub fn border_color(&mut self, color: Color) -> &mut Self {
         self.border_color = Some(color);
         self
@@ -61,6 +71,7 @@ impl ContainerStylingBuilder {
         ContainerStyling {
             maintain_aspect_ratio: self.maintain_aspect_ratio.unwrap_or(false),
             show_border: self.show_border.unwrap_or(true),
+            child_padding: self.child_padding.unwrap_or(5),
             
             border_color: self.border_color.unwrap_or(DEFAULT_BORDER_COLOR),
         }

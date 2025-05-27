@@ -10,8 +10,6 @@ use crate::{
 
 use super::{Container, ContainerStyling, FocusManager};
 
-const CHILD_SPACING: u32 = 5;
-
 #[derive(Copy, Clone, PartialEq)]
 pub enum AlignmentMode {
     Left,
@@ -94,7 +92,7 @@ impl BasicContainer {
 
             // Update the cursor position
             let abs_rect_data = child.read().get_abs_rect_data();
-            self.cursor.x += abs_rect_data.width + CHILD_SPACING;
+            self.cursor.x += abs_rect_data.width + self.styling.child_padding;
         }
     }
 
@@ -107,7 +105,7 @@ impl BasicContainer {
 
             // Update the cursor position
             let abs_rect_data = child.read().get_abs_rect_data();
-            self.cursor.y += abs_rect_data.height + CHILD_SPACING;
+            self.cursor.y += abs_rect_data.height + self.styling.child_padding;
         }
     }
 
@@ -124,10 +122,10 @@ impl BasicContainer {
             let abs_rect_data = child.read().get_abs_rect_data();
             if (i + 1) % cols as usize == 0 {
                 self.cursor.x = 0;
-                self.cursor.y += last_row_height + CHILD_SPACING;
+                self.cursor.y += last_row_height + self.styling.child_padding;
                 last_row_height = 0;
             } else {
-                self.cursor.x += abs_rect_data.width + CHILD_SPACING;
+                self.cursor.x += abs_rect_data.width + self.styling.child_padding;
                 last_row_height = last_row_height.max(abs_rect_data.height);
             }
         }

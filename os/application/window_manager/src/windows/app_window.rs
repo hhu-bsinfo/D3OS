@@ -55,7 +55,7 @@ impl AppWindow {
             screen_rect,
             LayoutMode::Vertical(AlignmentMode::Top),
             StretchMode::Fill,
-            Some(ContainerStylingBuilder::new().show_border(false).build()),
+            Some(ContainerStylingBuilder::new().show_border(false).child_padding(0).build()),
         ));
 
         // Action container for the window buttons
@@ -63,7 +63,7 @@ impl AppWindow {
             RectData {
                 top_left: Vertex::zero(),
                 width: 0,
-                height: 45,
+                height: 40,
             },
             LayoutMode::Horizontal(AlignmentMode::Right),
             StretchMode::Fill,
@@ -92,7 +92,7 @@ impl AppWindow {
             RectData {
                 top_left: Vertex::zero(),
                 width: 0,
-                height: 550,
+                height: 560,
             },
             LayoutMode::None,
             StretchMode::None,
