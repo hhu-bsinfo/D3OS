@@ -1,6 +1,6 @@
 use core::usize;
-
-use alloc::string::String;
+use pulldown_cmark::{Event, OffsetIter, Parser, TextMergeStream};
+use alloc::{vec::Vec, string::{String, ToString}};
 use drawer::vertex::Vertex;
 use graphic::{
     bitmap::{self, Bitmap},
@@ -12,6 +12,7 @@ use text_buffer::TextBuffer;
 use super::model::Document;
 //Julius Drodofsky
 
+#[derive(Debug, Clone, Copy)]
 pub struct Font {
     pub scale: u32,
     pub fg_color: Color,
@@ -28,8 +29,8 @@ pub enum View {
     },
     Markdown {
         normal: Font,
-        bold: Font,
-        italic: Font,
+        emphasis: Font,
+        strong: Font,
     },
 }
 
@@ -111,6 +112,37 @@ impl View {
             buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
         }
     }
+    fn render_markdown(&self, document: &Document, buffer: &mut Bitmap, normal: Font, emphasis: Font, strong: Font) {
+        buffer.clear(normal.bg_color);
+        let raw_text = document.text_buffer().to_string();
+        let iterator = Parser::new(&raw_text).into_offset_iter();
+        let mut position = Vertex::zero();
+        let mut font = Vec::<Font>::new();
+        font.push(normal);
+        for (event, range) in iterator {
+            match event {
+                Event::Text(text) => {
+                    let rel_caret = document.caret().checked_sub(range.start);
+                    position = self.render_string(&text.to_string(), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
+                },
+                Event::Start(t) => {
+                    match t {
+                       pulldown_cmark::Tag::Emphasis => font.push(emphasis),
+                       pulldown_cmark::Tag::Strong => font.push(strong),
+                       _ => (),
+                    }
+                }
+                Event::End(t) => {
+                    match t {
+                       pulldown_cmark::TagEnd::Emphasis => {font.pop();},
+                       pulldown_cmark::TagEnd::Strong => {font.pop();},
+                       _ => (),
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     pub fn render(&self, document: &Document, buffer: &mut Bitmap) {
         match self {
             View::Simple {
@@ -118,7 +150,11 @@ impl View {
                 fg_color,
                 bg_color,
             } => self.render_simple(document, buffer, *font_scale, *fg_color, *bg_color),
-            _ => (),
+            View::Markdown { 
+                normal,
+                emphasis, 
+                strong 
+            } => self.render_markdown(document, buffer, *normal, *emphasis, *strong),  
         }
     }
 }
