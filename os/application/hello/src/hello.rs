@@ -25,12 +25,12 @@ pub fn main() {
         println!("  {}", arg);
     }
 
-    
+    /*
     let v = thread::create(second_thread);
     if v.is_none() {
         println!("Failed to create second thread");
     } else {
         println!("Second thread created successfully.");
     }
-
+*/
 }

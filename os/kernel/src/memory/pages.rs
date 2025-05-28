@@ -27,7 +27,6 @@ use x86_64::structures::paging::Size4KiB;
 
 use crate::memory::{MemorySpace, PAGE_SIZE, frames};
 
-
 /// Helper function to convert a u64 address to a PhysFrame.
 pub fn page_from_u64(addr: u64) -> Result<Page<Size4KiB>, x86_64::structures::paging::page::AddressNotAligned> {
     Page::from_start_address(VirtAddr::new(addr))

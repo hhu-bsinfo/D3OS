@@ -8,7 +8,7 @@
    ║   - alloc_kernel_stack      alloc frames for a kernel stack             ║
    ║   - alloc_user_stack        alloc page range for a user stack           ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland & Michael Schoettner, HHU, 25.05.2025            ║
+   ║ Author: Fabian Ruhland & Michael Schoettner, HHU, 28.05.2025            ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -109,62 +109,14 @@ impl StackAllocator {
 
 unsafe impl Allocator for StackAllocator {
 
-    /// Allocate is never called. It is required for the Vec. 
+    /// Allocate should never be called. Memory is explictly allocated, see above functions. 
+    /// It is required for working with a Vec. 
     fn allocate(&self, _layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         return Err(AllocError);
-
-
-        
-/*
-        info!(
-            "*** StackAllocator::allocate() called for stack of pid = {}, tid = {}, kernel = {:?}",
-            self.pid, self.tid, self.kernel
-        );
-
-        if PAGE_SIZE % layout.align() != 0 {
-            return Err(AllocError);
-        }
-        let frame_count = if layout.size() % PAGE_SIZE == 0 {
-            layout.size() / PAGE_SIZE
-        } else {
-            (layout.size() / PAGE_SIZE) + 1
-        };
-        let frames: PhysFrameRange = frames::alloc(frame_count);
-
-        self.start_addr.store(
-            frames.start.start_address().as_u64() as usize,
-            Ordering::SeqCst,
-        );
-        self.end_addr.store(
-            frames.end.start_address().as_u64() as usize,
-            Ordering::SeqCst,
-        );
-
-        Ok(NonNull::slice_from_raw_parts(
-            NonNull::new(frames.start.start_address().as_u64() as *mut u8).unwrap(),
-            (frames.end - frames.start) as usize * PAGE_SIZE,
-        ))
-        */
     }
 
     /// Deallocate is called when a thread terminates.
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        info!(
-            "deallocate() called for stack of pid = {}, tid = {}, kernel = {:?}",
-            self.pid, self.tid, self.kernel
-        );
-        // Ignore virtual addresses
-        if (ptr.as_ptr() as usize) < phys_limit().start_address().as_u64() as usize {
-            assert_eq!(PAGE_SIZE % layout.align(), 0);
-            assert_eq!(layout.size() % PAGE_SIZE, 0);
-
-            let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64)).unwrap();
-            unsafe {
-                frames::free(PhysFrameRange {
-                    start,
-                    end: start + (layout.size() / PAGE_SIZE) as u64,
-                });
-            }
-        }
+        // memory is automaticallyfreed when page tables are dropped */
     }
 }
