@@ -1,4 +1,4 @@
-use core::usize;
+use core::{u32::MAX, usize};
 use logger::warn;
 use pulldown_cmark::{Event, HeadingLevel, OffsetIter, Parser, TextMergeStream};
 use alloc::{vec::Vec, string::{String, ToString}};
@@ -97,16 +97,25 @@ impl View {
     ) -> Option<ViewMessage>{
         let mut x = 0;
         let mut y = 0;
-        let mut i: usize = 0;
+        let mut i: usize = document.scroll_offset() as usize;
+        let mut found_caret = false;
+        let mut new_lines = Vec::<u32>::new();
+        let mut caret_pos: u32 = 0;
         buffer.clear(bg_color);
         while let Some(c) = document.text_buffer().get_char(i) {
+            if y + DEFAULT_CHAR_HEIGHT*font_scale >= buffer.height {
+                break;
+            }
             if i == document.caret() {
                 buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
+                caret_pos = y;
+                found_caret = true;
             }
             if c == '\n' {
                 y += DEFAULT_CHAR_HEIGHT * font_scale;
                 x = 0;
                 i += 1;
+                new_lines.push(i as u32);
                 continue;
             }
             if buffer.width - x + 1 < DEFAULT_CHAR_WIDTH * font_scale {
@@ -120,6 +129,19 @@ impl View {
         }
         if i == document.caret() {
             buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
+        }
+        if !found_caret   {
+            let ind = new_lines.len() / 3 ;
+            let scroll = new_lines[ind] - document.scroll_offset();
+            return Some(ViewMessage::ScrollDown(scroll));
+        } else if caret_pos > buffer.height / 2 + buffer.height / 3{
+            let scroll = *match new_lines.first(){
+                Some(v) => v,
+                None => return None,
+            } - document.scroll_offset();
+
+            warn!("scroll: {}", scroll);
+            return Some(ViewMessage::ScrollDown(scroll));
         }
         None
     }

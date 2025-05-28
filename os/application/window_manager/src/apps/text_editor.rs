@@ -14,6 +14,7 @@ use graphic::{
     buffered_lfb,
     color::{Color, WHITE},
 };
+use meassages::{Message, ViewMessage};
 use model::Document;
 use spin::rwlock::RwLock;
 use terminal::DecodedKey;
@@ -109,14 +110,14 @@ Some *Emphasis* Text.
         let mut text_buffer = TextBuffer::from_str(markdown_example);
         let mut document: Document = Document::new(Some(String::from("scratch")), text_buffer, config);
 
-        let mut view  = document.update(DecodedKey::Unicode('n'));
+        let mut view  = document.update(meassages::Message::ViewMessage(ViewMessage::ScrollDown(0)));
         view.render(&document, &mut canvas.write());
         component.write().mark_dirty();
         let mut dirty = false;
         loop {
-            let mut tmp_queue = VecDeque::<DecodedKey>::new();
+            let mut tmp_queue = VecDeque::<Message>::new();
             while let Some(value) = input.write().pop_front() {
-                tmp_queue.push_back(value);
+                tmp_queue.push_back(Message::DecodedKey(value));
                 dirty = true;
             }
             while let Some(value) = tmp_queue.pop_front() {
@@ -125,9 +126,13 @@ Some *Emphasis* Text.
             if dirty {
                 {
                     // extra block to release canvas lock bevore calling mark_dirty
-                    view.render(&document, &mut canvas.write());
+                    let mut msg = view.render(&document, &mut canvas.write());
+                    while msg.is_some() {
+                        document.update(meassages::Message::ViewMessage(msg.unwrap()));
+                        msg = view.render(&document, &mut canvas.write());
+                    }
                 }
-                component.write().mark_dirty();
+                {component.write().mark_dirty()};
                 dirty = false;
             }
         }

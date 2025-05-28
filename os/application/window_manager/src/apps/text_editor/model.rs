@@ -6,6 +6,7 @@ use terminal::{println, DecodedKey};
 use text_buffer::TextBuffer;
 use time::set_date;
 
+use super::meassages::{Message, ViewMessage};
 use super::view::View;
 use super::TextEditorConfig;
 
@@ -21,6 +22,7 @@ pub struct Document<'b> {
     edit_mode: EditMode,
     config: TextEditorConfig,
     current_view: View,
+    scroll_offset: u32,
 }
 
 impl<'b> Document<'b> {
@@ -29,14 +31,18 @@ impl<'b> Document<'b> {
         Document {
             path: path,
             text_buffer: text_buffer,
-            caret: length,
+            caret: 0,
             edit_mode: EditMode::Insert,
             config: config,
             current_view: config.simple_view,
+            scroll_offset: 0,
         }
     }
     pub fn text_buffer(&self) -> &TextBuffer {
         &self.text_buffer
+    }
+    pub fn scroll_offset(&self) -> u32 {
+        self.scroll_offset
     }
     pub fn caret(&self) -> usize {
         self.caret
@@ -141,10 +147,23 @@ impl<'b> Document<'b> {
         self.current_view
     }
 
-    pub fn update(&mut self, k: DecodedKey) -> View {
-        match self.edit_mode {
-            EditMode::Insert => self.update_insert(k),
-            EditMode::Normal => self.update_normal(k),
+    fn scroll(&mut self, msg: ViewMessage) -> View {
+        match msg {
+            ViewMessage::ScrollDown(v) => self.scroll_offset += v,
+            ViewMessage::ScrollUp(v) => self.scroll_offset = self.scroll_offset.checked_sub(v).unwrap_or(0),
+        }
+        self.current_view
+    }
+
+    pub fn update(&mut self, m: Message) -> View {
+        match m {
+            Message::ViewMessage(msg) => self.scroll(msg),
+            Message::DecodedKey(k) => {
+                match self.edit_mode {
+                    EditMode::Insert => self.update_insert(k),
+                    EditMode::Normal => self.update_normal(k),
+                }
+            }
         }
     }
 }
