@@ -12,17 +12,14 @@ use graphic::color::{BLUE, RED};
 use hashbrown::HashMap;
 
 use crate::{
-    components::{
+    api::WindowManagerMessage, components::{
         button::Button,
         component::{Casts, Component, ComponentStylingBuilder},
         container::{
             basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
             Container, ContainerStylingBuilder,
         },
-    },
-    mouse_state::MouseEvent,
-    signal::{ComponentRef, ComponentRefExt, Signal},
-    SCREEN,
+    }, mouse_state::MouseEvent, signal::{ComponentRef, ComponentRefExt, Signal}, WindowManager, SCREEN
 };
 
 pub enum WorkspaceSelectionEvent {
@@ -195,7 +192,7 @@ impl WorkspaceSelectionWindow {
         }
     }
 
-    pub fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) -> WorkspaceSelectionEvent {
+    pub fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) -> bool {
         // New workspace button
         if self
             .new_workspace_button
@@ -211,7 +208,8 @@ impl WorkspaceSelectionWindow {
                 .consume_mouse_event(mouse_event)
                 .is_some()
             {
-                return WorkspaceSelectionEvent::New;
+                WindowManager::get_api().send_message(WindowManagerMessage::CreateNewWorkspace);
+                return true;
             }
         }
 
@@ -230,7 +228,8 @@ impl WorkspaceSelectionWindow {
                 .consume_mouse_event(mouse_event)
                 .is_some()
             {
-                return WorkspaceSelectionEvent::Close;
+                WindowManager::get_api().send_message(WindowManagerMessage::CloseCurrentWorkspace);
+                return true;
             }
         }
 
@@ -248,12 +247,13 @@ impl WorkspaceSelectionWindow {
                     .consume_mouse_event(mouse_event);
 
                 if result.is_some() {
-                    return WorkspaceSelectionEvent::Switch(*workspace_id);
+                    WindowManager::get_api().send_message(WindowManagerMessage::SwitchToWorkspace(*workspace_id));
+                    return true;
                 }
             }
         }
 
-        WorkspaceSelectionEvent::None
+        return false;
     }
 
     pub fn mark_dirty(&mut self) {

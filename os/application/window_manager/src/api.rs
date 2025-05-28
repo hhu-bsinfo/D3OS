@@ -96,14 +96,27 @@ pub enum Command<'a> {
     }
 }
 
+#[derive(Debug)]
+pub enum WindowManagerMessage {
+    CreateNewWorkspace,
+    CloseCurrentWorkspace,
+    SwitchToWorkspace(usize),
+
+    CloseCurrentWindow,
+    MoveCurrentWindowForward,
+    MoveCurrentWindowBackward,
+}
+
 pub struct Senders {
     pub tx_components: Sender<NewCompData>,
     pub tx_on_loop_iter: Sender<NewLoopIterFnData>,
+    pub tx_messages: Sender<WindowManagerMessage>,
 }
 
 pub struct Receivers {
     pub rx_components: Receiver<NewCompData>,
     pub rx_on_loop_iter: Receiver<NewLoopIterFnData>,
+    pub rx_messages: Receiver<WindowManagerMessage>,
 }
 
 /**
@@ -500,6 +513,14 @@ impl Api {
         };
 
         Ok(component)
+    }
+
+    /// Sends a message to the window manager to perform various actions
+    pub fn send_message(&self, message: WindowManagerMessage) {
+        self.senders
+            .tx_messages
+            .enqueue(message)
+            .expect("message queue was closed!");
     }
 
     pub fn remove_all_handles_tied_to_workspace(&mut self, workspace_index: usize) {

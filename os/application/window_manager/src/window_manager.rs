@@ -6,7 +6,7 @@ extern crate alloc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use alloc::{format, vec};
 use alloc::{borrow::ToOwned, vec::Vec};
-use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
+use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, WindowManagerMessage, DEFAULT_APP};
 use chrono::{format, TimeDelta};
 use components::selected_window_label::HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW;
 use concurrent::{process, thread};
@@ -105,15 +105,18 @@ impl WindowManager {
 
         let (rx_components, tx_components) = jiffy::queue::<NewCompData>();
         let (rx_on_loop_iter, tx_on_loop_iter) = jiffy::queue::<NewLoopIterFnData>();
+        let (rx_messages, tx_messages) = jiffy::queue::<WindowManagerMessage>();
 
         let senders = Senders {
             tx_components,
             tx_on_loop_iter,
+            tx_messages,
         };
 
         let receivers = Receivers {
             rx_components,
             rx_on_loop_iter,
+            rx_messages,
         };
 
         /*let workspace_selection_labels_window = WorkspaceSelectionLabelsWindow::new(RectData {
@@ -189,6 +192,8 @@ impl WindowManager {
             self.add_new_closures_from_api();
             
             self.call_on_loop_iter_fns();
+
+            self.process_messages();
         }
     }
 
@@ -201,6 +206,29 @@ impl WindowManager {
     fn add_new_closures_from_api(&mut self) {
         while let Ok(data) = self.receivers.rx_on_loop_iter.try_dequeue() {
             self.on_loop_iter_fns.push(data);
+        }
+    }
+
+    /// Processes all WindowManagerMessages that have been enqueued by the API
+    fn process_messages(&mut self) {
+        while let Ok(msg) = self.receivers.rx_messages.try_dequeue() {
+            match msg {
+                WindowManagerMessage::CreateNewWorkspace => {
+                    self.create_new_workspace();
+                },
+
+                WindowManagerMessage::CloseCurrentWorkspace => {
+                    self.remove_current_workspace();
+                },
+
+                WindowManagerMessage::SwitchToWorkspace(id) => {
+                    if let Some(index) = self.workspaces.iter().position(|workspace| workspace.get_id() == id) {
+                        self.switch_workspace(index);
+                    }
+                },
+
+                _ => (),
+            }
         }
     }
 
@@ -285,26 +313,8 @@ impl WindowManager {
             let mouse_event = self.mouse_state.process(&mouse_packet);
 
             // Ask the workspace manager first
-            match self.workspace_selection_window.handle_mouse_event(&mouse_event) {
-                WorkspaceSelectionEvent::Switch(id) => {
-                    if let Some(index) = self.workspaces.iter().position(|workspace| workspace.get_id() == id) {
-                        self.switch_workspace(index);
-                    }
-                    
-                    return;
-                },
-                
-                WorkspaceSelectionEvent::New => {
-                    self.create_new_workspace();
-                    return;
-                },
-
-                WorkspaceSelectionEvent::Close => {
-                    self.remove_current_workspace();
-                    return;
-                },
-
-                _ => (),
+            if self.workspace_selection_window.handle_mouse_event(&mouse_event) {
+                return;
             }
 
             // Ask the window for an action
