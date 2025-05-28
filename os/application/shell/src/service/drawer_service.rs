@@ -27,13 +27,11 @@ impl Service for DrawerService {
     }
 
     fn cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.restore_cursor_position(context);
-        Ok(Response::Ok)
+        self.draw_cursor(context)
     }
 
     fn cursor_right(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.restore_cursor_position(context);
-        Ok(Response::Ok)
+        self.draw_cursor(context)
     }
 
     fn history_up(&mut self, context: &mut Context) -> Result<Response, Error> {
@@ -81,6 +79,11 @@ impl DrawerService {
             self.restore_cursor_position(context)
         );
         context.dirty_offset = context.total_line_len();
+        Ok(Response::Ok)
+    }
+
+    fn draw_cursor(&mut self, context: &mut Context) -> Result<Response, Error> {
+        print!("{}", self.restore_cursor_position(context));
         Ok(Response::Ok)
     }
 
