@@ -12,22 +12,19 @@ use graphic::color::{BLUE, RED};
 use hashbrown::HashMap;
 
 use crate::{
-    api::WindowManagerMessage, components::{
+    api::WindowManagerMessage,
+    components::{
         button::Button,
         component::{Casts, Component, ComponentStylingBuilder},
         container::{
             basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
             Container, ContainerStylingBuilder,
         },
-    }, mouse_state::MouseEvent, signal::{ComponentRef, ComponentRefExt, Signal}, WindowManager, SCREEN
+    },
+    mouse_state::MouseEvent,
+    signal::{ComponentRef, ComponentRefExt, Signal},
+    WindowManager, SCREEN,
 };
-
-pub enum WorkspaceSelectionEvent {
-    None,
-    Switch(usize),
-    New,
-    Close,
-}
 
 pub struct WorkspaceSelectionWindow {
     abs_rect: RectData,
@@ -97,7 +94,9 @@ impl WorkspaceSelectionWindow {
             rel_rect,
             Some(Signal::new(String::from("+"))),
             1,
-            Some(Box::new(move || {})),
+            Some(Box::new(move || {
+                WindowManager::get_api().send_message(WindowManagerMessage::CreateNewWorkspace);
+            })),
             Some(
                 ComponentStylingBuilder::new()
                     .border_color(BLUE)
@@ -111,7 +110,9 @@ impl WorkspaceSelectionWindow {
             rel_rect,
             Some(Signal::new(String::from("X"))),
             1,
-            Some(Box::new(move || {})),
+            Some(Box::new(move || {
+                WindowManager::get_api().send_message(WindowManagerMessage::CloseCurrentWorkspace);
+            })),
             Some(
                 ComponentStylingBuilder::new()
                     .border_color(RED)
@@ -166,7 +167,10 @@ impl WorkspaceSelectionWindow {
             rel_rect,
             Some(Signal::new(workspace_id.to_string())),
             1,
-            Some(Box::new(move || {})),
+            Some(Box::new(move || {
+                WindowManager::get_api()
+                    .send_message(WindowManagerMessage::SwitchToWorkspace(workspace_id));
+            })),
             None,
         );
 
@@ -192,68 +196,40 @@ impl WorkspaceSelectionWindow {
         }
     }
 
-    pub fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) -> bool {
-        // New workspace button
-        if self
-            .new_workspace_button
-            .read()
-            .get_abs_rect_data()
-            .contains_vertex(&mouse_event.position)
+    pub fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce()>> {
+        // Action buttons
         {
-            if self
-                .new_workspace_button
+            let new_component = self
+                .action_container
                 .write()
-                .as_interactable_mut()
+                .as_container_mut()
                 .unwrap()
-                .consume_mouse_event(mouse_event)
-                .is_some()
-            {
-                WindowManager::get_api().send_message(WindowManagerMessage::CreateNewWorkspace);
-                return true;
-            }
-        }
+                .focus_child_at(mouse_event.position);
 
-        // Close workspace button
-        if self
-            .close_workspace_button
-            .read()
-            .get_abs_rect_data()
-            .contains_vertex(&mouse_event.position)
-        {
-            if self
-                .close_workspace_button
-                .write()
-                .as_interactable_mut()
-                .unwrap()
-                .consume_mouse_event(mouse_event)
-                .is_some()
-            {
-                WindowManager::get_api().send_message(WindowManagerMessage::CloseCurrentWorkspace);
-                return true;
-            }
-        }
-
-        // Switch workspace
-        for (workspace_id, button) in self.workspace_buttons.iter_mut() {
-            let mut button = button.write();
-
-            if button
-                .get_abs_rect_data()
-                .contains_vertex(&mouse_event.position)
-            {
-                let result = button
-                    .as_interactable_mut()
-                    .unwrap()
-                    .consume_mouse_event(mouse_event);
-
-                if result.is_some() {
-                    WindowManager::get_api().send_message(WindowManagerMessage::SwitchToWorkspace(*workspace_id));
-                    return true;
+            if let Some(new_component) = new_component {
+                if let Some(interactable) = new_component.write().as_interactable_mut() {
+                    return interactable.consume_mouse_event(mouse_event);
                 }
             }
         }
 
-        return false;
+        // Workspace buttons
+        {
+            let new_component = self
+                .button_container
+                .write()
+                .as_container_mut()
+                .unwrap()
+                .focus_child_at(mouse_event.position);
+
+            if let Some(new_component) = new_component {
+                if let Some(interactable) = new_component.write().as_interactable_mut() {
+                    return interactable.consume_mouse_event(mouse_event);
+                }
+            }
+        }
+
+        return None;
     }
 
     pub fn mark_dirty(&mut self) {

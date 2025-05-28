@@ -27,7 +27,7 @@ use terminal::{DecodedKey, KeyCode};
 use input::mouse::{ try_read_mouse};
 use time::systime;
 use windows::app_window::AppWindowAction;
-use windows::workspace_selection_window::{WorkspaceSelectionEvent, WorkspaceSelectionWindow};
+use windows::workspace_selection_window::WorkspaceSelectionWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
 use workspace::Workspace;
 use mouse_state::{MouseEvent, MouseState};
@@ -313,7 +313,8 @@ impl WindowManager {
             let mouse_event = self.mouse_state.process(&mouse_packet);
 
             // Ask the workspace manager first
-            if self.workspace_selection_window.handle_mouse_event(&mouse_event) {
+            if let Some(callback) = self.workspace_selection_window.handle_mouse_event(&mouse_event) {
+                callback();
                 return;
             }
 
