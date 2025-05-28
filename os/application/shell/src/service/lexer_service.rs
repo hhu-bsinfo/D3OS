@@ -92,11 +92,11 @@ impl LexerService {
 
     fn detokenize_to_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
         let inner_len = context.inner_tokens_len();
-        if inner_len <= context.dirty_offset {
+        if inner_len <= context.get_dirty_line_offset() {
             return Ok(Response::Skip);
         }
 
-        let n = inner_len - context.dirty_offset;
+        let n = inner_len - context.get_dirty_line_offset();
         for _ in 0..n {
             self.pop(&mut context.tokens);
         }
@@ -104,7 +104,7 @@ impl LexerService {
     }
 
     fn tokenize_from_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
-        for ch in context.line[context.dirty_offset..].iter() {
+        for ch in context.line[context.get_dirty_line_offset()..].iter() {
             self.push(&mut context.tokens, *ch);
         }
 

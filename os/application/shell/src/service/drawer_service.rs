@@ -14,8 +14,7 @@ pub struct DrawerService {
 
 impl Service for DrawerService {
     fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.terminal_cursor_pos = context.line_prefix.len();
-        Ok(Response::Ok)
+        self.draw_prefix(context)
     }
 
     fn submit(&mut self, _context: &mut Context) -> Result<Response, Error> {
@@ -63,6 +62,16 @@ impl DrawerService {
         Ok(Response::Ok)
     }
 
+    fn draw_prefix(&mut self, context: &mut Context) -> Result<Response, Error> {
+        print!(
+            "{}{}{}",
+            self.cursor_to_start(),
+            self.clear_right_of_cursor(),
+            self.line_prefix(context)
+        );
+        Ok(Response::Ok)
+    }
+
     fn draw_at_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
         print!(
             "{}{}{}{}",
@@ -75,13 +84,20 @@ impl DrawerService {
         Ok(Response::Ok)
     }
 
+    fn cursor_to_start(&mut self) -> String {
+        let step = -(self.terminal_cursor_pos as isize);
+        self.move_cursor_by(step)
+    }
+
     fn cursor_to_dirty(&mut self, context: &mut Context) -> String {
         let step = self.terminal_cursor_pos as isize - context.dirty_offset as isize;
         self.move_cursor_by(step)
     }
 
     fn restore_cursor_position(&mut self, context: &mut Context) -> String {
-        let step = self.terminal_cursor_pos as isize - context.cursor_position as isize;
+        let step = self.terminal_cursor_pos as isize
+            - context.cursor_position as isize
+            - context.line_prefix.len() as isize;
         self.move_cursor_by(step)
     }
 
@@ -103,5 +119,10 @@ impl DrawerService {
         let line: String = context.line[start_at..].iter().collect();
         self.terminal_cursor_pos += line.len();
         line
+    }
+
+    fn line_prefix(&mut self, context: &mut Context) -> String {
+        self.terminal_cursor_pos += context.line_prefix.len();
+        context.line_prefix.clone()
     }
 }

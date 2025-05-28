@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use crate::{executable::Executable, service::lexer_service::Token};
 
@@ -7,14 +7,14 @@ pub struct Context {
     /// Current command line
     pub(crate) line: Vec<char>,
     /// Prefix for command line (Indicator)
-    pub(crate) line_prefix: Vec<char>,
+    pub(crate) line_prefix: String,
     /// Suffix for command line (Auto complete)
     pub(crate) line_suffix: Vec<char>,
     /// Tells a service to skip validation until reached (INCLUDING PREFIX AND SUFFIX)
     pub(crate) dirty_offset: usize,
-    /// Current cursor position (INCLUDING PREFIX AND SUFFIX)
+    /// Current cursor position
     pub(crate) cursor_position: usize,
-    /// Generated tokens based on line (does not contain prefix and suffix)
+    /// Generated tokens based on line
     pub(crate) tokens: Vec<Token>,
     /// Generated executable based on tokens
     pub(crate) executable: Option<Executable>,
@@ -24,7 +24,7 @@ impl Context {
     pub const fn new() -> Self {
         Self {
             line: Vec::new(),
-            line_prefix: Vec::new(),
+            line_prefix: String::new(),
             line_suffix: Vec::new(),
             dirty_offset: 0,
             cursor_position: 0,
@@ -35,17 +35,19 @@ impl Context {
 
     /// Returns index, at which item line_prefix is dirty
     pub fn get_dirty_line_prefix_offset(&self) -> usize {
-        self.dirty_offset.min(self.line_prefix.len())
+        clamp_index(self.dirty_offset, 0, self.line_prefix.len())
     }
 
     /// Returns index, at which item line is dirty
     pub fn get_dirty_line_offset(&self) -> usize {
-        self.dirty_offset.min(self.line.len())
+        let base = self.line_prefix.len();
+        clamp_index(self.dirty_offset, base, self.line.len())
     }
 
     /// Returns index, at which item line_suffix is dirty
     pub fn get_dirty_line_suffix_offset(&self) -> usize {
-        self.dirty_offset.min(self.line_suffix.len())
+        let base = self.line_prefix.len() + self.line.len();
+        clamp_index(self.dirty_offset, base, self.line_suffix.len())
     }
 
     /// Set dirty offset to index relative to line_prefix
@@ -70,6 +72,7 @@ impl Context {
         self.line_prefix.len() + self.line.len() + self.line_suffix.len()
     }
 
+    // TODO MOVE TO TOKEN IMPL
     /// Returns the length of tokens, including inner lengths
     pub fn inner_tokens_len(&self) -> usize {
         self.tokens
@@ -80,5 +83,15 @@ impl Context {
                 _ => 1,
             })
             .sum()
+    }
+}
+
+fn clamp_index(i: usize, base: usize, len: usize) -> usize {
+    if i < base {
+        0
+    } else if i >= base + len {
+        len.saturating_sub(1)
+    } else {
+        i - base
     }
 }

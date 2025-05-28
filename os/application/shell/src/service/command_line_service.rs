@@ -1,6 +1,11 @@
+use alloc::{format, string::String};
+use naming::cwd;
+
 use crate::context::Context;
 
 use super::service::{Error, Response, Service};
+
+const INDICATOR: char = '>';
 
 pub struct CommandLineService {}
 
@@ -9,14 +14,16 @@ impl Service for CommandLineService {
         context.line.clear();
         context.cursor_position = 0;
         context.dirty_offset = 0;
+        self.set_prefix(context);
+
         Ok(Response::Ok)
     }
 
     fn simple_key(&mut self, context: &mut Context, key: char) -> Result<Response, Error> {
         match key {
-            '\x08' => self.handle_backspace(context),
-            '\x7F' => self.handle_del(context),
-            _ => self.on_other_char(context, key),
+            '\x08' => self.remove_before_cursor(context),
+            '\x7F' => self.remove_at_cursor(context),
+            _ => self.add_at_cursor(context, key),
         }
     }
 
@@ -34,7 +41,12 @@ impl CommandLineService {
         Self {}
     }
 
-    fn handle_del(&mut self, context: &mut Context) -> Result<Response, Error> {
+    fn set_prefix(&mut self, context: &mut Context) -> Result<Response, Error> {
+        context.line_prefix = format!("{}{} ", cwd().unwrap_or(String::new()), INDICATOR);
+        Ok(Response::Ok)
+    }
+
+    fn remove_at_cursor(&mut self, context: &mut Context) -> Result<Response, Error> {
         if context.cursor_position >= context.line.len() {
             return Ok(Response::Ok);
         }
@@ -44,7 +56,7 @@ impl CommandLineService {
         Ok(Response::Ok)
     }
 
-    fn handle_backspace(&mut self, context: &mut Context) -> Result<Response, Error> {
+    fn remove_before_cursor(&mut self, context: &mut Context) -> Result<Response, Error> {
         if context.cursor_position == 0 {
             return Ok(Response::Skip);
         }
@@ -55,7 +67,7 @@ impl CommandLineService {
         Ok(Response::Ok)
     }
 
-    fn on_other_char(&mut self, context: &mut Context, ch: char) -> Result<Response, Error> {
+    fn add_at_cursor(&mut self, context: &mut Context, ch: char) -> Result<Response, Error> {
         context.line.insert(context.cursor_position, ch);
         context.set_dirty_offset_from_line(context.cursor_position);
         context.cursor_position = context.cursor_position + 1;
