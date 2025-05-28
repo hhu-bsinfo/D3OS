@@ -70,6 +70,11 @@ impl TokenContext {
 }
 
 impl Service for LexerService {
+    fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
+        context.tokens.clear();
+        Ok(Response::Ok)
+    }
+
     fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
         self.retokenize_with_alias(context)
     }

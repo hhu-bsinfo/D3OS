@@ -13,8 +13,13 @@ pub struct DrawerService {
 }
 
 impl Service for DrawerService {
-    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.draw_next_line(context)
+    fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.terminal_cursor_pos = context.line_prefix.len();
+        Ok(Response::Ok)
+    }
+
+    fn submit(&mut self, _context: &mut Context) -> Result<Response, Error> {
+        self.draw_next_line()
     }
 
     fn auto_complete(&mut self, _context: &mut Context) -> Result<Response, Error> {
@@ -52,8 +57,8 @@ impl DrawerService {
         }
     }
 
-    fn draw_next_line(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.terminal_cursor_pos = context.line_prefix.len();
+    fn draw_next_line(&mut self) -> Result<Response, Error> {
+        self.terminal_cursor_pos = 0;
         print!("\n");
         Ok(Response::Ok)
     }
@@ -66,7 +71,7 @@ impl DrawerService {
             self.line_after_cursor(context),
             self.restore_cursor_position(context)
         );
-
+        context.dirty_offset = context.total_line_len();
         Ok(Response::Ok)
     }
 

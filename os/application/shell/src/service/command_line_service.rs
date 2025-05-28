@@ -5,6 +5,13 @@ use super::service::{Error, Response, Service};
 pub struct CommandLineService {}
 
 impl Service for CommandLineService {
+    fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
+        context.line.clear();
+        context.cursor_position = 0;
+        context.dirty_offset = 0;
+        Ok(Response::Ok)
+    }
+
     fn simple_key(&mut self, context: &mut Context, key: char) -> Result<Response, Error> {
         match key {
             '\x08' => self.handle_backspace(context),

@@ -8,6 +8,11 @@ use super::service::{Error, Response, Service};
 pub struct ParserService {}
 
 impl Service for ParserService {
+    fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
+        context.executable = None;
+        Ok(Response::Ok)
+    }
+
     fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
         self.parse(context)
     }

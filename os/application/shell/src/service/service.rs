@@ -9,9 +9,9 @@ pub enum Response {
 
 #[derive(Debug)]
 pub struct Error {
-    message: &'static str,
-    reason: Option<&'static str>,
-    hint: Option<&'static str>,
+    pub(crate) message: &'static str,
+    pub(crate) reason: Option<&'static str>,
+    pub(crate) hint: Option<&'static str>,
 }
 
 impl Error {
