@@ -49,7 +49,7 @@ impl Shell {
             context: Context::new(),
             // Required services
             command_line_service: CommandLineService::new(),
-            lexer_service: LexerService::new(),
+            lexer_service: LexerService::new(alias_service.clone()),
             drawer_service: DrawerService::new(),
             parser_service: ParserService::new(),
             executor_service: ExecutorService::new(alias_service.clone()),

@@ -1,13 +1,14 @@
-use core::char;
+use core::{cell::RefCell, char};
 
 use alloc::{
+    rc::Rc,
     string::{String, ToString},
     vec::Vec,
 };
 use logger::{error, info};
 use terminal::DecodedKey;
 
-use crate::context::Context;
+use crate::{context::Context, sub_service::alias_sub_service::AliasSubService};
 
 use super::service::{Service, ServiceError};
 
@@ -47,7 +48,9 @@ pub struct TokenContext {
     ambiguous: AmbiguousState,
 }
 
-pub struct LexerService {}
+pub struct LexerService {
+    alias: Rc<RefCell<AliasSubService>>,
+}
 
 impl Token {
     pub fn context(&self) -> &TokenContext {
@@ -70,18 +73,19 @@ impl TokenContext {
 impl Service for LexerService {
     fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
         match event {
-            DecodedKey::Unicode('\n') => self.on_enter(),
+            DecodedKey::Unicode('\n') => self.on_enter(context),
             _ => self.on_other_key(context),
         }
     }
 }
 
 impl LexerService {
-    pub const fn new(/*alias: Rc<RefCell<Alias>>*/) -> Self {
-        Self {}
+    pub const fn new(alias: Rc<RefCell<AliasSubService>>) -> Self {
+        Self { alias }
     }
 
-    fn on_enter(&mut self) -> Result<(), ServiceError> {
+    fn on_enter(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+        self.retokenize_with_alias(context);
         Ok(())
     }
 
@@ -109,6 +113,28 @@ impl LexerService {
         }
 
         info!("Lexer tokens: {:?}", context.tokens);
+        Ok(())
+    }
+
+    fn retokenize_with_alias(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+        context.tokens.clear();
+        let line: String = context.line.clone().into_iter().collect();
+
+        let new_line = line
+            .split_whitespace()
+            .map(|raw_token| match self.alias.borrow().get(raw_token) {
+                Some(alias_value) => alias_value.to_string(),
+                None => raw_token.to_string(),
+            })
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        for ch in new_line.chars() {
+            self.push(&mut context.tokens, ch);
+        }
+
+        info!("Lexer tokens with alias: {:?}", context.tokens);
+
         Ok(())
     }
 
@@ -213,7 +239,6 @@ impl LexerService {
                 // Exit double quote & Enable alias in quotes
                 let clx = TokenContext::new(QuoteState::Pending, last_clx.ambiguous.clone());
                 tokens.push(Token::QuoteEnd(clx, '\"'));
-                // self.alias_state = AliasState::Pending;
             }
             QuoteState::Single => {
                 // Pass through
@@ -227,7 +252,6 @@ impl LexerService {
                 // Enter double quote & Disable alias in quotes
                 let clx = TokenContext::new(QuoteState::Double, last_clx.ambiguous.clone());
                 tokens.push(Token::QuoteStart(clx, '\"'));
-                // self.alias_state = AliasState::Disabled;
             }
         }
     }
@@ -254,32 +278,12 @@ impl LexerService {
                 // Exit single quote & Enable alias in quotes
                 let clx = TokenContext::new(QuoteState::Pending, last_clx.ambiguous.clone());
                 tokens.push(Token::QuoteEnd(clx, '\''));
-                // self.alias_state = AliasState::Pending;
             }
             QuoteState::Pending => {
                 // Enter single quote & Disable alias in quotes
                 let clx = TokenContext::new(QuoteState::Single, last_clx.ambiguous.clone());
                 tokens.push(Token::QuoteStart(clx, '\''));
-                // self.alias_state = AliasState::Disabled;
             }
         }
     }
-
-    // TODO Fix aliases
-    // fn try_add_alias(&mut self) {
-    //     if self.alias_state != AliasState::Pending {
-    //         // Prevent iterating through aliases (otherwise: alias loop="echo loop" => echo echo echo echo ...)
-    //         return;
-    //     }
-
-    //     let value = match { self.alias.borrow().get(&self.raw_token).map(String::from) } {
-    //         Some(value) => value,
-    //         None => return,
-    //     };
-
-    //     self.alias_state = AliasState::Writing;
-    //     self.raw_token.clear();
-    //     self.tokenize(&value);
-    //     self.alias_state = AliasState::Writing;
-    // }
 }
