@@ -6,6 +6,9 @@ use terminal::{println, DecodedKey};
 use text_buffer::TextBuffer;
 use time::set_date;
 
+use super::view::View;
+use super::TextEditorConfig;
+
 enum EditMode {
     Normal,
     Insert,
@@ -16,16 +19,20 @@ pub struct Document<'b> {
     text_buffer: TextBuffer<'b>,
     caret: usize,
     edit_mode: EditMode,
+    config: TextEditorConfig,
+    current_view: View,
 }
 
 impl<'b> Document<'b> {
-    pub fn new(path: Option<String>, text_buffer: TextBuffer<'b>) -> Document<'b> {
+    pub fn new(path: Option<String>, text_buffer: TextBuffer<'b>, config: TextEditorConfig) -> Document<'b> {
         let length = text_buffer.len();
         Document {
             path: path,
             text_buffer: text_buffer,
             caret: length,
             edit_mode: EditMode::Insert,
+            config: config,
+            current_view: config.simple_view,
         }
     }
     pub fn text_buffer(&self) -> &TextBuffer {
@@ -80,7 +87,7 @@ impl<'b> Document<'b> {
         self.caret = prev_prev_line + origin_len;
     }
 
-    fn update_insert(&mut self, k: DecodedKey) {
+    fn update_insert(&mut self, k: DecodedKey) -> View{
         //delete
         match k {
             // delete
@@ -102,9 +109,10 @@ impl<'b> Document<'b> {
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             DecodedKey::RawKey(k) => warn!("TextEditor can't process input: {:?}", k),
         }
+        self.current_view
     }
 
-    fn update_normal(&mut self, k: DecodedKey) {
+    fn update_normal(&mut self, k: DecodedKey) -> View {
         // funktioniert irgendwie nicht
         println!("Ausgabe: {}", self.text_buffer.to_string());
         match k {
@@ -119,6 +127,8 @@ impl<'b> Document<'b> {
             DecodedKey::Unicode('j') => self.move_cursor_down(),
             DecodedKey::Unicode('k') => self.move_cursor_up(),
             DecodedKey::Unicode('i') => self.edit_mode = EditMode::Insert,
+            DecodedKey::Unicode('n') => self.current_view = self.config.simple_view,
+            DecodedKey::Unicode('m') => self.current_view = self.config.markdown_view,
             DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.caret -= 1,
             DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret += 1,
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
@@ -128,9 +138,10 @@ impl<'b> Document<'b> {
         if self.caret > self.text_buffer.len() {
             self.caret = self.text_buffer.len();
         }
+        self.current_view
     }
 
-    pub fn update(&mut self, k: DecodedKey) {
+    pub fn update(&mut self, k: DecodedKey) -> View {
         match self.edit_mode {
             EditMode::Insert => self.update_insert(k),
             EditMode::Normal => self.update_normal(k),

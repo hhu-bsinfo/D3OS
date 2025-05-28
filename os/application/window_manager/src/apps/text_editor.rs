@@ -22,10 +22,12 @@ use view::Font;
 
 mod model;
 mod view;
+mod meassages;
 
 // Julius Drodofsky
 pub struct TextEditor;
 
+#[derive(Debug, Clone, Copy)]
 pub struct TextEditorConfig {
     pub width: usize,
     pub height: usize,
@@ -105,9 +107,9 @@ Some *Emphasis* Text.
 "#;
 
         let mut text_buffer = TextBuffer::from_str(markdown_example);
-        let mut document: Document = Document::new(Some(String::from("scratch")), text_buffer);
+        let mut document: Document = Document::new(Some(String::from("scratch")), text_buffer, config);
 
-        let view  = config.markdown_view;
+        let mut view  = document.update(DecodedKey::Unicode('n'));
         view.render(&document, &mut canvas.write());
         component.write().mark_dirty();
         let mut dirty = false;
@@ -118,7 +120,7 @@ Some *Emphasis* Text.
                 dirty = true;
             }
             while let Some(value) = tmp_queue.pop_front() {
-                document.update(value);
+                view = document.update(value);
             }
             if dirty {
                 {

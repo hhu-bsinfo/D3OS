@@ -10,7 +10,7 @@ use graphic::{
 };
 use text_buffer::TextBuffer;
 
-use super::model::Document;
+use super::{meassages::ViewMessage, model::Document};
 //Julius Drodofsky
 
 #[derive(Debug, Clone, Copy)]
@@ -30,6 +30,7 @@ impl Font {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum View {
     Simple {
         font_scale: u32,
@@ -93,7 +94,7 @@ impl View {
         font_scale: u32,
         fg_color: Color,
         bg_color: Color,
-    ) {
+    ) -> Option<ViewMessage>{
         let mut x = 0;
         let mut y = 0;
         let mut i: usize = 0;
@@ -120,8 +121,9 @@ impl View {
         if i == document.caret() {
             buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
         }
+        None
     }
-    fn render_markdown(&self, document: &Document, buffer: &mut Bitmap, normal: Font, emphasis: Font, strong: Font) {
+    fn render_markdown(&self, document: &Document, buffer: &mut Bitmap, normal: Font, emphasis: Font, strong: Font) -> Option<ViewMessage> {
         buffer.clear(normal.bg_color);
         let raw_text = document.text_buffer().to_string();
         let iterator = Parser::new(&raw_text).into_offset_iter();
@@ -185,8 +187,9 @@ impl View {
                 _ => {}
             }
         }
+        None
     }
-    pub fn render(&self, document: &Document, buffer: &mut Bitmap) {
+    pub fn render(&self, document: &Document, buffer: &mut Bitmap) -> Option<ViewMessage>{
         match self {
             View::Simple {
                 font_scale,
