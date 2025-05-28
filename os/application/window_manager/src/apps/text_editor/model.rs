@@ -26,7 +26,11 @@ pub struct Document<'b> {
 }
 
 impl<'b> Document<'b> {
-    pub fn new(path: Option<String>, text_buffer: TextBuffer<'b>, config: TextEditorConfig) -> Document<'b> {
+    pub fn new(
+        path: Option<String>,
+        text_buffer: TextBuffer<'b>,
+        config: TextEditorConfig,
+    ) -> Document<'b> {
         let length = text_buffer.len();
         Document {
             path: path,
@@ -93,7 +97,7 @@ impl<'b> Document<'b> {
         self.caret = prev_prev_line + origin_len;
     }
 
-    fn update_insert(&mut self, k: DecodedKey) -> View{
+    fn update_insert(&mut self, k: DecodedKey) -> View {
         //delete
         match k {
             // delete
@@ -150,7 +154,9 @@ impl<'b> Document<'b> {
     fn scroll(&mut self, msg: ViewMessage) -> View {
         match msg {
             ViewMessage::ScrollDown(v) => self.scroll_offset += v,
-            ViewMessage::ScrollUp(v) => self.scroll_offset = self.scroll_offset.checked_sub(v).unwrap_or(0),
+            ViewMessage::ScrollUp(v) => {
+                self.scroll_offset = self.scroll_offset.checked_sub(v).unwrap_or(0)
+            }
         }
         self.current_view
     }
@@ -158,12 +164,10 @@ impl<'b> Document<'b> {
     pub fn update(&mut self, m: Message) -> View {
         match m {
             Message::ViewMessage(msg) => self.scroll(msg),
-            Message::DecodedKey(k) => {
-                match self.edit_mode {
-                    EditMode::Insert => self.update_insert(k),
-                    EditMode::Normal => self.update_normal(k),
-                }
-            }
+            Message::DecodedKey(k) => match self.edit_mode {
+                EditMode::Insert => self.update_insert(k),
+                EditMode::Normal => self.update_normal(k),
+            },
         }
     }
 }

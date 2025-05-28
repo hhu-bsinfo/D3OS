@@ -1,11 +1,11 @@
 use terminal::DecodedKey;
 
-pub enum ViewMessage{
+pub enum ViewMessage {
     ScrollDown(u32),
     ScrollUp(u32),
 }
 
-pub enum Message{
+pub enum Message {
     ViewMessage(ViewMessage),
     DecodedKey(DecodedKey),
 }

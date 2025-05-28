@@ -1,13 +1,16 @@
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{u32::MAX, usize};
-use logger::warn;
-use pulldown_cmark::{Event, HeadingLevel, OffsetIter, Parser, TextMergeStream};
-use alloc::{vec::Vec, string::{String, ToString}};
 use drawer::vertex::Vertex;
 use graphic::{
     bitmap::{self, Bitmap},
     color::{Color, WHITE, YELLOW},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
+use logger::warn;
+use pulldown_cmark::{Event, HeadingLevel, OffsetIter, Parser, TextMergeStream};
 use text_buffer::TextBuffer;
 
 use super::{meassages::ViewMessage, model::Document};
@@ -23,9 +26,9 @@ pub struct Font {
 }
 
 impl Font {
-    pub fn add_scale(&self, add:u32) -> Font {
-        let mut  ret = *self;
-        ret.scale+=add;
+    pub fn add_scale(&self, add: u32) -> Font {
+        let mut ret = *self;
+        ret.scale += add;
         ret
     }
 }
@@ -94,7 +97,7 @@ impl View {
         font_scale: u32,
         fg_color: Color,
         bg_color: Color,
-    ) -> Option<ViewMessage>{
+    ) -> Option<ViewMessage> {
         let mut x = 0;
         let mut y = 0;
         let mut i: usize = document.scroll_offset() as usize;
@@ -103,7 +106,7 @@ impl View {
         let mut caret_pos: u32 = 0;
         buffer.clear(bg_color);
         while let Some(c) = document.text_buffer().get_char(i) {
-            if y + DEFAULT_CHAR_HEIGHT*font_scale >= buffer.height {
+            if y + DEFAULT_CHAR_HEIGHT * font_scale >= buffer.height {
                 break;
             }
             if i == document.caret() {
@@ -130,12 +133,12 @@ impl View {
         if i == document.caret() {
             buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
         }
-        if !found_caret   {
-            let ind = new_lines.len() / 3 ;
+        if !found_caret {
+            let ind = new_lines.len() / 3;
             let scroll = new_lines[ind] - document.scroll_offset();
             return Some(ViewMessage::ScrollDown(scroll));
-        } else if caret_pos > buffer.height / 2 + buffer.height / 3{
-            let scroll = *match new_lines.first(){
+        } else if caret_pos > buffer.height / 2 + buffer.height / 3 {
+            let scroll = *match new_lines.first() {
                 Some(v) => v,
                 None => return None,
             } - document.scroll_offset();
@@ -145,7 +148,14 @@ impl View {
         }
         None
     }
-    fn render_markdown(&self, document: &Document, buffer: &mut Bitmap, normal: Font, emphasis: Font, strong: Font) -> Option<ViewMessage> {
+    fn render_markdown(
+        &self,
+        document: &Document,
+        buffer: &mut Bitmap,
+        normal: Font,
+        emphasis: Font,
+        strong: Font,
+    ) -> Option<ViewMessage> {
         buffer.clear(normal.bg_color);
         let raw_text = document.text_buffer().to_string();
         let iterator = Parser::new(&raw_text).into_offset_iter();
@@ -158,22 +168,50 @@ impl View {
                 Event::Text(text) => {
                     let rel_caret = document.caret().checked_sub(range.start);
                     if heading {
-                        position = self.render_string(&String::from("\n"), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
+                        position = self.render_string(
+                            &String::from("\n"),
+                            buffer,
+                            *font.last().unwrap_or(&normal),
+                            position,
+                            rel_caret,
+                        );
                     }
-                    position = self.render_string(&text.to_string(), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
+                    position = self.render_string(
+                        &text.to_string(),
+                        buffer,
+                        *font.last().unwrap_or(&normal),
+                        position,
+                        rel_caret,
+                    );
                     if heading {
-                        position = self.render_string(&String::from("\n"), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
+                        position = self.render_string(
+                            &String::from("\n"),
+                            buffer,
+                            *font.last().unwrap_or(&normal),
+                            position,
+                            rel_caret,
+                        );
                     }
-                },
-                Event::HardBreak  | Event::SoftBreak=> {
-                    let rel_caret = document.caret().checked_sub(range.start);
-                    position = self.render_string(&String::from("\n"), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
                 }
-                Event::Start(t) => {
-                    match t {
-                       pulldown_cmark::Tag::Emphasis => font.push(emphasis),
-                       pulldown_cmark::Tag::Strong => font.push(strong),
-                       pulldown_cmark::Tag::Heading { level, id, classes, attrs } => {
+                Event::HardBreak | Event::SoftBreak => {
+                    let rel_caret = document.caret().checked_sub(range.start);
+                    position = self.render_string(
+                        &String::from("\n"),
+                        buffer,
+                        *font.last().unwrap_or(&normal),
+                        position,
+                        rel_caret,
+                    );
+                }
+                Event::Start(t) => match t {
+                    pulldown_cmark::Tag::Emphasis => font.push(emphasis),
+                    pulldown_cmark::Tag::Strong => font.push(strong),
+                    pulldown_cmark::Tag::Heading {
+                        level,
+                        id,
+                        classes,
+                        attrs,
+                    } => {
                         heading = true;
                         match level {
                             HeadingLevel::H1 => font.push(strong.add_scale(1)),
@@ -183,46 +221,67 @@ impl View {
                             HeadingLevel::H5 => font.push(emphasis),
                             HeadingLevel::H6 => font.push(normal),
                         }
-                       }
-                       _ => (),
                     }
-                }
+                    _ => (),
+                },
                 Event::Rule => {
                     let rel_caret = document.caret().checked_sub(range.start);
-                    position = self.render_string(&String::from("\n"), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
-                    buffer.draw_line(((buffer.width as f32 *0.1) as u32), position.y + (normal.char_height*normal.scale/2) , ((buffer.width as f32)*0.9) as u32, position.y + (normal.char_height*normal.scale/2), WHITE);
-                    position = self.render_string(&String::from("\n"), buffer, *font.last().unwrap_or(&normal) , position, rel_caret);
+                    position = self.render_string(
+                        &String::from("\n"),
+                        buffer,
+                        *font.last().unwrap_or(&normal),
+                        position,
+                        rel_caret,
+                    );
+                    buffer.draw_line(
+                        ((buffer.width as f32 * 0.1) as u32),
+                        position.y + (normal.char_height * normal.scale / 2),
+                        ((buffer.width as f32) * 0.9) as u32,
+                        position.y + (normal.char_height * normal.scale / 2),
+                        WHITE,
+                    );
+                    position = self.render_string(
+                        &String::from("\n"),
+                        buffer,
+                        *font.last().unwrap_or(&normal),
+                        position,
+                        rel_caret,
+                    );
                 }
-                Event::End(t) => {
-                    match t {
-                       pulldown_cmark::TagEnd::Emphasis => {font.pop();},
-                       pulldown_cmark::TagEnd::Strong => {font.pop();},
-                       pulldown_cmark::TagEnd::Heading(l) => {
-                        heading = false;
-                            match l {
-                                _ => {font.pop();}    
-                            }
-                       }
-                       _ => (),
+                Event::End(t) => match t {
+                    pulldown_cmark::TagEnd::Emphasis => {
+                        font.pop();
                     }
-                }
+                    pulldown_cmark::TagEnd::Strong => {
+                        font.pop();
+                    }
+                    pulldown_cmark::TagEnd::Heading(l) => {
+                        heading = false;
+                        match l {
+                            _ => {
+                                font.pop();
+                            }
+                        }
+                    }
+                    _ => (),
+                },
                 _ => {}
             }
         }
         None
     }
-    pub fn render(&self, document: &Document, buffer: &mut Bitmap) -> Option<ViewMessage>{
+    pub fn render(&self, document: &Document, buffer: &mut Bitmap) -> Option<ViewMessage> {
         match self {
             View::Simple {
                 font_scale,
                 fg_color,
                 bg_color,
             } => self.render_simple(document, buffer, *font_scale, *fg_color, *bg_color),
-            View::Markdown { 
+            View::Markdown {
                 normal,
-                emphasis, 
-                strong 
-            } => self.render_markdown(document, buffer, *normal, *emphasis, *strong),  
+                emphasis,
+                strong,
+            } => self.render_markdown(document, buffer, *normal, *emphasis, *strong),
         }
     }
 }

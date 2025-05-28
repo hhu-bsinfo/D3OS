@@ -21,9 +21,9 @@ use terminal::DecodedKey;
 use text_buffer::TextBuffer;
 use view::Font;
 
+mod meassages;
 mod model;
 mod view;
-mod meassages;
 
 // Julius Drodofsky
 pub struct TextEditor;
@@ -37,27 +37,54 @@ pub struct TextEditorConfig {
     pub simple_view: View,
 }
 
-
 impl TextEditorConfig {
-    pub fn new (width: usize, height: usize) -> Self{
+    pub fn new(width: usize, height: usize) -> Self {
         let bg_color = Color::new(20, 20, 20, 255);
-        let normal = Font {scale: 1, fg_color: WHITE, bg_color: bg_color, char_width: DEFAULT_CHAR_WIDTH, char_height: DEFAULT_CHAR_HEIGHT};
-        let strong = Font {scale: 1, fg_color: Color::new(69,133,136,255), bg_color: bg_color, char_width: DEFAULT_CHAR_WIDTH, char_height: DEFAULT_CHAR_HEIGHT};
-        let emphasis = Font {scale: 1, fg_color: Color::new(131,165,152,255), bg_color: bg_color, char_width: DEFAULT_CHAR_WIDTH, char_height: DEFAULT_CHAR_HEIGHT};
-        let markdown_view  = View::Markdown { normal: normal, emphasis: emphasis, strong: strong };
+        let normal = Font {
+            scale: 1,
+            fg_color: WHITE,
+            bg_color: bg_color,
+            char_width: DEFAULT_CHAR_WIDTH,
+            char_height: DEFAULT_CHAR_HEIGHT,
+        };
+        let strong = Font {
+            scale: 1,
+            fg_color: Color::new(69, 133, 136, 255),
+            bg_color: bg_color,
+            char_width: DEFAULT_CHAR_WIDTH,
+            char_height: DEFAULT_CHAR_HEIGHT,
+        };
+        let emphasis = Font {
+            scale: 1,
+            fg_color: Color::new(131, 165, 152, 255),
+            bg_color: bg_color,
+            char_width: DEFAULT_CHAR_WIDTH,
+            char_height: DEFAULT_CHAR_HEIGHT,
+        };
+        let markdown_view = View::Markdown {
+            normal: normal,
+            emphasis: emphasis,
+            strong: strong,
+        };
 
         let simple_view = View::Simple {
             font_scale: normal.scale,
             fg_color: normal.fg_color,
-            bg_color: normal.bg_color
+            bg_color: normal.bg_color,
         };
-        TextEditorConfig {width: width, height: height, background_color: bg_color, markdown_view: markdown_view, simple_view: simple_view}
-    } 
+        TextEditorConfig {
+            width: width,
+            height: height,
+            background_color: bg_color,
+            markdown_view: markdown_view,
+            simple_view: simple_view,
+        }
+    }
 }
 
 impl Runnable for TextEditor {
     fn run() {
-        let config = TextEditorConfig::new(720,500);
+        let config = TextEditorConfig::new(720, 500);
         let bitmap = Bitmap {
             width: config.width as u32,
             height: config.height as u32,
@@ -108,9 +135,10 @@ Some *Emphasis* Text.
 "#;
 
         let mut text_buffer = TextBuffer::from_str(markdown_example);
-        let mut document: Document = Document::new(Some(String::from("scratch")), text_buffer, config);
+        let mut document: Document =
+            Document::new(Some(String::from("scratch")), text_buffer, config);
 
-        let mut view  = document.update(meassages::Message::ViewMessage(ViewMessage::ScrollDown(0)));
+        let mut view = document.update(meassages::Message::ViewMessage(ViewMessage::ScrollDown(0)));
         view.render(&document, &mut canvas.write());
         component.write().mark_dirty();
         let mut dirty = false;
@@ -132,7 +160,9 @@ Some *Emphasis* Text.
                         msg = view.render(&document, &mut canvas.write());
                     }
                 }
-                {component.write().mark_dirty()};
+                {
+                    component.write().mark_dirty()
+                };
                 dirty = false;
             }
         }
