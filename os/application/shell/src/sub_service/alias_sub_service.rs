@@ -5,7 +5,7 @@ use alloc::{
 use logger::info;
 
 #[derive(Debug)]
-pub struct Alias {
+pub struct AliasSubService {
     entries: Vec<AliasEntry>, // Todo#4 use lookup table instead??
 }
 
@@ -15,7 +15,7 @@ pub struct AliasEntry {
     pub(crate) value: String,
 }
 
-impl Alias {
+impl AliasSubService {
     pub fn new() -> Self {
         let mut entries = Vec::new();
         // TODO Initial aliases for debugging, remove later or create proper defaults

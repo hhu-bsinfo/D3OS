@@ -8,6 +8,7 @@ mod controller;
 mod executable;
 mod service;
 mod sub_module;
+mod sub_service;
 
 use core::cell::RefCell;
 
@@ -22,7 +23,7 @@ use service::{
     janitor_service::JanitorService, lexer_service::LexerService, parser_service::ParserService,
     service::Service,
 };
-use sub_module::alias::Alias;
+use sub_service::alias_sub_service::AliasSubService;
 use terminal::read::read_mixed;
 
 struct Shell {
@@ -37,12 +38,12 @@ struct Shell {
     executor_service: ExecutorService,
     // Optional services
     history_service: Option<HistoryService>,
-    alias_service: Rc<RefCell<Alias>>,
+    alias_service: Rc<RefCell<AliasSubService>>,
 }
 
 impl Shell {
     pub fn new() -> Self {
-        let alias_service = Rc::new(RefCell::new(Alias::new()));
+        let alias_service = Rc::new(RefCell::new(AliasSubService::new()));
         Self {
             // Context
             context: Context::new(),

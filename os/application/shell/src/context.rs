@@ -75,8 +75,8 @@ impl Context {
         self.tokens
             .iter()
             .map(|token| match token {
-                Token::Command(s) => s.len(),
-                Token::Argument(s) => s.len(),
+                Token::Command(_clx, s) => s.len(),
+                Token::Argument(_clx, s) => s.len(),
                 _ => 1,
             })
             .sum()

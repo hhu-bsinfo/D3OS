@@ -26,10 +26,10 @@ impl ParserService {
         let mut executable = Executable::new();
 
         context.tokens.iter().for_each(|token| match token {
-            Token::Command(command) => {
+            Token::Command(_clx, command) => {
                 executable.create_job(command.to_string());
             }
-            Token::Argument(argument) => {
+            Token::Argument(_clx, argument) => {
                 executable.add_argument_to_latest_job(argument.to_string());
             }
             _ => (),

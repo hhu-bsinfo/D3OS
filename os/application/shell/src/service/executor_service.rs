@@ -12,13 +12,13 @@ use crate::{
     },
     context::Context,
     executable::Job,
-    sub_module::alias::Alias,
+    sub_service::alias_sub_service::AliasSubService,
 };
 
 use super::service::{Service, ServiceError};
 
 pub struct ExecutorService {
-    alias: Rc<RefCell<Alias>>,
+    alias: Rc<RefCell<AliasSubService>>,
 }
 
 impl Service for ExecutorService {
@@ -31,7 +31,7 @@ impl Service for ExecutorService {
 }
 
 impl ExecutorService {
-    pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
+    pub const fn new(alias: Rc<RefCell<AliasSubService>>) -> Self {
         Self { alias }
     }
 
