@@ -65,7 +65,7 @@ impl Process {
     /// 
     /// This is called from the page fault handler if we have a page fault in
     /// memory that is part of the heap VMA, but not yet mapped.
-    pub fn grow_heap(&self, heap: VirtualMemoryArea, fault_addr: VirtAddr) {
+    pub fn grow_heap(&self, heap: &VirtualMemoryArea, fault_addr: VirtAddr) {
         let page = Page::containing_address(fault_addr);
         trace!("lazily mapping heap page {page:?} at 0x{fault_addr:x}");
         self.virtual_address_space.map_partial_vma(heap,
