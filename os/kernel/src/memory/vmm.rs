@@ -16,7 +16,7 @@
    ║                                                                         ║
    ║   - clone_address_space       used for process creation                 ║
    ║   - create_kernel_address_space   used for process creation             ║
-   ║   - find_vmas                 return VMAs for a give type               ║
+   ║   - iter_vmas                 Iterate over all VMAs                     ║
    ║   - dump                      dump all VMAs of an address space         ║
    ║   - page_table_address        get root page table address               ║
    ║   - set_flags                 set page table flags                      ║
@@ -42,6 +42,7 @@
 ///
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::ops::Deref;
 use log::info;
 use spin::RwLock;
 
@@ -86,9 +87,34 @@ fn last_usable_virtual_address() -> u64 {
     (1u64 << (virtual_bits - 1)) - 1
 }
 
+pub struct VmaIterator {
+    vmas: Vec<Arc<VirtualMemoryArea>>,
+    index: usize,
+}
+
+impl VmaIterator {
+    pub fn new(vmas: Vec<Arc<VirtualMemoryArea>>) -> Self {
+        Self { vmas, index: 0 }
+    }
+}
+
+impl Iterator for VmaIterator {
+    type Item = Arc<VirtualMemoryArea>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.vmas.len() {
+            let vma = Arc::clone(&self.vmas[self.index]);
+            self.index += 1;
+            Some(vma)
+        } else {
+            None
+        }
+    }
+}
+
 /// All data related to a virtual address space of a process.
 pub struct VirtualAddressSpace {
-    virtual_memory_areas: RwLock<Vec<VirtualMemoryArea>>,
+    virtual_memory_areas: RwLock<Vec<Arc<VirtualMemoryArea>>>,
     page_tables: Arc<Paging>,
     first_usable_user_addr: VirtAddr,
     last_usable_user_addr: VirtAddr,
@@ -132,7 +158,7 @@ impl VirtualAddressSpace {
         vma_space: MemorySpace,
         vma_type: VmaType,
         vma_tag: &str,
-    ) -> Option<VirtualMemoryArea> {
+    ) -> Option<Arc<VirtualMemoryArea>> {
         match start_page {
             Some(start_page) => self.alloc_at(start_page, num_pages, vma_space, vma_type, vma_tag),
             None => self.alloc(num_pages, vma_space, vma_type, vma_tag),
@@ -226,7 +252,7 @@ impl VirtualAddressSpace {
         vma_space: MemorySpace,
         vma_type: VmaType,
         vma_tag_str: &str,
-    ) -> Option<VirtualMemoryArea> {
+    ) -> Option<Arc<VirtualMemoryArea>> {
         let start_addr = first_page.start_address();
 
         let end_page = first_page + num_pages;
@@ -249,7 +275,7 @@ impl VirtualAddressSpace {
             start: first_page,
             end: first_page + num_pages,
         };
-        let new_vma = VirtualMemoryArea::new_with_tag(vma_space, vma_range, vma_type, vma_tag_str);
+        let new_vma = Arc::new(VirtualMemoryArea::new_with_tag(vma_space, vma_range, vma_type, vma_tag_str));
 
         // Check for overlap with existing VMAs
         let mut vmas = self.virtual_memory_areas.write();
@@ -262,7 +288,7 @@ impl VirtualAddressSpace {
         }
 
         // No overlap, add new VMA
-        vmas.push(new_vma);
+        vmas.push(Arc::clone(&new_vma));
         Some(new_vma)
     }
 
@@ -276,7 +302,7 @@ impl VirtualAddressSpace {
         vma_space: MemorySpace,
         vma_type: VmaType,
         vma_tag: &str,
-    ) -> Option<VirtualMemoryArea> {
+    ) -> Option<Arc<VirtualMemoryArea>> {
         let mut vmas = self.virtual_memory_areas.write();
         vmas.sort_by(|a, b| a.range.start.cmp(&b.range.start));
 
@@ -316,24 +342,17 @@ impl VirtualAddressSpace {
 
         None // No space found
     }
-
-    /// Replace return value by iterator => Fabian Ruhland
-    /// Return all vmas with the given type `typ` in his address space.
-    pub fn find_vmas<F>(&self, typ: VmaType, f: F)
-    where
-        F: FnMut(&VirtualMemoryArea),
-    {
-        self.virtual_memory_areas
-            .read()
-            .iter()
-            .filter(|area| area.typ() == typ)
-            .for_each(f);
+    
+    /// Iterate over all virtual memory areas in this address space.
+    pub fn iter_vmas(&self) -> VmaIterator {
+        let vmas = self.virtual_memory_areas.read().clone();
+        VmaIterator::new(vmas)
     }
 
     /// Map the sub `page_range` of the given `vma` by allocating frames as needed. 
     pub fn map_partial_vma(
         &self,
-        vma: VirtualMemoryArea,
+        vma: &VirtualMemoryArea,
         page_range: PageRange,
         space: MemorySpace,
         flags: PageTableFlags,
@@ -341,7 +360,7 @@ impl VirtualAddressSpace {
         let areas = self.virtual_memory_areas.read();
         areas
             .iter()
-            .find(|area| **area == vma)
+            .find(|area| (**area).deref() == vma)
             .expect("tried to map a non-existent VMA!");
         assert!(page_range.start.start_address() >= vma.start());
         assert!(page_range.end.start_address() <= vma.end());

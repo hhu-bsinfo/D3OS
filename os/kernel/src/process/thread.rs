@@ -248,7 +248,7 @@ impl Thread {
             )
             .expect("alloc_vma failed for user stack of main thread");
 
-        process.virtual_address_space.map_partial_vma(user_stack_vma, PageRange {start: user_stack_vma.range.end - 1, end: user_stack_vma.range.end} , MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
+        process.virtual_address_space.map_partial_vma(&user_stack_vma, PageRange {start: user_stack_vma.range.end - 1, end: user_stack_vma.range.end} , MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
         //
         // Create and init environment for the application
@@ -376,26 +376,16 @@ impl Thread {
         //
 
         // get highest stack vma in my address space
-        let mut highest_stack_vma = None;
-        parent.virtual_address_space.find_vmas(
-            VmaType::UserStack,
-            |stack| match highest_stack_vma {
-                None => highest_stack_vma = Some(*stack),
-                Some(ref mut highest) => {
-                    if stack.end() > highest.end() {
-                        *highest = *stack;
-                    }
-                }
-            },
-        );
+        let highest_stack_vma = parent.virtual_address_space
+            .iter_vmas()
+            .filter(|vma| vma.typ == VmaType::UserStack)
+            .max_by(|a, b| a.range.end.cmp(&b.range.end))
+            .expect("Trying to create a user thread, before the main thread has been created!");
 
         // from there allocate new user stack
         let user_stack_start : Page<Size4KiB> = Page::from_start_address(
-            highest_stack_vma
-                .expect("Trying to create a user thread, before the main thread has been created!")
-                .end(),
-        )
-        .unwrap();
+            highest_stack_vma.end(),
+        ).unwrap();
         let user_stack_end = user_stack_start + (MAX_USER_STACK_SIZE / PAGE_SIZE) as u64;
 
         let user_stack_pages = PageRange {
@@ -420,7 +410,7 @@ impl Thread {
             .expect("alloc_vma failed for user stack of user thread");
 
         parent.virtual_address_space.map_partial_vma(
-            user_stack_vma,
+            &user_stack_vma,
             PageRange {start: user_stack_vma.range.end - 1, end: user_stack_vma.range.end},
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,

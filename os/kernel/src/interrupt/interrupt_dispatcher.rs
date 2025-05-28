@@ -214,31 +214,35 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
 
     if !thread.is_kernel_thread() {
         // Check if page fault occurred inside a user stack
-        thread.process().virtual_address_space
-            .find_vmas(VmaType::UserStack, |stack| {
-                if stack.start() <= fault_addr && fault_addr < stack.end() {
-                    // Found a user stack in which the page fault occurred
+        let fault_handled = thread.process().virtual_address_space
+            .iter_vmas()
+            .filter(|vma| vma.typ == VmaType::UserStack)
+            .find(|stack| stack.start() <= fault_addr && fault_addr < stack.end())
+            .and_then(|stack| {
+                // If we found a user stack, we can map the page
+                let fault_page = Page::containing_address(fault_addr);
+                thread.process().virtual_address_space.map_partial_vma(&stack, PageRange { start: fault_page, end: fault_page + 1, }, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
-                    let fault_page = Page::containing_address(fault_addr);
-                    thread.process().virtual_address_space.map_partial_vma(*stack, PageRange { start: fault_page, end: fault_page + 1, }, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
-
-                    fault_handled = true;
-                }
+                Some(())
+            })
+            // Check if page fault occurred inside the allocated, but not yet mapped heap.
+            .or_else(|| {
+                thread.process().virtual_address_space
+                    .iter_vmas()
+                    .filter(|vma| vma.typ == VmaType::Heap)
+                    .find(|heap| heap.start() <= fault_addr && fault_addr < heap.end())
+                    .and_then(|heap| {
+                        thread.process().grow_heap(&heap, fault_addr);
+                        Some(())
+                    })
             });
 
-        // Check if page fault occurred inside the allocated, but not yet mapped heap.
-        thread.process().virtual_address_space.find_vmas(VmaType::Heap, |heap| {
-            if heap.start() <= fault_addr && fault_addr < heap.end() {
-                thread.process().grow_heap(*heap, fault_addr);
-
-                fault_handled = true;
-            }
-        });
+        if fault_handled.is_some() {
+            return; // Page fault was handled by mapping the user stack page
+        }
     }
 
-    if !fault_handled {
-        panic!("Page Fault!\nError code: [{:?}]\nAddress: [0x{:0>16x}]\n{:?}", error, fault_addr, frame);
-    }
+    panic!("Page Fault!\nError code: [{:?}]\nAddress: [0x{:0>16x}]\n{:?}", error, fault_addr, frame);
 }
 
 fn handle_interrupt(_frame: InterruptStackFrame, index: u8, _error: Option<u64>) {
