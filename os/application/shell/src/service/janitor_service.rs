@@ -1,17 +1,25 @@
-use terminal::DecodedKey;
-
 use crate::context::Context;
 
-use super::service::{Service, ServiceError};
+use super::service::{Error, Response, Service};
 
 pub struct JanitorService {}
 
+/// TODO Remove this service (handle in own services with prepare) CURRENT BUG: JANITOR WONT RUN ON ERROR
 impl Service for JanitorService {
-    fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
-        match event {
-            DecodedKey::Unicode('\n') => self.on_enter(context),
-            _ => self.on_other_key(context),
-        }
+    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.handle_submit(context)
+    }
+
+    fn history_down(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.handle_other_key(context)
+    }
+
+    fn history_up(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.handle_other_key(context)
+    }
+
+    fn simple_key(&mut self, context: &mut Context, _key: char) -> Result<Response, Error> {
+        self.handle_other_key(context)
     }
 }
 
@@ -20,13 +28,12 @@ impl JanitorService {
         Self {}
     }
 
-    fn on_other_key(&self, context: &mut Context) -> Result<(), ServiceError> {
+    fn handle_other_key(&self, context: &mut Context) -> Result<Response, Error> {
         context.dirty_offset = context.total_line_len();
-
-        Ok(())
+        Ok(Response::Ok)
     }
 
-    fn on_enter(&self, context: &mut Context) -> Result<(), ServiceError> {
+    fn handle_submit(&self, context: &mut Context) -> Result<Response, Error> {
         context.line.clear();
         context.line_prefix.clear();
         context.line_suffix.clear();
@@ -34,6 +41,7 @@ impl JanitorService {
         context.executable = None;
         context.cursor_position = 0;
         context.dirty_offset = 0;
-        Ok(())
+
+        Ok(Response::Ok)
     }
 }

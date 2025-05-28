@@ -1,9 +1,8 @@
 use alloc::collections::vec_deque::VecDeque;
-use terminal::{DecodedKey, KeyCode};
 
 use crate::context::Context;
 
-use super::service::{Service, ServiceError};
+use super::service::{Error, Response, Service};
 
 pub struct HistoryService {
     history: VecDeque<Context>,
@@ -11,13 +10,23 @@ pub struct HistoryService {
 }
 
 impl Service for HistoryService {
-    fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
-        match event {
-            DecodedKey::RawKey(KeyCode::ArrowUp) => self.on_arrow_up(context),
-            DecodedKey::RawKey(KeyCode::ArrowDown) => self.on_arrow_down(context),
-            DecodedKey::Unicode('\n') => self.on_enter(context),
-            _ => self.on_other_key(),
-        }
+    fn history_up(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.move_up(context)
+    }
+
+    fn history_down(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.move_down(context)
+    }
+
+    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.reset_position();
+        self.add(context);
+        Ok(Response::Ok)
+    }
+
+    fn simple_key(&mut self, _context: &mut Context, _key: char) -> Result<Response, Error> {
+        self.reset_position();
+        Ok(Response::Ok)
     }
 }
 
@@ -29,41 +38,38 @@ impl HistoryService {
         }
     }
 
-    fn on_arrow_up(&mut self, context: &mut Context) -> Result<(), ServiceError> {
-        if self.history_position == self.history.len() as isize - 1 {
-            return Ok(());
-        }
-
-        self.move_history(context, 1)
+    fn add(&mut self, context: &mut Context) {
+        self.history.push_front(context.clone());
     }
 
-    fn on_arrow_down(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+    fn reset_position(&mut self) {
+        self.history_position = -1
+    }
+
+    fn move_up(&mut self, context: &mut Context) -> Result<Response, Error> {
+        if self.history_position == self.history.len() as isize - 1 {
+            return Ok(Response::Skip);
+        }
+
+        self.move_by(context, 1)
+    }
+
+    fn move_down(&mut self, context: &mut Context) -> Result<Response, Error> {
         if self.history_position <= -1 {
-            return Ok(());
+            return Ok(Response::Skip);
         }
         if self.history_position == 0 {
             self.history_position = -1;
             context.line.clear();
             context.set_dirty_offset_from_line(0);
             context.cursor_position = 0;
-            return Ok(());
+            return Ok(Response::Ok);
         }
 
-        self.move_history(context, -1)
+        self.move_by(context, -1)
     }
 
-    fn on_enter(&mut self, context: &mut Context) -> Result<(), ServiceError> {
-        self.history.push_front(context.clone());
-        self.history_position = -1;
-        Ok(())
-    }
-
-    fn on_other_key(&mut self) -> Result<(), ServiceError> {
-        self.history_position = -1;
-        Ok(())
-    }
-
-    fn move_history(&mut self, context: &mut Context, step: isize) -> Result<(), ServiceError> {
+    fn move_by(&mut self, context: &mut Context, step: isize) -> Result<Response, Error> {
         self.history_position += step;
         *context = self
             .history
@@ -72,6 +78,6 @@ impl HistoryService {
             .clone();
         context.set_dirty_offset_from_line(0);
 
-        Ok(())
+        Ok(Response::Ok)
     }
 }

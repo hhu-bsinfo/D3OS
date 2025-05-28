@@ -12,99 +12,125 @@ mod sub_service;
 
 use core::cell::RefCell;
 
-use alloc::rc::Rc;
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use context::Context;
 use logger::info;
 #[allow(unused_imports)]
 use runtime::*;
 use service::{
-    command_line_service::CommandLineService, drawer_service::DrawerService,
-    executor_service::ExecutorService, history_service::HistoryService,
-    janitor_service::JanitorService, lexer_service::LexerService, parser_service::ParserService,
-    service::Service,
+    command_line_service::CommandLineService,
+    drawer_service::DrawerService,
+    executor_service::ExecutorService,
+    history_service::HistoryService,
+    janitor_service::JanitorService,
+    lexer_service::LexerService,
+    parser_service::ParserService,
+    service::{Error, Service},
 };
 use sub_service::alias_sub_service::AliasSubService;
-use terminal::read::read_mixed;
+use terminal::{DecodedKey, KeyCode, read::read_mixed};
+
+#[derive(Debug, PartialEq)]
+enum ShellState {
+    Prepare,
+    AwaitUserInput,
+}
+
+pub enum Event {
+    Prepare,
+    Submit,
+    HistoryUp,
+    HistoryDown,
+    CursorLeft,
+    CursorRight,
+    AutoComplete,
+    SimpleKey(char),
+}
 
 struct Shell {
-    // Context
+    state: ShellState,
     context: Context,
-    // Required services
-    command_line_service: CommandLineService,
-    lexer_service: LexerService,
-    drawer_service: DrawerService,
-    parser_service: ParserService,
-    janitor_service: JanitorService,
-    executor_service: ExecutorService,
-    // Optional services
-    history_service: Option<HistoryService>,
-    alias_service: Rc<RefCell<AliasSubService>>,
+    services: Vec<Box<dyn Service>>,
 }
 
 impl Shell {
     pub fn new() -> Self {
         let alias_service = Rc::new(RefCell::new(AliasSubService::new()));
+        let mut services: Vec<Box<dyn Service>> = Vec::new();
+
+        services.push(Box::new(CommandLineService::new()));
+        services.push(Box::new(HistoryService::new()));
+        services.push(Box::new(LexerService::new(alias_service.clone())));
+        services.push(Box::new(DrawerService::new()));
+        services.push(Box::new(ParserService::new()));
+        services.push(Box::new(ExecutorService::new(alias_service.clone())));
+        services.push(Box::new(JanitorService::new()));
+
         Self {
-            // Context
+            state: ShellState::Prepare,
             context: Context::new(),
-            // Required services
-            command_line_service: CommandLineService::new(),
-            lexer_service: LexerService::new(alias_service.clone()),
-            drawer_service: DrawerService::new(),
-            parser_service: ParserService::new(),
-            executor_service: ExecutorService::new(alias_service.clone()),
-            janitor_service: JanitorService::new(),
-            // Optional services
-            history_service: Some(HistoryService::new()),
-            alias_service,
+            services,
         }
     }
 
-    pub fn init(&mut self) {
-        // print!("\n");
-        // self.controller.init();
+    fn get_event(&mut self) -> Option<Event> {
+        if self.state == ShellState::Prepare {
+            return Some(Event::Prepare);
+        }
+
+        match read_mixed() {
+            Some(DecodedKey::Unicode('\n')) => Some(Event::Submit),
+            Some(DecodedKey::Unicode(ch)) => Some(Event::SimpleKey(ch)),
+            Some(DecodedKey::RawKey(KeyCode::Tab)) => Some(Event::AutoComplete),
+            Some(DecodedKey::RawKey(KeyCode::ArrowUp)) => Some(Event::HistoryUp),
+            Some(DecodedKey::RawKey(KeyCode::ArrowDown)) => Some(Event::HistoryDown),
+            Some(DecodedKey::RawKey(KeyCode::ArrowLeft)) => Some(Event::CursorLeft),
+            Some(DecodedKey::RawKey(KeyCode::ArrowRight)) => Some(Event::CursorRight),
+            _ => None,
+        }
     }
 
     pub fn run(&mut self) {
         loop {
-            let key = match read_mixed() {
-                Some(key) => key,
+            let result = match self.get_event() {
+                Some(event) => self.handle_event(event),
                 None => continue,
             };
 
-            info!("Read key: {:?}", key);
+            info!("{:?}", result);
+            info!("{:?}", self.context.line);
+            info!("{:?}", self.context.cursor_position);
 
-            self.command_line_service.run(key, &mut self.context);
-            info!(
-                "After Command line: [ cursor: {:?}, dirty_offset: {:?}, line: {:?} ]",
-                self.context.cursor_position, self.context.dirty_offset, self.context.line
-            );
-
-            self.history_service
-                .as_mut()
-                .unwrap() // TODO Check properly if enabled
-                .run(key, &mut self.context);
-            // info!(
-            //     "After History: [ cursor: {:?}, dirty_offset: {:?}, line: {:?} ]",
-            //     self.context.cursor_position, self.context.dirty_offset, self.context.line
-            // );
-
-            self.lexer_service.run(key, &mut self.context);
-
-            self.drawer_service.run(key, &mut self.context);
-
-            self.parser_service.run(key, &mut self.context);
-
-            self.executor_service.run(key, &mut self.context);
-
-            self.janitor_service.run(key, &mut self.context);
+            if result.is_ok() && self.state == ShellState::Prepare {
+                self.state = ShellState::AwaitUserInput;
+                continue;
+            }
         }
+    }
+
+    fn handle_event(&mut self, event: Event) -> Result<(), Error> {
+        for service in &mut self.services {
+            let result = match event {
+                Event::Prepare => service.prepare(&mut self.context),
+                Event::Submit => service.submit(&mut self.context),
+                Event::HistoryUp => service.history_up(&mut self.context),
+                Event::HistoryDown => service.history_down(&mut self.context),
+                Event::CursorLeft => service.cursor_left(&mut self.context),
+                Event::CursorRight => service.cursor_right(&mut self.context),
+                Event::AutoComplete => service.auto_complete(&mut self.context),
+                Event::SimpleKey(key) => service.simple_key(&mut self.context, key),
+            };
+
+            if result.is_err() {
+                return Err(result.unwrap_err());
+            }
+        }
+        Ok(())
     }
 }
 
 #[unsafe(no_mangle)]
 pub fn main() {
     let mut shell = Shell::new();
-    shell.init();
     shell.run()
 }

@@ -6,11 +6,10 @@ use alloc::{
     vec::Vec,
 };
 use logger::{error, info};
-use terminal::DecodedKey;
 
 use crate::{context::Context, sub_service::alias_sub_service::AliasSubService};
 
-use super::service::{Service, ServiceError};
+use super::service::{Error, Response, Service};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
@@ -71,11 +70,13 @@ impl TokenContext {
 }
 
 impl Service for LexerService {
-    fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
-        match event {
-            DecodedKey::Unicode('\n') => self.on_enter(context),
-            _ => self.on_other_key(context),
-        }
+    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.retokenize_with_alias(context)
+    }
+
+    fn simple_key(&mut self, context: &mut Context, _key: char) -> Result<Response, Error> {
+        self.detokenize_to_dirty(context);
+        self.tokenize_from_dirty(context)
     }
 }
 
@@ -84,39 +85,29 @@ impl LexerService {
         Self { alias }
     }
 
-    fn on_enter(&mut self, context: &mut Context) -> Result<(), ServiceError> {
-        self.retokenize_with_alias(context);
-        Ok(())
-    }
-
-    fn on_other_key(&mut self, context: &mut Context) -> Result<(), ServiceError> {
-        self.try_detokenize(context);
-        return self.tokenize(context);
-    }
-
-    fn try_detokenize(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+    fn detokenize_to_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
         let inner_len = context.inner_tokens_len();
         if inner_len <= context.dirty_offset {
-            return Ok(());
+            return Ok(Response::Skip);
         }
 
         let n = inner_len - context.dirty_offset;
         for _ in 0..n {
             self.pop(&mut context.tokens);
         }
-        Ok(())
+        Ok(Response::Ok)
     }
 
-    fn tokenize(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+    fn tokenize_from_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
         for ch in context.line[context.dirty_offset..].iter() {
             self.push(&mut context.tokens, *ch);
         }
 
         info!("Lexer tokens: {:?}", context.tokens);
-        Ok(())
+        Ok(Response::Ok)
     }
 
-    fn retokenize_with_alias(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+    fn retokenize_with_alias(&mut self, context: &mut Context) -> Result<Response, Error> {
         context.tokens.clear();
         let line: String = context.line.clone().into_iter().collect();
 
@@ -135,7 +126,7 @@ impl LexerService {
 
         info!("Lexer tokens with alias: {:?}", context.tokens);
 
-        Ok(())
+        Ok(Response::Ok)
     }
 
     fn push(&mut self, tokens: &mut Vec<Token>, ch: char) {

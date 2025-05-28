@@ -1,14 +1,20 @@
-use terminal::DecodedKey;
-
 use crate::context::Context;
 
-pub struct ServiceError {
+#[derive(Debug)]
+pub enum Response {
+    Ok,
+    Skip,
+    Ignore,
+}
+
+#[derive(Debug)]
+pub struct Error {
     message: &'static str,
     reason: Option<&'static str>,
     hint: Option<&'static str>,
 }
 
-impl ServiceError {
+impl Error {
     pub const fn new(
         message: &'static str,
         reason: Option<&'static str>,
@@ -22,6 +28,37 @@ impl ServiceError {
     }
 }
 
+#[allow(unused_variables)]
 pub trait Service {
-    fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError>;
+    fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
+        Ok(Response::Ignore)
+    }
+
+    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
+        Ok(Response::Ignore)
+    }
+
+    fn history_up(&mut self, context: &mut Context) -> Result<Response, Error> {
+        Ok(Response::Ignore)
+    }
+
+    fn history_down(&mut self, context: &mut Context) -> Result<Response, Error> {
+        Ok(Response::Ignore)
+    }
+
+    fn cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
+        Ok(Response::Ignore)
+    }
+
+    fn cursor_right(&mut self, context: &mut Context) -> Result<Response, Error> {
+        Ok(Response::Ignore)
+    }
+
+    fn auto_complete(&mut self, context: &mut Context) -> Result<Response, Error> {
+        Ok(Response::Ignore)
+    }
+
+    fn simple_key(&mut self, context: &mut Context, key: char) -> Result<Response, Error> {
+        Ok(Response::Ignore)
+    }
 }

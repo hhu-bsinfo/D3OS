@@ -1,19 +1,15 @@
 use alloc::string::ToString;
 use logger::info;
-use terminal::DecodedKey;
 
 use crate::{context::Context, executable::Executable, service::lexer_service::Token};
 
-use super::service::{Service, ServiceError};
+use super::service::{Error, Response, Service};
 
 pub struct ParserService {}
 
 impl Service for ParserService {
-    fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
-        match event {
-            DecodedKey::Unicode('\n') => self.parse(context),
-            _ => Ok(()),
-        }
+    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.parse(context)
     }
 }
 
@@ -22,7 +18,7 @@ impl ParserService {
         Self {}
     }
 
-    pub fn parse(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+    pub fn parse(&mut self, context: &mut Context) -> Result<Response, Error> {
         let mut executable = Executable::new();
 
         context.tokens.iter().for_each(|token| match token {
@@ -37,6 +33,6 @@ impl ParserService {
 
         info!("{:?}", &executable);
         context.executable = Some(executable);
-        Ok(())
+        Ok(Response::Ok)
     }
 }

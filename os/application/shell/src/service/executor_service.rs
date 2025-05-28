@@ -2,7 +2,6 @@ use core::cell::RefCell;
 
 use alloc::{rc::Rc, string::String, vec::Vec};
 use concurrent::thread;
-use terminal::DecodedKey;
 
 use crate::{
     build_in::{
@@ -15,18 +14,15 @@ use crate::{
     sub_service::alias_sub_service::AliasSubService,
 };
 
-use super::service::{Service, ServiceError};
+use super::service::{Error, Response, Service};
 
 pub struct ExecutorService {
     alias: Rc<RefCell<AliasSubService>>,
 }
 
 impl Service for ExecutorService {
-    fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
-        match event {
-            DecodedKey::Unicode('\n') => self.execute(context),
-            _ => Ok(()),
-        }
+    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.execute(context)
     }
 }
 
@@ -35,10 +31,10 @@ impl ExecutorService {
         Self { alias }
     }
 
-    pub fn execute(&self, context: &Context) -> Result<(), ServiceError> {
+    pub fn execute(&self, context: &Context) -> Result<Response, Error> {
         let executable = match &context.executable {
             Some(executable) => executable,
-            None => return Err(ServiceError::new("No executable", None, None)),
+            None => return Err(Error::new("No executable", None, None)),
         };
 
         for job in &executable.jobs {
@@ -47,20 +43,20 @@ impl ExecutorService {
                 Err(msg) => return Err(msg),
             };
         }
-        Ok(())
+        Ok(Response::Ok)
     }
 
-    fn execute_job(&self, job: &Job) -> Result<(), ServiceError> {
+    fn execute_job(&self, job: &Job) -> Result<Response, Error> {
         let arguments: Vec<&str> = job.arguments.iter().map(String::as_str).collect();
         let thread = match self.try_execute_build_in(&job.command, arguments.clone()) {
-            Ok(_) => return Ok(()),
+            Ok(_) => return Ok(Response::Ok),
             Err(_) => thread::start_application(&job.command, arguments),
         };
         match thread {
             Some(thread) => thread.join(),
-            None => return Err(ServiceError::new("Command not found!", None, None)),
+            None => return Err(Error::new("Command not found!", None, None)),
         };
-        Ok(())
+        Ok(Response::Ok)
     }
 
     fn try_execute_build_in(&self, name: &str, args: Vec<&str>) -> Result<(), ()> {

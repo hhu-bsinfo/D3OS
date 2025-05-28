@@ -1,22 +1,24 @@
-use terminal::{DecodedKey, KeyCode};
-
 use crate::context::Context;
 
-use super::service::{Service, ServiceError};
+use super::service::{Error, Response, Service};
 
 pub struct CommandLineService {}
 
 impl Service for CommandLineService {
-    fn run(&mut self, event: DecodedKey, context: &mut Context) -> Result<(), ServiceError> {
-        match event {
-            DecodedKey::Unicode('\n') => self.on_enter(context),
-            DecodedKey::Unicode('\x08') => self.on_backspace(context),
-            DecodedKey::Unicode('\x7F') => self.on_del(context),
-            DecodedKey::Unicode(ch) => self.on_other_char(context, ch),
-            DecodedKey::RawKey(KeyCode::ArrowLeft) => self.on_arrow_left(context),
-            DecodedKey::RawKey(KeyCode::ArrowRight) => self.on_arrow_right(context),
-            _ => Ok(()),
+    fn simple_key(&mut self, context: &mut Context, key: char) -> Result<Response, Error> {
+        match key {
+            '\x08' => self.handle_backspace(context),
+            '\x7F' => self.handle_del(context),
+            _ => self.on_other_char(context, key),
         }
+    }
+
+    fn cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.move_cursor_left(context)
+    }
+
+    fn cursor_right(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.move_cursor_right(context)
     }
 }
 
@@ -25,53 +27,49 @@ impl CommandLineService {
         Self {}
     }
 
-    fn on_enter(&mut self, _context: &mut Context) -> Result<(), ServiceError> {
-        Ok(())
-    }
-
-    fn on_del(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+    fn handle_del(&mut self, context: &mut Context) -> Result<Response, Error> {
         if context.cursor_position >= context.line.len() {
-            return Ok(());
+            return Ok(Response::Ok);
         }
 
         context.line.remove(context.cursor_position);
         context.set_dirty_offset_from_line(context.cursor_position);
-        Ok(())
+        Ok(Response::Ok)
     }
 
-    fn on_backspace(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+    fn handle_backspace(&mut self, context: &mut Context) -> Result<Response, Error> {
         if context.cursor_position == 0 {
-            return Ok(());
+            return Ok(Response::Skip);
         }
 
         context.line.remove(context.cursor_position - 1);
         context.set_dirty_offset_from_line(context.cursor_position - 1);
         context.cursor_position -= 1;
-        Ok(())
+        Ok(Response::Ok)
     }
 
-    fn on_other_char(&mut self, context: &mut Context, ch: char) -> Result<(), ServiceError> {
+    fn on_other_char(&mut self, context: &mut Context, ch: char) -> Result<Response, Error> {
         context.line.insert(context.cursor_position, ch);
         context.set_dirty_offset_from_line(context.cursor_position);
         context.cursor_position = context.cursor_position + 1;
-        Ok(())
+        Ok(Response::Ok)
     }
 
-    fn on_arrow_right(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+    fn move_cursor_right(&mut self, context: &mut Context) -> Result<Response, Error> {
         if context.cursor_position >= context.line.len() {
-            return Ok(());
+            return Ok(Response::Skip);
         }
 
         context.cursor_position = context.cursor_position + 1;
-        Ok(())
+        Ok(Response::Ok)
     }
 
-    fn on_arrow_left(&mut self, context: &mut Context) -> Result<(), ServiceError> {
+    fn move_cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
         if context.cursor_position <= 0 {
-            return Ok(());
+            return Ok(Response::Skip);
         }
 
         context.cursor_position = context.cursor_position - 1;
-        Ok(())
+        Ok(Response::Ok)
     }
 }
