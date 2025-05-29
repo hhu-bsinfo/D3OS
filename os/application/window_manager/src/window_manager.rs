@@ -26,7 +26,6 @@ use spin::{once::Once, Mutex, MutexGuard};
 use terminal::{DecodedKey, KeyCode};
 use input::mouse::{ try_read_mouse};
 use time::systime;
-use windows::app_window::AppWindowAction;
 use windows::workspace_selection_window::WorkspaceSelectionWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
 use workspace::Workspace;
@@ -227,6 +226,21 @@ impl WindowManager {
                     }
                 },
 
+                WindowManagerMessage::CloseCurrentWindow => {
+                    let was_closed = self.get_current_workspace_mut().close_focused_window();
+                    if was_closed {
+                        self.is_dirty = true;
+                    }
+                },
+
+                WindowManagerMessage::MoveCurrentWindowForward => {
+                    self.get_current_workspace_mut().move_focused_window_forward();
+                },
+
+                WindowManagerMessage::MoveCurrentWindowBackward => {
+                    self.get_current_workspace_mut().move_focused_window_backward();
+                },
+
                 _ => (),
             }
         }
@@ -316,28 +330,6 @@ impl WindowManager {
             if let Some(callback) = self.workspace_selection_window.handle_mouse_event(&mouse_event) {
                 callback();
                 return;
-            }
-
-            // Ask the window for an action
-            match self.get_current_workspace_mut().get_focused_window_mut().get_window_action(&mouse_event) {
-                AppWindowAction::Close => {
-                    let was_closed = self.get_current_workspace_mut().close_focused_window();
-                    if was_closed {
-                        self.is_dirty = true;
-                    }
-                },
-
-                AppWindowAction::MoveForward => {
-                    self.get_current_workspace_mut()
-                        .move_focused_window_forward();
-                },
-
-                AppWindowAction::MoveBackward => {
-                    self.get_current_workspace_mut()
-                        .move_focused_window_backward();
-                }
-
-                _ => (),
             }
 
             // Focus component under the cursor

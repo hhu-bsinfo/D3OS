@@ -3,6 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
 
 use crate::{
+    api::WindowManagerMessage,
     components::{
         button::Button,
         component::ComponentStylingBuilder,
@@ -19,13 +20,6 @@ use crate::{
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
 pub const FOCUSED_INDICATOR_LENGTH: u32 = 24;
-
-pub enum AppWindowAction {
-    None,
-    Close,
-    MoveForward,
-    MoveBackward,
-}
 
 /// This is the window used in workspaces to contains components from different apps
 pub struct AppWindow {
@@ -91,7 +85,9 @@ impl AppWindow {
             button_rect,
             Some(Signal::new(String::from("X"))),
             1,
-            Some(Box::new(move || {})),
+            Some(Box::new(move || {
+                WindowManager::get_api().send_message(WindowManagerMessage::CloseCurrentWindow);
+            })),
             Some(
                 ComponentStylingBuilder::new()
                     .maintain_aspect_ratio(true)
@@ -104,7 +100,10 @@ impl AppWindow {
             button_rect,
             Some(Signal::new(String::from(">"))),
             1,
-            Some(Box::new(move || {})),
+            Some(Box::new(move || {
+                WindowManager::get_api()
+                    .send_message(WindowManagerMessage::MoveCurrentWindowForward);
+            })),
             Some(
                 ComponentStylingBuilder::new()
                     .maintain_aspect_ratio(true)
@@ -117,7 +116,10 @@ impl AppWindow {
             button_rect,
             Some(Signal::new(String::from("<"))),
             1,
-            Some(Box::new(move || {})),
+            Some(Box::new(move || {
+                WindowManager::get_api()
+                    .send_message(WindowManagerMessage::MoveCurrentWindowBackward);
+            })),
             Some(
                 ComponentStylingBuilder::new()
                     .maintain_aspect_ratio(true)
@@ -376,67 +378,6 @@ impl AppWindow {
         self.rescale_window_in_place(self.rect_data);
 
         other_window.mark_window_dirty();
-    }
-
-    pub fn get_window_action(&mut self, mouse_event: &MouseEvent) -> AppWindowAction {
-        // Close window button
-        if self
-            .close_button
-            .read()
-            .get_abs_rect_data()
-            .contains_vertex(&mouse_event.position)
-        {
-            if self
-                .close_button
-                .write()
-                .as_interactable_mut()
-                .unwrap()
-                .consume_mouse_event(mouse_event)
-                .is_some()
-            {
-                return AppWindowAction::Close;
-            }
-        }
-
-        // Next window button
-        if self
-            .next_button
-            .read()
-            .get_abs_rect_data()
-            .contains_vertex(&mouse_event.position)
-        {
-            if self
-                .next_button
-                .write()
-                .as_interactable_mut()
-                .unwrap()
-                .consume_mouse_event(mouse_event)
-                .is_some()
-            {
-                return AppWindowAction::MoveForward;
-            }
-        }
-
-        // Prev window button
-        if self
-            .prev_button
-            .read()
-            .get_abs_rect_data()
-            .contains_vertex(&mouse_event.position)
-        {
-            if self
-                .prev_button
-                .write()
-                .as_interactable_mut()
-                .unwrap()
-                .consume_mouse_event(mouse_event)
-                .is_some()
-            {
-                return AppWindowAction::MoveBackward;
-            }
-        }
-
-        return AppWindowAction::None;
     }
 
     pub fn draw(&mut self, focused_window_id: usize, full: bool) {
