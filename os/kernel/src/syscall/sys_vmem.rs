@@ -23,7 +23,6 @@ use syscall::return_vals::Errno;
 pub fn sys_map_memory(start: usize, size: usize) -> isize {
     let process = process_manager().read().current_process();
 
-    info!("sys_map_memory");
     let start_addr = VirtAddr::new(start.try_into().unwrap());
     let start_page = Page::containing_address(start_addr);
     let num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;

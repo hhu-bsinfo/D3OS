@@ -146,8 +146,12 @@ impl Scheduler {
         let mut state = self.get_ready_state();
 
         if !state.initialized {
+            /// Scheduler is not initialized yet, so this function has been called during the boot process
+            /// So we do active waiting
             timer().wait(ms);
-        } else {
+        } 
+        else {
+            /// Scheduler is initialized, so we can block the calling thread
             let thread = Scheduler::current(&state);
             let wakeup_time = timer().systime_ms() + ms;
             
@@ -176,17 +180,20 @@ impl Scheduler {
             if let Some(mut sleep_list) = self.sleep_list.try_lock() {
                 Scheduler::check_sleep_list(&mut state, &mut sleep_list);
             }
-     
+
+            // Get clone of the current thread
             let current = Scheduler::current(&state);
-            let next = match state.ready_queue.pop_back() {
-                Some(thread) => thread,
-                None => return,
-            };
 
             // Current thread is initializing itself and may not be interrupted
             if current.stacks_locked() || tss().is_locked() {
                 return;
             }
+
+            // Try to get the next thread from the ready queue
+            let next = match state.ready_queue.pop_back() {
+                Some(thread) => thread,
+                None => return,
+            };
 
             let current_ptr = ptr::from_ref(current.as_ref());
             let next_ptr = ptr::from_ref(next.as_ref());

@@ -17,6 +17,8 @@ use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use spin::Mutex;
 use crate::{built_info, efi_services_available, keyboard, process_manager, scheduler, speaker, timer};
+use log::info;
+
 
 const CURSOR: char = if let Some(cursor) = char::from_u32(0x2588) { cursor } else { '_' };
 const TAB_SPACES: u16 = 8;
@@ -106,6 +108,7 @@ impl CursorThread {
 
     pub fn run(&mut self) {
         let mut sleep_counter = 0usize;
+
 
         loop {
             scheduler().sleep(CURSOR_UPDATE_INTERVAL);

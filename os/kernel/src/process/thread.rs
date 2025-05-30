@@ -98,6 +98,8 @@ impl Thread {
         let pid = process.id();
         let tid = scheduler::next_thread_id();
         
+        info!("new_kernel_thread: pid = {}, tid = {}, tag = {}", pid, tid, tag_str);
+
         // Allocate the kernel stack for the kernel thread
         let kernel_stack = stack::alloc_kernel_stack(pid, tid);
 

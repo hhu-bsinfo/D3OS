@@ -112,11 +112,13 @@ unsafe impl Allocator for StackAllocator {
     /// Allocate should never be called. Memory is explictly allocated, see above functions. 
     /// It is required for working with a Vec. 
     fn allocate(&self, _layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+     //   info!("Allocating stack memory for pid: {}, tid: {}", self.pid, self.tid);
         return Err(AllocError);
     }
 
     /// Deallocate is called when a thread terminates.
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         // memory is automaticallyfreed when page tables are dropped */
+        info!("Deallocating stack memory for pid: {}, tid: {}", self.pid, self.tid);
     }
 }
