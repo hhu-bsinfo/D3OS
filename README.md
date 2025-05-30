@@ -24,8 +24,8 @@ rustup override set nightly
 
 The toolchain `nightly-2025-05-05` is confirmed to work. If you are having problems with new versions, try:
 ```bash
-rustup toolchain install nightly-2025-03-10
-rustup override set nightly-2025-03-10
+rustup toolchain install nightly-2025-05-05
+rustup override set nightly-2025-05-05
 ```
 
 To run the build commands _cargo-make_ is required. Install it with:

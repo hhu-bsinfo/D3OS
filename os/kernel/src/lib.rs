@@ -4,7 +4,7 @@
    ║ Descr.: Main rust file of OS. Includes the panic handler as well as all ║
    ║         globals with init functions.                                    ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, HHU                                             ║
+   ║ Author: Fabian Ruhland & Michael Schoettner, HHU                        ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![feature(allocator_api)]
@@ -18,6 +18,7 @@
 #![no_std]
 
 use crate::device::apic::Apic;
+use crate::device::cpu::Cpu;
 use crate::device::lfb_terminal::{CursorThread, LFBTerminal};
 use crate::device::pci::PciBus;
 use crate::device::pit::Timer;
@@ -30,7 +31,7 @@ use crate::interrupt::interrupt_dispatcher::InterruptDispatcher;
 use crate::log::Logger;
 use crate::memory::PAGE_SIZE;
 use crate::memory::acpi_handler::AcpiHandler;
-use crate::memory::kheap::KernelAllocator;
+use crate::memory::heap::KernelAllocator;
 use crate::process::process_manager::ProcessManager;
 use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
@@ -75,10 +76,11 @@ fn panic(info: &PanicInfo) -> ! {
     if terminal_initialized() {
         println!("Panic: {}", info);
     } else {
-        let args = [info.message().as_str().unwrap()];
+        let args = [info.message().as_str().unwrap_or("(no message provided)")];
         let record = Record::builder()
             .level(Level::Error)
-            .file(Some("panic"))
+            .file(info.location().map(|l| l.file()))
+            .line(info.location().map(|l| l.line()))
             .args(Arguments::new_const(&args))
             .build();
 
@@ -88,11 +90,29 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-/* ╔═════════════════════════════════════════════════════════════════════════╗
+/*
+╔═════════════════════════════════════════════════════════════════════════╗
 ║ Static kernel structures.                                               ║
 ║ These structures are need for the kernel to work. Since they only exist ║
 ║ once, they are shared as static lifetime references.                    ║
 ╚═════════════════════════════════════════════════════════════════════════╝ */
+
+/// CPU caps.
+static CPU: Once<Cpu> = Once::new();
+
+
+pub fn init_cpu_info() {
+    CPU.call_once(|| {
+        Cpu::new()
+    });
+}
+
+/// Returns a reference to the CPU info struct.
+pub fn cpu() -> &'static Cpu {
+    CPU.get()
+        .expect("Trying to access CPU info before initialization!")
+}
+
 
 /// Check if EFI system table (and thus runtime services) are available.
 pub fn efi_services_available() -> bool {
@@ -244,7 +264,8 @@ pub fn interrupt_dispatcher() -> &'static InterruptDispatcher {
     INTERRUPT_DISPATCHER.get().unwrap()
 }
 
-/* ╔═════════════════════════════════════════════════════════════════════════╗
+/*
+╔═════════════════════════════════════════════════════════════════════════╗
 ║ Device driver instances.                                                ║
 ║ We currently do not have a device driver framework, so all driver       ║
 ║ instances are created here.                                             ║
