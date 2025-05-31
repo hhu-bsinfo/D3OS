@@ -96,6 +96,12 @@ pub enum Command<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ScreenSplitType {
+    Horizontal,
+    Vertical,
+}
+
 #[derive(Debug)]
 pub enum WindowManagerMessage {
     CreateNewWorkspace,
@@ -105,6 +111,8 @@ pub enum WindowManagerMessage {
     CloseCurrentWindow,
     MoveCurrentWindowForward,
     MoveCurrentWindowBackward,
+
+    LaunchApp(String, ScreenSplitType),
 }
 
 pub struct Senders {
@@ -515,7 +523,8 @@ impl Api {
         Ok(component)
     }
 
-    /// Sends a message to the window manager to perform various actions
+    /// Sends a message to the window manager to perform various actions.
+    /// Window messages will be handled at the end of the current frame.
     pub fn send_message(&self, message: WindowManagerMessage) {
         self.senders
             .tx_messages
