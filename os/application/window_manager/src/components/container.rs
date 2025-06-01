@@ -1,7 +1,10 @@
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
 
-use crate::{config::DEFAULT_BORDER_COLOR, signal::ComponentRef};
+use crate::{
+    config::{DEFAULT_BACKGROUND_COLOR, DEFAULT_BORDER_COLOR},
+    signal::ComponentRef,
+};
 
 use super::component::Component;
 
@@ -11,9 +14,11 @@ pub mod basic_container;
 pub struct ContainerStyling {
     pub maintain_aspect_ratio: bool,
     pub show_border: bool,
+    pub show_background: bool,
     pub child_padding: u32,
 
     pub border_color: Color,
+    pub background_color: Color,
 }
 
 impl Default for ContainerStyling {
@@ -21,9 +26,11 @@ impl Default for ContainerStyling {
         Self {
             maintain_aspect_ratio: false,
             show_border: true,
+            show_background: false,
             child_padding: 5,
 
             border_color: DEFAULT_BORDER_COLOR,
+            background_color: DEFAULT_BACKGROUND_COLOR,
         }
     }
 }
@@ -31,9 +38,11 @@ impl Default for ContainerStyling {
 pub struct ContainerStylingBuilder {
     maintain_aspect_ratio: Option<bool>,
     show_border: Option<bool>,
+    show_background: Option<bool>,
     child_padding: Option<u32>,
 
     border_color: Option<Color>,
+    background_color: Option<Color>,
 }
 
 impl ContainerStylingBuilder {
@@ -41,9 +50,11 @@ impl ContainerStylingBuilder {
         Self {
             maintain_aspect_ratio: None,
             show_border: None,
+            show_background: None,
             child_padding: None,
 
             border_color: None,
+            background_color: None,
         }
     }
 
@@ -57,6 +68,11 @@ impl ContainerStylingBuilder {
         self
     }
 
+    pub fn show_background(&mut self, show_background: bool) -> &mut Self {
+        self.show_background = Some(show_background);
+        self
+    }
+
     pub fn child_padding(&mut self, child_padding: u32) -> &mut Self {
         self.child_padding = Some(child_padding);
         self
@@ -67,13 +83,20 @@ impl ContainerStylingBuilder {
         self
     }
 
+    pub fn background_color(&mut self, color: Color) -> &mut Self {
+        self.background_color = Some(color);
+        self
+    }
+
     pub fn build(&mut self) -> ContainerStyling {
         ContainerStyling {
             maintain_aspect_ratio: self.maintain_aspect_ratio.unwrap_or(false),
             show_border: self.show_border.unwrap_or(true),
+            show_background: self.show_background.unwrap_or(false),
             child_padding: self.child_padding.unwrap_or(5),
-            
+
             border_color: self.border_color.unwrap_or(DEFAULT_BORDER_COLOR),
+            background_color: self.background_color.unwrap_or(DEFAULT_BACKGROUND_COLOR),
         }
     }
 }

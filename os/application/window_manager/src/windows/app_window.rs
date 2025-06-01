@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, string::String};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::color::Color;
+use graphic::color::{self, Color};
 
 use crate::{
     api::WindowManagerMessage,
@@ -71,7 +71,7 @@ impl AppWindow {
             },
             LayoutMode::Horizontal(AlignmentMode::Right),
             StretchMode::Fill,
-            Some(ContainerStylingBuilder::new().show_border(true).build()),
+            Some(ContainerStylingBuilder::new().show_border(true).show_background(true).build()),
         ));
 
         let button_rect = RectData {
@@ -91,6 +91,8 @@ impl AppWindow {
             Some(
                 ComponentStylingBuilder::new()
                     .maintain_aspect_ratio(true)
+                    .focused_border_color(color::RED)
+                    .focused_background_color(color::RED.dim())
                     .build(),
             ),
         );

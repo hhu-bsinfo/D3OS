@@ -276,9 +276,17 @@ impl Container for BasicContainer {
 
 impl Component for BasicContainer {
     fn draw(&mut self, focus_id: Option<usize>) {
-        // Apply the layout BEFORE redrawing
+        // Apply the layout & styling BEFORE redrawing components
         if self.is_dirty {
-            if self.styling.show_border {
+            if self.styling.show_background {
+                Drawer::draw_filled_rectangle(
+                    self.abs_rect_data,
+                    self.styling.background_color,
+                    self.styling
+                        .show_border
+                        .then_some(self.styling.border_color),
+                );
+            } else if self.styling.show_border {
                 Drawer::draw_rectangle(self.abs_rect_data, self.styling.border_color);
             }
 
