@@ -142,6 +142,18 @@ impl BasicContainer {
             _ => self.apply_default_layout(),
         }
     }
+
+    fn get_content_area(&self) -> RectData {
+        if self.styling.show_border {
+            RectData {
+                top_left: self.abs_rect_data.top_left.add(1, 1),
+                width: self.abs_rect_data.width.saturating_sub(1),
+                height: self.abs_rect_data.height.saturating_sub(1),
+            }
+        } else {
+            self.abs_rect_data
+        }
+    }
 }
 
 impl Container for BasicContainer {
@@ -164,19 +176,21 @@ impl Container for BasicContainer {
         max_dim: (u32, u32),
         maintain_aspect_ratio: bool,
     ) -> RectData {
+        let content_area = self.get_content_area();
+
         // Adjust max dimensions based on stretching
         // TODO: Since the max dimension is always relative to the screen, do components really need
         // to calculate it themselves?
         let max_dim = match (&self.layout, &self.stretch) {
             (LayoutMode::Horizontal(_), StretchMode::Fill) => {
-                (max_dim.0, u32::max(self.abs_rect_data.height, min_dim.1))
+                (max_dim.0, u32::max(content_area.height, min_dim.1))
             }
             (LayoutMode::Vertical(_), StretchMode::Fill) => {
-                (u32::max(self.abs_rect_data.width, min_dim.0), max_dim.1)
+                (u32::max(content_area.width, min_dim.0), max_dim.1)
             }
             (LayoutMode::None, StretchMode::Fill) => (
-                u32::max(self.abs_rect_data.width, min_dim.0),
-                u32::max(self.abs_rect_data.height, min_dim.1),
+                u32::max(content_area.width, min_dim.0),
+                u32::max(content_area.height, min_dim.1),
             ),
             (_, _) => max_dim.max(min_dim),
         };
@@ -184,7 +198,7 @@ impl Container for BasicContainer {
         // Calculate the new abs rect from the rel rect
         let new_abs_rect = scale_rect_to_rect(
             rel_rect,
-            self.abs_rect_data,
+            content_area,
             min_dim,
             max_dim,
             maintain_aspect_ratio,
@@ -196,12 +210,12 @@ impl Container for BasicContainer {
             | LayoutMode::Vertical(AlignmentMode::Top) => new_abs_rect.top_left + self.cursor,
 
             LayoutMode::Horizontal(AlignmentMode::Right) => {
-                new_abs_rect.top_left.add(self.abs_rect_data.width, 0)
+                new_abs_rect.top_left.add(content_area.width, 0)
                     - self.cursor.add(new_abs_rect.width, 0)
             }
 
             LayoutMode::Vertical(AlignmentMode::Bottom) => {
-                new_abs_rect.top_left.add(0, self.abs_rect_data.height)
+                new_abs_rect.top_left.add(0, content_area.height)
                     - self.cursor.add(0, new_abs_rect.height)
             }
 
@@ -214,7 +228,7 @@ impl Container for BasicContainer {
             LayoutMode::Horizontal(_) => RectData {
                 top_left: new_abs_pos, // Use original rel as offset
                 height: match self.stretch {
-                    StretchMode::Fill => self.abs_rect_data.height,
+                    StretchMode::Fill => content_area.height,
                     _ => new_abs_rect.height,
                 },
 
@@ -224,7 +238,7 @@ impl Container for BasicContainer {
             LayoutMode::Vertical(_) => RectData {
                 top_left: new_abs_pos, // Use original rel as offset
                 width: match self.stretch {
-                    StretchMode::Fill => self.abs_rect_data.width,
+                    StretchMode::Fill => content_area.width,
                     _ => new_abs_rect.width,
                 },
 
@@ -234,8 +248,8 @@ impl Container for BasicContainer {
             _ => match self.stretch {
                 StretchMode::Fill => RectData {
                     top_left: new_abs_pos,
-                    width: self.abs_rect_data.width,
-                    height: self.abs_rect_data.height,
+                    width: content_area.width,
+                    height: content_area.height,
                 },
 
                 _ => RectData {
@@ -249,7 +263,7 @@ impl Container for BasicContainer {
     }
 
     fn scale_vertex_to_container(&self, rel_pos: Vertex) -> Vertex {
-        let abs_pos = scale_pos_to_rect(rel_pos, self.abs_rect_data);
+        let abs_pos = scale_pos_to_rect(rel_pos, self.get_content_area());
 
         // Adjust the position
         let abs_pos = abs_pos + self.cursor;

@@ -362,6 +362,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         "cleanup",
     ));
 
+    //Initialize tty
+    init_tty();
+
     if BOOT_TO_GUI {
         // Create and register the 'window_manager' thread in the scheduler
         scheduler().ready(Thread::load_application(initrd().entries()
@@ -369,9 +372,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             .expect("Window Manager application not available!")
             .data(), "window_manager", &[].to_vec()));
     } else {
-        //Initialize tty
-        init_tty();
-
         // Create and register the 'terminal_emulator' thread (from app image in ramdisk) in the scheduler
         scheduler().ready(Thread::load_application(
             initrd()

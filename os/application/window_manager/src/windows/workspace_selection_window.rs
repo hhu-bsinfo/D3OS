@@ -8,7 +8,7 @@ use alloc::{
     string::{String, ToString},
 };
 use drawer::{rect_data::RectData, vertex::Vertex};
-use graphic::color::{BLUE, RED};
+use graphic::color::{BLUE, GREY, RED};
 use hashbrown::HashMap;
 
 use crate::{
@@ -21,6 +21,7 @@ use crate::{
             Container, ContainerStylingBuilder,
         },
     },
+    config::FOCUSED_BG_COLOR,
     mouse_state::MouseEvent,
     signal::{ComponentRef, ComponentRefExt, Signal},
     WindowManager, SCREEN,
@@ -171,7 +172,12 @@ impl WorkspaceSelectionWindow {
                 WindowManager::get_api()
                     .send_message(WindowManagerMessage::SwitchToWorkspace(workspace_id));
             })),
-            None,
+            Some(
+                ComponentStylingBuilder::new()
+                    .background_color(GREY.dim())
+                    .focused_background_color(GREY)
+                    .build(),
+            ),
         );
 
         self.workspace_buttons.insert(workspace_id, button.clone());
