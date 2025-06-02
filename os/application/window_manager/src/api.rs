@@ -78,7 +78,7 @@ pub enum Command<'a> {
         spacing: u32,
         num_buttons: usize,
         // options: Vec<String>,
-        selected_option: usize,
+        selected_option: Stateful<usize>,
         on_change: Option<Box<dyn Fn(usize) -> ()>>,
         styling: Option<ComponentStyling>,
     },
@@ -471,7 +471,7 @@ impl Api {
                             abs_radius,
                             rel_radius,
                             spacing,
-                            Some(selected_option),
+                            selected_option,
                             on_change,
                             styling,
                         );

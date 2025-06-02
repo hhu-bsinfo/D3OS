@@ -24,7 +24,7 @@ impl Runnable for RadioButtonApp {
                 radius: 20,
                 spacing: 20,
                 num_buttons: 3,
-                selected_option: 1,
+                selected_option: Signal::new(1),
                 on_change: Some(Box::new(move |selected_option: usize| {
                     option_radio_buttons.set(selected_option.to_string());
                 })),

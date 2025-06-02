@@ -1,20 +1,24 @@
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 
-use crate::WindowManager;
+use crate::{signal::Stateful, WindowManager};
 
-use super::{component::{Casts, Component, ComponentStyling, Interactable}, container::Container};
+use super::{
+    component::{Casts, Component, ComponentStyling, Interactable},
+    container::Container,
+};
 
 pub struct RadioButton {
     pub id: usize,
-    
+
     abs_center: Vertex,
     rel_center: Vertex,
     abs_radius: u32,
     rel_radius: u32,
     drawn_rect_data: RectData,
 
-    pub state: bool,
-    
+    button_index: usize,
+    selected_button_index: Stateful<usize>,
+
     is_disabled: bool,
     is_hidden: bool,
     is_dirty: bool,
@@ -28,7 +32,8 @@ impl RadioButton {
         rel_center: Vertex,
         abs_radius: u32,
         rel_radius: u32,
-        state: bool,
+        button_index: usize,
+        selected_button_index: Stateful<usize>,
         styling: Option<ComponentStyling>,
     ) -> Self {
         let drawn_rect_data = RectData {
@@ -44,7 +49,8 @@ impl RadioButton {
             abs_radius,
             rel_radius,
             drawn_rect_data,
-            state,
+            button_index,
+            selected_button_index,
             is_disabled: false,
             is_hidden: false,
             is_dirty: true,
@@ -53,7 +59,11 @@ impl RadioButton {
     }
 
     pub fn set_state(&mut self, state: bool) {
-        self.state = state;
+        // TODO: Remove this
+        if state {
+            self.selected_button_index.set(self.button_index);
+        }
+
         self.is_dirty = true;
     }
 
@@ -102,7 +112,8 @@ impl Component for RadioButton {
 
         self.drawn_rect_data = self.get_abs_rect_data();
 
-        if self.state {
+        // Is the button selected?
+        if self.selected_button_index.get() == self.button_index {
             let inner_rad = (self.abs_radius as f32 * 0.5) as u32;
             Drawer::draw_filled_circle(self.abs_center, inner_rad, border_color, None);
         }
@@ -135,7 +146,7 @@ impl Component for RadioButton {
     }
 
     fn rescale_to_container(&mut self, parent: &dyn Container) {
-        // wird in radio_button_group übernommen
+        self.abs_center = parent.scale_vertex_to_container(self.rel_center);
     }
 }
 
