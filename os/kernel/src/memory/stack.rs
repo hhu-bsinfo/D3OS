@@ -13,7 +13,6 @@
 */
 
 use crate::consts::KERNEL_STACK_PAGES;
-use crate::memory::frames::phys_limit;
 use crate::memory::{PAGE_SIZE, frames};
 use alloc::vec::Vec;
 use core::alloc::{AllocError, Allocator, Layout};
@@ -22,9 +21,8 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 use log::info;
 use x86_64::structures::paging::Page;
-use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::{PhysAddr, VirtAddr};
+use x86_64::VirtAddr;
 
 /// Allocate frames for a kernel stack for a thread with the given `pid` and `tid`.
 pub fn alloc_kernel_stack(pid: usize, tid: usize) -> Vec<u64, StackAllocator> {

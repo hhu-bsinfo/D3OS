@@ -16,7 +16,6 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use smallmap::Map;
 use spin::{Mutex, MutexGuard};
-use log::info;
 
 
 // thread IDs
@@ -146,12 +145,12 @@ impl Scheduler {
         let mut state = self.get_ready_state();
 
         if !state.initialized {
-            /// Scheduler is not initialized yet, so this function has been called during the boot process
-            /// So we do active waiting
+            // Scheduler is not initialized yet, so this function has been called during the boot process
+            // So we do active waiting
             timer().wait(ms);
         } 
         else {
-            /// Scheduler is initialized, so we can block the calling thread
+            // Scheduler is initialized, so we can block the calling thread
             let thread = Scheduler::current(&state);
             let wakeup_time = timer().systime_ms() + ms;
             

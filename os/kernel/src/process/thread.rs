@@ -35,7 +35,6 @@
 use crate::consts::MAIN_USER_STACK_START;
 use crate::consts::MAX_USER_STACK_SIZE;
 use crate::consts::USER_SPACE_ENV_START;
-use crate::memory;
 use crate::memory::stack;
 use crate::memory::stack::StackAllocator;
 use crate::memory::vma::VmaType;
@@ -50,7 +49,7 @@ use core::arch::naked_asm;
 use core::ptr;
 use goblin::elf::Elf;
 use goblin::elf64;
-use log::{info,debug};
+use log::info;
 use spin::Mutex;
 use x86_64::PrivilegeLevel::Ring3;
 use x86_64::VirtAddr;

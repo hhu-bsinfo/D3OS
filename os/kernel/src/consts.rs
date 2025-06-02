@@ -8,9 +8,6 @@ pub const USER_SPACE_CODE_START: usize = USER_SPACE_START;
 pub const USER_SPACE_ENV_START: usize = USER_SPACE_CODE_START + 0x40000000;  // 1 GiB
 pub const USER_SPACE_ARG_START: usize = USER_SPACE_ENV_START;
 
-const USER_SPACE_HEAP_START: usize = USER_SPACE_ENV_START + 0x40000000;
-const USER_SPACE_HEAP_SIZE: usize = 1024 * 1024 * 1024 * 1024;
-
 // User space stacks (Max size per stack: 1 GiB)
 pub const MAX_USER_STACK_SIZE: usize = 0x40000000;  // 1 GiB
 pub const MAIN_USER_STACK_START: usize = USER_SPACE_ENV_START + 0x40000000;  // 1 GiB

@@ -9,7 +9,6 @@
 
 use x86_64::VirtAddr;
 use x86_64::structures::paging::Page;
-use log::info;
 
 use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
