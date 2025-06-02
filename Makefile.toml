@@ -103,6 +103,9 @@ args = [ "-N", "${OVMF_URL}" ]
 run_task = { name = "link", fork = true }
 dependencies = [ "create-initrd-directory" ]
 
+[tasks.check-members]
+run_task = { name = "check", fork = true }
+
 [tasks.create-initrd-directory]
 command = "mkdir"
 args = [ "-p", "${INITRD_DIRECTORY}" ]
