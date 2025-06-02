@@ -72,20 +72,23 @@ impl<'b> Document<'b> {
     }
     fn prev_line(&self, pos: usize) -> Option<usize> {
         let mut index = 0;
-        if self.text_buffer.get_char(pos).is_some_and(|c| c == '\n') {
+        /*if self.text_buffer.get_char(pos).is_some_and(|c| c == '\n') {
             if pos.checked_sub(1).is_some() && self.text_buffer.get_char(pos - 1).is_some() {
                 return Some(pos - 1);
             }
             return None;
-        }
+        }*/
         while let Some(c) = self.text_buffer.get_char(pos - index) {
-            if c == '\n' {
+            if c == '\n' && index > 0 {
                 break;
             }
             index += 1;
             if pos < index {
                 break;
             }
+        }
+        if pos < index {
+            return Some(0);
         }
         if self.text_buffer.get_char(pos - index + 1).is_some() {
             return Some(pos - index + 1);
@@ -99,6 +102,8 @@ impl<'b> Document<'b> {
         let origin_len = self.caret - prev_line;
         let next_line = self.next_line(self.caret).unwrap_or(self.caret);
         self.caret = next_line + origin_len;
+        #[cfg(feature = "with_runtime")]
+        warn!("prev line {} origin_len {}", prev_line, origin_len);
     }
 
     fn move_cursor_up(&mut self) {
@@ -229,7 +234,55 @@ mod tests {
     fn move_cursor_down_0() {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.update(Message::DecodedKey(DecodedKey::Unicode('j')));
+        doc.caret = 0;
+        doc.move_cursor_down();
+        assert_eq!(doc.caret(), 4);
+    }
+
+    #[test]
+    fn move_cursor_down_1() {
+        // first line
+        let text = "Das\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 1;
+        doc.move_cursor_down();
+        assert_eq!(doc.caret(), 5);
+    }
+    #[test]
+    fn move_cursor_down_2() {
+        // first line
+        let text = "Das\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 3;
+        doc.move_cursor_down();
+        assert_eq!(doc.caret(), 7);
+    }
+    #[test]
+    fn move_cursor_down_3() {
+        //middle line
+        let text = "Das\nein\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 3;
+        doc.move_cursor_down();
+        assert_eq!(doc.caret(), 7);
+    }
+    #[test]
+    fn move_cursor_down_4() {
+        //middle line
+        let text = "Das\nein\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 5;
+        doc.move_cursor_down();
+        assert_eq!(doc.caret(), 9);
+    }
+    #[test]
+    fn move_cursor_down_with_space_0() {
+        //middle line
+        let text = "Das\n";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 0;
+        doc.move_cursor_down();
         assert_eq!(doc.caret(), 3);
     }
+
 }

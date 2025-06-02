@@ -113,6 +113,7 @@ impl View {
                 buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
                 caret_pos = y;
                 found_caret = true;
+                warn!("caret: {}", document.caret())
             }
             if c == '\n' {
                 y += DEFAULT_CHAR_HEIGHT * font_scale;
