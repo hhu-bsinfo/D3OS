@@ -19,7 +19,7 @@ fn main() {
         let key = read();
         if let Some(key) = key {
             if key.is_ascii() {
-                match key as char {
+                match key {
                     'a' | 'A' => for _ in 0..25 {
                         allocations.push(Box::new([0u8; 1024]));
                     },

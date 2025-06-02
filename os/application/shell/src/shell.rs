@@ -12,7 +12,7 @@ use terminal::read::read;
 use terminal::{print, println};
 
 
-fn process_pwd(split: &Vec<&str>) {
+fn process_pwd(split: &[&str]) {
     if split.len() != 1 {
         println!("usage: pwd");
         return ;
@@ -24,23 +24,23 @@ fn process_pwd(split: &Vec<&str>) {
     }
 }
 
-fn process_mkdir(split: &Vec<&str>) {
+fn process_mkdir(split: &[&str]) {
     if split.len() != 2 {
         println!("usage: mkdir directory_name");
         return ;
     }
-    let res = mkdir(&split[1]);
+    let res = mkdir(split[1]);
     if res.is_err() {
         println!("usage: mkdir directory_name");
     }
 }
 
-fn process_cd(split: &Vec<&str>) {
+fn process_cd(split: &[&str]) {
     if split.len() != 2 {
         println!("usage: cd directory_name");
         return ;
     }
-    let res = cd(&split[1]);
+    let res = cd(split[1]);
     if res.is_err() {
         println!("usage: cd directory_name");
     }
@@ -57,7 +57,7 @@ fn process_internal_command(split: &Vec<&str>) -> bool {
         process_mkdir(split);
         return true;
     } else if split[0] == "touch" {
-        let res = touch(&split[1]);
+        let res = touch(split[1]);
         if res.is_err() {
             println!("{:?}", res);
         }

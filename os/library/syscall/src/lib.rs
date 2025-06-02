@@ -86,5 +86,5 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
             clobber_abi("system"));
     }
 
-    convert_ret_code_to_syscall_result(ret_code.try_into().unwrap())
+    convert_ret_code_to_syscall_result(ret_code)
 }

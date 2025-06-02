@@ -30,7 +30,7 @@ use crate::storage::block::BlockDevice;
 pub fn init() {
     let devices = pci_bus().search_by_class(0x01, 0x01);
     for device in devices {
-        let device_id = device.read().header().id(&pci_bus().config_space());
+        let device_id = device.read().header().id(pci_bus().config_space());
         info!("Found IDE controller [{}:{}]", device_id.0, device_id.1);
 
         let ide_controller = Arc::new(IdeController::new(device));
@@ -257,12 +257,12 @@ impl IdeController {
         let pci_config_space = pci_bus().config_space();
         let mut pci_device = pci_device.write();
 
-        let id = pci_device.header().id(&pci_config_space);
-        let mut rev_and_class = pci_device.header().revision_and_class(&pci_config_space);
+        let id = pci_device.header().id(pci_config_space);
+        let mut rev_and_class = pci_device.header().revision_and_class(pci_config_space);
         info!("Initializing IDE controller [0x{:04x}:0x{:04x}]", id.0, id.1);
 
         let mut supports_dma = false;
-        pci_device.update_command(&pci_config_space, |command| {
+        pci_device.update_command(pci_config_space, |command| {
             if rev_and_class.3 & 0x80 == 0x80 { // Bit 7 in programming defines whether the controller supports DMA
                 info!("IDE controller supports DMA");
                 supports_dma = true;
@@ -275,7 +275,7 @@ impl IdeController {
 
         for i in 0..CHANNELS_PER_CONTROLLER {
             let dma_base_address: u16 = match supports_dma {
-                true => pci_device.bar(4, &pci_config_space).expect("Failed to read DMA base address").unwrap_io() as u16,
+                true => pci_device.bar(4, pci_config_space).expect("Failed to read DMA base address").unwrap_io() as u16,
                 false => 0
             };
 
@@ -290,7 +290,7 @@ impl IdeController {
                     pci_config_space.write(pci_device.header().address(), 0x08, value | (0x01 << i * 2) << 8);
                 }
 
-                rev_and_class = pci_device.header().revision_and_class(&pci_config_space);
+                rev_and_class = pci_device.header().revision_and_class(pci_config_space);
                 interface = rev_and_class.3 >> i * 2;
             }
 
@@ -304,10 +304,10 @@ impl IdeController {
                 _ => {
                     // Channel is running in native mode -> Read base address from PCI registers
                     info!("Channel [{}] is running in native mode", i);
-                    interrupts[i as usize] = InterruptVector::try_from(pci_device.interrupt(&pci_config_space).0).unwrap();
+                    interrupts[i as usize] = InterruptVector::try_from(pci_device.interrupt(pci_config_space).0).unwrap();
 
-                    (pci_device.bar(0, &pci_config_space).expect("Failed to read command base address").unwrap_io() as u16,
-                     pci_device.bar(1, &pci_config_space).expect("Failed to read control base address").unwrap_io() as u16)
+                    (pci_device.bar(0, pci_config_space).expect("Failed to read command base address").unwrap_io() as u16,
+                     pci_device.bar(1, pci_config_space).expect("Failed to read control base address").unwrap_io() as u16)
                 }
             };
 

@@ -301,7 +301,7 @@ impl Thread {
         unsafe {
             argc.write(args.len() + 1);
 
-            let args_begin = argv.offset((args.len() + 1) as isize) as *mut u8; // Physical start address of arguments (we use this address to copy them)
+            let args_begin = argv.add(args.len() + 1) as *mut u8; // Physical start address of arguments (we use this address to copy them)
             let args_begin_virt = env_virt_start.start_address()
                 + size_of::<usize>() as u64
                 + ((args.len() + 1) * size_of::<usize>()) as u64; // Virtual start address of arguments (they will be visible here in user space)

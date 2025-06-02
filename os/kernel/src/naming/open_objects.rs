@@ -107,7 +107,7 @@ pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno
             opened_object.named_object.as_file().and_then(|file| {
                 let new_pos = match origin {
                     SeekOrigin::Start => offset,
-                    SeekOrigin::End => file.stat()?.size as usize + offset,
+                    SeekOrigin::End => file.stat()?.size + offset,
                     SeekOrigin::Current => opened_object.pos.load(Ordering::SeqCst) + offset,
                 };
                 opened_object.pos.store(new_pos, Ordering::SeqCst);

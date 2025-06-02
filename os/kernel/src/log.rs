@@ -61,7 +61,7 @@ impl log::Log for Logger {
                 if allocator().is_initialized() {
                     serial.write_str(record.args().to_string().as_str());
                 } else {
-                    serial.write_str(record.args().as_str().unwrap_or_else(|| { "Formatted messages are not supported before heap initialization!" }));
+                    serial.write_str(record.args().as_str().unwrap_or("Formatted messages are not supported before heap initialization!"));
                 }
 
                 serial.write_str("\n");

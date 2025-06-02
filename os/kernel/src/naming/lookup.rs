@@ -63,7 +63,7 @@ pub(super) fn lookup_named_object(path: &String) -> Result<NamedObject, Errno> {
 }
 
 /// Helper function for checking if `path` is an abolute path
-fn check_absolute_path(path: &String) -> bool {
+fn check_absolute_path(path: &str) -> bool {
     if let Some(pos) = path.find('/') {
         if pos == 0 {
             return true;

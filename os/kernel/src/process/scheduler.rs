@@ -317,7 +317,7 @@ impl Scheduler {
             }
         }
 
-        let current = Scheduler::current(&state);
+        let current = Scheduler::current(state);
         let next = next_thread.unwrap();
 
         // Thread has enqueued itself into sleep list and waited so long, that it dequeued itself in the meantime

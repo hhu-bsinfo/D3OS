@@ -232,7 +232,7 @@ pub fn allocator() -> &'static KernelAllocator {
 static LOGGER: Once<Logger> = Once::new();
 
 pub fn logger() -> &'static Logger {
-    LOGGER.call_once(|| Logger::new());
+    LOGGER.call_once(Logger::new);
     LOGGER.get().unwrap()
 }
 
@@ -250,7 +250,7 @@ pub fn process_manager() -> &'static RwLock<ProcessManager> {
 static SCHEDULER: Once<Scheduler> = Once::new();
 
 pub fn scheduler() -> &'static Scheduler {
-    SCHEDULER.call_once(|| Scheduler::new());
+    SCHEDULER.call_once(Scheduler::new);
     SCHEDULER.get().unwrap()
 }
 
@@ -260,7 +260,7 @@ pub fn scheduler() -> &'static Scheduler {
 static INTERRUPT_DISPATCHER: Once<InterruptDispatcher> = Once::new();
 
 pub fn interrupt_dispatcher() -> &'static InterruptDispatcher {
-    INTERRUPT_DISPATCHER.call_once(|| InterruptDispatcher::new());
+    INTERRUPT_DISPATCHER.call_once(InterruptDispatcher::new);
     INTERRUPT_DISPATCHER.get().unwrap()
 }
 
@@ -281,7 +281,7 @@ pub fn interrupt_dispatcher() -> &'static InterruptDispatcher {
 static APIC: Once<Apic> = Once::new();
 
 pub fn init_apic() {
-    APIC.call_once(|| Apic::new());
+    APIC.call_once(Apic::new);
 }
 
 pub fn apic() -> &'static Apic {
@@ -396,7 +396,7 @@ pub fn keyboard() -> Option<Arc<Keyboard>> {
 static PCI: Once<PciBus> = Once::new();
 
 pub fn init_pci() {
-    PCI.call_once(|| PciBus::scan());
+    PCI.call_once(PciBus::scan);
 }
 
 pub fn pci_bus() -> &'static PciBus {

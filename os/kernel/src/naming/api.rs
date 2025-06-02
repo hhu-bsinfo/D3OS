@@ -64,7 +64,7 @@ pub fn open(path: &String, flags: OpenOptions) -> Result<usize, Errno> {
 /// Write all bytes from the given `buffer` into the named object referenced by `object_handle`. \
 /// Returns `Ok(number of bytes written)` or `Err`.
 pub fn write(object_handle: usize, buffer: &[u8]) -> Result<usize, Errno> {
-    open_objects::write(object_handle, &buffer)
+    open_objects::write(object_handle, buffer)
 }
 
 /// Read from the named object referenced by `object_handle` into the given `buffer`. \
@@ -87,7 +87,7 @@ pub fn close(object_handle: usize) -> Result<usize, Errno> {
 
 /// Create a directory for the given `path`. \
 /// Returns `Ok(0)` or `Err(errno)`
-pub fn mkdir(path: &String) -> Result<usize, Errno> {
+pub fn mkdir(path: &str) -> Result<usize, Errno> {
     // Split the path into components
     let mut components: Vec<&str> = path.split("/").collect();
 
@@ -122,7 +122,7 @@ pub fn mkdir(path: &String) -> Result<usize, Errno> {
 
 /// Create an empty file defined by `path`. \
 /// Returns `Ok(0)` or `Err(errno)`
-pub fn touch(path: &String) -> Result<usize, Errno> {
+pub fn touch(path: &str) -> Result<usize, Errno> {
     // Split the path into components
     let mut components: Vec<&str> = path.split("/").collect();
 
@@ -218,7 +218,7 @@ pub fn cwd(buffer: &mut [u8]) -> Result<usize, Errno> {
 /// Return: `Ok(0)` or `Err(errno)`
 ///
 pub fn cd(path: &String) -> Result<usize, Errno> {
-    let result = lookup::lookup_dir(&path);
+    let result = lookup::lookup_dir(path);
     match result {
         Ok(_) => {
             let mut cwd = CWD.lock();

@@ -406,7 +406,7 @@ impl Apic {
     }
 }
 
-fn target_gsi(irq_overrides: &Vec<InterruptSourceOverride>, source_irq: u8) -> u32 {
+fn target_gsi(irq_overrides: &[InterruptSourceOverride], source_irq: u8) -> u32 {
     match override_for_source(irq_overrides, source_irq) {
         None => source_irq as u32,
         Some(irq_override) => irq_override.global_system_interrupt,
@@ -414,7 +414,7 @@ fn target_gsi(irq_overrides: &Vec<InterruptSourceOverride>, source_irq: u8) -> u
 }
 
 fn override_for_source(
-    irq_overrides: &Vec<InterruptSourceOverride>,
+    irq_overrides: &[InterruptSourceOverride],
     source_irq: u8,
 ) -> Option<&InterruptSourceOverride> {
     for irq_override in irq_overrides.iter() {
@@ -427,7 +427,7 @@ fn override_for_source(
 }
 
 fn override_for_target(
-    irq_overrides: &Vec<InterruptSourceOverride>,
+    irq_overrides: &[InterruptSourceOverride],
     target_gsi: u32,
 ) -> Option<&InterruptSourceOverride> {
     for irq_override in irq_overrides.iter() {
@@ -440,7 +440,7 @@ fn override_for_target(
 }
 
 fn io_apic_for_target(
-    io_apics: &Vec<(Mutex<IoApic>, u32)>,
+    io_apics: &[(Mutex<IoApic>, u32)],
     target_gsi: u32,
 ) -> Option<&(Mutex<IoApic>, u32)> {
     for entry in io_apics.iter() {
@@ -456,7 +456,7 @@ fn io_apic_for_target(
     None
 }
 
-fn is_nmi(nmi_sources: &Vec<NmiSource>, gsi: u32) -> bool {
+fn is_nmi(nmi_sources: &[NmiSource], gsi: u32) -> bool {
     for nmi in nmi_sources.iter() {
         if nmi.global_system_interrupt == gsi {
             return true;

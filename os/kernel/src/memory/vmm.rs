@@ -61,7 +61,7 @@ use crate::memory::vma::{VirtualMemoryArea, VmaType};
 
 /// Clone address space. Used during process creation.
 pub fn clone_address_space(other: &VirtualAddressSpace) -> Arc<Paging> {
-    Arc::new(Paging::from_other(&&other.page_tables()))
+    Arc::new(Paging::from_other(&other.page_tables()))
 }
 
 /// Create kernel address space. Used during process creation.
