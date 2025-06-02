@@ -42,6 +42,10 @@ condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_P
 command = "cargo"
 args = [ "check", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
 
+[tasks.clippy]
+command = "cargo"
+args = [ "clippy", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+
 # Cleanup tasks
 
 [tasks.clean]
