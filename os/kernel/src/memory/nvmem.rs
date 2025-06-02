@@ -163,7 +163,7 @@ impl Nfit {
 
                 structure_ptr = (structure_ptr as *const u8).add(structure.length as usize)
                     as *const NfitStructureHeader;
-                remaining = remaining - structure.length as usize;
+                remaining -= structure.length as usize;
             }
         }
 

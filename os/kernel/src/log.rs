@@ -39,7 +39,7 @@ impl log::Log for Logger {
         }
 
         let level = record.metadata().level();
-        let file = record.file().unwrap_or("unknown").split('/').rev().next().unwrap_or("unknown");
+        let file = record.file().unwrap_or("unknown").split('/').next_back().unwrap_or("unknown");
         let line = record.line().unwrap_or(0);
 
         let streams = self.streams.read();

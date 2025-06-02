@@ -72,7 +72,7 @@ fn process_next_char(line: &mut String, ch: char) {
             let split = line.split_whitespace().collect::<Vec<&str>>();
             if !split.is_empty() {
                 if !process_internal_command(&split) {
-                    match thread::start_application(split[0], split[1..].iter().map(|&s| s).collect()) {
+                    match thread::start_application(split[0], split[1..].to_vec()) {
                         Some(app) => app.join(),
                         None => println!("Command not found!"),
                     }

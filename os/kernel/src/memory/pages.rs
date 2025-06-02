@@ -378,7 +378,7 @@ impl Paging {
             }
 
             entry.set_addr(frame_addr, flags);
-            frame_addr = frame_addr + PAGE_SIZE as u64;
+            frame_addr += PAGE_SIZE as u64;
         }
 
         alloc_count

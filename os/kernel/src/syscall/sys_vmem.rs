@@ -24,7 +24,7 @@ pub fn sys_map_memory(start: usize, size: usize) -> isize {
 
     let start_addr = VirtAddr::new(start.try_into().unwrap());
     let start_page = Page::containing_address(start_addr);
-    let num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+    let num_pages = size.div_ceil(PAGE_SIZE);
 
     let vma = process.virtual_address_space.alloc_vma(
         Some(start_page),

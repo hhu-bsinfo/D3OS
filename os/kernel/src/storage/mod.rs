@@ -32,13 +32,10 @@ pub fn add_block_device(typ: &str, drive: Arc<dyn BlockDevice + Send + Sync>) {
     drives.insert(name.clone(), drive);
     info!("Registered block device [{name}]");
 
-    let mut index = 0;
-    for partition in partitions {
+    for (index, partition) in partitions.into_iter().enumerate() {
         let name = format!("{name}p{index}");
         drives.insert(name.clone(), partition);
         info!("Registered partition [{name}]");
-
-        index += 1;
     }
 }
 

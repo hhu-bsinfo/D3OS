@@ -232,9 +232,8 @@ impl Scheduler {
         {
             // Execute in own block, so that the lock is released automatically (block() does not return)
             let mut join_map = self.join_map.lock();
-            let join_list = join_map.get_mut(&thread_id);
-            if join_list.is_some() {
-                join_list.unwrap().push(thread);
+            if let Some(join_list) = join_map.get_mut(&thread_id) {
+                join_list.push(thread);
             } else {
                 // Joining on a non-existent thread has no effect (i.e. the thread has already finished running)
                 return;
@@ -378,10 +377,8 @@ impl Scheduler {
     fn get_ready_state_and_join_map(&self) -> (MutexGuard<ReadyState>, MutexGuard<Map<usize, Vec<Arc<Thread>>>>) {
         loop {
             let ready_state = self.get_ready_state();
-            let join_map = self.join_map.try_lock();
-
-            if join_map.is_some() {
-                return (ready_state, join_map.unwrap());
+            if let Some(join_map) = self.join_map.try_lock() {
+                return (ready_state, join_map);
             } else {
                 self.switch_thread_no_interrupt();
             }

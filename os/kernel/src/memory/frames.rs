@@ -147,7 +147,7 @@ impl Debug for PageFrameListAllocator {
                 block.end().start_address().as_u64(),
                 block.end() - block.start()
             )?;
-            available = available + block.frame_count;
+            available += block.frame_count;
 
             current = current.next.as_ref().unwrap();
         }

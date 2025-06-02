@@ -472,7 +472,7 @@ fn multiboot2_search_memory_map(
     };
 
     // Search memory map, provided by bootloader of EFI, for usable memory and initialize physical memory management
-    if let Some(_) = multiboot.efi_bs_not_exited_tag() {
+    if multiboot.efi_bs_not_exited_tag().is_some() {
         // EFI boot services have not been exited, and we obtain access to the memory map and EFI runtime services by exiting them manually
         info!("EFI boot services have not been exited yet");
         let image_tag = multiboot

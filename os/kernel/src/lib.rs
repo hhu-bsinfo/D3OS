@@ -325,8 +325,8 @@ pub fn init_serial_port() {
         serial = Some(SerialPort::new(ComPort::Com4, BaudRate::Baud115200, 128));
     }
 
-    if serial.is_some() {
-        SERIAL_PORT.call_once(|| Arc::new(serial.unwrap()));
+    if let Some(s) = serial {
+        SERIAL_PORT.call_once(|| Arc::new(s));
     }
 }
 

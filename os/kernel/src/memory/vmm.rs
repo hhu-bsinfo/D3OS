@@ -264,10 +264,8 @@ impl VirtualAddressSpace {
                 return None;
             }
         // Bounds check against usable kernel address range
-        } else {
-            if end_addr > self.last_usable_user_addr {
-                return None;
-            }
+        } else if end_addr > self.last_usable_user_addr {
+            return None;
         }
 
         // Create new VMA

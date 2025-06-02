@@ -196,9 +196,8 @@ impl OpenObjectTable {
         self.free_handles
             .iter_mut()
             .position(|value| *value == 0)
-            .map(|index| {
-                self.free_handles[index] = 1;
-                index
+            .inspect(|index| {
+                self.free_handles[*index] = 1;
             })
     }
 

@@ -550,9 +550,7 @@ impl LFBTerminal {
         let mut bg_self = color.bg_base_color;
 
         if color.invert {
-            let tmp = fg_self;
-            fg_self = bg_self;
-            bg_self = tmp;
+            core::mem::swap(&mut fg_self, &mut bg_self);
         }
 
         if color.bright || color.fg_bright {
@@ -695,8 +693,8 @@ impl LFBTerminal {
     fn handle_ansi_erase_sequence(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState, code: u8, params: &Params) {
         let mut iter = params.iter();
         let param = iter.next();
-        let erase_code = if param.is_some() {
-            param.unwrap()[0]
+        let erase_code = if let Some(p) = param {
+            p[0]
         } else {
             0
         };

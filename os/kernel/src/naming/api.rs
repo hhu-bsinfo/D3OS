@@ -95,12 +95,11 @@ pub fn mkdir(path: &str) -> Result<usize, Errno> {
     let new_dir_name = components.pop();
 
     // We need parent directory to create the new directory
-    let parent_dir;
-    if components.len() == 1 {
-        parent_dir = "/".to_string();
+    let parent_dir = if components.len() == 1 {
+        "/".to_string()
     } else {
-        parent_dir = components.join("/"); // Joins the remaining components
-    }
+        components.join("/") // Joins the remaining components
+    };
 
     // Safely lookup the parent directory and create the new file
     let result = lookup::lookup_dir(&parent_dir)
@@ -130,12 +129,11 @@ pub fn touch(path: &str) -> Result<usize, Errno> {
     let new_file_name = components.pop();
 
     // We need parent directory to create the new file
-    let parent_dir;
-    if components.len() == 1 {
-        parent_dir = "/".to_string();
+    let parent_dir = if components.len() == 1 {
+        "/".to_string()
     } else {
-        parent_dir = components.join("/"); // Joins the remaining components
-    }
+        components.join("/") // Joins the remaining components
+    };
 
     // Safely lookup the parent directory and create the new file
     let result = lookup::lookup_dir(&parent_dir)

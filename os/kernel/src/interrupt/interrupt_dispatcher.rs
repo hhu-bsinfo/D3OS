@@ -217,12 +217,12 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
             .iter_vmas()
             .filter(|vma| vma.typ == VmaType::UserStack)
             .find(|stack| stack.start() <= fault_addr && fault_addr < stack.end())
-            .and_then(|stack| {
+            .map(|stack| {
                 // If we found a user stack, we can map the page
                 let fault_page = Page::containing_address(fault_addr);
                 thread.process().virtual_address_space.map_partial_vma(&stack, PageRange { start: fault_page, end: fault_page + 1, }, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
 
-                Some(())
+                ()
             })
             // Check if page fault occurred inside the allocated, but not yet mapped heap.
             .or_else(|| {
@@ -230,9 +230,9 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
                     .iter_vmas()
                     .filter(|vma| vma.typ == VmaType::Heap)
                     .find(|heap| heap.start() <= fault_addr && fault_addr < heap.end())
-                    .and_then(|heap| {
+                    .map(|heap| {
                         thread.process().grow_heap(&heap, fault_addr);
-                        Some(())
+                        ()
                     })
             });
 

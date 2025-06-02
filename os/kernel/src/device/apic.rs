@@ -417,26 +417,14 @@ fn override_for_source(
     irq_overrides: &[InterruptSourceOverride],
     source_irq: u8,
 ) -> Option<&InterruptSourceOverride> {
-    for irq_override in irq_overrides.iter() {
-        if irq_override.isa_source == source_irq {
-            return Some(irq_override);
-        }
-    }
-
-    None
+    irq_overrides.iter().find(|&irq_override| irq_override.isa_source == source_irq)
 }
 
 fn override_for_target(
     irq_overrides: &[InterruptSourceOverride],
     target_gsi: u32,
 ) -> Option<&InterruptSourceOverride> {
-    for irq_override in irq_overrides.iter() {
-        if irq_override.global_system_interrupt == target_gsi {
-            return Some(irq_override);
-        }
-    }
-
-    None
+    irq_overrides.iter().find(|&irq_override| irq_override.global_system_interrupt == target_gsi)
 }
 
 fn io_apic_for_target(

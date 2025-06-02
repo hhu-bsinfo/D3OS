@@ -56,7 +56,7 @@ pub(super) fn lookup_named_object(path: &String) -> Result<NamedObject, Errno> {
             } else {
                 return Ok(found_named_object.clone());
             }
-            len = len - 1;
+            len -= 1;
         }
     }
     Err(Errno::ENOENT)

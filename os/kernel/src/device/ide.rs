@@ -666,8 +666,8 @@ impl IdeChannel {
             return None;
         }
 
-        for i in 0..256 {
-            buffer[i] = unsafe { self.command.data.read() };
+        for item in &mut buffer {
+            *item = unsafe { self.command.data.read() };
         }
 
         info.typ = drive_type;
@@ -986,12 +986,11 @@ impl IdeChannel {
             let buffer_index = processed_sectors * info.sector_size as usize;
             let buffer_end = buffer_index + count as usize * info.sector_size as usize;
 
-            let sectors;
-            if self.supports_dma && info.supports_dma() {
-                sectors = self.perform_ata_dma(info, mode, start, count, &mut buffer[buffer_index..buffer_end]);
+            let sectors = if self.supports_dma && info.supports_dma() {
+                self.perform_ata_dma(info, mode, start, count, &mut buffer[buffer_index..buffer_end])
             } else {
-                sectors = self.perform_ata_pio(info, mode, start, count, &mut buffer[buffer_index..buffer_end]);
-            }
+                self.perform_ata_pio(info, mode, start, count, &mut buffer[buffer_index..buffer_end])
+            };
 
             if sectors == 0 {
                 break;
