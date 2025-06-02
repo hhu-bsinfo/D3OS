@@ -3,7 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use crate::{signal::Stateful, WindowManager};
 
 use super::{
-    component::{Casts, Component, ComponentStyling, Interactable},
+    component::{Casts, Component, ComponentStyling, Focusable, Interactable},
     container::Container,
 };
 
@@ -150,4 +150,22 @@ impl Component for RadioButton {
     }
 }
 
-impl Casts for RadioButton {}
+impl Focusable for RadioButton {
+    fn focus(&mut self) {
+        self.mark_dirty();
+    }
+
+    fn unfocus(&mut self) {
+        self.mark_dirty();
+    }
+}
+
+impl Casts for RadioButton {
+    fn as_focusable(&self) -> Option<&dyn Focusable> {
+        Some(self)
+    }
+
+    fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
+        Some(self)
+    }
+}

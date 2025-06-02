@@ -22,7 +22,7 @@ use super::{
 };
 
 pub struct RadioButtonGroup {
-    id: usize,
+    /*id: usize,
 
     button_container: BasicContainer,
 
@@ -33,7 +33,7 @@ pub struct RadioButtonGroup {
     rel_radius: u32,
     spacing: u32,
     on_change: Rc<Box<dyn Fn(usize) -> ()>>,
-    styling: Option<ComponentStyling>,
+    styling: Option<ComponentStyling>,*/
 }
 
 impl RadioButtonGroup {
@@ -47,7 +47,7 @@ impl RadioButtonGroup {
         selected_button_index: Stateful<usize>,
         on_change: Option<Box<dyn Fn(usize) -> ()>>,
         styling: Option<ComponentStyling>,
-    ) -> Self {
+    ) -> BasicContainer {
         let mut button_container = BasicContainer::new(
             RectData {
                 top_left: rel_center,
@@ -73,7 +73,7 @@ impl RadioButtonGroup {
             button_container.add_child(radio_button);
         }
 
-        Self {
+        /*Self {
             id: WindowManager::generate_id(),
 
             button_container,
@@ -86,46 +86,8 @@ impl RadioButtonGroup {
             spacing,
             on_change: Rc::new(on_change.unwrap_or_else(|| Box::new(|_| {}))),
             styling,
-        }
-    }
-}
+        }*/
 
-impl Component for RadioButtonGroup {
-    fn draw(&mut self, focus_id: Option<usize>) {
-        self.button_container.draw(focus_id);
-    }
-
-    fn is_dirty(&self) -> bool {
-        self.button_container.is_dirty()
-    }
-
-    fn mark_dirty(&mut self) {
-        self.button_container.mark_dirty();
-    }
-
-    fn get_id(&self) -> usize {
-        self.id
-    }
-
-    fn get_abs_rect_data(&self) -> RectData {
-        self.button_container.get_abs_rect_data()
-    }
-
-    fn get_drawn_rect_data(&self) -> RectData {
-        self.button_container.get_drawn_rect_data()
-    }
-
-    fn rescale_to_container(&mut self, parent: &dyn Container) {
-        self.button_container.rescale_to_container(parent);
-    }
-}
-
-impl Casts for RadioButtonGroup {
-    fn as_container(&self) -> Option<&dyn Container> {
-        Some(&self.button_container)
-    }
-
-    fn as_container_mut(&mut self) -> Option<&mut dyn Container> {
-        Some(&mut self.button_container)
+        button_container
     }
 }
