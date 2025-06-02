@@ -176,9 +176,9 @@ pub fn readdir(dir_handle: usize, dentry: Option<&mut RawDirent>) -> Result<usiz
                     // Write the Dirent structure to the provided dentry pointer
                     if let Some(dentry) = dentry {
                         *dentry = de;
-                        return Ok(1); // Indicate success
+                        Ok(1) // Indicate success
                     } else {
-                        return Err(Errno::EUNKN); // Handle null pointer case
+                        Err(Errno::EUNKN) // Handle null pointer case
                     }
                 }
                 None => Ok(0),

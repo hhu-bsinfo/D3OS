@@ -49,15 +49,14 @@ pub fn alloc_kernel_stack(pid: usize, tid: usize) -> Vec<u64, StackAllocator> {
 /// The first page begins at `start_addr` and the size of the stack is `size_in_bytes`.
 pub fn alloc_user_stack(pid: usize, tid: usize, start_addr: usize, size_in_bytes: usize) -> Vec<u64, StackAllocator> {
     // Create Vec for user stack (backed by stack allocator)
-    let user_stack = unsafe {
+    unsafe {
         Vec::from_raw_parts_in(
             start_addr as *mut u64,
             size_in_bytes / 8,
             size_in_bytes / 8,
             StackAllocator::new(pid, tid, false, start_addr, start_addr + size_in_bytes),
         )
-    };
-    user_stack
+    }
 }
 
 pub struct StackAllocator {
@@ -111,7 +110,7 @@ unsafe impl Allocator for StackAllocator {
     /// It is required for working with a Vec. 
     fn allocate(&self, _layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
      //   info!("Allocating stack memory for pid: {}, tid: {}", self.pid, self.tid);
-        return Err(AllocError);
+        Err(AllocError)
     }
 
     /// Deallocate is called when a thread terminates.

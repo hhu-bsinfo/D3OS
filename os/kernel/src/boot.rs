@@ -458,7 +458,7 @@ fn kernel_image_region() -> PhysFrameRange {
         .unwrap();
     }
 
-    return PhysFrameRange { start, end };
+    PhysFrameRange { start, end }
 }
 
 /// Identifies usable memory and initialize physical memory management \

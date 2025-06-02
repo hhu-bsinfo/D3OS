@@ -120,11 +120,11 @@ impl PageFrameNode {
     }
 
     fn start(&self) -> PhysFrame {
-        return PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(self) as u64)).unwrap();
+        PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(self) as u64)).unwrap()
     }
 
     fn end(&self) -> PhysFrame {
-        return self.start() + self.frame_count as u64;
+        self.start() + self.frame_count as u64
     }
 }
 
@@ -233,7 +233,7 @@ impl PageFrameListAllocator {
                 current = current.next.as_mut().unwrap();
             }
         }
-        return None;
+        None
     }
 
     /// Allocate a block with `frame_count` contiguous page frames.
@@ -259,7 +259,7 @@ impl PageFrameListAllocator {
                     end: remaining.start,
                 };
                 //info!("   returning block: [0x{:x} - 0x{:x}], Frame count: [{}]", ret_block.start.start_address().as_u64(), ret_block.end.start_address().as_u64(), ret_block.end - ret_block.start);
-                return ret_block;
+                ret_block
                 //                return PhysFrameRange { start: block.start(), end: remaining.start };
             }
             None => {

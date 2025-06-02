@@ -347,10 +347,10 @@ impl Scheduler {
         sleep_list.retain(|entry| {
             if time >= entry.1 {
                 state.ready_queue.push_front(Arc::clone(&entry.0));
-                return false;
+                false
+            } else {
+                true
             }
-
-            return true;
         });
     }
 

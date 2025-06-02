@@ -401,7 +401,7 @@ impl Apic {
             let ticks_per_ms = ((0xffffffff - local_apic.timer_current()) / 50) as usize;
             local_apic.disable_timer();
 
-            return ticks_per_ms;
+            ticks_per_ms
         }
     }
 }
@@ -423,7 +423,7 @@ fn override_for_source(
         }
     }
 
-    return None;
+    None
 }
 
 fn override_for_target(
@@ -436,7 +436,7 @@ fn override_for_target(
         }
     }
 
-    return None;
+    None
 }
 
 fn io_apic_for_target(
@@ -463,5 +463,5 @@ fn is_nmi(nmi_sources: &Vec<NmiSource>, gsi: u32) -> bool {
         }
     }
 
-    return false;
+    false
 }

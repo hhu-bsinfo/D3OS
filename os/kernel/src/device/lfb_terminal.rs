@@ -740,7 +740,7 @@ fn ansi_color(code: u16, iter: &mut ParamsIter) -> Option<Color> {
 fn parse_complex_color(iter: &mut ParamsIter) -> Option<Color> {
     let mode = iter.next()?[0];
 
-    return match mode {
+    match mode {
         2 => {
             let red = iter.next()?[0] as u8;
             let green = iter.next()?[0] as u8;
@@ -757,7 +757,7 @@ fn parse_complex_color(iter: &mut ParamsIter) -> Option<Color> {
             }
         }
         _ => None,
-    };
+    }
 }
 
 impl Perform for LFBTerminal {

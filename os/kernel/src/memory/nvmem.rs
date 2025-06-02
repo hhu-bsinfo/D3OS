@@ -167,7 +167,7 @@ impl Nfit {
             }
         }
 
-        return tables;
+        tables
     }
 
     pub fn get_phys_addr_ranges(&self) -> Vec<&SystemPhysicalAddressRange> {
@@ -180,7 +180,7 @@ impl Nfit {
             }
         });
 
-        return ranges;
+        ranges
     }
 }
 
@@ -200,10 +200,10 @@ impl SystemPhysicalAddressRange {
         let start =
             PhysFrame::from_start_address(PhysAddr::new(self.base)).expect("Invalid start address");
 
-        return PhysFrameRange {
+        PhysFrameRange {
             start,
             end: start + (self.length / PAGE_SIZE as u64),
-        };
+        }
     }
 }
 
@@ -218,7 +218,7 @@ impl FlushHintAddressStructure {
             }
         }
 
-        return hints;
+        hints
     }
 }
 

@@ -63,7 +63,7 @@ fn process_internal_command(split: &Vec<&str>) -> bool {
         }
         return true;
     }
-    return false;
+    false
 }
 
 fn process_next_char(line: &mut String, ch: char) {

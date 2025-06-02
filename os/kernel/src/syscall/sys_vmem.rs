@@ -34,7 +34,8 @@ pub fn sys_map_memory(start: usize, size: usize) -> isize {
         "heap",
     );
     if vma.is_none() {
-        return Errno::EUNKN as isize;
+        Errno::EUNKN as isize
+    } else {
+        0
     }
-    return 0;
 }
