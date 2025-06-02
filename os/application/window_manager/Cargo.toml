@@ -8,6 +8,11 @@ authors = ["Artur Herdt"]
 crate-type = ["staticlib"]
 path = "src/window_manager.rs"
 
+
+[features]
+default = ["with_runtime"]  # 👈 include the feature by default
+with_runtime = []
+
 [dependencies]
 # Local dependencies
 runtime = { path = "../../library/runtime" }

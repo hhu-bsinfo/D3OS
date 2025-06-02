@@ -21,6 +21,7 @@ use logger::debug;
 use nolock::queues::mpsc::jiffy;
 
 #[allow(unused_imports)]
+#[cfg(feature = "with_runtime")]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
 use terminal::{DecodedKey, KeyCode};
@@ -574,6 +575,7 @@ impl WindowManager {
     }
 }
 
+#[cfg(feature = "with_runtime")]
 #[no_mangle]
 fn main() {
     let resolution = Drawer::get_graphic_resolution();

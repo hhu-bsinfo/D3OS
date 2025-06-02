@@ -134,16 +134,19 @@ impl View {
             buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
         }
         if !found_caret {
-            let ind = new_lines.len() / 3;
-            let scroll = new_lines[ind] - document.scroll_offset();
-            return Some(ViewMessage::ScrollDown(scroll));
+            if document.caret() >= document.scroll_offset() as usize {
+                let ind = new_lines.len() / 3;
+                let scroll = new_lines[ind] - document.scroll_offset();
+                return Some(ViewMessage::ScrollDown(scroll));
+            } else {
+                return Some(ViewMessage::ScrollUp(document.scroll_offset()));
+            }
         } else if caret_pos > buffer.height / 2 + buffer.height / 3 {
             let scroll = *match new_lines.first() {
                 Some(v) => v,
                 None => return None,
             } - document.scroll_offset();
 
-            warn!("scroll: {}", scroll);
             return Some(ViewMessage::ScrollDown(scroll));
         }
         None

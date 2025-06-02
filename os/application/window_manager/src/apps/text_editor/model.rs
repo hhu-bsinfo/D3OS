@@ -1,6 +1,6 @@
 use alloc::string::String;
 use concurrent::thread::switch;
-use logger::{error, warn};
+use logger::{warn};
 use terminal::print;
 use terminal::{println, DecodedKey};
 use text_buffer::TextBuffer;
@@ -9,6 +9,7 @@ use time::set_date;
 use super::meassages::{Message, ViewMessage};
 use super::view::View;
 use super::TextEditorConfig;
+
 
 enum EditMode {
     Normal,
@@ -53,6 +54,12 @@ impl<'b> Document<'b> {
     }
     fn next_line(&self, pos: usize) -> Option<usize> {
         let mut index = 0;
+        if self.text_buffer.get_char(pos).is_some_and(|c| c == '\n' ) {
+            if self.text_buffer.get_char(pos+1).is_some() {
+                return Some(pos+1);
+            }
+            return None;
+        }
         while let Some(c) = self.text_buffer.get_char(pos + index) {
             if c == '\n' {
                 break;
@@ -66,6 +73,12 @@ impl<'b> Document<'b> {
     }
     fn prev_line(&self, pos: usize) -> Option<usize> {
         let mut index = 0;
+        if self.text_buffer.get_char(pos).is_some_and(|c| c == '\n' ) {
+            if pos.checked_sub(1).is_some() && self.text_buffer.get_char(pos-1).is_some() {
+                return Some(pos-1);
+            }
+            return None;
+        }
         while let Some(c) = self.text_buffer.get_char(pos - index) {
             if c == '\n' {
                 break;
@@ -117,7 +130,11 @@ impl<'b> Document<'b> {
             DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret += 1,
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
-            DecodedKey::RawKey(k) => warn!("TextEditor can't process input: {:?}", k),
+            DecodedKey::RawKey(k) => 
+            {
+                #[cfg(feature = "with_runtime")] 
+                warn!("TextEditor can't process input: {:?}", k);
+            },
         }
         self.current_view
     }
@@ -170,4 +187,26 @@ impl<'b> Document<'b> {
             },
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use graphic::color::{Color, WHITE};
+
+    use crate::apps::text_editor::view::Font;
+
+    use super::*;
+
+    fn generate_dummy_config() -> TextEditorConfig {
+        let bg_color = Color{red: 20, green:20, blue:20,alpha:255};
+        let font = Font{scale: 1, fg_color: WHITE, bg_color: bg_color, char_height: 20, char_width: 20};
+        TextEditorConfig { width: 200, height: 200, background_color: bg_color , markdown_view: View::Markdown { normal: font, emphasis: font, strong: font }, simple_view: View::Simple { font_scale: 1, fg_color: WHITE, bg_color: bg_color }}   }
+    #[test]
+    fn move_cursor_down_0(){
+        let text = "Das\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.update(Message::DecodedKey(DecodedKey::Unicode('j')));
+        assert_eq!(doc.caret(),3);
+    }
+
 }
