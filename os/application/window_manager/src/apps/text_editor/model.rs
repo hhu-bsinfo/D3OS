@@ -103,12 +103,16 @@ impl<'b> Document<'b> {
         let prev_line = self.prev_line(self.caret).unwrap_or(self.caret);
         let origin_len = self.caret - prev_line;
         let next_line = self.next_line(self.caret).unwrap_or(self.caret);
+        let next_next_line = self.next_line(next_line);
         if self
             .text_buffer
             .get_char(next_line)
             .is_some_and(|c| c == '\n')
         {
             self.caret = next_line;
+            return;
+        } else if next_next_line.is_some_and(|n|n-next_line <= origin_len) {
+            self.caret = next_next_line.unwrap() - 1;
             return;
         }
         self.caret = next_line + origin_len;
@@ -254,7 +258,6 @@ mod tests {
 
     #[test]
     fn move_cursor_down_1() {
-        // first line
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret = 1;
@@ -263,7 +266,6 @@ mod tests {
     }
     #[test]
     fn move_cursor_down_2() {
-        // first line
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret = 3;
@@ -272,7 +274,6 @@ mod tests {
     }
     #[test]
     fn move_cursor_down_3() {
-        //middle line
         let text = "Das\nein\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret = 3;
@@ -281,7 +282,6 @@ mod tests {
     }
     #[test]
     fn move_cursor_down_4() {
-        //middle line
         let text = "Das\nein\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret = 5;
@@ -290,7 +290,6 @@ mod tests {
     }
     #[test]
     fn move_cursor_down_with_space_0() {
-        //middle line
         let text = "Das\n";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret = 0;
@@ -299,7 +298,6 @@ mod tests {
     }
     #[test]
     fn move_cursor_down_with_space_1() {
-        //middle line
         let text = "Das\n\nein";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret = 0;
@@ -308,7 +306,6 @@ mod tests {
     }
     #[test]
     fn move_cursor_down_with_space_2() {
-        //middle line
         let text = "Das\n\nein";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret = 1;
@@ -317,7 +314,6 @@ mod tests {
     }
     #[test]
     fn move_cursor_down_with_space_3() {
-        //middle line
         let text = "Das\n\nein";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret = 3;
@@ -326,11 +322,28 @@ mod tests {
     }
     #[test]
     fn move_cursor_down_with_space_4() {
-        //middle line
         let text = "Das\n\nein";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret = 4;
         doc.move_cursor_down();
         assert_eq!(doc.caret(), 5);
     }
+    #[test]
+    fn move_cursor_down_shoreter_0() {
+        let text = "Hallo\nein";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 4;
+        doc.move_cursor_down();
+        // Nicht hundert Prozent richtig aber gut genug
+        assert_eq!(doc.caret(), 10);
+    }
+    #[test]
+    fn move_cursor_down_shoreter_1() {
+        let text = "Hallo\nein\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 4;
+        doc.move_cursor_down();
+        assert_eq!(doc.caret(), 9);
+    }
+
 }
