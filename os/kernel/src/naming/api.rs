@@ -160,7 +160,7 @@ pub fn touch(path: &String) -> Result<usize, Errno> {
 ///   `Ok(1)` next directory entry in `dentry` \
 ///   `Ok(0)` no more entries in the directory \
 ///   `Err`   error code
-pub fn readdir(dir_handle: usize, dentry: *mut RawDirent) -> Result<usize, Errno> {
+pub fn readdir(dir_handle: usize, dentry: Option<&mut RawDirent>) -> Result<usize, Errno> {
     let res = open_objects::readdir(dir_handle);
     match res {
         Ok(dir_entry) => {
@@ -174,13 +174,11 @@ pub fn readdir(dir_handle: usize, dentry: *mut RawDirent) -> Result<usize, Errno
                     de.d_name[..len].copy_from_slice(&name_bytes[..len]);
 
                     // Write the Dirent structure to the provided dentry pointer
-                    unsafe {
-                        if !dentry.is_null() {
-                            *dentry = de;
-                            return Ok(1); // Indicate success
-                        } else {
-                            return Err(Errno::EUNKN); // Handle null pointer case
-                        }
+                    if let Some(dentry) = dentry {
+                        *dentry = de;
+                        return Ok(1); // Indicate success
+                    } else {
+                        return Err(Errno::EUNKN); // Handle null pointer case
                     }
                 }
                 None => Ok(0),

@@ -58,7 +58,7 @@ pub fn sys_thread_exit() -> isize {
     0
 }
 
-pub fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize, args: *const Vec<&str>) -> isize {
+pub unsafe fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize, args: *const Vec<&str>) -> isize {
     let app_name = from_utf8(unsafe { slice_from_raw_parts(name_buffer, name_length).as_ref().unwrap() }).unwrap();
     match initrd().entries().find(|entry| entry.filename().as_str().unwrap() == app_name) {
         Some(app) => {
