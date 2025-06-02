@@ -157,7 +157,7 @@ impl Apic {
 
                 // Iterate over IO APIC entries in MADT and initialize IO APICs (should only be a single one on most systems)
                 for (i, io_apic_desc) in apic_desc.io_apics.iter().enumerate() {
-                    info!("Initializing IO APIC [{}]", i);
+                    info!("Initializing IO APIC [{i}]");
                     let mut io_apic = Self::create_io_apic(io_apic_desc);
 
                     // Initialize redirection table with regards to IRQ override entries
@@ -256,7 +256,7 @@ impl Apic {
 
         // Calibrate APIC timer
         let timer_ticks_per_ms = Apic::calibrate_timer(&mut local_apic.lock());
-        info!("APIC Timer ticks per millisecond: [{}]", timer_ticks_per_ms);
+        info!("APIC Timer ticks per millisecond: [{timer_ticks_per_ms}]");
 
         Self {
             local_apic,
@@ -346,7 +346,7 @@ impl Apic {
         }
 
         let io_apic = io_apic_for_target(&self.io_apics, target)
-            .expect(format!("No responsible IO APIC found for interrupt [{}]", target).as_str());
+            .expect(format!("No responsible IO APIC found for interrupt [{target}]").as_str());
 
         unsafe {
             io_apic.0.lock().enable_irq(target as u8);

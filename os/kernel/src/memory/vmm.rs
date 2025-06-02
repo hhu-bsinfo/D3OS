@@ -379,10 +379,10 @@ impl VirtualAddressSpace {
 
     /// Dump all virtual memory areas of this address space
     pub fn dump(&self, pid: usize) {
-        info!("VMAs of process [{}]", pid);
+        info!("VMAs of process [{pid}]");
         let areas = self.virtual_memory_areas.read();
         for area in areas.iter() {
-            info!("{:?}", area);
+            info!("{area:?}");
         }
     }
 }

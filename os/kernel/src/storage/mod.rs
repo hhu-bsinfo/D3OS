@@ -23,20 +23,20 @@ pub fn add_block_device(typ: &str, drive: Arc<dyn BlockDevice + Send + Sync>) {
     let typ = typ.to_string();
     let mut types = DEVICE_TYPES.call_once(|| Mutex::new(Map::new())).lock();
     let index = *types.get(&typ).unwrap_or(&0);
-    let name = format!("{}{}", typ, index);
+    let name = format!("{typ}{index}");
     types.insert(typ, index + 1);
 
     let partitions = block::scan_partitions(&drive);
 
     let mut drives = BLOCK_DEVICES.call_once(|| RwLock::new(Map::new())).write();
     drives.insert(name.clone(), drive);
-    info!("Registered block device [{}]", name);
+    info!("Registered block device [{name}]");
 
     let mut index = 0;
     for partition in partitions {
-        let name = format!("{}p{}", name, index);
+        let name = format!("{name}p{index}");
         drives.insert(name.clone(), partition);
-        info!("Registered partition [{}]", name);
+        info!("Registered partition [{name}]");
 
         index += 1;
     }

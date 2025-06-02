@@ -140,9 +140,9 @@ impl Debug for PageFrameListAllocator {
 
         let mut current = &self.head;
         while let Some(block) = &current.next {
-            write!(
+            writeln!(
                 f,
-                "Block: [0x{:x} - 0x{:x}], Frame count: [{}]\n",
+                "Block: [0x{:x} - 0x{:x}], Frame count: [{}]",
                 block.start().start_address().as_u64(),
                 block.end().start_address().as_u64(),
                 block.end() - block.start()
@@ -152,9 +152,9 @@ impl Debug for PageFrameListAllocator {
             current = current.next.as_ref().unwrap();
         }
 
-        write!(
+        writeln!(
             f,
-            "Available memory: [{} KiB]\n",
+            "Available memory: [{} KiB]",
             available * PAGE_SIZE / 1024
         )?;
         write!(
@@ -264,8 +264,7 @@ impl PageFrameListAllocator {
             }
             None => {
                 info!(
-                    "alloc_block: No free block found for {} frames!",
-                    frame_count
+                    "alloc_block: No free block found for {frame_count} frames!",
                 );
                 panic!("PageFrameAllocator: Out of memory!")
             }

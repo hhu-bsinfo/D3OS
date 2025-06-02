@@ -1543,11 +1543,11 @@ pub enum Key {
 }
 
 pub fn fg_8bit_color(color_index: u8) -> String {
-    format!("\x1b[38;5;{}m", color_index)
+    format!("\x1b[38;5;{color_index}m")
 }
 
 pub fn bg_8bit_color(color_index: u8) -> String {
-    format!("\x1b[48;5;{}m", color_index)
+    format!("\x1b[48;5;{color_index}m")
 }
 
 pub fn fg_24bit_color(color: Color) -> String {

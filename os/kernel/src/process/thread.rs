@@ -97,7 +97,7 @@ impl Thread {
         let pid = process.id();
         let tid = scheduler::next_thread_id();
         
-        info!("new_kernel_thread: pid = {}, tid = {}, tag = {}", pid, tid, tag_str);
+        info!("new_kernel_thread: pid = {pid}, tid = {tid}, tag = {tag_str}");
 
         // Allocate the kernel stack for the kernel thread
         let kernel_stack = stack::alloc_kernel_stack(pid, tid);
@@ -143,8 +143,7 @@ impl Thread {
         let tid = scheduler::next_thread_id();
 
         info!(
-            "load_application: pid = {}, tid = {}, name = {}",
-            pid, tid, name
+            "load_application: pid = {pid}, tid = {tid}, name = {name}",
         );
 
         //
@@ -426,7 +425,7 @@ impl Thread {
             user_rip: kickoff_addr,
         };
 
-        info!("Created user stack for thread: {:x?}", user_stack_pages);
+        info!("Created user stack for thread: {user_stack_pages:x?}");
 
         thread.prepare_kernel_stack();
         Arc::new(thread)

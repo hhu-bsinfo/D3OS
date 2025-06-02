@@ -42,7 +42,7 @@ impl Cpu {
             }    
         }
 
-        info!("Cpu: Physical address bits {}, Linear address bits {}, supports_1gib_pages = {}", physical_bits, virtual_bits, has_1gib_pages);
+        info!("Cpu: Physical address bits {physical_bits}, Linear address bits {virtual_bits}, supports_1gib_pages = {has_1gib_pages}");
     
         Cpu {
             physical_address_bits: physical_bits,

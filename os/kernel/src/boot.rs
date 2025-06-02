@@ -212,15 +212,15 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         }
         None => "Unknown",
     };
-    info!("OS Version: [{}]", version);
+    info!("OS Version: [{version}]");
     info!(
         "Git Version: [{} - {}]",
-        built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown"),
+        built_info::GIT_HEAD_REF.unwrap_or("Unknown"),
         git_commit
     );
-    info!("Build Date: [{}]", build_date);
+    info!("Build Date: [{build_date}]");
     info!("Compiler: [{}]", built_info::RUSTC_VERSION);
-    info!("Bootloader: [{}]", bootloader_name);
+    info!("Bootloader: [{bootloader_name}]");
 
     // Initialize ACPI tables
     info!("Initializing ACPI tables");

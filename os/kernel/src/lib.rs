@@ -377,9 +377,9 @@ pub fn keyboard() -> Option<Arc<Keyboard>> {
         match ps2.init_controller() {
             Ok(_) => match ps2.init_keyboard() {
                 Ok(_) => {}
-                Err(error) => error!("Keyboard initialization failed: {:?}", error),
+                Err(error) => error!("Keyboard initialization failed: {error:?}"),
             },
-            Err(error) => error!("PS/2 controller initialization failed: {:?}", error),
+            Err(error) => error!("PS/2 controller initialization failed: {error:?}"),
         }
 
         Arc::new(ps2)

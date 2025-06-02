@@ -283,7 +283,7 @@ impl IdeController {
             // First bit defines whether the channel is running in compatibility or native mode
             // Second bit defines whether mode change is supported
             if interface & 0x01 == 0x00 && interface  & 0x02 == 0x02 {
-                info!("Changing mode of channel [{}] to native mode", i);
+                info!("Changing mode of channel [{i}] to native mode");
                 unsafe {
                     // Set first bit of channel interface to 1
                     let value = pci_config_space.read(pci_device.header().address(), 0x08);
@@ -298,12 +298,12 @@ impl IdeController {
             let command_and_control_base_address = match interface & 0x01 {
                 0x00 => {
                     // Channel is running in compatibility mode -> Use default base address
-                    info!("Channel [{}] is running in compatibility mode", i);
+                    info!("Channel [{i}] is running in compatibility mode");
                     (DEFAULT_BASE_ADDRESSES[i as usize], DEFAULT_CONTROL_BASE_ADDRESSES[i as usize])
                 },
                 _ => {
                     // Channel is running in native mode -> Read base address from PCI registers
-                    info!("Channel [{}] is running in native mode", i);
+                    info!("Channel [{i}] is running in native mode");
                     interrupts[i as usize] = InterruptVector::try_from(pci_device.interrupt(pci_config_space).0).unwrap();
 
                     (pci_device.bar(0, pci_config_space).expect("Failed to read command base address").unwrap_io() as u16,
@@ -526,7 +526,7 @@ impl IdeChannel {
             }
 
             if current_status.contains(Status::Error) {
-                error!("Error while waiting for status: 0x{:02x}", status);
+                error!("Error while waiting for status: 0x{status:02x}");
                 return false;
             }
 
@@ -803,7 +803,7 @@ impl IdeChannel {
                 while read < count {
                     // Wait for the drive to be ready
                     if read > 0 && !Self::wait_status(&mut self.control.alternate_status, Status::DriveReady, WAIT_ON_STATUS_TIMEOUT) {
-                        warn!("Drive did not answer after reading {}/{} sectors", read, count);
+                        warn!("Drive did not answer after reading {read}/{count} sectors");
                         break;
                     }
 
@@ -824,7 +824,7 @@ impl IdeChannel {
                 while written < count {
                     // Wait for the drive to be ready
                     if written > 0 && !Self::wait_status(&mut self.control.alternate_status, Status::DriveReady, WAIT_ON_STATUS_TIMEOUT) {
-                        warn!("Drive did not answer after writing {}/{} sectors", written, count);
+                        warn!("Drive did not answer after writing {written}/{count} sectors");
                         break;
                     }
 
