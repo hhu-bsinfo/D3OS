@@ -10,7 +10,7 @@ path = "src/window_manager.rs"
 
 
 [features]
-default = ["with_runtime"]  # 👈 include the feature by default
+default = ["with_runtime"]
 with_runtime = []
 
 [dependencies]
