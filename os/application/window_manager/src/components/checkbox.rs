@@ -5,7 +5,7 @@ use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use terminal::DecodedKey;
 
-use crate::{config::INTERACT_BUTTON, WindowManager};
+use crate::{config::INTERACT_BUTTON, signal::Stateful, WindowManager};
 
 use super::{component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
 
@@ -16,7 +16,7 @@ pub struct Checkbox {
     rel_rect_data: RectData,
     orig_rect_data: RectData,
     drawn_rect_data: RectData,
-    pub state: bool,
+    state: Stateful<bool>,
     on_change: Rc<Box<dyn Fn(bool) -> ()>>,
     is_disabled: bool,
     is_hidden: bool,
@@ -27,7 +27,7 @@ impl Checkbox {
     pub fn new(
         rel_rect_data: RectData,
         orig_rect_data: RectData,
-        state: bool,
+        state: Stateful<bool>,
         on_change: Option<Box<dyn Fn(bool) -> ()>>,
         styling: Option<ComponentStyling>,
     ) -> Self {
@@ -47,10 +47,10 @@ impl Checkbox {
     }
 
     fn handle_click(&mut self) -> Option<Box<dyn FnOnce() -> ()>> {
-        self.state = !self.state;
+        self.state.set(!self.state.get());
 
         let on_change = Rc::clone(&self.on_change);
-        let state = self.state;
+        let state = self.state.get();
         self.mark_dirty();
 
         return Some(Box::new(move || {
@@ -93,7 +93,7 @@ impl Component for Checkbox {
 
         self.drawn_rect_data = self.abs_rect_data;
 
-        if self.state {
+        if self.state.get() {
             let RectData { top_left, width, height } = self.abs_rect_data;
             let bottom_right = top_left.add(width, height);
             let top_right = top_left.add(width, 0);
