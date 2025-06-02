@@ -25,7 +25,7 @@ jobs:
           cache-on-failure: true
 
       - name: Install cargo-make
-        run: cargo install --no-default-features cargo-make
+        run: cargo install --no-default-features cargo-make cargo-license
 
       - name: Cleanup towbootctl
         run: rm -f towbootctl
@@ -65,7 +65,7 @@ jobs:
           cache-on-failure: true
 
       - name: Install cargo-make
-        run: cargo install --no-default-features cargo-make cargo-licenses
+        run: cargo install --no-default-features cargo-make cargo-license
 
       - name: Cleanup towbootctl
         run: rm -f towbootctl

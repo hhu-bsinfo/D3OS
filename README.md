@@ -30,7 +30,7 @@ rustup override set nightly-2025-05-05
 
 To run the build commands _cargo-make_ and _cargo-licenses_ are required. Install it with:
 ```bash
-cargo install --no-default-features cargo-make cargo-licenses
+cargo install --no-default-features cargo-make cargo-license
 ```
 
 Furthermore, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
