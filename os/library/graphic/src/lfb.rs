@@ -98,7 +98,7 @@ impl LFB {
     }
 
     pub fn draw_char_scaled(&self, x: u32, y: u32, x_scale: u32, y_scale: u32, fg_color: Color, bg_color: Color, c: char) -> u32 {
-        return match get_glyph(c) {
+        match get_glyph(c) {
             Some(glyph) => {
                 let mut x_offset = 0;
                 let mut y_offset = 0;

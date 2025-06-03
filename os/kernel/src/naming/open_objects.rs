@@ -26,8 +26,7 @@ const MAX_OPEN_OBJECTS: usize = 0x1000;
 
 /// Helper function returning safe access to the open object table (oot)
 fn get_open_object_table() -> Arc<Mutex<Box<OpenObjectTable>>> {
-    let oot: Arc<Mutex<Box<OpenObjectTable>>> = OPEN_OBJECTS.get().unwrap().clone();
-    return oot;
+    OPEN_OBJECTS.get().unwrap().clone()
 }
 
 static OPEN_OBJECTS: Once<Arc<Mutex<Box<OpenObjectTable>>>> = Once::new();
@@ -58,14 +57,13 @@ pub(super) fn open(path: &String, flags: OpenOptions) -> Result<usize, Errno> {
     }
 
     // try to allocate an new handle
-    let res = get_open_object_table()
+    get_open_object_table()
         .lock()
         .allocate_handle(Arc::new(OpenedObject::new(
             Arc::new(found_named_object),
             AtomicUsize::new(0),
             flags,
-        )));
-    res
+        )))
 }
 
 pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
@@ -109,7 +107,7 @@ pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno
             opened_object.named_object.as_file().and_then(|file| {
                 let new_pos = match origin {
                     SeekOrigin::Start => offset,
-                    SeekOrigin::End => file.stat()?.size as usize + offset,
+                    SeekOrigin::End => file.stat()?.size + offset,
                     SeekOrigin::Current => opened_object.pos.load(Ordering::SeqCst) + offset,
                 };
                 opened_object.pos.store(new_pos, Ordering::SeqCst);
@@ -119,7 +117,7 @@ pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno
 }
 
 pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
-    let res = get_open_object_table()
+    get_open_object_table()
         .lock()
         .lookup_opened_object(fh)
         .and_then(|opened_object| {
@@ -130,11 +128,7 @@ pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
                 opened_object.pos.store(pos + 1, Ordering::SeqCst);
                 Ok(dir_entry) // Return the DirEntry
             })
-        });
-    match res {
-        Ok(dir_entry) => Ok(dir_entry),
-        Err(e) => Err(e),
-    }
+        })
 }
 
 pub(super) fn close(handle: usize) -> Result<usize, Errno> {
@@ -202,9 +196,8 @@ impl OpenObjectTable {
         self.free_handles
             .iter_mut()
             .position(|value| *value == 0)
-            .map(|index| {
-                self.free_handles[index] = 1;
-                index
+            .inspect(|index| {
+                self.free_handles[*index] = 1;
             })
     }
 

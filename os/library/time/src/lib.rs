@@ -27,13 +27,9 @@ pub fn date() -> DateTime<Utc> {
     }    
 }
 
-pub fn set_date(date: DateTime<Utc>) -> bool {
+pub fn set_date(date: DateTime<Utc>) -> Result<(), ()> {
     let date_ms = date.timestamp_millis();
 
     let res = syscall(SystemCall::SetDate, &[date_ms as usize, ]);
-    match res {
-        Ok(_) => true,
-        Err(_) => false,
-    }    
-
+    res.map(|_| ()).map_err(|_| ())
 }

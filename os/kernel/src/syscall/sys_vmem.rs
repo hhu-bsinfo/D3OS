@@ -3,26 +3,39 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: All system calls related to virtual memory management.          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland & Michael Schoettner, 30.8.2024, HHU             ║
+   ║ Author: Fabian Ruhland & Michael Schoettner, 24.5.2025, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-use crate::memory::vmm::{VirtualMemoryArea, VmaType};
+use x86_64::VirtAddr;
+use x86_64::structures::paging::Page;
+
+use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process_manager;
-use x86_64::structures::paging::PageTableFlags;
+use syscall::return_vals::Errno;
 
-
-pub fn sys_map_user_heap(size: usize) -> isize {
+/// Map memory to a process.
+///
+/// This just sets up the VMA, no page tables are created yet.
+/// This happens later on on page faults.
+pub fn sys_map_memory(start: usize, size: usize) -> isize {
     let process = process_manager().read().current_process();
-    let code_areas = process.virtual_address_space.find_vmas(VmaType::Code);
-    let highest_code_area = code_areas.iter()
-        .max_by(|area1, area2| area1.end().as_u64().cmp(&area2.end().as_u64()))
-        .unwrap();
-    let heap_start = highest_code_area.end().align_up(PAGE_SIZE as u64);
-    let heap_area = VirtualMemoryArea::from_address(heap_start, size, VmaType::Heap);
-    
-    process.virtual_address_space.map(heap_area.range(), MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE, VmaType::Heap, "");
-    heap_start.as_u64() as isize
-}
 
+    let start_addr = VirtAddr::new(start.try_into().unwrap());
+    let start_page = Page::containing_address(start_addr);
+    let num_pages = size.div_ceil(PAGE_SIZE);
+
+    let vma = process.virtual_address_space.alloc_vma(
+        Some(start_page),
+        num_pages as u64,
+        MemorySpace::User,
+        VmaType::Heap,
+        "heap",
+    );
+    if vma.is_none() {
+        Errno::EUNKN as isize
+    } else {
+        0
+    }
+}

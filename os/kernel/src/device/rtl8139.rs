@@ -368,7 +368,7 @@ impl Rtl8139 {
         // Read register base address from BAR0
         let bar0 = pci_device.bar(0, pci_bus().config_space()).expect("Failed to read base address!");
         let base_address = bar0.unwrap_io() as u16;
-        info!("RTL8139 base address: [0x{:x}]", base_address);
+        info!("RTL8139 base address: [0x{base_address:x}]");
 
         let interrupt = InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 + 32).unwrap();
         let send_queue = mpsc::jiffy::queue();

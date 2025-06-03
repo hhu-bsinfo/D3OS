@@ -132,7 +132,7 @@ impl PS2 {
         // Enable keyboard translation if needed
         controller.keyboard().disable_scanning()?;
         let kb_type = controller.keyboard().get_keyboard_type()?;
-        info!("Detected keyboard type [{:?}]", kb_type);
+        info!("Detected keyboard type [{kb_type:?}]");
 
         match kb_type {
             KeyboardType::ATWithTranslation | KeyboardType::MF2WithTranslation | KeyboardType::ThinkPadWithTranslation => {

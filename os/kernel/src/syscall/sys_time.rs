@@ -63,8 +63,8 @@ pub fn sys_set_date(date_ms: usize) -> isize {
         daylight: Default::default(),
     }).expect("Failed to create EFI date");
 
-    return match unsafe { uefi::runtime::set_time(&uefi_date) } {
+    match unsafe { uefi::runtime::set_time(&uefi_date) } {
         Ok(_) => true as isize,
         Err(_) => false as isize,
-    };
+    }
 }

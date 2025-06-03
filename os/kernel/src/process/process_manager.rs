@@ -53,10 +53,7 @@ impl ProcessManager {
     }
 
     pub fn kernel_process(&self) -> Option<Arc<Process>> {
-        match self.active_processes.get(0) {
-            Some(kernel_process) => Some(Arc::clone(kernel_process)),
-            None => None,
-        }
+        self.active_processes.first().map(Arc::clone)
     }
 
     pub fn current_process(&self) -> Arc<Process> {

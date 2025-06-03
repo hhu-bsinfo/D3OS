@@ -39,7 +39,7 @@ impl log::Log for Logger {
         }
 
         let level = record.metadata().level();
-        let file = record.file().unwrap_or("unknown").split('/').rev().next().unwrap_or("unknown");
+        let file = record.file().unwrap_or("unknown").split('/').next_back().unwrap_or("unknown");
         let line = record.line().unwrap_or(0);
 
         let streams = self.streams.read();
@@ -61,7 +61,7 @@ impl log::Log for Logger {
                 if allocator().is_initialized() {
                     serial.write_str(record.args().to_string().as_str());
                 } else {
-                    serial.write_str(record.args().as_str().unwrap_or_else(|| { "Formatted messages are not supported before heap initialization!" }));
+                    serial.write_str(record.args().as_str().unwrap_or("Formatted messages are not supported before heap initialization!"));
                 }
 
                 serial.write_str("\n");

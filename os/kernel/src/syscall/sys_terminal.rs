@@ -18,7 +18,7 @@ pub fn sys_terminal_read() -> isize {
     }
 }
 
-pub fn sys_terminal_write(buffer: *const u8, length: usize) -> isize {
+pub unsafe fn sys_terminal_write(buffer: *const u8, length: usize) -> isize {
     let string = from_utf8(unsafe { slice_from_raw_parts(buffer, length).as_ref().unwrap() }).unwrap();
     let terminal = terminal();
     terminal.write_str(string);

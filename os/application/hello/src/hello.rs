@@ -7,6 +7,7 @@ use concurrent::{process, thread};
 use runtime::*;
 use terminal::{print, println};
 
+
 #[unsafe(no_mangle)]
 pub fn main() {
     let process = process::current().unwrap();
@@ -19,4 +20,16 @@ pub fn main() {
     for arg in args {
         println!("  {}", arg);
     }
+
+    
+    let v = thread::create(|| {
+        println!("Hello from the second thread!");
+    });
+    if let Some(v) = v {
+        println!("Second thread created successfully.");
+        v.join();
+    } else {
+        println!("Failed to create second thread");
+    }
+
 }

@@ -50,10 +50,10 @@ pub const HHU_GREEN: Color = Color { red: 140, green: 177, blue: 16, alpha: 255 
 impl Color {
     pub const fn from_rgb(rgb: u32, bpp: u8) -> Color {
         match bpp {
-            32 => return Color::from_rgb_32(rgb),
-            24 => return Color::from_rgb_24(rgb),
-            16 => return Color::from_rgb_16(rgb as u16),
-            15 => return Color::from_rgb_15(rgb as u16),
+            32 => Color::from_rgb_32(rgb),
+            24 => Color::from_rgb_24(rgb),
+            16 => Color::from_rgb_16(rgb as u16),
+            15 => Color::from_rgb_15(rgb as u16),
             _ => panic!("Color: Invalid bpp!"),
         }
     }
