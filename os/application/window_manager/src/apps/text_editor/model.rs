@@ -1,11 +1,11 @@
 use alloc::string::String;
-use concurrent::thread::switch;
+use graphic::color::Color;
 use logger::warn;
 use terminal::print;
 use terminal::{println, DecodedKey};
 use text_buffer::TextBuffer;
-use time::set_date;
 
+use super::font::Font;
 use super::meassages::{Message, ViewMessage};
 use super::view::View;
 use super::TextEditorConfig;
@@ -15,13 +15,27 @@ enum EditMode {
     Insert,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ViewConfig {
+    Simple {
+        font_scale: u32,
+        fg_color: Color,
+        bg_color: Color,
+    },
+    Markdown {
+        normal: Font,
+        emphasis: Font,
+        strong: Font,
+    },
+}
+
 pub struct Document<'b> {
     path: Option<String>,
     text_buffer: TextBuffer<'b>,
     caret: usize,
     edit_mode: EditMode,
     config: TextEditorConfig,
-    current_view: View,
+    current_view: ViewConfig,
     scroll_offset: u32,
 }
 
@@ -44,6 +58,9 @@ impl<'b> Document<'b> {
     }
     pub fn text_buffer(&self) -> &TextBuffer {
         &self.text_buffer
+    }
+    pub fn view_config(&self) -> &ViewConfig {
+        &self.current_view
     }
     pub fn scroll_offset(&self) -> u32 {
         self.scroll_offset
@@ -111,7 +128,7 @@ impl<'b> Document<'b> {
         {
             self.caret = next_line;
             return;
-        } else if next_next_line.is_some_and(|n|n-next_line <= origin_len) {
+        } else if next_next_line.is_some_and(|n| n - next_line <= origin_len) {
             self.caret = next_next_line.unwrap() - 1;
             return;
         }
@@ -131,7 +148,7 @@ impl<'b> Document<'b> {
         self.caret = prev_prev_line + origin_len;
     }
 
-    fn update_insert(&mut self, k: DecodedKey) -> View {
+    fn update_insert(&mut self, k: DecodedKey) {
         //delete
         match k {
             // delete
@@ -156,10 +173,9 @@ impl<'b> Document<'b> {
                 warn!("TextEditor can't process input: {:?}", k);
             }
         }
-        self.current_view
     }
 
-    fn update_normal(&mut self, k: DecodedKey) -> View {
+    fn update_normal(&mut self, k: DecodedKey) {
         // funktioniert irgendwie nicht
         println!("Ausgabe: {}", self.text_buffer.to_string());
         match k {
@@ -185,20 +201,18 @@ impl<'b> Document<'b> {
         if self.caret > self.text_buffer.len() {
             self.caret = self.text_buffer.len();
         }
-        self.current_view
     }
 
-    fn scroll(&mut self, msg: ViewMessage) -> View {
+    fn scroll(&mut self, msg: ViewMessage) {
         match msg {
             ViewMessage::ScrollDown(v) => self.scroll_offset += v,
             ViewMessage::ScrollUp(v) => {
                 self.scroll_offset = self.scroll_offset.checked_sub(v).unwrap_or(0)
             }
         }
-        self.current_view
     }
 
-    pub fn update(&mut self, m: Message) -> View {
+    pub fn update(&mut self, m: Message) {
         match m {
             Message::ViewMessage(msg) => self.scroll(msg),
             Message::DecodedKey(k) => match self.edit_mode {
@@ -213,7 +227,7 @@ impl<'b> Document<'b> {
 mod tests {
     use graphic::color::{Color, WHITE};
 
-    use crate::apps::text_editor::view::Font;
+    use crate::apps::text_editor::font::Font;
 
     use super::*;
 
@@ -345,5 +359,4 @@ mod tests {
         doc.move_cursor_down();
         assert_eq!(doc.caret(), 9);
     }
-
 }

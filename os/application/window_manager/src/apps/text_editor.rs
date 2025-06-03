@@ -1,26 +1,20 @@
 use super::runnable::Runnable;
 use crate::apps::text_editor::view::View;
-use crate::{
-    alloc::string::ToString, components::component::ComponentStylingBuilder, config, signal::Signal,
-};
 use crate::{api::Command, WindowManager};
 use alloc::collections::VecDeque;
-use alloc::{borrow::ToOwned, boxed::Box, rc::Rc, string::String, vec};
+use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
-use graphic::ansi::{BACKGROUND_BLACK, FOREGROUND_BRIGHT_WHITE};
+use font::Font;
+use graphic::color::{Color, WHITE};
 use graphic::lfb::DEFAULT_CHAR_WIDTH;
 use graphic::{bitmap::Bitmap, lfb::DEFAULT_CHAR_HEIGHT};
-use graphic::{
-    buffered_lfb,
-    color::{Color, WHITE},
-};
 use meassages::{Message, ViewMessage};
-use model::Document;
+use model::{Document, ViewConfig};
 use spin::rwlock::RwLock;
 use terminal::DecodedKey;
 use text_buffer::TextBuffer;
-use view::Font;
 
+mod font;
 mod meassages;
 mod model;
 mod view;
@@ -33,8 +27,8 @@ pub struct TextEditorConfig {
     pub width: usize,
     pub height: usize,
     pub background_color: Color,
-    pub markdown_view: View,
-    pub simple_view: View,
+    pub markdown_view: ViewConfig,
+    pub simple_view: ViewConfig,
 }
 
 impl TextEditorConfig {
@@ -61,13 +55,13 @@ impl TextEditorConfig {
             char_width: DEFAULT_CHAR_WIDTH,
             char_height: DEFAULT_CHAR_HEIGHT,
         };
-        let markdown_view = View::Markdown {
+        let markdown_view = ViewConfig::Markdown {
             normal: normal,
             emphasis: emphasis,
             strong: strong,
         };
 
-        let simple_view = View::Simple {
+        let simple_view = ViewConfig::Simple {
             font_scale: normal.scale,
             fg_color: normal.fg_color,
             bg_color: normal.bg_color,
@@ -139,7 +133,7 @@ Some *Emphasis* Text.
             Document::new(Some(String::from("scratch")), text_buffer, config);
 
         let mut view = document.update(meassages::Message::ViewMessage(ViewMessage::ScrollDown(0)));
-        view.render(&document, &mut canvas.write());
+        View::render(&document, &mut canvas.write());
         component.write().mark_dirty();
         let mut dirty = false;
         loop {
@@ -154,10 +148,10 @@ Some *Emphasis* Text.
             if dirty {
                 {
                     // extra block to release canvas lock bevore calling mark_dirty
-                    let mut msg = view.render(&document, &mut canvas.write());
+                    let mut msg = View::render(&document, &mut canvas.write());
                     while msg.is_some() {
                         document.update(meassages::Message::ViewMessage(msg.unwrap()));
-                        msg = view.render(&document, &mut canvas.write());
+                        msg = View::render(&document, &mut canvas.write());
                     }
                 }
                 {

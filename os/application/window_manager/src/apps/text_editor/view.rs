@@ -2,54 +2,27 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use core::{u32::MAX, usize};
+use core::usize;
 use drawer::vertex::Vertex;
 use graphic::{
-    bitmap::{self, Bitmap},
+    bitmap::Bitmap,
     color::{Color, WHITE, YELLOW},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
 use logger::warn;
-use pulldown_cmark::{Event, HeadingLevel, OffsetIter, Parser, TextMergeStream};
-use text_buffer::TextBuffer;
+use pulldown_cmark::{Event, HeadingLevel, Parser};
 
-use super::{meassages::ViewMessage, model::Document};
+use super::{
+    font::Font,
+    meassages::ViewMessage,
+    model::{Document, ViewConfig},
+};
 //Julius Drodofsky
 
-#[derive(Debug, Clone, Copy)]
-pub struct Font {
-    pub scale: u32,
-    pub fg_color: Color,
-    pub bg_color: Color,
-    pub char_width: u32,
-    pub char_height: u32,
-}
-
-impl Font {
-    pub fn add_scale(&self, add: u32) -> Font {
-        let mut ret = *self;
-        ret.scale += add;
-        ret
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum View {
-    Simple {
-        font_scale: u32,
-        fg_color: Color,
-        bg_color: Color,
-    },
-    Markdown {
-        normal: Font,
-        emphasis: Font,
-        strong: Font,
-    },
-}
+pub struct View;
 
 impl View {
     fn render_string(
-        &self,
         text: &String,
         buffer: &mut Bitmap,
         font: Font,
@@ -91,7 +64,6 @@ impl View {
         return Vertex { x: x, y: y };
     }
     fn render_simple(
-        &self,
         document: &Document,
         buffer: &mut Bitmap,
         font_scale: u32,
@@ -153,7 +125,6 @@ impl View {
         None
     }
     fn render_markdown(
-        &self,
         document: &Document,
         buffer: &mut Bitmap,
         normal: Font,
@@ -172,7 +143,7 @@ impl View {
                 Event::Text(text) => {
                     let rel_caret = document.caret().checked_sub(range.start);
                     if heading {
-                        position = self.render_string(
+                        position = View::render_string(
                             &String::from("\n"),
                             buffer,
                             *font.last().unwrap_or(&normal),
@@ -180,7 +151,7 @@ impl View {
                             rel_caret,
                         );
                     }
-                    position = self.render_string(
+                    position = View::render_string(
                         &text.to_string(),
                         buffer,
                         *font.last().unwrap_or(&normal),
@@ -188,7 +159,7 @@ impl View {
                         rel_caret,
                     );
                     if heading {
-                        position = self.render_string(
+                        position = View::render_string(
                             &String::from("\n"),
                             buffer,
                             *font.last().unwrap_or(&normal),
@@ -199,7 +170,7 @@ impl View {
                 }
                 Event::HardBreak | Event::SoftBreak => {
                     let rel_caret = document.caret().checked_sub(range.start);
-                    position = self.render_string(
+                    position = View::render_string(
                         &String::from("\n"),
                         buffer,
                         *font.last().unwrap_or(&normal),
@@ -230,7 +201,7 @@ impl View {
                 },
                 Event::Rule => {
                     let rel_caret = document.caret().checked_sub(range.start);
-                    position = self.render_string(
+                    position = View::render_string(
                         &String::from("\n"),
                         buffer,
                         *font.last().unwrap_or(&normal),
@@ -244,7 +215,7 @@ impl View {
                         position.y + (normal.char_height * normal.scale / 2),
                         WHITE,
                     );
-                    position = self.render_string(
+                    position = View::render_string(
                         &String::from("\n"),
                         buffer,
                         *font.last().unwrap_or(&normal),
@@ -274,18 +245,18 @@ impl View {
         }
         None
     }
-    pub fn render(&self, document: &Document, buffer: &mut Bitmap) -> Option<ViewMessage> {
-        match self {
-            View::Simple {
+    pub fn render(document: &Document, buffer: &mut Bitmap) -> Option<ViewMessage> {
+        match *document.view_config() {
+            ViewConfig::Simple {
                 font_scale,
                 fg_color,
                 bg_color,
-            } => self.render_simple(document, buffer, *font_scale, *fg_color, *bg_color),
-            View::Markdown {
+            } => View::render_simple(document, buffer, font_scale, fg_color, bg_color),
+            ViewConfig::Markdown {
                 normal,
                 emphasis,
                 strong,
-            } => self.render_markdown(document, buffer, *normal, *emphasis, *strong),
+            } => View::render_markdown(document, buffer, normal, emphasis, strong),
         }
     }
 }
