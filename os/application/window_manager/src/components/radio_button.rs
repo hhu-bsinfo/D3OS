@@ -1,6 +1,13 @@
+use alloc::boxed::Box;
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
+use terminal::DecodedKey;
 
-use crate::{signal::Stateful, WindowManager};
+use crate::{
+    config::INTERACT_BUTTON,
+    mouse_state::MouseEvent,
+    signal::{ComponentRef, ComponentRefExt, Stateful},
+    WindowManager,
+};
 
 use super::{
     component::{Casts, Component, ComponentStyling, Focusable, Interactable},
@@ -35,14 +42,14 @@ impl RadioButton {
         button_index: usize,
         selected_button_index: Stateful<usize>,
         styling: Option<ComponentStyling>,
-    ) -> Self {
+    ) -> ComponentRef {
         let drawn_rect_data = RectData {
             top_left: abs_center.sub(abs_radius, abs_radius),
             width: abs_radius * 2,
             height: abs_radius * 2,
         };
 
-        Self {
+        let radio_button = Box::new(Self {
             id: WindowManager::generate_id(),
             abs_center,
             rel_center,
@@ -50,31 +57,27 @@ impl RadioButton {
             rel_radius,
             drawn_rect_data,
             button_index,
-            selected_button_index,
+            selected_button_index: selected_button_index.clone(),
             is_disabled: false,
             is_hidden: false,
             is_dirty: true,
             styling: styling.unwrap_or_default(),
-        }
+        });
+
+        let component = ComponentRef::from_component(radio_button);
+        selected_button_index.register_component(component.clone());
+
+        component
     }
 
-    pub fn set_state(&mut self, state: bool) {
-        // TODO: Remove this
-        if state {
-            self.selected_button_index.set(self.button_index);
-        }
+    fn handle_click(&mut self) -> Option<Box<dyn FnOnce() -> ()>> {
+        let button_index = self.button_index;
 
-        self.is_dirty = true;
-    }
+        let selected_button_index = self.selected_button_index.clone();
 
-    pub fn set_radius(&mut self, radius: u32) {
-        self.abs_radius = radius;
-        self.is_dirty = true;
-    }
-
-    pub fn set_center(&mut self, center: Vertex) {
-        self.abs_center = center;
-        self.is_dirty = true;
+        return Some(Box::new(move || {
+            selected_button_index.set(button_index);
+        }));
     }
 }
 
@@ -160,12 +163,41 @@ impl Focusable for RadioButton {
     }
 }
 
+impl Interactable for RadioButton {
+    fn consume_keyboard_press(
+        &mut self,
+        keyboard_press: DecodedKey,
+    ) -> Option<Box<dyn FnOnce() -> ()>> {
+        if keyboard_press == INTERACT_BUTTON {
+            return self.handle_click();
+        }
+
+        return None;
+    }
+
+    fn consume_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
+        if mouse_event.buttons.left.is_pressed() {
+            return self.handle_click();
+        }
+
+        return None;
+    }
+}
+
 impl Casts for RadioButton {
     fn as_focusable(&self) -> Option<&dyn Focusable> {
         Some(self)
     }
 
     fn as_focusable_mut(&mut self) -> Option<&mut dyn Focusable> {
+        Some(self)
+    }
+
+    fn as_interactable(&self) -> Option<&dyn Interactable> {
+        Some(self)
+    }
+
+    fn as_interactable_mut(&mut self) -> Option<&mut dyn Interactable> {
         Some(self)
     }
 }

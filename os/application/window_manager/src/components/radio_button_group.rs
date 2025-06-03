@@ -60,7 +60,7 @@ impl RadioButtonGroup {
         );
 
         for i in 0..num_buttons {
-            let radio_button = ComponentRef::from_component(Box::new(RadioButton::new(
+            let radio_button = RadioButton::new(
                 abs_center.add(i as u32 * ((abs_radius * 2) + spacing), 0),
                 rel_center.add(i as u32 * ((rel_radius * 2) + spacing), 0),
                 abs_radius,
@@ -68,7 +68,7 @@ impl RadioButtonGroup {
                 i,
                 selected_button_index.clone(),
                 styling.clone(),
-            )));
+            );
 
             button_container.add_child(radio_button);
         }
