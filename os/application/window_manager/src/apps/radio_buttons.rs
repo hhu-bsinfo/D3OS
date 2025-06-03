@@ -19,13 +19,14 @@ impl Runnable for RadioButtonApp {
         let option = Signal::new(String::from("1"));
 
         let option_radio_buttons = Rc::clone(&option);
+
         api.execute(
             handle,
             None,
             Command::CreateRadioButtonGroup {
                 center: Vertex::new(100, 50),
                 radius: 20,
-                spacing: 20,
+                spacing: 5,
                 num_buttons: 3,
                 selected_option: Signal::new(1),
                 on_change: Some(Rc::new(Box::new(move |selected_option: usize| {

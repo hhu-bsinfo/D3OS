@@ -36,28 +36,20 @@ pub struct RadioButton {
 
 impl RadioButton {
     pub fn new(
-        abs_center: Vertex,
         rel_center: Vertex,
-        abs_radius: u32,
         rel_radius: u32,
         button_index: usize,
         selected_button_index: Stateful<usize>,
         on_change: Option<Rc<Box<dyn Fn(usize) -> ()>>>,
         styling: Option<ComponentStyling>,
     ) -> ComponentRef {
-        let drawn_rect_data = RectData {
-            top_left: abs_center.sub(abs_radius, abs_radius),
-            width: abs_radius * 2,
-            height: abs_radius * 2,
-        };
-
         let radio_button = Box::new(Self {
             id: WindowManager::generate_id(),
-            abs_center,
+            abs_center: Vertex::zero(),
             rel_center,
-            abs_radius,
+            abs_radius: 0,
             rel_radius,
-            drawn_rect_data,
+            drawn_rect_data: RectData::zero(),
 
             button_index,
             selected_button_index: selected_button_index.clone(),
@@ -93,10 +85,6 @@ impl RadioButton {
 
 impl Component for RadioButton {
     fn draw(&mut self, focus_id: Option<usize>) {
-        // if !self.is_dirty {
-        //     return;
-        // }
-
         if self.is_hidden {
             self.is_dirty = false;
             return;
@@ -104,14 +92,6 @@ impl Component for RadioButton {
 
         let styling = &self.styling;
         let is_focused = focus_id == Some(self.id);
-
-        let bg_color = if self.is_disabled {
-            styling.disabled_background_color
-        } else if is_focused {
-            styling.focused_background_color
-        } else {
-            styling.background_color
-        };
 
         let border_color = if self.is_disabled {
             styling.disabled_border_color
@@ -160,6 +140,7 @@ impl Component for RadioButton {
 
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         self.abs_center = parent.scale_vertex_to_container(self.rel_center);
+        self.abs_radius = parent.scale_radius_to_window(self.rel_radius, 7);
     }
 }
 

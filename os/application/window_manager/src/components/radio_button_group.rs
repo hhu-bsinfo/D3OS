@@ -1,19 +1,12 @@
-use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, rc::Rc};
 use drawer::{rect_data::RectData, vertex::Vertex};
-use graphic::lfb::DEFAULT_CHAR_HEIGHT;
-use spin::RwLock;
-use terminal::DecodedKey;
 
 use crate::{
-    config::INTERACT_BUTTON,
-    mouse_state::ButtonState,
-    signal::{ComponentRef, ComponentRefExt, Stateful},
-    utils::scale_radius_to_rect,
-    WindowManager,
+    components::container::ContainerStylingBuilder, signal::Stateful
 };
 
 use super::{
-    component::{Casts, Component, ComponentStyling, Focusable, Interactable},
+    component::ComponentStyling,
     container::{
         basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
         Container,
@@ -21,50 +14,34 @@ use super::{
     radio_button::RadioButton,
 };
 
-pub struct RadioButtonGroup {
-    /*id: usize,
-
-    button_container: BasicContainer,
-
-    focused_button_index: usize,
-    selected_button_index: Stateful<usize>,
-    first_rel_center: Vertex,
-    abs_radius: u32,
-    rel_radius: u32,
-    spacing: u32,
-    on_change: Rc<Box<dyn Fn(usize) -> ()>>,
-    styling: Option<ComponentStyling>,*/
-}
+pub struct RadioButtonGroup;
 
 impl RadioButtonGroup {
     pub fn new(
         num_buttons: usize,
-        abs_center: Vertex,
         rel_center: Vertex,
-        abs_radius: u32,
         rel_radius: u32,
         spacing: u32,
         selected_button_index: Stateful<usize>,
         on_change: Option<Rc<Box<dyn Fn(usize) -> ()>>>,
         styling: Option<ComponentStyling>,
     ) -> BasicContainer {
+        // TODO: Implement a special kind of container for this
         let mut button_container = BasicContainer::new(
             RectData {
                 top_left: rel_center,
-                width: 150,
+                width: 100,
                 height: 50,
             },
             LayoutMode::Horizontal(AlignmentMode::Left),
             StretchMode::None,
-            None,
+            Some(ContainerStylingBuilder::new().child_padding(spacing).show_border(true).build()),
         );
 
         // Create and add radio buttons
         for i in 0..num_buttons {
             let radio_button = RadioButton::new(
-                abs_center.add(i as u32 * ((abs_radius * 2) + spacing), 0),
-                rel_center.add(i as u32 * ((rel_radius * 2) + spacing), 0),
-                abs_radius,
+                Vertex::zero(),
                 rel_radius,
                 i,
                 selected_button_index.clone(),

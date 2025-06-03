@@ -459,16 +459,9 @@ impl Api {
                         let rel_pos = self.scale_vertex_to_rel(&center);
                         let rel_radius = self.scale_radius_to_rel(radius);
 
-                        let abs_radius = self.scale_radius_to_window(rel_radius, 7, &ratios);
-
-                        //let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
-                        let abs_pos = parent.read().as_container().unwrap().scale_vertex_to_container(rel_pos);
-
                         let radio_buttons = RadioButtonGroup::new(
                             num_buttons,
-                            abs_pos,
                             rel_pos,
-                            abs_radius,
                             rel_radius,
                             spacing,
                             selected_option,
@@ -604,19 +597,9 @@ impl Api {
         );
     }
 
+    /// Scales a logical radius to a relative radius
     fn scale_radius_to_rel(&self, radius: u32) -> u32 {
         return (f64::from(radius) * self.rel_to_log_ratios.0.min(self.rel_to_log_ratios.1)) as u32;
-    }
-
-    fn scale_radius_to_window(
-        &self,
-        radius: u32,
-        min_radius: u32,
-        ratios: &(f64, f64),
-    ) -> u32 {    
-        let scaled_radius: u32 = (f64::from(radius) * ratios.0.min(ratios.1)) as u32;
-    
-        scaled_radius.max(min_radius)
     }
 
     fn validate_log_pos(&self, log_pos: &Vertex) -> Result<(), &str> {

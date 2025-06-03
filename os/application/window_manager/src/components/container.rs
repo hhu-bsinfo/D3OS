@@ -121,6 +121,8 @@ pub trait Container: Component + FocusManager {
 
     fn scale_font_to_container(&self, font_size: usize) -> (u32, u32);
 
+    fn scale_radius_to_window(&self, radius: u32, min_radius: u32) -> u32;
+
     /// Moves and scales the container to the given absolute rectangle.
     /// This should only be done on the root container to prevent layout issues.
     fn move_to(&mut self, abs_rect: RectData);

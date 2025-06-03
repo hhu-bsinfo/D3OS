@@ -87,7 +87,7 @@ pub fn scale_rect_to_rect(
 }
 
 /// Scales a radius to be relative to an absolute rect.
-pub fn scale_radius_to_rect(radius: u32, min_radius: u32, abs_rect: RectData) -> u32 {
+pub fn scale_radius_to_rect(rel_radius: u32, min_radius: u32, abs_rect: RectData) -> u32 {
     let screen = SCREEN.get().unwrap();
 
     let ratios = (
@@ -95,7 +95,7 @@ pub fn scale_radius_to_rect(radius: u32, min_radius: u32, abs_rect: RectData) ->
         f64::from(abs_rect.height) / f64::from(screen.1),
     );
 
-    let scaled_radius = (f64::from(radius) * ratios.0.min(ratios.1)) as u32;
+    let scaled_radius = (f64::from(rel_radius) * ratios.0.min(ratios.1)) as u32;
 
     scaled_radius.max(min_radius)
 }

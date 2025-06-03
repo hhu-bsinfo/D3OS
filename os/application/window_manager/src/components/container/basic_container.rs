@@ -4,7 +4,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use crate::{
     components::component::{Casts, Component, ComponentStyling},
     signal::ComponentRef,
-    utils::{scale_pos_to_rect, scale_rect_to_rect},
+    utils::{scale_pos_to_rect, scale_radius_to_rect, scale_rect_to_rect},
     WindowManager,
 };
 
@@ -285,6 +285,12 @@ impl Container for BasicContainer {
 
     fn scale_font_to_container(&self, _font_size: usize) -> (u32, u32) {
         (1, 1)
+    }
+
+    fn scale_radius_to_window(&self, radius: u32, min_radius: u32) -> u32 {
+        let scaled_radius: u32 = scale_radius_to_rect(radius, min_radius, self.get_content_area());
+
+        scaled_radius.max(min_radius)
     }
 }
 
