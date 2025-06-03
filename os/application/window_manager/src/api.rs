@@ -79,7 +79,7 @@ pub enum Command<'a> {
         num_buttons: usize,
         // options: Vec<String>,
         selected_option: Stateful<usize>,
-        on_change: Option<Box<dyn Fn(usize) -> ()>>,
+        on_change: Option<Rc<Box<dyn Fn(usize) -> ()>>>,
         styling: Option<ComponentStyling>,
     },
     CreateCanvas {

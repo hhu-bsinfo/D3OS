@@ -1,4 +1,4 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, rc::Rc};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use terminal::DecodedKey;
 
@@ -25,6 +25,7 @@ pub struct RadioButton {
 
     button_index: usize,
     selected_button_index: Stateful<usize>,
+    on_change: Option<Rc<Box<dyn Fn(usize) -> ()>>>,
 
     is_disabled: bool,
     is_hidden: bool,
@@ -41,6 +42,7 @@ impl RadioButton {
         rel_radius: u32,
         button_index: usize,
         selected_button_index: Stateful<usize>,
+        on_change: Option<Rc<Box<dyn Fn(usize) -> ()>>>,
         styling: Option<ComponentStyling>,
     ) -> ComponentRef {
         let drawn_rect_data = RectData {
@@ -56,14 +58,18 @@ impl RadioButton {
             abs_radius,
             rel_radius,
             drawn_rect_data,
+
             button_index,
             selected_button_index: selected_button_index.clone(),
+            on_change,
+
             is_disabled: false,
             is_hidden: false,
             is_dirty: true,
             styling: styling.unwrap_or_default(),
         });
 
+        // Register the component in the signal
         let component = ComponentRef::from_component(radio_button);
         selected_button_index.register_component(component.clone());
 
@@ -72,10 +78,14 @@ impl RadioButton {
 
     fn handle_click(&mut self) -> Option<Box<dyn FnOnce() -> ()>> {
         let button_index = self.button_index;
-
         let selected_button_index = self.selected_button_index.clone();
+        let on_change = self.on_change.clone();
 
         return Some(Box::new(move || {
+            if let Some(f) = on_change {
+                f(button_index);
+            }
+
             selected_button_index.set(button_index);
         }));
     }

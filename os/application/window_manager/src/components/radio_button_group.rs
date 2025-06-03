@@ -45,7 +45,7 @@ impl RadioButtonGroup {
         rel_radius: u32,
         spacing: u32,
         selected_button_index: Stateful<usize>,
-        on_change: Option<Box<dyn Fn(usize) -> ()>>,
+        on_change: Option<Rc<Box<dyn Fn(usize) -> ()>>>,
         styling: Option<ComponentStyling>,
     ) -> BasicContainer {
         let mut button_container = BasicContainer::new(
@@ -59,6 +59,7 @@ impl RadioButtonGroup {
             None,
         );
 
+        // Create and add radio buttons
         for i in 0..num_buttons {
             let radio_button = RadioButton::new(
                 abs_center.add(i as u32 * ((abs_radius * 2) + spacing), 0),
@@ -67,26 +68,12 @@ impl RadioButtonGroup {
                 rel_radius,
                 i,
                 selected_button_index.clone(),
+                on_change.clone(),
                 styling.clone(),
             );
 
             button_container.add_child(radio_button);
         }
-
-        /*Self {
-            id: WindowManager::generate_id(),
-
-            button_container,
-
-            selected_button_index,
-            focused_button_index: 0,
-            first_rel_center: rel_center,
-            abs_radius,
-            rel_radius,
-            spacing,
-            on_change: Rc::new(on_change.unwrap_or_else(|| Box::new(|_| {}))),
-            styling,
-        }*/
 
         button_container
     }
