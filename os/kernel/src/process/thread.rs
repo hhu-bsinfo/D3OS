@@ -64,13 +64,35 @@ struct Stacks {
     old_rsp0: VirtAddr, // used for thread switching; rsp3 is stored in TSS
 }
 
-/// Thread meta data
+/// A thread is the unit of execution.
+/// 
+/// All threads have a kernel part; you can check whether this thread *just* has
+/// a kernel part by calling [`Thread::is_kernel_thread`].
+/// 
+/// Threads can be created in the following ways:
+/// * [`Thread::new_kernel_thread`]: for kernel threads
+/// * [`Thread::load_application`]: for the main thread of an application
+/// * [`Thread::new_user_thread`]: for additional threads of an application
+/// 
+/// This will allocate all required ressources, but will not actually start the
+/// thread. You need to call [`scheduler::Scheduler::ready`] to enqueue it.
+/// 
+/// When the scheduler first switches to the new thread, it will start with
+/// [`Thread::kickoff_kernel_thread`]. This sets up the TSS and then:
+/// * for a kernel thread: call the `entry` function,
+///   and [`scheduler::Scheduler::exit`] afterwards.
+/// * for a user thread: call `user_kickoff(entry)`,
+///   with `user_kickoff` being `library::concurrent::thread::kickoff_user_thread`.
+///   This is needed so that the actual `entry` function of the application
+///   can safely return.
 pub struct Thread {
     id: usize,
     stacks: Mutex<Stacks>,
     process: Arc<Process>, // reference to my process
-    entry: fn(), // user thread: =0;                 kernel thread: address of entry function
-    user_rip: VirtAddr, // user thread: elf-entry function; kernel thread: =0
+    /// for user threads: the address to jump to
+    user_kickoff: VirtAddr,
+    /// the actual entry point (eg. for user threads the single parameter to kickoff)
+    entry: fn(),
 }
 
 impl Stacks {
@@ -125,8 +147,8 @@ impl Thread {
                 .read()
                 .kernel_process()
                 .expect("Trying to create a kernel thread before process initialization!"),
+            user_kickoff: VirtAddr::zero(),
             entry,
-            user_rip: VirtAddr::zero(),
         };
 
         thread.prepare_kernel_stack();
@@ -285,13 +307,17 @@ impl Thread {
         }
 
         // create thread
+        // this first thread is special in that there is not really a kickoff;
+        // we just jump to the ELF's entry point
+        // TODO: this leaks a kernel address to user space
         Self::new_user_thread(process, VirtAddr::new(elf.entry), || {})
     }
 
 
     /// Create user thread. Not started yet, nor registered in the scheduler. \
     /// `parent` is the process the thread belongs to. \
-    /// `kickoff_addr` address of the first function to be called before the thread `entry` function is executed. \
+    /// `kickoff_addr` address of the first function to be called,
+    /// with the `entry` function is the parameter. \
     /// This indirection ensures that the thread calls exit when it is done, see `library::concurrent::thread`.
     pub fn new_user_thread(
         parent: Arc<Process>,
@@ -372,8 +398,8 @@ impl Thread {
             id: tid,
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: parent,
+            user_kickoff: kickoff_addr,
             entry,
-            user_rip: kickoff_addr,
         };
 
         info!("Created user stack for thread at 0x{stack_start:x?}");
@@ -383,7 +409,7 @@ impl Thread {
     }
 
     /// Called first for both a new kernel and a new user thread
-    fn kickoff_kernel_thread() {
+    fn kickoff_kernel_thread() -> ! {
         let scheduler = scheduler();
         scheduler.set_init(); // scheduler initialized
 
@@ -391,15 +417,17 @@ impl Thread {
         tss().lock().privilege_stack_table[0] = thread.kernel_stack_addr(); // get stack pointer for kernel stack
 
         if thread.is_kernel_thread() {
+            assert!(thread.user_kickoff.is_null());
             (thread.entry)(); // Directly call the entry function of kernel thread
             drop(thread); // Manually decrease reference count, because exit() will never return
             scheduler.exit();
         } else {
+            assert!(!thread.user_kickoff.is_null());
             let thread_ptr = ptr::from_ref(thread.as_ref());
             drop(thread); // Manually decrease reference count, because switch_to_user_mode() will never return
 
             let thread_ref = unsafe { thread_ptr.as_ref().unwrap() };
-            thread_ref.switch_to_user_mode(); // call entry function of user thread
+            thread_ref.switch_to_user_mode(); // call kickoff function of user thread
             // exit is in the entry function -> runtime::lib.rs
         }
     }
@@ -512,7 +540,7 @@ impl Thread {
     }
 
     /// Switch a thread to user mode by preparing a fake stackframe
-    fn switch_to_user_mode(&self) {
+    fn switch_to_user_mode(&self) -> ! {
         let old_rsp0: u64;
 
         {
@@ -522,7 +550,7 @@ impl Thread {
             let user_stack_addr = stacks.user_stack.as_ptr() as u64;
             let capacity = stacks.kernel_stack.capacity();
 
-            stacks.kernel_stack[capacity - 6] = self.user_rip.as_u64(); // Address of entry point for user thread
+            stacks.kernel_stack[capacity - 6] = self.user_kickoff.as_u64(); // Address of entry point for user thread
 
             stacks.kernel_stack[capacity - 5] = SegmentSelector::new(4, Ring3).0 as u64; // cs = user code segment
             stacks.kernel_stack[capacity - 4] = 0x202; // rflags (Interrupts enabled)
@@ -571,7 +599,7 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
 /// Low-level function for starting a thread in user mode
 #[unsafe(naked)]
 #[allow(improper_ctypes_definitions)] // 'entry' takes no arguments and has no return value, so we just assume that the "C" and "Rust" ABIs act the same way in this case
-unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
+unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) -> ! {
     naked_asm!(
         "mov rsp, rdi", // Load 'old_rsp' (first parameter)
         "mov rdi, rsi", // Second parameter becomes first parameter for 'kickoff_user_thread()'

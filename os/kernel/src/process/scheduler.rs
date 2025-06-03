@@ -102,6 +102,7 @@ impl Scheduler {
 
     /// Description: Start the scheduler, called only once from `boot.rs` 
     pub fn start(&self) {
+        // TODO: make sure this is actually called just once
         let mut state = self.get_ready_state();
         state.current_thread = state.ready_queue.pop_back();
 
@@ -244,7 +245,7 @@ impl Scheduler {
     }
 
     /// Description: Exit calling thread.
-    pub fn exit(&self) {
+    pub fn exit(&self) -> ! {
         let mut ready_state;
         let current;
 
@@ -266,6 +267,7 @@ impl Scheduler {
 
         drop(current); // Decrease Rc manually, because block() does not return
         self.block(&mut ready_state);
+        unreachable!()
     }
 
     /// 
