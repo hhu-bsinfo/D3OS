@@ -211,46 +211,6 @@ impl Thread {
             });
 
         //
-        // Create kernel stack of main thread
-        //
-
-        // Allocate kernel stack for the main thread
-        let kernel_stack = stack::alloc_kernel_stack(pid, tid);
-
-        // Allocate virtual memory area for kernel stack
-        let _kernel_stack_vma = process
-            .virtual_address_space
-            .alloc_vma(
-                Some( kernel_stack.allocator().get_start_page()),
-                kernel_stack.allocator().get_num_pages(),
-                MemorySpace::Kernel,
-                VmaType::KernelStack,
-                "main",
-            )
-            .expect("alloc_vma failed for kernel stack of main thread");
-
-        //
-        // Create user stack for the application
-        //
-
-        // Alloc user stack for the main thread
-        let user_stack: Vec<u64, StackAllocator> = stack::alloc_user_stack(pid, tid, MAIN_USER_STACK_START, MAX_USER_STACK_SIZE);
-
-        // Allocate virtual memory area for user stack
-        let user_stack_vma = process
-            .virtual_address_space
-            .alloc_vma(
-                Some( user_stack.allocator().get_start_page() ),
-                user_stack.allocator().get_num_pages(),
-                MemorySpace::Kernel,
-                VmaType::UserStack,
-                "main"
-            )
-            .expect("alloc_vma failed for user stack of main thread");
-
-        process.virtual_address_space.map_partial_vma(&user_stack_vma, PageRange {start: user_stack_vma.range.end - 1, end: user_stack_vma.range.end} , MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
-
-        //
         // Create and init environment for the application
         //
 
@@ -325,18 +285,7 @@ impl Thread {
         }
 
         // create thread
-        let thread = Thread {
-            id: tid,
-            stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
-            process,
-            entry: || {},
-            // old           entry: unsafe { mem::transmute(ptr::null::<fn()>()) },
-            user_rip: VirtAddr::new(elf.entry),
-        };
-
-        thread.prepare_kernel_stack();
-
-        Arc::new(thread)      
+        Self::new_user_thread(process, VirtAddr::new(elf.entry), || {})
     }
 
 
@@ -379,23 +328,25 @@ impl Thread {
         let highest_stack_vma = parent.virtual_address_space
             .iter_vmas()
             .filter(|vma| vma.typ == VmaType::UserStack)
-            .max_by(|a, b| a.range.end.cmp(&b.range.end))
-            .expect("Trying to create a user thread, before the main thread has been created!");
+            .max_by(|a, b| a.range.end.cmp(&b.range.end));
+        let stack_start = if let Some(vma) = highest_stack_vma {
+            // from there allocate new user stack
+            let user_stack_start : Page<Size4KiB> = Page::from_start_address(
+                vma.end(),
+            ).unwrap();
+            let user_stack_end = user_stack_start + (MAX_USER_STACK_SIZE / PAGE_SIZE) as u64;
 
-        // from there allocate new user stack
-        let user_stack_start : Page<Size4KiB> = Page::from_start_address(
-            highest_stack_vma.end(),
-        ).unwrap();
-        let user_stack_end = user_stack_start + (MAX_USER_STACK_SIZE / PAGE_SIZE) as u64;
-
-        let user_stack_pages = PageRange {
-            start: user_stack_start,
-            end: user_stack_end,
+            let user_stack_pages = PageRange {
+                start: user_stack_start,
+                end: user_stack_end,
+            };
+            user_stack_pages.start.start_address().as_u64() as usize
+        } else {
+            MAIN_USER_STACK_START
         };
 
-
         // Alloc user stack for the main thread
-        let user_stack: Vec<u64, StackAllocator> = stack::alloc_user_stack(pid, tid, user_stack_pages.start.start_address().as_u64() as usize, MAX_USER_STACK_SIZE);
+        let user_stack: Vec<u64, StackAllocator> = stack::alloc_user_stack(pid, tid, stack_start, MAX_USER_STACK_SIZE);
 
         // Allocate virtual memory area for user stack
         let user_stack_vma = parent
@@ -425,7 +376,7 @@ impl Thread {
             user_rip: kickoff_addr,
         };
 
-        info!("Created user stack for thread: {user_stack_pages:x?}");
+        info!("Created user stack for thread at 0x{stack_start:x?}");
 
         thread.prepare_kernel_stack();
         Arc::new(thread)
