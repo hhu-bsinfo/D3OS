@@ -8,6 +8,11 @@ authors = ["Artur Herdt"]
 crate-type = ["staticlib"]
 path = "src/window_manager.rs"
 
+
+[features]
+default = ["with_runtime"]
+with_runtime = []
+
 [dependencies]
 # Local dependencies
 runtime = { path = "../../library/runtime" }
@@ -28,3 +33,4 @@ nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
 chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
 libm = "0.2.8"
 pc-keyboard = "0.8.0"
+pulldown-cmark = { git = "https://github.com/pulldown-cmark/pulldown-cmark.git", version = "0.13.0", default-features = false, features = ["hashbrown"] }

@@ -121,6 +121,7 @@ impl<'s> TextBuffer<'s> {
         self.add_buffer.push(c);
         // Enlarge piece_table entry if possible:
         if piece_table_index > 0
+            && piece_descr_offset == 0
             && self.piece_table[piece_table_index - 1].buffer == BufferDescr::Add
             && self.piece_table[piece_table_index - 1].offset
                 + self.piece_table[piece_table_index - 1].length
@@ -197,6 +198,7 @@ impl<'s> TextBuffer<'s> {
         logical_adress: usize,
         // if logical_adress > range => return (n,0)
         append: bool,
+        // Some(piece_table_index, offset)
     ) -> Option<(usize, usize)> {
         let mut piece_table_index = 0;
         let mut la_start = 0;
@@ -828,6 +830,72 @@ mod tests {
 
         assert_eq!(String::from("a1bc"), generate_string(&buffer));
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn multiple_insertion_in_file_buffer() {
+        let file_buffer = "Da is kein sehr langer text";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(2, 's');
+        assert!(res.is_ok());
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 2
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 2,
+                    length: 25
+                },
+            ]
+        );
+        let res = buffer.resolve_logical_adress(6, true);
+        assert_eq!(res, Some((2, 3)));
+        let res = buffer.insert(6, 't');
+        assert!(res.is_ok());
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 2
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 2,
+                    length: 3
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 1,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 5,
+                    length: 22,
+                },
+            ]
+        );
+        assert_eq!(
+            String::from("Das ist kein sehr langer text"),
+            generate_string(&buffer)
+        );
     }
 
     #[test]

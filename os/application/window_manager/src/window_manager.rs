@@ -25,6 +25,7 @@ use nolock::queues::mpsc::jiffy;
 use input::mouse::try_read_mouse;
 use mouse_state::{MouseEvent, MouseState};
 #[allow(unused_imports)]
+#[cfg(feature = "with_runtime")]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
 use terminal::DecodedKey;
@@ -649,6 +650,7 @@ impl WindowManager {
     }
 }
 
+#[cfg(feature = "with_runtime")]
 #[no_mangle]
 fn main() {
     let resolution = Drawer::get_graphic_resolution();
