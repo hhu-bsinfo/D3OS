@@ -17,8 +17,8 @@ impl Service for DrawerService {
         self.draw_prefix(context)
     }
 
-    fn submit(&mut self, _context: &mut Context) -> Result<Response, Error> {
-        self.draw_next_line()
+    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.draw_next_line(context)
     }
 
     fn auto_complete(&mut self, _context: &mut Context) -> Result<Response, Error> {
@@ -54,9 +54,9 @@ impl DrawerService {
         }
     }
 
-    fn draw_next_line(&mut self) -> Result<Response, Error> {
+    fn draw_next_line(&mut self, context: &mut Context) -> Result<Response, Error> {
+        print!("{}\n", self.cursor_to_end(context));
         self.terminal_cursor_pos = 0;
-        print!("\n");
         Ok(Response::Ok)
     }
 
@@ -89,6 +89,11 @@ impl DrawerService {
 
     fn cursor_to_start(&mut self) -> String {
         let step = -(self.terminal_cursor_pos as isize);
+        self.move_cursor_by(step)
+    }
+
+    fn cursor_to_end(&mut self, context: &mut Context) -> String {
+        let step = self.terminal_cursor_pos as isize - context.total_line_len() as isize;
         self.move_cursor_by(step)
     }
 
