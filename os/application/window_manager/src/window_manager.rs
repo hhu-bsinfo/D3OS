@@ -9,7 +9,6 @@ use api::{
     WindowManagerMessage, DEFAULT_APP,
 };
 use chrono::TimeDelta;
-use components::selected_window_label::HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW;
 use concurrent::process;
 use config::{
     COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE, FLUSHING_DELAY_MS,
@@ -45,6 +44,8 @@ mod utils;
 mod window_tree;
 mod windows;
 mod workspace;
+
+const WORKSPACE_SELECTION_WINDOW_HEIGHT: u32 = 30;
 
 // IDs are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -120,7 +121,7 @@ impl WindowManager {
         let workspace_selection_window = WorkspaceSelectionWindow::new(RectData {
             top_left: Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
             width: screen.0 - DIST_TO_SCREEN_EDGE * 2,
-            height: HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
+            height: WORKSPACE_SELECTION_WINDOW_HEIGHT,
         });
 
         // Command-line window
@@ -464,11 +465,11 @@ impl WindowManager {
         let window_rect_data = RectData {
             top_left: Vertex::new(
                 DIST_TO_SCREEN_EDGE,
-                DIST_TO_SCREEN_EDGE + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
+                DIST_TO_SCREEN_EDGE + WORKSPACE_SELECTION_WINDOW_HEIGHT,
             ),
             width: screen_res.0 - DIST_TO_SCREEN_EDGE * 2,
             height: screen_res.1
-                - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW),
+                - (DIST_TO_SCREEN_EDGE * 2 + WORKSPACE_SELECTION_WINDOW_HEIGHT),
         };
 
         // Create a new window for the workspace
