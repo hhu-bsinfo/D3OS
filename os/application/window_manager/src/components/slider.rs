@@ -3,7 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use libm::roundf;
 use terminal::DecodedKey;
-use crate::{config::DEFAULT_FONT_SCALE, mouse_state::{ButtonState, MouseEvent, ScrollDirection}, WindowManager};
+use crate::{config::DEFAULT_FONT_SCALE, mouse_state::{ButtonState, MouseEvent, ScrollDirection}, signal::{ComponentRef, ComponentRefExt, Stateful}, WindowManager};
 
 use super::{component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
 
@@ -11,7 +11,7 @@ const HANDLE_WIDTH: u32 = 10;
 
 pub struct Slider {
     id: usize,
-    value: i32,
+    value: Stateful<i32>,
     min: i32,
     max: i32,
     abs_rect_data: RectData,
@@ -37,13 +37,13 @@ impl Slider {
         rel_rect_data: RectData,
         orig_rect_data: RectData,
         on_change: Option<Box<dyn Fn(i32) -> ()>>,
-        value: i32,
+        value: Stateful<i32>,
         min: i32,
         max: i32,
         steps: u32,
         styling: Option<ComponentStyling>,
-    ) -> Self {
-        Self {
+    ) -> ComponentRef {
+        let slider = Box::new(Self {
             id: WindowManager::generate_id(),
             abs_rect_data: RectData::zero(),
             rel_rect_data,
@@ -51,7 +51,7 @@ impl Slider {
             drawn_rect_data: RectData::zero(),
             on_change: Rc::new(on_change.unwrap_or_else(|| Box::new(|_| {}))),
             steps,
-            value,
+            value: Stateful::clone(&value),
             min,
             max,
             is_dirty: true,
@@ -59,11 +59,12 @@ impl Slider {
             is_hidden: false,
             is_dragging: false,
             styling: styling.unwrap_or_default(),
-        }
-    }
+        });
 
-    pub fn on_change(&self, value: i32) {
-        (self.on_change)(value);
+        let component = ComponentRef::from_component(slider);
+        value.register_component(ComponentRef::clone(&component));
+
+        component
     }
 
     fn update_value(&mut self, new_value: i32) -> Option<Box<dyn FnOnce() -> ()>> {
@@ -71,15 +72,12 @@ impl Slider {
             return None;
         }
         
-        self.value = new_value;
-
-        self.mark_dirty();
-        
         let on_change = Rc::clone(&self.on_change);
-        let value = self.value;
+        let value = Rc::clone(&self.value);
 
         Some(Box::new(move || {
-            (on_change)(value);
+            value.set(new_value);
+            on_change(new_value);
         }))
     }
 }
@@ -118,7 +116,8 @@ impl Component for Slider {
 
         self.drawn_rect_data = self.abs_rect_data;
 
-        let normalized_value = (self.value as f32 - self.min as f32) / (self.max as f32 - self.min as f32);
+        let value = self.value.get();
+        let normalized_value = (value as f32 - self.min as f32) / (self.max as f32 - self.min as f32);
         let slider_position = roundf((self.abs_rect_data.width as f32 - 10 as f32) * normalized_value) as u32;
 
         let handle_rect = RectData {
@@ -257,11 +256,11 @@ impl Interactable for Slider {
 
         match keyboard_press {
             DecodedKey::Unicode('+') => {
-                let new_value = self.value + self.steps as i32;
+                let new_value = self.value.get() + self.steps as i32;
                 self.update_value(new_value)
             }
             DecodedKey::Unicode('-') => {
-                let new_value: i32 = self.value - self.steps as i32;
+                let new_value: i32 = self.value.get() - self.steps as i32;
                 self.update_value(new_value)
             }
             _ => {
@@ -278,14 +277,14 @@ impl Interactable for Slider {
         // Scroll (+)
         if mouse_event.scroll == ScrollDirection::Up || mouse_event.scroll == ScrollDirection::Right
         {
-            let new_value: i32 = self.value + self.steps as i32;
+            let new_value: i32 = self.value.get() + self.steps as i32;
             return self.update_value(new_value);
         }
 
         // Scroll (-)
         if mouse_event.scroll == ScrollDirection::Down || mouse_event.scroll == ScrollDirection::Left
         {
-            let new_value: i32 = self.value - self.steps as i32;
+            let new_value: i32 = self.value.get() - self.steps as i32;
             return self.update_value(new_value);
         }
 
@@ -305,7 +304,7 @@ impl Interactable for Slider {
             let new_value = roundf(normalized_value) as i32;
             let new_value = new_value.clamp(self.min, self.max);
 
-            if self.value != new_value {
+            if self.value.get() != new_value {
                 return self.update_value(new_value);
             }
         }

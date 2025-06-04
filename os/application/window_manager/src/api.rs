@@ -66,7 +66,7 @@ pub enum Command<'a> {
     CreateSlider {
         log_rect_data: RectData,
         on_change: Option<Box<dyn Fn(i32) -> ()>>,
-        value: i32,
+        value: Stateful<i32>,
         min: i32,
         max: i32,
         steps: u32,
@@ -422,7 +422,7 @@ impl Api {
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
-                        let slider = Slider::new(
+                        let component = Slider::new(
                             rel_rect_data,
                             log_rect_data.clone(),
                             on_change,
@@ -432,8 +432,6 @@ impl Api {
                             steps,
                             styling,
                         );
-
-                        let component = ComponentRef::from_component(Box::new(slider));
 
                         let dispatch_data = NewCompData {
                             window_data,
