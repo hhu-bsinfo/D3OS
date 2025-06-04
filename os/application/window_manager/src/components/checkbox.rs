@@ -1,13 +1,16 @@
-use alloc::{
-    boxed::Box, rc::Rc
-};
+use alloc::{boxed::Box, rc::Rc};
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use terminal::DecodedKey;
 
-use crate::{config::INTERACT_BUTTON, signal::Stateful, WindowManager};
+use crate::{config::INTERACT_BUTTON, signal::{ComponentRef, ComponentRefExt, Stateful}, WindowManager};
 
-use super::{component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
+use super::{
+    component::{
+        Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable,
+    },
+    container::Container,
+};
 
 pub struct Checkbox {
     pub id: usize,
@@ -30,31 +33,36 @@ impl Checkbox {
         state: Stateful<bool>,
         on_change: Option<Box<dyn Fn(bool) -> ()>>,
         styling: Option<ComponentStyling>,
-    ) -> Self {
-        Self {
+    ) -> ComponentRef {
+        let checkbox = Box::new(Self {
             id: WindowManager::generate_id(),
             is_dirty: true,
             abs_rect_data: RectData::zero(),
             rel_rect_data,
             orig_rect_data,
             drawn_rect_data: RectData::zero(),
-            state,
+            state: state.clone(),
             on_change: Rc::new(on_change.unwrap_or_else(|| Box::new(|_| {}))),
             is_disabled: false,
             is_hidden: false,
             styling: styling.unwrap_or_default(),
-        }
+        });
+
+        let component = ComponentRef::from_component(checkbox);
+        state.register_component(component.clone());
+
+        component
     }
 
     fn handle_click(&mut self) -> Option<Box<dyn FnOnce() -> ()>> {
-        self.state.set(!self.state.get());
+        let new_state = !self.state.get();
 
         let on_change = Rc::clone(&self.on_change);
-        let state = self.state.get();
-        self.mark_dirty();
+        let state = Rc::clone(&self.state);
 
         return Some(Box::new(move || {
-            (on_change)(state);
+            state.set(new_state);
+            on_change(new_state)
         }));
     }
 }
@@ -64,7 +72,7 @@ impl Component for Checkbox {
         if !self.is_dirty {
             return;
         }
-        
+
         if self.is_hidden {
             self.is_dirty = false;
             return;
@@ -94,7 +102,11 @@ impl Component for Checkbox {
         self.drawn_rect_data = self.abs_rect_data;
 
         if self.state.get() {
-            let RectData { top_left, width, height } = self.abs_rect_data;
+            let RectData {
+                top_left,
+                width,
+                height,
+            } = self.abs_rect_data;
             let bottom_right = top_left.add(width, height);
             let top_right = top_left.add(width, 0);
             let bottom_left = top_left.add(0, height);
@@ -108,7 +120,7 @@ impl Component for Checkbox {
 
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         let styling: &ComponentStyling = &self.styling;
-        
+
         let min_dim = (DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_HEIGHT);
         let max_dim = (self.orig_rect_data.width, self.orig_rect_data.height);
 
@@ -121,7 +133,7 @@ impl Component for Checkbox {
 
         self.mark_dirty();
     }
-    
+
     fn get_abs_rect_data(&self) -> RectData {
         self.abs_rect_data
     }
@@ -202,7 +214,10 @@ impl Focusable for Checkbox {
 }
 
 impl Interactable for Checkbox {
-    fn consume_keyboard_press(&mut self, keyboard_press: DecodedKey) -> Option<Box<dyn FnOnce() -> ()>> {
+    fn consume_keyboard_press(
+        &mut self,
+        keyboard_press: DecodedKey,
+    ) -> Option<Box<dyn FnOnce() -> ()>> {
         if keyboard_press == INTERACT_BUTTON && !self.is_disabled {
             self.handle_click()
         } else {
@@ -210,7 +225,10 @@ impl Interactable for Checkbox {
         }
     }
 
-    fn consume_mouse_event(&mut self, mouse_event: &crate::mouse_state::MouseEvent) -> Option<Box<dyn FnOnce() -> ()>> {
+    fn consume_mouse_event(
+        &mut self,
+        mouse_event: &crate::mouse_state::MouseEvent,
+    ) -> Option<Box<dyn FnOnce() -> ()>> {
         if mouse_event.buttons.left.is_pressed() && !self.is_disabled {
             self.handle_click()
         } else {

@@ -362,15 +362,13 @@ impl Api {
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
-                        let checkbox = Checkbox::new(
+                        let component = Checkbox::new(
                             rel_rect_data,
                             log_rect_data.clone(),
                             state,
                             on_change,
                             styling,
                         );
-
-                        let component = ComponentRef::from_component(Box::new(checkbox));
 
                         let dispatch_data = NewCompData {
                             window_data,
