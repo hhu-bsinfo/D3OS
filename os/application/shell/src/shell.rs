@@ -7,7 +7,6 @@ mod context;
 mod controller;
 mod executable;
 mod service;
-mod sub_module;
 mod sub_service;
 
 use core::cell::RefCell;
@@ -27,6 +26,8 @@ use service::{
 };
 use sub_service::alias_sub_service::AliasSubService;
 use terminal::{DecodedKey, KeyCode, print, println, read::read_mixed};
+
+use crate::service::auto_complete_service::AutoCompleteService;
 
 #[derive(Debug, PartialEq)]
 enum ShellState {
@@ -59,6 +60,7 @@ impl Shell {
         services.push(Box::new(CommandLineService::new()));
         services.push(Box::new(HistoryService::new()));
         services.push(Box::new(LexerService::new(alias_service.clone())));
+        services.push(Box::new(AutoCompleteService::new()));
         services.push(Box::new(DrawerService::new()));
         services.push(Box::new(ParserService::new()));
         services.push(Box::new(ExecutorService::new(alias_service.clone())));
@@ -77,8 +79,8 @@ impl Shell {
 
         match read_mixed() {
             Some(DecodedKey::Unicode('\n')) => Some(Event::Submit),
+            Some(DecodedKey::Unicode('\t')) => Some(Event::AutoComplete),
             Some(DecodedKey::Unicode(ch)) => Some(Event::SimpleKey(ch)),
-            Some(DecodedKey::RawKey(KeyCode::Tab)) => Some(Event::AutoComplete),
             Some(DecodedKey::RawKey(KeyCode::ArrowUp)) => Some(Event::HistoryUp),
             Some(DecodedKey::RawKey(KeyCode::ArrowDown)) => Some(Event::HistoryDown),
             Some(DecodedKey::RawKey(KeyCode::ArrowLeft)) => Some(Event::CursorLeft),

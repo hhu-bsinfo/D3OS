@@ -1,3 +1,5 @@
+use core::cmp::min;
+
 use alloc::{string::String, vec::Vec};
 
 use crate::{executable::Executable, service::lexer_service::Token};
@@ -5,11 +7,11 @@ use crate::{executable::Executable, service::lexer_service::Token};
 #[derive(Debug, Clone)]
 pub struct Context {
     /// Current command line
-    pub(crate) line: Vec<char>,
+    pub(crate) line: String,
     /// Prefix for command line (Indicator)
     pub(crate) line_prefix: String,
     /// Suffix for command line (Auto complete)
-    pub(crate) line_suffix: Vec<char>,
+    pub(crate) line_suffix: String,
     /// Tells a service to skip validation until reached (INCLUDING PREFIX AND SUFFIX)
     pub(crate) dirty_offset: usize,
     /// Current cursor position
@@ -18,18 +20,21 @@ pub struct Context {
     pub(crate) tokens: Vec<Token>,
     /// Generated executable based on tokens
     pub(crate) executable: Option<Executable>,
+    /// Tells drawer to visualize auto completion
+    pub(crate) is_autocomplete_active: bool,
 }
 
 impl Context {
     pub const fn new() -> Self {
         Self {
-            line: Vec::new(),
+            line: String::new(),
             line_prefix: String::new(),
-            line_suffix: Vec::new(),
+            line_suffix: String::new(),
             dirty_offset: 0,
             cursor_position: 0,
             tokens: Vec::new(),
             executable: None,
+            is_autocomplete_active: false,
         }
     }
 
@@ -58,13 +63,13 @@ impl Context {
     /// Set dirty offset to index relative to line
     pub fn set_dirty_offset_from_line(&mut self, index: usize) {
         let offset = self.line_prefix.len();
-        self.dirty_offset = offset + index;
+        self.dirty_offset = min(self.dirty_offset, offset + index);
     }
 
     /// Set dirty offset to index relative to line_suffix
     pub fn set_dirty_offset_from_line_suffix(&mut self, index: usize) {
         let offset = self.line_prefix.len() + self.line.len();
-        self.dirty_offset = offset + index;
+        self.dirty_offset = min(self.dirty_offset, offset + index);
     }
 
     /// Returns total line len including prefix and suffix
@@ -84,14 +89,12 @@ impl Context {
             })
             .sum()
     }
+
+    pub fn is_cursor_at_end(&self) -> bool {
+        self.cursor_position == self.line.len()
+    }
 }
 
 fn clamp_index(i: usize, base: usize, len: usize) -> usize {
-    if i < base {
-        0
-    } else if i >= base + len {
-        len.saturating_sub(1)
-    } else {
-        i - base
-    }
+    i.saturating_sub(base).min(len)
 }

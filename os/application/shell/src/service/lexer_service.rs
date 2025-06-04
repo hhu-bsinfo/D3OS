@@ -104,8 +104,8 @@ impl LexerService {
     }
 
     fn tokenize_from_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
-        for ch in context.line[context.get_dirty_line_offset()..].iter() {
-            self.push(&mut context.tokens, *ch);
+        for ch in context.line[context.get_dirty_line_offset()..].chars() {
+            self.push(&mut context.tokens, ch);
         }
 
         info!("Lexer tokens: {:?}", context.tokens);
@@ -114,9 +114,9 @@ impl LexerService {
 
     fn retokenize_with_alias(&mut self, context: &mut Context) -> Result<Response, Error> {
         context.tokens.clear();
-        let line: String = context.line.clone().into_iter().collect();
 
-        let new_line = line
+        let new_line = context
+            .line
             .split_whitespace()
             .map(|raw_token| match self.alias.borrow().get(raw_token) {
                 Some(alias_value) => alias_value.to_string(),

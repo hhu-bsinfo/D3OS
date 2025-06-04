@@ -1,3 +1,4 @@
+pub mod auto_complete_service;
 pub mod command_line_service;
 pub mod drawer_service;
 pub mod executor_service;

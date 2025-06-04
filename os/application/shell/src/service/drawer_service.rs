@@ -2,6 +2,7 @@ use alloc::{
     format,
     string::{String, ToString},
 };
+use logger::info;
 use terminal::print;
 
 use crate::context::Context;
@@ -14,24 +15,24 @@ pub struct DrawerService {
 
 impl Service for DrawerService {
     fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.draw_prefix(context)
+        self.terminal_cursor_pos = 0;
+        self.draw_at_dirty(context)
     }
 
     fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
         self.draw_next_line(context)
     }
 
-    fn auto_complete(&mut self, _context: &mut Context) -> Result<Response, Error> {
-        // TODO
-        Ok(Response::Skip)
+    fn auto_complete(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.draw_at_dirty(context)
     }
 
     fn cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.draw_cursor(context)
+        self.draw_at_dirty(context)
     }
 
     fn cursor_right(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.draw_cursor(context)
+        self.draw_at_dirty(context)
     }
 
     fn history_up(&mut self, context: &mut Context) -> Result<Response, Error> {
@@ -56,26 +57,18 @@ impl DrawerService {
 
     fn draw_next_line(&mut self, context: &mut Context) -> Result<Response, Error> {
         print!("{}\n", self.cursor_to_end(context));
-        self.terminal_cursor_pos = 0;
-        Ok(Response::Ok)
-    }
-
-    fn draw_prefix(&mut self, context: &mut Context) -> Result<Response, Error> {
-        print!(
-            "{}{}{}",
-            self.cursor_to_start(),
-            self.clear_right_of_cursor(),
-            self.line_prefix(context)
-        );
+        // self.terminal_cursor_pos = 0;
         Ok(Response::Ok)
     }
 
     fn draw_at_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
         print!(
-            "{}{}{}{}",
+            "{}{}{}{}[38;2;100;100;100m{}[0m{}",
             self.cursor_to_dirty(context),
             self.clear_right_of_cursor(),
-            self.line_after_cursor(context),
+            self.dirty_line_prefix(context),
+            self.dirty_line(context),
+            self.dirty_line_suffix(context),
             self.restore_cursor_position(context)
         );
         context.dirty_offset = context.total_line_len();
@@ -103,9 +96,14 @@ impl DrawerService {
     }
 
     fn restore_cursor_position(&mut self, context: &mut Context) -> String {
-        let step = self.terminal_cursor_pos as isize
-            - context.cursor_position as isize
-            - context.line_prefix.len() as isize;
+        let step = match context.is_autocomplete_active {
+            true => self.terminal_cursor_pos as isize - context.total_line_len() as isize,
+            false => {
+                self.terminal_cursor_pos as isize
+                    - context.cursor_position as isize
+                    - context.line_prefix.len() as isize
+            }
+        };
         self.move_cursor_by(step)
     }
 
@@ -122,11 +120,43 @@ impl DrawerService {
         "\x1b[0K"
     }
 
-    fn line_after_cursor(&mut self, context: &mut Context) -> String {
+    fn dirty_line_prefix(&mut self, context: &mut Context) -> String {
+        let start_at = context.get_dirty_line_prefix_offset();
+        let dirty_prefix = context.line_prefix[start_at..].to_string();
+        self.terminal_cursor_pos += dirty_prefix.len();
+        info!(
+            "prefix: start {}, len {}, cursor_at {}",
+            start_at,
+            dirty_prefix.len(),
+            self.terminal_cursor_pos
+        );
+        dirty_prefix
+    }
+
+    fn dirty_line(&mut self, context: &mut Context) -> String {
         let start_at = context.get_dirty_line_offset();
-        let line: String = context.line[start_at..].iter().collect();
+        let line = context.line[start_at..].to_string();
         self.terminal_cursor_pos += line.len();
+        info!(
+            "line: start {}, len {}, cursor_at {}",
+            start_at,
+            line.len(),
+            self.terminal_cursor_pos
+        );
         line
+    }
+
+    fn dirty_line_suffix(&mut self, context: &mut Context) -> String {
+        let start_at = context.get_dirty_line_suffix_offset();
+        let dirty_suffix = context.line_suffix[start_at..].to_string();
+        self.terminal_cursor_pos += dirty_suffix.len();
+        info!(
+            "suffix: start {}, len {}, cursor_at {}",
+            start_at,
+            dirty_suffix.len(),
+            self.terminal_cursor_pos
+        );
+        dirty_suffix
     }
 
     fn line_prefix(&mut self, context: &mut Context) -> String {
