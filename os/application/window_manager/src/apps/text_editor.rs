@@ -132,7 +132,7 @@ Some *Emphasis* Text.
         let mut document: Document =
             Document::new(Some(String::from("scratch")), text_buffer, config);
 
-        let mut view = document.update(meassages::Message::ViewMessage(ViewMessage::ScrollDown(0)));
+        document.update(meassages::Message::ViewMessage(ViewMessage::ScrollDown(0)));
         View::render(&document, &mut canvas.write());
         component.write().mark_dirty();
         let mut dirty = false;
@@ -143,7 +143,7 @@ Some *Emphasis* Text.
                 dirty = true;
             }
             while let Some(value) = tmp_queue.pop_front() {
-                view = document.update(value);
+                document.update(value);
             }
             if dirty {
                 {

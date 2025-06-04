@@ -7,7 +7,6 @@ use text_buffer::TextBuffer;
 
 use super::font::Font;
 use super::meassages::{Message, ViewMessage};
-use super::view::View;
 use super::TextEditorConfig;
 
 enum EditMode {
@@ -116,7 +115,6 @@ impl<'b> Document<'b> {
     }
 
     fn move_cursor_down(&mut self) {
-        let text = self.text_buffer.to_string();
         let prev_line = self.prev_line(self.caret).unwrap_or(self.caret);
         let origin_len = self.caret - prev_line;
         let next_line = self.next_line(self.caret).unwrap_or(self.caret);
@@ -141,10 +139,27 @@ impl<'b> Document<'b> {
     }
 
     fn move_cursor_up(&mut self) {
-        let text = self.text_buffer.to_string();
-        let prev_line = self.prev_line(self.caret).unwrap_or(self.caret);
+        let prev_line = match self.prev_line(self.caret){
+            Some (s) => s,
+            None => {
+                self.caret = 0;
+                return;
+            }
+        };
         let origin_len = self.caret - prev_line;
-        let prev_prev_line = self.prev_line(prev_line - 2).unwrap_or(self.caret);
+        let prev_prev_line = self.prev_line(prev_line.checked_sub(1).unwrap_or(0)).unwrap();
+        if prev_line == prev_prev_line {
+            self.caret = 0;
+            return;
+        }
+        if self.text_buffer.get_char(self.caret).is_some_and(|c| c == '\n') && self.text_buffer.get_char(self.caret.checked_sub(1).unwrap_or(self.caret)).is_some_and(|c|c == '\n'){
+            self.caret = self.caret.checked_sub(1).unwrap_or(0);
+            return;
+        }
+        if prev_line - prev_prev_line <= origin_len {
+            self.caret = prev_line.checked_sub(1).unwrap_or(0);
+            return;
+        }
         self.caret = prev_prev_line + origin_len;
     }
 
@@ -249,12 +264,12 @@ mod tests {
             width: 200,
             height: 200,
             background_color: bg_color,
-            markdown_view: View::Markdown {
+            markdown_view: ViewConfig::Markdown {
                 normal: font,
                 emphasis: font,
                 strong: font,
             },
-            simple_view: View::Simple {
+            simple_view: ViewConfig::Simple {
                 font_scale: 1,
                 fg_color: WHITE,
                 bg_color: bg_color,
@@ -358,5 +373,87 @@ mod tests {
         doc.caret = 4;
         doc.move_cursor_down();
         assert_eq!(doc.caret(), 9);
+    }
+
+    #[test]
+    fn move_cursor_up_0() {
+        let text = "Das\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 4;
+        doc.move_cursor_up();
+        assert_eq!(doc.caret(), 0);
+    }
+
+    #[test]
+    fn move_cursor_up_1() {
+        let text = "Das\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 5;
+        doc.move_cursor_up();
+        assert_eq!(doc.caret(), 1);
+    }
+    #[test]
+    fn move_cursor_up_2() {
+        let text = "Das\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 0;
+        doc.move_cursor_up();
+        assert_eq!(doc.caret(), 0);
+    }
+    #[test]
+    fn move_cursor_up_3() {
+        let text = "Das\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 1;
+        doc.move_cursor_up();
+        assert_eq!(doc.caret(), 0);
+    }
+    #[test]
+    fn move_cursor_up_4() {
+        let text = "Das\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 3;
+        doc.move_cursor_up();
+        assert_eq!(doc.caret(), 0);
+    }
+    #[test]
+    fn move_cursor_up_5() {
+        let text = "Das\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 7;
+        doc.move_cursor_up();
+        assert_eq!(doc.caret(), 3);
+    }
+    #[test]
+    fn move_cursor_up_6() {
+        let text = "Das\nTest2";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 8;
+        doc.move_cursor_up();
+        assert_eq!(doc.caret(), 3);
+    }
+    #[test]
+    fn move_cursor_up_7() {
+        let text = "Das\nist\nein\nTest!";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 11;
+        doc.move_cursor_up();
+        assert_eq!(doc.caret(), 7);
+    }
+    #[test]
+    fn move_cursor_up_8() {
+        let text = "Das\nist\nein\nTest!";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 16;
+        doc.move_cursor_up();
+        assert_eq!(doc.caret(), 11);
+    }
+    #[test]
+    fn move_cursor_up_9() {
+        let text = "Das\nist\n\nein\nTest!";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret = 8;
+        doc.move_cursor_up();
+        assert_eq!(doc.caret(), 7);
     }
 }
