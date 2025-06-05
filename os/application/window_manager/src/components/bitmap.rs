@@ -6,8 +6,8 @@ use crate::WindowManager;
 use super::{component::{Casts, Component, ComponentStyling, Hideable, Resizable}, container::Container};
 
 pub struct BitmapGraphic {
-    pub id: usize,
-    pub is_dirty: bool,
+    id: usize,
+    is_dirty: bool,
     rel_rect_data: RectData,
     abs_rect_data: RectData,
     orig_rect_data: RectData,

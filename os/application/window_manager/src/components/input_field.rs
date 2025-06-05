@@ -28,8 +28,8 @@ pub struct InputField {
     If we are selected, all keyboard input is redirected to us, unless
     command-line-window is opened
     */
-    pub id: usize,
-    pub is_dirty: bool,
+    id: usize,
+    is_dirty: bool,
     is_selected: bool,
     max_chars: usize,
     abs_rect_data: RectData,

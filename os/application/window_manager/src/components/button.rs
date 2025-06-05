@@ -24,8 +24,8 @@ use super::{
 };
 
 pub struct Button {
-    pub id: usize,
-    pub is_dirty: bool,
+    id: usize,
+    is_dirty: bool,
     abs_rect_data: RectData,
     rel_rect_data: RectData,
     orig_rect_data: RectData,

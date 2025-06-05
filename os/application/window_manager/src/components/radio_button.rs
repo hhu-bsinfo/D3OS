@@ -15,7 +15,7 @@ use super::{
 };
 
 pub struct RadioButton {
-    pub id: usize,
+    id: usize,
 
     abs_center: Vertex,
     rel_center: Vertex,

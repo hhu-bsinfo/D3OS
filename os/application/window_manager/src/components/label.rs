@@ -11,13 +11,13 @@ pub const TEXT_COLOR: Color = WHITE;
 pub const TEXT_COLOR_FOCUSED: Color = YELLOW;
 
 pub struct Label {
-    pub id: usize,
-    pub is_dirty: bool,
-    pub abs_pos: Vertex,
-    pub rel_pos: Vertex,
+    id: usize,
+    is_dirty: bool,
+    abs_pos: Vertex,
+    rel_pos: Vertex,
     rel_font_size: usize,
-    pub text: Stateful<String>,
-    pub font_scale: (u32, u32),
+    text: Stateful<String>,
+    font_scale: (u32, u32),
     is_hidden: bool,
     drawn_rect_data: RectData,
     styling: ComponentStyling,
