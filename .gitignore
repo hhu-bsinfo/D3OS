@@ -134,3 +134,6 @@ loader/initrd
 nvdimm0
 rtl8139.dump
 towbootctl
+
+## for the NE2000 card (Johann Spenrath, Last Modified: 06.06.2025)
+ne2k.dump
