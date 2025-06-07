@@ -81,11 +81,11 @@ impl View {
             if y + DEFAULT_CHAR_HEIGHT * font_scale >= buffer.height {
                 break;
             }
-            if i == document.caret() {
+            if i == document.caret().head() {
                 buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
                 caret_pos = y;
                 found_caret = true;
-                warn!("caret: {}", document.caret())
+                warn!("caret: {}", document.caret().head())
             }
             if c == '\n' {
                 y += DEFAULT_CHAR_HEIGHT * font_scale;
@@ -103,11 +103,11 @@ impl View {
                 + 1;
             i += 1;
         }
-        if i == document.caret() {
+        if i == document.caret().head() {
             buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
         }
         if !found_caret {
-            if document.caret() >= document.scroll_offset() as usize {
+            if document.caret().head() >= document.scroll_offset() as usize {
                 let ind = new_lines.len() / 3;
                 let scroll = new_lines[ind] - document.scroll_offset();
                 return Some(ViewMessage::ScrollDown(scroll));
@@ -141,7 +141,7 @@ impl View {
         for (event, range) in iterator {
             match event {
                 Event::Text(text) => {
-                    let rel_caret = document.caret().checked_sub(range.start);
+                    let rel_caret = document.caret().head().checked_sub(range.start);
                     if heading {
                         position = View::render_string(
                             &String::from("\n"),
@@ -169,7 +169,7 @@ impl View {
                     }
                 }
                 Event::HardBreak | Event::SoftBreak => {
-                    let rel_caret = document.caret().checked_sub(range.start);
+                    let rel_caret = document.caret().head().checked_sub(range.start);
                     position = View::render_string(
                         &String::from("\n"),
                         buffer,
@@ -200,7 +200,7 @@ impl View {
                     _ => (),
                 },
                 Event::Rule => {
-                    let rel_caret = document.caret().checked_sub(range.start);
+                    let rel_caret = document.caret().head().checked_sub(range.start);
                     position = View::render_string(
                         &String::from("\n"),
                         buffer,

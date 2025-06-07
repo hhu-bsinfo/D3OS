@@ -15,6 +15,30 @@ enum EditMode {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub enum Caret {
+    Normal(usize),
+    Visual {
+        anchor: usize,
+        head: usize,
+    }
+}
+
+impl  Caret {
+   pub fn head(&self) -> usize {
+    match self {
+        Caret::Normal(h) => *h,
+        Caret::Visual { anchor, head } => *head,
+    }
+   } 
+   pub fn set_head(&mut self, new_head: usize)  {
+    match self {
+        Caret::Normal(h) => {*h = new_head;},
+        Caret::Visual { anchor, head } => {*head=new_head},
+    };
+   }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum ViewConfig {
     Simple {
         font_scale: u32,
@@ -31,7 +55,7 @@ pub enum ViewConfig {
 pub struct Document<'b> {
     path: Option<String>,
     text_buffer: TextBuffer<'b>,
-    caret: usize,
+    caret: Caret,
     edit_mode: EditMode,
     config: TextEditorConfig,
     current_view: ViewConfig,
@@ -44,11 +68,10 @@ impl<'b> Document<'b> {
         text_buffer: TextBuffer<'b>,
         config: TextEditorConfig,
     ) -> Document<'b> {
-        let length = text_buffer.len();
         Document {
             path: path,
             text_buffer: text_buffer,
-            caret: 0,
+            caret: Caret::Normal(0),
             edit_mode: EditMode::Insert,
             config: config,
             current_view: config.simple_view,
@@ -64,7 +87,7 @@ impl<'b> Document<'b> {
     pub fn scroll_offset(&self) -> u32 {
         self.scroll_offset
     }
-    pub fn caret(&self) -> usize {
+    pub fn caret(&self) -> Caret {
         self.caret
     }
     fn next_line(&self, pos: usize) -> Option<usize> {
@@ -115,22 +138,22 @@ impl<'b> Document<'b> {
     }
 
     fn move_cursor_down(&mut self) {
-        let prev_line = self.prev_line(self.caret).unwrap_or(self.caret);
-        let origin_len = self.caret - prev_line;
-        let next_line = self.next_line(self.caret).unwrap_or(self.caret);
+        let prev_line = self.prev_line(self.caret.head()).unwrap_or(self.caret.head());
+        let origin_len = self.caret.head() - prev_line;
+        let next_line = self.next_line(self.caret.head()).unwrap_or(self.caret.head());
         let next_next_line = self.next_line(next_line);
         if self
             .text_buffer
             .get_char(next_line)
             .is_some_and(|c| c == '\n')
         {
-            self.caret = next_line;
+            self.caret.set_head(next_line);
             return;
         } else if next_next_line.is_some_and(|n| n - next_line <= origin_len) {
-            self.caret = next_next_line.unwrap() - 1;
+            self.caret.set_head(next_next_line.unwrap()-1);
             return;
         }
-        self.caret = next_line + origin_len;
+        self.caret.set_head(next_line + origin_len);
         #[cfg(feature = "with_runtime")]
         warn!(
             "prev line {} origin_len {} nex_line {}",
@@ -139,28 +162,28 @@ impl<'b> Document<'b> {
     }
 
     fn move_cursor_up(&mut self) {
-        let prev_line = match self.prev_line(self.caret){
+        let prev_line = match self.prev_line(self.caret.head()){
             Some (s) => s,
             None => {
-                self.caret = 0;
+                self.caret.set_head(0);
                 return;
             }
         };
-        let origin_len = self.caret - prev_line;
+        let origin_len = self.caret.head() - prev_line;
         let prev_prev_line = self.prev_line(prev_line.checked_sub(1).unwrap_or(0)).unwrap();
         if prev_line == prev_prev_line {
-            self.caret = 0;
+            self.caret.set_head(0);
             return;
         }
-        if self.text_buffer.get_char(self.caret).is_some_and(|c| c == '\n') && self.text_buffer.get_char(self.caret.checked_sub(1).unwrap_or(self.caret)).is_some_and(|c|c == '\n'){
-            self.caret = self.caret.checked_sub(1).unwrap_or(0);
+        if self.text_buffer.get_char(self.caret.head()).is_some_and(|c| c == '\n') && self.text_buffer.get_char(self.caret.head().checked_sub(1).unwrap_or(self.caret.head())).is_some_and(|c|c == '\n'){
+            self.caret.set_head(self.caret.head().checked_sub(1).unwrap_or(0));
             return;
         }
         if prev_line - prev_prev_line <= origin_len {
-            self.caret = prev_line.checked_sub(1).unwrap_or(0);
+            self.caret.set_head(prev_line.checked_sub(1).unwrap_or(0));
             return;
         }
-        self.caret = prev_prev_line + origin_len;
+        self.caret.set_head( prev_prev_line + origin_len);
     }
 
     fn update_insert(&mut self, k: DecodedKey) {
@@ -168,19 +191,19 @@ impl<'b> Document<'b> {
         match k {
             // delete
             DecodedKey::Unicode('\x08') => {
-                self.text_buffer.delete(self.caret - 1);
-                self.caret -= 1;
+                self.text_buffer.delete(self.caret.head() - 1);
+                self.caret.set_head(self.caret.head()-1); 
             }
             // esc
             DecodedKey::Unicode('\x1B') => {
                 self.edit_mode = EditMode::Normal;
             }
             DecodedKey::Unicode(ch) => {
-                self.text_buffer.insert(self.caret, ch);
-                self.caret += 1;
+                self.text_buffer.insert(self.caret.head(), ch);
+                self.caret.set_head(self.caret.head()+1);
             }
-            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.caret -= 1,
-            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret += 1,
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.caret.set_head(self.caret.head()-1),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret.set_head(self.caret.head()+1),
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             DecodedKey::RawKey(k) => {
@@ -200,21 +223,21 @@ impl<'b> Document<'b> {
             DecodedKey::Unicode('r') => {
                 self.text_buffer.redo();
             }
-            DecodedKey::Unicode('h') => self.caret -= 1,
-            DecodedKey::Unicode('l') => self.caret += 1,
+            DecodedKey::Unicode('h') => self.caret.set_head(self.caret.head()-1),
+            DecodedKey::Unicode('l') => self.caret.set_head(self.caret.head()+1),
             DecodedKey::Unicode('j') => self.move_cursor_down(),
             DecodedKey::Unicode('k') => self.move_cursor_up(),
             DecodedKey::Unicode('i') => self.edit_mode = EditMode::Insert,
             DecodedKey::Unicode('n') => self.current_view = self.config.simple_view,
             DecodedKey::Unicode('m') => self.current_view = self.config.markdown_view,
-            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.caret -= 1,
-            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret += 1,
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.caret.set_head(self.caret.head() -1),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret.set_head(self.caret.head()+1),
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             _ => (),
         }
-        if self.caret > self.text_buffer.len() {
-            self.caret = self.text_buffer.len();
+        if self.caret.head() > self.text_buffer.len() {
+            self.caret.set_head(self.text_buffer.len());
         }
     }
 
@@ -280,180 +303,180 @@ mod tests {
     fn move_cursor_down_0() {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 0;
+        doc.caret.set_head(0);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 4);
+        assert_eq!(doc.caret().head(), 4);
     }
 
     #[test]
     fn move_cursor_down_1() {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 1;
+        doc.caret.set_head(1);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 5);
+        assert_eq!(doc.caret().head(), 5);
     }
     #[test]
     fn move_cursor_down_2() {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 3;
+        doc.caret.set_head(3);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 7);
+        assert_eq!(doc.caret().head(), 7);
     }
     #[test]
     fn move_cursor_down_3() {
         let text = "Das\nein\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 3;
+        doc.caret.set_head(3);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 7);
+        assert_eq!(doc.caret().head(), 7);
     }
     #[test]
     fn move_cursor_down_4() {
         let text = "Das\nein\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 5;
+        doc.caret.set_head(5);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 9);
+        assert_eq!(doc.caret().head(), 9);
     }
     #[test]
     fn move_cursor_down_with_space_0() {
         let text = "Das\n";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 0;
+        doc.caret.set_head(0);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 3);
+        assert_eq!(doc.caret().head(), 3);
     }
     #[test]
     fn move_cursor_down_with_space_1() {
         let text = "Das\n\nein";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 0;
+        doc.caret.set_head(0);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 4);
+        assert_eq!(doc.caret().head(), 4);
     }
     #[test]
     fn move_cursor_down_with_space_2() {
         let text = "Das\n\nein";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 1;
+        doc.caret.set_head(1);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 4);
+        assert_eq!(doc.caret().head(), 4);
     }
     #[test]
     fn move_cursor_down_with_space_3() {
         let text = "Das\n\nein";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 3;
+        doc.caret.set_head(3);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 4);
+        assert_eq!(doc.caret().head(), 4);
     }
     #[test]
     fn move_cursor_down_with_space_4() {
         let text = "Das\n\nein";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 4;
+        doc.caret.set_head(4);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 5);
+        assert_eq!(doc.caret().head(), 5);
     }
     #[test]
     fn move_cursor_down_shoreter_0() {
         let text = "Hallo\nein";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 4;
+        doc.caret.set_head(4);
         doc.move_cursor_down();
         // Nicht hundert Prozent richtig aber gut genug
-        assert_eq!(doc.caret(), 10);
+        assert_eq!(doc.caret().head(), 10);
     }
     #[test]
     fn move_cursor_down_shoreter_1() {
         let text = "Hallo\nein\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 4;
+        doc.caret.set_head(4);
         doc.move_cursor_down();
-        assert_eq!(doc.caret(), 9);
+        assert_eq!(doc.caret().head(), 9);
     }
 
     #[test]
     fn move_cursor_up_0() {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 4;
+        doc.caret.set_head(4);
         doc.move_cursor_up();
-        assert_eq!(doc.caret(), 0);
+        assert_eq!(doc.caret().head(), 0);
     }
 
     #[test]
     fn move_cursor_up_1() {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 5;
+        doc.caret.set_head(5);
         doc.move_cursor_up();
-        assert_eq!(doc.caret(), 1);
+        assert_eq!(doc.caret().head(), 1);
     }
     #[test]
     fn move_cursor_up_2() {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 0;
+        doc.caret.set_head(0);
         doc.move_cursor_up();
-        assert_eq!(doc.caret(), 0);
+        assert_eq!(doc.caret().head(), 0);
     }
     #[test]
     fn move_cursor_up_3() {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 1;
+        doc.caret.set_head(1);
         doc.move_cursor_up();
-        assert_eq!(doc.caret(), 0);
+        assert_eq!(doc.caret().head(), 0);
     }
     #[test]
     fn move_cursor_up_4() {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 3;
+        doc.caret.set_head(3);
         doc.move_cursor_up();
-        assert_eq!(doc.caret(), 0);
+        assert_eq!(doc.caret().head(), 0);
     }
     #[test]
     fn move_cursor_up_5() {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 7;
+        doc.caret.set_head(7);
         doc.move_cursor_up();
-        assert_eq!(doc.caret(), 3);
+        assert_eq!(doc.caret().head(), 3);
     }
     #[test]
     fn move_cursor_up_6() {
         let text = "Das\nTest2";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 8;
+        doc.caret.set_head(8);
         doc.move_cursor_up();
-        assert_eq!(doc.caret(), 3);
+        assert_eq!(doc.caret().head(), 3);
     }
     #[test]
     fn move_cursor_up_7() {
         let text = "Das\nist\nein\nTest!";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 11;
+        doc.caret.set_head(11);
         doc.move_cursor_up();
-        assert_eq!(doc.caret(), 7);
+        assert_eq!(doc.caret().head(), 7);
     }
     #[test]
     fn move_cursor_up_8() {
         let text = "Das\nist\nein\nTest!";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 16;
+        doc.caret.set_head(16);
         doc.move_cursor_up();
-        assert_eq!(doc.caret(), 11);
+        assert_eq!(doc.caret().head(), 11);
     }
     #[test]
     fn move_cursor_up_9() {
         let text = "Das\nist\n\nein\nTest!";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
-        doc.caret = 8;
+        doc.caret.set_head(8);
         doc.move_cursor_up();
-        assert_eq!(doc.caret(), 7);
+        assert_eq!(doc.caret().head(), 7);
     }
 }
