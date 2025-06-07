@@ -1,3 +1,8 @@
+use crate::device::rtl8139::Rtl8139;
+// add the N2000 driver
+use crate::device::ne2000::Ne2000;
+use crate::process::thread::Thread;
+use crate::{pci_bus, scheduler, timer};
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -9,17 +14,16 @@ use smoltcp::socket::udp;
 use smoltcp::time::Instant;
 use smoltcp::wire::Ipv4Address;
 use spin::{Once, RwLock};
-use crate::device::rtl8139::Rtl8139;
-use crate::{pci_bus, scheduler, timer};
-use crate::process::thread::Thread;
 
 static RTL8139: Once<Arc<Rtl8139>> = Once::new();
+// ensure that the driver is only initialized once
+//static NE2000: Once<Arc<Ne2000>> = Once::new();
 
 static INTERFACES: RwLock<Vec<Interface>> = RwLock::new(Vec::new());
 static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
 
 pub enum SocketType {
-    Udp
+    Udp,
 }
 
 pub fn init() {
@@ -38,16 +42,33 @@ pub fn init() {
     }
 
     if RTL8139.get().is_some() {
-        scheduler().ready(Thread::new_kernel_thread(|| loop {
-            poll_sockets();
-        }, "RTL8139"));
+        scheduler().ready(Thread::new_kernel_thread(
+            || loop {
+                poll_sockets();
+            },
+            "RTL8139",
+        ));
+    }
+
+    // TODO: Implement NE2000.rs
+    let devices2 = pci_bus().search_by_ids(0x10ec, 0x8029);
+    if devices2.len() > 0 {
+        //NE2000.call_once(|| {
+        info!("Found Realtek 8029 network controller");
+        let ne2000 = Ne2000::new(devices2[0]);
+        let mac = ne2000.read_mac();
+        info!(
+            "NE2000 MAC address: [{:02X}-{:02X}-{:02X}-{:02X}-{:02X}-{:02X}]",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+        );
+        //});
     }
 }
 
 pub fn rtl8139() -> Option<Arc<Rtl8139>> {
     match RTL8139.get() {
         Some(rtl8139) => Some(Arc::clone(rtl8139)),
-        None => None
+        None => None,
     }
 }
 
@@ -86,7 +107,12 @@ pub fn bind_udp(handle: SocketHandle, port: u16) -> Result<(), udp::BindError> {
     socket.bind(port)
 }
 
-pub fn send_datagram(handle: SocketHandle, destination: Ipv4Address, port: u16, data: &[u8]) -> Result<(), udp::SendError> {
+pub fn send_datagram(
+    handle: SocketHandle,
+    destination: Ipv4Address,
+    port: u16,
+    data: &[u8],
+) -> Result<(), udp::SendError> {
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
     let socket = sockets.get_mut::<udp::Socket>(handle);
 
