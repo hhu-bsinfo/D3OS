@@ -12,6 +12,8 @@ use graphic::{
 use logger::warn;
 use pulldown_cmark::{Event, HeadingLevel, Parser};
 
+use crate::apps::text_editor::model::Caret;
+
 use super::{
     font::Font,
     meassages::ViewMessage,
@@ -77,6 +79,10 @@ impl View {
         let mut new_lines = Vec::<u32>::new();
         let mut caret_pos: u32 = 0;
         buffer.clear(bg_color);
+        let visual: Option<(usize, usize)> = match document.caret() {
+            Caret::Visual { anchor, head } => Some((anchor, head)),
+            Caret::Normal(_) => None,
+        };
         while let Some(c) = document.text_buffer().get_char(i) {
             if y + DEFAULT_CHAR_HEIGHT * font_scale >= buffer.height {
                 break;
@@ -97,6 +103,26 @@ impl View {
             if buffer.width - x + 1 < DEFAULT_CHAR_WIDTH * font_scale {
                 x = 0;
                 y += DEFAULT_CHAR_HEIGHT * font_scale;
+            }
+            if visual.is_some_and(|(x, y)| i >= x && i < y) {
+                buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale - 1, fg_color);
+                x += buffer.draw_char_scaled(
+                    x + 1,
+                    y,
+                    font_scale,
+                    font_scale,
+                    bg_color,
+                    fg_color,
+                    c,
+                ) * font_scale
+                    + 1;
+                i += 1;
+                if i == document.caret().head() {
+                    buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
+                    caret_pos = y;
+                    found_caret = true;
+                }
+                continue;
             }
             x += buffer.draw_char_scaled(x + 1, y, font_scale, font_scale, fg_color, bg_color, c)
                 * font_scale

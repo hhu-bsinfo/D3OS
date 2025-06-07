@@ -8,34 +8,34 @@ use text_buffer::TextBuffer;
 use super::font::Font;
 use super::meassages::{Message, ViewMessage};
 use super::TextEditorConfig;
-
+use logger::error;
 enum EditMode {
     Normal,
     Insert,
+    Visual,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Caret {
     Normal(usize),
-    Visual {
-        anchor: usize,
-        head: usize,
-    }
+    Visual { anchor: usize, head: usize },
 }
 
-impl  Caret {
-   pub fn head(&self) -> usize {
-    match self {
-        Caret::Normal(h) => *h,
-        Caret::Visual { anchor, head } => *head,
+impl Caret {
+    pub fn head(&self) -> usize {
+        match self {
+            Caret::Normal(h) => *h,
+            Caret::Visual { anchor, head } => *head,
+        }
     }
-   } 
-   pub fn set_head(&mut self, new_head: usize)  {
-    match self {
-        Caret::Normal(h) => {*h = new_head;},
-        Caret::Visual { anchor, head } => {*head=new_head},
-    };
-   }
+    pub fn set_head(&mut self, new_head: usize) {
+        match self {
+            Caret::Normal(h) => {
+                *h = new_head;
+            }
+            Caret::Visual { anchor, head } => *head = new_head,
+        };
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -55,6 +55,7 @@ pub enum ViewConfig {
 pub struct Document<'b> {
     path: Option<String>,
     text_buffer: TextBuffer<'b>,
+    copy_buffer: String,
     caret: Caret,
     edit_mode: EditMode,
     config: TextEditorConfig,
@@ -71,6 +72,7 @@ impl<'b> Document<'b> {
         Document {
             path: path,
             text_buffer: text_buffer,
+            copy_buffer: String::new(),
             caret: Caret::Normal(0),
             edit_mode: EditMode::Insert,
             config: config,
@@ -138,9 +140,13 @@ impl<'b> Document<'b> {
     }
 
     fn move_cursor_down(&mut self) {
-        let prev_line = self.prev_line(self.caret.head()).unwrap_or(self.caret.head());
+        let prev_line = self
+            .prev_line(self.caret.head())
+            .unwrap_or(self.caret.head());
         let origin_len = self.caret.head() - prev_line;
-        let next_line = self.next_line(self.caret.head()).unwrap_or(self.caret.head());
+        let next_line = self
+            .next_line(self.caret.head())
+            .unwrap_or(self.caret.head());
         let next_next_line = self.next_line(next_line);
         if self
             .text_buffer
@@ -150,40 +156,51 @@ impl<'b> Document<'b> {
             self.caret.set_head(next_line);
             return;
         } else if next_next_line.is_some_and(|n| n - next_line <= origin_len) {
-            self.caret.set_head(next_next_line.unwrap()-1);
+            self.caret.set_head(next_next_line.unwrap() - 1);
             return;
         }
         self.caret.set_head(next_line + origin_len);
-        #[cfg(feature = "with_runtime")]
-        warn!(
-            "prev line {} origin_len {} nex_line {}",
-            prev_line, origin_len, next_line
-        );
     }
 
     fn move_cursor_up(&mut self) {
-        let prev_line = match self.prev_line(self.caret.head()){
-            Some (s) => s,
+        let prev_line = match self.prev_line(self.caret.head()) {
+            Some(s) => s,
             None => {
                 self.caret.set_head(0);
                 return;
             }
         };
         let origin_len = self.caret.head() - prev_line;
-        let prev_prev_line = self.prev_line(prev_line.checked_sub(1).unwrap_or(0)).unwrap();
+        let prev_prev_line = self
+            .prev_line(prev_line.checked_sub(1).unwrap_or(0))
+            .unwrap();
         if prev_line == prev_prev_line {
             self.caret.set_head(0);
             return;
         }
-        if self.text_buffer.get_char(self.caret.head()).is_some_and(|c| c == '\n') && self.text_buffer.get_char(self.caret.head().checked_sub(1).unwrap_or(self.caret.head())).is_some_and(|c|c == '\n'){
-            self.caret.set_head(self.caret.head().checked_sub(1).unwrap_or(0));
+        if self
+            .text_buffer
+            .get_char(self.caret.head())
+            .is_some_and(|c| c == '\n')
+            && self
+                .text_buffer
+                .get_char(
+                    self.caret
+                        .head()
+                        .checked_sub(1)
+                        .unwrap_or(self.caret.head()),
+                )
+                .is_some_and(|c| c == '\n')
+        {
+            self.caret
+                .set_head(self.caret.head().checked_sub(1).unwrap_or(0));
             return;
         }
         if prev_line - prev_prev_line <= origin_len {
             self.caret.set_head(prev_line.checked_sub(1).unwrap_or(0));
             return;
         }
-        self.caret.set_head( prev_prev_line + origin_len);
+        self.caret.set_head(prev_prev_line + origin_len);
     }
 
     fn update_insert(&mut self, k: DecodedKey) {
@@ -192,7 +209,7 @@ impl<'b> Document<'b> {
             // delete
             DecodedKey::Unicode('\x08') => {
                 self.text_buffer.delete(self.caret.head() - 1);
-                self.caret.set_head(self.caret.head()-1); 
+                self.caret.set_head(self.caret.head() - 1);
             }
             // esc
             DecodedKey::Unicode('\x1B') => {
@@ -200,16 +217,87 @@ impl<'b> Document<'b> {
             }
             DecodedKey::Unicode(ch) => {
                 self.text_buffer.insert(self.caret.head(), ch);
-                self.caret.set_head(self.caret.head()+1);
+                self.caret.set_head(self.caret.head() + 1);
             }
-            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.caret.set_head(self.caret.head()-1),
-            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret.set_head(self.caret.head()+1),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => {
+                self.caret.set_head(self.caret.head() - 1)
+            }
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => {
+                self.caret.set_head(self.caret.head() + 1)
+            }
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             DecodedKey::RawKey(k) => {
                 #[cfg(feature = "with_runtime")]
                 warn!("TextEditor can't process input: {:?}", k);
             }
+        }
+        if self.caret.head() > self.text_buffer.len() {
+            self.caret.set_head(self.text_buffer.len());
+        }
+    }
+
+    fn yank(&mut self) {
+        let fst: usize;
+        let snd: usize;
+        self.copy_buffer.clear();
+        match self.caret {
+            Caret::Normal(_) => {
+                #[cfg(feature = "with_runtime")]
+                error!("yank from normal caret");
+                return;
+            }
+            Caret::Visual { anchor, head } => {
+                if anchor < head {
+                    fst = anchor;
+                    snd = head
+                } else {
+                    fst = head;
+                    snd = anchor;
+                }
+            }
+        }
+        for i in fst..snd {
+            let v = match self.text_buffer.get_char(i) {
+                Some(s) => s,
+                None => {
+                    error!("yank from none caret");
+                    return;
+                }
+            };
+            self.copy_buffer.push(v);
+        }
+        self.caret = Caret::Normal(self.caret.head());
+        self.edit_mode = EditMode::Normal;
+    }
+
+    fn paste(&mut self) {
+        #[cfg(feature = "with_runtime")]
+        for c in self.copy_buffer.chars() {
+            self.text_buffer.insert(self.caret.head(), c);
+            self.caret.set_head(self.caret.head() + 1);
+        }
+    }
+
+    fn update_visual(&mut self, k: DecodedKey) {
+        match k {
+            DecodedKey::Unicode('h') => self.caret.set_head(self.caret.head() - 1),
+            DecodedKey::Unicode('l') => self.caret.set_head(self.caret.head() + 1),
+            DecodedKey::Unicode('j') => self.move_cursor_down(),
+            DecodedKey::Unicode('k') => self.move_cursor_up(),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => {
+                self.caret.set_head(self.caret.head() - 1)
+            }
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => {
+                self.caret.set_head(self.caret.head() + 1)
+            }
+            DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
+            DecodedKey::Unicode('y') => self.yank(),
+            _ => (),
+        }
+        if self.caret.head() > self.text_buffer.len() {
+            self.caret.set_head(self.text_buffer.len());
         }
     }
 
@@ -223,17 +311,29 @@ impl<'b> Document<'b> {
             DecodedKey::Unicode('r') => {
                 self.text_buffer.redo();
             }
-            DecodedKey::Unicode('h') => self.caret.set_head(self.caret.head()-1),
-            DecodedKey::Unicode('l') => self.caret.set_head(self.caret.head()+1),
+            DecodedKey::Unicode('h') => self.caret.set_head(self.caret.head() - 1),
+            DecodedKey::Unicode('l') => self.caret.set_head(self.caret.head() + 1),
             DecodedKey::Unicode('j') => self.move_cursor_down(),
             DecodedKey::Unicode('k') => self.move_cursor_up(),
             DecodedKey::Unicode('i') => self.edit_mode = EditMode::Insert,
             DecodedKey::Unicode('n') => self.current_view = self.config.simple_view,
             DecodedKey::Unicode('m') => self.current_view = self.config.markdown_view,
-            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.caret.set_head(self.caret.head() -1),
-            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.caret.set_head(self.caret.head()+1),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => {
+                self.caret.set_head(self.caret.head() - 1)
+            }
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => {
+                self.caret.set_head(self.caret.head() + 1)
+            }
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
+            DecodedKey::Unicode('v') => {
+                self.edit_mode = EditMode::Visual;
+                self.caret = Caret::Visual {
+                    anchor: self.caret.head(),
+                    head: self.caret.head(),
+                };
+            }
+            DecodedKey::Unicode('p') => self.paste(),
             _ => (),
         }
         if self.caret.head() > self.text_buffer.len() {
@@ -256,6 +356,7 @@ impl<'b> Document<'b> {
             Message::DecodedKey(k) => match self.edit_mode {
                 EditMode::Insert => self.update_insert(k),
                 EditMode::Normal => self.update_normal(k),
+                EditMode::Visual => self.update_visual(k),
             },
         }
     }
