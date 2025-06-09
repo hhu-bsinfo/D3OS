@@ -1,4 +1,5 @@
 use alloc::{
+    format,
     string::{String, ToString},
     vec::Vec,
 };
@@ -11,6 +12,8 @@ use graphic::{
 };
 use logger::warn;
 use pulldown_cmark::{Event, HeadingLevel, Parser};
+
+use crate::apps::text_editor::model::Caret;
 
 use super::{
     font::Font,
@@ -77,15 +80,19 @@ impl View {
         let mut new_lines = Vec::<u32>::new();
         let mut caret_pos: u32 = 0;
         buffer.clear(bg_color);
+        let visual: Option<(usize, usize)> = match document.caret() {
+            Caret::Visual { anchor, head } => Some((anchor, head)),
+            Caret::Normal(_) => None,
+        };
         while let Some(c) = document.text_buffer().get_char(i) {
             if y + DEFAULT_CHAR_HEIGHT * font_scale >= buffer.height {
                 break;
             }
-            if i == document.caret() {
+            if i == document.caret().head() {
                 buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
                 caret_pos = y;
                 found_caret = true;
-                warn!("caret: {}", document.caret())
+                warn!("caret: {}", document.caret().head())
             }
             if c == '\n' {
                 y += DEFAULT_CHAR_HEIGHT * font_scale;
@@ -98,16 +105,36 @@ impl View {
                 x = 0;
                 y += DEFAULT_CHAR_HEIGHT * font_scale;
             }
+            if visual.is_some_and(|(x, y)| i >= x && i < y) {
+                buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale - 1, fg_color);
+                x += buffer.draw_char_scaled(
+                    x + 1,
+                    y,
+                    font_scale,
+                    font_scale,
+                    bg_color,
+                    fg_color,
+                    c,
+                ) * font_scale
+                    + 1;
+                i += 1;
+                if i == document.caret().head() {
+                    buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
+                    caret_pos = y;
+                    found_caret = true;
+                }
+                continue;
+            }
             x += buffer.draw_char_scaled(x + 1, y, font_scale, font_scale, fg_color, bg_color, c)
                 * font_scale
                 + 1;
             i += 1;
         }
-        if i == document.caret() {
+        if i == document.caret().head() {
             buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
         }
         if !found_caret {
-            if document.caret() >= document.scroll_offset() as usize {
+            if document.caret().head() >= document.scroll_offset() as usize {
                 let ind = new_lines.len() / 3;
                 let scroll = new_lines[ind] - document.scroll_offset();
                 return Some(ViewMessage::ScrollDown(scroll));
@@ -136,12 +163,16 @@ impl View {
         let iterator = Parser::new(&raw_text).into_offset_iter();
         let mut position = Vertex::zero();
         let mut font = Vec::<Font>::new();
+        let mut list_indentation: usize = 0;
+        let mut first_in_list_item = false;
+        let mut ordererd_start = false;
+        let mut ordered: Option<u64> = None;
         let mut heading = false;
         font.push(normal);
         for (event, range) in iterator {
             match event {
                 Event::Text(text) => {
-                    let rel_caret = document.caret().checked_sub(range.start);
+                    let rel_caret = document.caret().head().checked_sub(range.start);
                     if heading {
                         position = View::render_string(
                             &String::from("\n"),
@@ -151,6 +182,37 @@ impl View {
                             rel_caret,
                         );
                     }
+                    let mut s = String::new();
+                    if list_indentation > 0 {
+                        if first_in_list_item {
+                            if ordered.is_some() {
+                                s = ordered.unwrap().to_string();
+                                s.push('.');
+                            }
+
+                            let rel_caret = document.caret().head().checked_sub(range.start);
+                            position = View::render_string(
+                                &format!("{}{} ", " ".repeat(list_indentation), s),
+                                buffer,
+                                *font.last().unwrap_or(&normal),
+                                position,
+                                rel_caret,
+                            );
+                            if ordered.is_none() {
+                                buffer.draw_circle_bresenham(
+                                    (
+                                        position.x,
+                                        position.y + (normal.char_height * normal.scale / 2 + 1),
+                                    ),
+                                    2 * normal.scale,
+                                    normal.fg_color,
+                                );
+                                position.x += normal.char_width * normal.scale;
+                            }
+                            first_in_list_item = false;
+                        }
+                    }
+                    let rel_caret = document.caret().head().checked_sub(range.start);
                     position = View::render_string(
                         &text.to_string(),
                         buffer,
@@ -169,7 +231,7 @@ impl View {
                     }
                 }
                 Event::HardBreak | Event::SoftBreak => {
-                    let rel_caret = document.caret().checked_sub(range.start);
+                    let rel_caret = document.caret().head().checked_sub(range.start);
                     position = View::render_string(
                         &String::from("\n"),
                         buffer,
@@ -179,6 +241,31 @@ impl View {
                     );
                 }
                 Event::Start(t) => match t {
+                    pulldown_cmark::Tag::Item => {
+                        first_in_list_item = true;
+                        if ordererd_start {
+                            ordererd_start = false;
+                            continue;
+                        }
+                        match ordered {
+                            Some(s) => ordered = Some(s + 1),
+                            None => (),
+                        }
+                    }
+                    pulldown_cmark::Tag::List(s) => {
+                        list_indentation += 2;
+                        first_in_list_item = true;
+                        ordererd_start = true;
+                        ordered = s;
+                        let rel_caret = document.caret().head().checked_sub(range.start);
+                        position = View::render_string(
+                            &String::from("\n"),
+                            buffer,
+                            *font.last().unwrap_or(&normal),
+                            position,
+                            rel_caret,
+                        );
+                    }
                     pulldown_cmark::Tag::Emphasis => font.push(emphasis),
                     pulldown_cmark::Tag::Strong => font.push(strong),
                     pulldown_cmark::Tag::Heading {
@@ -200,7 +287,7 @@ impl View {
                     _ => (),
                 },
                 Event::Rule => {
-                    let rel_caret = document.caret().checked_sub(range.start);
+                    let rel_caret = document.caret().head().checked_sub(range.start);
                     position = View::render_string(
                         &String::from("\n"),
                         buffer,
@@ -224,6 +311,19 @@ impl View {
                     );
                 }
                 Event::End(t) => match t {
+                    pulldown_cmark::TagEnd::Item => {
+                        let rel_caret = document.caret().head().checked_sub(range.start);
+                        position = View::render_string(
+                            &String::from("\n"),
+                            buffer,
+                            *font.last().unwrap_or(&normal),
+                            position,
+                            rel_caret,
+                        );
+                    }
+                    pulldown_cmark::TagEnd::List(n) => {
+                        list_indentation = list_indentation.checked_sub(2).unwrap_or(0);
+                    }
                     pulldown_cmark::TagEnd::Emphasis => {
                         font.pop();
                     }
