@@ -62,7 +62,8 @@ args = [
     "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
     ## Add NE2000 (Author: Johann Spenrath, Last Modified : 06.06.2025)
     "-nic",
-    "model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798,mac=40:54:00:12:34:56",
+    "model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798",
+    #"model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798,mac=40:54:00:12:34:56",
     "-object",
     "filter-dump,id=filter0,netdev=ne2k,file=ne2k.dump",
 

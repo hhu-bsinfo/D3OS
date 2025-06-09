@@ -57,6 +57,7 @@ pub fn init() {
         info!("Found Realtek 8029 network controller");
         let ne2000 = Ne2000::new(devices2[0]);
         let mac = ne2000.read_mac();
+        //info!("8029 MAC address: [{}]", ne2000.read_mac());
         info!(
             "NE2000 MAC address: [{:02X}-{:02X}-{:02X}-{:02X}-{:02X}-{:02X}]",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
