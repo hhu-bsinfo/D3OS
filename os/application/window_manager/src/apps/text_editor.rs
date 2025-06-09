@@ -126,8 +126,17 @@ Some **Strong** Text.
 Some *Emphasis* Text.
 
 ### Heading3
-"#;
 
+- Unordered item 1  
+- Unordered item 2  
+  - Nested unordered item  
+  - Another nested item  
+
+1. Ordered item 1  
+2. Ordered item 2  
+   1. Nested ordered item  
+   2. Another nested item
+"#;
         let mut text_buffer = TextBuffer::from_str(markdown_example);
         let mut document: Document =
             Document::new(Some(String::from("scratch")), text_buffer, config);
