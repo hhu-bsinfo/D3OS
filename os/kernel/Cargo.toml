@@ -40,6 +40,21 @@ bitflags = "2.9.0"
 smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "log", "medium-ethernet", "proto-ipv4", "socket-udp"] }
 mbrs = { version = "0.3.1", default-features = false, features = ["no-std"] }
 num_enum = { version = "0.7.3", default-features = false }
+byteorder = { version = "1.4.3", default-features = false }
+modular-bitfield-msb = "0.11.2"
+strum = { version = "0.26", default-features = false }
+strum_macros = "0.26"
+volatile = "0.2.7"
+zerocopy = "0.5.2"
+core2 = { version = "0.4", default-features = false, features = ["alloc"] }
+serde = { version = "1.0.110", optional = true, features = ["derive"] }
 
 [build-dependencies]
 built = { version = "0.7.7", features = ["chrono", "git2"] }
+
+[features]
+serde = ["dep:serde"]
+default = ["serde"]
+
+[dev-dependencies]
+bincode = "1.3"

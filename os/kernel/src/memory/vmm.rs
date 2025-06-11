@@ -139,6 +139,14 @@ impl VirtualAddressSpace {
     pub fn map_io(&self, _frames: PhysFrameRange) { 
         // self.add_vma(VirtualMemoryArea::new(pages, mem_type));
         // self.page_tables.map_physical(frames, pages, space, flags);
+        
+        self.page_tables.map_io(_frames);
+
+        self.add_vma(
+            VirtualMemoryArea::from_address(
+                VirtAddr::new(_frames.start.start_address().as_u64()), 
+                _frames.size() as usize,
+                VmaType::DeviceMemory));
     }
 
     pub fn map_kernel_stack(&self, pages: PageRange, tag_str: &str) {
@@ -156,6 +164,10 @@ impl VirtualAddressSpace {
 
     pub fn page_table_address(&self) -> PhysAddr {
         self.page_tables.page_table_address()
+    }
+
+    pub fn translate(&self, addr:VirtAddr) -> PhysAddr {
+        self.page_tables.translate(addr).unwrap_or(PhysAddr::zero())
     }
 
     pub fn dump(&self, pid: usize) {

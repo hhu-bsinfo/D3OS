@@ -64,6 +64,7 @@ pub mod network;
 pub mod process;
 pub mod storage;
 pub mod syscall;
+pub mod infiniband;
 
 pub mod built_info {
     // The file has been placed there by the build script.
