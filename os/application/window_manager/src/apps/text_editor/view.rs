@@ -133,14 +133,22 @@ impl View {
         if i == document.caret().head() {
             buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
         }
+        // Calculate new scrolling (cursor not in frame)
         if !found_caret {
             if document.caret().head() >= document.scroll_offset() as usize {
                 let ind = new_lines.len() / 3;
                 let scroll = new_lines[ind] - document.scroll_offset();
                 return Some(ViewMessage::ScrollDown(scroll));
             } else {
-                return Some(ViewMessage::ScrollUp(document.scroll_offset()));
+                return Some(ViewMessage::ScrollUp(
+                    document.scroll_offset()
+                        - document
+                            .prev_line(document.caret().head())
+                            .unwrap_or(document.scroll_offset() as usize)
+                            as u32,
+                ));
             }
+            // scroll down (cursor in frame)
         } else if caret_pos > buffer.height / 2 + buffer.height / 3 {
             let scroll = *match new_lines.first() {
                 Some(v) => v,
@@ -148,6 +156,22 @@ impl View {
             } - document.scroll_offset();
 
             return Some(ViewMessage::ScrollDown(scroll));
+        } else if caret_pos < buffer.height / 3 && document.scroll_offset() != 0 {
+            let scroll = match document.prev_line(
+                document
+                    .scroll_offset()
+                    .checked_sub(1)
+                    .unwrap_or(document.scroll_offset()) as usize,
+            ) {
+                Some(v) => v,
+                None => return None,
+            };
+            if document.scroll_offset() - scroll as u32 <= 0 {
+                return None;
+            }
+            return Some(ViewMessage::ScrollUp(
+                document.scroll_offset() - scroll as u32,
+            ));
         }
         None
     }

@@ -113,7 +113,7 @@ impl<'b> Document<'b> {
         }
         None
     }
-    fn prev_line(&self, pos: usize) -> Option<usize> {
+    pub fn prev_line(&self, pos: usize) -> Option<usize> {
         let mut index = 0;
         /*if self.text_buffer.get_char(pos).is_some_and(|c| c == '\n') {
             if pos.checked_sub(1).is_some() && self.text_buffer.get_char(pos - 1).is_some() {
