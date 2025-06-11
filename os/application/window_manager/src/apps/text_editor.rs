@@ -137,7 +137,7 @@ Some *Emphasis* Text.
    1. Nested ordered item  
    2. Another nested item
 "#;
-        let mut text_buffer = TextBuffer::from_str(markdown_example);
+        let text_buffer = TextBuffer::from_str(markdown_example);
         let mut document: Document =
             Document::new(Some(String::from("scratch")), text_buffer, config);
 

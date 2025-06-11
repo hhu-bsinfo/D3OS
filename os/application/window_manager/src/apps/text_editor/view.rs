@@ -270,9 +270,9 @@ impl View {
                     pulldown_cmark::Tag::Strong => font.push(strong),
                     pulldown_cmark::Tag::Heading {
                         level,
-                        id,
-                        classes,
-                        attrs,
+                        id: _,
+                        classes: _,
+                        attrs: _,
                     } => {
                         heading = true;
                         match level {
@@ -296,7 +296,7 @@ impl View {
                         rel_caret,
                     );
                     buffer.draw_line(
-                        ((buffer.width as f32 * 0.1) as u32),
+                        (buffer.width as f32 * 0.1) as u32,
                         position.y + (normal.char_height * normal.scale / 2),
                         ((buffer.width as f32) * 0.9) as u32,
                         position.y + (normal.char_height * normal.scale / 2),
@@ -321,7 +321,7 @@ impl View {
                             rel_caret,
                         );
                     }
-                    pulldown_cmark::TagEnd::List(n) => {
+                    pulldown_cmark::TagEnd::List(_) => {
                         list_indentation = list_indentation.checked_sub(2).unwrap_or(0);
                     }
                     pulldown_cmark::TagEnd::Emphasis => {

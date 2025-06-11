@@ -25,7 +25,7 @@ impl Caret {
     pub fn head(&self) -> usize {
         match self {
             Caret::Normal(h) => *h,
-            Caret::Visual { anchor, head } => *head,
+            Caret::Visual { anchor: _, head } => *head,
         }
     }
     pub fn set_head(&mut self, new_head: usize) {
@@ -33,7 +33,7 @@ impl Caret {
             Caret::Normal(h) => {
                 *h = new_head;
             }
-            Caret::Visual { anchor, head } => *head = new_head,
+            Caret::Visual { anchor: _, head } => *head = new_head,
         };
     }
 }
