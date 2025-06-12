@@ -12,9 +12,26 @@ use crate::{context::Context, sub_service::alias_sub_service::AliasSubService};
 use super::service::{Error, Response, Service};
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum TokenType {
+    Command,
+    Argument,
+    Whitespace,
+    QuoteStart,
+    QuoteEnd,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ArgumentType {
+    Generic,
+    ShortFlag,
+    LongFlag,
+    LongFlagValue,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     Command(TokenContext, String),
-    Argument(TokenContext, String),
+    Argument(TokenContext, ArgumentType, String),
     Whitespace(TokenContext),
     QuoteStart(TokenContext, char),
     QuoteEnd(TokenContext, char),
@@ -43,8 +60,9 @@ enum AliasState {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct TokenContext {
-    quote: QuoteState,
-    ambiguous: AmbiguousState,
+    pub(crate) quote: QuoteState,
+    pub(crate) ambiguous: AmbiguousState,
+    assigned_command_pos: Option<usize>,
 }
 
 pub struct LexerService {
@@ -55,17 +73,63 @@ impl Token {
     pub fn context(&self) -> &TokenContext {
         match self {
             Token::Command(ctx, _) => ctx,
-            Token::Argument(ctx, _) => ctx,
+            Token::Argument(ctx, _, _) => ctx,
             Token::Whitespace(ctx) => ctx,
             Token::QuoteStart(ctx, _) => ctx,
             Token::QuoteEnd(ctx, _) => ctx,
         }
     }
+
+    pub fn token_type(&self) -> TokenType {
+        match self {
+            Token::Command(..) => TokenType::Command,
+            Token::Argument(..) => TokenType::Argument,
+            Token::Whitespace(..) => TokenType::Whitespace,
+            Token::QuoteStart(..) => TokenType::QuoteStart,
+            Token::QuoteEnd(..) => TokenType::QuoteEnd,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Token::Command(_, string) => string.clone(),
+            Token::Argument(_, _, string) => string.clone(),
+            Token::Whitespace(..) => " ".to_string(),
+            Token::QuoteStart(_, ch) => ch.to_string(),
+            Token::QuoteEnd(_, ch) => ch.to_string(),
+        }
+    }
+}
+
+pub trait FindLastCommand {
+    fn find_last_command(&self) -> Option<&Token>;
+}
+
+impl FindLastCommand for Vec<Token> {
+    fn find_last_command(&self) -> Option<&Token> {
+        let last_token = match self.last() {
+            Some(token) => token,
+            None => return None,
+        };
+        let last_command_pos = match last_token.context().assigned_command_pos {
+            Some(pos) => pos,
+            None => return None,
+        };
+        Some(&self[last_command_pos])
+    }
 }
 
 impl TokenContext {
-    pub const fn new(quote: QuoteState, ambiguous: AmbiguousState) -> Self {
-        Self { quote, ambiguous }
+    pub const fn new(
+        quote: QuoteState,
+        ambiguous: AmbiguousState,
+        assigned_command_pos: Option<usize>,
+    ) -> Self {
+        Self {
+            quote,
+            ambiguous,
+            assigned_command_pos,
+        }
     }
 }
 
@@ -153,7 +217,7 @@ impl LexerService {
                     return;
                 }
             }
-            Token::Argument(_clx, arg) => {
+            Token::Argument(_clx, _type, arg) => {
                 if arg.pop().is_some() && !arg.is_empty() {
                     return;
                 }
@@ -166,18 +230,20 @@ impl LexerService {
     fn handle_other(&mut self, tokens: &mut Vec<Token>, ch: char) {
         if tokens.last().is_none() {
             tokens.push(self.choose_ambiguous_token(
-                &TokenContext::new(QuoteState::Pending, AmbiguousState::Pending),
+                &TokenContext::new(QuoteState::Pending, AmbiguousState::Pending, None),
                 ch,
+                tokens.len(),
             ));
             return;
         }
 
+        let len = tokens.len();
         let token = match tokens.last_mut().unwrap() {
             Token::Command(_clx, cmd) => return cmd.push(ch),
-            Token::Argument(_clx, arg) => return arg.push(ch),
-            Token::QuoteStart(clx, _) => self.choose_ambiguous_token(clx, ch),
+            Token::Argument(_clx, _type, arg) => return arg.push(ch),
+            Token::QuoteStart(clx, _) => self.choose_ambiguous_token(clx, ch, len),
             Token::QuoteEnd(..) => return error!("Not supported"),
-            Token::Whitespace(clx) => self.choose_ambiguous_token(clx, ch),
+            Token::Whitespace(clx) => self.choose_ambiguous_token(clx, ch, len),
         };
         tokens.push(token);
     }
@@ -187,15 +253,17 @@ impl LexerService {
             return tokens.push(Token::Whitespace(TokenContext::new(
                 QuoteState::Pending,
                 AmbiguousState::Pending,
+                None,
             )));
         }
 
         let last_token = tokens.last().unwrap();
+        let len = tokens.len();
         if last_token.context().quote != QuoteState::Pending {
             let token = match tokens.last_mut().unwrap() {
-                Token::QuoteStart(clx, _) => self.choose_ambiguous_token(clx, ' '),
+                Token::QuoteStart(clx, _) => self.choose_ambiguous_token(clx, ' ', len),
                 Token::Command(_clx, cmd) => return cmd.push(' '),
-                Token::Argument(_clx, arg) => return arg.push(' '),
+                Token::Argument(_clx, _type, arg) => return arg.push(' '),
                 _ => return error!("Invalid token state"),
             };
             return tokens.push(token);
@@ -204,26 +272,27 @@ impl LexerService {
         tokens.push(Token::Whitespace(last_token.context().clone()));
     }
 
-    fn choose_ambiguous_token(&mut self, clx: &TokenContext, ch: char) -> Token {
+    fn choose_ambiguous_token(&mut self, clx: &TokenContext, ch: char, len: usize) -> Token {
         match clx.ambiguous {
             AmbiguousState::Pending => {
-                let next_clx = TokenContext::new(clx.quote.clone(), AmbiguousState::Command);
+                let next_clx =
+                    TokenContext::new(clx.quote.clone(), AmbiguousState::Command, Some(len));
                 Token::Command(next_clx, ch.to_string())
             }
-            AmbiguousState::Command => {
-                let next_clx = TokenContext::new(clx.quote.clone(), AmbiguousState::Argument);
-                Token::Argument(next_clx, ch.to_string())
-            }
-            AmbiguousState::Argument => {
-                let next_clx = TokenContext::new(clx.quote.clone(), AmbiguousState::Argument);
-                Token::Argument(next_clx, ch.to_string())
+            AmbiguousState::Command | AmbiguousState::Argument => {
+                let next_clx = TokenContext::new(
+                    clx.quote.clone(),
+                    AmbiguousState::Argument,
+                    clx.assigned_command_pos,
+                );
+                Token::Argument(next_clx, ArgumentType::Generic, ch.to_string())
             }
         }
     }
 
     fn handle_double_quote(&mut self, tokens: &mut Vec<Token>) {
         if tokens.last().is_none() {
-            let clx = TokenContext::new(QuoteState::Double, AmbiguousState::Pending);
+            let clx = TokenContext::new(QuoteState::Double, AmbiguousState::Pending, None);
             tokens.push(Token::QuoteStart(clx, '\"'));
             return;
         }
@@ -233,20 +302,28 @@ impl LexerService {
         match last_clx.quote {
             QuoteState::Double => {
                 // Exit double quote & Enable alias in quotes
-                let clx = TokenContext::new(QuoteState::Pending, last_clx.ambiguous.clone());
+                let clx = TokenContext::new(
+                    QuoteState::Pending,
+                    last_clx.ambiguous.clone(),
+                    last_clx.assigned_command_pos,
+                );
                 tokens.push(Token::QuoteEnd(clx, '\"'));
             }
             QuoteState::Single => {
                 // Pass through
                 match last_token {
                     Token::Command(_clx, cmd) => cmd.push('\"'),
-                    Token::Argument(_clx, arg) => arg.push('\"'),
+                    Token::Argument(_clx, _type, arg) => arg.push('\"'),
                     _ => panic!("Invalid token state"),
                 }
             }
             QuoteState::Pending => {
                 // Enter double quote & Disable alias in quotes
-                let clx = TokenContext::new(QuoteState::Double, last_clx.ambiguous.clone());
+                let clx = TokenContext::new(
+                    QuoteState::Double,
+                    last_clx.ambiguous.clone(),
+                    last_clx.assigned_command_pos,
+                );
                 tokens.push(Token::QuoteStart(clx, '\"'));
             }
         }
@@ -254,7 +331,7 @@ impl LexerService {
 
     fn handle_single_quote(&mut self, tokens: &mut Vec<Token>) {
         if tokens.last().is_none() {
-            let clx = TokenContext::new(QuoteState::Single, AmbiguousState::Pending);
+            let clx = TokenContext::new(QuoteState::Single, AmbiguousState::Pending, None);
             tokens.push(Token::QuoteStart(clx, '\''));
             return;
         }
@@ -266,18 +343,26 @@ impl LexerService {
                 // Pass through
                 match last_token {
                     Token::Command(_clx, cmd) => cmd.push('\''),
-                    Token::Argument(_clx, arg) => arg.push('\''),
+                    Token::Argument(_clx, _type, arg) => arg.push('\''),
                     _ => panic!("Invalid token state"),
                 }
             }
             QuoteState::Single => {
                 // Exit single quote & Enable alias in quotes
-                let clx = TokenContext::new(QuoteState::Pending, last_clx.ambiguous.clone());
+                let clx = TokenContext::new(
+                    QuoteState::Pending,
+                    last_clx.ambiguous.clone(),
+                    last_clx.assigned_command_pos,
+                );
                 tokens.push(Token::QuoteEnd(clx, '\''));
             }
             QuoteState::Pending => {
                 // Enter single quote & Disable alias in quotes
-                let clx = TokenContext::new(QuoteState::Single, last_clx.ambiguous.clone());
+                let clx = TokenContext::new(
+                    QuoteState::Single,
+                    last_clx.ambiguous.clone(),
+                    last_clx.assigned_command_pos,
+                );
                 tokens.push(Token::QuoteStart(clx, '\''));
             }
         }

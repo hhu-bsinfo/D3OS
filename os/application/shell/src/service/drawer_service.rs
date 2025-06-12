@@ -2,7 +2,6 @@ use alloc::{
     format,
     string::{String, ToString},
 };
-use logger::info;
 use terminal::print;
 
 use crate::context::Context;
@@ -124,12 +123,6 @@ impl DrawerService {
         let start_at = context.get_dirty_line_prefix_offset();
         let dirty_prefix = context.line_prefix[start_at..].to_string();
         self.terminal_cursor_pos += dirty_prefix.len();
-        info!(
-            "prefix: start {}, len {}, cursor_at {}",
-            start_at,
-            dirty_prefix.len(),
-            self.terminal_cursor_pos
-        );
         dirty_prefix
     }
 
@@ -137,12 +130,6 @@ impl DrawerService {
         let start_at = context.get_dirty_line_offset();
         let line = context.line[start_at..].to_string();
         self.terminal_cursor_pos += line.len();
-        info!(
-            "line: start {}, len {}, cursor_at {}",
-            start_at,
-            line.len(),
-            self.terminal_cursor_pos
-        );
         line
     }
 
@@ -150,12 +137,6 @@ impl DrawerService {
         let start_at = context.get_dirty_line_suffix_offset();
         let dirty_suffix = context.line_suffix[start_at..].to_string();
         self.terminal_cursor_pos += dirty_suffix.len();
-        info!(
-            "suffix: start {}, len {}, cursor_at {}",
-            start_at,
-            dirty_suffix.len(),
-            self.terminal_cursor_pos
-        );
         dirty_suffix
     }
 

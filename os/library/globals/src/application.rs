@@ -21,6 +21,12 @@ pub struct Application {
 
 pub const APPLICATION_REGISTRY: ApplicationRegistry = ApplicationRegistry {
     applications: &[
+        Application {
+            command: "test",
+            sub_commands: &["arg1", "arg2", "arg3"],
+            short_flags: &[],
+            long_flags: &[],
+        },
         //////////////////////
         // Extern Applications
         Application {

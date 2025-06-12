@@ -30,7 +30,7 @@ impl ParserService {
             Token::Command(_clx, command) => {
                 executable.create_job(command.to_string());
             }
-            Token::Argument(_clx, argument) => {
+            Token::Argument(_clx, _type, argument) => {
                 executable.add_argument_to_latest_job(argument.to_string());
             }
             _ => (),
