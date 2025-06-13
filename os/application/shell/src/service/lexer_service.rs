@@ -103,6 +103,7 @@ impl Token {
 
 pub trait FindLastCommand {
     fn find_last_command(&self) -> Option<&Token>;
+    fn total_len(&self) -> usize;
 }
 
 impl FindLastCommand for Vec<Token> {
@@ -116,6 +117,16 @@ impl FindLastCommand for Vec<Token> {
             None => return None,
         };
         Some(&self[last_command_pos])
+    }
+
+    fn total_len(&self) -> usize {
+        self.iter()
+            .map(|token| match token {
+                Token::Command(_clx, s) => s.len(),
+                Token::Argument(_clx, _type, s) => s.len(),
+                _ => 1,
+            })
+            .sum()
     }
 }
 
@@ -155,7 +166,7 @@ impl LexerService {
     }
 
     fn detokenize_to_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
-        let inner_len = context.inner_tokens_len();
+        let inner_len = context.tokens.total_len();
         if inner_len <= context.line_dirty_at {
             return Ok(Response::Skip);
         }

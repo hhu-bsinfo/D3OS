@@ -53,19 +53,6 @@ impl Context {
         self.indicator.len() + self.line.len() + self.suggestion.len()
     }
 
-    // TODO MOVE TO TOKEN IMPL
-    /// Returns the length of tokens, including inner lengths
-    pub fn inner_tokens_len(&self) -> usize {
-        self.tokens
-            .iter()
-            .map(|token| match token {
-                Token::Command(_clx, s) => s.len(),
-                Token::Argument(_clx, _type, s) => s.len(),
-                _ => 1,
-            })
-            .sum()
-    }
-
     pub fn is_cursor_at_end(&self) -> bool {
         self.cursor_position == self.line.len()
     }
