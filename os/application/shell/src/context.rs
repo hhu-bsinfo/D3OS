@@ -4,16 +4,80 @@ use alloc::{string::String, vec::Vec};
 
 use crate::{executable::Executable, service::lexer_service::Token};
 
+#[derive(Debug, Clone, Default)]
+pub struct LineContext {
+    line: String,
+    dirty_index: usize,
+}
+
+impl LineContext {
+    pub fn new() -> Self {
+        LineContext::default()
+    }
+
+    pub fn reset(&mut self) {
+        *self = LineContext::default();
+    }
+
+    pub fn mark_clean(&mut self) {
+        self.dirty_index = self.line.len();
+    }
+
+    pub fn mark_dirty_at(&mut self, index: usize) {
+        self.dirty_index = min(self.dirty_index, index);
+    }
+
+    pub fn get_line(&self) -> &String {
+        &self.line
+    }
+
+    pub fn get_dirty_line(&self) -> &str {
+        &self.line[self.dirty_index..]
+    }
+
+    pub fn get_dirty_index(&self) -> usize {
+        self.dirty_index
+    }
+
+    pub fn len(&self) -> usize {
+        self.line.len()
+    }
+
+    pub fn push(&mut self, ch: char) {
+        self.line.push(ch);
+    }
+
+    pub fn push_str(&mut self, string: &str) {
+        self.line.push_str(string);
+    }
+
+    pub fn pop(&mut self) -> Option<char> {
+        let ch = self.line.pop();
+        if ch.is_some() {
+            self.mark_dirty_at(self.line.len());
+        }
+        ch
+    }
+
+    pub fn insert(&mut self, index: usize, ch: char) {
+        self.line.insert(index, ch);
+        self.mark_dirty_at(index);
+    }
+
+    pub fn remove(&mut self, index: usize) {
+        self.line.remove(index);
+        self.mark_dirty_at(index);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Context {
     /// Current command line
-    pub(crate) line: String,
+    pub(crate) line: LineContext,
     /// Command line indicator
     pub(crate) indicator: String,
     /// Command line suggestion (Auto complete)
     pub(crate) suggestion: String,
-    /// Tells a service to skip line validation until given index
-    pub(crate) line_dirty_at: usize,
     /// Tells a service to validate indicator or not
     pub(crate) is_indicator_dirty: bool,
     /// Tells a service to validate suggestion or not
@@ -29,12 +93,11 @@ pub struct Context {
 }
 
 impl Context {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            line: String::new(),
+            line: LineContext::new(),
             indicator: String::new(),
             suggestion: String::new(),
-            line_dirty_at: 0,
             is_indicator_dirty: true,
             is_suggestion_dirty: true,
             cursor_position: 0,
@@ -42,10 +105,6 @@ impl Context {
             executable: None,
             is_autocompletion_active: false,
         }
-    }
-
-    pub fn set_dirty_line_index(&mut self, index: usize) {
-        self.line_dirty_at = min(self.line_dirty_at, index);
     }
 
     /// Returns total line len including prefix and suffix

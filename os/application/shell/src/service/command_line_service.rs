@@ -11,9 +11,8 @@ pub struct CommandLineService {}
 
 impl Service for CommandLineService {
     fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
-        context.line.clear();
+        context.line.reset();
         context.cursor_position = 0;
-        context.line_dirty_at = 0;
         self.set_prefix(context);
 
         Ok(Response::Ok)
@@ -53,7 +52,6 @@ impl CommandLineService {
         }
 
         context.line.remove(context.cursor_position);
-        context.set_dirty_line_index(context.cursor_position);
         Ok(Response::Ok)
     }
 
@@ -63,14 +61,12 @@ impl CommandLineService {
         }
 
         context.line.remove(context.cursor_position - 1);
-        context.set_dirty_line_index(context.cursor_position - 1);
         context.cursor_position -= 1;
         Ok(Response::Ok)
     }
 
     fn add_at_cursor(&mut self, context: &mut Context, ch: char) -> Result<Response, Error> {
         context.line.insert(context.cursor_position, ch);
-        context.set_dirty_line_index(context.cursor_position);
         context.cursor_position = context.cursor_position + 1;
         Ok(Response::Ok)
     }

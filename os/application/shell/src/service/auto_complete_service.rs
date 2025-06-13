@@ -59,10 +59,7 @@ impl Service for AutoCompleteService {
     }
 
     fn cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
-        warn!("BEFORE dirty offset: {}", context.line_dirty_at);
-        let asd = self.restore(context);
-        warn!("AFTER dirty offset: {}", context.line_dirty_at);
-        asd
+        self.restore(context)
     }
 
     fn cursor_right(&mut self, context: &mut Context) -> Result<Response, Error> {
@@ -109,8 +106,6 @@ impl AutoCompleteService {
             .expect("Expected at least one char in line");
         context.line.push_str(&context.suggestion);
         context.line.push(intercept_char);
-
-        context.set_dirty_line_index(context.cursor_position);
         context.cursor_position += context.suggestion.len();
         context.is_autocompletion_active = false;
         context.suggestion.clear();

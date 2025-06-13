@@ -70,7 +70,7 @@ impl DrawerService {
             self.restore_cursor_position(context)
         );
 
-        context.line_dirty_at = context.line.len();
+        context.line.mark_clean();
         context.is_indicator_dirty = false;
         context.is_suggestion_dirty = false;
 
@@ -98,7 +98,7 @@ impl DrawerService {
             false => {
                 self.terminal_cursor_pos as isize
                     - context.indicator.len() as isize
-                    - context.line_dirty_at as isize
+                    - context.line.get_dirty_index() as isize
             }
         };
 
@@ -140,14 +140,13 @@ impl DrawerService {
     }
 
     fn dirty_line(&mut self, context: &mut Context) -> String {
-        let start_at = match context.is_indicator_dirty {
-            true => 0,
-            false => context.line_dirty_at,
+        let line = match context.is_indicator_dirty {
+            true => context.line.get_line(),
+            false => context.line.get_dirty_line(),
         };
 
-        let line = context.line[start_at..].to_string();
         self.terminal_cursor_pos += line.len();
-        line
+        line.to_string()
     }
 
     fn dirty_suggestion(&mut self, context: &mut Context) -> String {

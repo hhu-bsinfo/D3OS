@@ -166,12 +166,7 @@ impl LexerService {
     }
 
     fn detokenize_to_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
-        let inner_len = context.tokens.total_len();
-        if inner_len <= context.line_dirty_at {
-            return Ok(Response::Skip);
-        }
-
-        let n = inner_len - context.line_dirty_at;
+        let n = context.line.len() - context.line.get_dirty_index();
         for _ in 0..n {
             self.pop(&mut context.tokens);
         }
@@ -179,7 +174,7 @@ impl LexerService {
     }
 
     fn tokenize_from_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
-        for ch in context.line[context.line_dirty_at..].chars() {
+        for ch in context.line.get_dirty_line().chars() {
             self.push(&mut context.tokens, ch);
         }
 
@@ -192,6 +187,7 @@ impl LexerService {
 
         let new_line = context
             .line
+            .get_line()
             .split_whitespace()
             .map(|raw_token| match self.alias.borrow().get(raw_token) {
                 Some(alias_value) => alias_value.to_string(),
