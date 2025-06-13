@@ -61,7 +61,7 @@ impl HistoryService {
         if self.history_position == 0 {
             self.history_position = -1;
             context.line.clear();
-            context.set_dirty_offset_from_line(0);
+            context.set_dirty_line_index(0);
             context.cursor_position = 0;
             return Ok(Response::Ok);
         }
@@ -76,7 +76,7 @@ impl HistoryService {
             .get(self.history_position as usize)
             .unwrap()
             .clone();
-        context.set_dirty_offset_from_line(0);
+        context.set_dirty_line_index(0);
 
         Ok(Response::Ok)
     }

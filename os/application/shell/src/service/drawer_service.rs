@@ -56,7 +56,6 @@ impl DrawerService {
 
     fn draw_next_line(&mut self, context: &mut Context) -> Result<Response, Error> {
         print!("{}\n", self.cursor_to_end(context));
-        // self.terminal_cursor_pos = 0;
         Ok(Response::Ok)
     }
 
@@ -65,12 +64,16 @@ impl DrawerService {
             "{}{}{}{}[38;2;100;100;100m{}[0m{}",
             self.cursor_to_dirty(context),
             self.clear_right_of_cursor(),
-            self.dirty_line_prefix(context),
+            self.dirty_indicator(context),
             self.dirty_line(context),
-            self.dirty_line_suffix(context),
+            self.dirty_suggestion(context),
             self.restore_cursor_position(context)
         );
-        context.dirty_offset = context.total_line_len();
+
+        context.line_dirty_at = context.line.len();
+        context.is_indicator_dirty = false;
+        context.is_suggestion_dirty = false;
+
         Ok(Response::Ok)
     }
 
@@ -90,17 +93,25 @@ impl DrawerService {
     }
 
     fn cursor_to_dirty(&mut self, context: &mut Context) -> String {
-        let step = self.terminal_cursor_pos as isize - context.dirty_offset as isize;
+        let step = match context.is_indicator_dirty {
+            true => -(self.terminal_cursor_pos as isize),
+            false => {
+                self.terminal_cursor_pos as isize
+                    - context.indicator.len() as isize
+                    - context.line_dirty_at as isize
+            }
+        };
+
         self.move_cursor_by(step)
     }
 
     fn restore_cursor_position(&mut self, context: &mut Context) -> String {
-        let step = match context.is_autocomplete_active {
+        let step = match context.is_autocompletion_active {
             true => self.terminal_cursor_pos as isize - context.total_line_len() as isize,
             false => {
                 self.terminal_cursor_pos as isize
                     - context.cursor_position as isize
-                    - context.line_prefix.len() as isize
+                    - context.indicator.len() as isize
             }
         };
         self.move_cursor_by(step)
@@ -119,29 +130,32 @@ impl DrawerService {
         "\x1b[0K"
     }
 
-    fn dirty_line_prefix(&mut self, context: &mut Context) -> String {
-        let start_at = context.get_dirty_line_prefix_offset();
-        let dirty_prefix = context.line_prefix[start_at..].to_string();
-        self.terminal_cursor_pos += dirty_prefix.len();
-        dirty_prefix
+    fn dirty_indicator(&mut self, context: &mut Context) -> String {
+        if !context.is_indicator_dirty {
+            return String::new();
+        }
+
+        self.terminal_cursor_pos += context.indicator.len();
+        context.indicator.clone()
     }
 
     fn dirty_line(&mut self, context: &mut Context) -> String {
-        let start_at = context.get_dirty_line_offset();
+        let start_at = match context.is_indicator_dirty {
+            true => 0,
+            false => context.line_dirty_at,
+        };
+
         let line = context.line[start_at..].to_string();
         self.terminal_cursor_pos += line.len();
         line
     }
 
-    fn dirty_line_suffix(&mut self, context: &mut Context) -> String {
-        let start_at = context.get_dirty_line_suffix_offset();
-        let dirty_suffix = context.line_suffix[start_at..].to_string();
-        self.terminal_cursor_pos += dirty_suffix.len();
-        dirty_suffix
-    }
+    fn dirty_suggestion(&mut self, context: &mut Context) -> String {
+        if !context.is_suggestion_dirty {
+            return String::new();
+        }
 
-    fn line_prefix(&mut self, context: &mut Context) -> String {
-        self.terminal_cursor_pos += context.line_prefix.len();
-        context.line_prefix.clone()
+        self.terminal_cursor_pos += context.suggestion.len();
+        context.suggestion.clone()
     }
 }

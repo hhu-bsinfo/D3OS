@@ -24,10 +24,10 @@ pub struct AutoCompleteService {
 impl Service for AutoCompleteService {
     fn auto_complete(&mut self, context: &mut Context) -> Result<Response, Error> {
         warn!("{:?}", self.current_app);
-        if context.is_autocomplete_active {
+        if context.is_autocompletion_active {
             return self.cycle(context);
         }
-        if context.line_suffix.is_empty() {
+        if context.suggestion.is_empty() {
             self.activate(context);
             return self.cycle(context);
         }
@@ -59,9 +59,9 @@ impl Service for AutoCompleteService {
     }
 
     fn cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
-        warn!("BEFORE dirty offset: {}", context.dirty_offset);
+        warn!("BEFORE dirty offset: {}", context.line_dirty_at);
         let asd = self.restore(context);
-        warn!("AFTER dirty offset: {}", context.dirty_offset);
+        warn!("AFTER dirty offset: {}", context.line_dirty_at);
         asd
     }
 
@@ -107,26 +107,26 @@ impl AutoCompleteService {
             .line
             .pop()
             .expect("Expected at least one char in line");
-        context.line.push_str(&context.line_suffix);
+        context.line.push_str(&context.suggestion);
         context.line.push(intercept_char);
 
-        context.cursor_position += context.line_suffix.len();
-        context.is_autocomplete_active = false;
-        context.set_dirty_offset_from_line_suffix(0);
-        context.line_suffix.clear();
+        context.set_dirty_line_index(context.cursor_position);
+        context.cursor_position += context.suggestion.len();
+        context.is_autocompletion_active = false;
+        context.suggestion.clear();
 
         Ok(Response::Ok)
     }
 
     fn restore(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if context.line_suffix.is_empty() {
+        if context.suggestion.is_empty() {
             return Ok(Response::Skip);
         }
         self.current_index = 0;
 
-        context.is_autocomplete_active = false;
-        context.set_dirty_offset_from_line_suffix(0);
-        context.line_suffix.clear();
+        context.is_autocompletion_active = false;
+        context.is_suggestion_dirty = true;
+        context.suggestion.clear();
         Ok(Response::Ok)
     }
 
@@ -147,8 +147,8 @@ impl AutoCompleteService {
         {
             return Ok(Response::Skip);
         }
-        context.is_autocomplete_active = true;
-        context.set_dirty_offset_from_line_suffix(0);
+        context.is_autocompletion_active = true;
+        context.is_suggestion_dirty = true;
         Ok(Response::Ok)
     }
 
@@ -187,7 +187,7 @@ impl AutoCompleteService {
             return Ok(Response::Ok);
         }
 
-        let completion = match context.tokens.last().cloned() {
+        let suggestion = match context.tokens.last().cloned() {
             None => self.cycle_command(&String::new()),
             Some(Token::Command(_, cmd)) => self.cycle_command(&cmd),
             Some(Token::Argument(_, arg_type, arg)) => self.cycle_argument(Some(&arg_type), &arg),
@@ -198,14 +198,14 @@ impl AutoCompleteService {
             },
             _ => None,
         };
-        self.current_suggestion = completion.clone();
+        self.current_suggestion = suggestion.clone();
 
-        if completion.is_none() {
+        if suggestion.is_none() {
             return Ok(Response::Skip);
         }
 
-        context.line_suffix = completion.unwrap();
-        context.set_dirty_offset_from_line_suffix(0);
+        context.suggestion = suggestion.unwrap();
+        context.is_suggestion_dirty = true;
         Ok(Response::Ok)
     }
 
