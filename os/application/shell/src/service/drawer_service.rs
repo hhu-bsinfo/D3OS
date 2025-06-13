@@ -72,7 +72,7 @@ impl DrawerService {
 
         context.line.mark_clean();
         context.indicator.mark_clean();
-        context.is_suggestion_dirty = false;
+        context.auto_completion.mark_clean();
 
         Ok(Response::Ok)
     }
@@ -106,7 +106,7 @@ impl DrawerService {
     }
 
     fn restore_cursor_position(&mut self, context: &mut Context) -> String {
-        let step = match context.is_autocompletion_active {
+        let step = match context.auto_completion.has_focus() {
             true => self.terminal_cursor_pos as isize - context.total_line_len() as isize,
             false => {
                 self.terminal_cursor_pos as isize
@@ -151,11 +151,12 @@ impl DrawerService {
     }
 
     fn dirty_suggestion(&mut self, context: &mut Context) -> String {
-        if !context.is_suggestion_dirty {
-            return String::new();
-        }
+        let line = match context.auto_completion.is_dirty() {
+            true => context.auto_completion.get().clone(),
+            false => String::new(),
+        };
 
-        self.terminal_cursor_pos += context.suggestion.len();
-        context.suggestion.clone()
+        self.terminal_cursor_pos += line.len();
+        line
     }
 }

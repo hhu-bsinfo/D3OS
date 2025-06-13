@@ -116,23 +116,83 @@ impl Default for IndicatorContext {
 }
 
 #[derive(Debug, Clone)]
+pub struct AutoCompletionContext {
+    suggestion: String,
+    is_dirty: bool,
+    has_focus: bool,
+}
+
+impl AutoCompletionContext {
+    pub fn new() -> Self {
+        AutoCompletionContext::default()
+    }
+
+    pub fn reset(&mut self) {
+        *self = AutoCompletionContext::default()
+    }
+
+    pub fn get(&self) -> &String {
+        &self.suggestion
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.is_dirty
+    }
+
+    pub fn set(&mut self, string: &str) {
+        self.suggestion = string.to_string();
+        self.is_dirty = true;
+    }
+
+    pub fn len(&self) -> usize {
+        self.suggestion.len()
+    }
+
+    pub fn mark_clean(&mut self) {
+        self.is_dirty = false;
+    }
+
+    pub fn has_focus(&self) -> bool {
+        self.has_focus
+    }
+
+    pub fn focus(&mut self) {
+        self.has_focus = true;
+    }
+
+    pub fn unfocus(&mut self) {
+        self.has_focus = false;
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.suggestion.is_empty()
+    }
+}
+
+impl Default for AutoCompletionContext {
+    fn default() -> Self {
+        Self {
+            suggestion: String::default(),
+            is_dirty: true,
+            has_focus: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Context {
     /// Current command line
     pub(crate) line: LineContext,
     /// Command line indicator
     pub(crate) indicator: IndicatorContext,
     /// Command line suggestion (Auto complete)
-    pub(crate) suggestion: String,
-    /// Tells a service to validate suggestion or not
-    pub(crate) is_suggestion_dirty: bool,
+    pub(crate) auto_completion: AutoCompletionContext,
     /// Current cursor position
     pub(crate) cursor_position: usize,
     /// Generated tokens based on line
     pub(crate) tokens: Vec<Token>,
     /// Generated executable based on tokens
     pub(crate) executable: Option<Executable>,
-    /// Tells drawer to visualize auto completion
-    pub(crate) is_autocompletion_active: bool,
 }
 
 impl Context {
@@ -140,18 +200,16 @@ impl Context {
         Self {
             line: LineContext::new(),
             indicator: IndicatorContext::new(),
-            suggestion: String::new(),
-            is_suggestion_dirty: true,
+            auto_completion: AutoCompletionContext::new(),
             cursor_position: 0,
             tokens: Vec::new(),
             executable: None,
-            is_autocompletion_active: false,
         }
     }
 
     /// Returns total line len including prefix and suffix
     pub fn total_line_len(&self) -> usize {
-        self.indicator.len() + self.line.len() + self.suggestion.len()
+        self.indicator.len() + self.line.len() + self.auto_completion.len()
     }
 
     pub fn is_cursor_at_end(&self) -> bool {

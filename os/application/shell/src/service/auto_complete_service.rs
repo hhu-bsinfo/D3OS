@@ -24,10 +24,10 @@ pub struct AutoCompleteService {
 impl Service for AutoCompleteService {
     fn auto_complete(&mut self, context: &mut Context) -> Result<Response, Error> {
         warn!("{:?}", self.current_app);
-        if context.is_autocompletion_active {
+        if context.auto_completion.has_focus() {
             return self.cycle(context);
         }
-        if context.suggestion.is_empty() {
+        if context.auto_completion.is_empty() {
             self.activate(context);
             return self.cycle(context);
         }
@@ -104,24 +104,21 @@ impl AutoCompleteService {
             .line
             .pop()
             .expect("Expected at least one char in line");
-        context.line.push_str(&context.suggestion);
+        context.line.push_str(&context.auto_completion.get());
         context.line.push(intercept_char);
-        context.cursor_position += context.suggestion.len();
-        context.is_autocompletion_active = false;
-        context.suggestion.clear();
+        context.cursor_position += context.auto_completion.len();
+        context.auto_completion.reset();
 
         Ok(Response::Ok)
     }
 
     fn restore(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if context.suggestion.is_empty() {
+        if context.auto_completion.is_empty() {
             return Ok(Response::Skip);
         }
         self.current_index = 0;
 
-        context.is_autocompletion_active = false;
-        context.is_suggestion_dirty = true;
-        context.suggestion.clear();
+        context.auto_completion.reset();
         Ok(Response::Ok)
     }
 
@@ -142,8 +139,8 @@ impl AutoCompleteService {
         {
             return Ok(Response::Skip);
         }
-        context.is_autocompletion_active = true;
-        context.is_suggestion_dirty = true;
+
+        context.auto_completion.focus();
         Ok(Response::Ok)
     }
 
@@ -199,8 +196,7 @@ impl AutoCompleteService {
             return Ok(Response::Skip);
         }
 
-        context.suggestion = suggestion.unwrap();
-        context.is_suggestion_dirty = true;
+        context.auto_completion.set(&suggestion.unwrap());
         Ok(Response::Ok)
     }
 
