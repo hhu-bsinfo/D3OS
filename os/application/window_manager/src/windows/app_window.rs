@@ -265,6 +265,17 @@ impl AppWindow {
         return true;
     }
 
+    /// Force unfocus the currently focused component
+    pub fn unfocus(&mut self) {
+        self.focused_component = None;
+
+        if let Some(focused) = &self.focused_component {
+            if let Some(focusable) = focused.write().as_focusable_mut() {
+                return focusable.unfocus();
+            }
+        }
+    }
+
     pub fn focus_next_component(&mut self) {
         if !self.can_unfocus() {
             return;
