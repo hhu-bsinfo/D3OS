@@ -141,6 +141,9 @@ impl Component for RadioButton {
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         self.abs_center = parent.scale_vertex_to_container(self.rel_center);
         self.abs_radius = parent.scale_radius_to_window(self.rel_radius, 7);
+
+        // HACK: This should be done by the container
+        self.abs_center = self.abs_center.add(self.abs_radius, self.abs_radius);
     }
 }
 
