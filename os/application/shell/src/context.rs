@@ -1,6 +1,9 @@
 use core::cmp::min;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use crate::{executable::Executable, service::lexer_service::Token};
 
@@ -27,11 +30,11 @@ impl LineContext {
         self.dirty_index = min(self.dirty_index, index);
     }
 
-    pub fn get_line(&self) -> &String {
+    pub fn get(&self) -> &String {
         &self.line
     }
 
-    pub fn get_dirty_line(&self) -> &str {
+    pub fn get_dirty_part(&self) -> &str {
         &self.line[self.dirty_index..]
     }
 
@@ -71,15 +74,55 @@ impl LineContext {
 }
 
 #[derive(Debug, Clone)]
+pub struct IndicatorContext {
+    indicator: String,
+    is_dirty: bool,
+}
+
+impl IndicatorContext {
+    pub fn new() -> Self {
+        IndicatorContext::default()
+    }
+
+    pub fn get(&self) -> &String {
+        &self.indicator
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.is_dirty
+    }
+
+    pub fn set(&mut self, string: &str) {
+        self.indicator = string.to_string();
+        self.is_dirty = true;
+    }
+
+    pub fn len(&self) -> usize {
+        self.indicator.len()
+    }
+
+    pub fn mark_clean(&mut self) {
+        self.is_dirty = false;
+    }
+}
+
+impl Default for IndicatorContext {
+    fn default() -> Self {
+        Self {
+            indicator: String::default(),
+            is_dirty: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Context {
     /// Current command line
     pub(crate) line: LineContext,
     /// Command line indicator
-    pub(crate) indicator: String,
+    pub(crate) indicator: IndicatorContext,
     /// Command line suggestion (Auto complete)
     pub(crate) suggestion: String,
-    /// Tells a service to validate indicator or not
-    pub(crate) is_indicator_dirty: bool,
     /// Tells a service to validate suggestion or not
     pub(crate) is_suggestion_dirty: bool,
     /// Current cursor position
@@ -96,9 +139,8 @@ impl Context {
     pub fn new() -> Self {
         Self {
             line: LineContext::new(),
-            indicator: String::new(),
+            indicator: IndicatorContext::new(),
             suggestion: String::new(),
-            is_indicator_dirty: true,
             is_suggestion_dirty: true,
             cursor_position: 0,
             tokens: Vec::new(),

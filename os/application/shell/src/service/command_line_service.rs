@@ -41,8 +41,8 @@ impl CommandLineService {
     }
 
     fn set_prefix(&mut self, context: &mut Context) -> Result<Response, Error> {
-        context.indicator = format!("{}{} ", cwd().unwrap_or(String::new()), INDICATOR);
-        context.is_indicator_dirty = true;
+        let string = format!("{}{} ", cwd().unwrap_or(String::new()), INDICATOR);
+        context.indicator.set(&string);
         Ok(Response::Ok)
     }
 

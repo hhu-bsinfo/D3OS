@@ -71,7 +71,7 @@ impl DrawerService {
         );
 
         context.line.mark_clean();
-        context.is_indicator_dirty = false;
+        context.indicator.mark_clean();
         context.is_suggestion_dirty = false;
 
         Ok(Response::Ok)
@@ -93,7 +93,7 @@ impl DrawerService {
     }
 
     fn cursor_to_dirty(&mut self, context: &mut Context) -> String {
-        let step = match context.is_indicator_dirty {
+        let step = match context.indicator.is_dirty() {
             true => -(self.terminal_cursor_pos as isize),
             false => {
                 self.terminal_cursor_pos as isize
@@ -131,18 +131,19 @@ impl DrawerService {
     }
 
     fn dirty_indicator(&mut self, context: &mut Context) -> String {
-        if !context.is_indicator_dirty {
-            return String::new();
-        }
+        let indicator = match context.indicator.is_dirty() {
+            true => context.indicator.get().clone(),
+            false => String::new(),
+        };
 
-        self.terminal_cursor_pos += context.indicator.len();
-        context.indicator.clone()
+        self.terminal_cursor_pos += indicator.len();
+        indicator
     }
 
     fn dirty_line(&mut self, context: &mut Context) -> String {
-        let line = match context.is_indicator_dirty {
-            true => context.line.get_line(),
-            false => context.line.get_dirty_line(),
+        let line = match context.indicator.is_dirty() {
+            true => context.line.get(),
+            false => context.line.get_dirty_part(),
         };
 
         self.terminal_cursor_pos += line.len();
