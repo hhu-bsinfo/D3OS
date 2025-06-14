@@ -4,6 +4,7 @@ use alloc::{
     vec::Vec,
 };
 use core::usize;
+use core::ops::Range;
 use drawer::vertex::Vertex;
 use graphic::{
     bitmap::Bitmap,
@@ -11,7 +12,7 @@ use graphic::{
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
 use logger::warn;
-use pulldown_cmark::{Event, HeadingLevel, Parser};
+use pulldown_cmark::{DefaultBrokenLinkCallback, Event, HeadingLevel, Parser};
 
 use crate::apps::text_editor::model::Caret;
 
@@ -183,7 +184,7 @@ impl View {
         strong: Font,
     ) -> Option<ViewMessage> {
         buffer.clear(normal.bg_color);
-        let raw_text = document.text_buffer().to_string();
+        let raw_text: String = document.text_buffer().clone().into_iter().skip(document.scroll_offset() as usize).collect();
         let iterator = Parser::new(&raw_text).into_offset_iter();
         let mut position = Vertex::zero();
         let mut font = Vec::<Font>::new();
@@ -192,8 +193,13 @@ impl View {
         let mut ordererd_start = false;
         let mut ordered: Option<u64> = None;
         let mut heading = false;
+        let mut last_index: Range<usize>;
         font.push(normal);
         for (event, range) in iterator {
+            if position.y > buffer.height {
+                break;
+            }
+            last_index = range.clone();
             match event {
                 Event::Text(text) => {
                     let rel_caret = document.caret().head().checked_sub(range.start);
@@ -366,6 +372,9 @@ impl View {
                 },
                 _ => {}
             }
+        }
+        if document.scroll_offset() > document.caret().head() as u32 {
+            return Some(ViewMessage::ScrollUp(document.scroll_offset() - document.caret().head() as u32));
         }
         None
     }

@@ -7,7 +7,10 @@ use drawer::{rect_data::RectData, vertex::Vertex};
 use font::Font;
 use graphic::color::{Color, WHITE};
 use graphic::lfb::DEFAULT_CHAR_WIDTH;
-use graphic::{bitmap::Bitmap, lfb::DEFAULT_CHAR_HEIGHT};
+use graphic::{
+    bitmap::{Bitmap, ScalingMode},
+    lfb::DEFAULT_CHAR_HEIGHT,
+};
 use meassages::{Message, ViewMessage};
 use model::{Document, ViewConfig};
 use spin::rwlock::RwLock;
@@ -78,7 +81,7 @@ impl TextEditorConfig {
 
 impl Runnable for TextEditor {
     fn run() {
-        let config = TextEditorConfig::new(720, 500);
+        let config = TextEditorConfig::new(900, 600);
         let bitmap = Bitmap {
             width: config.width as u32,
             height: config.height as u32,
@@ -98,15 +101,16 @@ impl Runnable for TextEditor {
                 None,
                 Command::CreateCanvas {
                     styling: None,
-                    rect_data: RectData {
-                        top_left: Vertex::new(50, 80),
-                        width: config.width as u32,
-                        height: config.height as u32,
+                    log_rect_data: RectData {
+                        top_left: Vertex::new(50, 50),
+                        width: (config.width * 1) as u32,
+                        height: (config.height * 1) as u32,
                     },
                     input: Some(Box::new(move |c: DecodedKey| {
                         input_clone.write().push_back(c);
                     })),
                     buffer: Rc::clone(&canvas),
+                    scaling_mode: ScalingMode::NearestNeighbor,
                 },
             )
             .unwrap();
