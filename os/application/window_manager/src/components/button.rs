@@ -11,8 +11,8 @@ use terminal::DecodedKey;
 use crate::{
     config::INTERACT_BUTTON,
     mouse_state::{ButtonState, MouseEvent},
-    signal::{ComponentRef, Signal, Stateful},
-    utils::scale_font,
+    signal::{ComponentRef, ComponentRefExt, Signal, Stateful},
+    WindowManager,
 };
 
 use super::{
@@ -24,8 +24,8 @@ use super::{
 };
 
 pub struct Button {
-    pub id: Option<usize>,
-    pub is_dirty: bool,
+    id: usize,
+    is_dirty: bool,
     abs_rect_data: RectData,
     rel_rect_data: RectData,
     orig_rect_data: RectData,
@@ -45,21 +45,20 @@ impl Button {
         orig_rect_data: RectData,
         label: Option<Rc<Signal<String>>>,
         rel_font_size: usize,
-        font_scale: (u32, u32),
         on_click: Option<Box<dyn Fn() -> ()>>,
         styling: Option<ComponentStyling>,
     ) -> ComponentRef {
         let signal_copy = label.clone();
 
         let button = Box::new(Self {
-            id: None,
+            id: WindowManager::generate_id(),
             is_dirty: true,
             abs_rect_data: RectData::zero(),
             orig_rect_data,
             drawn_rect_data: RectData::zero(),
             rel_rect_data,
             rel_font_size,
-            font_scale,
+            font_scale: (1, 1),
             label,
             on_click: Rc::new(on_click.unwrap_or_else(|| Box::new(|| {}))),
             is_disabled: false,
@@ -67,7 +66,7 @@ impl Button {
             styling: styling.unwrap_or_default(),
         });
 
-        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(button));
+        let component = ComponentRef::from_component(button);
 
         if let Some(signal) = signal_copy {
             signal.register_component(Rc::clone(&component));
@@ -113,7 +112,7 @@ impl Component for Button {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -172,12 +171,7 @@ impl Component for Button {
             styling.maintain_aspect_ratio,
         );
 
-        // TODO: Is the font scaling correct?
-        self.font_scale = scale_font(
-            &(self.rel_font_size as u32, self.rel_font_size as u32),
-            &self.rel_rect_data,
-            &self.abs_rect_data,
-        );
+        self.font_scale = parent.scale_font_to_container(self.rel_font_size);
 
         self.mark_dirty();
     }
@@ -186,11 +180,7 @@ impl Component for Button {
         self.abs_rect_data
     }
 
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
-    }
-
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
     }
 
@@ -254,9 +244,8 @@ impl Focusable for Button {
         self.mark_dirty();
     }
 
-    fn unfocus(&mut self) -> bool {
+    fn unfocus(&mut self) {
         self.mark_dirty();
-        true
     }
 }
 

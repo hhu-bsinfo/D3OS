@@ -1,6 +1,9 @@
 use core::hash::Hash;
 
-use alloc::{boxed::Box, rc::{Rc, Weak}};
+use alloc::{
+    boxed::Box,
+    rc::{Rc, Weak},
+};
 use hashbrown::HashSet;
 use spin::rwlock::RwLock;
 
@@ -8,6 +11,16 @@ use crate::components::component::Component;
 
 pub type ComponentRef = Rc<RwLock<Box<dyn Component>>>; // Referenz zu einer Komponente
 pub type Stateful<T> = Rc<Signal<T>>;
+
+pub trait ComponentRefExt {
+    fn from_component(component: Box<dyn Component>) -> ComponentRef;
+}
+
+impl ComponentRefExt for ComponentRef {
+    fn from_component(component: Box<dyn Component>) -> ComponentRef {
+        Rc::new(RwLock::new(component))
+    }
+}
 
 pub struct Signal<T> {
     value: RwLock<T>,
@@ -24,7 +37,8 @@ impl<T: Clone> Signal<T> {
         })
     }
 
-    // Registriert eine abhängige Komponente
+    /// Registers a dependent component that will automatically be marked as 'dirty'
+    /// when the value changes.
     pub fn register_component(&self, component: ComponentRef) {
         let weak = Rc::downgrade(&component);
         self.dependents.write().insert(HashedWeak::new(weak));
@@ -34,6 +48,11 @@ impl<T: Clone> Signal<T> {
         self.value.read().clone()
     }
 
+    /// Sets a new value and marks all dependent components as 'dirty'.
+    ///
+    /// Note: Make sure that you don't call this function while a lock to one of the
+    /// dependent components is active (e.g. during an interaction), as this would result
+    /// in a deadlock!
     pub fn set(&self, new_value: T) {
         let mut updating = self.is_updating.write();
 

@@ -1,3 +1,5 @@
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 use alloc::collections::LinkedList;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
@@ -7,12 +9,16 @@ use crate::utils::get_element_cursor_from_orderer;
 use crate::window_tree::WindowNode;
 use crate::windows::app_window::AppWindow;
 
+static WORKSPACE_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
+
 /**
 A workspace is a unit of one screen, containing windows. You can switch between workspaces
 and they will retain their state and even continue execution of their threads, but not draw
 anything to the screen while not selected of course.
 */
 pub struct Workspace {
+    id: usize,
+
     pub windows: HashMap<usize, AppWindow>,
     pub focused_window_id: usize,
     // Windows are stored additionally in ordered fashion in here
@@ -34,6 +40,7 @@ impl Workspace {
         let buddy_tree_root = WindowNode::new_leaf(window.0);
 
         Self {
+            id: WORKSPACE_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
             windows,
             focused_window_id,
             window_orderer,
@@ -42,7 +49,7 @@ impl Workspace {
     }
 
     pub fn insert_window(&mut self, window: AppWindow, after: usize) {
-        let new_window_id = window.id;
+        let new_window_id = window.get_id();
         self.windows.insert(new_window_id, window);
 
         self.buddy_tree_root.insert_value(after, new_window_id);
@@ -53,6 +60,10 @@ impl Workspace {
     }
 
     pub fn focus_next_window(&mut self) {
+        if !self.get_focused_window().can_unfocus() {
+            return;
+        }
+        
         self.get_focused_window_mut().mark_window_dirty(); // old window
         
         let mut cursor =
@@ -73,6 +84,10 @@ impl Workspace {
     }
 
     pub fn focus_prev_window(&mut self) {
+        if !self.get_focused_window().can_unfocus() {
+            return;
+        }
+        
         self.get_focused_window_mut().mark_window_dirty(); // old window
 
         let mut cursor =
@@ -93,6 +108,10 @@ impl Workspace {
     }
 
     pub fn focus_window_at(&mut self, pos: Vertex) {
+        if !self.get_focused_window().can_unfocus() {
+            return;
+        }
+
         // Find the window that contains the position
         let new_window_id = self.window_orderer.iter()
             .find(|id| self.windows.get(*id).unwrap().rect_data.contains_vertex(&pos))
@@ -268,5 +287,9 @@ impl Workspace {
 
     pub fn get_focused_window_mut(&mut self) -> &mut AppWindow {
         self.windows.get_mut(&self.focused_window_id).unwrap()
+    }
+
+    pub fn get_id(&self) -> usize {
+        self.id
     }
 }

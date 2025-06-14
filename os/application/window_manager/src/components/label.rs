@@ -3,7 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{color::{Color, WHITE, YELLOW}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
 use spin::{rwlock::RwLock};
 
-use crate::{signal::{ComponentRef, Signal, Stateful}, utils::scale_font, SCREEN};
+use crate::{signal::{ComponentRef, ComponentRefExt, Signal, Stateful}, WindowManager, SCREEN};
 
 use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 
@@ -11,13 +11,13 @@ pub const TEXT_COLOR: Color = WHITE;
 pub const TEXT_COLOR_FOCUSED: Color = YELLOW;
 
 pub struct Label {
-    pub id: Option<usize>,
-    pub is_dirty: bool,
-    pub abs_pos: Vertex,
-    pub rel_pos: Vertex,
+    id: usize,
+    is_dirty: bool,
+    abs_pos: Vertex,
+    rel_pos: Vertex,
     rel_font_size: usize,
-    pub text: Stateful<String>,
-    pub font_scale: (u32, u32),
+    text: Stateful<String>,
+    font_scale: (u32, u32),
     is_hidden: bool,
     drawn_rect_data: RectData,
     styling: ComponentStyling,
@@ -28,27 +28,26 @@ impl Label {
         rel_pos: Vertex,
         rel_font_size: usize,
         text: Stateful<String>,
-        font_scale: (u32, u32),
         styling: Option<ComponentStyling>
     ) -> ComponentRef {
         let signal = text.clone();
 
         let label = Box::new(
             Self {
-                id: None,
+                id: WindowManager::generate_id(),
                 is_dirty: true,
                 abs_pos: Vertex::zero(),
                 rel_pos,
                 rel_font_size,
                 text,
-                font_scale,
+                font_scale: (1, 1),
                 is_hidden: false,
                 drawn_rect_data: RectData::zero(),
                 styling: styling.unwrap_or_default(),
             }
         );
 
-        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(label));
+        let component = ComponentRef::from_component(label);
 
         signal.register_component(Rc::clone(&component));
 
@@ -57,7 +56,7 @@ impl Label {
 }
 
 impl Component for Label {
-    fn draw(&mut self, focus_id: Option<usize>) {
+    fn draw(&mut self, _focus_id: Option<usize>) {
         if !self.is_dirty {
             return;
         }
@@ -68,13 +67,7 @@ impl Component for Label {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
-
-        let text_color = if is_focused {
-            styling.focused_border_color
-        } else {
-            styling.text_color
-        };
+        let text_color = styling.text_color;
 
         let text = self.text.get();
         Drawer::draw_string(
@@ -92,19 +85,7 @@ impl Component for Label {
 
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         self.abs_pos = parent.scale_vertex_to_container(self.rel_pos);
-
-        let screen = SCREEN.get().unwrap();
-
-        // TODO: Is the font scaling correct?
-        self.font_scale = scale_font(
-            &(self.rel_font_size as u32, self.rel_font_size as u32),
-            &RectData {
-                top_left: Vertex::zero(),
-                width: screen.0,
-                height: screen.1,
-            },
-            &parent.get_abs_rect_data(),
-        );
+        self.font_scale = parent.scale_font_to_container(self.rel_font_size);
 
         self.mark_dirty();
     }
@@ -117,12 +98,8 @@ impl Component for Label {
         }
     }
 
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
-    }
-
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
     }
 
     fn is_dirty(&self) -> bool {

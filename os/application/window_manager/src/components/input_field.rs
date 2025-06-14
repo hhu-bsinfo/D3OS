@@ -8,7 +8,7 @@ use spin::RwLock;
 use terminal::DecodedKey;
 
 use crate::{
-    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::ComponentRef, utils::scale_font
+    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::{ComponentRef, ComponentRefExt}, WindowManager
 };
 
 use super::{component::{Casts, Clearable, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
@@ -28,8 +28,8 @@ pub struct InputField {
     If we are selected, all keyboard input is redirected to us, unless
     command-line-window is opened
     */
-    pub id: Option<usize>,
-    pub is_dirty: bool,
+    id: usize,
+    is_dirty: bool,
     is_selected: bool,
     max_chars: usize,
     abs_rect_data: RectData,
@@ -55,7 +55,6 @@ impl InputField {
     pub fn new(
         rel_rect_data: RectData,
         rel_font_size: usize,
-        font_scale: (u32, u32),
         max_chars: usize,
         starting_text: String,
         on_submit: Option<Box<dyn Fn(String) -> ()>>,
@@ -63,7 +62,7 @@ impl InputField {
     ) -> ComponentRef {
         let input_field = Box::new(
             Self {
-                id: None,
+                id: WindowManager::generate_id(),
                 is_dirty: true,
                 is_selected: false,
                 max_chars,
@@ -72,7 +71,7 @@ impl InputField {
                 rel_font_size,
                 orig_rect_data: rel_rect_data.clone(),
                 drawn_rect_data: RectData::zero(),
-                font_scale,
+                font_scale: (1, 1),
                 current_text: starting_text,
 
                 on_change: Rc::new(on_submit.unwrap_or_else(|| Box::new(|_| {}))),
@@ -84,7 +83,7 @@ impl InputField {
             }
         );
 
-        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(input_field));
+        let component = ComponentRef::from_component(input_field);
 
         component
     }
@@ -102,7 +101,7 @@ impl Component for InputField {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
 
         let bg_color = if self.is_disabled {
             styling.disabled_background_color
@@ -149,12 +148,7 @@ impl Component for InputField {
     fn rescale_to_container(&mut self, parent: &dyn Container) {
         let styling: &ComponentStyling = &self.styling;
 
-        // TODO: Is the font scaling correct?
-        self.font_scale = scale_font(
-            &(self.rel_font_size as u32, self.rel_font_size as u32),
-            &self.rel_rect_data,
-            &self.abs_rect_data,
-        );
+        self.font_scale = parent.scale_font_to_container(self.rel_font_size);
 
         let min_dim = (
             self.max_chars as u32 * DEFAULT_CHAR_WIDTH * self.font_scale.0,
@@ -176,12 +170,8 @@ impl Component for InputField {
         self.abs_rect_data
     }
 
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
-    }
-
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
     }
 
     fn is_dirty(&self) -> bool {
@@ -236,17 +226,17 @@ impl Casts for InputField {
 }
 
 impl Focusable for InputField {
+    fn can_unfocus(&self) -> bool {
+        !self.is_selected
+    }
+
     fn focus(&mut self) {
         self.mark_dirty();
     }
 
-    fn unfocus(&mut self) -> bool {
-        if self.is_selected {
-            return false;
-        }
-
+    fn unfocus(&mut self) {
+        self.is_selected = false;
         self.mark_dirty();
-        true
     }
 }
 

@@ -14,6 +14,7 @@ impl Runnable for SliderApp {
         let api = WindowManager::get_api();
 
         let initial_value = 1;
+        let value = Signal::new(initial_value);
         let last_value: Stateful::<i32> = Signal::new(initial_value);
 
         let label = Signal::new(initial_value.to_string());
@@ -65,7 +66,7 @@ impl Runnable for SliderApp {
                         }
                     }
                 })),
-                value: initial_value,
+                value,
                 min: 1,
                 max: 3,
                 steps: 1,

@@ -7,7 +7,10 @@ use crate::{
     api::{Api, Command},
     components::{
         component::ComponentStylingBuilder,
-        container::basic_container::{LayoutMode, StretchMode},
+        container::{
+            basic_container::{AlignmentMode, LayoutMode, StretchMode},
+            ContainerStylingBuilder,
+        },
     },
     signal::{ComponentRef, Signal},
     WindowManager,
@@ -33,13 +36,9 @@ impl Runnable for LayoutApp {
                         width: 300,
                         height: 500,
                     },
-                    layout: LayoutMode::Vertical,
+                    layout: LayoutMode::Vertical(AlignmentMode::Top),
                     stretch: StretchMode::Fill,
-                    styling: Some(
-                        ComponentStylingBuilder::new()
-                            .maintain_aspect_ratio(false)
-                            .build(),
-                    ),
+                    styling: None,
                 },
             )
             .expect("failed to create container");
@@ -54,10 +53,10 @@ impl Runnable for LayoutApp {
                         width: 0,
                         height: 100,
                     },
-                    layout: LayoutMode::Horizontal,
+                    layout: LayoutMode::Horizontal(AlignmentMode::Right),
                     stretch: StretchMode::Fill,
                     styling: Some(
-                        ComponentStylingBuilder::new()
+                        ContainerStylingBuilder::new()
                             .border_color(Color::new(255, 0, 0, 255))
                             .build(),
                     ),
@@ -75,12 +74,33 @@ impl Runnable for LayoutApp {
                         width: 0,
                         height: 400,
                     },
-                    layout: LayoutMode::Vertical,
+                    layout: LayoutMode::Vertical(AlignmentMode::Bottom),
                     stretch: StretchMode::Fill,
                     styling: Some(
-                        ComponentStylingBuilder::new()
+                        ContainerStylingBuilder::new()
                             .border_color(Color::new(0, 255, 0, 255))
                             .maintain_aspect_ratio(true)
+                            .build(),
+                    ),
+                },
+            )
+            .expect("failed to create container");
+
+        let container_4 = api
+            .execute(
+                window_handle,
+                Some(container_1.clone()),
+                Command::CreateContainer {
+                    log_rect_data: RectData {
+                        top_left: Vertex::zero(),
+                        width: 0,
+                        height: 100,
+                    },
+                    layout: LayoutMode::None,
+                    stretch: StretchMode::Fill,
+                    styling: Some(
+                        ContainerStylingBuilder::new()
+                            .border_color(Color::new(255, 0, 255, 255))
                             .build(),
                     ),
                 },
@@ -119,6 +139,23 @@ impl Runnable for LayoutApp {
             )
             .ok()
         }
+
+        let grid_container = api
+            .execute(
+                window_handle,
+                None,
+                Command::CreateContainer {
+                    log_rect_data: RectData {
+                        top_left: Vertex { x: 400, y: 50 },
+                        width: 250,
+                        height: 250,
+                    },
+                    layout: LayoutMode::Grid(3),
+                    stretch: StretchMode::None,
+                    styling: Some(ContainerStylingBuilder::new().maintain_aspect_ratio(true).build()),
+                },
+            )
+            .expect("failed to create container");
 
         // Buttons
         //let button_1 = create_button(&api, window_handle, container_1.clone(), 0, 0, 100, 750, "A");
@@ -159,6 +196,30 @@ impl Runnable for LayoutApp {
                 0,
                 0,
                 0,
+                200,
+                &format!("{}", i),
+            );
+        }
+
+        create_button(
+            &api,
+            window_handle,
+            Some(container_4.clone()),
+            0,
+            0,
+            0,
+            0,
+            "Hello!",
+        );
+        
+        for i in 0..9 {
+            let _ = create_button(
+                &api,
+                window_handle,
+                Some(grid_container.clone()),
+                0,
+                0,
+                200,
                 200,
                 &format!("{}", i),
             );

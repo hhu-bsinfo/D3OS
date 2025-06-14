@@ -12,9 +12,10 @@ use spin::rwlock::RwLock;
 use crate::components::container::Container;
 use crate::config::INTERACT_BUTTON;
 use crate::components::component::*;
+use crate::WindowManager;
 
 pub struct Canvas {
-    pub id: Option<usize>,
+    pub id: usize,
     is_dirty: bool,
     is_selected: bool,
     abs_rect_data: RectData,
@@ -35,7 +36,7 @@ impl Canvas {
     ) -> Self{
     let drawn_rect_data = RectData::zero();
     Self {
-        id: None,
+        id: WindowManager::generate_id(),
         is_dirty: true,
         is_selected: false,
         drawn_rect_data: RectData::zero(),
@@ -53,7 +54,7 @@ impl Component for Canvas {
         if !self.is_dirty{
             return;
         }
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
         let styling = &self.styling;
 
         let border_color = if self.is_selected {
@@ -78,13 +79,10 @@ impl Component for Canvas {
         self.is_dirty = true;
     }
 
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
     }
 
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
-    }
     fn get_abs_rect_data(&self) -> RectData {
        self.abs_rect_data 
     }
@@ -99,17 +97,16 @@ impl Component for Canvas {
 }
 
 impl Focusable for Canvas {
+    fn can_unfocus(&self) -> bool {
+        !self.is_selected
+    }
+
     fn focus(&mut self) {
         self.mark_dirty();
     }
 
-    fn unfocus(&mut self) -> bool {
-        if self.is_selected {
-            return false;
-        }
-
+    fn unfocus(&mut self) {
         self.mark_dirty();
-        true
     }
 }
 
