@@ -64,7 +64,6 @@ impl Component for Canvas {
             return;
         }
         let is_focused = focus_id == Some(self.id);
-        warn!("start drawing");
         let styling = &self.styling;
 
         let border_color = if self.is_selected {
@@ -96,7 +95,6 @@ impl Component for Canvas {
         Drawer::draw_bitmap(self.abs_rect_data.top_left, &self.buffer.read());
         self.drawn_rect_data = self.abs_rect_data;
         self.is_dirty = false;
-        warn!("finish drawing");
     }
     fn is_dirty(&self) -> bool {
         self.is_dirty
@@ -119,7 +117,6 @@ impl Component for Canvas {
     }
 
     fn rescale_to_container(&mut self, parent: &dyn Container) {
-        warn!("start scaling to container");
         let styling: &ComponentStyling = &self.styling;
         let min_dim = (12, 12);
         let max_dim = (
@@ -140,7 +137,6 @@ impl Component for Canvas {
                 .scale_in_place(self.abs_rect_data.width, self.abs_rect_data.height);
         }
         self.mark_dirty();
-        warn!("scale_container: finsish");
     }
 }
 
@@ -150,10 +146,12 @@ impl Focusable for Canvas {
     }
 
     fn focus(&mut self) {
+        self.is_selected = true;
         self.mark_dirty();
     }
 
     fn unfocus(&mut self) {
+        self.is_selected = false;
         self.mark_dirty();
     }
 }
@@ -226,7 +224,6 @@ impl Casts for Canvas {
 
 impl Resizable for Canvas {
     fn rescale(&mut self, scale_factor: f64) {
-        warn!("start rescale");
         self.scale_factor *= scale_factor;
 
         self.abs_rect_data.width = (f64::from(self.abs_rect_data.width) * scale_factor) as u32;
@@ -240,11 +237,9 @@ impl Resizable for Canvas {
                 .scale_in_place(self.abs_rect_data.width, self.abs_rect_data.height);
         }
         self.mark_dirty();
-        warn!("finish rescale");
     }
 
     fn resize(&mut self, width: u32, height: u32) {
-        warn!("start resize");
         self.scale_factor = 1.0;
 
         let scale_factor_x = width as f64 / self.abs_rect_data.width as f64;
@@ -265,7 +260,6 @@ impl Resizable for Canvas {
                 .scale_in_place(self.abs_rect_data.width, self.abs_rect_data.height);
         }
         self.mark_dirty();
-        warn!("finish resize");
     }
 }
 

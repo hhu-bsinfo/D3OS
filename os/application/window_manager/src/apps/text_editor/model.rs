@@ -8,6 +8,7 @@ use text_buffer::TextBuffer;
 use super::font::Font;
 use super::meassages::{Message, ViewMessage};
 use super::TextEditorConfig;
+use crate::apps::text_editor::meassages::CommandMessage;
 use logger::error;
 enum EditMode {
     Normal,
@@ -352,6 +353,26 @@ impl<'b> Document<'b> {
 
     pub fn update(&mut self, m: Message) {
         match m {
+            Message::CommandMessage(c) => match c {
+                CommandMessage::Undo => {
+                    self.text_buffer.undo();
+                }
+                CommandMessage::Redo => {
+                    self.text_buffer.redo();
+                }
+                CommandMessage::Markdown => match self.current_view {
+                    ViewConfig::Markdown {
+                        normal: _,
+                        emphasis: _,
+                        strong: _,
+                    } => self.current_view = self.config.simple_view,
+                    ViewConfig::Simple {
+                        font_scale: _,
+                        fg_color: _,
+                        bg_color: _,
+                    } => self.current_view = self.config.markdown_view,
+                },
+            },
             Message::ViewMessage(msg) => self.scroll(msg),
             Message::DecodedKey(k) => match self.edit_mode {
                 EditMode::Insert => self.update_insert(k),
@@ -579,5 +600,16 @@ mod tests {
         doc.caret.set_head(8);
         doc.move_cursor_up();
         assert_eq!(doc.caret().head(), 7);
+    }
+    #[test]
+    fn undo_with_command() {
+        let text = "Das\nTest";
+        let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
+        doc.caret.set_head(0);
+        doc.update_insert(DecodedKey::Unicode(('H')));
+        doc.update_insert(DecodedKey::Unicode(('e')));
+        doc.update_insert(DecodedKey::Unicode(('y')));
+        doc.update(Message::CommandMessage(CommandMessage::Undo));
+        assert_eq!(doc.text_buffer.to_string(), String::from("HeDas\nTest"));
     }
 }

@@ -3,8 +3,8 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use core::usize;
 use core::ops::Range;
+use core::usize;
 use drawer::vertex::Vertex;
 use graphic::{
     bitmap::Bitmap,
@@ -184,7 +184,12 @@ impl View {
         strong: Font,
     ) -> Option<ViewMessage> {
         buffer.clear(normal.bg_color);
-        let raw_text: String = document.text_buffer().clone().into_iter().skip(document.scroll_offset() as usize).collect();
+        let raw_text: String = document
+            .text_buffer()
+            .clone()
+            .into_iter()
+            .skip(document.scroll_offset() as usize)
+            .collect();
         let iterator = Parser::new(&raw_text).into_offset_iter();
         let mut position = Vertex::zero();
         let mut font = Vec::<Font>::new();
@@ -374,7 +379,9 @@ impl View {
             }
         }
         if document.scroll_offset() > document.caret().head() as u32 {
-            return Some(ViewMessage::ScrollUp(document.scroll_offset() - document.caret().head() as u32));
+            return Some(ViewMessage::ScrollUp(
+                document.scroll_offset() - document.caret().head() as u32,
+            ));
         }
         None
     }
