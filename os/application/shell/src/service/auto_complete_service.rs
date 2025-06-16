@@ -7,7 +7,7 @@ use globals::application::{APPLICATION_REGISTRY, Application};
 use crate::{
     context::Context,
     service::{
-        lexer_service::{AmbiguousState, ArgumentType, FindLastCommand, Token},
+        lexer_service::{AmbiguousState, ArgumentType, FindLastCommand, Token, TokenContext},
         service::{Error, Response, Service},
     },
 };
@@ -17,6 +17,7 @@ pub struct AutoCompleteService {
     applications: Vec<Application>,
     current_index: usize,
     current_app: Option<Application>,
+    current_short_flag: Option<usize>,
     current_suggestion: Option<String>,
 }
 
@@ -26,7 +27,7 @@ impl Service for AutoCompleteService {
             return Ok(Response::Skip);
         }
 
-        self.revalidate_application(context);
+        self.revalidate(context);
 
         if !context.auto_completion.has_focus() {
             return self.focus_suggestion(context);
@@ -40,7 +41,7 @@ impl Service for AutoCompleteService {
             return Ok(Response::Skip);
         }
 
-        self.revalidate_application(context);
+        self.revalidate(context);
 
         match key {
             ' ' => self.adopt(context),
@@ -83,6 +84,7 @@ impl AutoCompleteService {
             applications: Vec::from(APPLICATION_REGISTRY.applications),
             current_index: 0,
             current_app: None,
+            current_short_flag: None,
             current_suggestion: None,
         }
     }
@@ -109,6 +111,7 @@ impl AutoCompleteService {
 
     fn reset(&mut self, context: &mut Context) -> Result<Response, Error> {
         self.current_app = None;
+        self.current_short_flag = None;
         self.clear_suggestion(context)
     }
 
@@ -122,6 +125,39 @@ impl AutoCompleteService {
 
         context.auto_completion.focus();
         Ok(Response::Ok)
+    }
+
+    fn revalidate(&mut self, context: &mut Context) {
+        self.revalidate_application(context);
+        self.revalidate_short_flag(context);
+    }
+
+    fn revalidate_short_flag(&mut self, context: &mut Context) {
+        let Some(current_app) = &self.current_app else {
+            self.current_short_flag = None;
+            return;
+        };
+        let Some(last_short_flag) = context.tokens.find_last_short_flag() else {
+            self.current_short_flag = None;
+            return;
+        };
+
+        let target = last_short_flag.to_string();
+        if self
+            .current_short_flag
+            .as_ref()
+            .is_some_and(|&index| current_app.short_flags[index].0 == target)
+        {
+            return;
+        }
+
+        self.current_short_flag = self
+            .current_app
+            .as_ref()
+            .unwrap()
+            .short_flags
+            .iter()
+            .position(|&(key, _)| key == target);
     }
 
     fn revalidate_application(&mut self, context: &mut Context) {
@@ -138,11 +174,11 @@ impl AutoCompleteService {
             return;
         }
 
-        self.current_app = self.find_application(&last_command).cloned();
-    }
-
-    fn find_application(&mut self, command: &str) -> Option<&Application> {
-        self.applications.iter().find(|app| app.command == command)
+        self.current_app = self
+            .applications
+            .iter()
+            .find(|&app| app.command == last_command)
+            .cloned();
     }
 
     fn cycle_suggestion(&mut self, context: &mut Context) -> Result<Response, Error> {
@@ -152,12 +188,12 @@ impl AutoCompleteService {
 
             Some(Token::Command(_, cmd)) => self.cycle_command(&cmd),
 
-            Some(Token::Argument(_, arg_type, arg)) => self.cycle_argument(Some(&arg_type), &arg),
+            Some(Token::Argument(clx, arg)) => self.cycle_argument(clx, &arg),
 
             Some(Token::Whitespace(clx)) => match clx.ambiguous {
                 AmbiguousState::Pending => self.cycle_command(&String::new()),
-                AmbiguousState::Command => self.cycle_argument(None, &String::new()),
-                AmbiguousState::Argument => self.cycle_argument(None, &String::new()),
+                AmbiguousState::Command => self.cycle_argument(clx, &String::new()),
+                AmbiguousState::Argument => self.cycle_argument(clx, &String::new()),
             },
             _ => None,
         };
@@ -181,61 +217,71 @@ impl AutoCompleteService {
     }
 
     fn cycle_command(&mut self, cmd: &String) -> Option<String> {
-        self.applications
-            .iter()
-            .enumerate()
-            .cycle()
-            .skip(self.current_index + 1)
-            .take(self.applications.len())
-            .find_map(|(i, app)| {
-                if !app.command.starts_with(cmd) {
-                    return None;
-                }
-
-                self.current_index = i;
-                Some(app.command.to_string())
-            })
+        let commands: Vec<&'static str> = self.applications.iter().map(|app| app.command).collect();
+        self.cycle(cmd, &commands)
     }
 
-    fn cycle_argument(&mut self, arg_type: Option<&ArgumentType>, arg: &String) -> Option<String> {
-        if arg_type.is_none() {
-            return self.cycle_all_arguments(arg);
-        }
-        match arg_type.unwrap() {
-            ArgumentType::Generic => self.cycle_generic_argument(arg),
-            ArgumentType::ShortFlag => panic!("short flag auto complete not implemented"),
-            ArgumentType::LongFlag => panic!("long flag auto complete not implemented"),
-            ArgumentType::LongFlagValue => panic!("long flag value auto complete not implemented"),
+    fn cycle_argument(&mut self, clx: &TokenContext, arg: &String) -> Option<String> {
+        match clx.argument_type {
+            None | Some(ArgumentType::Unknown) => self.cycle_all_arguments(arg),
+            Some(ArgumentType::Generic) => self.cycle_generic_argument(arg),
+            Some(ArgumentType::ShortFlag) => self.cycle_short_flag_arg(arg),
+            Some(ArgumentType::ShortFlagValue) => self.cycle_short_flag_value(arg),
+            Some(ArgumentType::LongFlag) => panic!("long flag auto complete not implemented"),
         }
     }
 
     fn cycle_all_arguments(&mut self, arg: &String) -> Option<String> {
-        if let Some(found_arg) = self.cycle_generic_argument(arg) {
-            return Some(found_arg);
-        }
+        let app = self.current_app.as_mut().unwrap();
+        let mut args = Vec::new();
+        args.extend(app.sub_commands.iter());
+        args.extend(app.short_flags.into_iter().map(|&(key, _)| key));
+        args.extend(app.long_flags.iter());
 
-        // TODO other arg types
-        None
+        self.cycle(arg, &args)
     }
 
     fn cycle_generic_argument(&mut self, arg: &String) -> Option<String> {
-        if self.current_app.is_none() {
+        let sub_commands = self.current_app.as_mut().unwrap().sub_commands;
+        self.cycle(arg, &sub_commands)
+    }
+
+    fn cycle_short_flag_arg(&mut self, arg: &String) -> Option<String> {
+        let short_flags: Vec<&'static str> = self
+            .current_app
+            .as_ref()
+            .unwrap()
+            .short_flags
+            .iter()
+            .map(|&(key, _)| key)
+            .collect();
+
+        self.cycle(arg, &short_flags)
+    }
+
+    fn cycle_short_flag_value(&mut self, arg: &String) -> Option<String> {
+        if self.current_app.is_none() || self.current_short_flag.is_none() {
             return None;
         }
-        let sub_commands = self.current_app.as_mut().unwrap().sub_commands;
-        sub_commands
-            .iter()
+        let (_key, values) =
+            self.current_app.as_mut().unwrap().short_flags[self.current_short_flag.unwrap()];
+
+        self.cycle(arg, &values)
+    }
+
+    fn cycle(&mut self, target: &String, list: &[&'static str]) -> Option<String> {
+        list.iter()
             .enumerate()
             .cycle()
-            .skip(self.current_index + 1)
-            .take(sub_commands.len())
-            .find_map(|(i, &sub_command)| {
-                if !sub_command.starts_with(arg) {
+            .skip(self.current_index)
+            .take(list.len())
+            .find_map(|(i, &found)| {
+                if !found.starts_with(target) {
                     return None;
                 }
 
-                self.current_index = i;
-                return Some(sub_command.to_string());
+                self.current_index = i + 1;
+                return Some(found.to_string());
             })
     }
 }

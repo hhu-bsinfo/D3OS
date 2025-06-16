@@ -10,7 +10,7 @@ pub struct Application {
     /// Subroutine or mode of the application (Example: 'git <commit>', or 'git <branch>')
     pub sub_commands: &'static [&'static str],
     /// Option of the application, that requires a value, commonly '-KEY VALUE' (Example: 'git commit <-m> <"My message">')
-    pub short_flags: &'static [(&'static str, Option<&'static str>)],
+    pub short_flags: &'static [(&'static str, &'static [&'static str])],
     /// Option of the application, that doesn't require a value, commonly '--KEY' (Example: 'git merge master <--no-ff>')
     pub long_flags: &'static [&'static str],
 }
@@ -24,7 +24,10 @@ pub const APPLICATION_REGISTRY: ApplicationRegistry = ApplicationRegistry {
         Application {
             command: "test",
             sub_commands: &["arg1", "arg2", "arg3"],
-            short_flags: &[],
+            short_flags: &[
+                ("-f", &["flag-1", "flag-2", "flag-3"]),
+                ("-m", &["'message 1'", "'message 2'", "'message 3'"]),
+            ],
             long_flags: &[],
         },
         //////////////////////
