@@ -1,14 +1,21 @@
 use super::runnable::Runnable;
+use crate::api::LOG_SCREEN;
 use crate::apps::text_editor::view::View;
+use crate::components::container::basic_container::{AlignmentMode, LayoutMode, StretchMode};
+use crate::components::container::ContainerStyling;
+use crate::signal::{ComponentRef, Signal};
 use crate::{api::Command, WindowManager};
-use alloc::collections::VecDeque;
 use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use font::Font;
 use graphic::color::{Color, WHITE};
 use graphic::lfb::DEFAULT_CHAR_WIDTH;
-use graphic::{bitmap::Bitmap, lfb::DEFAULT_CHAR_HEIGHT};
-use meassages::{Message, ViewMessage};
+use graphic::{
+    bitmap::{Bitmap, ScalingMode},
+    lfb::DEFAULT_CHAR_HEIGHT,
+};
+use logger::warn;
+use meassages::Message;
 use model::{Document, ViewConfig};
 use spin::rwlock::RwLock;
 use terminal::DecodedKey;
@@ -29,6 +36,15 @@ pub struct TextEditorConfig {
     pub background_color: Color,
     pub markdown_view: ViewConfig,
     pub simple_view: ViewConfig,
+}
+
+fn render_msg(document: &Rc<RwLock<Document>>, canvas: &Rc<RwLock<Bitmap>>, msg: Message) {
+    document.write().update(msg);
+    let mut msg = View::render(&document.read(), &mut canvas.write());
+    while msg.is_some() {
+        document.write().update(Message::ViewMessage(msg.unwrap()));
+        msg = View::render(&document.read(), &mut canvas.write());
+    }
 }
 
 impl TextEditorConfig {
@@ -78,38 +94,19 @@ impl TextEditorConfig {
 
 impl Runnable for TextEditor {
     fn run() {
-        let config = TextEditorConfig::new(720, 500);
+        let config = TextEditorConfig::new(900, 600);
         let bitmap = Bitmap {
-            width: config.width as u32,
-            height: config.height as u32,
+            width: (0.7 * (config.width as f32)) as u32,
+            height: (0.7 * (config.height as f32)) as u32,
             data: vec![config.background_color; config.width * config.height],
         };
-        let deque = VecDeque::<DecodedKey>::new();
         let handle = concurrent::thread::current()
             .expect("Failed to get thread")
             .id();
         let api = WindowManager::get_api();
         let canvas = Rc::new(RwLock::new(bitmap));
-        let input = Rc::new(RwLock::<VecDeque<DecodedKey>>::new(deque));
-        let input_clone = Rc::clone(&input);
-        let component = api
-            .execute(
-                handle,
-                None,
-                Command::CreateCanvas {
-                    styling: None,
-                    rect_data: RectData {
-                        top_left: Vertex::new(50, 80),
-                        width: config.width as u32,
-                        height: config.height as u32,
-                    },
-                    input: Some(Box::new(move |c: DecodedKey| {
-                        input_clone.write().push_back(c);
-                    })),
-                    buffer: Rc::clone(&canvas),
-                },
-            )
-            .unwrap();
+        let canvs_clone = Rc::clone(&canvas);
+        let edit_canvas: Rc<RwLock<Option<ComponentRef>>> = Rc::new(RwLock::new(None));
         let markdown_example = r#"
 # Heading 1
 
@@ -137,37 +134,158 @@ Some *Emphasis* Text.
    1. Nested ordered item  
    2. Another nested item
 "#;
-        let mut text_buffer = TextBuffer::from_str(markdown_example);
-        let mut document: Document =
-            Document::new(Some(String::from("scratch")), text_buffer, config);
-
-        document.update(meassages::Message::ViewMessage(ViewMessage::ScrollDown(0)));
+        let text_buffer = TextBuffer::from_str(markdown_example);
+        let mut document = Document::new(Some(String::from("scratch")), text_buffer, config);
         View::render(&document, &mut canvas.write());
-        component.write().mark_dirty();
-        let mut dirty = false;
-        loop {
-            let mut tmp_queue = VecDeque::<Message>::new();
-            while let Some(value) = input.write().pop_front() {
-                tmp_queue.push_back(Message::DecodedKey(value));
-                dirty = true;
-            }
-            while let Some(value) = tmp_queue.pop_front() {
-                document.update(value);
-            }
-            if dirty {
-                {
-                    // extra block to release canvas lock bevore calling mark_dirty
-                    let mut msg = View::render(&document, &mut canvas.write());
-                    while msg.is_some() {
-                        document.update(meassages::Message::ViewMessage(msg.unwrap()));
-                        msg = View::render(&document, &mut canvas.write());
-                    }
-                }
-                {
-                    component.write().mark_dirty()
-                };
-                dirty = false;
-            }
-        }
+        let mut container_styling = ContainerStyling::default();
+        container_styling.show_border = false;
+        container_styling.maintain_aspect_ratio = false;
+        container_styling.child_padding = 2;
+        let model = Rc::new(RwLock::<Document<'_>>::new(document));
+        let _parent_container = api
+            .execute(
+                handle,
+                None,
+                Command::CreateContainer {
+                    log_rect_data: RectData {
+                        top_left: Vertex { x: 50, y: 50 },
+                        width: LOG_SCREEN.0,
+                        height: LOG_SCREEN.1,
+                    },
+                    layout: LayoutMode::Vertical(AlignmentMode::Top),
+                    stretch: StretchMode::None,
+                    styling: Some(container_styling),
+                },
+            )
+            .expect("failed to create container");
+        let _menu_container = api
+            .execute(
+                handle,
+                Some(_parent_container.clone()),
+                Command::CreateContainer {
+                    log_rect_data: RectData {
+                        top_left: Vertex { x: 0, y: 0 },
+                        width: LOG_SCREEN.0 as u32,
+                        height: 60,
+                    },
+                    layout: LayoutMode::Horizontal(AlignmentMode::Top),
+                    stretch: StretchMode::Fill,
+                    styling: Some(container_styling),
+                },
+            )
+            .expect("failed to create container");
+
+        let model_clone = Rc::clone(&model);
+        let canvas_clone = Rc::clone(&canvas);
+        let edit_canvas_clone = Rc::clone(&edit_canvas);
+
+        let _undo = api.execute(
+            handle,
+            Some(_menu_container.clone()),
+            Command::CreateButton {
+                log_rect_data: RectData {
+                    top_left: Vertex::new(0, 0),
+                    width: 100,
+                    height: 60,
+                },
+                label: Some((Signal::new(String::from("Undo")), 0)),
+                on_click: Some(Box::new(move || {
+                    render_msg(
+                        &model_clone,
+                        &Rc::clone(&canvas_clone),
+                        Message::CommandMessage(meassages::CommandMessage::Undo),
+                    );
+                    edit_canvas_clone
+                        .write()
+                        .as_ref()
+                        .unwrap()
+                        .write()
+                        .mark_dirty();
+                })),
+                styling: None,
+            },
+        );
+
+        let model_clone = Rc::clone(&model);
+        let canvas_clone = Rc::clone(&canvas);
+        let edit_canvas_clone = Rc::clone(&edit_canvas);
+
+        let _redo = api.execute(
+            handle,
+            Some(_menu_container.clone()),
+            Command::CreateButton {
+                log_rect_data: RectData {
+                    top_left: Vertex::new(0, 0),
+                    width: 100,
+                    height: 60,
+                },
+                label: Some((Signal::new(String::from("Redo")), 1)),
+                on_click: Some(Box::new(move || {
+                    render_msg(
+                        &model_clone,
+                        &Rc::clone(&canvas_clone),
+                        Message::CommandMessage(meassages::CommandMessage::Redo),
+                    );
+                    edit_canvas_clone
+                        .write()
+                        .as_ref()
+                        .unwrap()
+                        .write()
+                        .mark_dirty();
+                })),
+                styling: None,
+            },
+        );
+        let model_clone = Rc::clone(&model);
+        let canvas_clone = Rc::clone(&canvas);
+        let edit_canvas_clone = Rc::clone(&edit_canvas);
+
+        let _markdown = api.execute(
+            handle,
+            Some(_menu_container.clone()),
+            Command::CreateButton {
+                log_rect_data: RectData {
+                    top_left: Vertex::new(0, 0),
+                    width: 240,
+                    height: 60,
+                },
+                label: Some((Signal::new(String::from("MD - Preview")), 1)),
+                on_click: Some(Box::new(move || {
+                    render_msg(
+                        &model_clone,
+                        &Rc::clone(&canvas_clone),
+                        Message::CommandMessage(meassages::CommandMessage::Markdown),
+                    );
+                    edit_canvas_clone
+                        .write()
+                        .as_ref()
+                        .unwrap()
+                        .write()
+                        .mark_dirty();
+                })),
+                styling: None,
+            },
+        );
+
+        *edit_canvas.write() = Some(
+            api.execute(
+                handle,
+                Some(_parent_container.clone()),
+                Command::CreateCanvas {
+                    styling: None,
+                    log_rect_data: RectData {
+                        top_left: Vertex::new(0, 0),
+                        width: config.width as u32,
+                        height: config.height as u32,
+                    },
+                    input: Some(Box::new(move |c: DecodedKey| {
+                        render_msg(&model, &canvs_clone, Message::DecodedKey(c));
+                    })),
+                    buffer: Rc::clone(&canvas),
+                    scaling_mode: ScalingMode::Bilinear,
+                },
+            )
+            .unwrap(),
+        );
     }
 }

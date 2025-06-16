@@ -125,7 +125,7 @@ impl<'s> TextBuffer<'s> {
             && self.piece_table[piece_table_index - 1].buffer == BufferDescr::Add
             && self.piece_table[piece_table_index - 1].offset
                 + self.piece_table[piece_table_index - 1].length
-                == self.add_buffer.len() - 1
+                == self.add_buffer.chars().count() - 1
         {
             self.piece_table[piece_table_index - 1].length += 1;
             self.lenght += 1;
@@ -143,7 +143,7 @@ impl<'s> TextBuffer<'s> {
         if piece_table_index == self.piece_table.len() {
             self.piece_table.insert(
                 piece_table_index,
-                PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
+                PieceDescr::new(BufferDescr::Add, self.add_buffer.chars().count() - 1, 1),
             );
             self.lenght += 1;
             match operation {
@@ -160,7 +160,7 @@ impl<'s> TextBuffer<'s> {
         if piece_descr_offset == 0 {
             self.piece_table.insert(
                 piece_table_index,
-                PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
+                PieceDescr::new(BufferDescr::Add, self.add_buffer.chars().count() - 1, 1),
             );
         } else {
             let length = piece_descr.length;
@@ -176,7 +176,7 @@ impl<'s> TextBuffer<'s> {
             );
             self.piece_table.insert(
                 piece_table_index + 1,
-                PieceDescr::new(BufferDescr::Add, self.add_buffer.len() - 1, 1),
+                PieceDescr::new(BufferDescr::Add, self.add_buffer.chars().count() - 1, 1),
             );
         }
 
@@ -273,8 +273,8 @@ impl<'s> TextBuffer<'s> {
         Self {
             file_buffer,
             add_buffer: String::new(),
-            piece_table: vec![PieceDescr::new(BufferDescr::File, 0, file_buffer.len())],
-            lenght: file_buffer.len(),
+            piece_table: vec![PieceDescr::new(BufferDescr::File, 0, file_buffer.chars().count())],
+            lenght: file_buffer.chars().count(),
             pos: 0,
             history: Vec::new(),
             redo: Vec::new(),
@@ -716,6 +716,54 @@ mod tests {
         let buffer = TextBuffer::from_str(file_buffer);
         assert!(buffer.get_char(0).unwrap() == 'a');
         assert!(buffer.get_char(1).unwrap() == 'b');
+    }
+    #[test]
+    fn insert_umlaut() {
+        let file_buffer = "ä";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.insert(0, 'ü');
+        assert!(res.is_ok());
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 1
+                }
+            ]
+        );
+        assert_eq!(buffer.get_char(0).unwrap(),  'ü');
+        assert_eq!(buffer.get_char(1).unwrap(), 'ä');
+    }
+
+    #[test]
+    fn delete_umlaut() {
+        let file_buffer = "üäö";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        let res = buffer.delete(1);
+        assert!(res.is_ok());
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 2,
+                    length: 1
+                }
+            ]
+        );
+        assert_eq!(buffer.to_string(), String::from("üö"));
     }
     #[test]
     fn get_ii() {

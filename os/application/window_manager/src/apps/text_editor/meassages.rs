@@ -6,7 +6,16 @@ pub enum ViewMessage {
     ScrollUp(u32),
 }
 
+pub enum CommandMessage {
+    // represent the chars to move up or down (not the lines)
+    Undo,
+    Redo,
+    // toggle between markdown and normal view
+    Markdown,
+}
+
 pub enum Message {
     ViewMessage(ViewMessage),
     DecodedKey(DecodedKey),
+    CommandMessage(CommandMessage),
 }

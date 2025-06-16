@@ -184,6 +184,26 @@ pub fn draw_char_scaled(
         }
     }
 
+    pub fn scale_in_place(&mut self, target_width: u32, target_height: u32) {
+        if target_height == self.height && target_width == self.width {
+            return;
+        }
+
+        let mut scaled_data = Vec::with_capacity((target_width * target_height) as usize);
+
+        for y in 0..target_height {
+            for x in 0..target_width {
+                let orig_x = x * self.width / target_width;
+                let orig_y = y * self.height / target_height;
+                scaled_data.push(self.data[(orig_y * self.width + orig_x) as usize]);
+            }
+        }
+
+        self.width = target_width;
+        self.height = target_height;
+        self.data = scaled_data;
+    }
+
     // langsam aber gute Qualität
     fn scale_bilinear(&self, target_width: u32, target_height: u32) -> Bitmap {
         if target_height == self.height && target_width == self.width {

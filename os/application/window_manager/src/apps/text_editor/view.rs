@@ -3,6 +3,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use core::ops::Range;
 use core::usize;
 use drawer::vertex::Vertex;
 use graphic::{
@@ -11,7 +12,7 @@ use graphic::{
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
 use logger::warn;
-use pulldown_cmark::{Event, HeadingLevel, Parser};
+use pulldown_cmark::{DefaultBrokenLinkCallback, Event, HeadingLevel, Parser};
 
 use crate::apps::text_editor::model::Caret;
 
@@ -133,14 +134,22 @@ impl View {
         if i == document.caret().head() {
             buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
         }
+        // Calculate new scrolling (cursor not in frame)
         if !found_caret {
             if document.caret().head() >= document.scroll_offset() as usize {
                 let ind = new_lines.len() / 3;
                 let scroll = new_lines[ind] - document.scroll_offset();
                 return Some(ViewMessage::ScrollDown(scroll));
             } else {
-                return Some(ViewMessage::ScrollUp(document.scroll_offset()));
+                return Some(ViewMessage::ScrollUp(
+                    document.scroll_offset()
+                        - document
+                            .prev_line(document.caret().head())
+                            .unwrap_or(document.scroll_offset() as usize)
+                            as u32,
+                ));
             }
+            // scroll down (cursor in frame)
         } else if caret_pos > buffer.height / 2 + buffer.height / 3 {
             let scroll = *match new_lines.first() {
                 Some(v) => v,
@@ -148,6 +157,22 @@ impl View {
             } - document.scroll_offset();
 
             return Some(ViewMessage::ScrollDown(scroll));
+        } else if caret_pos < buffer.height / 3 && document.scroll_offset() != 0 {
+            let scroll = match document.prev_line(
+                document
+                    .scroll_offset()
+                    .checked_sub(1)
+                    .unwrap_or(document.scroll_offset()) as usize,
+            ) {
+                Some(v) => v,
+                None => return None,
+            };
+            if document.scroll_offset() - scroll as u32 <= 0 {
+                return None;
+            }
+            return Some(ViewMessage::ScrollUp(
+                document.scroll_offset() - scroll as u32,
+            ));
         }
         None
     }
@@ -159,7 +184,12 @@ impl View {
         strong: Font,
     ) -> Option<ViewMessage> {
         buffer.clear(normal.bg_color);
-        let raw_text = document.text_buffer().to_string();
+        let raw_text: String = document
+            .text_buffer()
+            .clone()
+            .into_iter()
+            .skip(document.scroll_offset() as usize)
+            .collect();
         let iterator = Parser::new(&raw_text).into_offset_iter();
         let mut position = Vertex::zero();
         let mut font = Vec::<Font>::new();
@@ -168,8 +198,13 @@ impl View {
         let mut ordererd_start = false;
         let mut ordered: Option<u64> = None;
         let mut heading = false;
+        let mut last_index: Range<usize>;
         font.push(normal);
         for (event, range) in iterator {
+            if position.y > buffer.height {
+                break;
+            }
+            last_index = range.clone();
             match event {
                 Event::Text(text) => {
                     let rel_caret = document.caret().head().checked_sub(range.start);
@@ -270,9 +305,9 @@ impl View {
                     pulldown_cmark::Tag::Strong => font.push(strong),
                     pulldown_cmark::Tag::Heading {
                         level,
-                        id,
-                        classes,
-                        attrs,
+                        id: _,
+                        classes: _,
+                        attrs: _,
                     } => {
                         heading = true;
                         match level {
@@ -296,7 +331,7 @@ impl View {
                         rel_caret,
                     );
                     buffer.draw_line(
-                        ((buffer.width as f32 * 0.1) as u32),
+                        (buffer.width as f32 * 0.1) as u32,
                         position.y + (normal.char_height * normal.scale / 2),
                         ((buffer.width as f32) * 0.9) as u32,
                         position.y + (normal.char_height * normal.scale / 2),
@@ -321,7 +356,7 @@ impl View {
                             rel_caret,
                         );
                     }
-                    pulldown_cmark::TagEnd::List(n) => {
+                    pulldown_cmark::TagEnd::List(_) => {
                         list_indentation = list_indentation.checked_sub(2).unwrap_or(0);
                     }
                     pulldown_cmark::TagEnd::Emphasis => {
@@ -342,6 +377,11 @@ impl View {
                 },
                 _ => {}
             }
+        }
+        if document.scroll_offset() > document.caret().head() as u32 {
+            return Some(ViewMessage::ScrollUp(
+                document.scroll_offset() - document.caret().head() as u32,
+            ));
         }
         None
     }
