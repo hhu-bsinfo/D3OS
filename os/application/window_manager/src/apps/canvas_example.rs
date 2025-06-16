@@ -17,6 +17,42 @@ use super::runnable::Runnable;
 // Julius Drodofsky
 pub struct CanvasApp;
 
+fn render_input(key: DecodedKey, canvas: &Rc<RwLock<Bitmap>>, location: &Rc<RwLock<Vertex>>) {
+    let mut position: Vertex;
+    {
+        position = *location.read();
+    }
+
+    let key = match key {
+        DecodedKey::RawKey(s) => {
+            return;
+        }
+        DecodedKey::Unicode(u) => u,
+    };
+    if key == '\n' {
+        position.y += DEFAULT_CHAR_HEIGHT;
+        position.x = 0;
+        location.write().x = position.x;
+        location.write().y = position.y;
+        return;
+    }
+    if canvas.read().width - position.x < DEFAULT_CHAR_WIDTH {
+        position.x = 0;
+        position.y += DEFAULT_CHAR_HEIGHT;
+    }
+    position.x += canvas.write().draw_char_scaled(
+        position.x,
+        position.y,
+        1,
+        1,
+        Color::new(255, 255, 255, 255),
+        Color::new(0, 0, 0, 50),
+        key,
+    );
+    location.write().x = position.x;
+    location.write().y = position.y;
+}
+
 impl Runnable for CanvasApp {
     fn run() {
         //initialise values for component
@@ -29,33 +65,17 @@ impl Runnable for CanvasApp {
             ],
         };
         let deque = VecDeque::<DecodedKey>::new();
+        let mut position_v = Vertex::zero();
+        position_v.y = DEFAULT_CHAR_HEIGHT;
         let handle = concurrent::thread::current()
             .expect("Failed to get thread")
             .id();
         let api = WindowManager::get_api();
         let canvas = Rc::new(RwLock::new(bitmap_red));
+        let position = Rc::new(RwLock::new(position_v));
         let input = Rc::new(RwLock::<VecDeque<DecodedKey>>::new(deque));
-        let input_clone = Rc::clone(&input);
         //create component
-        let component = api
-            .execute(
-                handle,
-                None,
-                Command::CreateCanvas {
-                    styling: None,
-                    log_rect_data: RectData {
-                        top_left: Vertex::new(50, 80),
-                        width: 200,
-                        height: 100,
-                    },
-                    buffer: Rc::clone(&canvas),
-                    input: Some(Box::new(move |c: DecodedKey| {
-                        input_clone.write().push_back(c);
-                    })),
-                    scaling_mode: ScalingMode::NearestNeighbor,
-                },
-            )
-            .unwrap();
+
         //use component
         let mut x = 0;
         x = canvas.write().draw_char_scaled(
@@ -92,32 +112,24 @@ impl Runnable for CanvasApp {
             DEFAULT_CHAR_HEIGHT,
             Color::new(255, 255, 255, 255),
         );
-        component.write().mark_dirty();
-        x = 0;
-        let mut y = DEFAULT_CHAR_HEIGHT;
-        loop {
-            while let Some(DecodedKey::Unicode(value)) = input.write().pop_front() {
-                if value == '\n' {
-                    y += DEFAULT_CHAR_HEIGHT;
-                    x = 0;
-                    continue;
-                }
-                if canvas.read().width - x < DEFAULT_CHAR_WIDTH {
-                    x = 0;
-                    y += DEFAULT_CHAR_HEIGHT;
-                }
-                x += canvas.write().draw_char_scaled(
-                    x,
-                    y,
-                    1,
-                    1,
-                    Color::new(255, 255, 255, 255),
-                    Color::new(0, 0, 0, 50),
-                    value,
-                );
-                // Die Anwendung ist deutlich schneller wenn nicht nach jedem Buchstaben, sondern nur sobald die queue leer ist gezeichnet wird:)
-                component.write().mark_dirty();
-            }
-        }
+        let _component = api
+            .execute(
+                handle,
+                None,
+                Command::CreateCanvas {
+                    styling: None,
+                    log_rect_data: RectData {
+                        top_left: Vertex::new(50, 80),
+                        width: 200,
+                        height: 100,
+                    },
+                    buffer: Rc::clone(&canvas),
+                    input: Some(Box::new(move |c: DecodedKey| {
+                        render_input(c, &canvas, &position);
+                    })),
+                    scaling_mode: ScalingMode::NearestNeighbor,
+                },
+            )
+            .unwrap();
     }
 }

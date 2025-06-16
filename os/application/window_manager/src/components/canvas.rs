@@ -18,6 +18,7 @@ pub struct Canvas {
     pub id: usize,
     is_dirty: bool,
     is_selected: bool,
+    is_disabled: bool,
     abs_rect_data: RectData,
     rel_rect_data: RectData,
     orig_rect_data: RectData,
@@ -43,6 +44,7 @@ impl Canvas {
             id: WindowManager::generate_id(),
             is_dirty: true,
             is_selected: false,
+            is_disabled: false,
             drawn_rect_data: RectData::zero(),
             abs_rect_data: RectData::zero(),
             rel_rect_data,
@@ -161,6 +163,10 @@ impl Interactable for Canvas {
         &mut self,
         keyboard_press: DecodedKey,
     ) -> Option<Box<dyn FnOnce() -> ()>> {
+        if !self.is_selected || self.is_disabled {
+            return None;
+        }
+        self.mark_dirty();
         let input = Rc::clone(&self.input);
         return Some(Box::new(move || {
             (input)(keyboard_press);
@@ -259,5 +265,21 @@ impl Resizable for Canvas {
         }
         self.mark_dirty();
         warn!("finish resize");
+    }
+}
+
+impl Disableable for Canvas {
+    fn disable(&mut self) {
+        self.is_disabled = true;
+        self.mark_dirty();
+    }
+
+    fn enable(&mut self) {
+        self.is_disabled = false;
+        self.mark_dirty();
+    }
+
+    fn is_disabled(&self) -> bool {
+        self.is_disabled
     }
 }
