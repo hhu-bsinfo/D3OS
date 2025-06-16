@@ -125,6 +125,7 @@ Cargo.lock
 
 # End of https://www.toptal.com/developers/gitignore/api/rust,clion+iml,VisualStudioCode
 
+os/application/about/src/dependencies.json
 d3os.img
 hdd.img
 RELEASEX64_OVMF.fd

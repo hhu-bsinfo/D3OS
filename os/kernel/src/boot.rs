@@ -4,7 +4,7 @@
    ║ Descr.: Boot sequence of the OS. First Rust function called after       ║
    ║         assembly code: 'start'.                                         ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, HHU                                             ║
+   ║ Author: Fabian Ruhland & Michael Schoettner, HHU                        ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -13,14 +13,19 @@ use crate::device::ps2::Keyboard;
 use crate::device::qemu_cfg;
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
+use crate::memory::frames;
 use crate::memory::nvmem::Nfit;
+use crate::memory::pages;
 use crate::memory::pages::page_table_index;
+use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE, nvmem};
 use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, infiniband, init_acpi_tables, init_apic, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss
+    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_cpu_info,
+    init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory,
+    network, process_manager, scheduler, serial_port, terminal, timer, tss,
 };
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
@@ -55,8 +60,7 @@ use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::page::PageRange;
-use x86_64::structures::paging::{Page, PageTable, PageTableFlags, PhysFrame};
+use x86_64::structures::paging::{PageTable, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
 
 // import labels from linker script 'link.ld'
@@ -111,6 +115,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     );
     debug!("Page frame allocator:\n{}", memory::frames::dump());
 
+
+    // Initialize CPU information
+    init_cpu_info();
+
     // Create kernel process (and initialize virtual memory management)
     info!("Create kernel process and initialize paging");
     let kernel_process = process_manager().write().create_process();
@@ -127,23 +135,47 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         .framebuffer_tag()
         .expect("No framebuffer information provided by bootloader!")
         .expect("Unknown framebuffer type!");
-    let fb_start_page = Page::from_start_address(VirtAddr::new(fb_info.address()))
-        .expect("Framebuffer address is not page aligned");
-    let fb_end_page = Page::from_start_address(
-        VirtAddr::new(fb_info.address() + (fb_info.height() * fb_info.pitch()) as u64)
-            .align_up(PAGE_SIZE as u64),
-    )
-    .unwrap();
-    kernel_process.virtual_address_space.map(
-        PageRange {
-            start: fb_start_page,
-            end: fb_end_page,
-        },
-        MemorySpace::Kernel,
-        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
-        memory::vmm::VmaType::DeviceMemory,
-        "framebuffer",
-    );
+    let fb_start_phys_addr = fb_info.address();
+    let fb_end_phys_addr = fb_start_phys_addr + (fb_info.height() * fb_info.pitch()) as u64;
+
+    // Start PhysFrame for the Framebuffer
+    let fb_start_page_frame = frames::frame_from_u64(fb_start_phys_addr)
+        .expect("Framebuffer start address is not page aligned");
+
+    // End PhysFrame for the Framebuffer
+    let fb_end_page_frame = frames::frame_from_u64(fb_end_phys_addr)
+        .expect("Framebuffer end address is not page aligned");
+
+    let fb_frame_range = PhysFrameRange {
+        start: fb_start_page_frame,
+        end: fb_end_page_frame,
+    };
+
+    // Start Page for the Framebuffer
+    let fb_start_page = pages::page_from_u64(fb_start_phys_addr)
+        .expect("Framebuffer start address is not page aligned");
+
+    // Allocate virtual memory area for the Framebuffer and add it to the kernel process
+    let vma = kernel_process
+        .virtual_address_space
+        .alloc_vma(
+            Some(fb_start_page),
+            fb_frame_range.len(),
+            MemorySpace::Kernel,
+            VmaType::DeviceMemory,
+            "framebuffer",
+        )
+        .expect("alloc_vma failed");
+
+    // Map linear framebuffer in the kernel process address space
+    kernel_process
+        .virtual_address_space
+        .map_pfr_for_vma(
+            &vma,
+            fb_frame_range,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
+        )
+        .expect("map_pfr_for_vma failed for LAPIC");
 
     // Initialize terminal kernel thread and enable terminal logging
     init_terminal(
@@ -180,15 +212,15 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         }
         None => "Unknown",
     };
-    info!("OS Version: [{}]", version);
+    info!("OS Version: [{version}]");
     info!(
         "Git Version: [{} - {}]",
-        built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown"),
+        built_info::GIT_HEAD_REF.unwrap_or("Unknown"),
         git_commit
     );
-    info!("Build Date: [{}]", build_date);
+    info!("Build Date: [{build_date}]");
     info!("Compiler: [{}]", built_info::RUSTC_VERSION);
-    info!("Bootloader: [{}]", bootloader_name);
+    info!("Bootloader: [{bootloader_name}]");
 
     // Initialize ACPI tables
     info!("Initializing ACPI tables");
@@ -366,13 +398,13 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         bootloader_name
     );
 
-    // Dump information about all processes (including VMAs) 
+    // Dump information about all processes (including VMAs)
     process_manager().read().dump();
 
     // Start APIC timer & scheduler
     info!("Starting scheduler");
     apic().start_timer(10);
-
+     
     scheduler().start();
 }
 
@@ -428,7 +460,7 @@ fn kernel_image_region() -> PhysFrameRange {
         .unwrap();
     }
 
-    return PhysFrameRange { start, end };
+    PhysFrameRange { start, end }
 }
 
 /// Identifies usable memory and initialize physical memory management \
@@ -442,7 +474,7 @@ fn multiboot2_search_memory_map(
     };
 
     // Search memory map, provided by bootloader of EFI, for usable memory and initialize physical memory management
-    if let Some(_) = multiboot.efi_bs_not_exited_tag() {
+    if multiboot.efi_bs_not_exited_tag().is_some() {
         // EFI boot services have not been exited, and we obtain access to the memory map and EFI runtime services by exiting them manually
         info!("EFI boot services have not been exited yet");
         let image_tag = multiboot

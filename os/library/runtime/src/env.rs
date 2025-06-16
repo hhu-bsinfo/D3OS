@@ -12,6 +12,14 @@ const USER_SPACE_ARG_START: usize = USER_SPACE_ENV_START;
 pub(crate) const ARGC_PTR: *const usize = USER_SPACE_ARG_START as *const usize;
 pub(crate) const ARGV_PTR: *const *const u8 = (USER_SPACE_ARG_START + size_of::<*const usize>()) as *const *const u8;
 
+/// The heap can be as large as 1 TB, but only a tiny fraction (1 MB) is mapped
+/// at the beginning. Additional chunks will be mapped as needed, but userspace
+/// doesn't really notice.
+// TODO: move to USER_SPACE_ENV_START + 0x40000000 when stacks are at the top
+// It currently occupies the last TB.
+pub(crate) const HEAP_START: usize = 63 * 1024 * 1024 * 1024 * 1024;
+pub(crate) const HEAP_SIZE: usize = 1024 * 1024 * 1024 * 1024;
+
 pub fn args() -> Args {
     Args::new()
 }

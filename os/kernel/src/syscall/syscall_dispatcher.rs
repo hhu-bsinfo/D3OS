@@ -15,7 +15,7 @@ use x86_64::registers::control::{Efer, EferFlags};
 use x86_64::registers::model_specific::{KernelGsBase, LStar, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
-use crate::syscall::sys_vmem::sys_map_user_heap;
+use crate::syscall::sys_vmem::sys_map_memory;
 use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, };
 use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
     sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch};
@@ -85,7 +85,7 @@ impl SyscallTable {
             handle: [
                 sys_terminal_read as *const _,
                 sys_terminal_write as *const _,
-                sys_map_user_heap as *const _,
+                sys_map_memory as *const _,
                 sys_process_execute_binary as *const _,
                 sys_process_id as *const _,
                 sys_process_exit as *const _,

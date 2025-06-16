@@ -107,6 +107,7 @@ impl CursorThread {
     pub fn run(&mut self) {
         let mut sleep_counter = 0usize;
 
+
         loop {
             scheduler().sleep(CURSOR_UPDATE_INTERVAL);
             sleep_counter += CURSOR_UPDATE_INTERVAL;
@@ -228,6 +229,32 @@ impl LFBTerminal {
 
             cursor.pos.0 = 0;
             cursor.pos.1 += 1;
+        } else if c == 0x08 as char { // backspace key
+            // Store old cursor position and character before moving it one position left
+            let old_pos = cursor.pos;
+            let old_index = (old_pos.1 * display.size.0 + old_pos.0) as usize;
+            let old_char_value = match display.char_buffer[old_index].value {
+                '\0' => ' ',
+                value => value,
+            };
+            
+            // Create new character to overwrite the character to the left of the cursor
+            let new_char = Character { value: ' ', fg_color: color.fg_color, bg_color: color.bg_color };
+            
+            // Move the cursor one position to the left
+            cursor.pos.0 -= 1;
+            let new_index = (cursor.pos.1 * display.size.0 + cursor.pos.0) as usize;
+            
+            display.char_buffer[new_index] = new_char; // Remove character at the new location from the character buffer
+            
+            /* Restore character display at the old cursor position before moving.
+             * This is required, as the cursor might have been blinking before moving,
+             * leaving a filled rectangle at the old position.
+             */
+            LFBTerminal::print_char_at(&mut display, &mut color, old_char_value, old_pos);
+            
+            // Remove character at the new position from the screen
+            LFBTerminal::print_char_at(&mut display, &mut color, new_char.value, cursor.pos);
         } else {
             let char_width = LFBTerminal::print_char_at(&mut display, &mut color, c, cursor.pos);
             if char_width > 0 {
@@ -523,9 +550,7 @@ impl LFBTerminal {
         let mut bg_self = color.bg_base_color;
 
         if color.invert {
-            let tmp = fg_self;
-            fg_self = bg_self;
-            bg_self = tmp;
+            core::mem::swap(&mut fg_self, &mut bg_self);
         }
 
         if color.bright || color.fg_bright {
@@ -668,8 +693,8 @@ impl LFBTerminal {
     fn handle_ansi_erase_sequence(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState, code: u8, params: &Params) {
         let mut iter = params.iter();
         let param = iter.next();
-        let erase_code = if param.is_some() {
-            param.unwrap()[0]
+        let erase_code = if let Some(p) = param {
+            p[0]
         } else {
             0
         };
@@ -713,7 +738,7 @@ fn ansi_color(code: u16, iter: &mut ParamsIter) -> Option<Color> {
 fn parse_complex_color(iter: &mut ParamsIter) -> Option<Color> {
     let mode = iter.next()?[0];
 
-    return match mode {
+    match mode {
         2 => {
             let red = iter.next()?[0] as u8;
             let green = iter.next()?[0] as u8;
@@ -730,7 +755,7 @@ fn parse_complex_color(iter: &mut ParamsIter) -> Option<Color> {
             }
         }
         _ => None,
-    };
+    }
 }
 
 impl Perform for LFBTerminal {
@@ -741,6 +766,7 @@ impl Perform for LFBTerminal {
     fn execute(&mut self, byte: u8) {
         match byte {
             0x07 => LFBTerminal::handle_bell(),
+            0x08 => self.print_char(byte as char),
             0x09 => LFBTerminal::handle_tab(&mut self.display.lock(), &mut self.cursor.lock(), &mut self.color.lock()),
             0x0a => self.print_char('\n'),
             _ => {}

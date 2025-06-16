@@ -122,7 +122,7 @@ impl DirectoryObject for Dir {
 
     fn readdir(&self, index: usize) -> Result<Option<DirEntry>, Errno> {
         let dir_lock = self.0.read();
-        let (name, inode) = match dir_lock.files.iter().nth(index) {
+        let (name, inode) = match dir_lock.files.get(index) {
             Some(entry) => entry,
             None => {
                 return Ok(None);
@@ -177,12 +177,11 @@ impl FileObject for File {
             return Ok(0);
         }
 
-        let len;
-        if data.len() - offset < buf.len() {
-            len = data.len() - offset;
+        let len = if data.len() - offset < buf.len() {
+            data.len() - offset
         } else {
-            len = buf.len();
-        }
+            buf.len()
+        };
         buf[0..len].clone_from_slice(&data[offset..offset + len]);
         Ok(len)
     }

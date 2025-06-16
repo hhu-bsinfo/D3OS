@@ -9,13 +9,14 @@
 use crate::process::thread::Thread;
 use crate::{allocator, apic, scheduler, timer, tss};
 use alloc::collections::VecDeque;
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::ptr;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use smallmap::Map;
 use spin::{Mutex, MutexGuard};
+
 
 // thread IDs
 static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -27,8 +28,8 @@ pub fn next_thread_id() -> usize {
 /// Everything related to the ready state in the scheduler
 struct ReadyState {
     initialized: bool,
-    current_thread: Option<Rc<Thread>>,
-    ready_queue: VecDeque<Rc<Thread>>,
+    current_thread: Option<Arc<Thread>>,
+    ready_queue: VecDeque<Arc<Thread>>,
 }
 
 impl ReadyState {
@@ -44,8 +45,8 @@ impl ReadyState {
 /// Main struct of the scheduler
 pub struct Scheduler {
     ready_state: Mutex<ReadyState>,
-    sleep_list: Mutex<Vec<(Rc<Thread>, usize)>>,
-    join_map: Mutex<Map<usize, Vec<Rc<Thread>>>>, // manage which threads are waiting for a thread-id to terminate
+    sleep_list: Mutex<Vec<(Arc<Thread>, usize)>>,
+    join_map: Mutex<Map<usize, Vec<Arc<Thread>>>>, // manage which threads are waiting for a thread-id to terminate
 }
 
 unsafe impl Send for Scheduler {}
@@ -86,13 +87,13 @@ impl Scheduler {
     }
 
     /// Description: Return reference to current thread
-    pub fn current_thread(&self) -> Rc<Thread> {
+    pub fn current_thread(&self) -> Arc<Thread> {
         let state = self.get_ready_state();
         Scheduler::current(&state)
     }
 
     /// Description: Return reference to thread for the given `thread_id`
-    pub fn thread(&self, thread_id: usize) -> Option<Rc<Thread>> {
+    pub fn thread(&self, thread_id: usize) -> Option<Arc<Thread>> {
         self.ready_state.lock().ready_queue
             .iter()
             .find(|thread| thread.id() == thread_id)
@@ -101,6 +102,7 @@ impl Scheduler {
 
     /// Description: Start the scheduler, called only once from `boot.rs` 
     pub fn start(&self) {
+        // TODO: make sure this is actually called just once
         let mut state = self.get_ready_state();
         state.current_thread = state.ready_queue.pop_back();
 
@@ -112,7 +114,7 @@ impl Scheduler {
     /// 
     /// Parameters: `thread` thread to be inserted.
     /// 
-    pub fn ready(&self, thread: Rc<Thread>) {
+    pub fn ready(&self, thread: Arc<Thread>) {
         let id = thread.id();
         let mut join_map;
         let mut state;
@@ -144,8 +146,12 @@ impl Scheduler {
         let mut state = self.get_ready_state();
 
         if !state.initialized {
+            // Scheduler is not initialized yet, so this function has been called during the boot process
+            // So we do active waiting
             timer().wait(ms);
-        } else {
+        } 
+        else {
+            // Scheduler is initialized, so we can block the calling thread
             let thread = Scheduler::current(&state);
             let wakeup_time = timer().systime_ms() + ms;
             
@@ -175,16 +181,19 @@ impl Scheduler {
                 Scheduler::check_sleep_list(&mut state, &mut sleep_list);
             }
 
+            // Get clone of the current thread
             let current = Scheduler::current(&state);
-            let next = match state.ready_queue.pop_back() {
-                Some(thread) => thread,
-                None => return,
-            };
 
             // Current thread is initializing itself and may not be interrupted
             if current.stacks_locked() || tss().is_locked() {
                 return;
             }
+
+            // Try to get the next thread from the ready queue
+            let next = match state.ready_queue.pop_back() {
+                Some(thread) => thread,
+                None => return,
+            };
 
             let current_ptr = ptr::from_ref(current.as_ref());
             let next_ptr = ptr::from_ref(next.as_ref());
@@ -224,9 +233,8 @@ impl Scheduler {
         {
             // Execute in own block, so that the lock is released automatically (block() does not return)
             let mut join_map = self.join_map.lock();
-            let join_list = join_map.get_mut(&thread_id);
-            if join_list.is_some() {
-                join_list.unwrap().push(thread);
+            if let Some(join_list) = join_map.get_mut(&thread_id) {
+                join_list.push(thread);
             } else {
                 // Joining on a non-existent thread has no effect (i.e. the thread has already finished running)
                 return;
@@ -237,7 +245,7 @@ impl Scheduler {
     }
 
     /// Description: Exit calling thread.
-    pub fn exit(&self) {
+    pub fn exit(&self) -> ! {
         let mut ready_state;
         let current;
 
@@ -251,7 +259,7 @@ impl Scheduler {
             let join_list = join_map.get_mut(&current.id()).expect("Missing join_map entry!");
 
             for thread in join_list {
-                ready_state.ready_queue.push_front(Rc::clone(thread));
+                ready_state.ready_queue.push_front(Arc::clone(thread));
             }
 
             join_map.remove(&current.id());
@@ -259,6 +267,7 @@ impl Scheduler {
 
         drop(current); // Decrease Rc manually, because block() does not return
         self.block(&mut ready_state);
+        unreachable!()
     }
 
     /// 
@@ -284,7 +293,7 @@ impl Scheduler {
         let join_list = join_map.get_mut(&thread_id).expect("Missing join map entry!");
 
         for thread in join_list {
-            ready_state.ready_queue.push_front(Rc::clone(thread));
+            ready_state.ready_queue.push_front(Arc::clone(thread));
         }
 
         join_map.remove(&thread_id);
@@ -309,7 +318,7 @@ impl Scheduler {
             }
         }
 
-        let current = Scheduler::current(&state);
+        let current = Scheduler::current(state);
         let next = next_thread.unwrap();
 
         // Thread has enqueued itself into sleep list and waited so long, that it dequeued itself in the meantime
@@ -329,20 +338,20 @@ impl Scheduler {
     }
 
     /// Description: Return current running thread
-    fn current(state: &ReadyState) -> Rc<Thread> {
-        Rc::clone(state.current_thread.as_ref().expect("Trying to access current thread before initialization!"))
+    fn current(state: &ReadyState) -> Arc<Thread> {
+        Arc::clone(state.current_thread.as_ref().expect("Trying to access current thread before initialization!"))
     }
 
-    fn check_sleep_list(state: &mut ReadyState, sleep_list: &mut Vec<(Rc<Thread>, usize)>) {
+    fn check_sleep_list(state: &mut ReadyState, sleep_list: &mut Vec<(Arc<Thread>, usize)>) {
         let time = timer().systime_ms();
 
         sleep_list.retain(|entry| {
             if time >= entry.1 {
-                state.ready_queue.push_front(Rc::clone(&entry.0));
-                return false;
+                state.ready_queue.push_front(Arc::clone(&entry.0));
+                false
+            } else {
+                true
             }
-
-            return true;
         });
     }
 
@@ -367,13 +376,11 @@ impl Scheduler {
     }
 
     /// Description: Helper function returning `ReadyState` and `Map` of scheduler, each in a MutexGuard
-    fn get_ready_state_and_join_map(&self) -> (MutexGuard<ReadyState>, MutexGuard<Map<usize, Vec<Rc<Thread>>>>) {
+    fn get_ready_state_and_join_map(&self) -> (MutexGuard<ReadyState>, MutexGuard<Map<usize, Vec<Arc<Thread>>>>) {
         loop {
             let ready_state = self.get_ready_state();
-            let join_map = self.join_map.try_lock();
-
-            if join_map.is_some() {
-                return (ready_state, join_map.unwrap());
+            if let Some(join_map) = self.join_map.try_lock() {
+                return (ready_state, join_map);
             } else {
                 self.switch_thread_no_interrupt();
             }

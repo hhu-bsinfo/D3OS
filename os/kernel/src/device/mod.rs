@@ -11,3 +11,4 @@ pub mod pci;
 pub mod rtl8139;
 pub mod ide;
 pub mod mlx4;
+pub mod cpu;

@@ -27,5 +27,5 @@ pub fn is_available() -> bool {
         ]
     }
 
-    return id[0] == 'Q' as u8 && id[1] == 'E' as u8 && id[2] == 'M' as u8 && id[3] == 'U' as u8;
+    id[0] == b'Q' && id[1] == b'E' && id[2] == b'M' && id[3] == b'U'
 }

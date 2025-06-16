@@ -28,21 +28,21 @@
    ║  'MAIN_USER_STACK_START'. The next stack for the next user stack is     ║
    ║  allocated at 'MAIN_USER_STACK_START' + 'MAX_USER_STACK_SIZE' and so on.║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, HHU                                             ║
+   ║ Author: Fabian Ruhland & Michael Schoettner, 25.5.2025, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
 use crate::consts::MAIN_USER_STACK_START;
 use crate::consts::MAX_USER_STACK_SIZE;
-use crate::consts::{KERNEL_STACK_PAGES, USER_SPACE_ENV_START};
-use crate::memory::kstack::StackAllocator;
-use crate::memory::vmm::VmaType;
+use crate::consts::USER_SPACE_ENV_START;
+use crate::memory::stack;
+use crate::memory::stack::StackAllocator;
+use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process::process::Process;
 use crate::process::scheduler;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
-use crate::{memory, process_manager, scheduler, tss};
-use alloc::rc::Rc;
+use crate::{process_manager, scheduler, tss};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::naked_asm;
@@ -64,13 +64,35 @@ struct Stacks {
     old_rsp0: VirtAddr, // used for thread switching; rsp3 is stored in TSS
 }
 
-/// Thread meta data
+/// A thread is the unit of execution.
+/// 
+/// All threads have a kernel part; you can check whether this thread *just* has
+/// a kernel part by calling [`Thread::is_kernel_thread`].
+/// 
+/// Threads can be created in the following ways:
+/// * [`Thread::new_kernel_thread`]: for kernel threads
+/// * [`Thread::load_application`]: for the main thread of an application
+/// * [`Thread::new_user_thread`]: for additional threads of an application
+/// 
+/// This will allocate all required ressources, but will not actually start the
+/// thread. You need to call [`scheduler::Scheduler::ready`] to enqueue it.
+/// 
+/// When the scheduler first switches to the new thread, it will start with
+/// [`Thread::kickoff_kernel_thread`]. This sets up the TSS and then:
+/// * for a kernel thread: call the `entry` function,
+///   and [`scheduler::Scheduler::exit`] afterwards.
+/// * for a user thread: call `user_kickoff(entry)`,
+///   with `user_kickoff` being `library::concurrent::thread::kickoff_user_thread`.
+///   This is needed so that the actual `entry` function of the application
+///   can safely return.
 pub struct Thread {
     id: usize,
     stacks: Mutex<Stacks>,
     process: Arc<Process>, // reference to my process
-    entry: fn(), // user thread: =0;                 kernel thread: address of entry function
-    user_rip: VirtAddr, // user thread: elf-entry function; kernel thread: =0
+    /// for user threads: the address to jump to
+    user_kickoff: VirtAddr,
+    /// the actual entry point (eg. for user threads the single parameter to kickoff)
+    entry: fn(),
 }
 
 impl Stacks {
@@ -87,56 +109,68 @@ impl Stacks {
 }
 
 impl Thread {
+
     /// Create a kernel thread. Not started yet, nor registered in the scheduler. \
     /// `entry` is the thread entry function.
-    pub fn new_kernel_thread(entry: fn(), tag_str: &str) -> Rc<Thread> {
-        // alocate frames for kernel stack
-        let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
-            (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
-            StackAllocator::default(),
-        );
-
-        // add kernel stack to the virtual address space
-        process_manager()
+    pub fn new_kernel_thread(entry: fn(), tag_str: &str) -> Arc<Thread> {
+        let process = process_manager()
             .read()
-            .current_process()
+            .current_process();
+        let pid = process.id();
+        let tid = scheduler::next_thread_id();
+        
+        info!("new_kernel_thread: pid = {pid}, tid = {tid}, tag = {tag_str}");
+
+        // Allocate the kernel stack for the kernel thread
+        let kernel_stack = stack::alloc_kernel_stack(pid, tid);
+
+        // Allocate virtual memory area for kernel stack
+        let _vma = process
             .virtual_address_space
-            .map_kernel_stack(
-                PageRange {
-                    start: Page::from_start_address(VirtAddr::new(kernel_stack.as_ptr() as u64)).unwrap(),
-                    end: Page::from_start_address(VirtAddr::new(
-                        kernel_stack.as_ptr() as u64 + kernel_stack.capacity() as u64 * 8,
-                    )).unwrap(),
-                },
+            .alloc_vma(
+                Some( kernel_stack.allocator().get_start_page()),
+                kernel_stack.allocator().get_num_pages(),
+                MemorySpace::Kernel,
+                VmaType::KernelStack,
                 tag_str,
-            );
+            )
+            .expect("alloc_vma failed for kernel stack");
 
-        // empty user stack, so need to add it to the virtual address space
-        let user_stack = Vec::with_capacity_in(0, StackAllocator::default()); // Dummy stack
-
+        // Create empty user stack, so need to add it to the virtual address space
+        let user_stack: Vec<u64, StackAllocator> = stack::alloc_user_stack(pid, tid, MAIN_USER_STACK_START, 0);
+        
+        // Create the thread struct
         let thread = Thread {
-            id: scheduler::next_thread_id(),
+            id: tid,
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: process_manager()
                 .read()
                 .kernel_process()
                 .expect("Trying to create a kernel thread before process initialization!"),
+            user_kickoff: VirtAddr::zero(),
             entry,
-            user_rip: VirtAddr::zero(),
         };
 
         thread.prepare_kernel_stack();
-        Rc::new(thread)
+        Arc::new(thread)
     }
+
 
     /// Load application code from `elf_buffer`, create a process with a main thread. \
     /// `name` is the name of the application, `args` are the arguments passed to the application. \
     /// Returns the main thread of the application which is not yet registered in the scheduler.
-    pub fn load_application(elf_buffer: &[u8], name: &str, args: &Vec<&str>) -> Rc<Thread> {
+    pub fn load_application(elf_buffer: &[u8], name: &str, args: &Vec<&str>) -> Arc<Thread> {
         let process = process_manager().write().create_process();
-        //let address_space = process.address_space();
+        let pid = process.id();
+        let tid = scheduler::next_thread_id();
 
-        // Parse elf file headers and map code vma if successful
+        info!(
+            "load_application: pid = {pid}, tid = {tid}, name = {name}",
+        );
+
+        //
+        // Parse elf file headers and map code if successful
+        //
         let elf = Elf::parse(elf_buffer).expect("Failed to parse application");
         elf.program_headers
             .iter()
@@ -147,14 +181,47 @@ impl Thread {
                 } else {
                     (header.p_memsz as usize / PAGE_SIZE) + 1
                 };
-                let frames = memory::frames::alloc(page_count);
+
                 let virt_start = Page::from_start_address(VirtAddr::new(header.p_vaddr))
                     .expect("ELF: Program section not page aligned");
-                let pages = PageRange {
+                /*let pages = PageRange {
                     start: virt_start,
                     end: virt_start + page_count as u64,
-                };
+                };*/
 
+                // Allocate virtual memory area for the code and add it to the process
+                let vma = process.virtual_address_space.alloc_vma(
+                    Some(virt_start),
+                    page_count as u64,
+                    MemorySpace::User,
+                    VmaType::Code,
+                    name,
+                );
+                if vma.is_none() {
+                    panic!("alloc_vma failed for code section");
+                }
+                let vma = vma.unwrap();
+
+                // Allocate frames for the code section
+                let frames = process.virtual_address_space.alloc_pf_for_vma(&vma);
+                if frames.is_none() {
+                    panic!("alloc_pf_for_vma failed for code section");
+                }
+                let frames = frames.unwrap();
+
+                // Map code section to the process
+                let res = process.virtual_address_space.map_pfr_for_vma(
+                    &vma,
+                    frames,
+                    PageTableFlags::PRESENT
+                        | PageTableFlags::WRITABLE
+                        | PageTableFlags::USER_ACCESSIBLE,
+                );
+                if res.is_err() {
+                    panic!("map_pfr_for_vma failed");
+                }
+
+                // copy code from the ELF file to the allocated frames
                 unsafe {
                     let code = elf_buffer.as_ptr().offset(header.p_offset as isize);
                     let target = frames.start.start_address().as_u64() as *mut u8;
@@ -163,54 +230,11 @@ impl Thread {
                         .offset(header.p_filesz as isize)
                         .write_bytes(0, (header.p_memsz - header.p_filesz) as usize);
                 }
-                process.virtual_address_space.map_physical(
-                    frames,
-                    pages,
-                    MemorySpace::User,
-                    PageTableFlags::PRESENT
-                        | PageTableFlags::WRITABLE
-                        | PageTableFlags::USER_ACCESSIBLE,
-                    VmaType::Code,
-                    name
-                );
             });
 
-        // create kernel stack for the application
-        let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
-            (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
-            StackAllocator::default(),
-        );
-
-        // create user stack for the application
-        let user_stack_end = Page::from_start_address(VirtAddr::new(
-            (MAIN_USER_STACK_START + MAX_USER_STACK_SIZE) as u64,
-        ))
-        .unwrap();
-    
-        let user_stack_pages = PageRange {
-            start: user_stack_end - 1,
-            end: user_stack_end,
-        };
-
-        let user_stack = unsafe {
-            Vec::from_raw_parts_in(
-                user_stack_pages.start.start_address().as_u64() as *mut u64,
-                0,
-                PAGE_SIZE / 8,
-                StackAllocator::default(),
-            )
-        };
-
-        // map user stack of the application
-        process.virtual_address_space.map(
-            user_stack_pages,
-            MemorySpace::User,
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-            VmaType::UserStack,
-            ""
-        );
-
-        info!("Created user stack for thread: {:x?}", user_stack_pages);
+        //
+        // Create and init environment for the application
+        //
 
         // create environment for the application
         let args_size = args.iter().map(|arg| arg.len()).sum::<usize>();
@@ -222,21 +246,32 @@ impl Thread {
         } else {
             (env_size / PAGE_SIZE) + 1
         };
-        let env_frames = memory::frames::alloc(env_page_count);
-        let env_pages = PageRange {
-            start: env_virt_start,
-            end: env_virt_start + env_page_count as u64,
-        };
 
-        // map environment of the application
-        process.virtual_address_space.map_physical(
+        // Allocate virtual memory area for environment of the application
+        let env_vma = process
+            .virtual_address_space
+            .alloc_vma(
+                Some( env_virt_start ),
+                env_page_count as u64,
+                MemorySpace::User,
+                VmaType::Environment,
+                "",
+            )
+            .expect("alloc_vma failed for kernel stack of main thread");
+
+        // Allocate frames for the environment of the application
+        let env_frames = process.virtual_address_space.alloc_pf_for_vma(&env_vma)
+            .expect("alloc_pf_for_vma failed for environment");
+
+        // Map environment of the application
+        let res = process.virtual_address_space.map_pfr_for_vma(
+            &env_vma,
             env_frames,
-            env_pages,
-            MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-            VmaType::Environment,
-            ""
         );
+        if res.is_err() {
+            panic!("map_pfr_for_vma failed for environment");
+        }
 
         // create argc and argv in the user space environment
         let env_addr = VirtAddr::new(env_frames.start.start_address().as_u64()); // Start address of user space environment
@@ -247,7 +282,7 @@ impl Thread {
         unsafe {
             argc.write(args.len() + 1);
 
-            let args_begin = argv.offset((args.len() + 1) as isize) as *mut u8; // Physical start address of arguments (we use this address to copy them)
+            let args_begin = argv.add(args.len() + 1) as *mut u8; // Physical start address of arguments (we use this address to copy them)
             let args_begin_virt = env_virt_start.start_address()
                 + size_of::<usize>() as u64
                 + ((args.len() + 1) * size_of::<usize>()) as u64; // Virtual start address of arguments (they will be visible here in user space)
@@ -272,90 +307,109 @@ impl Thread {
         }
 
         // create thread
-        let thread = Thread {
-            id: scheduler::next_thread_id(),
-            stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
-            process,
-            entry: || {},
-// old           entry: unsafe { mem::transmute(ptr::null::<fn()>()) },
-            user_rip: VirtAddr::new(elf.entry),
-        };
-
-        info!("***ms thread");
-
-        thread.prepare_kernel_stack();
-        Rc::new(thread)
+        // this first thread is special in that there is not really a kickoff;
+        // we just jump to the ELF's entry point
+        // TODO: this leaks a kernel address to user space
+        Self::new_user_thread(process, VirtAddr::new(elf.entry), || {})
     }
+
 
     /// Create user thread. Not started yet, nor registered in the scheduler. \
     /// `parent` is the process the thread belongs to. \
-    /// `kickoff_addr` address of the first function to be called before the thread `entry` function is executed. \
+    /// `kickoff_addr` address of the first function to be called,
+    /// with the `entry` function is the parameter. \
     /// This indirection ensures that the thread calls exit when it is done, see `library::concurrent::thread`.
     pub fn new_user_thread(
         parent: Arc<Process>,
         kickoff_addr: VirtAddr,
         entry: fn(),
-    ) -> Rc<Thread> {
-        // alloc memory for kernel stack
-        let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
-            (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
-            StackAllocator::default(),
-        );
+    ) -> Arc<Thread> {
+        let pid = parent.id();
+        let tid = scheduler::next_thread_id(); // get id for new thread
+
+        //
+        // Create kernel stack of main thread
+        //
+
+        // Allocate kernel stack for the main thread
+        let kernel_stack = stack::alloc_kernel_stack(pid, tid);
+
+        // Allocate virtual memory area for kernel stack
+        let _kernel_stack_vma = parent
+            .virtual_address_space
+            .alloc_vma(
+                Some( kernel_stack.allocator().get_start_page()),
+                kernel_stack.allocator().get_num_pages(),
+                MemorySpace::Kernel,
+                VmaType::KernelStack,
+                "user",
+            )
+            .expect("alloc_vma failed for kernel stack of user thread");
+
+        //
+        // Create user stack for the application
+        //
 
         // get highest stack vma in my address space
-        let stack_vmas = parent.virtual_address_space.find_vmas(VmaType::UserStack);
-        let highest_stack_vma = stack_vmas
-            .last()
-            .expect("Trying to create a user thread, before the main thread has been created!");
+        let highest_stack_vma = parent.virtual_address_space
+            .iter_vmas()
+            .filter(|vma| vma.typ == VmaType::UserStack)
+            .max_by(|a, b| a.range.end.cmp(&b.range.end));
+        let stack_start = if let Some(vma) = highest_stack_vma {
+            // from there allocate new user stack
+            let user_stack_start : Page<Size4KiB> = Page::from_start_address(
+                vma.end(),
+            ).unwrap();
+            let user_stack_end = user_stack_start + (MAX_USER_STACK_SIZE / PAGE_SIZE) as u64;
 
-        // from there allocate new user stack
-        let user_stack_end = Page::<Size4KiB>::from_start_address(
-            highest_stack_vma.end() + MAX_USER_STACK_SIZE as u64,
-        )
-        .unwrap();
-        let user_stack_pages = PageRange {
-            start: user_stack_end - 1,
-            end: user_stack_end,
+            let user_stack_pages = PageRange {
+                start: user_stack_start,
+                end: user_stack_end,
+            };
+            user_stack_pages.start.start_address().as_u64() as usize
+        } else {
+            MAIN_USER_STACK_START
         };
 
-        let user_stack = unsafe {
-            Vec::from_raw_parts_in(
-                user_stack_pages.start.start_address().as_u64() as *mut u64,
-                0,
-                PAGE_SIZE / 8,
-                StackAllocator::default(),
+        // Alloc user stack for the main thread
+        let user_stack: Vec<u64, StackAllocator> = stack::alloc_user_stack(pid, tid, stack_start, MAX_USER_STACK_SIZE);
+
+        // Allocate virtual memory area for user stack
+        let user_stack_vma = parent
+            .virtual_address_space
+            .alloc_vma(
+                Some( user_stack.allocator().get_start_page() ),
+                user_stack.allocator().get_num_pages(),
+                MemorySpace::Kernel,
+                VmaType::UserStack,
+                "user"
             )
-        };
+            .expect("alloc_vma failed for user stack of user thread");
 
-        // id for new thread
-        let tid = scheduler::next_thread_id();
-
-        // map one page as PRESENT for the allocated user stack
-        parent.virtual_address_space.map(
-            user_stack_pages,
+        parent.virtual_address_space.map_partial_vma(
+            &user_stack_vma,
+            PageRange {start: user_stack_vma.range.end - 1, end: user_stack_vma.range.end},
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-            VmaType::UserStack,
-            ""
         );
-
+        
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
             id: tid,
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: parent,
+            user_kickoff: kickoff_addr,
             entry,
-            user_rip: kickoff_addr,
         };
 
-        info!("Created user stack for thread: {:x?}", user_stack_pages);
+        info!("Created user stack for thread at 0x{stack_start:x?}");
 
         thread.prepare_kernel_stack();
-        Rc::new(thread)
+        Arc::new(thread)
     }
 
     /// Called first for both a new kernel and a new user thread
-    fn kickoff_kernel_thread() {
+    fn kickoff_kernel_thread() -> ! {
         let scheduler = scheduler();
         scheduler.set_init(); // scheduler initialized
 
@@ -363,15 +417,17 @@ impl Thread {
         tss().lock().privilege_stack_table[0] = thread.kernel_stack_addr(); // get stack pointer for kernel stack
 
         if thread.is_kernel_thread() {
+            assert!(thread.user_kickoff.is_null());
             (thread.entry)(); // Directly call the entry function of kernel thread
             drop(thread); // Manually decrease reference count, because exit() will never return
             scheduler.exit();
         } else {
+            assert!(!thread.user_kickoff.is_null());
             let thread_ptr = ptr::from_ref(thread.as_ref());
             drop(thread); // Manually decrease reference count, because switch_to_user_mode() will never return
 
             let thread_ref = unsafe { thread_ptr.as_ref().unwrap() };
-            thread_ref.switch_to_user_mode(); // call entry function of user thread
+            thread_ref.switch_to_user_mode(); // call kickoff function of user thread
             // exit is in the entry function -> runtime::lib.rs
         }
     }
@@ -393,7 +449,11 @@ impl Thread {
         let current_rsp0 = ptr::from_ref(&current.stacks.lock().old_rsp0) as *mut u64;
         let next_rsp0 = next.stacks.lock().old_rsp0.as_u64();
         let next_rsp0_end = next.kernel_stack_addr().as_u64();
-        let next_address_space = next.process.virtual_address_space.page_table_address().as_u64();
+        let next_address_space = next
+            .process
+            .virtual_address_space
+            .page_table_address()
+            .as_u64();
 
         unsafe {
             thread_switch(current_rsp0, next_rsp0, next_rsp0_end, next_address_space);
@@ -403,36 +463,6 @@ impl Thread {
     /// Check if stacks are locked
     pub fn stacks_locked(&self) -> bool {
         self.stacks.is_locked()
-    }
-
-    /// Grow user stack on demand
-    pub fn grow_user_stack(&self) {
-        let mut stacks = self.stacks.lock();
-
-        // Grow stack area -> Allocate one page right below the stack
-        self.process
-             .virtual_address_space
-            .find_vmas(VmaType::UserStack)
-            .iter()
-            .find(|vma| vma.start().as_u64() == stacks.user_stack.as_ptr() as u64)
-            .expect("Failed to find VMA for growing stack")
-            .grow_downwards(1);
-
-        // Adapt stack Vec to new start address
-        let user_stack_capacity = stacks.user_stack.capacity() + (PAGE_SIZE / 8);
-        if user_stack_capacity > MAX_USER_STACK_SIZE / 8 {
-            panic!("Stack overflow!");
-        }
-
-        let user_stack_start = stacks.user_stack.as_ptr() as usize - PAGE_SIZE;
-        stacks.user_stack = unsafe {
-            Vec::from_raw_parts_in(
-                user_stack_start as *mut u64,
-                0,
-                user_stack_capacity,
-                StackAllocator::default(),
-            )
-        };
     }
 
     /// Check if self is a kernel only thread or not
@@ -475,6 +505,10 @@ impl Thread {
         let stack_addr = stacks.kernel_stack.as_ptr() as u64;
         let capacity = stacks.kernel_stack.capacity();
 
+/*        info!(
+            "Preparing kernel stack for thread {} with capacity {}",
+            self.id, capacity
+        );*/
         // init stack with 0s
         for _ in 0..stacks.kernel_stack.capacity() {
             stacks.kernel_stack.push(0);
@@ -506,7 +540,7 @@ impl Thread {
     }
 
     /// Switch a thread to user mode by preparing a fake stackframe
-    fn switch_to_user_mode(&self) {
+    fn switch_to_user_mode(&self) -> ! {
         let old_rsp0: u64;
 
         {
@@ -516,12 +550,7 @@ impl Thread {
             let user_stack_addr = stacks.user_stack.as_ptr() as u64;
             let capacity = stacks.kernel_stack.capacity();
 
-            // init stack with 0s
-            for _ in 0..stacks.user_stack.capacity() {
-                stacks.user_stack.push(0);
-            }
-
-            stacks.kernel_stack[capacity - 6] = self.user_rip.as_u64(); // Address of entry point for user thread
+            stacks.kernel_stack[capacity - 6] = self.user_kickoff.as_u64(); // Address of entry point for user thread
 
             stacks.kernel_stack[capacity - 5] = SegmentSelector::new(4, Ring3).0 as u64; // cs = user code segment
             stacks.kernel_stack[capacity - 4] = 0x202; // rflags (Interrupts enabled)
@@ -570,7 +599,7 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
 /// Low-level function for starting a thread in user mode
 #[unsafe(naked)]
 #[allow(improper_ctypes_definitions)] // 'entry' takes no arguments and has no return value, so we just assume that the "C" and "Rust" ABIs act the same way in this case
-unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
+unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) -> ! {
     naked_asm!(
         "mov rsp, rdi", // Load 'old_rsp' (first parameter)
         "mov rdi, rsi", // Second parameter becomes first parameter for 'kickoff_user_thread()'
@@ -580,7 +609,12 @@ unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
 
 /// Low-level thread switching function
 #[unsafe(naked)]
-unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_rsp0_end: u64, next_cr3: u64) {
+unsafe extern "C" fn thread_switch(
+    current_rsp0: *mut u64,
+    next_rsp0: u64,
+    next_rsp0_end: u64,
+    next_cr3: u64,
+) {
     naked_asm!(
     // Save registers of current thread
     "pushf",

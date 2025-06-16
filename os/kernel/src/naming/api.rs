@@ -64,7 +64,7 @@ pub fn open(path: &String, flags: OpenOptions) -> Result<usize, Errno> {
 /// Write all bytes from the given `buffer` into the named object referenced by `object_handle`. \
 /// Returns `Ok(number of bytes written)` or `Err`.
 pub fn write(object_handle: usize, buffer: &[u8]) -> Result<usize, Errno> {
-    open_objects::write(object_handle, &buffer)
+    open_objects::write(object_handle, buffer)
 }
 
 /// Read from the named object referenced by `object_handle` into the given `buffer`. \
@@ -87,7 +87,7 @@ pub fn close(object_handle: usize) -> Result<usize, Errno> {
 
 /// Create a directory for the given `path`. \
 /// Returns `Ok(0)` or `Err(errno)`
-pub fn mkdir(path: &String) -> Result<usize, Errno> {
+pub fn mkdir(path: &str) -> Result<usize, Errno> {
     // Split the path into components
     let mut components: Vec<&str> = path.split("/").collect();
 
@@ -95,12 +95,11 @@ pub fn mkdir(path: &String) -> Result<usize, Errno> {
     let new_dir_name = components.pop();
 
     // We need parent directory to create the new directory
-    let parent_dir;
-    if components.len() == 1 {
-        parent_dir = "/".to_string();
+    let parent_dir = if components.len() == 1 {
+        "/".to_string()
     } else {
-        parent_dir = components.join("/"); // Joins the remaining components
-    }
+        components.join("/") // Joins the remaining components
+    };
 
     // Safely lookup the parent directory and create the new file
     let result = lookup::lookup_dir(&parent_dir)
@@ -122,7 +121,7 @@ pub fn mkdir(path: &String) -> Result<usize, Errno> {
 
 /// Create an empty file defined by `path`. \
 /// Returns `Ok(0)` or `Err(errno)`
-pub fn touch(path: &String) -> Result<usize, Errno> {
+pub fn touch(path: &str) -> Result<usize, Errno> {
     // Split the path into components
     let mut components: Vec<&str> = path.split("/").collect();
 
@@ -130,12 +129,11 @@ pub fn touch(path: &String) -> Result<usize, Errno> {
     let new_file_name = components.pop();
 
     // We need parent directory to create the new file
-    let parent_dir;
-    if components.len() == 1 {
-        parent_dir = "/".to_string();
+    let parent_dir = if components.len() == 1 {
+        "/".to_string()
     } else {
-        parent_dir = components.join("/"); // Joins the remaining components
-    }
+        components.join("/") // Joins the remaining components
+    };
 
     // Safely lookup the parent directory and create the new file
     let result = lookup::lookup_dir(&parent_dir)
@@ -160,7 +158,7 @@ pub fn touch(path: &String) -> Result<usize, Errno> {
 ///   `Ok(1)` next directory entry in `dentry` \
 ///   `Ok(0)` no more entries in the directory \
 ///   `Err`   error code
-pub fn readdir(dir_handle: usize, dentry: *mut RawDirent) -> Result<usize, Errno> {
+pub fn readdir(dir_handle: usize, dentry: Option<&mut RawDirent>) -> Result<usize, Errno> {
     let res = open_objects::readdir(dir_handle);
     match res {
         Ok(dir_entry) => {
@@ -174,13 +172,11 @@ pub fn readdir(dir_handle: usize, dentry: *mut RawDirent) -> Result<usize, Errno
                     de.d_name[..len].copy_from_slice(&name_bytes[..len]);
 
                     // Write the Dirent structure to the provided dentry pointer
-                    unsafe {
-                        if !dentry.is_null() {
-                            *dentry = de;
-                            return Ok(1); // Indicate success
-                        } else {
-                            return Err(Errno::EUNKN); // Handle null pointer case
-                        }
+                    if let Some(dentry) = dentry {
+                        *dentry = de;
+                        Ok(1) // Indicate success
+                    } else {
+                        Err(Errno::EUNKN) // Handle null pointer case
                     }
                 }
                 None => Ok(0),
@@ -220,7 +216,7 @@ pub fn cwd(buffer: &mut [u8]) -> Result<usize, Errno> {
 /// Return: `Ok(0)` or `Err(errno)`
 ///
 pub fn cd(path: &String) -> Result<usize, Errno> {
-    let result = lookup::lookup_dir(&path);
+    let result = lookup::lookup_dir(path);
     match result {
         Ok(_) => {
             let mut cwd = CWD.lock();

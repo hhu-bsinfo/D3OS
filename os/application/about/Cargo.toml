@@ -1,0 +1,22 @@
+[package]
+edition = "2024"
+name = "about"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/about.rs"
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+terminal = { path = "../../library/terminal" }
+
+# External dependencies
+chrono = { version = "0.4.40", default-features = false, features = ["alloc"] }
+serde_json = { version = "1.0.109", default-features = false, features = [ "alloc" ] }
+serde = { version = "1.0.219", default-features = false, features = ["derive"] }
+
+[build-dependencies]
+built = { version = "0.7.7", features = ["chrono", "git2"] }

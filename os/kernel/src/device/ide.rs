@@ -30,7 +30,7 @@ use crate::storage::block::BlockDevice;
 pub fn init() {
     let devices = pci_bus().search_by_class(0x01, 0x01);
     for device in devices {
-        let device_id = device.read().header().id(&pci_bus().config_space());
+        let device_id = device.read().header().id(pci_bus().config_space());
         info!("Found IDE controller [{}:{}]", device_id.0, device_id.1);
 
         let ide_controller = Arc::new(IdeController::new(device));
@@ -257,12 +257,12 @@ impl IdeController {
         let pci_config_space = pci_bus().config_space();
         let mut pci_device = pci_device.write();
 
-        let id = pci_device.header().id(&pci_config_space);
-        let mut rev_and_class = pci_device.header().revision_and_class(&pci_config_space);
+        let id = pci_device.header().id(pci_config_space);
+        let mut rev_and_class = pci_device.header().revision_and_class(pci_config_space);
         info!("Initializing IDE controller [0x{:04x}:0x{:04x}]", id.0, id.1);
 
         let mut supports_dma = false;
-        pci_device.update_command(&pci_config_space, |command| {
+        pci_device.update_command(pci_config_space, |command| {
             if rev_and_class.3 & 0x80 == 0x80 { // Bit 7 in programming defines whether the controller supports DMA
                 info!("IDE controller supports DMA");
                 supports_dma = true;
@@ -275,7 +275,7 @@ impl IdeController {
 
         for i in 0..CHANNELS_PER_CONTROLLER {
             let dma_base_address: u16 = match supports_dma {
-                true => pci_device.bar(4, &pci_config_space).expect("Failed to read DMA base address").unwrap_io() as u16,
+                true => pci_device.bar(4, pci_config_space).expect("Failed to read DMA base address").unwrap_io() as u16,
                 false => 0
             };
 
@@ -283,14 +283,14 @@ impl IdeController {
             // First bit defines whether the channel is running in compatibility or native mode
             // Second bit defines whether mode change is supported
             if interface & 0x01 == 0x00 && interface  & 0x02 == 0x02 {
-                info!("Changing mode of channel [{}] to native mode", i);
+                info!("Changing mode of channel [{i}] to native mode");
                 unsafe {
                     // Set first bit of channel interface to 1
                     let value = pci_config_space.read(pci_device.header().address(), 0x08);
                     pci_config_space.write(pci_device.header().address(), 0x08, value | (0x01 << i * 2) << 8);
                 }
 
-                rev_and_class = pci_device.header().revision_and_class(&pci_config_space);
+                rev_and_class = pci_device.header().revision_and_class(pci_config_space);
                 interface = rev_and_class.3 >> i * 2;
             }
 
@@ -298,16 +298,16 @@ impl IdeController {
             let command_and_control_base_address = match interface & 0x01 {
                 0x00 => {
                     // Channel is running in compatibility mode -> Use default base address
-                    info!("Channel [{}] is running in compatibility mode", i);
+                    info!("Channel [{i}] is running in compatibility mode");
                     (DEFAULT_BASE_ADDRESSES[i as usize], DEFAULT_CONTROL_BASE_ADDRESSES[i as usize])
                 },
                 _ => {
                     // Channel is running in native mode -> Read base address from PCI registers
-                    info!("Channel [{}] is running in native mode", i);
-                    interrupts[i as usize] = InterruptVector::try_from(pci_device.interrupt(&pci_config_space).0).unwrap();
+                    info!("Channel [{i}] is running in native mode");
+                    interrupts[i as usize] = InterruptVector::try_from(pci_device.interrupt(pci_config_space).0).unwrap();
 
-                    (pci_device.bar(0, &pci_config_space).expect("Failed to read command base address").unwrap_io() as u16,
-                     pci_device.bar(1, &pci_config_space).expect("Failed to read control base address").unwrap_io() as u16)
+                    (pci_device.bar(0, pci_config_space).expect("Failed to read command base address").unwrap_io() as u16,
+                     pci_device.bar(1, pci_config_space).expect("Failed to read control base address").unwrap_io() as u16)
                 }
             };
 
@@ -526,7 +526,7 @@ impl IdeChannel {
             }
 
             if current_status.contains(Status::Error) {
-                error!("Error while waiting for status: 0x{:02x}", status);
+                error!("Error while waiting for status: 0x{status:02x}");
                 return false;
             }
 
@@ -666,8 +666,8 @@ impl IdeChannel {
             return None;
         }
 
-        for i in 0..256 {
-            buffer[i] = unsafe { self.command.data.read() };
+        for item in &mut buffer {
+            *item = unsafe { self.command.data.read() };
         }
 
         info.typ = drive_type;
@@ -803,7 +803,7 @@ impl IdeChannel {
                 while read < count {
                     // Wait for the drive to be ready
                     if read > 0 && !Self::wait_status(&mut self.control.alternate_status, Status::DriveReady, WAIT_ON_STATUS_TIMEOUT) {
-                        warn!("Drive did not answer after reading {}/{} sectors", read, count);
+                        warn!("Drive did not answer after reading {read}/{count} sectors");
                         break;
                     }
 
@@ -824,7 +824,7 @@ impl IdeChannel {
                 while written < count {
                     // Wait for the drive to be ready
                     if written > 0 && !Self::wait_status(&mut self.control.alternate_status, Status::DriveReady, WAIT_ON_STATUS_TIMEOUT) {
-                        warn!("Drive did not answer after writing {}/{} sectors", written, count);
+                        warn!("Drive did not answer after writing {written}/{count} sectors");
                         break;
                     }
 
@@ -986,12 +986,11 @@ impl IdeChannel {
             let buffer_index = processed_sectors * info.sector_size as usize;
             let buffer_end = buffer_index + count as usize * info.sector_size as usize;
 
-            let sectors;
-            if self.supports_dma && info.supports_dma() {
-                sectors = self.perform_ata_dma(info, mode, start, count, &mut buffer[buffer_index..buffer_end]);
+            let sectors = if self.supports_dma && info.supports_dma() {
+                self.perform_ata_dma(info, mode, start, count, &mut buffer[buffer_index..buffer_end])
             } else {
-                sectors = self.perform_ata_pio(info, mode, start, count, &mut buffer[buffer_index..buffer_end]);
-            }
+                self.perform_ata_pio(info, mode, start, count, &mut buffer[buffer_index..buffer_end])
+            };
 
             if sectors == 0 {
                 break;

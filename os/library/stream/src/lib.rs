@@ -23,7 +23,7 @@ impl Write for dyn OutputStream {
     }
 }
 
-pub fn strlen(str: *const u8) -> usize {
+pub unsafe fn strlen(str: *const u8) -> usize {
     let mut len = 0;
     unsafe {
         while *str.add(len) != 0 {
