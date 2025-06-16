@@ -179,6 +179,7 @@ impl Interactable for Canvas {
     ) -> Option<Box<dyn FnOnce() -> ()>> {
         if mouse_event.buttons.left.is_pressed() {
             self.is_selected = !self.is_selected;
+            self.mark_dirty();
         }
 
         None

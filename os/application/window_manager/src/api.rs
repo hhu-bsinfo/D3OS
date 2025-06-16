@@ -40,7 +40,7 @@ use self::component::ComponentStyling;
 extern crate alloc;
 
 /// Default app to be used on startup of a new workspace
-pub static DEFAULT_APP: &str = "canvas";
+pub static DEFAULT_APP: &str = "editor";
 
 /// Logical screen resolution, used by apps for describing component locations
 pub const LOG_SCREEN: (u32, u32) = (1000, 750);
