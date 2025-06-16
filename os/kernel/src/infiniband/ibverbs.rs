@@ -87,8 +87,8 @@ pub use ffi::ibv_wc;
 pub use ffi::ibv_wc_opcode;
 pub use ffi::ibv_wc_status;
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+//#[cfg(feature = "serde")]
+//use serde::{Deserialize, Serialize};
 
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
 pub use ffi::ibv_access_flags;
@@ -178,7 +178,7 @@ impl<'d> From<&'d ffi::ibv_device> for Device<'d> {
 /// This struct acts as a rust wrapper for GUID value represented as `__be64` in
 /// libibverbs. We introduce this struct, because u64 is stored in host
 /// endianness, whereas ibverbs stores GUID in network order (big endian).
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+//#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[repr(transparent)]
 pub struct Guid {
@@ -902,7 +902,7 @@ pub struct PreparedQueuePair<'res> {
 /// For continuity, the methods `subnet_prefix` and `interface_id` are provided.
 /// These methods read the array as big endian, regardless of native cpu
 /// endianness.
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+//#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[repr(transparent)]
 pub struct Gid {
@@ -957,7 +957,7 @@ impl AsMut<ffi::ibv_gid> for Gid {
 ///
 /// Internally, this contains the `QueuePair`'s `qp_num`, as well as the context's `lid` and `gid`.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+//#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct QueuePairEndpoint {
     /// the `QueuePair`'s `qp_num`
     pub num: u32,
@@ -1139,7 +1139,7 @@ impl<'pd, T> LocalMemoryRegion<'pd, T> {
 ///
 /// Having this information authorizes direct memory access to a memory region.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+//#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RemoteMemoryRegion<T> {
     /// the remote pointer
     pub addr: u64,
@@ -1346,7 +1346,7 @@ impl<'res> QueuePair<'res> {
         // ... However, if the IBV_SEND_INLINE flag was set, the  buffer  can  be reused
         // immediately after the call returns.
 
-        let _bad_wr = self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, &mut wr)?;
+        let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, &mut wr)? };
         Ok(())
     }
 
@@ -1414,7 +1414,7 @@ impl<'res> QueuePair<'res> {
         // means that in all cases, the actual data of the incoming message will start at an offset
         // of 40 bytes into the buffer(s) in the scatter list.
 
-        let _bad_wr = self.qp.ops.post_recv.as_ref().unwrap()(&mut self.qp, &mut wr)?;
+        let _bad_wr = unsafe { self.qp.ops.post_recv.as_ref().unwrap()(&mut self.qp, &mut wr)? };
         Ok(())
     }
 
@@ -1518,7 +1518,7 @@ impl<'res> QueuePair<'res> {
         // ... However, if the IBV_SEND_INLINE flag was set, the  buffer  can  be reused
         // immediately after the call returns.
 
-        let _bad_wr = self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, &mut wr)?;
+        let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, &mut wr)? };
         Ok(())
     }
 
@@ -1622,12 +1622,12 @@ impl<'res> QueuePair<'res> {
         // ... However, if the IBV_SEND_INLINE flag was set, the  buffer  can  be reused
         // immediately after the call returns.
 
-        let _bad_wr = self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, &mut wr)?;
+        let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, &mut wr)? };
         Ok(())
     }
 }
 
-#[cfg(all(test, feature = "serde"))]
+/*#[cfg(all(test, feature = "serde"))]
 mod test_serde {
     use super::*;
     #[test]
@@ -1661,4 +1661,4 @@ mod test_serde {
         println!("{:#08x}", guid.oui());
         assert_eq!(guid.oui(), 0x123456);
     }
-}
+} */

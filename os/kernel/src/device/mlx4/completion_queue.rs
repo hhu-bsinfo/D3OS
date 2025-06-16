@@ -22,7 +22,7 @@ use super::{
     event_queue::EventQueue,
     fw::{Capabilities, DoorbellPage},
     icm::{MrTable, ICM_PAGE_SHIFT},
-    mlx4_ib::Offsets,
+    Offsets
 };
 
 #[derive(Debug)]

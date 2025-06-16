@@ -42,6 +42,9 @@ args = [
     # Network configuration
     "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+    
+    # Infiniband configuration
+    "-device vfio-pci,host=${CARGO_INFINIBAND_BUS_ID}",
 
     # Audio configuration (Using pulse audio for Linux)
     "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
@@ -76,6 +79,9 @@ args = [
     # Network configuration
     "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+
+    # Infiniband configuration
+    "-device vfio-pci,host=${CARGO_INFINIBAND_BUS_ID}",
 
     # Audio configuration (Using pulse audio for Linux)
     "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",

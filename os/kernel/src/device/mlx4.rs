@@ -3,28 +3,37 @@
 //! This is (very) roughly based on [the Nautilus driver](https://github.com/HExSA-Lab/nautilus/blob/master/src/dev/mlx3_ib.c)
 //! and the existing mlx5 driver.
 
-use log::trace;
+mod cmd;
+mod completion_queue;
+mod device;
+mod event_queue;
+mod fw;
+mod icm;
+mod port;
+mod profile;
+mod queue_pair;
+mod utils;
 
+use log::trace;
 use alloc::vec::Vec;
 use pci_types::{CommandRegister, EndpointHeader};
-use super::cmd::CommandInterface;
-use super::completion_queue::CompletionQueue;
-use super::event_queue::{init_eqs, EventQueue};
-use super::fw::{Capabilities, Hca, MappedFirmwareArea};
-use super::icm::MappedIcmTables;
+use cmd::CommandInterface;
+use completion_queue::CompletionQueue;
+use event_queue::{init_eqs, EventQueue};
+use fw::{Capabilities, Hca, MappedFirmwareArea};
+use icm::MappedIcmTables;
 
 use crate::infiniband::ib_core::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_type, ibv_recv_wr, ibv_send_wr, ibv_wc};
 
-
-use super::port::Port;
-use super::queue_pair::QueuePair;
-use spin::{Once, Mutex}; 
-use super::{utils, utils::MappedPages};
+use port::Port;
+use queue_pair::QueuePair;
+use spin::{Once, Mutex, RwLock}; 
+use utils::MappedPages;
 use crate::pci_bus;
 
-use super::device::{Ownership, ResetRegisters};
-use super::fw::Firmware;
-use super::profile::Profile;
+use device::{Ownership, ResetRegisters};
+use fw::Firmware;
+use profile::Profile;
 
 /// Vendor ID for Mellanox
 pub const MLX_VEND: u16 = 0x15b3;
@@ -65,11 +74,13 @@ impl ConnectX3Nic {
     ///
     /// # Arguments
     /// * `mlx3_pci_dev`: Contains the pci device information.
-    pub fn init(mut mlx3_pci_dev: EndpointHeader) -> Result<&'static Mutex<ConnectX3Nic>, &'static str> {
+    pub fn init(mlx3_pci_dev: &RwLock<EndpointHeader>) -> Result<&'static Mutex<ConnectX3Nic>, &'static str> {
         let config_space = pci_bus().config_space();
         // set the memory space bit for this PciDevice
         // set the bus mastering bit for this PciDevice, which allows it to use DMA
         
+        let mut mlx3_pci_dev = mlx3_pci_dev.write();
+
         mlx3_pci_dev.update_command(config_space, |creg| 
             { creg | CommandRegister::MEMORY_ENABLE | CommandRegister::BUS_MASTER_ENABLE });
 
@@ -371,7 +382,7 @@ impl Drop for ConnectX3Nic {
     }
 }
 
-pub(in crate::device::mlx4) struct Offsets {
+struct Offsets {
     next_cqn: usize,
     next_qpn: usize,
     next_dmpt: usize,

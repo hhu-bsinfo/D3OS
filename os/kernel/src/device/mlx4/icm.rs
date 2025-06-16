@@ -13,7 +13,7 @@ use super::{
     fw::{Capabilities, VirtualPhysicalMapping},
     profile::{Profile, get_mgm_entry_size},
     queue_pair::QueuePair,
-    mlx4_ib::Offsets,
+    Offsets,
     utils,
     utils::MappedPages
 };

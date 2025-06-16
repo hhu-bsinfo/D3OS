@@ -21,7 +21,7 @@ use super::{
     device::{uar_index_to_hw, PAGE_SHIFT},
     fw::{Capabilities, DoorbellPage},
     icm::{ICM_PAGE_SHIFT, MrTable},
-    mlx4_ib::Offsets,
+    Offsets,
     utils,
     utils::{MappedPages, Operations}
 };
@@ -154,6 +154,7 @@ impl QueuePair {
                     ibv_qp_type::IBV_QPT_RC => 0x0,
                     ibv_qp_type::IBV_QPT_UC => 0x1,
                     ibv_qp_type::IBV_QPT_UD => 0x3,
+                    #[allow(unreachable_patterns)]
                     _ => return Err("invalid queue pair type"),
                 });
                 context.set_path_migration_state(PATH_MIGRATION_STATE_MIGRATED);
@@ -627,6 +628,7 @@ impl QueuePair {
                     wqe_offset += size_of::<WqeDatagramSegment>();
                     wqe_size += size_of::<WqeDatagramSegment>();
                 },
+                #[allow(unreachable_patterns)]
                 _ => return Err("invalid queue pair type"),
             }
 
@@ -941,6 +943,7 @@ fn send_wqe_overhead(qp_type: ibv_qp_type::Type) -> u32 {
             size_of::<WqeControlSegment>() /* + size_of::<WqeMaskedAtomicSegment>() */
             + size_of::<WqeRemoteAddressSegment>()
         },
+        #[allow(unreachable_patterns)]
         _ => {
             size_of::<WqeControlSegment>()
         },

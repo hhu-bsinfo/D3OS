@@ -17,7 +17,7 @@ use super::{
     device::PAGE_SHIFT,
     fw::{Capabilities, DoorbellPage},
     icm::{MrTable, ICM_PAGE_SHIFT},
-    mlx4_ib::Offsets,
+    Offsets,
 };
 
 const _NUM_ASYNC_EQE: u32 = 0x100;

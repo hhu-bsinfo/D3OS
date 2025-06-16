@@ -95,7 +95,7 @@ pub(super) enum Opcode {
 }
 
 /// a modifier for the opcode
-trait OpcodeModifier {
+pub(super) trait OpcodeModifier {
     fn get(self) -> u8;
 }
 

@@ -7,8 +7,8 @@ extern crate alloc;
 
 use alloc::{string::{String, ToString}, vec::Vec};
 use core2::io::{Error, ErrorKind, Result as Result};
-use spin::{lock_api::MutexGuard, Mutex};
-use crate::device::mlx4::mlx4_ib::{get_mlx3_nic, ConnectX3Nic};
+use spin::{Mutex, MutexGuard};
+use crate::device::mlx4::{get_mlx3_nic, ConnectX3Nic};
 pub use super::ib_core::{
     __be64, ibv_access_flags, ibv_ah_attr, ibv_device_attr, ibv_gid, ibv_mtu,
     ibv_port_attr, ibv_port_state,
