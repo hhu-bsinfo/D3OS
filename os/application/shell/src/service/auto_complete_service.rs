@@ -225,9 +225,9 @@ impl AutoCompleteService {
         match clx.argument_type {
             None | Some(ArgumentType::Unknown) => self.cycle_all_arguments(arg),
             Some(ArgumentType::Generic) => self.cycle_generic_argument(arg),
-            Some(ArgumentType::ShortFlag) => self.cycle_short_flag_arg(arg),
+            Some(ArgumentType::ShortFlag) => self.cycle_short_flag(arg),
             Some(ArgumentType::ShortFlagValue) => self.cycle_short_flag_value(arg),
-            Some(ArgumentType::LongFlag) => panic!("long flag auto complete not implemented"),
+            Some(ArgumentType::LongFlag) => self.cycle_long_flag(arg),
         }
     }
 
@@ -246,7 +246,7 @@ impl AutoCompleteService {
         self.cycle(arg, &sub_commands)
     }
 
-    fn cycle_short_flag_arg(&mut self, arg: &String) -> Option<String> {
+    fn cycle_short_flag(&mut self, arg: &String) -> Option<String> {
         let short_flags: Vec<&'static str> = self
             .current_app
             .as_ref()
@@ -267,6 +267,14 @@ impl AutoCompleteService {
             self.current_app.as_mut().unwrap().short_flags[self.current_short_flag.unwrap()];
 
         self.cycle(arg, &values)
+    }
+
+    fn cycle_long_flag(&mut self, arg: &String) -> Option<String> {
+        if self.current_app.is_none() {
+            return None;
+        }
+        let long_flags = self.current_app.as_mut().unwrap().long_flags;
+        self.cycle(arg, &long_flags)
     }
 
     fn cycle(&mut self, target: &String, list: &[&'static str]) -> Option<String> {

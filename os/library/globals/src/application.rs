@@ -18,7 +18,6 @@ pub struct Application {
 /**
  * Register applications here, for the shell interpret them.
  */
-
 pub const APPLICATION_REGISTRY: ApplicationRegistry = ApplicationRegistry {
     applications: &[
         Application {
@@ -28,7 +27,7 @@ pub const APPLICATION_REGISTRY: ApplicationRegistry = ApplicationRegistry {
                 ("-f", &["flag-1", "flag-2", "flag-3"]),
                 ("-m", &["'message 1'", "'message 2'", "'message 3'"]),
             ],
-            long_flags: &[],
+            long_flags: &["--long-flag-1", "--long-flag-2", "--long-flag-3"],
         },
         //////////////////////
         // Extern Applications
