@@ -55,7 +55,8 @@ pub fn init() {
     if devices2.len() > 0 {
         //NE2000.call_once(|| {
         info!("Found Realtek 8029 network controller");
-        let ne2000 = Ne2000::new(devices2[0]);
+        let mut ne2000 = Ne2000::new(devices2[0]);
+        ne2000.init();
         let mac = ne2000.read_mac();
         //info!("8029 MAC address: [{}]", ne2000.read_mac());
         info!(

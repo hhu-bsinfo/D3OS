@@ -2,11 +2,101 @@ use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use bitflags::bitflags;
 use log::info;
 use pci_types::{CommandRegister, EndpointHeader};
+use smallmap::Page;
 use smoltcp::wire::EthernetAddress;
 use spin::{Mutex, RwLock};
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 
 static RESET: u8 = 0x1F;
+static TRANSMIT_START_PAGE: u8 = 0x40;
+
+/**
+ * Reception Buffer Ring Start Page
+ * http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
+ * Page 4 PSTART
+ */
+static RECEIVE_START_PAGE: u8 = 0x46;
+
+/**
+ * Reception Buffer Ring End
+ * P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
+ * Accessed: 2024-03-29
+ */
+static RECEIVE_STOP_PAGE: u8 = 0x80;
+
+struct Registers {
+    reset_port: Port<u8>,
+    command_port: Port<u8>,
+    rsar0: Port<u8>,
+    rsar1: Port<u8>,
+    rbcr0: Port<u8>,
+    rbcr1: Port<u8>,
+    data_port: Port<u8>,
+    isr_port: Port<u8>,
+    rst_port: Port<u8>,
+    imr_port: Port<u8>,
+    dcr_port: Port<u8>,
+    tcr_port: Port<u8>,
+    rcr_port: Port<u8>,
+    tpsr_port: Port<u8>,
+    pstart_port: Port<u8>,
+    pstop_port: Port<u8>,
+    bnry_port: Port<u8>,
+    par_0: Port<u8>,
+    par_1: Port<u8>,
+    par_2: Port<u8>,
+    par_3: Port<u8>,
+    par_4: Port<u8>,
+    par_5: Port<u8>,
+    curr: Port<u8>,
+    mar0: Port<u8>,
+    mar1: Port<u8>,
+    mar2: Port<u8>,
+    mar3: Port<u8>,
+    mar4: Port<u8>,
+    mar5: Port<u8>,
+    mar6: Port<u8>,
+    mar7: Port<u8>,
+}
+
+impl Registers {
+    fn new(base_address: u16) -> Self {
+        Self {
+            reset_port: Port::new(base_address + 0x1F),
+            command_port: Port::new(base_address + 0x00),
+            rsar0: Port::new(base_address + 0x08),
+            rsar1: Port::new(base_address + 0x09),
+            rbcr0: Port::new(base_address + 0x0A),
+            rbcr1: Port::new(base_address + 0x0B),
+            data_port: Port::new(base_address + 0x10),
+            isr_port: Port::new(base_address + 0x07),
+            rst_port: Port::new(base_address + 0x80),
+            imr_port: Port::new(base_address + 0x0F),
+            dcr_port: Port::new(base_address + 0x0E),
+            tcr_port: Port::new(base_address + 0x0D),
+            rcr_port: Port::new(base_address + 0x0C),
+            tpsr_port: Port::new(base_address + 0x04),
+            pstart_port: Port::new(base_address + 0x01),
+            pstop_port: Port::new(base_address + 0x02),
+            bnry_port: Port::new(base_address + 0x03),
+            par_0: Port::new(base_address + 0x01),
+            par_1: Port::new(base_address + 0x02),
+            par_2: Port::new(base_address + 0x03),
+            par_3: Port::new(base_address + 0x04),
+            par_4: Port::new(base_address + 0x05),
+            par_5: Port::new(base_address + 0x06),
+            curr: Port::new(base_address + 0x07),
+            mar0: Port::new(base_address + 0x08),
+            mar1: Port::new(base_address + 0x09),
+            mar2: Port::new(base_address + 0x0A),
+            mar3: Port::new(base_address + 0x0B),
+            mar4: Port::new(base_address + 0x0C),
+            mar5: Port::new(base_address + 0x0D),
+            mar6: Port::new(base_address + 0x0E),
+            mar7: Port::new(base_address + 0x0F),
+        }
+    }
+}
 
 bitflags! {
     pub struct PageRegisters : u8 {
@@ -208,19 +298,6 @@ bitflags! {
     }
 }
 
-pub struct Registers {
-    id: Mutex<(
-        PortReadOnly<u8>,
-        PortReadOnly<u8>,
-        PortReadOnly<u8>,
-        PortReadOnly<u8>,
-        PortReadOnly<u8>,
-        PortReadOnly<u8>,
-    )>,
-    command: Port<u8>,
-    config1: PortWriteOnly<u8>,
-}
-
 pub struct Ne2000 {
     base_address: u16,
     registers: Registers,
@@ -238,50 +315,23 @@ impl Ne2000 {
             .expect("Failed to read base address!");
 
         let base_address = bar0.unwrap_io() as u16;
-        let ne2000 = Self { base_address };
+        let registers = Registers::new(base_address);
+        let ne2000 = Self {
+            base_address,
+            registers,
+        };
         info!("NE2000 base address: [0x{:x}]", base_address);
 
         ne2000
     }
 
-    pub fn init(&self) -> Self {
-        //pub fn read_mac(&self) -> EthernetAddress {
-
-        let ne2000 = Self {};
+    pub fn init(&mut self) {
+        info!("Powering on device");
         unsafe {
-            // Define ports
-
-            // reset port
-            let mut reset_port = Port::<u8>::new(self.base_address + 0x1F);
-            let mut command_port = Port::<u8>::new(self.base_address + 0x00);
-            let mut rsar0 = Port::<u8>::new(self.base_address + 0x08);
-            let mut rsar1 = Port::<u8>::new(self.base_address + 0x09);
-            let mut rbcr0 = Port::<u8>::new(self.base_address + 0x0A);
-            let mut rbcr1 = Port::<u8>::new(self.base_address + 0x0B);
-            let mut data_port = Port::<u8>::new(self.base_address + 0x10);
-            let mut isr_port = Port::<u8>::new(self.base_address + 0x07);
-            let mut rst_port = Port::<u8>::new(self.base_address + 0x80);
-            let mut imr_port = Port::<u8>::new(self.base_address + 0x0F);
-            let mut dcr_port = Port::<u8>::new(self.base_address + 0x0E);
-            let mut tcr_port = Port::<u8>::new(self.base_address + 0x0D);
-            let mut rcr_port = Port::<u8>::new(self.base_address + 0x0C);
-            let mut tpsr_port = Port::<u8>::new(self.base_address + 0x04);
-            let mut pstart_port = Port::<u8>::new(self.base_address + 0x01);
-            let mut pstop_port = Port::<u8>::new(self.base_address + 0x02);
-            let mut bnry_port = Port::<u8>::new(self.base_address + 0x03);
-
-            info!("Powering on device");
             //command_port.write(0x02);
-            let j = isr_port.read();
-            info!("ISR: {}", j);
-            let d = command_port.read();
-            info!("CR: {}", d);
-            let e = imr_port.read();
-            info!("IMR: {}", e);
-            let f = dcr_port.read();
-            info!("DCR: {}", f);
-            let g = tcr_port.read();
-            info!("TCR: {}", g);
+            //let registers = &mut self.registers;
+            //let j = self.registers.isr_port.read();
+            //info!("ISR: {}", j);
             info!("Resetting Device NE2000");
 
             //Reset the NIC
@@ -289,7 +339,7 @@ impl Ne2000 {
             // this ensures, that the Registers are cleared and no undefined behavior can happen
 
             // From C++ Ne2000
-            /** Wait until Reset Status is 0 */
+            /* Wait until Reset Status is 0 */
             //while(!(baseRegister.readByte(P0_ISR) & ISR_RST)) {
             //Util::Async::Thread::sleep(Util::Time::Timestamp::ofMilliseconds(1));
             //}
@@ -299,52 +349,66 @@ impl Ne2000 {
             // just doing the read operation enables the reset, a write is not necessary, but the bits dont get set correctly
             // see spec in PDF
             //TODO:, add comments what registers are affected and which bits are set
-            let a = reset_port.read();
-            info!("1: 0x{:X}", a);
+            let a = self.registers.reset_port.read();
+            self.registers.reset_port.write(a);
+            //info!("1: 0x{:X}", reset_port_value);
             //reset_port.write(a);
-            let c = isr_port.read();
-            info!("ISR: 0x{:X}", c);
+            let isr_value = self.registers.isr_port.read();
+            info!("ISR: 0x{:X}", isr_value);
+            //self.registers.isr_port.write(isr_value);
 
-            while (isr_port.read() & 0x80) == 0 {
-                //info!("Reset in Progress");
+            // bitwise and operation, checks if highest bit is set
+            while (self.registers.isr_port.read() & 0x80) == 0 {
+                info!("Reset in Progress");
             }
-            isr_port.write(c);
-            info!("NE2000 reset complete");
+            info!("Ne2000 reset complete");
 
-            /*let j = isr_port.read();
-            info!("ISR: 0x{:X}", j);
-            let d = command_port.read();
-            info!("CR: {}", d);
-            let e = imr_port.read();
-            info!("IMR: {}", e);
-            let f = dcr_port.read();
-            info!("DCR: 0x{:X}", f);
-            let g = tcr_port.read();
-            info!("TCR: {}", g);*/
-
-            info!("Initializing Device NE2000");
+            info!("Initializing Registers of Device Ne2000");
 
             // Initialize CR Register
-            //command_port.write(0x21);
-            //info!("cr: {}", command_port.read());
+            self.registers
+                .command_port
+                .write((CR::STOP_DMA | CR::STP | CR::PAGE_0).bits());
+            //info!("cr: {}", self.registers.command_port.read());
             //scheduler().sleep(100);
 
             // Initialize DCR Register
-            dcr_port.write(0x58);
+            info!(
+                "DCR after setting bits: {:#x}",
+                (DataConfigurationRegister::DCR_AR
+                    | DataConfigurationRegister::DCR_FT1
+                    | DataConfigurationRegister::DCR_LS)
+                    .bits()
+            );
+            self.registers.dcr_port.write(
+                (DataConfigurationRegister::DCR_AR
+                    | DataConfigurationRegister::DCR_FT1
+                    | DataConfigurationRegister::DCR_LS)
+                    .bits(),
+            );
+            self.registers.command_port.write((CR::PAGE_2).bits());
+            info!("dcr: {}", self.registers.dcr_port.read());
 
             // clear RBCR1,0
             //RBCR0,1 : indicates the length of the block in bytes
             // MAC address has length of 6 Bytes
-            rbcr0.write(0);
-            rbcr1.write(0);
-            info!("rb0: {}", rbcr0.read());
-            info!("rb1: {}", rbcr1.read());
+            self.registers.rbcr0.write(0);
+            self.registers.rbcr1.write(0);
+            //info!("rbcr0: {}", self.registers.rbcr0.read());
+            //info!("rbcr1: {}", self.registers.rbcr1.read());
 
             // initialize RCR
-            rcr_port.write(0x14);
+            self.registers.rcr_port.write(
+                (ReceiveConfigurationRegister::RCR_AR
+                    | ReceiveConfigurationRegister::RCR_AB
+                    | ReceiveConfigurationRegister::RCR_AM)
+                    .bits(),
+            );
 
             // Place the NIC in Loopback Mode (Mode 1)
-            tcr_port.write(0x02);
+            self.registers
+                .tcr_port
+                .write(TransmitConfigurationRegister::TCR_LB0.bits());
 
             // Buffer Initialization
             //baseRegister.writeByte(P0_TPSR, TRANSMIT_START_PAGE);
@@ -352,18 +416,92 @@ impl Ne2000 {
             //baseRegister.writeByte(P0_BNRY, RECEIVE_START_PAGE + 1);
             //baseRegister.writeByte(P0_PSTOP, RECEIVE_STOP_PAGE);
 
-            //tpsr_port.write();
+            self.registers.tpsr_port.write(TRANSMIT_START_PAGE);
+            self.registers.pstart_port.write(RECEIVE_START_PAGE);
+            self.registers.bnry_port.write(RECEIVE_START_PAGE + 1);
+            self.registers.pstop_port.write(RECEIVE_STOP_PAGE);
+
+            //  Clear ISR
+            self.registers.isr_port.write(0xFF);
+
+            // Initialize IMR
+            self.registers.imr_port.write(
+                (InterruptMaskRegister::IMR_PRXE
+                    | InterruptMaskRegister::IMR_PTXE
+                    | InterruptMaskRegister::IMR_OVWE)
+                    .bits(),
+            );
+
+            // Switch to P1, disable DMA and Stop the NIC */
+            self.registers
+                .command_port
+                .write((CR::STP | CR::STOP_DMA | CR::PAGE_0).bits());
+
+            let mut mac = [0u8; 6];
+
+            /* 9) i) Initialize Physical Address Register: PAR0-PAR5
+            each mac address bit is written two times into the buffer
+            */
+            //Read 6 bytes (MAC address)
+            for byte in mac.iter_mut() {
+                *byte = self.registers.data_port.read();
+            }
+
+            self.registers.par_0.write(mac[0]);
+            self.registers.par_1.write(mac[1]);
+            self.registers.par_2.write(mac[2]);
+            self.registers.par_3.write(mac[3]);
+            self.registers.par_4.write(mac[4]);
+            self.registers.par_5.write(mac[5]);
+
+            let mut command_port = Port::<u8>::new(self.base_address + 0x00);
+            let cr = command_port.read();
+            let ps = (cr >> 6) & 0b11;
+
+            match ps {
+                0 => info!("Currently on Page 0"),
+                1 => info!("Currently on Page 1"),
+                2 => info!("Currently on Page 2"),
+                3 => info!("Currently on Page 3"),
+                _ => unreachable!(),
+            }
+
+            /* 9) ii) Initialize Multicast Address Register: MAR0-MAR7 with 0xFF */
+            self.registers.mar0.write(0xFF);
+            self.registers.mar1.write(0xFF);
+            self.registers.mar2.write(0xFF);
+            self.registers.mar3.write(0xFF);
+            self.registers.mar4.write(0xFF);
+            self.registers.mar5.write(0xFF);
+            self.registers.mar6.write(0xFF);
+            self.registers.mar7.write(0xFF);
+
+            /* P.156 http://www.bitsavers.org/components/national/_dataBooks/1988_National_Data_Communications_Local_Area_Networks_UARTs_Handbook.pdf#page=156
+            Accessed: 2024-03-29
+            */
+            let current_next_page_pointer = RECEIVE_START_PAGE + 1;
+
+            /* 9) iii) Initialize Current Pointer: CURR */
+            self.registers.curr.write(current_next_page_pointer);
+
+            /* 10) Start NIC */
+            self.registers
+                .command_port
+                .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
+
+            /* 11) Initialize TCR and RCR */
+            self.registers.tcr_port.write(0);
+            self.registers.rcr_port.write(
+                (ReceiveConfigurationRegister::RCR_AR
+                    | ReceiveConfigurationRegister::RCR_AB
+                    | ReceiveConfigurationRegister::RCR_AM)
+                    .bits(),
+            );
 
             //Set up Remote DMA to read from address 0x0000
             // RSAR0,1 : points to the start of the block of data to be transfered
-            rsar0.write(0);
-            rsar1.write(0);
-            info!("rsa0: {}", rsar0.read());
-            info!("rsa1: {}", rsar1.read());
-            rbcr0.write(6);
-            rbcr1.write(0);
-            info!("rb0: {}", rbcr0.read());
-            info!("rb1: {}", rbcr1.read());
+            //info!("rb0: {}", rbcr0.read());
+            //info!("rb1: {}", rbcr1.read());
 
             //Issue Remote Read command
             // Command Port is 8 Bits and has the following structure
@@ -381,58 +519,32 @@ impl Ne2000 {
             //command_port.write(0x0A);
             //command_port.write(0x20);
             //let cr: u8 = unsafe { command_port.read() };
-            //info!("Page: ({}) ", cr);
+
+            /*unsafe {
+                let mac = [
+                    self.registers.par_0.read(),
+                    self.registers.par_1.read(),
+                    self.registers.par_2.read(),
+                    self.registers.par_3.read(),
+                    self.registers.par_4.read(),
+                    self.registers.par_5.read(),
+                ];
+
+                info!("MAC ADRESS INIT: {}", EthernetAddress::from_bytes(&mac));
+            }*/
+            info!("Finished Initialization");
         }
-        ne2000
     }
 
-    pub fn read_mac(&self) -> [u8; 6] {
+    // read the mac address and return it as array
+    pub fn read_mac(&mut self) -> [u8; 6] {
         //pub fn read_mac(&self) -> EthernetAddress {
-        let mut mac = [0u8; 6];
         let mut mac2 = [0u8; 6];
 
         unsafe {
-            // Define ports
-
-            // reset port
-            let mut reset_port = Port::<u8>::new(self.base_address + 0x1F);
-            let mut command_port = Port::<u8>::new(self.base_address + 0x00);
-            let mut rsar0 = Port::<u8>::new(self.base_address + 0x08);
-            let mut rsar1 = Port::<u8>::new(self.base_address + 0x09);
-            let mut rbcr0 = Port::<u8>::new(self.base_address + 0x0A);
-            let mut rbcr1 = Port::<u8>::new(self.base_address + 0x0B);
-            let mut data_port = Port::<u8>::new(self.base_address + 0x10);
-            let mut isr_port = Port::<u8>::new(self.base_address + 0x07);
-            let mut rst_port = Port::<u8>::new(self.base_address + 0x80);
-            let mut imr_port = Port::<u8>::new(self.base_address + 0x0F);
-            let mut dcr_port = Port::<u8>::new(self.base_address + 0x0E);
-            let mut tcr_port = Port::<u8>::new(self.base_address + 0x0D);
-            let mut rcr_port = Port::<u8>::new(self.base_address + 0x0C);
-            let mut tpsr_port = Port::<u8>::new(self.base_address + 0x04);
-            let mut pstart_port = Port::<u8>::new(self.base_address + 0x01);
-            let mut pstop_port = Port::<u8>::new(self.base_address + 0x02);
-            let mut bnry_port = Port::<u8>::new(self.base_address + 0x03);
-
-            //Set up Remote DMA to read from address 0x0000
-            // RSAR0,1 : points to the start of the block of data to be transfered
-            rsar0.write(0);
-            rsar1.write(0);
-            info!("rsa0: {}", rsar0.read());
-            info!("rsa1: {}", rsar1.read());
-            rbcr0.write(6);
-            rbcr1.write(0);
-            info!("rb0: {}", rbcr0.read());
-            info!("rb1: {}", rbcr1.read());
-
             //Read 6 bytes (MAC address)
-            for byte in mac.iter_mut() {
-                *byte = data_port.read();
-            }
-            //EthernetAddress::from_bytes(&mac)
-            let address1 = EthernetAddress::from_bytes(&mac);
-            info!("before ({})", address1);
 
-            command_port.write(0x40);
+            self.registers.command_port.write(0x40);
 
             let mut par_ports: [Port<u8>; 6] = [
                 Port::new(self.base_address + 0x01),
@@ -443,16 +555,20 @@ impl Ne2000 {
                 Port::new(self.base_address + 0x06),
             ];
             for (i, port) in par_ports.iter_mut().enumerate() {
-                mac[i] = port.read();
+                //mac[i] = port.read();
                 mac2[i] = port.read();
             }
 
             let address3 = EthernetAddress::from_bytes(&mac2);
-            info!("after mac 2 ({})", address3);
+            info!("mac2 ({})", address3);
+
+            self.registers
+                .command_port
+                .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
 
             // check if on correct Page (on Page 1 are the PARs Registers for the MAC Adress)
 
-            let mut command_port = Port::<u8>::new(self.base_address + 0x00);
+            /*let mut command_port = Port::<u8>::new(self.base_address + 0x00);
             let cr = command_port.read();
             let ps = (cr >> 6) & 0b11;
 
@@ -462,11 +578,8 @@ impl Ne2000 {
                 2 => info!("Currently on Page 2"),
                 3 => info!("Currently on Page 3"),
                 _ => unreachable!(),
-            }
-
-            let address2 = EthernetAddress::from_bytes(&mac);
-            info!("after ({})", address2);
+            }*/
         }
-        mac
+        mac2
     }
 }
