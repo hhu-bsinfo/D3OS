@@ -7,15 +7,15 @@ use alloc::{
 };
 use terminal::{print, println};
 
-use crate::sub_module::alias::Alias;
+use crate::sub_service::alias_sub_service::AliasSubService;
 
 pub struct AliasBuildIn {
     args: Vec<String>,
-    alias: Rc<RefCell<Alias>>,
+    alias: Rc<RefCell<AliasSubService>>,
 }
 
 impl AliasBuildIn {
-    pub fn new(args: Vec<&str>, alias: &Rc<RefCell<Alias>>) -> Self {
+    pub fn new(args: Vec<&str>, alias: &Rc<RefCell<AliasSubService>>) -> Self {
         Self {
             args: args.into_iter().map(String::from).collect(),
             alias: alias.clone(),

@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Job {
     pub command: String,
     pub arguments: Vec<String>,
@@ -19,7 +19,7 @@ impl Job {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Executable {
     pub jobs: Vec<Job>,
 }

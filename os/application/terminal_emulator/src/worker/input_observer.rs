@@ -120,3 +120,5 @@ impl InputObserver {
         None
     }
 }
+
+// TODO#1 FIX COOKED BUFFER NOT CLEARED ON ENTER

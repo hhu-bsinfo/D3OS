@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use alloc::{rc::Rc, string::String, vec::Vec};
-use concurrent::thread::{self};
+use concurrent::thread;
 
 use crate::{
     build_in::{
@@ -9,40 +9,54 @@ use crate::{
         echo::EchoBuildIn, exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn,
         unalias::UnaliasBuildIn,
     },
-    parser::executable::{Executable, Job},
-    sub_module::alias::Alias,
+    context::Context,
+    executable::Job,
+    sub_service::alias_sub_service::AliasSubService,
 };
 
-pub struct Executor {
-    alias: Rc<RefCell<Alias>>,
+use super::service::{Error, Response, Service};
+
+pub struct ExecutorService {
+    alias: Rc<RefCell<AliasSubService>>,
 }
 
-impl Executor {
-    pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
+impl Service for ExecutorService {
+    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
+        self.execute(context)
+    }
+}
+
+impl ExecutorService {
+    pub const fn new(alias: Rc<RefCell<AliasSubService>>) -> Self {
         Self { alias }
     }
 
-    pub fn execute(&self, executable: &Executable) -> Result<(), &'static str> {
+    pub fn execute(&self, context: &Context) -> Result<Response, Error> {
+        let executable = match &context.executable {
+            Some(executable) => executable,
+            None => return Err(Error::new("No executable", None, None)),
+        };
+
         for job in &executable.jobs {
             match self.execute_job(&job) {
                 Ok(_) => continue,
                 Err(msg) => return Err(msg),
             };
         }
-        Ok(())
+        Ok(Response::Ok)
     }
 
-    fn execute_job(&self, job: &Job) -> Result<(), &'static str> {
+    fn execute_job(&self, job: &Job) -> Result<Response, Error> {
         let arguments: Vec<&str> = job.arguments.iter().map(String::as_str).collect();
         let thread = match self.try_execute_build_in(&job.command, arguments.clone()) {
-            Ok(_) => return Ok(()),
+            Ok(_) => return Ok(Response::Ok),
             Err(_) => thread::start_application(&job.command, arguments),
         };
         match thread {
             Some(thread) => thread.join(),
-            None => return Err("Command not found!"),
+            None => return Err(Error::new("Command not found!", None, None)),
         };
-        Ok(())
+        Ok(Response::Ok)
     }
 
     fn try_execute_build_in(&self, name: &str, args: Vec<&str>) -> Result<(), ()> {

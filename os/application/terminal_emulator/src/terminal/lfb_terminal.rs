@@ -429,7 +429,7 @@ impl LFBTerminal {
             .enumerate()
             .filter(|item| item.0 < size.0 as usize)
             .for_each(|item| {
-                item.1.value = 'a';
+                item.1.value = ' ';
                 item.1.fg_color = color.fg_color;
                 item.1.bg_color = color.bg_color;
             });
