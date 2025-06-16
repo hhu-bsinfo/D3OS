@@ -47,6 +47,44 @@ args = [
     "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
 ]
 
+[tasks.qemu-wsl]
+command = "qemu-system-x86_64.exe"
+dependencies = [ "image", "hdd", "ovmf" ]
+env = { WSL_BIOS_PATH = { script = ["wslpath -w 'RELEASEX64_OVMF.fd'"]}, WSL_BOOT_PATH = { script = ["wslpath -w 'd3os.img'"] }, WSL_HDD_PATH = { script = ["wslpath -w 'hdd.img'"]} }
+args = [
+    # Base machine configuration
+    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
+    "-m", "256M,slots=2,maxmem=1G",
+    "-cpu", "qemu64",
+    "-bios", "${WSL_BIOS_PATH}",
+    "-boot", "d",
+    "-vga", "std",
+    "-rtc", "base=localtime",
+    "-serial", "stdio",
+
+    # Hard disk drive configuration
+    "-device", "piix3-ide,id=ide",  # IDE Controller
+    "-device", "ahci,id=ahci",      # AHCI Controller
+    "-drive", "driver=raw,if=none,id=boot,file.filename=${WSL_BOOT_PATH}",  # Boot drive
+    "-drive", "driver=raw,if=none,id=hdd,file.filename=${WSL_HDD_PATH}",    # HDD drive containing root filesystem
+    "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
+    "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
+
+    # NVDIMM configuration
+    #"-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
+    #"-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
+
+    # Network configuration
+    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
+    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+
+    # Audio configuration (Using pulse audio for Linux)
+    "-audiodev", "id=audio0,driver=sdl",
+
+    # Windows Hyper-V acceleration
+    "-accel", "whpx",
+]
+
 [tasks.debug]
 command = "qemu-system-x86_64"
 dependencies = [ "debug-signal-vscode" ]

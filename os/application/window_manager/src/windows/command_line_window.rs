@@ -1,8 +1,12 @@
 use alloc::string::String;
 use drawer::{drawer::Drawer, rect_data::RectData};
+use terminal::DecodedKey;
 
 use crate::{
-    components::component::ComponentStyling, config::{DEFAULT_FG_COLOR, DEFAULT_FONT_SCALE}, ScreenSplitType
+    api::WindowManagerMessage,
+    components::component::ComponentStyling,
+    config::{BACKSPACE_UNICODE, DEFAULT_FG_COLOR, DEFAULT_FONT_SCALE, ESCAPE_UNICODE},
+    ScreenSplitType, WindowManager,
 };
 
 /**
@@ -10,11 +14,11 @@ This is the window used to contain the command-line, which in turn is used
 to run apps by their application-name
 */
 pub struct CommandLineWindow {
-    pub is_dirty: bool,
+    is_dirty: bool,
     /// If true, all keyboard input is redirected to typing in the name of the app
-    pub enter_app_mode: bool,
-    pub command: String,
-    pub split_type: ScreenSplitType,
+    enter_app_mode: bool,
+    command: String,
+    split_type: ScreenSplitType,
     rect_data: RectData,
     styling: ComponentStyling,
 }
@@ -29,6 +33,10 @@ impl CommandLineWindow {
             split_type: ScreenSplitType::Horizontal,
             styling: styling.unwrap_or_default(),
         }
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.enter_app_mode
     }
 
     pub fn activate_enter_app_mode(&mut self, split_type: ScreenSplitType) {
@@ -69,5 +77,38 @@ impl CommandLineWindow {
         );
 
         self.is_dirty = false;
+    }
+
+    /// Tries to process the given key and returns whether the command line wants
+    /// to process further keys (`enter_app_mode`).
+    pub fn process_keyboard_input(&mut self, keyboard_press: DecodedKey) -> bool {
+        match keyboard_press {
+            DecodedKey::Unicode('\n') => {
+                WindowManager::get_api().send_message(WindowManagerMessage::LaunchApp(
+                    self.command.clone(),
+                    self.split_type,
+                ));
+
+                self.deactivate_enter_app_mode();
+            }
+
+            BACKSPACE_UNICODE => {
+                self.is_dirty = true;
+                self.pop_char();
+            }
+
+            ESCAPE_UNICODE => {
+                self.deactivate_enter_app_mode();
+            }
+
+            DecodedKey::Unicode(c) => {
+                self.is_dirty = true;
+                self.push_char(c);
+            }
+
+            _ => (),
+        }
+
+        return self.enter_app_mode;
     }
 }

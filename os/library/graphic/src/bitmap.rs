@@ -241,4 +241,31 @@ pub fn draw_char_scaled(
             data: scaled_data,
         }
     }
+    pub fn draw_circle_bresenham(&mut self, center: (u32, u32), radius: u32, color: Color) {
+        let (cx, cy) = (center.0 as i32, center.1 as i32);
+        let mut x = 0;
+        let mut y = radius as i32;
+        let mut d = 3 - 2 * radius as i32; // Entscheidungsvariable
+    
+        while x <= y {
+            // Zeichne alle symmetrischen Punkte
+            self.draw_pixel((cx + x) as u32, (cy + y) as u32, color);
+            self.draw_pixel((cx - x) as u32, (cy + y) as u32, color);
+            self.draw_pixel((cx + x) as u32, (cy - y) as u32, color);
+            self.draw_pixel((cx - x) as u32, (cy - y) as u32, color);
+            self.draw_pixel((cx + y) as u32, (cy + x) as u32, color);
+            self.draw_pixel((cx - y) as u32, (cy + x) as u32, color);
+            self.draw_pixel((cx + y) as u32, (cy - x) as u32, color);
+            self.draw_pixel((cx - y) as u32, (cy - x) as u32, color);
+    
+            // Aktualisiere die Entscheidungsvariable und Positionen
+            if d <= 0 {
+                d += 4 * x + 6;
+            } else {
+                d += 4 * (x - y) + 10;
+                y -= 1;
+            }
+            x += 1;
+        }
+    }
 }

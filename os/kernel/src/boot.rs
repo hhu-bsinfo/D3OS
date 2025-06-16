@@ -65,6 +65,7 @@ unsafe extern "C" {
 }
 
 const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS
+const BOOT_TO_GUI: bool = true; // Immediately start the GUI instead of terminal (Debug)
 
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \
@@ -364,16 +365,24 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     //Initialize tty
     init_tty();
 
-    // Create and register the 'terminal_emulator' thread (from app image in ramdisk) in the scheduler
-    scheduler().ready(Thread::load_application(
-        initrd()
-            .entries()
-            .find(|entry| entry.filename().as_str().unwrap() == "terminal_emulator")
-            .expect("Terminal application not available!")
-            .data(),
-        "terminal_emulator",
-        &[].to_vec(),
-    ));
+    if BOOT_TO_GUI {
+        // Create and register the 'window_manager' thread in the scheduler
+        scheduler().ready(Thread::load_application(initrd().entries()
+            .find(|entry| entry.filename().as_str().unwrap() == "window_manager")
+            .expect("Window Manager application not available!")
+            .data(), "window_manager", &[].to_vec()));
+    } else {
+        // Create and register the 'terminal_emulator' thread (from app image in ramdisk) in the scheduler
+        scheduler().ready(Thread::load_application(
+            initrd()
+                .entries()
+                .find(|entry| entry.filename().as_str().unwrap() == "terminal_emulator")
+                .expect("Terminal application not available!")
+                .data(),
+            "terminal_emulator",
+            &[].to_vec(),
+        ));
+    }
 
     // Dump information about all processes (including VMAs) 
     process_manager().read().dump();

@@ -71,7 +71,7 @@ pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
 ///    success >= 0 \
 ///    error, codes defined in consts.rs
 pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
-    let ret_code: isize;
+    let mut ret_code: isize = -1;
 
     if args.len() > 6 {
         panic!("System calls with more than 6 params are not supported.");
@@ -84,6 +84,7 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
     let a4 = *args.get(4).unwrap_or(&0usize);
     let a5 = *args.get(5).unwrap_or(&0usize);
 
+    #[cfg(target_arch = "x86_64")]
     unsafe {
         asm!(
             "syscall", 

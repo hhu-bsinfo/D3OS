@@ -3,45 +3,50 @@
 
 extern crate alloc;
 
-use core::sync::atomic::{AtomicUsize, Ordering};
-use alloc::{format, vec};
 use alloc::{borrow::ToOwned, vec::Vec};
-use api::{Api, NewCompData, NewLoopIterFnData, Receivers, Senders, WindowData, DEFAULT_APP};
-use chrono::{format, TimeDelta};
-use components::selected_window_label::HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW;
-use concurrent::{process, thread};
-use config::{BACKSPACE_UNICODE, COMMAND_LINE_WINDOW_Y_PADDING, DEFAULT_BACKGROUND_COLOR, DEFAULT_FG_COLOR, DIST_TO_SCREEN_EDGE, ESCAPE_UNICODE, FLUSHING_DELAY_MS};
+use api::{
+    Api, NewCompData, NewLoopIterFnData, Receivers, ScreenSplitType, Senders, WindowData,
+    WindowManagerMessage, DEFAULT_APP,
+};
+use chrono::TimeDelta;
+use concurrent::process;
+use config::{
+    COMMAND_LINE_WINDOW_Y_PADDING, DIST_TO_SCREEN_EDGE, FLUSHING_DELAY_MS,
+};
+use core::sync::atomic::{AtomicUsize, Ordering};
 use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
 use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use keyboard_decoder::KeyboardDecoder;
-use logger::debug;
 use nolock::queues::mpsc::jiffy;
 
+use input::mouse::try_read_mouse;
+use mouse_state::{MouseEvent, MouseState};
 #[allow(unused_imports)]
+#[cfg(feature = "with_runtime")]
 use runtime::*;
 use spin::{once::Once, Mutex, MutexGuard};
-use terminal::{DecodedKey, KeyCode};
-use input::mouse::{ try_read_mouse};
+use terminal::DecodedKey;
 use time::systime;
 use windows::workspace_selection_window::WorkspaceSelectionWindow;
 use windows::{app_window::AppWindow, command_line_window::CommandLineWindow};
 use workspace::Workspace;
-use mouse_state::{MouseEvent, MouseState};
 
 pub mod api;
 mod apps;
 mod components;
 mod config;
+mod keyboard_decoder;
+mod mouse_state;
+mod signal;
 mod utils;
 mod window_tree;
 mod windows;
 mod workspace;
-mod signal;
-mod mouse_state;
-mod keyboard_decoder;
+
+const WORKSPACE_SELECTION_WINDOW_HEIGHT: u32 = 30;
 
 // IDs are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -53,12 +58,6 @@ static mut API: Once<Mutex<Api>> = Once::new();
 pub enum Interaction {
     Keyboard(DecodedKey),
     Mouse(MouseEvent),
-}
-
-#[derive(Clone, Copy)]
-enum ScreenSplitType {
-    Horizontal,
-    Vertical,
 }
 
 struct WindowManager {
@@ -80,7 +79,7 @@ struct WindowManager {
     frames: i64,
 
     mouse_state: MouseState,
-    keyboard_decoder: KeyboardDecoder
+    keyboard_decoder: KeyboardDecoder,
 }
 
 impl WindowManager {
@@ -102,31 +101,31 @@ impl WindowManager {
     fn new(screen: (u32, u32)) -> (Self, Senders) {
         SCREEN.call_once(|| screen);
 
+        // Queues/Chanells for api communication
         let (rx_components, tx_components) = jiffy::queue::<NewCompData>();
         let (rx_on_loop_iter, tx_on_loop_iter) = jiffy::queue::<NewLoopIterFnData>();
+        let (rx_messages, tx_messages) = jiffy::queue::<WindowManagerMessage>();
 
         let senders = Senders {
             tx_components,
             tx_on_loop_iter,
+            tx_messages,
         };
 
         let receivers = Receivers {
             rx_components,
             rx_on_loop_iter,
+            rx_messages,
         };
 
-        /*let workspace_selection_labels_window = WorkspaceSelectionLabelsWindow::new(RectData {
-            top_left: Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
-            width: screen.0 - DIST_TO_SCREEN_EDGE * 2,
-            height: HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
-        });*/
-
+        // Workspace selection window
         let workspace_selection_window = WorkspaceSelectionWindow::new(RectData {
             top_left: Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
             width: screen.0 - DIST_TO_SCREEN_EDGE * 2,
-            height: HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
+            height: WORKSPACE_SELECTION_WINDOW_HEIGHT,
         });
 
+        // Command-line window
         let command_line_window_height = DEFAULT_CHAR_HEIGHT + COMMAND_LINE_WINDOW_Y_PADDING * 2;
         let command_line_window = CommandLineWindow::new(
             RectData {
@@ -141,7 +140,7 @@ impl WindowManager {
         );
 
         let time = systime();
-        
+
         (
             Self {
                 workspaces: Vec::new(),
@@ -155,7 +154,7 @@ impl WindowManager {
                 start_time: time,
                 frames: 0,
                 mouse_state: MouseState::new(),
-                keyboard_decoder: KeyboardDecoder::new()
+                keyboard_decoder: KeyboardDecoder::new(),
             },
             senders,
         )
@@ -172,27 +171,33 @@ impl WindowManager {
     fn run(&mut self) {
         loop {
             self.draw();
-            
+
             self.flush();
 
             self.mouse_state.draw_cursor();
-            
+
             // debug!("loop");
 
             self.process_keyboard_input();
 
             self.process_mouse_input();
-            
+
             self.add_new_components_from_api();
-            
+
             self.add_new_closures_from_api();
-            
+
             self.call_on_loop_iter_fns();
+
+            self.process_messages();
         }
     }
 
     fn call_on_loop_iter_fns(&mut self) {
-        for NewLoopIterFnData { window_data: _, fun } in self.on_loop_iter_fns.iter() {
+        for NewLoopIterFnData {
+            window_data: _,
+            fun,
+        } in self.on_loop_iter_fns.iter()
+        {
             (*fun)();
         }
     }
@@ -203,77 +208,132 @@ impl WindowManager {
         }
     }
 
+    /// Processes all WindowManagerMessages that have been enqueued by the API
+    fn process_messages(&mut self) {
+        while let Ok(msg) = self.receivers.rx_messages.try_dequeue() {
+            match msg {
+                WindowManagerMessage::CreateNewWorkspace => {
+                    self.create_new_workspace();
+                }
+                WindowManagerMessage::CloseCurrentWorkspace => {
+                    self.remove_current_workspace();
+                }
+                WindowManagerMessage::SwitchToWorkspace(id) => {
+                    if let Some(index) = self
+                        .workspaces
+                        .iter()
+                        .position(|workspace| workspace.get_id() == id)
+                    {
+                        self.switch_workspace(index);
+                    }
+                }
+                WindowManagerMessage::CloseCurrentWindow => {
+                    let was_closed = self.get_current_workspace_mut().close_focused_window();
+                    if was_closed {
+                        self.is_dirty = true;
+                    }
+                }
+                WindowManagerMessage::MoveCurrentWindowForward => {
+                    self.get_current_workspace_mut()
+                        .move_focused_window_forward();
+                }
+                WindowManagerMessage::MoveCurrentWindowBackward => {
+                    self.get_current_workspace_mut()
+                        .move_focused_window_backward();
+                }
+                WindowManagerMessage::LaunchApp(app_name, split_type) => {
+                    if Self::get_api().is_app_name_valid(&app_name) {
+                        self.split_window(
+                            self.get_current_workspace().focused_window_id,
+                            split_type,
+                            &app_name,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     fn process_keyboard_input(&mut self) {
         let read_option = self.keyboard_decoder.read_decoded();
 
         if let Some(keyboard_press) = read_option {
             // `enter_app_mode` overrides all other keyboard-interactions
-            if self.command_line_window.enter_app_mode {
-                self.process_enter_app_mode(keyboard_press);
-            } else {
-                let block_interact = self
-                    .get_current_workspace_mut()
-                    .get_focused_window_mut()
-                    .interact_with_focused_component(Interaction::Keyboard(keyboard_press));
+            if self.command_line_window.is_active() {
+                let keep_enter_app_mode = self
+                    .command_line_window
+                    .process_keyboard_input(keyboard_press);
 
-                if block_interact {
-                    return;
+                if !keep_enter_app_mode {
+                    self.is_dirty = true;
                 }
 
-                match keyboard_press {
-                    DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => {
-                        self.enter_text_mode();
-                    }
-                    DecodedKey::Unicode('c') => {
-                        self.create_new_workspace();
-                    }
-                    DecodedKey::Unicode('x') => {
-                        self.remove_current_workspace();
-                    }
-                    DecodedKey::Unicode('q') => {
-                        self.switch_prev_workspace();
-                    }
-                    DecodedKey::Unicode('e') => {
-                        self.switch_next_workspace();
-                    }
-                    DecodedKey::Unicode('o') => {
-                        self.get_current_workspace_mut()
-                            .move_focused_window_forward();
-                    }
-                    DecodedKey::Unicode('i') => {
-                        self.get_current_workspace_mut()
-                            .move_focused_window_backward();
-                    }
-                    DecodedKey::Unicode('h') => {
-                        self.command_line_window
-                            .activate_enter_app_mode(ScreenSplitType::Horizontal);
-                    }
-                    DecodedKey::Unicode('v') => {
-                        self.command_line_window
-                            .activate_enter_app_mode(ScreenSplitType::Vertical);
-                    }
-                    DecodedKey::Unicode('w') => {
-                        self.get_current_workspace_mut().focus_next_component();
-                    }
-                    DecodedKey::Unicode('s') => {
-                        self.get_current_workspace_mut().focus_prev_component();
-                    }
-                    DecodedKey::Unicode('a') => {
-                        self.get_current_workspace_mut().focus_prev_window();
-                    }
-                    DecodedKey::Unicode('d') => {
-                        self.get_current_workspace_mut().focus_next_window();
-                    }
-                    DecodedKey::Unicode('m') => {
-                        /* Only works, if both buddies don't have subwindows inside them.
-                        Move windows up before merging, if that is a problem */
-                        let was_closed = self.get_current_workspace_mut().close_focused_window();
-                        if was_closed {
-                            self.is_dirty = true;
-                        }
-                    }
-                    _ => {}
+                return;
+            }
+
+            // Pass the input to the focused component
+            let block_interact = self
+                .get_current_workspace_mut()
+                .get_focused_window_mut()
+                .interact_with_focused_component(Interaction::Keyboard(keyboard_press));
+
+            if block_interact {
+                return;
+            }
+
+            match keyboard_press {
+                DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => {
+                    self.enter_text_mode();
                 }
+                DecodedKey::Unicode('c') => {
+                    self.create_new_workspace();
+                }
+                DecodedKey::Unicode('x') => {
+                    self.remove_current_workspace();
+                }
+                DecodedKey::Unicode('q') => {
+                    self.switch_prev_workspace();
+                }
+                DecodedKey::Unicode('e') => {
+                    self.switch_next_workspace();
+                }
+                DecodedKey::Unicode('o') => {
+                    self.get_current_workspace_mut()
+                        .move_focused_window_forward();
+                }
+                DecodedKey::Unicode('i') => {
+                    self.get_current_workspace_mut()
+                        .move_focused_window_backward();
+                }
+                DecodedKey::Unicode('h') => {
+                    self.command_line_window
+                        .activate_enter_app_mode(ScreenSplitType::Horizontal);
+                }
+                DecodedKey::Unicode('v') => {
+                    self.command_line_window
+                        .activate_enter_app_mode(ScreenSplitType::Vertical);
+                }
+                DecodedKey::Unicode('w') => {
+                    self.get_current_workspace_mut().focus_next_component();
+                }
+                DecodedKey::Unicode('s') => {
+                    self.get_current_workspace_mut().focus_prev_component();
+                }
+                DecodedKey::Unicode('a') => {
+                    self.get_current_workspace_mut().focus_prev_window();
+                }
+                DecodedKey::Unicode('d') => {
+                    self.get_current_workspace_mut().focus_next_window();
+                }
+                DecodedKey::Unicode('m') => {
+                    /* Only works, if both buddies don't have subwindows inside them.
+                    Move windows up before merging, if that is a problem */
+                    let was_closed = self.get_current_workspace_mut().close_focused_window();
+                    if was_closed {
+                        self.is_dirty = true;
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -284,54 +344,29 @@ impl WindowManager {
             let mouse_event = self.mouse_state.process(&mouse_packet);
 
             // Ask the workspace manager first
-            if let Some(new_workspace) = self.workspace_selection_window.handle_mouse_event(&mouse_event) {
-                self.switch_workspace(new_workspace);
+            if let Some(callback) = self
+                .workspace_selection_window
+                .handle_mouse_event(&mouse_event)
+            {
+                callback();
                 return;
             }
 
             // Focus component under the cursor
             let cursor_pos = self.mouse_state.position();
             self.get_current_workspace_mut().focus_window_at(cursor_pos);
-            self.get_current_workspace_mut().focus_component_at(cursor_pos);
+            self.get_current_workspace_mut()
+                .focus_component_at(cursor_pos);
 
             // Pass mouse event to focused component
-            self.get_current_workspace_mut().get_focused_window_mut().interact_with_focused_component(Interaction::Mouse(mouse_event));
+            self.get_current_workspace_mut()
+                .get_focused_window_mut()
+                .interact_with_focused_component(Interaction::Mouse(mouse_event));
         }
     }
 
-    fn process_enter_app_mode(&mut self, keyboard_press: DecodedKey) {
-        match keyboard_press {
-            DecodedKey::Unicode('\n') => {
-                if !self.command_line_window.command.is_empty()
-                    && Self::get_api().is_app_name_valid(&self.command_line_window.command)
-                {
-                    let command = self.command_line_window.command.to_owned();
-                    self.split_window(
-                        self.get_current_workspace().focused_window_id,
-                        self.command_line_window.split_type,
-                        command.as_str(),
-                    );
-                }
-
-                self.command_line_window.deactivate_enter_app_mode();
-                self.is_dirty = true;
-            }
-            BACKSPACE_UNICODE => {
-                self.command_line_window.is_dirty = true;
-                self.command_line_window.pop_char();
-            }
-            ESCAPE_UNICODE => {
-                self.command_line_window.deactivate_enter_app_mode();
-                self.is_dirty = true;
-            }
-            DecodedKey::Unicode(c) => {
-                self.command_line_window.is_dirty = true;
-                self.command_line_window.push_char(c);
-            }
-            _ => {}
-        }
-    }
-
+    /// Adds all components to the window that have been queued by the api
+    /// since the last frame.
     fn add_new_components_from_api(&mut self) {
         while let Ok(NewCompData {
             window_data:
@@ -356,8 +391,8 @@ impl WindowManager {
     }
 
     fn add_window_to_workspace(&mut self, rect_data: RectData, app_name: &str) {
-        let window_id = Self::generate_id();
-        let window = AppWindow::new(window_id, rect_data);
+        let window = AppWindow::new(rect_data);
+        let window_id = window.get_id();
         let root_container = window.root_container();
 
         let curr_ws = self.get_current_workspace_mut();
@@ -367,15 +402,22 @@ impl WindowManager {
         self.is_dirty = true;
 
         Self::get_api()
-            .register(self.current_workspace, window_id, rect_data, app_name, root_container)
+            .register(
+                self.current_workspace,
+                window_id,
+                rect_data,
+                app_name,
+                root_container,
+            )
             .expect("Failed to create window!");
     }
 
+    /// Opens a new app window in split mode.
     fn split_window(&mut self, window_id: usize, split_type: ScreenSplitType, app_name: &str) {
         let curr_ws = self.get_current_workspace_mut();
 
         if let Some(window) = curr_ws.windows.get_mut(&window_id) {
-            let old_rect @ RectData {
+            let _old_rect @ RectData {
                 top_left: old_top_left,
                 width: old_width,
                 height: old_height,
@@ -394,6 +436,7 @@ impl WindowManager {
                     window.rescale_window_in_place(window.rect_data.clone());
                     self.add_window_to_workspace(new_rect_data, app_name);
                 }
+
                 ScreenSplitType::Vertical => {
                     window.rect_data.width /= 2;
                     let new_top_left = old_top_left.add(window.rect_data.width, 0);
@@ -418,26 +461,28 @@ impl WindowManager {
 
         let new_workspace_index = self.workspaces.len();
 
+        // Calculate the rect for the workspace
         let screen_res = Self::get_screen_res();
         let window_rect_data = RectData {
             top_left: Vertex::new(
                 DIST_TO_SCREEN_EDGE,
-                DIST_TO_SCREEN_EDGE + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW,
+                DIST_TO_SCREEN_EDGE + WORKSPACE_SELECTION_WINDOW_HEIGHT,
             ),
             width: screen_res.0 - DIST_TO_SCREEN_EDGE * 2,
             height: screen_res.1
-                - (DIST_TO_SCREEN_EDGE * 2 + HEIGHT_WORKSPACE_SELECTION_LABEL_WINDOW),
+                - (DIST_TO_SCREEN_EDGE * 2 + WORKSPACE_SELECTION_WINDOW_HEIGHT),
         };
 
-        let window = AppWindow::new(Self::generate_id(), window_rect_data);
-        let window_id = window.id;
+        // Create a new window for the workspace
+        let window = AppWindow::new(window_rect_data);
+        let window_id = window.get_id();
         let root_container = window.root_container();
 
-        self.workspace_selection_window
-            .register_workspace(self.workspaces.len());
-
+        // Create the workspace
         let workspace = Workspace::new_with_single_window((window_id, window), window_id);
 
+        self.workspace_selection_window
+            .register_workspace(workspace.get_id());
         self.workspaces.insert(new_workspace_index, workspace);
 
         Self::get_api()
@@ -454,27 +499,36 @@ impl WindowManager {
         self.workspace_selection_window.mark_dirty();
     }
 
+    /// Removes the currently active workspace and switches to the previous workspace.
+    /// This will only work if more than one workspace is available.
     fn remove_current_workspace(&mut self) {
+        // Keep at least one workspace
         if self.workspaces.len() <= 1 {
             return;
         }
 
-        // Remove workspace & labels
-        self.workspaces.remove(self.current_workspace);
+        let current_workspace_index = self.current_workspace;
+
+        // Remove workspace button
         self.workspace_selection_window
-            .unregister_workspace(self.current_workspace);
+            .unregister_workspace(self.get_current_workspace().get_id());
         self.workspace_selection_window.mark_dirty();
 
+        // Remove workspace
+        self.workspaces.remove(current_workspace_index);
+
         // Update workspace indices
+        // TODO: Don't do this! Use the workspace id instead.
         self.on_loop_iter_fns
-            .retain_mut(|fun| fun.window_data.workspace_index != self.current_workspace);
+            .retain_mut(|fun| fun.window_data.workspace_index != current_workspace_index);
         self.on_loop_iter_fns
             .iter_mut()
-            .filter(|fun| fun.window_data.workspace_index > self.current_workspace)
+            .filter(|fun| fun.window_data.workspace_index > current_workspace_index)
             .for_each(|fun| fun.window_data.workspace_index -= 1);
 
-        Self::get_api().remove_all_handles_tied_to_workspace(self.current_workspace);
+        Self::get_api().remove_all_handles_tied_to_workspace(current_workspace_index);
 
+        // Switch to the previous workspace
         self.switch_prev_workspace();
         self.is_dirty = true;
     }
@@ -488,7 +542,8 @@ impl WindowManager {
     }
 
     fn switch_prev_workspace(&mut self) {
-        let prev_workspace = (self.current_workspace + self.workspaces.len() - 1) % self.workspaces.len();
+        let prev_workspace =
+            (self.current_workspace + self.workspaces.len() - 1) % self.workspaces.len();
         self.switch_workspace(prev_workspace);
     }
 
@@ -507,7 +562,7 @@ impl WindowManager {
 
     fn draw(&mut self) {
         // In enter_app_mode, we freeze everything else and only redraw the command-line-window
-        if self.command_line_window.enter_app_mode {
+        if self.command_line_window.is_active() {
             self.command_line_window.draw();
             return;
         }
@@ -521,9 +576,13 @@ impl WindowManager {
 
         let focused_window_id = self.get_current_workspace().focused_window_id;
         let curr_ws = self.get_current_workspace_mut();
-        
+
         // Redraw all unfocused workspace windows
-        for window in curr_ws.windows.values_mut().filter(|w| w.id != focused_window_id) {
+        for window in curr_ws
+            .windows
+            .values_mut()
+            .filter(|w| w.get_id() != focused_window_id)
+        {
             window.draw(focused_window_id, is_dirty);
         }
 
@@ -533,14 +592,20 @@ impl WindowManager {
         }
 
         // Draw workspace selection window last
-        self.workspace_selection_window.draw(Some(self.current_workspace));
+        let current_workspace_id = curr_ws.get_id();
+        self.workspace_selection_window
+            .draw(Some(current_workspace_id));
 
         self.is_dirty = false;
     }
 
     fn fps(&self) -> i64 {
         let time = systime();
-        let elapsed = time.checked_sub(&self.start_time).unwrap().num_milliseconds() / 1000;
+        let elapsed = time
+            .checked_sub(&self.start_time)
+            .unwrap()
+            .num_milliseconds()
+            / 1000;
 
         if elapsed > 0 {
             self.frames / elapsed
@@ -549,22 +614,33 @@ impl WindowManager {
         }
     }
 
+    /// Returns, whether it is time to flush the screen.
+    /// This depends on the target frame time specified in `FLUSHING_DELAY_MS`.
     fn should_flush(&self) -> bool {
         let time = systime();
-        let elapsed = time.checked_sub(&self.last_frame_time).unwrap().num_milliseconds() as u32;
+        let elapsed = time
+            .checked_sub(&self.last_frame_time)
+            .unwrap()
+            .num_milliseconds() as u32;
 
         elapsed >= FLUSHING_DELAY_MS
     }
 
+    /// Flushes the changes from the backbuffer and displays them on the front buffer,
+    /// if allowed by `should_flush()`.
     fn flush(&mut self) {
         if self.should_flush() {
             Drawer::flush();
             self.last_frame_time = systime();
-            self.frames = self.frames.checked_add(1).or_else(|| {
-                // Reset frames counter if it overflows also requires to reset start_time
-                self.start_time = self.last_frame_time;
-                Some(0)
-            }).unwrap();
+            self.frames = self
+                .frames
+                .checked_add(1)
+                .or_else(|| {
+                    // Reset frames counter if it overflows also requires to reset start_time
+                    self.start_time = self.last_frame_time;
+                    Some(0)
+                })
+                .unwrap();
         }
     }
 
@@ -574,6 +650,7 @@ impl WindowManager {
     }
 }
 
+#[cfg(feature = "with_runtime")]
 #[no_mangle]
 fn main() {
     let resolution = Drawer::get_graphic_resolution();

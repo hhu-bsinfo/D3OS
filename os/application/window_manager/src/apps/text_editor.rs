@@ -1,70 +1,154 @@
-use alloc::{borrow::ToOwned, boxed::Box, rc::Rc, string::String, vec};
-use model::Document;
-use terminal::DecodedKey;
-use crate::{alloc::string::ToString, components::component::ComponentStylingBuilder, config, signal::Signal};
-use graphic::{buffered_lfb, color::{Color, WHITE}};
-use spin::rwlock::RwLock;
-use drawer::{rect_data::RectData, vertex::Vertex};
-use graphic::{bitmap::Bitmap, lfb::DEFAULT_CHAR_HEIGHT};
 use super::runnable::Runnable;
-use crate::{api::Command, WindowManager};
 use crate::apps::text_editor::view::View;
-use text_buffer::TextBuffer;
+use crate::{api::Command, WindowManager};
 use alloc::collections::VecDeque;
+use alloc::{boxed::Box, rc::Rc, string::String, vec};
+use drawer::{rect_data::RectData, vertex::Vertex};
+use font::Font;
+use graphic::color::{Color, WHITE};
+use graphic::lfb::DEFAULT_CHAR_WIDTH;
+use graphic::{bitmap::Bitmap, lfb::DEFAULT_CHAR_HEIGHT};
+use meassages::{Message, ViewMessage};
+use model::{Document, ViewConfig};
+use spin::rwlock::RwLock;
+use terminal::DecodedKey;
+use text_buffer::TextBuffer;
 
-mod view;
+mod font;
+mod meassages;
 mod model;
+mod view;
 
 // Julius Drodofsky
 pub struct TextEditor;
 
+#[derive(Debug, Clone, Copy)]
 pub struct TextEditorConfig {
-    pub widht: usize,
+    pub width: usize,
     pub height: usize,
     pub background_color: Color,
+    pub markdown_view: ViewConfig,
+    pub simple_view: ViewConfig,
 }
 
+impl TextEditorConfig {
+    pub fn new(width: usize, height: usize) -> Self {
+        let bg_color = Color::new(20, 20, 20, 255);
+        let normal = Font {
+            scale: 1,
+            fg_color: WHITE,
+            bg_color: bg_color,
+            char_width: DEFAULT_CHAR_WIDTH,
+            char_height: DEFAULT_CHAR_HEIGHT,
+        };
+        let strong = Font {
+            scale: 1,
+            fg_color: Color::new(69, 133, 136, 255),
+            bg_color: bg_color,
+            char_width: DEFAULT_CHAR_WIDTH,
+            char_height: DEFAULT_CHAR_HEIGHT,
+        };
+        let emphasis = Font {
+            scale: 1,
+            fg_color: Color::new(131, 165, 152, 255),
+            bg_color: bg_color,
+            char_width: DEFAULT_CHAR_WIDTH,
+            char_height: DEFAULT_CHAR_HEIGHT,
+        };
+        let markdown_view = ViewConfig::Markdown {
+            normal: normal,
+            emphasis: emphasis,
+            strong: strong,
+        };
+
+        let simple_view = ViewConfig::Simple {
+            font_scale: normal.scale,
+            fg_color: normal.fg_color,
+            bg_color: normal.bg_color,
+        };
+        TextEditorConfig {
+            width: width,
+            height: height,
+            background_color: bg_color,
+            markdown_view: markdown_view,
+            simple_view: simple_view,
+        }
+    }
+}
 
 impl Runnable for TextEditor {
     fn run() {
-        let config = TextEditorConfig{widht: 720, height: 500, background_color: Color::new(20,20,20,255)};
+        let config = TextEditorConfig::new(720, 500);
         let bitmap = Bitmap {
-            width: config.widht as u32,
+            width: config.width as u32,
             height: config.height as u32,
-            data: vec![
-                config.background_color;
-                config.widht*config.height
-            ],
+            data: vec![config.background_color; config.width * config.height],
         };
         let deque = VecDeque::<DecodedKey>::new();
-        let handle = concurrent::thread::current().expect("Failed to get thread").id();
+        let handle = concurrent::thread::current()
+            .expect("Failed to get thread")
+            .id();
         let api = WindowManager::get_api();
         let canvas = Rc::new(RwLock::new(bitmap));
         let input = Rc::new(RwLock::<VecDeque<DecodedKey>>::new(deque));
         let input_clone = Rc::clone(&input);
-        let component = api.execute(handle, None,  Command::CreateCanvas { styling: None,  rect_data: RectData {
-                    top_left: Vertex::new(50, 80),
-                    width: config.widht as u32,
-                    height: config.height as u32,
+        let component = api
+            .execute(
+                handle,
+                None,
+                Command::CreateCanvas {
+                    styling: None,
+                    rect_data: RectData {
+                        top_left: Vertex::new(50, 80),
+                        width: config.width as u32,
+                        height: config.height as u32,
+                    },
+                    input: Some(Box::new(move |c: DecodedKey| {
+                        input_clone.write().push_back(c);
+                    })),
+                    buffer: Rc::clone(&canvas),
                 },
-                input: Some(Box::new(move |c: DecodedKey| {
-                    input_clone.write().push_back(c);
-                })),
-                buffer: Rc::clone(&canvas),
-            }).unwrap();
-        
+            )
+            .unwrap();
+        let markdown_example = r#"
+# Heading 1
 
-        let mut text_buffer = TextBuffer::from_str("Das ist ein Text!");
-        let mut document: Document = Document::new(Some(String::from("scratch")), text_buffer);
-        
-        let mut view = View::Simple{font_scale: 1, fg_color: WHITE, bg_color: config.background_color};
-        view.render(&document, &mut canvas.write());
+## Heading 2
+
+This is a paragraph with **bold text** and *italic text*.
+
+---
+
+Another paragraph after a horizontal rule.
+
+Some **Strong** Text.
+
+Some *Emphasis* Text.
+
+### Heading3
+
+- Unordered item 1  
+- Unordered item 2  
+  - Nested unordered item  
+  - Another nested item  
+
+1. Ordered item 1  
+2. Ordered item 2  
+   1. Nested ordered item  
+   2. Another nested item
+"#;
+        let mut text_buffer = TextBuffer::from_str(markdown_example);
+        let mut document: Document =
+            Document::new(Some(String::from("scratch")), text_buffer, config);
+
+        document.update(meassages::Message::ViewMessage(ViewMessage::ScrollDown(0)));
+        View::render(&document, &mut canvas.write());
         component.write().mark_dirty();
         let mut dirty = false;
         loop {
-            let mut tmp_queue = VecDeque::<DecodedKey>::new();
-            while let Some(value) = input.write().pop_front(){
-                tmp_queue.push_back(value);
+            let mut tmp_queue = VecDeque::<Message>::new();
+            while let Some(value) = input.write().pop_front() {
+                tmp_queue.push_back(Message::DecodedKey(value));
                 dirty = true;
             }
             while let Some(value) = tmp_queue.pop_front() {
@@ -73,11 +157,17 @@ impl Runnable for TextEditor {
             if dirty {
                 {
                     // extra block to release canvas lock bevore calling mark_dirty
-                    view.render(&document, &mut canvas.write());
+                    let mut msg = View::render(&document, &mut canvas.write());
+                    while msg.is_some() {
+                        document.update(meassages::Message::ViewMessage(msg.unwrap()));
+                        msg = View::render(&document, &mut canvas.write());
+                    }
                 }
-                component.write().mark_dirty();
+                {
+                    component.write().mark_dirty()
+                };
                 dirty = false;
-            }   
+            }
         }
     }
 }

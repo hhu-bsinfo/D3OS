@@ -29,6 +29,15 @@
             "dependsOn": "build"
         },
         {
+            "label": "qemu-wsl",
+            "type": "shell",
+            "isBackground": false,
+            "command": "cargo",
+            "args": [ "make", "--no-workspace", "--profile", "development", "qemu-wsl" ],
+            "problemMatcher": [],
+            "dependsOn": "build"
+        },
+        {
             "label": "qemu-gdb",
             "type": "shell",
             "isBackground": true,

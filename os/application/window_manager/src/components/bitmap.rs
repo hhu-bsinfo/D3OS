@@ -1,11 +1,13 @@
 use drawer::{drawer::Drawer, rect_data::RectData};
 use graphic::{bitmap::{Bitmap, ScalingMode}, lfb::DEFAULT_CHAR_HEIGHT};
 
+use crate::WindowManager;
+
 use super::{component::{Casts, Component, ComponentStyling, Hideable, Resizable}, container::Container};
 
 pub struct BitmapGraphic {
-    pub id: Option<usize>,
-    pub is_dirty: bool,
+    id: usize,
+    is_dirty: bool,
     rel_rect_data: RectData,
     abs_rect_data: RectData,
     orig_rect_data: RectData,
@@ -27,7 +29,7 @@ impl BitmapGraphic {
         styling: Option<ComponentStyling>,
     ) -> Self {
         Self {
-            id: None,
+            id: WindowManager::generate_id(),
             is_dirty: true,
             rel_rect_data,
             abs_rect_data: RectData::zero(),
@@ -55,7 +57,7 @@ impl Component for BitmapGraphic {
         }
 
         let styling = &self.styling;
-        let is_focused = focus_id == self.id;
+        let is_focused = focus_id == Some(self.id);
 
         let bg_color = if is_focused {
             styling.focused_background_color
@@ -106,12 +108,8 @@ impl Component for BitmapGraphic {
         self.abs_rect_data
     }
 
-    fn get_id(&self) -> Option<usize> {
+    fn get_id(&self) -> usize {
         self.id
-    }
-
-    fn set_id(&mut self, id: usize) {
-        self.id = Some(id);
     }
 
     fn is_dirty(&self) -> bool {

@@ -1,11 +1,21 @@
-use alloc::{boxed::Box, collections::LinkedList, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, string::String};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
-use graphic::color::Color;
-use hashbrown::HashMap;
-use spin::RwLock;
+use graphic::color::{self, Color};
 
 use crate::{
-    components::{component::Component, container::{basic_container::{BasicContainer, LayoutMode, StretchMode}, Container}}, config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR}, signal::ComponentRef, utils::get_element_cursor_from_orderer, Interaction, WindowManager, SCREEN
+    api::WindowManagerMessage,
+    components::{
+        button::Button,
+        component::ComponentStylingBuilder,
+        container::{
+            basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
+            Container, ContainerStylingBuilder,
+        },
+    },
+    config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR},
+    mouse_state::MouseEvent,
+    signal::{ComponentRef, ComponentRefExt, Signal},
+    Interaction, WindowManager, SCREEN,
 };
 
 pub const FOCUSED_INDICATOR_COLOR: Color = FOCUSED_BG_COLOR;
@@ -13,21 +23,25 @@ pub const FOCUSED_INDICATOR_LENGTH: u32 = 24;
 
 /// This is the window used in workspaces to contains components from different apps
 pub struct AppWindow {
-    pub id: usize,
+    id: usize,
     pub rect_data: RectData,
     /// Indicates whether redrawing of this window is required in next loop-iteration
-    pub is_dirty: bool,
+    is_dirty: bool,
+    is_dragging: bool,
 
     root_container: ComponentRef,
+    action_container: ComponentRef,
+    component_container: ComponentRef,
 
-    components: HashMap<usize, Rc<RwLock<Box<dyn Component>>>>,
-    /// focusable components are stored additionally in ordered fashion in here
-    component_orderer: LinkedList<usize>,
-    focused_component_id: Option<usize>,
+    close_button: ComponentRef,
+    next_button: ComponentRef,
+    prev_button: ComponentRef,
+
+    focused_component: Option<ComponentRef>,
 }
 
 impl AppWindow {
-    pub fn new(id: usize, rect_data: RectData) -> Self {
+    pub fn new(rect_data: RectData) -> Self {
         let screen_size = SCREEN.get().unwrap();
         let screen_rect = RectData {
             top_left: Vertex::zero(),
@@ -35,37 +49,133 @@ impl AppWindow {
             height: screen_size.1,
         };
 
-        // Root container that will hold all components
+        // Root container for the window
         let mut root_container = Box::new(BasicContainer::new(
             screen_rect,
+            LayoutMode::Vertical(AlignmentMode::Top),
+            StretchMode::Fill,
+            Some(
+                ContainerStylingBuilder::new()
+                    .show_border(false)
+                    .child_padding(0)
+                    .build(),
+            ),
+        ));
+
+        // Action container for the window buttons
+        let mut action_container = Box::new(BasicContainer::new(
+            RectData {
+                top_left: Vertex::zero(),
+                width: 0,
+                height: 40,
+            },
+            LayoutMode::Horizontal(AlignmentMode::Right),
+            StretchMode::Fill,
+            Some(ContainerStylingBuilder::new().show_border(true).show_background(true).build()),
+        ));
+
+        let button_rect = RectData {
+            top_left: Vertex::zero(),
+            width: 30,
+            height: 0,
+        };
+
+        let close_button = Button::new(
+            button_rect,
+            button_rect,
+            Some(Signal::new(String::from("X"))),
+            1,
+            Some(Box::new(move || {
+                WindowManager::get_api().send_message(WindowManagerMessage::CloseCurrentWindow);
+            })),
+            Some(
+                ComponentStylingBuilder::new()
+                    .maintain_aspect_ratio(true)
+                    .focused_border_color(color::RED)
+                    .focused_background_color(color::RED.dim())
+                    .build(),
+            ),
+        );
+
+        let next_button = Button::new(
+            button_rect,
+            button_rect,
+            Some(Signal::new(String::from(">"))),
+            1,
+            Some(Box::new(move || {
+                WindowManager::get_api()
+                    .send_message(WindowManagerMessage::MoveCurrentWindowForward);
+            })),
+            Some(
+                ComponentStylingBuilder::new()
+                    .maintain_aspect_ratio(true)
+                    .build(),
+            ),
+        );
+
+        let prev_button = Button::new(
+            button_rect,
+            button_rect,
+            Some(Signal::new(String::from("<"))),
+            1,
+            Some(Box::new(move || {
+                WindowManager::get_api()
+                    .send_message(WindowManagerMessage::MoveCurrentWindowBackward);
+            })),
+            Some(
+                ComponentStylingBuilder::new()
+                    .maintain_aspect_ratio(true)
+                    .build(),
+            ),
+        );
+
+        action_container.add_child(close_button.clone());
+        action_container.add_child(next_button.clone());
+        action_container.add_child(prev_button.clone());
+
+        let action_container = ComponentRef::from_component(action_container);
+
+        // Component container that holds all API components
+        let component_container = ComponentRef::from_component(Box::new(BasicContainer::new(
+            RectData {
+                top_left: Vertex::zero(),
+                width: 0,
+                height: 560,
+            },
             LayoutMode::None,
             StretchMode::None,
-            None,
-        ));
+            Some(ContainerStylingBuilder::new().show_border(false).build()),
+        )));
+
+        root_container.add_child(ComponentRef::clone(&action_container));
+        root_container.add_child(ComponentRef::clone(&component_container));
 
         // Initial scaling to window bounds
         root_container.move_to(rect_data);
-
-        let root_container: ComponentRef = Rc::new(RwLock::new(root_container));
+        let root_container = ComponentRef::from_component(root_container);
 
         Self {
-            id,
+            id: WindowManager::generate_id(),
             is_dirty: true,
+            is_dragging: false,
             root_container,
-            components: HashMap::new(),
-            component_orderer: LinkedList::new(),
+            action_container,
+            component_container,
+            close_button,
+            next_button,
+            prev_button,
             rect_data,
-            focused_component_id: None,
+            focused_component: None,
         }
     }
 
-    pub fn root_container(&self) -> ComponentRef {
-        self.root_container.clone()
+    pub fn get_id(&self) -> usize {
+        self.id
     }
 
-    pub fn mark_component_dirty(&mut self, id: usize) {
-        let component = self.components.get(&id).unwrap();
-        component.write().mark_dirty();
+    pub fn root_container(&self) -> ComponentRef {
+        //self.root_container.clone()
+        self.component_container.clone()
     }
 
     pub fn mark_window_dirty(&mut self) {
@@ -73,92 +183,65 @@ impl AppWindow {
     }
 
     pub fn insert_component(&mut self, new_component: ComponentRef, parent: ComponentRef) {
-        let id = WindowManager::generate_id();
-        new_component.write().set_id(id);
-
-        // Add focusable components to the orderer
-        if new_component.read().as_focusable().is_some() {
-            self.component_orderer.push_back(id);
-        }
-
         // Add the component to the parent container
-        parent.write().as_container_mut().expect("parent must be a container").add_child(new_component.clone());
-
-        //self.root_container.add_child(new_component.clone());
-        self.components.insert(id, new_component);
+        parent
+            .write()
+            .as_container_mut()
+            .expect("parent must be a container")
+            .add_child(new_component.clone());
     }
 
-    /// Find a visible component at a specific position
-    fn find_component_at(&self, pos: &Vertex) -> Option<usize> {
-        for (id, component) in &self.components {
-            let component = component.read();
+    fn focus_component(&mut self, comp: Option<ComponentRef>) {
+        let focused_id = self
+            .focused_component
+            .as_ref()
+            .and_then(|comp| Some(comp.read().get_id()));
+        let new_id = comp.as_ref().and_then(|comp| Some(comp.read().get_id()));
 
-            // Focusable?
-            if component.as_focusable().is_none() {
-                continue;
-            }
-
-            // Hidden?
-            if let Some(hideable) = component.as_hideable() {
-                if hideable.is_hidden() {
-                    continue;
-                }
-            }
-
-            if !component.get_abs_rect_data().contains_vertex(pos) {
-                continue;
-            }
-            
-            return Some(*id);
-        }
-
-        None
-    }
-
-    fn focus_component(&mut self, id: Option<usize>) {
-        if self.focused_component_id == id {
+        if focused_id == new_id {
             return;
         }
 
         // Unfocus old component
-        if let Some(old_id) = self.focused_component_id {
-            if let Some(component) = self.components.get(&old_id) {
-                if let Some(focusable) = component.write().as_focusable_mut() {
-                    // Does the component accept the unfocus?
-                    if !focusable.unfocus() {
-                        return;
-                    }
+        if let Some(component) = &self.focused_component {
+            if let Some(focusable) = component.write().as_focusable_mut() {
+                // Does the component accept the unfocus?
+                if !focusable.can_unfocus() {
+                    return;
                 }
+
+                focusable.unfocus();
             }
         }
 
-        self.focused_component_id = None;
+        self.focused_component = None;
 
         // Focus the new component
-        if let Some(new_id) = id {
-            if let Some(component) = self.components.get(&new_id) {
-                if let Some(focusable) = component.write().as_focusable_mut() {
-                    self.focused_component_id = id;
-                    focusable.focus();
-                }
+        if let Some(component) = comp {
+            if let Some(focusable) = component.write().as_focusable_mut() {
+                focusable.focus();
+                self.focused_component = Some(component.clone());
             }
         }
     }
 
+    /// Passes the interaction to the focused component and returns, whether the interaction has been handled.
     pub fn interact_with_focused_component(&mut self, interaction: Interaction) -> bool {
-        if let Some(focused_component_id) = &self.focused_component_id {
-            let focused_component = self.components.get(focused_component_id).unwrap();
-
+        if let Some(focused_component) = &self.focused_component {
             // prüfe ob Komponente interagierbar ist und bekomme Callback
-            let callback: Option<Box<dyn FnOnce()>> = if let Some(interactable) = focused_component.write().as_interactable_mut() {
-                //interactable.consume_keyboard_press(keyboard_press)
-                match interaction {
-                    Interaction::Keyboard(keyboard_press) => interactable.consume_keyboard_press(keyboard_press),
-                    Interaction::Mouse(mouse_event) => interactable.consume_mouse_event(&mouse_event),
-                }
-            } else {
-                None
-            };
+            let callback: Option<Box<dyn FnOnce()>> =
+                if let Some(interactable) = focused_component.write().as_interactable_mut() {
+                    match interaction {
+                        Interaction::Keyboard(keyboard_press) => {
+                            interactable.consume_keyboard_press(keyboard_press)
+                        }
+                        Interaction::Mouse(mouse_event) => {
+                            interactable.consume_mouse_event(&mouse_event)
+                        }
+                    }
+                } else {
+                    None
+                };
 
             // führe Callback aus
             if let Some(callback) = callback {
@@ -170,88 +253,70 @@ impl AppWindow {
         return false;
     }
 
+    /// Returns whether the focused component wants to hold the focus.
+    /// The window should not be unfocused as long as that's the case.
+    pub fn can_unfocus(&self) -> bool {
+        if let Some(focused) = &self.focused_component {
+            if let Some(focusable) = focused.read().as_focusable() {
+                return focusable.can_unfocus();
+            }
+        }
+
+        return true;
+    }
+
     pub fn focus_next_component(&mut self) {
-        let total_components = self.component_orderer.len();
-        
-        // Find the cursor for the focused component (or default)
-        let cursor = match self.focused_component_id {
-            Some(focused_component_id) => get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id),
-            None => Some(self.component_orderer.cursor_back_mut()),
-        };
+        if !self.can_unfocus() {
+            return;
+        }
 
-        let mut cursor = match cursor {
-            Some(cursor) => cursor,
-            None => return,
-        };
+        let next_component = self
+            .root_container
+            .write()
+            .as_container_mut()
+            .unwrap()
+            .focus_next_child();
 
-        // Try to find the next non-hidden component in the orderer
-        let next_focus_id = (0..total_components + 1).find_map(|_| {
-            cursor.move_next();
-
-            cursor.current().and_then(|current_id| {
-                // Check if component is visible (when hideable)
-                if let Some(component) = self.components.get(current_id) {
-                    if component
-                        .read()
-                        .as_hideable()
-                        .map_or(true, |hideable| !hideable.is_hidden())
-                    {
-                        return Some(*current_id);
-                    }
-                }
-
-                None
-            })
-        });
-            
-        self.focus_component(next_focus_id);
+        self.focus_component(next_component);
     }
 
     pub fn focus_prev_component(&mut self) {
-        let total_components = self.component_orderer.len();
-        
-        // Find the cursor for the focused component (or default)
-        let cursor = match self.focused_component_id {
-            Some(focused_component_id) => get_element_cursor_from_orderer(&mut self.component_orderer, focused_component_id),
-            None => Some(self.component_orderer.cursor_front_mut()),
-        };
+        if !self.can_unfocus() {
+            return;
+        }
 
-        let mut cursor = match cursor {
-            Some(cursor) => cursor,
-            None => return,
-        };
+        let prev_component = self
+            .root_container
+            .write()
+            .as_container_mut()
+            .unwrap()
+            .focus_prev_child();
 
-        // Try to find the previous non-hidden component in the orderer
-        let next_focus_id = (0..total_components + 1).find_map(|_| {
-            cursor.move_prev();
-
-            cursor.current().and_then(|current_id| {
-                // Check if component is visible (when hideable)
-                if let Some(component) = self.components.get(current_id) {
-                    if component
-                        .read()
-                        .as_hideable()
-                        .map_or(true, |hideable| !hideable.is_hidden())
-                    {
-                        return Some(*current_id);
-                    }
-                }
-
-                None
-            })
-        });
-            
-        self.focus_component(next_focus_id);
+        self.focus_component(prev_component);
     }
 
     pub fn focus_component_at(&mut self, pos: Vertex) {
-        let new_component_id = self.find_component_at(&pos);
-        self.focus_component(new_component_id);
+        if !self.can_unfocus() {
+            return;
+        }
+
+        let new_component = self
+            .root_container
+            .write()
+            .as_container_mut()
+            .unwrap()
+            .focus_child_at(pos);
+
+        self.focus_component(new_component);
     }
 
     /// Rescales the window and marks it as dirty.
     pub fn rescale_window_in_place(&mut self, new_abs_rect: RectData) {
-        self.root_container.write().as_container_mut().unwrap().move_to(new_abs_rect);
+        self.root_container
+            .write()
+            .as_container_mut()
+            .unwrap()
+            .move_to(new_abs_rect);
 
         self.mark_window_dirty();
     }
@@ -259,7 +324,11 @@ impl AppWindow {
     /// Rescales and moves the window and marks it as dirty.
     pub fn rescale_window_after_move(&mut self, new_abs_rect: RectData) {
         self.rect_data = new_abs_rect;
-        self.root_container.write().as_container_mut().unwrap().move_to(new_abs_rect);
+        self.root_container
+            .write()
+            .as_container_mut()
+            .unwrap()
+            .move_to(new_abs_rect);
 
         self.mark_window_dirty();
     }
@@ -318,69 +387,30 @@ impl AppWindow {
             self.is_dirty = true;
         }
 
-        // "dirty" Komponenten werden gesammelt
-        /*let dirty_components: Vec<_> = self.components.iter().filter(|component_entry| {
-            component_entry.1.read().is_dirty() || self.is_dirty
-        }).map(|(_, value)| value).collect();
-
-
-        // keine Änderungen in Komponenten oder Fenster
-        if dirty_components.is_empty() && !self.is_dirty {
-            return;
-        }*/
-
         let is_focused = self.id == focused_window_id;
 
+        // Clear the entire window if it is dirty
         if self.is_dirty {
             Drawer::partial_clear_screen(self.rect_data);
+            self.root_container.write().mark_dirty();
+        }
 
+        // Draw components
+        let focused_id = self
+            .focused_component
+            .as_ref()
+            .and_then(|comp| Some(comp.read().get_id()));
+        self.root_container.write().draw(focused_id);
+
+        // Draw window border
+        if self.is_dirty {
             if is_focused {
                 Drawer::draw_rectangle(self.rect_data, FOCUSED_BG_COLOR);
             } else {
                 Drawer::draw_rectangle(self.rect_data, DEFAULT_FG_COLOR);
             }
-
-            self.root_container.write().mark_dirty();
         }
 
-        // es muss nicht teil bereinigt werden, falls das Fenster dirty ist da dies durch Splitting der Fall sein kann und so  in anderen Fenstern entstehen könnten
-        /*if !self.is_dirty {  
-            // bereinige zuvor gezeichnete Bereiche, der neu zu zeichnenden Komponenten
-            for dirty_component in &dirty_components {
-                Drawer::partial_clear_screen(dirty_component.read().get_drawn_rect_data());
-            }
-        }*/
-
-        // Zeichne die aktualisierten Komponenten
-        /*for dirty_component in &dirty_components {
-            // This will mark non-dirty components as dirty, when window is dirty
-            if self.is_dirty {
-                dirty_component.write().mark_dirty();
-            }
-
-            // prüfe ob die Komponente fokussiert ist
-            let is_focused = if let Some(focused_component_id) = self.focused_component_id {
-                focused_component_id == dirty_component.read().get_id().unwrap()
-            } else {
-                false
-            };
-
-            dirty_component.write().draw(is_focused);
-        }*/
-
-        self.root_container.write().draw(self.focused_component_id);
-
         self.is_dirty = false;
-    }
-
-    fn draw_is_focused_indicator(&self) {
-        let top_left = self.rect_data.top_left;
-        let side_length = FOCUSED_INDICATOR_LENGTH;
-        let vertices = [
-            top_left.add(1, 1),
-            top_left.add(side_length, 1),
-            top_left.add(1, side_length),
-        ];
-        Drawer::draw_filled_triangle(vertices, FOCUSED_INDICATOR_COLOR);
     }
 }

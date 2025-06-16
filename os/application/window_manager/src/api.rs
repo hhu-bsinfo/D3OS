@@ -10,7 +10,7 @@ use spin::rwlock::RwLock;
 use terminal::DecodedKey;
 
 use crate::{
-    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel, text_editor::TextEditor}, components::{bitmap::BitmapGraphic, button::Button, canvas::Canvas, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, LayoutMode, StretchMode}, Container}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, Signal}, SCREEN
+    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel, text_editor::TextEditor}, components::{bitmap::BitmapGraphic, button::Button, canvas::Canvas, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, LayoutMode, StretchMode}, Container, ContainerStyling}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, ComponentRefExt, Signal, Stateful}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -18,7 +18,7 @@ use self::component::ComponentStyling;
 extern crate alloc;
 
 /// Default app to be used on startup of a new workspace
-pub static DEFAULT_APP: &str = "editor";
+pub static DEFAULT_APP: &str = "layout";
 
 /// Logical screen resolution, used by apps for describing component locations
 pub const LOG_SCREEN: (u32, u32) = (1000, 750);
@@ -53,7 +53,7 @@ pub enum Command<'a> {
     },
     CreateCheckbox {
         log_rect_data: RectData,
-        state: bool,
+        state: Stateful<bool>,
         on_change: Option<Box<dyn Fn(bool) -> ()>>,
         styling: Option<ComponentStyling>,
     },
@@ -66,7 +66,7 @@ pub enum Command<'a> {
     CreateSlider {
         log_rect_data: RectData,
         on_change: Option<Box<dyn Fn(i32) -> ()>>,
-        value: i32,
+        value: Stateful<i32>,
         min: i32,
         max: i32,
         steps: u32,
@@ -78,8 +78,8 @@ pub enum Command<'a> {
         spacing: u32,
         num_buttons: usize,
         // options: Vec<String>,
-        selected_option: usize,
-        on_change: Option<Box<dyn Fn(usize) -> ()>>,
+        selected_option: Stateful<usize>,
+        on_change: Option<Rc<Box<dyn Fn(usize) -> ()>>>,
         styling: Option<ComponentStyling>,
     },
     CreateCanvas {
@@ -92,18 +92,39 @@ pub enum Command<'a> {
         log_rect_data: RectData,
         layout: LayoutMode,
         stretch: StretchMode,
-        styling: Option<ComponentStyling>,
+        styling: Option<ContainerStyling>,
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ScreenSplitType {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Debug)]
+pub enum WindowManagerMessage {
+    CreateNewWorkspace,
+    CloseCurrentWorkspace,
+    SwitchToWorkspace(usize),
+
+    CloseCurrentWindow,
+    MoveCurrentWindowForward,
+    MoveCurrentWindowBackward,
+
+    LaunchApp(String, ScreenSplitType),
 }
 
 pub struct Senders {
     pub tx_components: Sender<NewCompData>,
     pub tx_on_loop_iter: Sender<NewLoopIterFnData>,
+    pub tx_messages: Sender<WindowManagerMessage>,
 }
 
 pub struct Receivers {
     pub rx_components: Receiver<NewCompData>,
     pub rx_on_loop_iter: Receiver<NewLoopIterFnData>,
+    pub rx_messages: Receiver<WindowManagerMessage>,
 }
 
 /**
@@ -187,6 +208,7 @@ impl Api {
         }
     }
 
+    /// Registers a new window in the given workspace and launches the given app.
     pub fn register(
         &mut self,
         workspace_index: usize,
@@ -241,7 +263,6 @@ impl Api {
 
                         let (text, font_size_option) = label.unzip();
                         let font_size = font_size_option.unwrap_or(1);
-                        let font_scale = self.scale_font_to_window(font_size, &ratios);
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
         
@@ -250,7 +271,6 @@ impl Api {
                             log_rect_data.clone(),
                             text,
                             font_size,
-                            font_scale,
                             on_click,
                             styling,
                         );
@@ -276,13 +296,11 @@ impl Api {
                         let rel_pos = self.scale_vertex_to_rel(&log_pos);
 
                         let font_size = font_size.unwrap_or(1);
-                        let scaled_font_scale = self.scale_font_to_window(font_size, &ratios);
 
                         let component = Label::new(
                             rel_pos,
                             font_size,
                             text,
-                            scaled_font_scale,
                             styling,
                         );
                
@@ -313,14 +331,11 @@ impl Api {
                         self.validate_log_pos(&log_rect_data.top_left)?;
 
                         let font_size = font_size.unwrap_or(1);
-                        let scaled_font_scale = self.scale_font_to_window(font_size, &ratios);
-
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
                         let component = InputField::new(
                             rel_rect_data,
                             font_size,
-                            scaled_font_scale,
                             width_in_chars,
                             starting_text,
                             on_change,
@@ -347,15 +362,13 @@ impl Api {
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
-                        let checkbox = Checkbox::new(
+                        let component = Checkbox::new(
                             rel_rect_data,
                             log_rect_data.clone(),
                             state,
                             on_change,
                             styling,
                         );
-
-                        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(checkbox)));
 
                         let dispatch_data = NewCompData {
                             window_data,
@@ -385,7 +398,7 @@ impl Api {
                             styling,
                         );
 
-                        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(bitmap_graphic)));
+                        let component = ComponentRef::from_component(Box::new(bitmap_graphic));
 
                         let dispatch_data = NewCompData {
                             window_data,
@@ -409,7 +422,7 @@ impl Api {
 
                         let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
-                        let slider = Slider::new(
+                        let component = Slider::new(
                             rel_rect_data,
                             log_rect_data.clone(),
                             on_change,
@@ -419,8 +432,6 @@ impl Api {
                             steps,
                             styling,
                         );
-
-                        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(slider)));
 
                         let dispatch_data = NewCompData {
                             window_data,
@@ -444,24 +455,17 @@ impl Api {
                         let rel_pos = self.scale_vertex_to_rel(&center);
                         let rel_radius = self.scale_radius_to_rel(radius);
 
-                        let abs_radius = self.scale_radius_to_window(rel_radius, 7, &ratios);
-
-                        //let scaled_pos = self.scale_vertex_to_window(rel_pos, handle_data);
-                        let abs_pos = parent.read().as_container().unwrap().scale_vertex_to_container(rel_pos);
-
                         let radio_buttons = RadioButtonGroup::new(
                             num_buttons,
-                            abs_pos,
                             rel_pos,
-                            abs_radius,
                             rel_radius,
                             spacing,
-                            Some(selected_option),
+                            selected_option,
                             on_change,
                             styling,
                         );
 
-                        let component: Rc<RwLock<Box<dyn Component>>> = Rc::new(RwLock::new(Box::new(radio_buttons)));
+                        let component = ComponentRef::from_component(Box::new(radio_buttons));
 
                         let dispatch_data = NewCompData {
                             window_data,
@@ -479,7 +483,7 @@ impl Api {
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
                 let container = BasicContainer::new(rel_rect_data, layout, stretch, styling);
-                let component: ComponentRef = Rc::new(RwLock::new(Box::new(container)));
+                let component: ComponentRef = ComponentRef::from_component(Box::new(container));
 
                 let dispatch_data = NewCompData {
                     window_data,
@@ -494,7 +498,7 @@ impl Api {
             // Julius Drodofsky
             Command::CreateCanvas { styling , rect_data,  buffer, input} => {
                 let canvas = Canvas::new( styling, rect_data, buffer, input);
-                let component = Rc::new(RwLock::new(Box::new(canvas) as Box<dyn Component>));
+                let component = ComponentRef::from_component(Box::new(canvas));
                 let dispatch_data = NewCompData {
                     window_data,
                     parent,
@@ -506,6 +510,15 @@ impl Api {
         };
 
         Ok(component)
+    }
+
+    /// Sends a message to the window manager to perform various actions.
+    /// Window messages will be handled at the end of the current frame.
+    pub fn send_message(&self, message: WindowManagerMessage) {
+        self.senders
+            .tx_messages
+            .enqueue(message)
+            .expect("message queue was closed!");
     }
 
     pub fn remove_all_handles_tied_to_workspace(&mut self, workspace_index: usize) {
@@ -552,17 +565,6 @@ impl Api {
             .expect("on_loop_iter queue was closed!");
     }
 
-    // TODO: What's the purpose of this?
-    fn scale_font_to_window(&self, _original_font_size: usize, _ratios: &(f64, f64)) -> (u32, u32) {
-        return (1, 1);
-        
-        /*let float_font_size = f64::from(original_font_size as u32);
-        (
-            ((float_font_size * ratios.0) as u32).max(1),
-            ((float_font_size * ratios.1) as u32).max(1),
-        )*/
-    }
-
     /// Scales a logical rect to a relative rect
     fn scale_rect_data_to_rel(&self, log_rect_data: &RectData) -> RectData {
         let new_pos = Vertex::new(
@@ -591,19 +593,9 @@ impl Api {
         );
     }
 
+    /// Scales a logical radius to a relative radius
     fn scale_radius_to_rel(&self, radius: u32) -> u32 {
         return (f64::from(radius) * self.rel_to_log_ratios.0.min(self.rel_to_log_ratios.1)) as u32;
-    }
-
-    fn scale_radius_to_window(
-        &self,
-        radius: u32,
-        min_radius: u32,
-        ratios: &(f64, f64),
-    ) -> u32 {    
-        let scaled_radius: u32 = (f64::from(radius) * ratios.0.min(ratios.1)) as u32;
-    
-        scaled_radius.max(min_radius)
     }
 
     fn validate_log_pos(&self, log_pos: &Vertex) -> Result<(), &str> {
