@@ -3,12 +3,11 @@ use alloc::{
     vec::Vec,
 };
 use globals::application::{APPLICATION_REGISTRY, Application};
-use logger::warn;
 
 use crate::{
     context::Context,
     service::{
-        lexer_service::{AmbiguousState, ArgumentType, FindLastCommand, Token, TokenType},
+        lexer_service::{AmbiguousState, ArgumentType, FindLastCommand, Token},
         service::{Error, Response, Service},
     },
 };
@@ -23,29 +22,32 @@ pub struct AutoCompleteService {
 
 impl Service for AutoCompleteService {
     fn auto_complete(&mut self, context: &mut Context) -> Result<Response, Error> {
-        warn!("{:?}", self.current_app);
-        if context.auto_completion.has_focus() {
-            return self.cycle(context);
-        }
-        if context.auto_completion.is_empty() {
-            self.activate(context);
-            return self.cycle(context);
+        if !context.is_cursor_at_end() {
+            return Ok(Response::Skip);
         }
 
-        self.activate(context)
+        self.revalidate_application(context);
+
+        if !context.auto_completion.has_focus() {
+            return self.focus_suggestion(context);
+        }
+
+        self.cycle_suggestion(context)
     }
 
     fn simple_key(&mut self, context: &mut Context, key: char) -> Result<Response, Error> {
+        if !context.is_cursor_at_end() {
+            return Ok(Response::Skip);
+        }
+
+        self.revalidate_application(context);
+
         match key {
             ' ' => self.adopt(context),
-            '\x08' | '\x7F' => {
-                self.revalidate_application(context);
-                self.restore(context)
-            }
+            '\x08' | '\x7F' => self.clear_suggestion(context),
             _ => {
-                self.revalidate_application(context);
-                self.restore(context);
-                self.cycle(context)
+                self.clear_suggestion(context);
+                self.cycle_suggestion(context)
             }
         }
     }
@@ -55,15 +57,15 @@ impl Service for AutoCompleteService {
     }
 
     fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.restore(context)
+        self.clear_suggestion(context)
     }
 
     fn cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.restore(context)
+        self.clear_suggestion(context)
     }
 
     fn cursor_right(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.restore(context)
+        self.clear_suggestion(context)
     }
 
     fn history_down(&mut self, context: &mut Context) -> Result<Response, Error> {
@@ -86,20 +88,6 @@ impl AutoCompleteService {
     }
 
     fn adopt(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if !context.is_cursor_at_end() {
-            return Ok(Response::Skip);
-        }
-
-        if context
-            .tokens
-            .last()
-            .is_some_and(|token| token.token_type() == TokenType::Command)
-        {
-            self.current_app = Some(self.applications[self.current_index].clone());
-        }
-
-        self.current_index = 0;
-
         let intercept_char = context
             .line
             .pop()
@@ -107,37 +95,29 @@ impl AutoCompleteService {
         context.line.push_str(&context.auto_completion.get());
         context.line.push(intercept_char);
         context.cursor_position += context.auto_completion.len();
-        context.auto_completion.reset();
 
+        self.clear_suggestion(context);
         Ok(Response::Ok)
     }
 
-    fn restore(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if context.auto_completion.is_empty() {
-            return Ok(Response::Skip);
-        }
+    fn clear_suggestion(&mut self, context: &mut Context) -> Result<Response, Error> {
         self.current_index = 0;
-
+        self.current_suggestion = None;
         context.auto_completion.reset();
         Ok(Response::Ok)
     }
 
     fn reset(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.restore(context);
         self.current_app = None;
-        Ok(Response::Ok)
+        self.clear_suggestion(context)
     }
 
-    fn activate(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if context.tokens.last().is_none() {
-            return Ok(Response::Skip);
-        }
-        if self
-            .current_suggestion
-            .as_ref()
-            .is_some_and(|suggestion| *suggestion == context.tokens.last().unwrap().to_string())
-        {
-            return Ok(Response::Skip);
+    fn focus_suggestion(&mut self, context: &mut Context) -> Result<Response, Error> {
+        if self.current_suggestion.is_none() {
+            self.cycle_suggestion(context);
+            if self.current_suggestion.is_none() {
+                return Ok(Response::Skip);
+            }
         }
 
         context.auto_completion.focus();
@@ -145,44 +125,35 @@ impl AutoCompleteService {
     }
 
     fn revalidate_application(&mut self, context: &mut Context) {
-        let last_command = match context.tokens.find_last_command() {
-            Some(command) => command,
-            None => {
-                // self.reset(context);
-                self.current_app = None;
-                return;
-            }
+        let Some(last_command) = context.tokens.find_last_command() else {
+            self.current_suggestion = None;
+            return;
         };
-
-        // If no changes to last command => Do nothing
+        let last_command = last_command.to_string();
         if self
             .current_app
             .as_ref()
-            .is_some_and(|app| app.command == last_command.to_string())
+            .is_some_and(|app| app.command == last_command)
         {
             return;
         }
 
-        // Else => Try find matching application
-        let found = self.cycle_app(&last_command.to_string()).cloned();
-        warn!("{:?}", found);
-        self.current_suggestion = match &found {
-            Some(app) => Some(app.command.to_string()),
-            None => None,
-        };
-        self.current_app = found;
+        self.current_app = self.find_application(&last_command).cloned();
     }
 
-    fn cycle(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if !context.is_cursor_at_end() {
-            self.revalidate_application(context);
-            return Ok(Response::Ok);
-        }
+    fn find_application(&mut self, command: &str) -> Option<&Application> {
+        self.applications.iter().find(|app| app.command == command)
+    }
 
-        let suggestion = match context.tokens.last().cloned() {
+    fn cycle_suggestion(&mut self, context: &mut Context) -> Result<Response, Error> {
+        let token = context.tokens.last().cloned();
+        let suggestion = match &token {
             None => self.cycle_command(&String::new()),
+
             Some(Token::Command(_, cmd)) => self.cycle_command(&cmd),
+
             Some(Token::Argument(_, arg_type, arg)) => self.cycle_argument(Some(&arg_type), &arg),
+
             Some(Token::Whitespace(clx)) => match clx.ambiguous {
                 AmbiguousState::Pending => self.cycle_command(&String::new()),
                 AmbiguousState::Command => self.cycle_argument(None, &String::new()),
@@ -190,17 +161,26 @@ impl AutoCompleteService {
             },
             _ => None,
         };
+
         self.current_suggestion = suggestion.clone();
 
         if suggestion.is_none() {
             return Ok(Response::Skip);
         }
 
-        context.auto_completion.set(&suggestion.unwrap());
+        let start_at = if token.as_ref().is_some_and(|token| token.is_ambiguous()) {
+            token.unwrap().len()
+        } else {
+            0
+        };
+
+        context
+            .auto_completion
+            .set(&suggestion.unwrap()[start_at..]);
         Ok(Response::Ok)
     }
 
-    fn cycle_app(&mut self, cmd: &String) -> Option<&Application> {
+    fn cycle_command(&mut self, cmd: &String) -> Option<String> {
         self.applications
             .iter()
             .enumerate()
@@ -209,50 +189,24 @@ impl AutoCompleteService {
             .take(self.applications.len())
             .find_map(|(i, app)| {
                 if !app.command.starts_with(cmd) {
-                    self.current_app = None;
                     return None;
                 }
 
-                self.current_app = Some(app.clone());
                 self.current_index = i;
-                Some(app)
+                Some(app.command.to_string())
             })
     }
 
-    fn cycle_command(&mut self, cmd: &String) -> Option<String> {
-        let complete_cmd = match self.cycle_app(cmd) {
-            Some(app) => &app.command[cmd.len()..],
-            None => return None,
-        };
-
-        if complete_cmd.is_empty() {
-            return None;
-        }
-
-        Some(complete_cmd.to_string())
-    }
-
     fn cycle_argument(&mut self, arg_type: Option<&ArgumentType>, arg: &String) -> Option<String> {
-        let found_arg = match arg_type {
-            Some(ArgumentType::Generic) => self.cycle_generic_argument(arg),
-            Some(ArgumentType::ShortFlag) => panic!("Not short flag auto complete not implemented"),
-            Some(ArgumentType::LongFlag) => panic!("Not long flag auto complete not implemented"),
-            Some(ArgumentType::LongFlagValue) => {
-                panic!("Not long flag value auto complete not implemented")
-            }
-            None => self.cycle_all_arguments(arg),
-        };
-
-        let complete_arg = match found_arg {
-            Some(found_arg) => &found_arg[arg.len()..].to_string(),
-            None => return None,
-        };
-
-        if complete_arg.is_empty() {
-            return None;
+        if arg_type.is_none() {
+            return self.cycle_all_arguments(arg);
         }
-
-        Some(complete_arg.to_string())
+        match arg_type.unwrap() {
+            ArgumentType::Generic => self.cycle_generic_argument(arg),
+            ArgumentType::ShortFlag => panic!("short flag auto complete not implemented"),
+            ArgumentType::LongFlag => panic!("long flag auto complete not implemented"),
+            ArgumentType::LongFlagValue => panic!("long flag value auto complete not implemented"),
+        }
     }
 
     fn cycle_all_arguments(&mut self, arg: &String) -> Option<String> {
@@ -261,7 +215,6 @@ impl AutoCompleteService {
         }
 
         // TODO other arg types
-
         None
     }
 
@@ -277,11 +230,12 @@ impl AutoCompleteService {
             .skip(self.current_index + 1)
             .take(sub_commands.len())
             .find_map(|(i, &sub_command)| {
-                if sub_command.starts_with(arg) {
-                    self.current_index = i;
-                    return Some(sub_command.to_string());
+                if !sub_command.starts_with(arg) {
+                    return None;
                 }
-                None
+
+                self.current_index = i;
+                return Some(sub_command.to_string());
             })
     }
 }

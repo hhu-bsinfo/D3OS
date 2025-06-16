@@ -99,6 +99,23 @@ impl Token {
             Token::QuoteEnd(_, ch) => ch.to_string(),
         }
     }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Token::Command(_, string) => string.len(),
+            Token::Argument(_, _, string) => string.len(),
+            Token::Whitespace(..) => 1,
+            Token::QuoteStart(..) => 1,
+            Token::QuoteEnd(..) => 1,
+        }
+    }
+
+    pub fn is_ambiguous(&self) -> bool {
+        match self {
+            Token::Command(..) | Token::Argument(..) => true,
+            _ => false,
+        }
+    }
 }
 
 pub trait FindLastCommand {
@@ -166,10 +183,17 @@ impl LexerService {
     }
 
     fn detokenize_to_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
-        let n = context.line.len() - context.line.get_dirty_index();
+        let total_len = context.tokens.total_len();
+
+        if total_len <= context.line.get_dirty_index() {
+            return Ok(Response::Skip);
+        }
+
+        let n = total_len - context.line.get_dirty_index();
         for _ in 0..n {
             self.pop(&mut context.tokens);
         }
+
         Ok(Response::Ok)
     }
 

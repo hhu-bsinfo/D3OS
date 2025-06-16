@@ -158,10 +158,12 @@ impl AutoCompletionContext {
 
     pub fn focus(&mut self) {
         self.has_focus = true;
+        self.is_dirty = true;
     }
 
     pub fn unfocus(&mut self) {
         self.has_focus = false;
+        self.is_dirty = true;
     }
 
     pub fn is_empty(&self) -> bool {
@@ -186,13 +188,13 @@ pub struct Context {
     /// Command line indicator
     pub(crate) indicator: IndicatorContext,
     /// Command line suggestion (Auto complete)
-    pub(crate) auto_completion: AutoCompletionContext,
+    pub(crate) auto_completion: AutoCompletionContext, // TODO RENAME TO SuggestionContext
     /// Current cursor position
-    pub(crate) cursor_position: usize,
+    pub(crate) cursor_position: usize, // TODO MOVE INTO line
     /// Generated tokens based on line
-    pub(crate) tokens: Vec<Token>,
+    pub(crate) tokens: Vec<Token>, // TODO CREATE OWN CONTEXT
     /// Generated executable based on tokens
-    pub(crate) executable: Option<Executable>,
+    pub(crate) executable: Option<Executable>, // TODO CREATE OWN CONTEXT
 }
 
 impl Context {
@@ -212,6 +214,7 @@ impl Context {
         self.indicator.len() + self.line.len() + self.auto_completion.len()
     }
 
+    // TODO move to line
     pub fn is_cursor_at_end(&self) -> bool {
         self.cursor_position == self.line.len()
     }

@@ -61,6 +61,7 @@ impl Shell {
         services.push(Box::new(HistoryService::new()));
         services.push(Box::new(LexerService::new(alias_service.clone())));
         services.push(Box::new(AutoCompleteService::new()));
+        services.push(Box::new(LexerService::new(alias_service.clone()))); // TODO WORKAROUND (autocompletion writes to line, which means tokens need to be revalidated to show changes)
         services.push(Box::new(DrawerService::new()));
         services.push(Box::new(ParserService::new()));
         services.push(Box::new(ExecutorService::new(alias_service.clone())));
