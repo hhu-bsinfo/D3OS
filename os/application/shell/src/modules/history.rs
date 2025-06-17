@@ -1,15 +1,16 @@
 use alloc::collections::vec_deque::VecDeque;
 
-use crate::context::Context;
+use crate::{
+    context::Context,
+    event::event_handler::{Error, EventHandler, Response},
+};
 
-use super::service::{Error, Response, Service};
-
-pub struct HistoryService {
+pub struct History {
     history: VecDeque<Context>,
     history_position: isize,
 }
 
-impl Service for HistoryService {
+impl EventHandler for History {
     fn history_up(&mut self, context: &mut Context) -> Result<Response, Error> {
         self.move_up(context)
     }
@@ -30,7 +31,7 @@ impl Service for HistoryService {
     }
 }
 
-impl HistoryService {
+impl History {
     pub const fn new() -> Self {
         Self {
             history: VecDeque::new(),
@@ -70,11 +71,7 @@ impl HistoryService {
 
     fn move_by(&mut self, context: &mut Context, step: isize) -> Result<Response, Error> {
         self.history_position += step;
-        *context = self
-            .history
-            .get(self.history_position as usize)
-            .unwrap()
-            .clone();
+        *context = self.history.get(self.history_position as usize).unwrap().clone();
         context.line.mark_dirty_at(0);
 
         Ok(Response::Ok)

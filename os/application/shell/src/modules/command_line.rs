@@ -1,15 +1,16 @@
 use alloc::{format, string::String};
 use naming::cwd;
 
-use crate::context::Context;
-
-use super::service::{Error, Response, Service};
+use crate::{
+    context::Context,
+    event::event_handler::{Error, EventHandler, Response},
+};
 
 const INDICATOR: char = '>';
 
-pub struct CommandLineService {}
+pub struct CommandLine {}
 
-impl Service for CommandLineService {
+impl EventHandler for CommandLine {
     fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
         context.line.reset();
         context.cursor_position = 0;
@@ -35,7 +36,7 @@ impl Service for CommandLineService {
     }
 }
 
-impl CommandLineService {
+impl CommandLine {
     pub const fn new() -> Self {
         Self {}
     }

@@ -1,13 +1,16 @@
 use alloc::string::ToString;
 use logger::info;
 
-use crate::{context::Context, executable::Executable, service::lexer_service::Token};
+use crate::{
+    context::Context,
+    event::event_handler::{Error, EventHandler, Response},
+    executable::Executable,
+    modules::lexer::Token,
+};
 
-use super::service::{Error, Response, Service};
+pub struct Parser {}
 
-pub struct ParserService {}
-
-impl Service for ParserService {
+impl EventHandler for Parser {
     fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
         context.executable = None;
         Ok(Response::Ok)
@@ -18,7 +21,7 @@ impl Service for ParserService {
     }
 }
 
-impl ParserService {
+impl Parser {
     pub const fn new() -> Self {
         Self {}
     }

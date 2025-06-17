@@ -4,15 +4,16 @@ use alloc::{
 };
 use terminal::print;
 
-use crate::context::Context;
+use crate::{
+    context::Context,
+    event::event_handler::{Error, EventHandler, Response},
+};
 
-use super::service::{Error, Response, Service};
-
-pub struct DrawerService {
+pub struct Writer {
     terminal_cursor_pos: usize,
 }
 
-impl Service for DrawerService {
+impl EventHandler for Writer {
     fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
         self.terminal_cursor_pos = 0;
         self.draw_at_dirty(context)
@@ -47,11 +48,9 @@ impl Service for DrawerService {
     }
 }
 
-impl DrawerService {
+impl Writer {
     pub const fn new() -> Self {
-        Self {
-            terminal_cursor_pos: 0,
-        }
+        Self { terminal_cursor_pos: 0 }
     }
 
     fn draw_next_line(&mut self, context: &mut Context) -> Result<Response, Error> {
@@ -109,9 +108,7 @@ impl DrawerService {
         let step = match context.auto_completion.has_focus() {
             true => self.terminal_cursor_pos as isize - context.total_line_len() as isize,
             false => {
-                self.terminal_cursor_pos as isize
-                    - context.cursor_position as isize
-                    - context.indicator.len() as isize
+                self.terminal_cursor_pos as isize - context.cursor_position as isize - context.indicator.len() as isize
             }
         };
         self.move_cursor_by(step)

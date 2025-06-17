@@ -5,29 +5,27 @@ use concurrent::thread;
 
 use crate::{
     build_in::{
-        alias::AliasBuildIn, build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn,
-        echo::EchoBuildIn, exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn,
-        unalias::UnaliasBuildIn,
+        alias::AliasBuildIn, build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn, echo::EchoBuildIn,
+        exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn, unalias::UnaliasBuildIn,
     },
     context::Context,
+    event::event_handler::{Error, EventHandler, Response},
     executable::Job,
-    sub_service::alias_sub_service::AliasSubService,
+    modules::alias::Alias,
 };
 
-use super::service::{Error, Response, Service};
-
-pub struct ExecutorService {
-    alias: Rc<RefCell<AliasSubService>>,
+pub struct Executor {
+    alias: Rc<RefCell<Alias>>,
 }
 
-impl Service for ExecutorService {
+impl EventHandler for Executor {
     fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
         self.execute(context)
     }
 }
 
-impl ExecutorService {
-    pub const fn new(alias: Rc<RefCell<AliasSubService>>) -> Self {
+impl Executor {
+    pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
         Self { alias }
     }
 

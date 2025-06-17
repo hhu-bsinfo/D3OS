@@ -6,14 +6,12 @@ use globals::application::{APPLICATION_REGISTRY, Application};
 
 use crate::{
     context::Context,
-    service::{
-        lexer_service::{AmbiguousState, ArgumentType, FindLastCommand, Token, TokenContext},
-        service::{Error, Response, Service},
-    },
+    event::event_handler::{Error, EventHandler, Response},
+    modules::lexer::{AmbiguousState, ArgumentType, FindLastCommand, Token, TokenContext},
 };
 
 #[derive(Debug)]
-pub struct AutoCompleteService {
+pub struct AutoCompletion {
     applications: Vec<Application>,
     current_index: usize,
     current_app: Option<Application>,
@@ -21,7 +19,7 @@ pub struct AutoCompleteService {
     current_suggestion: Option<String>,
 }
 
-impl Service for AutoCompleteService {
+impl EventHandler for AutoCompletion {
     fn auto_complete(&mut self, context: &mut Context) -> Result<Response, Error> {
         if !context.is_cursor_at_end() {
             return Ok(Response::Skip);
@@ -78,7 +76,7 @@ impl Service for AutoCompleteService {
     }
 }
 
-impl AutoCompleteService {
+impl AutoCompletion {
     pub fn new() -> Self {
         Self {
             applications: Vec::from(APPLICATION_REGISTRY.applications),
@@ -90,10 +88,7 @@ impl AutoCompleteService {
     }
 
     fn adopt(&mut self, context: &mut Context) -> Result<Response, Error> {
-        let intercept_char = context
-            .line
-            .pop()
-            .expect("Expected at least one char in line");
+        let intercept_char = context.line.pop().expect("Expected at least one char in line");
         context.line.push_str(&context.auto_completion.get());
         context.line.push(intercept_char);
         context.cursor_position += context.auto_completion.len();
@@ -166,11 +161,7 @@ impl AutoCompleteService {
             return;
         };
         let last_command = last_command.to_string();
-        if self
-            .current_app
-            .as_ref()
-            .is_some_and(|app| app.command == last_command)
-        {
+        if self.current_app.as_ref().is_some_and(|app| app.command == last_command) {
             return;
         }
 
@@ -210,9 +201,7 @@ impl AutoCompleteService {
             0
         };
 
-        context
-            .auto_completion
-            .set(&suggestion.unwrap()[start_at..]);
+        context.auto_completion.set(&suggestion.unwrap()[start_at..]);
         Ok(Response::Ok)
     }
 
@@ -263,8 +252,7 @@ impl AutoCompleteService {
         if self.current_app.is_none() || self.current_short_flag.is_none() {
             return None;
         }
-        let (_key, values) =
-            self.current_app.as_mut().unwrap().short_flags[self.current_short_flag.unwrap()];
+        let (_key, values) = self.current_app.as_mut().unwrap().short_flags[self.current_short_flag.unwrap()];
 
         self.cycle(arg, &values)
     }

@@ -5,7 +5,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{executable::Executable, service::lexer_service::Token};
+use crate::{executable::Executable, modules::lexer::Token};
 
 #[derive(Debug, Clone, Default)]
 pub struct LineContext {

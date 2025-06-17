@@ -7,9 +7,11 @@ use alloc::{
 };
 use logger::info;
 
-use crate::{context::Context, sub_service::alias_sub_service::AliasSubService};
-
-use super::service::{Error, Response, Service};
+use crate::{
+    context::Context,
+    event::event_handler::{Error, EventHandler, Response},
+    modules::alias::Alias,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
@@ -68,8 +70,8 @@ pub struct TokenContext {
     assigned_short_flag_pos: Option<usize>,
 }
 
-pub struct LexerService {
-    alias: Rc<RefCell<AliasSubService>>,
+pub struct Lexer {
+    alias: Rc<RefCell<Alias>>,
 }
 
 impl Token {
@@ -181,7 +183,7 @@ impl TokenContext {
     }
 }
 
-impl Service for LexerService {
+impl EventHandler for Lexer {
     fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
         context.tokens.clear();
         Ok(Response::Ok)
@@ -197,8 +199,8 @@ impl Service for LexerService {
     }
 }
 
-impl LexerService {
-    pub const fn new(alias: Rc<RefCell<AliasSubService>>) -> Self {
+impl Lexer {
+    pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
         Self { alias }
     }
 
@@ -281,13 +283,7 @@ impl LexerService {
     fn handle_other(&mut self, tokens: &mut Vec<Token>, ch: char) {
         if tokens.last().is_none() {
             tokens.push(self.choose_ambiguous_token(
-                &TokenContext::new(
-                    QuoteState::Pending,
-                    AmbiguousState::Pending,
-                    None,
-                    None,
-                    None,
-                ),
+                &TokenContext::new(QuoteState::Pending, AmbiguousState::Pending, None, None, None),
                 ch,
                 tokens.len(),
             ));
@@ -347,13 +343,7 @@ impl LexerService {
     fn choose_ambiguous_token(&mut self, clx: &TokenContext, ch: char, len: usize) -> Token {
         match clx.ambiguous {
             AmbiguousState::Pending => {
-                let next_clx = TokenContext::new(
-                    clx.quote.clone(),
-                    AmbiguousState::Command,
-                    None,
-                    Some(len),
-                    None,
-                );
+                let next_clx = TokenContext::new(clx.quote.clone(), AmbiguousState::Command, None, Some(len), None);
                 Token::Command(next_clx, ch.to_string())
             }
             AmbiguousState::Command | AmbiguousState::Argument => {
@@ -387,11 +377,7 @@ impl LexerService {
         Some(ArgumentType::Unknown)
     }
 
-    fn choose_argument_pos(
-        &mut self,
-        argument_type: Option<ArgumentType>,
-        len: usize,
-    ) -> Option<usize> {
+    fn choose_argument_pos(&mut self, argument_type: Option<ArgumentType>, len: usize) -> Option<usize> {
         if argument_type == Some(ArgumentType::ShortFlag) {
             Some(len)
         } else {
@@ -401,13 +387,7 @@ impl LexerService {
 
     fn handle_double_quote(&mut self, tokens: &mut Vec<Token>) {
         if tokens.last().is_none() {
-            let clx = TokenContext::new(
-                QuoteState::Double,
-                AmbiguousState::Pending,
-                None,
-                None,
-                None,
-            );
+            let clx = TokenContext::new(QuoteState::Double, AmbiguousState::Pending, None, None, None);
             tokens.push(Token::QuoteStart(clx, '\"'));
             return;
         }
@@ -454,13 +434,7 @@ impl LexerService {
 
     fn handle_single_quote(&mut self, tokens: &mut Vec<Token>) {
         if tokens.last().is_none() {
-            let clx = TokenContext::new(
-                QuoteState::Single,
-                AmbiguousState::Pending,
-                None,
-                None,
-                None,
-            );
+            let clx = TokenContext::new(QuoteState::Single, AmbiguousState::Pending, None, None, None);
             tokens.push(Token::QuoteStart(clx, '\''));
             return;
         }

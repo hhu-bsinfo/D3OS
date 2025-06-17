@@ -136,3 +136,4 @@ rtl8139.dump
 towbootctl
 
 rustc-ice-*.txt
+.rustfmt.toml

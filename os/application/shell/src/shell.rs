@@ -4,30 +4,28 @@ extern crate alloc;
 
 mod build_in;
 mod context;
-mod controller;
+mod event;
 mod executable;
-mod service;
-mod sub_service;
+mod modules;
 
 use core::cell::RefCell;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use context::Context;
+use modules::{
+    command_line::CommandLine, executor::Executor, history::History, lexer::Lexer, parser::Parser, writer::Writer,
+};
 #[allow(unused_imports)]
 use runtime::*;
-use service::{
-    command_line_service::CommandLineService,
-    drawer_service::DrawerService,
-    executor_service::ExecutorService,
-    history_service::HistoryService,
-    lexer_service::LexerService,
-    parser_service::ParserService,
-    service::{Error, Service},
-};
-use sub_service::alias_sub_service::AliasSubService;
 use terminal::{DecodedKey, KeyCode, print, println, read::read_mixed};
 
-use crate::service::auto_complete_service::AutoCompleteService;
+use crate::{
+    event::{
+        event::Event,
+        event_handler::{Error, EventHandler},
+    },
+    modules::{alias::Alias, auto_completion::AutoCompletion},
+};
 
 #[derive(Debug, PartialEq)]
 enum ShellState {
@@ -35,41 +33,30 @@ enum ShellState {
     AwaitUserInput,
 }
 
-pub enum Event {
-    Prepare,
-    Submit,
-    HistoryUp,
-    HistoryDown,
-    CursorLeft,
-    CursorRight,
-    AutoComplete,
-    SimpleKey(char),
-}
-
 struct Shell {
     state: ShellState,
     context: Context,
-    services: Vec<Box<dyn Service>>,
+    modules: Vec<Box<dyn EventHandler>>,
 }
 
 impl Shell {
     pub fn new() -> Self {
-        let alias_service = Rc::new(RefCell::new(AliasSubService::new()));
-        let mut services: Vec<Box<dyn Service>> = Vec::new();
+        let alias = Rc::new(RefCell::new(Alias::new()));
+        let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
 
-        services.push(Box::new(CommandLineService::new()));
-        services.push(Box::new(HistoryService::new()));
-        services.push(Box::new(LexerService::new(alias_service.clone())));
-        services.push(Box::new(AutoCompleteService::new()));
-        services.push(Box::new(LexerService::new(alias_service.clone()))); // TODO WORKAROUND (autocompletion writes to line, which means tokens need to be revalidated to show changes)
-        services.push(Box::new(DrawerService::new()));
-        services.push(Box::new(ParserService::new()));
-        services.push(Box::new(ExecutorService::new(alias_service.clone())));
+        modules.push(Box::new(CommandLine::new()));
+        modules.push(Box::new(History::new()));
+        modules.push(Box::new(Lexer::new(alias.clone())));
+        modules.push(Box::new(AutoCompletion::new()));
+        modules.push(Box::new(Lexer::new(alias.clone()))); // TODO WORKAROUND (autocompletion writes to line, which means tokens need to be revalidated to show changes)
+        modules.push(Box::new(Writer::new()));
+        modules.push(Box::new(Parser::new()));
+        modules.push(Box::new(Executor::new(alias.clone())));
 
         Self {
             state: ShellState::Prepare,
             context: Context::new(),
-            services,
+            modules,
         }
     }
 
@@ -118,7 +105,7 @@ impl Shell {
     }
 
     fn handle_event(&mut self, event: &Event) -> Result<(), Error> {
-        for service in &mut self.services {
+        for service in &mut self.modules {
             let result = match event {
                 Event::Prepare => service.prepare(&mut self.context),
                 Event::Submit => service.submit(&mut self.context),
