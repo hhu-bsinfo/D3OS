@@ -293,14 +293,20 @@ bitflags! {
     }
 }
 
-bitflags! {
-    pub struct Command :u8 {
-    }
-}
-
 pub struct Ne2000 {
     base_address: u16,
     registers: Registers,
+}
+//& borrowing the Struct Ne2000
+// 'a lifetime annotation
+pub struct Ne2000TxToken<'a> {
+    device: &'a Ne2000,
+}
+
+impl<'a> Ne2000TxToken<'a> {
+    pub fn new(device: &'a Ne2000) -> Self {
+        Self { device }
+    }
 }
 
 impl Ne2000 {
