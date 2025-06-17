@@ -6,6 +6,7 @@ use alloc::string::String;
 pub struct LineContext {
     line: String,
     dirty_index: usize,
+    cursor_position: usize,
 }
 
 impl LineContext {
@@ -65,5 +66,29 @@ impl LineContext {
     pub fn remove(&mut self, index: usize) {
         self.line.remove(index);
         self.mark_dirty_at(index);
+    }
+
+    pub fn get_cursor_pos(&self) -> usize {
+        self.cursor_position
+    }
+
+    pub fn set_cursor_pos(&mut self, pos: usize) {
+        self.cursor_position = pos;
+    }
+
+    pub fn move_cursor_left(&mut self, step: usize) {
+        self.cursor_position -= step;
+    }
+
+    pub fn move_cursor_right(&mut self, step: usize) {
+        self.cursor_position += step;
+    }
+
+    pub fn is_cursor_at_start(&self) -> bool {
+        self.cursor_position <= 0
+    }
+
+    pub fn is_cursor_at_end(&self) -> bool {
+        self.cursor_position >= self.line.len()
     }
 }

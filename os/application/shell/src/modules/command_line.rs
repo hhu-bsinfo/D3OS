@@ -13,7 +13,6 @@ pub struct CommandLine {}
 impl EventHandler for CommandLine {
     fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
         context.line.reset();
-        context.cursor_position = 0;
         self.set_prefix(context);
 
         Ok(Response::Ok)
@@ -48,45 +47,45 @@ impl CommandLine {
     }
 
     fn remove_at_cursor(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if context.cursor_position >= context.line.len() {
-            return Ok(Response::Ok);
+        if context.line.is_cursor_at_end() {
+            return Ok(Response::Skip);
         }
 
-        context.line.remove(context.cursor_position);
+        context.line.remove(context.line.get_cursor_pos());
         Ok(Response::Ok)
     }
 
     fn remove_before_cursor(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if context.cursor_position == 0 {
+        if context.line.is_cursor_at_start() {
             return Ok(Response::Skip);
         }
 
-        context.line.remove(context.cursor_position - 1);
-        context.cursor_position -= 1;
+        context.line.remove(context.line.get_cursor_pos() - 1);
+        context.line.move_cursor_left(1);
         Ok(Response::Ok)
     }
 
     fn add_at_cursor(&mut self, context: &mut Context, ch: char) -> Result<Response, Error> {
-        context.line.insert(context.cursor_position, ch);
-        context.cursor_position = context.cursor_position + 1;
+        context.line.insert(context.line.get_cursor_pos(), ch);
+        context.line.move_cursor_right(1);
         Ok(Response::Ok)
     }
 
     fn move_cursor_right(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if context.cursor_position >= context.line.len() {
+        if context.line.is_cursor_at_end() {
             return Ok(Response::Skip);
         }
 
-        context.cursor_position = context.cursor_position + 1;
+        context.line.move_cursor_right(1);
         Ok(Response::Ok)
     }
 
     fn move_cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if context.cursor_position <= 0 {
+        if context.line.is_cursor_at_start() {
             return Ok(Response::Skip);
         }
 
-        context.cursor_position = context.cursor_position - 1;
+        context.line.move_cursor_left(1);
         Ok(Response::Ok)
     }
 }

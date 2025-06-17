@@ -108,7 +108,9 @@ impl Writer {
         let step = match context.auto_completion.has_focus() {
             true => self.terminal_cursor_pos as isize - context.total_line_len() as isize,
             false => {
-                self.terminal_cursor_pos as isize - context.cursor_position as isize - context.indicator.len() as isize
+                self.terminal_cursor_pos as isize
+                    - context.line.get_cursor_pos() as isize
+                    - context.indicator.len() as isize
             }
         };
         self.move_cursor_by(step)

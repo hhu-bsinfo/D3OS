@@ -21,7 +21,7 @@ pub struct AutoCompletion {
 
 impl EventHandler for AutoCompletion {
     fn auto_complete(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if !context.is_cursor_at_end() {
+        if !context.line.is_cursor_at_end() {
             return Ok(Response::Skip);
         }
 
@@ -35,7 +35,7 @@ impl EventHandler for AutoCompletion {
     }
 
     fn simple_key(&mut self, context: &mut Context, key: char) -> Result<Response, Error> {
-        if !context.is_cursor_at_end() {
+        if !context.line.is_cursor_at_end() {
             return Ok(Response::Skip);
         }
 
@@ -91,7 +91,7 @@ impl AutoCompletion {
         let intercept_char = context.line.pop().expect("Expected at least one char in line");
         context.line.push_str(&context.auto_completion.get());
         context.line.push(intercept_char);
-        context.cursor_position += context.auto_completion.len();
+        context.line.move_cursor_right(context.auto_completion.len());
 
         self.clear_suggestion(context);
         Ok(Response::Ok)

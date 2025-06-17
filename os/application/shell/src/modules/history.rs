@@ -62,7 +62,6 @@ impl History {
         if self.history_position == 0 {
             self.history_position = -1;
             context.line.reset();
-            context.cursor_position = 0;
             return Ok(Response::Ok);
         }
 
