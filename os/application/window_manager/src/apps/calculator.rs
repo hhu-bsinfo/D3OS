@@ -20,6 +20,15 @@ use super::runnable::Runnable;
 
 pub struct Calculator;
 
+#[derive(Clone, Copy)]
+enum CalculatorOperation {
+    None,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+}
+
 impl Runnable for Calculator {
     fn run() {
         let handle = concurrent::thread::current()
@@ -30,7 +39,10 @@ impl Runnable for Calculator {
         let display_text = Signal::new(String::from("0"));
         let equals_button: Rc<RwLock<Option<ComponentRef>>> = Rc::new(RwLock::new(None));
 
-        let current_operator = Rc::new(RwLock::<Option<String>>::new(None));
+        //let current_operator = Rc::new(RwLock::<Option<String>>::new(None));
+        let current_operator = Rc::new(RwLock::<CalculatorOperation>::new(
+            CalculatorOperation::None,
+        ));
         let stored_value: Rc<RwLock<f64>> = Rc::new(RwLock::new(0.0));
 
         let display_sign = Rc::clone(&display_text);
@@ -112,45 +124,68 @@ impl Runnable for Calculator {
         };
 
         // Helper to create operator buttons
-        let create_operator_button = |parent: ComponentRef, operator: &str| {
-            api.execute(
-                handle,
-                Some(parent),
-                Command::CreateButton {
-                    log_rect_data: RectData {
-                        top_left: Vertex::zero(),
-                        width: 200,
-                        height: 200,
-                    },
-                    label: Some((Signal::new(operator.to_string()), 1)),
-                    on_click: Some(Box::new(move || {})),
-                    styling: Some(
-                        ComponentStylingBuilder::new()
-                            .maintain_aspect_ratio(true)
-                            .build(),
-                    ),
-                },
-            );
-        };
+        let create_operator_button =
+            |parent: ComponentRef, label: &str, operation: CalculatorOperation| {
+                let text_clone = Rc::clone(&display_text);
+                let stored_value_clone = Rc::clone(&stored_value);
+                let operator_clone = Rc::clone(&current_operator);
+                let equals_button_in_operator = Rc::clone(&equals_button);
 
-        // Number Buttons
+                api.execute(
+                    handle,
+                    Some(parent),
+                    Command::CreateButton {
+                        log_rect_data: RectData {
+                            top_left: Vertex::zero(),
+                            width: 200,
+                            height: 200,
+                        },
+                        label: Some((Signal::new(label.to_string()), 1)),
+                        on_click: Some(Box::new(move || {
+                            let value = text_clone.get();
+                            let mut stored = stored_value_clone.write();
+                            *stored = value.parse::<f64>().unwrap_or(0.0);
+
+                            text_clone.set(String::from("0"));
+
+                            let mut operator = operator_clone.write();
+                            *operator = operation;
+
+                            if let Some(equals_button) = equals_button_in_operator.read().as_ref() {
+                                if let Some(disableable) =
+                                    equals_button.write().as_disableable_mut()
+                                {
+                                    disableable.enable();
+                                }
+                            }
+                        })),
+                        styling: Some(
+                            ComponentStylingBuilder::new()
+                                .maintain_aspect_ratio(true)
+                                .build(),
+                        ),
+                    },
+                );
+            };
+
+        // Buttons
         create_number_button(button_container.clone(), 0);
         create_number_button(button_container.clone(), 1);
         create_number_button(button_container.clone(), 2);
-        create_operator_button(button_container.clone(), "+");
+        create_operator_button(button_container.clone(), "+", CalculatorOperation::Add);
 
         create_number_button(button_container.clone(), 3);
         create_number_button(button_container.clone(), 4);
         create_number_button(button_container.clone(), 5);
-        create_operator_button(button_container.clone(), "-");
+        create_operator_button(button_container.clone(), "-", CalculatorOperation::Subtract);
 
         create_number_button(button_container.clone(), 6);
         create_number_button(button_container.clone(), 7);
         create_number_button(button_container.clone(), 8);
-        create_operator_button(button_container.clone(), "*");
+        create_operator_button(button_container.clone(), "*", CalculatorOperation::Multiply);
 
         create_number_button(button_container.clone(), 9);
-        //create_operator_button(button_container.clone(), ".");
+
         api.execute(
             handle,
             Some(button_container.clone()),
@@ -175,7 +210,6 @@ impl Runnable for Calculator {
             },
         );
 
-        //create_operator_button(button_container.clone(), "+/-");
         api.execute(
             handle,
             Some(button_container.clone()),
@@ -199,52 +233,10 @@ impl Runnable for Calculator {
             },
         );
 
-        create_operator_button(button_container.clone(), "/");
-
-        // Operator Buttons
-        /*for (i, op) in operators.iter().enumerate() {
-            let op = op.to_string();
-            let text_clone = Rc::clone(&display_text);
-            let operator_clone = Rc::clone(&current_operator);
-            let stored_value_clone = Rc::clone(&stored_value);
-
-            let equals_button_in_operator = Rc::clone(&equals_button);
-
-            api.execute(
-                handle,
-                None,
-                Command::CreateButton {
-                    log_rect_data: RectData {
-                        top_left: Vertex::new(230, 120 + (i as u32 * 60)),
-                        width: 50,
-                        height: 50,
-                    },
-                    label: Some((Signal::new(op.clone()), 1)),
-                    on_click: Some(Box::new(move || {
-                        let value = text_clone.get();
-                        let mut stored = stored_value_clone.write();
-                        *stored = value.parse::<f64>().unwrap_or(0.0);
-
-                        text_clone.set(String::from("0"));
-
-                        let mut operator = operator_clone.write();
-                        *operator = Some(op.clone());
-
-                        if let Some(equals_button) = equals_button_in_operator.read().as_ref() {
-                            if let Some(disableable) = equals_button.write().as_disableable_mut() {
-                                disableable.enable();
-                            }
-                        }
-                    })),
-                    styling: None,
-                },
-            );
-        }*/
+        create_operator_button(button_container.clone(), "/", CalculatorOperation::Divide);
 
         let display_clear = Rc::clone(&display_text);
-
         let equals_button_in_clear = Rc::clone(&equals_button);
-
         let stored_value_clear = Rc::clone(&stored_value);
 
         const CLEAR_BUTTON_COLOR: Color = Color {
@@ -272,7 +264,7 @@ impl Runnable for Calculator {
                     *stored = 0.0;
 
                     let mut operator = current_operator.write();
-                    *operator = None;
+                    *operator = CalculatorOperation::None;
 
                     if let Some(equals_button) = equals_button_in_clear.read().as_ref() {
                         if let Some(disableable) = equals_button.write().as_disableable_mut() {
@@ -309,26 +301,24 @@ impl Runnable for Calculator {
                     on_click: Some(Box::new(move || {
                         let value = equals_clone.get();
                         let stored = *equals_stored_clone.write();
-                        let operator: Option<String> = equals_operator_clone.read().clone();
+                        let operator = equals_operator_clone.read().clone();
 
-                        if let Some(op) = operator {
-                            let current_value = value.parse::<f64>().unwrap_or(0.0);
-                            let result = match op.as_str() {
-                                "+" => stored + current_value,
-                                "-" => stored - current_value,
-                                "*" => stored * current_value,
-                                "/" => {
-                                    if current_value != 0.0 {
-                                        stored / current_value
-                                    } else {
-                                        return; // Division durch 0 verhindern
-                                    }
+                        let current_value = value.parse::<f64>().unwrap_or(0.0);
+                        let result = match operator {
+                            CalculatorOperation::Add => stored + current_value,
+                            CalculatorOperation::Subtract => stored - current_value,
+                            CalculatorOperation::Multiply => stored * current_value,
+                            CalculatorOperation::Divide => {
+                                if current_value != 0.0 {
+                                    stored / current_value
+                                } else {
+                                    return; // Division durch 0 verhindern
                                 }
-                                _ => return,
-                            };
+                            }
+                            _ => return,
+                        };
 
-                            equals_clone.set(result.to_string());
-                        }
+                        equals_clone.set(result.to_string());
                     })),
                     styling: None,
                 },
