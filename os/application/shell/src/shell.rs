@@ -11,7 +11,6 @@ mod modules;
 use core::cell::RefCell;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
-use context::Context;
 use modules::{
     command_line::CommandLine, executor::Executor, history::History, lexer::Lexer, parser::Parser, writer::Writer,
 };
@@ -20,6 +19,7 @@ use runtime::*;
 use terminal::{DecodedKey, KeyCode, print, println, read::read_mixed};
 
 use crate::{
+    context::context::Context,
     event::{
         event::Event,
         event_handler::{Error, EventHandler},
@@ -35,7 +35,7 @@ enum ShellState {
 
 struct Shell {
     state: ShellState,
-    context: Context,
+    clx: Context,
     modules: Vec<Box<dyn EventHandler>>,
 }
 
@@ -55,7 +55,7 @@ impl Shell {
 
         Self {
             state: ShellState::Prepare,
-            context: Context::new(),
+            clx: Context::new(),
             modules,
         }
     }
@@ -107,14 +107,14 @@ impl Shell {
     fn handle_event(&mut self, event: &Event) -> Result<(), Error> {
         for service in &mut self.modules {
             let result = match event {
-                Event::Prepare => service.prepare(&mut self.context),
-                Event::Submit => service.submit(&mut self.context),
-                Event::HistoryUp => service.history_up(&mut self.context),
-                Event::HistoryDown => service.history_down(&mut self.context),
-                Event::CursorLeft => service.cursor_left(&mut self.context),
-                Event::CursorRight => service.cursor_right(&mut self.context),
-                Event::AutoComplete => service.auto_complete(&mut self.context),
-                Event::SimpleKey(key) => service.simple_key(&mut self.context, *key),
+                Event::Prepare => service.prepare(&mut self.clx),
+                Event::Submit => service.submit(&mut self.clx),
+                Event::HistoryUp => service.history_up(&mut self.clx),
+                Event::HistoryDown => service.history_down(&mut self.clx),
+                Event::CursorLeft => service.cursor_left(&mut self.clx),
+                Event::CursorRight => service.cursor_right(&mut self.clx),
+                Event::AutoComplete => service.auto_complete(&mut self.clx),
+                Event::SimpleKey(key) => service.simple_key(&mut self.clx, *key),
             };
 
             if result.is_err() {

@@ -5,7 +5,7 @@ use alloc::{
 use terminal::print;
 
 use crate::{
-    context::Context,
+    context::context::Context,
     event::event_handler::{Error, EventHandler, Response},
 };
 

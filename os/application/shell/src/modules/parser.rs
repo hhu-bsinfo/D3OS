@@ -2,7 +2,7 @@ use alloc::string::ToString;
 use logger::info;
 
 use crate::{
-    context::Context,
+    context::context::Context,
     event::event_handler::{Error, EventHandler, Response},
     executable::Executable,
     modules::lexer::Token,

@@ -5,7 +5,7 @@ use alloc::{
 use globals::application::{APPLICATION_REGISTRY, Application};
 
 use crate::{
-    context::Context,
+    context::context::Context,
     event::event_handler::{Error, EventHandler, Response},
     modules::lexer::{AmbiguousState, ArgumentType, FindLastCommand, Token, TokenContext},
 };

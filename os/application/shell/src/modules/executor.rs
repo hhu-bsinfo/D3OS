@@ -8,7 +8,7 @@ use crate::{
         alias::AliasBuildIn, build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn, echo::EchoBuildIn,
         exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn, unalias::UnaliasBuildIn,
     },
-    context::Context,
+    context::context::Context,
     event::event_handler::{Error, EventHandler, Response},
     executable::Job,
     modules::alias::Alias,
