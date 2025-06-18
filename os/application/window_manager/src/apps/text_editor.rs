@@ -5,17 +5,12 @@ use crate::components::container::basic_container::{AlignmentMode, LayoutMode, S
 use crate::components::container::ContainerStyling;
 use crate::signal::{ComponentRef, Signal};
 use crate::{api::Command, WindowManager};
+use crate::apps::text_editor::config::TextEditorConfig;
+use crate::apps::text_editor::meassages::Message;
 use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
-use font::Font;
-use graphic::color::{Color, WHITE};
-use graphic::lfb::DEFAULT_CHAR_WIDTH;
-use graphic::{
-    bitmap::{Bitmap, ScalingMode},
-    lfb::DEFAULT_CHAR_HEIGHT,
-};
-use meassages::Message;
-use model::{Document, ViewConfig};
+use graphic::bitmap::{Bitmap, ScalingMode};
+use model::Document;
 use spin::rwlock::RwLock;
 use terminal::DecodedKey;
 use text_buffer::TextBuffer;
@@ -24,6 +19,7 @@ mod font;
 mod meassages;
 mod model;
 mod view;
+mod config;
 
 // Julius Drodofsky
 
@@ -57,15 +53,6 @@ Some *Emphasis* Text.
 
 pub struct TextEditor;
 
-#[derive(Debug, Clone, Copy)]
-pub struct TextEditorConfig {
-    pub width: usize,
-    pub height: usize,
-    pub background_color: Color,
-    pub markdown_view: ViewConfig,
-    pub simple_view: ViewConfig,
-}
-
 fn render_msg(document: &Rc<RwLock<Document>>, canvas: &Rc<RwLock<Bitmap>>, msg: Message) {
     document.write().update(msg);
     let mut msg = View::render(&document.read(), &mut canvas.write());
@@ -75,50 +62,6 @@ fn render_msg(document: &Rc<RwLock<Document>>, canvas: &Rc<RwLock<Bitmap>>, msg:
     }
 }
 
-impl TextEditorConfig {
-    pub fn new(width: usize, height: usize) -> Self {
-        let bg_color = Color::new(20, 20, 20, 255);
-        let normal = Font {
-            scale: 1,
-            fg_color: WHITE,
-            bg_color: bg_color,
-            char_width: DEFAULT_CHAR_WIDTH,
-            char_height: DEFAULT_CHAR_HEIGHT,
-        };
-        let strong = Font {
-            scale: 1,
-            fg_color: Color::new(69, 133, 136, 255),
-            bg_color: bg_color,
-            char_width: DEFAULT_CHAR_WIDTH,
-            char_height: DEFAULT_CHAR_HEIGHT,
-        };
-        let emphasis = Font {
-            scale: 1,
-            fg_color: Color::new(131, 165, 152, 255),
-            bg_color: bg_color,
-            char_width: DEFAULT_CHAR_WIDTH,
-            char_height: DEFAULT_CHAR_HEIGHT,
-        };
-        let markdown_view = ViewConfig::Markdown {
-            normal: normal,
-            emphasis: emphasis,
-            strong: strong,
-        };
-
-        let simple_view = ViewConfig::Simple {
-            font_scale: normal.scale,
-            fg_color: normal.fg_color,
-            bg_color: normal.bg_color,
-        };
-        TextEditorConfig {
-            width: width,
-            height: height,
-            background_color: bg_color,
-            markdown_view: markdown_view,
-            simple_view: simple_view,
-        }
-    }
-}
 
 impl Runnable for TextEditor {
     fn run() {
