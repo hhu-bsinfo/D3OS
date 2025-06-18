@@ -6,7 +6,7 @@ use crate::components::container::ContainerStyling;
 use crate::signal::{ComponentRef, Signal};
 use crate::{api::Command, WindowManager};
 use crate::apps::text_editor::config::TextEditorConfig;
-use crate::apps::text_editor::meassages::Message;
+use crate::apps::text_editor::messages::Message;
 use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::bitmap::{Bitmap, ScalingMode};
@@ -16,7 +16,7 @@ use terminal::DecodedKey;
 use text_buffer::TextBuffer;
 
 mod font;
-mod meassages;
+mod messages;
 mod model;
 mod view;
 mod config;
@@ -137,7 +137,7 @@ impl Runnable for TextEditor {
                     render_msg(
                         &model_clone,
                         &Rc::clone(&canvas_clone),
-                        Message::CommandMessage(meassages::CommandMessage::Undo),
+                        Message::CommandMessage(messages::CommandMessage::Undo),
                     );
                     edit_canvas_clone
                         .write()
@@ -168,7 +168,7 @@ impl Runnable for TextEditor {
                     render_msg(
                         &model_clone,
                         &Rc::clone(&canvas_clone),
-                        Message::CommandMessage(meassages::CommandMessage::Redo),
+                        Message::CommandMessage(messages::CommandMessage::Redo),
                     );
                     edit_canvas_clone
                         .write()
@@ -198,7 +198,7 @@ impl Runnable for TextEditor {
                     render_msg(
                         &model_clone,
                         &Rc::clone(&canvas_clone),
-                        Message::CommandMessage(meassages::CommandMessage::Markdown),
+                        Message::CommandMessage(messages::CommandMessage::Markdown),
                     );
                     edit_canvas_clone
                         .write()

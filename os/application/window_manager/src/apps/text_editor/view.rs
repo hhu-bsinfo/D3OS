@@ -18,7 +18,7 @@ use crate::apps::text_editor::model::Caret;
 
 use super::{
     font::Font,
-    meassages::ViewMessage,
+    messages::ViewMessage,
     model::{Document, ViewConfig},
 };
 //Julius Drodofsky

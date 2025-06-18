@@ -6,9 +6,9 @@ use terminal::{println, DecodedKey};
 use text_buffer::TextBuffer;
 
 use super::font::Font;
-use super::meassages::{Message, ViewMessage};
+use super::messages::{Message, ViewMessage};
 use super::TextEditorConfig;
-use crate::apps::text_editor::meassages::CommandMessage;
+use crate::apps::text_editor::messages::CommandMessage;
 use logger::error;
 enum EditMode {
     Normal,
