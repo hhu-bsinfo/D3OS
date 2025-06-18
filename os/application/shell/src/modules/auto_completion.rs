@@ -7,7 +7,7 @@ use globals::application::{APPLICATION_REGISTRY, Application};
 use crate::{
     context::context::Context,
     event::event_handler::{Error, EventHandler, Response},
-    modules::lexer::{AmbiguousState, ArgumentType, FindLastCommand, Token, TokenContext},
+    modules::lexer::{AmbiguousState, ArgumentType, Token, TokenContext},
 };
 
 #[derive(Debug)]
@@ -27,7 +27,7 @@ impl EventHandler for AutoCompletion {
 
         self.revalidate(context);
 
-        if !context.auto_completion.has_focus() {
+        if !context.suggestion.has_focus() {
             return self.focus_suggestion(context);
         }
 
@@ -89,9 +89,9 @@ impl AutoCompletion {
 
     fn adopt(&mut self, context: &mut Context) -> Result<Response, Error> {
         let intercept_char = context.line.pop().expect("Expected at least one char in line");
-        context.line.push_str(&context.auto_completion.get());
+        context.line.push_str(&context.suggestion.get());
         context.line.push(intercept_char);
-        context.line.move_cursor_right(context.auto_completion.len());
+        context.line.move_cursor_right(context.suggestion.len());
 
         self.clear_suggestion(context);
         Ok(Response::Ok)
@@ -100,7 +100,7 @@ impl AutoCompletion {
     fn clear_suggestion(&mut self, context: &mut Context) -> Result<Response, Error> {
         self.current_index = 0;
         self.current_suggestion = None;
-        context.auto_completion.reset();
+        context.suggestion.reset();
         Ok(Response::Ok)
     }
 
@@ -118,7 +118,7 @@ impl AutoCompletion {
             }
         }
 
-        context.auto_completion.focus();
+        context.suggestion.focus();
         Ok(Response::Ok)
     }
 
@@ -201,7 +201,7 @@ impl AutoCompletion {
             0
         };
 
-        context.auto_completion.set(&suggestion.unwrap()[start_at..]);
+        context.suggestion.set(&suggestion.unwrap()[start_at..]);
         Ok(Response::Ok)
     }
 

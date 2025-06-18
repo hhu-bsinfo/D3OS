@@ -29,7 +29,7 @@ impl Parser {
     pub fn parse(&mut self, context: &mut Context) -> Result<Response, Error> {
         let mut executable = Executable::new();
 
-        context.tokens.iter().for_each(|token| match token {
+        context.tokens.get().iter().for_each(|token| match token {
             Token::Command(_clx, command) => {
                 executable.create_job(command.to_string());
             }

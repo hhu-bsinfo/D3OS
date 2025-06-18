@@ -8,7 +8,7 @@ use alloc::{
 use logger::info;
 
 use crate::{
-    context::context::Context,
+    context::{context::Context, tokens_context::TokensContext},
     event::event_handler::{Error, EventHandler, Response},
     modules::alias::Alias,
 };
@@ -66,8 +66,8 @@ pub struct TokenContext {
     pub(crate) quote: QuoteState,
     pub(crate) ambiguous: AmbiguousState,
     pub(crate) argument_type: Option<ArgumentType>,
-    assigned_command_pos: Option<usize>,
-    assigned_short_flag_pos: Option<usize>,
+    pub(crate) assigned_command_pos: Option<usize>,
+    pub(crate) assigned_short_flag_pos: Option<usize>,
 }
 
 pub struct Lexer {
@@ -123,48 +123,6 @@ impl Token {
     }
 }
 
-pub trait FindLastCommand {
-    fn find_last_command(&self) -> Option<&Token>;
-    fn find_last_short_flag(&self) -> Option<&Token>;
-    fn total_len(&self) -> usize;
-}
-
-impl FindLastCommand for Vec<Token> {
-    fn find_last_command(&self) -> Option<&Token> {
-        let last_token = match self.last() {
-            Some(token) => token,
-            None => return None,
-        };
-        let last_command_pos = match last_token.context().assigned_command_pos {
-            Some(pos) => pos,
-            None => return None,
-        };
-        Some(&self[last_command_pos])
-    }
-
-    fn find_last_short_flag(&self) -> Option<&Token> {
-        let last_token = match self.last() {
-            Some(token) => token,
-            None => return None,
-        };
-        let last_command_pos = match last_token.context().assigned_short_flag_pos {
-            Some(pos) => pos,
-            None => return None,
-        };
-        Some(&self[last_command_pos])
-    }
-
-    fn total_len(&self) -> usize {
-        self.iter()
-            .map(|token| match token {
-                Token::Command(_clx, s) => s.len(),
-                Token::Argument(_clx, s) => s.len(),
-                _ => 1,
-            })
-            .sum()
-    }
-}
-
 impl TokenContext {
     pub const fn new(
         quote: QuoteState,
@@ -185,7 +143,7 @@ impl TokenContext {
 
 impl EventHandler for Lexer {
     fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
-        context.tokens.clear();
+        context.tokens.reset();
         Ok(Response::Ok)
     }
 
@@ -229,7 +187,7 @@ impl Lexer {
     }
 
     fn retokenize_with_alias(&mut self, context: &mut Context) -> Result<Response, Error> {
-        context.tokens.clear();
+        context.tokens.reset();
 
         let new_line = context
             .line
@@ -251,7 +209,7 @@ impl Lexer {
         Ok(Response::Ok)
     }
 
-    fn push(&mut self, tokens: &mut Vec<Token>, ch: char) {
+    fn push(&mut self, tokens: &mut TokensContext, ch: char) {
         match ch {
             '\"' => self.handle_double_quote(tokens),
             '\'' => self.handle_single_quote(tokens),
@@ -260,7 +218,7 @@ impl Lexer {
         }
     }
 
-    fn pop(&mut self, tokens: &mut Vec<Token>) {
+    fn pop(&mut self, tokens: &mut TokensContext) {
         if tokens.last().is_none() {
             return;
         }
@@ -280,7 +238,7 @@ impl Lexer {
         tokens.pop();
     }
 
-    fn handle_other(&mut self, tokens: &mut Vec<Token>, ch: char) {
+    fn handle_other(&mut self, tokens: &mut TokensContext, ch: char) {
         if tokens.last().is_none() {
             tokens.push(self.choose_ambiguous_token(
                 &TokenContext::new(QuoteState::Pending, AmbiguousState::Pending, None, None, None),
@@ -311,7 +269,7 @@ impl Lexer {
         }
     }
 
-    fn handle_whitespace(&mut self, tokens: &mut Vec<Token>) {
+    fn handle_whitespace(&mut self, tokens: &mut TokensContext) {
         if tokens.last().is_none() {
             return tokens.push(Token::Whitespace(TokenContext::new(
                 QuoteState::Pending,
@@ -385,7 +343,7 @@ impl Lexer {
         }
     }
 
-    fn handle_double_quote(&mut self, tokens: &mut Vec<Token>) {
+    fn handle_double_quote(&mut self, tokens: &mut TokensContext) {
         if tokens.last().is_none() {
             let clx = TokenContext::new(QuoteState::Double, AmbiguousState::Pending, None, None, None);
             tokens.push(Token::QuoteStart(clx, '\"'));
@@ -432,7 +390,7 @@ impl Lexer {
         }
     }
 
-    fn handle_single_quote(&mut self, tokens: &mut Vec<Token>) {
+    fn handle_single_quote(&mut self, tokens: &mut TokensContext) {
         if tokens.last().is_none() {
             let clx = TokenContext::new(QuoteState::Single, AmbiguousState::Pending, None, None, None);
             tokens.push(Token::QuoteStart(clx, '\''));

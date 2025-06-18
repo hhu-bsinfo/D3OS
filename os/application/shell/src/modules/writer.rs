@@ -71,7 +71,7 @@ impl Writer {
 
         context.line.mark_clean();
         context.indicator.mark_clean();
-        context.auto_completion.mark_clean();
+        context.suggestion.mark_clean();
 
         Ok(Response::Ok)
     }
@@ -105,7 +105,7 @@ impl Writer {
     }
 
     fn restore_cursor_position(&mut self, context: &mut Context) -> String {
-        let step = match context.auto_completion.has_focus() {
+        let step = match context.suggestion.has_focus() {
             true => self.terminal_cursor_pos as isize - context.total_line_len() as isize,
             false => {
                 self.terminal_cursor_pos as isize
@@ -150,8 +150,8 @@ impl Writer {
     }
 
     fn dirty_suggestion(&mut self, context: &mut Context) -> String {
-        let line = match context.auto_completion.is_dirty() {
-            true => context.auto_completion.get().clone(),
+        let line = match context.suggestion.is_dirty() {
+            true => context.suggestion.get().clone(),
             false => String::new(),
         };
 
