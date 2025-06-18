@@ -20,59 +20,59 @@ pub struct AutoCompletion {
 }
 
 impl EventHandler for AutoCompletion {
-    fn auto_complete(&mut self, context: &mut Context) -> Result<Response, Error> {
-        if !context.line.is_cursor_at_end() {
+    fn auto_complete(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        if !clx.line.is_cursor_at_end() {
             return Ok(Response::Skip);
         }
 
-        self.revalidate(context);
+        self.revalidate(clx);
 
-        if !context.suggestion.has_focus() {
-            return self.focus_suggestion(context);
+        if !clx.suggestion.has_focus() {
+            return self.focus_suggestion(clx);
         }
 
-        self.cycle_suggestion(context)
+        self.cycle_suggestion(clx)
     }
 
-    fn simple_key(&mut self, context: &mut Context, key: char) -> Result<Response, Error> {
-        if !context.line.is_cursor_at_end() {
+    fn simple_key(&mut self, clx: &mut Context, key: char) -> Result<Response, Error> {
+        if !clx.line.is_cursor_at_end() {
             return Ok(Response::Skip);
         }
 
-        self.revalidate(context);
+        self.revalidate(clx);
 
         match key {
-            ' ' => self.adopt(context),
-            '\x08' | '\x7F' => self.clear_suggestion(context),
+            ' ' => self.adopt(clx),
+            '\x08' | '\x7F' => self.clear_suggestion(clx),
             _ => {
-                self.clear_suggestion(context);
-                self.cycle_suggestion(context)
+                self.clear_suggestion(clx);
+                self.cycle_suggestion(clx)
             }
         }
     }
 
-    fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.reset(context)
+    fn prepare(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.reset(clx)
     }
 
-    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.clear_suggestion(context)
+    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.clear_suggestion(clx)
     }
 
-    fn cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.clear_suggestion(context)
+    fn cursor_left(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.clear_suggestion(clx)
     }
 
-    fn cursor_right(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.clear_suggestion(context)
+    fn cursor_right(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.clear_suggestion(clx)
     }
 
-    fn history_down(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.reset(context)
+    fn history_down(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.reset(clx)
     }
 
-    fn history_up(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.reset(context)
+    fn history_up(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.reset(clx)
     }
 }
 
@@ -87,52 +87,52 @@ impl AutoCompletion {
         }
     }
 
-    fn adopt(&mut self, context: &mut Context) -> Result<Response, Error> {
-        let intercept_char = context.line.pop().expect("Expected at least one char in line");
-        context.line.push_str(&context.suggestion.get());
-        context.line.push(intercept_char);
-        context.line.move_cursor_right(context.suggestion.len());
+    fn adopt(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        let intercept_char = clx.line.pop().expect("Expected at least one char in line");
+        clx.line.push_str(&clx.suggestion.get());
+        clx.line.push(intercept_char);
+        clx.line.move_cursor_right(clx.suggestion.len());
 
-        self.clear_suggestion(context);
+        self.clear_suggestion(clx);
         Ok(Response::Ok)
     }
 
-    fn clear_suggestion(&mut self, context: &mut Context) -> Result<Response, Error> {
+    fn clear_suggestion(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.current_index = 0;
         self.current_suggestion = None;
-        context.suggestion.reset();
+        clx.suggestion.reset();
         Ok(Response::Ok)
     }
 
-    fn reset(&mut self, context: &mut Context) -> Result<Response, Error> {
+    fn reset(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.current_app = None;
         self.current_short_flag = None;
-        self.clear_suggestion(context)
+        self.clear_suggestion(clx)
     }
 
-    fn focus_suggestion(&mut self, context: &mut Context) -> Result<Response, Error> {
+    fn focus_suggestion(&mut self, clx: &mut Context) -> Result<Response, Error> {
         if self.current_suggestion.is_none() {
-            self.cycle_suggestion(context);
+            self.cycle_suggestion(clx);
             if self.current_suggestion.is_none() {
                 return Ok(Response::Skip);
             }
         }
 
-        context.suggestion.focus();
+        clx.suggestion.focus();
         Ok(Response::Ok)
     }
 
-    fn revalidate(&mut self, context: &mut Context) {
-        self.revalidate_application(context);
-        self.revalidate_short_flag(context);
+    fn revalidate(&mut self, clx: &mut Context) {
+        self.revalidate_application(clx);
+        self.revalidate_short_flag(clx);
     }
 
-    fn revalidate_short_flag(&mut self, context: &mut Context) {
+    fn revalidate_short_flag(&mut self, clx: &mut Context) {
         let Some(current_app) = &self.current_app else {
             self.current_short_flag = None;
             return;
         };
-        let Some(last_short_flag) = context.tokens.find_last_short_flag() else {
+        let Some(last_short_flag) = clx.tokens.find_last_short_flag() else {
             self.current_short_flag = None;
             return;
         };
@@ -155,8 +155,8 @@ impl AutoCompletion {
             .position(|&(key, _)| key == target);
     }
 
-    fn revalidate_application(&mut self, context: &mut Context) {
-        let Some(last_command) = context.tokens.find_last_command() else {
+    fn revalidate_application(&mut self, clx: &mut Context) {
+        let Some(last_command) = clx.tokens.find_last_command() else {
             self.current_suggestion = None;
             return;
         };
@@ -172,8 +172,8 @@ impl AutoCompletion {
             .cloned();
     }
 
-    fn cycle_suggestion(&mut self, context: &mut Context) -> Result<Response, Error> {
-        let token = context.tokens.last().cloned();
+    fn cycle_suggestion(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        let token = clx.tokens.last().cloned();
         let suggestion = match &token {
             None => self.cycle_command(&String::new()),
 
@@ -201,7 +201,7 @@ impl AutoCompletion {
             0
         };
 
-        context.suggestion.set(&suggestion.unwrap()[start_at..]);
+        clx.suggestion.set(&suggestion.unwrap()[start_at..]);
         Ok(Response::Ok)
     }
 

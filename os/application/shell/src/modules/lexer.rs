@@ -142,18 +142,18 @@ impl TokenContext {
 }
 
 impl EventHandler for Lexer {
-    fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
-        context.tokens.reset();
+    fn prepare(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.tokens.reset();
         Ok(Response::Ok)
     }
 
-    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.retokenize_with_alias(context)
+    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.retokenize_with_alias(clx)
     }
 
-    fn simple_key(&mut self, context: &mut Context, _key: char) -> Result<Response, Error> {
-        self.detokenize_to_dirty(context);
-        self.tokenize_from_dirty(context)
+    fn simple_key(&mut self, clx: &mut Context, _key: char) -> Result<Response, Error> {
+        self.detokenize_to_dirty(clx);
+        self.tokenize_from_dirty(clx)
     }
 }
 
@@ -162,34 +162,34 @@ impl Lexer {
         Self { alias }
     }
 
-    fn detokenize_to_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
-        let total_len = context.tokens.total_len();
+    fn detokenize_to_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        let total_len = clx.tokens.total_len();
 
-        if total_len <= context.line.get_dirty_index() {
+        if total_len <= clx.line.get_dirty_index() {
             return Ok(Response::Skip);
         }
 
-        let n = total_len - context.line.get_dirty_index();
+        let n = total_len - clx.line.get_dirty_index();
         for _ in 0..n {
-            self.pop(&mut context.tokens);
+            self.pop(&mut clx.tokens);
         }
 
         Ok(Response::Ok)
     }
 
-    fn tokenize_from_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
-        for ch in context.line.get_dirty_part().chars() {
-            self.push(&mut context.tokens, ch);
+    fn tokenize_from_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        for ch in clx.line.get_dirty_part().chars() {
+            self.push(&mut clx.tokens, ch);
         }
 
-        info!("Lexer tokens: {:?}", context.tokens);
+        info!("Lexer tokens: {:?}", clx.tokens);
         Ok(Response::Ok)
     }
 
-    fn retokenize_with_alias(&mut self, context: &mut Context) -> Result<Response, Error> {
-        context.tokens.reset();
+    fn retokenize_with_alias(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.tokens.reset();
 
-        let new_line = context
+        let new_line = clx
             .line
             .get()
             .split_whitespace()
@@ -201,10 +201,10 @@ impl Lexer {
             .join(" ");
 
         for ch in new_line.chars() {
-            self.push(&mut context.tokens, ch);
+            self.push(&mut clx.tokens, ch);
         }
 
-        info!("Lexer tokens with alias: {:?}", context.tokens);
+        info!("Lexer tokens with alias: {:?}", clx.tokens);
 
         Ok(Response::Ok)
     }

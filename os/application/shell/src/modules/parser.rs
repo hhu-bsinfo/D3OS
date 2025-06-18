@@ -10,13 +10,13 @@ use crate::{
 pub struct Parser {}
 
 impl EventHandler for Parser {
-    fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
-        context.executable.reset();
+    fn prepare(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.executable.reset();
         Ok(Response::Ok)
     }
 
-    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.parse(context)
+    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.parse(clx)
     }
 }
 
@@ -25,18 +25,18 @@ impl Parser {
         Self {}
     }
 
-    pub fn parse(&mut self, context: &mut Context) -> Result<Response, Error> {
-        context.tokens.get().iter().for_each(|token| match token {
+    pub fn parse(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.tokens.get().iter().for_each(|token| match token {
             Token::Command(_clx, command) => {
-                context.executable.create_job(command.to_string());
+                clx.executable.create_job(command.to_string());
             }
             Token::Argument(_clx, argument) => {
-                context.executable.add_argument_to_latest_job(argument.to_string());
+                clx.executable.add_argument_to_latest_job(argument.to_string());
             }
             _ => (),
         });
 
-        info!("{:?}", &context.executable);
+        info!("{:?}", &clx.executable);
         Ok(Response::Ok)
     }
 }

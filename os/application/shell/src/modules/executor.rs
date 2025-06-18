@@ -21,8 +21,8 @@ pub struct Executor {
 }
 
 impl EventHandler for Executor {
-    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.execute(context)
+    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.execute(clx)
     }
 }
 
@@ -31,14 +31,14 @@ impl Executor {
         Self { alias }
     }
 
-    pub fn execute(&self, context: &mut Context) -> Result<Response, Error> {
-        for job in &context.executable.jobs {
+    pub fn execute(&self, clx: &mut Context) -> Result<Response, Error> {
+        for job in &clx.executable.jobs {
             match self.execute_job(&job) {
                 Ok(_) => continue,
                 Err(msg) => return Err(msg),
             };
         }
-        context.events.trigger(Event::PrepareNewLine);
+        clx.events.trigger(Event::PrepareNewLine);
         Ok(Response::Ok)
     }
 

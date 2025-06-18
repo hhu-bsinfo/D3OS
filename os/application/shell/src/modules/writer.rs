@@ -14,37 +14,37 @@ pub struct Writer {
 }
 
 impl EventHandler for Writer {
-    fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
+    fn prepare(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.terminal_cursor_pos = 0;
-        self.draw_at_dirty(context)
+        self.draw_at_dirty(clx)
     }
 
-    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.draw_next_line(context)
+    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.draw_next_line(clx)
     }
 
-    fn auto_complete(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(context)
+    fn auto_complete(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.draw_at_dirty(clx)
     }
 
-    fn cursor_left(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(context)
+    fn cursor_left(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.draw_at_dirty(clx)
     }
 
-    fn cursor_right(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(context)
+    fn cursor_right(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.draw_at_dirty(clx)
     }
 
-    fn history_up(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(context)
+    fn history_up(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.draw_at_dirty(clx)
     }
 
-    fn history_down(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(context)
+    fn history_down(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.draw_at_dirty(clx)
     }
 
-    fn simple_key(&mut self, context: &mut Context, _key: char) -> Result<Response, Error> {
-        self.draw_at_dirty(context)
+    fn simple_key(&mut self, clx: &mut Context, _key: char) -> Result<Response, Error> {
+        self.draw_at_dirty(clx)
     }
 }
 
@@ -53,31 +53,31 @@ impl Writer {
         Self { terminal_cursor_pos: 0 }
     }
 
-    fn draw_next_line(&mut self, context: &mut Context) -> Result<Response, Error> {
-        print!("{}\n", self.cursor_to_end(context));
+    fn draw_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        print!("{}\n", self.cursor_to_end(clx));
         Ok(Response::Ok)
     }
 
-    fn draw_at_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
+    fn draw_at_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
         print!(
             "{}{}{}{}[38;2;100;100;100m{}[0m{}",
-            self.cursor_to_dirty(context),
+            self.cursor_to_dirty(clx),
             self.clear_right_of_cursor(),
-            self.dirty_indicator(context),
-            self.dirty_line(context),
-            self.dirty_suggestion(context),
-            self.restore_cursor_position(context)
+            self.dirty_indicator(clx),
+            self.dirty_line(clx),
+            self.dirty_suggestion(clx),
+            self.restore_cursor_position(clx)
         );
 
-        context.line.mark_clean();
-        context.indicator.mark_clean();
-        context.suggestion.mark_clean();
+        clx.line.mark_clean();
+        clx.indicator.mark_clean();
+        clx.suggestion.mark_clean();
 
         Ok(Response::Ok)
     }
 
-    fn draw_cursor(&mut self, context: &mut Context) -> Result<Response, Error> {
-        print!("{}", self.restore_cursor_position(context));
+    fn draw_cursor(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        print!("{}", self.restore_cursor_position(clx));
         Ok(Response::Ok)
     }
 
@@ -86,31 +86,27 @@ impl Writer {
         self.move_cursor_by(step)
     }
 
-    fn cursor_to_end(&mut self, context: &mut Context) -> String {
-        let step = self.terminal_cursor_pos as isize - context.total_line_len() as isize;
+    fn cursor_to_end(&mut self, clx: &mut Context) -> String {
+        let step = self.terminal_cursor_pos as isize - clx.total_line_len() as isize;
         self.move_cursor_by(step)
     }
 
-    fn cursor_to_dirty(&mut self, context: &mut Context) -> String {
-        let step = match context.indicator.is_dirty() {
+    fn cursor_to_dirty(&mut self, clx: &mut Context) -> String {
+        let step = match clx.indicator.is_dirty() {
             true => -(self.terminal_cursor_pos as isize),
             false => {
-                self.terminal_cursor_pos as isize
-                    - context.indicator.len() as isize
-                    - context.line.get_dirty_index() as isize
+                self.terminal_cursor_pos as isize - clx.indicator.len() as isize - clx.line.get_dirty_index() as isize
             }
         };
 
         self.move_cursor_by(step)
     }
 
-    fn restore_cursor_position(&mut self, context: &mut Context) -> String {
-        let step = match context.suggestion.has_focus() {
-            true => self.terminal_cursor_pos as isize - context.total_line_len() as isize,
+    fn restore_cursor_position(&mut self, clx: &mut Context) -> String {
+        let step = match clx.suggestion.has_focus() {
+            true => self.terminal_cursor_pos as isize - clx.total_line_len() as isize,
             false => {
-                self.terminal_cursor_pos as isize
-                    - context.line.get_cursor_pos() as isize
-                    - context.indicator.len() as isize
+                self.terminal_cursor_pos as isize - clx.line.get_cursor_pos() as isize - clx.indicator.len() as isize
             }
         };
         self.move_cursor_by(step)
@@ -129,9 +125,9 @@ impl Writer {
         "\x1b[0K"
     }
 
-    fn dirty_indicator(&mut self, context: &mut Context) -> String {
-        let indicator = match context.indicator.is_dirty() {
-            true => context.indicator.get().clone(),
+    fn dirty_indicator(&mut self, clx: &mut Context) -> String {
+        let indicator = match clx.indicator.is_dirty() {
+            true => clx.indicator.get().clone(),
             false => String::new(),
         };
 
@@ -139,19 +135,19 @@ impl Writer {
         indicator
     }
 
-    fn dirty_line(&mut self, context: &mut Context) -> String {
-        let line = match context.indicator.is_dirty() {
-            true => context.line.get(),
-            false => context.line.get_dirty_part(),
+    fn dirty_line(&mut self, clx: &mut Context) -> String {
+        let line = match clx.indicator.is_dirty() {
+            true => clx.line.get(),
+            false => clx.line.get_dirty_part(),
         };
 
         self.terminal_cursor_pos += line.len();
         line.to_string()
     }
 
-    fn dirty_suggestion(&mut self, context: &mut Context) -> String {
-        let line = match context.suggestion.is_dirty() {
-            true => context.suggestion.get().clone(),
+    fn dirty_suggestion(&mut self, clx: &mut Context) -> String {
+        let line = match clx.suggestion.is_dirty() {
+            true => clx.suggestion.get().clone(),
             false => String::new(),
         };
 
