@@ -14,7 +14,6 @@ use graphic::{
     bitmap::{Bitmap, ScalingMode},
     lfb::DEFAULT_CHAR_HEIGHT,
 };
-use logger::warn;
 use meassages::Message;
 use model::{Document, ViewConfig};
 use spin::rwlock::RwLock;
@@ -27,6 +26,35 @@ mod model;
 mod view;
 
 // Julius Drodofsky
+
+static MARKDOWN_EXAMPLE: &str = r#"
+# Heading 1
+
+## Heading 2
+
+This is a paragraph with **bold text** and *italic text*.
+
+---
+
+Another paragraph after a horizontal rule.
+
+Some **Strong** Text.
+
+Some *Emphasis* Text.
+
+### Heading3
+
+- Unordered item 1  
+- Unordered item 2  
+  - Nested unordered item  
+  - Another nested item  
+
+1. Ordered item 1  
+2. Ordered item 2  
+   1. Nested ordered item  
+   2. Another nested item
+"#;
+
 pub struct TextEditor;
 
 #[derive(Debug, Clone, Copy)]
@@ -107,35 +135,8 @@ impl Runnable for TextEditor {
         let canvas = Rc::new(RwLock::new(bitmap));
         let canvs_clone = Rc::clone(&canvas);
         let edit_canvas: Rc<RwLock<Option<ComponentRef>>> = Rc::new(RwLock::new(None));
-        let markdown_example = r#"
-# Heading 1
-
-## Heading 2
-
-This is a paragraph with **bold text** and *italic text*.
-
----
-
-Another paragraph after a horizontal rule.
-
-Some **Strong** Text.
-
-Some *Emphasis* Text.
-
-### Heading3
-
-- Unordered item 1  
-- Unordered item 2  
-  - Nested unordered item  
-  - Another nested item  
-
-1. Ordered item 1  
-2. Ordered item 2  
-   1. Nested ordered item  
-   2. Another nested item
-"#;
-        let text_buffer = TextBuffer::from_str(markdown_example);
-        let mut document = Document::new(Some(String::from("scratch")), text_buffer, config);
+        let text_buffer = TextBuffer::from_str(MARKDOWN_EXAMPLE);
+        let document = Document::new(Some(String::from("scratch")), text_buffer, config);
         View::render(&document, &mut canvas.write());
         let mut container_styling = ContainerStyling::default();
         container_styling.show_border = false;
@@ -166,7 +167,7 @@ Some *Emphasis* Text.
                     log_rect_data: RectData {
                         top_left: Vertex { x: 0, y: 0 },
                         width: LOG_SCREEN.0 as u32,
-                        height: 60,
+                        height: 40,
                     },
                     layout: LayoutMode::Horizontal(AlignmentMode::Top),
                     stretch: StretchMode::Fill,
