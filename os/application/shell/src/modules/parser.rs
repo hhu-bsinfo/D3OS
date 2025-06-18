@@ -10,12 +10,12 @@ use crate::{
 pub struct Parser {}
 
 impl EventHandler for Parser {
-    fn prepare(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
         clx.executable.reset();
         Ok(Response::Ok)
     }
 
-    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.parse(clx)
     }
 }

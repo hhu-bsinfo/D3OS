@@ -9,7 +9,10 @@ use logger::info;
 
 use crate::{
     context::{context::Context, tokens_context::TokensContext},
-    event::event_handler::{Error, EventHandler, Response},
+    event::{
+        event::Event,
+        event_handler::{Error, EventHandler, Response},
+    },
     modules::alias::Alias,
 };
 
@@ -142,18 +145,31 @@ impl TokenContext {
 }
 
 impl EventHandler for Lexer {
-    fn prepare(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
         clx.tokens.reset();
         Ok(Response::Ok)
     }
 
-    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.retokenize_with_alias(clx)
     }
 
-    fn simple_key(&mut self, clx: &mut Context, _key: char) -> Result<Response, Error> {
-        self.detokenize_to_dirty(clx);
-        self.tokenize_from_dirty(clx)
+    fn on_line_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        let detokenize_res = match self.detokenize_to_dirty(clx) {
+            Ok(res) => res,
+            Err(err) => return Err(err),
+        };
+        let tokenize_res = match self.tokenize_from_dirty(clx) {
+            Ok(res) => res,
+            Err(err) => return Err(err),
+        };
+
+        if detokenize_res == Response::Skip && tokenize_res == Response::Skip {
+            return Ok(Response::Skip);
+        }
+
+        clx.events.trigger(Event::TokensWritten);
+        Ok(Response::Ok)
     }
 }
 
@@ -178,6 +194,10 @@ impl Lexer {
     }
 
     fn tokenize_from_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        if !clx.line.is_dirty() {
+            return Ok(Response::Skip);
+        }
+
         for ch in clx.line.get_dirty_part().chars() {
             self.push(&mut clx.tokens, ch);
         }
@@ -205,7 +225,6 @@ impl Lexer {
         }
 
         info!("Lexer tokens with alias: {:?}", clx.tokens);
-
         Ok(Response::Ok)
     }
 

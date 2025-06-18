@@ -14,36 +14,16 @@ pub struct Writer {
 }
 
 impl EventHandler for Writer {
-    fn prepare(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.terminal_cursor_pos = 0;
         self.draw_at_dirty(clx)
     }
 
-    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.draw_next_line(clx)
     }
 
-    fn auto_complete(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(clx)
-    }
-
-    fn cursor_left(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(clx)
-    }
-
-    fn cursor_right(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(clx)
-    }
-
-    fn history_up(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(clx)
-    }
-
-    fn history_down(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(clx)
-    }
-
-    fn simple_key(&mut self, clx: &mut Context, _key: char) -> Result<Response, Error> {
+    fn on_process_completed(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.draw_at_dirty(clx)
     }
 }

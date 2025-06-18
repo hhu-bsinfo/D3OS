@@ -1,6 +1,8 @@
+use terminal::DecodedKey;
+
 use crate::context::context::Context;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Response {
     Ok,
     Skip,
@@ -22,35 +24,35 @@ impl Error {
 
 #[allow(unused_variables)]
 pub trait EventHandler {
-    fn prepare(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_key_pressed(&mut self, clx: &mut Context, key: DecodedKey) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn history_up(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_cursor_moved(&mut self, clx: &mut Context, step: isize) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn history_down(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_history_restored(&mut self, clx: &mut Context) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn cursor_left(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_line_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn cursor_right(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_tokens_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn auto_complete(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_process_completed(&mut self, clx: &mut Context) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn simple_key(&mut self, clx: &mut Context, key: char) -> Result<Response, Error> {
+    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 }

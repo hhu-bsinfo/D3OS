@@ -10,13 +10,13 @@ mod modules;
 use core::cell::RefCell;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
-use logger::warn;
+use logger::info;
 use modules::{
     command_line::CommandLine, executor::Executor, history::History, lexer::Lexer, parser::Parser, writer::Writer,
 };
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{DecodedKey, KeyCode, print, println, read::read_mixed};
+use terminal::{print, println, read::read_mixed};
 
 use crate::{
     context::context::Context,
@@ -41,7 +41,6 @@ impl Shell {
         modules.push(Box::new(History::new()));
         modules.push(Box::new(Lexer::new(alias.clone())));
         modules.push(Box::new(AutoCompletion::new()));
-        modules.push(Box::new(Lexer::new(alias.clone()))); // TODO WORKAROUND (autocompletion writes to line, which means tokens need to be revalidated to show changes)
         modules.push(Box::new(Writer::new()));
         modules.push(Box::new(Parser::new()));
         modules.push(Box::new(Executor::new(alias.clone())));
@@ -54,16 +53,10 @@ impl Shell {
 
     fn await_input_event(&mut self) -> Event {
         loop {
-            return match read_mixed() {
-                Some(DecodedKey::Unicode('\n')) => Event::Submit,
-                Some(DecodedKey::Unicode('\t')) => Event::AutoComplete,
-                Some(DecodedKey::Unicode(ch)) => Event::SimpleKey(ch),
-                Some(DecodedKey::RawKey(KeyCode::ArrowUp)) => Event::HistoryUp,
-                Some(DecodedKey::RawKey(KeyCode::ArrowDown)) => Event::HistoryDown,
-                Some(DecodedKey::RawKey(KeyCode::ArrowLeft)) => Event::CursorLeft,
-                Some(DecodedKey::RawKey(KeyCode::ArrowRight)) => Event::CursorRight,
-                _ => continue,
+            let Some(key) = read_mixed() else {
+                continue;
             };
+            return Event::KeyPressed(key);
         }
     }
 
@@ -71,16 +64,17 @@ impl Shell {
         self.clx.events.trigger(Event::PrepareNewLine);
 
         loop {
-            let event = match self.clx.events.process() {
-                Some(event) => event,
-                None => self.await_input_event(),
-            };
-            warn!("Processing event: {:?}", event);
+            while let Some(event) = self.clx.events.process() {
+                let Err(error) = self.handle_event(&event) else {
+                    continue;
+                };
+                self.handle_error(error);
+            }
 
-            let Err(error) = self.handle_event(&event) else {
-                continue;
-            };
-            self.handle_error(error);
+            self.handle_event(&Event::ProcessCompleted);
+
+            let input_event = self.await_input_event();
+            self.handle_event(&input_event);
         }
     }
 
@@ -90,22 +84,25 @@ impl Shell {
     }
 
     fn handle_event(&mut self, event: &Event) -> Result<(), Error> {
-        for service in &mut self.modules {
+        info!("Events in queue: {:?}", self.clx.events);
+        info!("Processing event: {:?}", event);
+        for event_handler in &mut self.modules {
             let result = match event {
-                Event::PrepareNewLine => service.prepare(&mut self.clx),
-                Event::Submit => service.submit(&mut self.clx),
-                Event::HistoryUp => service.history_up(&mut self.clx),
-                Event::HistoryDown => service.history_down(&mut self.clx),
-                Event::CursorLeft => service.cursor_left(&mut self.clx),
-                Event::CursorRight => service.cursor_right(&mut self.clx),
-                Event::AutoComplete => service.auto_complete(&mut self.clx),
-                Event::SimpleKey(key) => service.simple_key(&mut self.clx, *key),
+                Event::KeyPressed(key) => event_handler.on_key_pressed(&mut self.clx, *key),
+                Event::CursorMoved(step) => event_handler.on_cursor_moved(&mut self.clx, *step),
+                Event::HistoryRestored => event_handler.on_history_restored(&mut self.clx),
+                Event::LineWritten => event_handler.on_line_written(&mut self.clx),
+                Event::TokensWritten => event_handler.on_tokens_written(&mut self.clx),
+                Event::PrepareNewLine => event_handler.on_prepare_next_line(&mut self.clx),
+                Event::Submit => event_handler.on_submit(&mut self.clx),
+                Event::ProcessCompleted => event_handler.on_process_completed(&mut self.clx),
             };
 
             if result.is_err() {
                 return Err(result.unwrap_err());
             }
         }
+        info!("-------------------------------------------");
         Ok(())
     }
 }

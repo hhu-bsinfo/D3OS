@@ -38,6 +38,10 @@ impl LineContext {
         self.dirty_index
     }
 
+    pub fn is_dirty(&self) -> bool {
+        self.dirty_index < self.line.len()
+    }
+
     pub fn len(&self) -> usize {
         self.line.len()
     }

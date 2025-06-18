@@ -21,7 +21,7 @@ pub struct Executor {
 }
 
 impl EventHandler for Executor {
-    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.execute(clx)
     }
 }

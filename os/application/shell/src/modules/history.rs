@@ -1,8 +1,12 @@
 use alloc::collections::vec_deque::VecDeque;
+use terminal::{DecodedKey, KeyCode};
 
 use crate::{
     context::context::Context,
-    event::event_handler::{Error, EventHandler, Response},
+    event::{
+        event::Event,
+        event_handler::{Error, EventHandler, Response},
+    },
 };
 
 pub struct History {
@@ -11,21 +15,21 @@ pub struct History {
 }
 
 impl EventHandler for History {
-    fn history_up(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.move_up(clx)
+    fn on_key_pressed(&mut self, clx: &mut Context, key: DecodedKey) -> Result<Response, Error> {
+        match key {
+            DecodedKey::RawKey(KeyCode::ArrowUp) => self.move_up(clx),
+            DecodedKey::RawKey(KeyCode::ArrowDown) => self.move_down(clx),
+            _ => Ok(Response::Skip),
+        }
     }
 
-    fn history_down(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.move_down(clx)
-    }
-
-    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.reset_position();
         self.add(clx);
         Ok(Response::Ok)
     }
 
-    fn simple_key(&mut self, _clx: &mut Context, _key: char) -> Result<Response, Error> {
+    fn on_line_written(&mut self, _clx: &mut Context) -> Result<Response, Error> {
         self.reset_position();
         Ok(Response::Ok)
     }
@@ -72,7 +76,7 @@ impl History {
         self.history_position += step;
         *clx = self.history.get(self.history_position as usize).unwrap().clone();
         clx.line.mark_dirty_at(0);
-
+        clx.events.trigger(Event::HistoryRestored);
         Ok(Response::Ok)
     }
 }

@@ -1,9 +1,13 @@
 use alloc::{format, string::String};
 use naming::cwd;
+use terminal::{DecodedKey, KeyCode};
 
 use crate::{
     context::context::Context,
-    event::event_handler::{Error, EventHandler, Response},
+    event::{
+        event::Event,
+        event_handler::{Error, EventHandler, Response},
+    },
 };
 
 const INDICATOR: char = '>';
@@ -11,33 +15,35 @@ const INDICATOR: char = '>';
 pub struct CommandLine {}
 
 impl EventHandler for CommandLine {
-    fn prepare(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        clx.line.reset();
-        self.set_prefix(clx);
-
-        Ok(Response::Ok)
-    }
-
-    fn simple_key(&mut self, clx: &mut Context, key: char) -> Result<Response, Error> {
+    fn on_key_pressed(&mut self, clx: &mut Context, key: DecodedKey) -> Result<Response, Error> {
         match key {
-            '\x08' => self.remove_before_cursor(clx),
-            '\x7F' => self.remove_at_cursor(clx),
-            _ => self.add_at_cursor(clx, key),
+            DecodedKey::RawKey(KeyCode::ArrowLeft) => self.move_cursor_left(clx),
+            DecodedKey::RawKey(KeyCode::ArrowRight) => self.move_cursor_right(clx),
+            DecodedKey::RawKey(_) => Ok(Response::Skip),
+
+            DecodedKey::Unicode('\t') => Ok(Response::Skip),
+            DecodedKey::Unicode('\n') => self.submit(clx),
+            DecodedKey::Unicode('\x08') => self.remove_before_cursor(clx),
+            DecodedKey::Unicode('\x7F') => self.remove_at_cursor(clx),
+            DecodedKey::Unicode(ch) => self.add_at_cursor(clx, ch),
         }
     }
 
-    fn cursor_left(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.move_cursor_left(clx)
-    }
-
-    fn cursor_right(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.move_cursor_right(clx)
+    fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.line.reset();
+        self.set_prefix(clx);
+        Ok(Response::Ok)
     }
 }
 
 impl CommandLine {
     pub const fn new() -> Self {
         Self {}
+    }
+
+    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.events.trigger(Event::Submit);
+        Ok(Response::Ok)
     }
 
     fn set_prefix(&mut self, clx: &mut Context) -> Result<Response, Error> {
@@ -52,6 +58,7 @@ impl CommandLine {
         }
 
         clx.line.remove(clx.line.get_cursor_pos());
+        clx.events.trigger(Event::LineWritten);
         Ok(Response::Ok)
     }
 
@@ -62,12 +69,14 @@ impl CommandLine {
 
         clx.line.remove(clx.line.get_cursor_pos() - 1);
         clx.line.move_cursor_left(1);
+        clx.events.trigger(Event::LineWritten);
         Ok(Response::Ok)
     }
 
     fn add_at_cursor(&mut self, clx: &mut Context, ch: char) -> Result<Response, Error> {
         clx.line.insert(clx.line.get_cursor_pos(), ch);
         clx.line.move_cursor_right(1);
+        clx.events.trigger(Event::LineWritten);
         Ok(Response::Ok)
     }
 
@@ -77,6 +86,7 @@ impl CommandLine {
         }
 
         clx.line.move_cursor_right(1);
+        clx.events.trigger(Event::CursorMoved(1));
         Ok(Response::Ok)
     }
 
@@ -86,6 +96,7 @@ impl CommandLine {
         }
 
         clx.line.move_cursor_left(1);
+        clx.events.trigger(Event::CursorMoved(-1));
         Ok(Response::Ok)
     }
 }

@@ -3,10 +3,14 @@ use alloc::{
     vec::Vec,
 };
 use globals::application::{APPLICATION_REGISTRY, Application};
+use terminal::DecodedKey;
 
 use crate::{
     context::context::Context,
-    event::event_handler::{Error, EventHandler, Response},
+    event::{
+        event::Event,
+        event_handler::{Error, EventHandler, Response},
+    },
     modules::lexer::{AmbiguousState, ArgumentType, Token, TokenContext},
 };
 
@@ -20,58 +24,50 @@ pub struct AutoCompletion {
 }
 
 impl EventHandler for AutoCompletion {
-    fn auto_complete(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_key_pressed(&mut self, clx: &mut Context, key: DecodedKey) -> Result<Response, Error> {
+        if !clx.line.is_cursor_at_end() {
+            return Ok(Response::Skip);
+        }
+
+        match key {
+            DecodedKey::Unicode('\t') => {
+                self.revalidate(clx);
+                if !clx.suggestion.has_focus() {
+                    return self.focus_suggestion(clx);
+                }
+                self.cycle_suggestion(clx)
+            }
+            DecodedKey::Unicode(' ') => {
+                self.revalidate(clx);
+                self.adopt(clx)
+            }
+            _ => Ok(Response::Skip),
+        }
+    }
+
+    fn on_tokens_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
         if !clx.line.is_cursor_at_end() {
             return Ok(Response::Skip);
         }
 
         self.revalidate(clx);
-
-        if !clx.suggestion.has_focus() {
-            return self.focus_suggestion(clx);
-        }
-
+        self.clear_suggestion(clx);
         self.cycle_suggestion(clx)
     }
 
-    fn simple_key(&mut self, clx: &mut Context, key: char) -> Result<Response, Error> {
-        if !clx.line.is_cursor_at_end() {
-            return Ok(Response::Skip);
-        }
-
-        self.revalidate(clx);
-
-        match key {
-            ' ' => self.adopt(clx),
-            '\x08' | '\x7F' => self.clear_suggestion(clx),
-            _ => {
-                self.clear_suggestion(clx);
-                self.cycle_suggestion(clx)
-            }
-        }
+    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.clear_suggestion(clx)
     }
 
-    fn prepare(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_cursor_moved(&mut self, clx: &mut Context, _step: isize) -> Result<Response, Error> {
+        self.clear_suggestion(clx)
+    }
+
+    fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.reset(clx)
     }
 
-    fn submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.clear_suggestion(clx)
-    }
-
-    fn cursor_left(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.clear_suggestion(clx)
-    }
-
-    fn cursor_right(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.clear_suggestion(clx)
-    }
-
-    fn history_down(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.reset(clx)
-    }
-
-    fn history_up(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_history_restored(&mut self, clx: &mut Context) -> Result<Response, Error> {
         self.reset(clx)
     }
 }
@@ -92,6 +88,8 @@ impl AutoCompletion {
         clx.line.push_str(&clx.suggestion.get());
         clx.line.push(intercept_char);
         clx.line.move_cursor_right(clx.suggestion.len());
+
+        clx.events.trigger(Event::LineWritten);
 
         self.clear_suggestion(clx);
         Ok(Response::Ok)
