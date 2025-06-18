@@ -1,9 +1,6 @@
-use crate::{
-    context::{
-        indicator_context::IndicatorContext, line_context::LineContext, suggestion_context::SuggestionContext,
-        tokens_context::TokensContext,
-    },
-    executable::Executable,
+use crate::context::{
+    executable_context::ExecutableContext, indicator_context::IndicatorContext, line_context::LineContext,
+    suggestion_context::SuggestionContext, tokens_context::TokensContext,
 };
 
 #[derive(Debug, Clone)]
@@ -12,8 +9,7 @@ pub struct Context {
     pub(crate) indicator: IndicatorContext,
     pub(crate) suggestion: SuggestionContext,
     pub(crate) tokens: TokensContext,
-    /// Generated executable based on tokens
-    pub(crate) executable: Option<Executable>, // TODO CREATE OWN CONTEXT
+    pub(crate) executable: ExecutableContext,
 }
 
 impl Context {
@@ -23,7 +19,7 @@ impl Context {
             indicator: IndicatorContext::new(),
             suggestion: SuggestionContext::new(),
             tokens: TokensContext::new(),
-            executable: None,
+            executable: ExecutableContext::new(),
         }
     }
 

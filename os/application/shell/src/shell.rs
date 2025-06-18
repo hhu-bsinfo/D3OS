@@ -5,7 +5,6 @@ extern crate alloc;
 mod build_in;
 mod context;
 mod event;
-mod executable;
 mod modules;
 
 use core::cell::RefCell;

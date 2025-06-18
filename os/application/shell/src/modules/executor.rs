@@ -8,9 +8,8 @@ use crate::{
         alias::AliasBuildIn, build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn, echo::EchoBuildIn,
         exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn, unalias::UnaliasBuildIn,
     },
-    context::context::Context,
+    context::{context::Context, executable_context::Job},
     event::event_handler::{Error, EventHandler, Response},
-    executable::Job,
     modules::alias::Alias,
 };
 
@@ -30,12 +29,7 @@ impl Executor {
     }
 
     pub fn execute(&self, context: &Context) -> Result<Response, Error> {
-        let executable = match &context.executable {
-            Some(executable) => executable,
-            None => return Err(Error::new("No executable", None, None)),
-        };
-
-        for job in &executable.jobs {
+        for job in &context.executable.jobs {
             match self.execute_job(&job) {
                 Ok(_) => continue,
                 Err(msg) => return Err(msg),
