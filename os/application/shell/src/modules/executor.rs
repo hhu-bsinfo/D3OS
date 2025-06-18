@@ -9,7 +9,10 @@ use crate::{
         exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn, unalias::UnaliasBuildIn,
     },
     context::{context::Context, executable_context::Job},
-    event::event_handler::{Error, EventHandler, Response},
+    event::{
+        event::Event,
+        event_handler::{Error, EventHandler, Response},
+    },
     modules::alias::Alias,
 };
 
@@ -28,13 +31,14 @@ impl Executor {
         Self { alias }
     }
 
-    pub fn execute(&self, context: &Context) -> Result<Response, Error> {
+    pub fn execute(&self, context: &mut Context) -> Result<Response, Error> {
         for job in &context.executable.jobs {
             match self.execute_job(&job) {
                 Ok(_) => continue,
                 Err(msg) => return Err(msg),
             };
         }
+        context.events.trigger(Event::PrepareNewLine);
         Ok(Response::Ok)
     }
 

@@ -10,6 +10,7 @@ mod modules;
 use core::cell::RefCell;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use logger::warn;
 use modules::{
     command_line::CommandLine, executor::Executor, history::History, lexer::Lexer, parser::Parser, writer::Writer,
 };
@@ -26,14 +27,7 @@ use crate::{
     modules::{alias::Alias, auto_completion::AutoCompletion},
 };
 
-#[derive(Debug, PartialEq)]
-enum ShellState {
-    Prepare,
-    AwaitUserInput,
-}
-
 struct Shell {
-    state: ShellState,
     clx: Context,
     modules: Vec<Box<dyn EventHandler>>,
 }
@@ -53,60 +47,52 @@ impl Shell {
         modules.push(Box::new(Executor::new(alias.clone())));
 
         Self {
-            state: ShellState::Prepare,
             clx: Context::new(),
             modules,
         }
     }
 
-    fn get_event(&mut self) -> Option<Event> {
-        if self.state == ShellState::Prepare {
-            return Some(Event::Prepare);
-        }
-
-        match read_mixed() {
-            Some(DecodedKey::Unicode('\n')) => Some(Event::Submit),
-            Some(DecodedKey::Unicode('\t')) => Some(Event::AutoComplete),
-            Some(DecodedKey::Unicode(ch)) => Some(Event::SimpleKey(ch)),
-            Some(DecodedKey::RawKey(KeyCode::ArrowUp)) => Some(Event::HistoryUp),
-            Some(DecodedKey::RawKey(KeyCode::ArrowDown)) => Some(Event::HistoryDown),
-            Some(DecodedKey::RawKey(KeyCode::ArrowLeft)) => Some(Event::CursorLeft),
-            Some(DecodedKey::RawKey(KeyCode::ArrowRight)) => Some(Event::CursorRight),
-            _ => None,
+    fn await_input_event(&mut self) -> Event {
+        loop {
+            return match read_mixed() {
+                Some(DecodedKey::Unicode('\n')) => Event::Submit,
+                Some(DecodedKey::Unicode('\t')) => Event::AutoComplete,
+                Some(DecodedKey::Unicode(ch)) => Event::SimpleKey(ch),
+                Some(DecodedKey::RawKey(KeyCode::ArrowUp)) => Event::HistoryUp,
+                Some(DecodedKey::RawKey(KeyCode::ArrowDown)) => Event::HistoryDown,
+                Some(DecodedKey::RawKey(KeyCode::ArrowLeft)) => Event::CursorLeft,
+                Some(DecodedKey::RawKey(KeyCode::ArrowRight)) => Event::CursorRight,
+                _ => continue,
+            };
         }
     }
 
     pub fn run(&mut self) {
-        loop {
-            let event = self.get_event();
-            let result = match &event {
-                Some(event) => self.handle_event(&event),
-                None => continue,
-            };
-            match result {
-                Ok(_) => self.handle_success(&event.unwrap()),
-                Err(error) => self.handle_error(error),
-            }
-        }
-    }
+        self.clx.events.trigger(Event::PrepareNewLine);
 
-    fn handle_success(&mut self, event: &Event) {
-        match event {
-            Event::Prepare => self.state = ShellState::AwaitUserInput,
-            Event::Submit => self.state = ShellState::Prepare,
-            _ => (),
+        loop {
+            let event = match self.clx.events.process() {
+                Some(event) => event,
+                None => self.await_input_event(),
+            };
+            warn!("Processing event: {:?}", event);
+
+            let Err(error) = self.handle_event(&event) else {
+                continue;
+            };
+            self.handle_error(error);
         }
     }
 
     fn handle_error(&mut self, error: Error) {
         println!("{}", error.message);
-        self.state = ShellState::Prepare;
+        self.clx.events.trigger(Event::PrepareNewLine);
     }
 
     fn handle_event(&mut self, event: &Event) -> Result<(), Error> {
         for service in &mut self.modules {
             let result = match event {
-                Event::Prepare => service.prepare(&mut self.clx),
+                Event::PrepareNewLine => service.prepare(&mut self.clx),
                 Event::Submit => service.submit(&mut self.clx),
                 Event::HistoryUp => service.history_up(&mut self.clx),
                 Event::HistoryDown => service.history_down(&mut self.clx),

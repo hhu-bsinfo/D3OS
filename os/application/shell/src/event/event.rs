@@ -1,5 +1,6 @@
+#[derive(Debug, Clone)]
 pub enum Event {
-    Prepare,
+    PrepareNewLine,
     Submit,
     HistoryUp,
     HistoryDown,

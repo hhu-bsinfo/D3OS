@@ -1,6 +1,9 @@
-use crate::context::{
-    executable_context::ExecutableContext, indicator_context::IndicatorContext, line_context::LineContext,
-    suggestion_context::SuggestionContext, tokens_context::TokensContext,
+use crate::{
+    context::{
+        executable_context::ExecutableContext, indicator_context::IndicatorContext, line_context::LineContext,
+        suggestion_context::SuggestionContext, tokens_context::TokensContext,
+    },
+    event::event_bus::EventBus,
 };
 
 #[derive(Debug, Clone)]
@@ -10,6 +13,8 @@ pub struct Context {
     pub(crate) suggestion: SuggestionContext,
     pub(crate) tokens: TokensContext,
     pub(crate) executable: ExecutableContext,
+
+    pub(crate) events: EventBus,
 }
 
 impl Context {
@@ -20,6 +25,7 @@ impl Context {
             suggestion: SuggestionContext::new(),
             tokens: TokensContext::new(),
             executable: ExecutableContext::new(),
+            events: EventBus::new(),
         }
     }
 
