@@ -47,17 +47,11 @@ impl Worker for InputObserver {
             }
         };
 
-        let state = TerminalInputState::from(
-            syscall(SystemCall::TerminalCheckInputState, &[]).unwrap() as usize,
-        );
+        let state = TerminalInputState::from(syscall(SystemCall::TerminalCheckInputState, &[]).unwrap() as usize);
 
         let (buffer, mode) = match state {
-            TerminalInputState::InputReaderAwaitsCooked => {
-                (self.buffer_cooked(decoded), TerminalMode::Cooked)
-            }
-            TerminalInputState::InputReaderAwaitsMixed => {
-                (self.buffer_mixed(decoded), TerminalMode::Mixed)
-            }
+            TerminalInputState::InputReaderAwaitsCooked => (self.buffer_cooked(decoded), TerminalMode::Cooked),
+            TerminalInputState::InputReaderAwaitsMixed => (self.buffer_mixed(decoded), TerminalMode::Mixed),
             TerminalInputState::InputReaderAwaitsRaw => (self.buffer_raw(raw), TerminalMode::Raw),
             TerminalInputState::Idle => return,
         };
@@ -109,7 +103,11 @@ impl InputObserver {
         self.terminal.write_byte(ch as u8);
 
         match ch {
-            '\n' => return Some(self.cooked_buffer.clone()),
+            '\n' => {
+                let buffer = self.cooked_buffer.clone();
+                self.cooked_buffer.clear();
+                return Some(buffer);
+            }
             '\x08' => {
                 if self.cooked_buffer.pop().is_some() {
                     self.terminal.write_str("\x1b[1D \x1b[1D");
@@ -120,5 +118,3 @@ impl InputObserver {
         None
     }
 }
-
-// TODO#1 FIX COOKED BUFFER NOT CLEARED ON ENTER
