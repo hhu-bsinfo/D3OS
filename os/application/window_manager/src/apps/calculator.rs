@@ -11,7 +11,7 @@ use crate::{
 };
 use alloc::{boxed::Box, format, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
-use graphic::color::{Color, GREY, WHITE};
+use graphic::color::{Color, GREY, RED, WHITE};
 use spin::rwlock::RwLock;
 
 use crate::{api::Command, WindowManager};
@@ -53,12 +53,35 @@ impl Runnable for Calculator {
         let equals_operator_clone = Rc::clone(&current_operator);
         let equals_stored_clone = Rc::clone(&stored_value);
 
+        let content_container = api
+            .execute(
+                handle,
+                None,
+                Command::CreateContainer {
+                    log_rect_data: RectData {
+                        top_left: Vertex { x: 50, y: 50 },
+                        width: 250,
+                        height: 400,
+                    },
+                    layout: LayoutMode::Vertical(AlignmentMode::Top),
+                    stretch: StretchMode::Fill,
+                    styling: Some(
+                        ContainerStylingBuilder::new()
+                            .maintain_aspect_ratio(true)
+                            .show_border(false)
+                            .border_color(RED)
+                            .build(),
+                    ),
+                },
+            )
+            .unwrap();
+
         // Display Label
         api.execute(
             handle,
-            None,
+            Some(content_container.clone()),
             Command::CreateLabel {
-                log_pos: Vertex::new(50, 50),
+                log_pos: Vertex::zero(),
                 font_size: Some(1),
                 text: Rc::clone(&display_text),
                 on_loop_iter: None,
@@ -70,18 +93,41 @@ impl Runnable for Calculator {
         let button_container = api
             .execute(
                 handle,
-                None,
+                Some(content_container.clone()),
                 Command::CreateContainer {
                     log_rect_data: RectData {
-                        top_left: Vertex { x: 50, y: 120 },
-                        width: 250,
-                        height: 250,
+                        top_left: Vertex { x: 0, y: 50 },
+                        width: 0,
+                        height: 500,
                     },
                     layout: LayoutMode::Grid(4),
                     stretch: StretchMode::None,
                     styling: Some(
                         ContainerStylingBuilder::new()
                             .maintain_aspect_ratio(true)
+                            .show_border(false)
+                            .build(),
+                    ),
+                },
+            )
+            .unwrap();
+
+        let action_container = api
+            .execute(
+                handle,
+                Some(content_container.clone()),
+                Command::CreateContainer {
+                    log_rect_data: RectData {
+                        top_left: Vertex::zero(),
+                        width: 0,
+                        height: 100,
+                    },
+                    layout: LayoutMode::Horizontal(AlignmentMode::Left),
+                    stretch: StretchMode::Fill,
+                    styling: Some(
+                        ContainerStylingBuilder::new()
+                            .maintain_aspect_ratio(true)
+                            .show_border(false)
                             .build(),
                     ),
                 },
@@ -219,7 +265,7 @@ impl Runnable for Calculator {
                     width: 200,
                     height: 200,
                 },
-                label: Some((Signal::new(String::from("+/-")), 1)),
+                label: Some((Signal::new(String::from("±")), 1)),
                 on_click: Some(Box::new(move || {
                     let mut value = display_sign.get().parse::<f64>().unwrap_or(0.0);
                     value *= -1.0;
@@ -249,12 +295,12 @@ impl Runnable for Calculator {
         // Clear Button
         api.execute(
             handle,
-            None,
+            Some(action_container.clone()),
             Command::CreateButton {
                 log_rect_data: RectData {
-                    top_left: Vertex::new(50, 360),
-                    width: 110,
-                    height: 50,
+                    top_left: Vertex::zero(),
+                    width: 470,
+                    height: 0,
                 },
                 label: Some((Signal::new(String::from("C")), 1)),
                 on_click: Some(Box::new(move || {
@@ -290,12 +336,12 @@ impl Runnable for Calculator {
         *equals_button_init.write() = Some(
             api.execute(
                 handle,
-                None,
+                Some(action_container.clone()),
                 Command::CreateButton {
                     log_rect_data: RectData {
-                        top_left: Vertex::new(170, 360),
-                        width: 110,
-                        height: 50,
+                        top_left: Vertex::zero(),
+                        width: 470,
+                        height: 0,
                     },
                     label: Some((Signal::new(String::from("=")), 1)),
                     on_click: Some(Box::new(move || {
