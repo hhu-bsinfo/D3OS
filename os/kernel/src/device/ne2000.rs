@@ -3,6 +3,9 @@ use bitflags::bitflags;
 use log::info;
 use pci_types::{CommandRegister, EndpointHeader};
 use smallmap::Page;
+use smoltcp::phy;
+use smoltcp::phy::{DeviceCapabilities, Medium};
+use smoltcp::time::Instant;
 use smoltcp::wire::EthernetAddress;
 use spin::{Mutex, RwLock};
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
@@ -20,7 +23,7 @@ static RECEIVE_START_PAGE: u8 = 0x46;
 /**
  * Reception Buffer Ring End
  * P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
- * Accessed: 2024-03-29
+ * Accessed:
  */
 static RECEIVE_STOP_PAGE: u8 = 0x80;
 
@@ -57,6 +60,11 @@ struct Registers {
     mar5: Port<u8>,
     mar6: Port<u8>,
     mar7: Port<u8>,
+    crda0_p0: Port<u8>,
+    crda1_p0: Port<u8>,
+    tpsr: Port<u8>,
+    tbcr0_p0: Port<u8>,
+    tbcr1_p0: Port<u8>,
 }
 
 impl Registers {
@@ -94,6 +102,11 @@ impl Registers {
             mar5: Port::new(base_address + 0x0D),
             mar6: Port::new(base_address + 0x0E),
             mar7: Port::new(base_address + 0x0F),
+            crda0_p0: Port::new(base_address + 0x08),
+            crda1_p0: Port::new(base_address + 0x09),
+            tpsr: Port::new(base_address + 0x04),
+            tbcr0_p0: Port::new(base_address + 0x05),
+            tbcr1_p0: Port::new(base_address + 0x06),
         }
     }
 }
@@ -299,13 +312,70 @@ pub struct Ne2000 {
 }
 //& borrowing the Struct Ne2000
 // 'a lifetime annotation
+// implementation is orientated on the rtl8139.rs module
 pub struct Ne2000TxToken<'a> {
     device: &'a Ne2000,
 }
 
+// implementation is orientated on the rtl8139.rs module
+// generate new transmission token
 impl<'a> Ne2000TxToken<'a> {
     pub fn new(device: &'a Ne2000) -> Self {
         Self { device }
+    }
+}
+
+// implementation is orientated on the rtl8139.rs module
+// len: size of packet
+impl<'a> phy::TxToken for Ne2000TxToken<'a> {
+    fn consume<R, F>(self, len: usize, f: F) -> R
+    where
+        F: FnOnce(&mut [u8]) -> R,
+    {
+        // Allocate and fill local buffer
+        // max. buffer size is 1514 (see documentation )
+        // TODO: add reference in manual for this
+        let mut buffer = [0u8; 1514];
+        let data = &mut buffer[..len];
+        let result = f(data);
+
+        // call send method using the NE2000
+        // TODO: implement send Methode
+        //self.device.send_packet(data);
+
+        result
+    }
+}
+
+impl phy::Device for Ne2000 {
+    type TxToken<'a>
+        = Ne2000TxToken<'a>
+    where
+        Self: 'a;
+
+    /*fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
+        let device = unsafe { ptr::from_ref(self).as_ref()? };
+        match self.recv_messages.0.try_dequeue() {
+            Ok(recv_buf) => Some((
+                Ne2000RxToken::new(recv_buf, device),
+                Ne2000TxToken::new(device),
+            )),
+            Err(_) => None,
+        }
+    }*/
+
+    fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
+        let device = unsafe { ptr::from_ref(self).as_ref()? };
+        Some(Ne2000TxToken::new(device))
+    }
+
+    fn capabilities(&self) -> DeviceCapabilities {
+        let mut caps = DeviceCapabilities::default();
+        caps.max_transmission_unit = 1514;
+        caps.max_burst_size = Some(1);
+        caps.medium = Medium::Ethernet;
+
+        caps
     }
 }
 
@@ -539,6 +609,92 @@ impl Ne2000 {
                 info!("MAC ADRESS INIT: {}", EthernetAddress::from_bytes(&mac));
             }*/
             info!("Finished Initialization");
+        }
+    }
+
+    pub fn send_packet(&mut self, packet: &[u8]) {
+        let packet_length = packet.len() as u16;
+        unsafe {
+            let transmit_status = !(self.registers.command_port.read() & CR::TXP.bits());
+            while transmit_status != 0 {
+                info!("Transmit bit still set!");
+            }
+
+            //dummy_read (see thiel bachelor thesis)
+
+            // switch to page 0, enable nic, stop dma
+            self.registers
+                .command_port
+                .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
+
+            // 1) Save CRDA bit
+            let old_crda: u16 = self.registers.crda0_p0.read() as u16
+                | (self.registers.crda1_p0.read() << 8) as u16;
+
+            // 2.1 ) Set RBCR > 0
+            self.registers.rbcr0.write(0x01);
+            self.registers.rbcr1.write(0x00);
+            // 2.2) Set RSAR to unused address
+            self.registers.rsar0.write(TRANSMIT_START_PAGE);
+            self.registers.rsar1.write(0);
+            // 3) Issue Dummy Remote READ Command
+            self.registers
+                .command_port
+                .write((CR::STA | CR::REMOTE_READ | CR::PAGE_0).bits());
+
+            // 4) Mandatory Delay between Dummy Read and Write to ensure dummy read was successful
+            // Wait until crda value has changed
+            while old_crda
+                == self.registers.crda0_p0.read() as u16
+                    | (self.registers.crda1_p0.read() << 8) as u16
+            {
+                info!("not equal")
+            }
+
+            // 1) Load RBCR with packet size
+            let low = (packet_length & 0xFF) as u8;
+            let high = (packet_length >> 8) as u8;
+            self.registers.rbcr0.write(low);
+            self.registers.rbcr1.write(high);
+            // 2) Clear RDC Interrupt
+            self.registers
+                .isr_port
+                .write(InterruptStatusRegister::ISR_RDC.bits());
+            // 3) Load RSAR with 0 (low bits) and Page Number (high bits)
+            self.registers.rsar0.write(0);
+            self.registers.rsar1.write(TRANSMIT_START_PAGE);
+            // 4) Set COMMAND to remote write
+            self.registers
+                .command_port
+                .write((CR::STA | CR::REMOTE_WRITE | CR::PAGE_0).bits());
+
+            // 5) Write packet to remote DMA
+            let data_port = &mut self.registers.data_port;
+
+            for &data in packet {
+                data_port.write(data);
+            }
+
+            // 6) Poll ISR until remote DMA Bit is set
+            while (self.registers.isr_port.read() | InterruptStatusRegister::ISR_RDC.bits()) == 0 {
+                info!("polling")
+            }
+
+            // 7) Clear ISR RDC Interrupt
+            self.registers
+                .isr_port
+                .write(InterruptStatusRegister::ISR_RDC.bits());
+
+            // Set TBCR Bits before Transmit and TPSR Bit
+
+            self.registers.tbcr0_p0.write(high);
+            self.registers.tbcr1_p0.write(low);
+            self.registers.tpsr.write(TRANSMIT_START_PAGE);
+
+            // Set TXP Bit to send packet
+            self.registers
+                .command_port
+                .write((CR::STA | CR::TXP | CR::STOP_DMA | CR::PAGE_0).bits());
         }
     }
 
