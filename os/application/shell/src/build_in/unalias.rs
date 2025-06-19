@@ -3,7 +3,7 @@ use core::cell::RefCell;
 use alloc::{rc::Rc, string::String, vec::Vec};
 use terminal::{print, println};
 
-use crate::modules::alias::Alias;
+use crate::sub_modules::alias::Alias;
 
 pub struct UnaliasBuildIn {
     args: Vec<String>,

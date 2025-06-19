@@ -13,7 +13,7 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::alias::Alias,
+    sub_modules::alias::Alias,
 };
 
 #[derive(Debug, PartialEq, Clone)]

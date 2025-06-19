@@ -7,7 +7,7 @@ use alloc::{
 };
 use terminal::{print, println};
 
-use crate::modules::alias::Alias;
+use crate::sub_modules::alias::Alias;
 
 pub struct AliasBuildIn {
     args: Vec<String>,

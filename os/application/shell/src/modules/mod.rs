@@ -1,4 +1,3 @@
-pub mod alias;
 pub mod auto_completion;
 pub mod command_line;
 pub mod executor;

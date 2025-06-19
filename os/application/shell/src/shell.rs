@@ -6,6 +6,7 @@ mod build_in;
 mod context;
 mod event;
 mod modules;
+mod sub_modules;
 
 use core::cell::RefCell;
 
@@ -24,7 +25,8 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler},
     },
-    modules::{alias::Alias, auto_completion::AutoCompletion},
+    modules::auto_completion::AutoCompletion,
+    sub_modules::alias::Alias,
 };
 
 struct Shell {
