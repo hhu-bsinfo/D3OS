@@ -53,7 +53,7 @@ Some *Emphasis* Text.
 
 pub struct TextEditor;
 
-fn render_msg(document: &Rc<RwLock<Document>>, canvas: &Rc<RwLock<Bitmap>>, msg: Message) {
+fn apply_message(document: &Rc<RwLock<Document>>, canvas: &Rc<RwLock<Bitmap>>, msg: Message) {
     document.write().update(msg);
     let mut msg = View::render(&document.read(), &mut canvas.write());
     while msg.is_some() {
@@ -134,7 +134,7 @@ impl Runnable for TextEditor {
                 },
                 label: Some((Signal::new(String::from("Undo")), 0)),
                 on_click: Some(Box::new(move || {
-                    render_msg(
+                    apply_message (
                         &model_clone,
                         &Rc::clone(&canvas_clone),
                         Message::CommandMessage(messages::CommandMessage::Undo),
@@ -165,7 +165,7 @@ impl Runnable for TextEditor {
                 },
                 label: Some((Signal::new(String::from("Redo")), 1)),
                 on_click: Some(Box::new(move || {
-                    render_msg(
+                    apply_message (
                         &model_clone,
                         &Rc::clone(&canvas_clone),
                         Message::CommandMessage(messages::CommandMessage::Redo),
@@ -195,7 +195,7 @@ impl Runnable for TextEditor {
                 },
                 label: Some((Signal::new(String::from("MD - Preview")), 1)),
                 on_click: Some(Box::new(move || {
-                    render_msg(
+                    apply_message (
                         &model_clone,
                         &Rc::clone(&canvas_clone),
                         Message::CommandMessage(messages::CommandMessage::Markdown),
@@ -223,7 +223,7 @@ impl Runnable for TextEditor {
                         height: config.height as u32,
                     },
                     input: Some(Box::new(move |c: DecodedKey| {
-                        render_msg(&model, &canvs_clone, Message::DecodedKey(c));
+                        apply_message (&model, &canvs_clone, Message::DecodedKey(c));
                     })),
                     buffer: Rc::clone(&canvas),
                     scaling_mode: ScalingMode::Bilinear,
