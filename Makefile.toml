@@ -61,6 +61,10 @@ args = [
     "-object",
     "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
     ## Add NE2000 (Author: Johann Spenrath, Last Modified : 06.06.2025)
+    ## creates a emulated ne2000 compatible nic on the slirp stack 
+    ## forward udp port 1798 from host to guest
+    ## all traffic gets dumped into ne2k.dump, in pcap format
+    ## can be read with wireshark
     "-nic",
     "model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798",
     #"model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798,mac=40:54:00:12:34:56",

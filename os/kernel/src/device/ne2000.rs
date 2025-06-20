@@ -313,14 +313,16 @@ pub struct Ne2000 {
 //& borrowing the Struct Ne2000
 // 'a lifetime annotation
 // implementation is orientated on the rtl8139.rs module
+
+// changed to mut because send packet expects mutable self reference
 pub struct Ne2000TxToken<'a> {
-    device: &'a Ne2000,
+    device: &'a mut Ne2000,
 }
 
 // implementation is orientated on the rtl8139.rs module
 // generate new transmission token
 impl<'a> Ne2000TxToken<'a> {
-    pub fn new(device: &'a Ne2000) -> Self {
+    pub fn new(device: &'a mut Ne2000) -> Self {
         Self { device }
     }
 }
@@ -341,32 +343,41 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
 
         // call send method using the NE2000
         // TODO: implement send Methode
-        //self.device.send_packet(data);
+        self.device.send_packet(data);
 
         result
     }
 }
 
+//for the moment not implemented
+pub struct Ne2000RxToken;
+
+impl phy::RxToken for Ne2000RxToken {
+    fn consume<R, F>(self, _f: F) -> R
+    where
+        F: FnOnce(&[u8]) -> R,
+    {
+        panic!("receive logic ")
+    }
+}
+
 impl phy::Device for Ne2000 {
+    type RxToken<'a>
+        = Ne2000RxToken
+    where
+        Self: 'a;
     type TxToken<'a>
         = Ne2000TxToken<'a>
     where
         Self: 'a;
 
-    /*fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
-        let device = unsafe { ptr::from_ref(self).as_ref()? };
-        match self.recv_messages.0.try_dequeue() {
-            Ok(recv_buf) => Some((
-                Ne2000RxToken::new(recv_buf, device),
-                Ne2000TxToken::new(device),
-            )),
-            Err(_) => None,
-        }
-    }*/
+    fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
+        // disable receive for now; only transmit exists
+        self.transmit(_timestamp).map(|tx| (Ne2000RxToken, tx))
+    }
 
-    fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
-        let device = unsafe { ptr::from_ref(self).as_ref()? };
-        Some(Ne2000TxToken::new(device))
+    fn transmit(&mut self, _: Instant) -> Option<Self::TxToken<'_>> {
+        Some(Ne2000TxToken::new(self))
     }
 
     fn capabilities(&self) -> DeviceCapabilities {
@@ -426,7 +437,7 @@ impl Ne2000 {
             // see spec in PDF
             //TODO:, add comments what registers are affected and which bits are set
             let a = self.registers.reset_port.read();
-            self.registers.reset_port.write(a);
+            //self.registers.reset_port.write(a);
             //info!("1: 0x{:X}", reset_port_value);
             //reset_port.write(a);
             let isr_value = self.registers.isr_port.read();
@@ -513,13 +524,11 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STP | CR::STOP_DMA | CR::PAGE_0).bits());
 
-            let mut mac = [0u8; 6];
-
             /* 9) i) Initialize Physical Address Register: PAR0-PAR5
             each mac address bit is written two times into the buffer
             */
             //Read 6 bytes (MAC address)
-            for byte in mac.iter_mut() {
+            /*for byte in mac.iter_mut() {
                 *byte = self.registers.data_port.read();
             }
 
@@ -528,7 +537,54 @@ impl Ne2000 {
             self.registers.par_2.write(mac[2]);
             self.registers.par_3.write(mac[3]);
             self.registers.par_4.write(mac[4]);
+            self.registers.par_5.write(mac[5]);*/
+
+            self.registers
+                .command_port
+                .write((CR::PAGE_1 | CR::RD_1 | CR::STA).bits());
+
+            let mut mac = [0u8; 6];
+
+            let mut par_ports: [Port<u8>; 6] = [
+                Port::new(self.base_address + 0x01),
+                Port::new(self.base_address + 0x02),
+                Port::new(self.base_address + 0x03),
+                Port::new(self.base_address + 0x04),
+                Port::new(self.base_address + 0x05),
+                Port::new(self.base_address + 0x06),
+            ];
+            for (i, port) in par_ports.iter_mut().enumerate() {
+                //mac[i] = port.read();
+                mac[i] = port.read();
+            }
+
+            // Print buffer contents
+            for (i, byte) in mac.iter().enumerate() {
+                info!("buffer[{:02}] = 0x{:02X}", i, byte);
+            }
+
+            // Switch to Page 1 to access PAR0..PAR5
+            self.registers
+                .command_port
+                .write((CR::PAGE_1 | CR::STOP_DMA | CR::STP).bits());
+
+            // Write MAC address to PAR registers (every second byte)
+            self.registers.par_0.write(mac[0]);
+            self.registers.par_1.write(mac[1]);
+            self.registers.par_2.write(mac[2]);
+            self.registers.par_3.write(mac[3]);
+            self.registers.par_4.write(mac[4]);
             self.registers.par_5.write(mac[5]);
+
+            info!(
+                "NE2000 MAC address: [{:02X}-{:02X}-{:02X}-{:02X}-{:02X}-{:02X}]",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+            );
+
+            // Optionally switch back to Page 0
+            self.registers
+                .command_port
+                .write((CR::PAGE_0 | CR::STOP_DMA | CR::STP).bits());
 
             let mut command_port = Port::<u8>::new(self.base_address + 0x00);
             let cr = command_port.read();
@@ -629,7 +685,7 @@ impl Ne2000 {
 
             // 1) Save CRDA bit
             let old_crda: u16 = self.registers.crda0_p0.read() as u16
-                | (self.registers.crda1_p0.read() << 8) as u16;
+                | ((self.registers.crda1_p0.read() as u16) << 8);
 
             // 2.1 ) Set RBCR > 0
             self.registers.rbcr0.write(0x01);
@@ -646,7 +702,7 @@ impl Ne2000 {
             // Wait until crda value has changed
             while old_crda
                 == self.registers.crda0_p0.read() as u16
-                    | (self.registers.crda1_p0.read() << 8) as u16
+                    | ((self.registers.crda1_p0.read() as u16) << 8)
             {
                 info!("not equal")
             }
@@ -706,23 +762,18 @@ impl Ne2000 {
         unsafe {
             //Read 6 bytes (MAC address)
 
+            // switch to page 1 to access PAR 0..5
             self.registers.command_port.write(0x40);
 
-            let mut par_ports: [Port<u8>; 6] = [
-                Port::new(self.base_address + 0x01),
-                Port::new(self.base_address + 0x02),
-                Port::new(self.base_address + 0x03),
-                Port::new(self.base_address + 0x04),
-                Port::new(self.base_address + 0x05),
-                Port::new(self.base_address + 0x06),
-            ];
-            for (i, port) in par_ports.iter_mut().enumerate() {
-                //mac[i] = port.read();
-                mac2[i] = port.read();
-            }
+            mac2[0] = self.registers.par_0.read();
+            mac2[1] = self.registers.par_1.read();
+            mac2[2] = self.registers.par_2.read();
+            mac2[3] = self.registers.par_3.read();
+            mac2[4] = self.registers.par_4.read();
+            mac2[5] = self.registers.par_5.read();
 
             let address3 = EthernetAddress::from_bytes(&mac2);
-            info!("mac2 ({})", address3);
+            info!("fn read_mac: ({})", address3);
 
             self.registers
                 .command_port
@@ -743,5 +794,19 @@ impl Ne2000 {
             }*/
         }
         mac2
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CR;
+
+    #[test]
+    fn test_command_register_bits() {
+        // STA | TXP | PAGE_0
+        let expected: u8 = 0b00000110; // STA = 0x02, TXP = 0x04
+        let combined = CR::STA | CR::TXP | CR::PAGE_0;
+
+        assert_eq!(combined.bits(), expected, "Combined CR bits are incorrect");
     }
 }

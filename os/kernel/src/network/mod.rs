@@ -13,11 +13,12 @@ use smoltcp::iface::{Interface, SocketHandle, SocketSet};
 use smoltcp::socket::udp;
 use smoltcp::time::Instant;
 use smoltcp::wire::Ipv4Address;
-use spin::{Once, RwLock};
+use spin::{Mutex, Once, RwLock};
 
 static RTL8139: Once<Arc<Rtl8139>> = Once::new();
 // ensure that the driver is only initialized once
-//static NE2000: Once<Arc<Ne2000>> = Once::new();
+//static NE2000: Once<Arc<Mutex<Ne2000>>> = Once::new();
+static NE2000: Once<Arc<Ne2000>> = Once::new();
 
 static INTERFACES: RwLock<Vec<Interface>> = RwLock::new(Vec::new());
 static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
@@ -51,10 +52,39 @@ pub fn init() {
     }
 
     // TODO: Implement NE2000.rs
+    // Register the Ne2000 card here
+    // wrap into Arc for shared ownership
+    // Scans PCI bus for Ne2000 cards or similar by looking at the device id and vendor id.
+    // TODO: add reference for vendor and device id here
     let devices2 = pci_bus().search_by_ids(0x10ec, 0x8029);
     if devices2.len() > 0 {
         //NE2000.call_once(|| {
         info!("Found Realtek 8029 network controller");
+
+        // get returns reference to device
+        /*if let Some(ep) = devices.get(0) {
+        // perform init routine only once
+        let ne2k = NE2000.call_once(|| {
+                let mut driver = Ne2000::new(ep);
+                driver.init();
+                let dev = Arc::new(Mutex::new(driver));
+                dev.clone()
+            });
+            //let mac = ne2k.read_mac();
+            // ensure, that only one thread has access
+            let mac = ne2k.lock().read_mac();
+            info!(
+                "NE2000 MAC address: [{:02X}-{:02X}-{:02X}-{:02X}-{:02X}-{:02X}]",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+            );
+            // initial value which will be stored in Once
+            //ne2k.clone()
+        }*/
+        /*scheduler().ready(Thread::new_kernel_thread(|| loop {
+                poll_ne2000();
+            }, "Ne2K"));
+        }*/
+
         let mut ne2000 = Ne2000::new(devices2[0]);
         ne2000.init();
         let mac = ne2000.read_mac();
@@ -70,6 +100,15 @@ pub fn init() {
 pub fn rtl8139() -> Option<Arc<Rtl8139>> {
     match RTL8139.get() {
         Some(rtl8139) => Some(Arc::clone(rtl8139)),
+        None => None,
+    }
+}
+
+// add ne2000 function
+//
+pub fn ne2000() -> Option<Arc<Ne2000>> {
+    match NE2000.get() {
+        Some(ne2000) => Some(Arc::clone(ne2000)),
         None => None,
     }
 }
@@ -134,4 +173,19 @@ fn poll_sockets() {
     for interface in interfaces.iter_mut() {
         interface.poll(time, device, &mut sockets);
     }
+}
+
+// poll for ne2k
+
+fn poll_ne2000() {
+    let ne = NE2000.get().unwrap();
+    let mut sockets = SOCKETS.get().unwrap().write();
+    // interface is connection between smoltcp crate and driver
+    //let mut interface = ;
+
+    // Cast Arc<Ne2000> to &mut Ne2000 for poll:
+    let dev = unsafe { ptr::from_ref(ne.deref()).cast_mut().as_mut().unwrap() };
+    let time = Instant::from_millis(timer().systime_ms() as i64);
+
+    //interface.poll(time, dev, &mut *sockets).unwrap();
 }
