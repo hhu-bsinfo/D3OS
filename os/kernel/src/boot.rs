@@ -16,6 +16,8 @@ use crate::memory::nvmem::Nfit;
 use crate::memory::pages::page_table_index;
 use crate::memory::{MemorySpace, PAGE_SIZE, nvmem};
 use crate::network::rtl8139;
+// add ne2000 function for retrieving a shared reference of the nic
+use crate::network::ne2000;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
@@ -283,24 +285,23 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         network::add_interface(interface);
     }
 
-
     // TODO: set up network interface for Ne2000
     // TODO: add ne2000() function
 
-
-    if let Some(ne2000) = ne2000() && qemu_cfg::is_available() {
-
+    if let Some(ne2000) = ne2000()
+        && qemu_cfg::is_available()
+    {
         // get current time in milliseconds
         let time = timer.systime_ms();
-        // read mac address of NIC and add it as parameter to the Iface::Config 
+        // read mac address of NIC and add it as parameter to the Iface::Config
         // Config :: Configuration structure used for creating a network device
-        // HardwareAddress : set the hardware address, which the interface will use 
-        // conf.random_seed = time => in the documentation is the following: 
-            ///It is strongly recommended that the random seed is different on each boot, to avoid problems with TCP port/sequence collisions.
-            ///The seed doesn’t have to be cryptographically secure.
-            /// https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Config.html
-        let mut conf: = iface::Config::new(HardwareAddress::from(ne2000.read_mac()));
-        conf.random_seed = time as u64; 
+        // HardwareAddress : set the hardware address, which the interface will use
+        // conf.random_seed = time => in the documentation is the following:
+        //It is strongly recommended that the random seed is different on each boot, to avoid problems with TCP port/sequence collisions.
+        //The seed doesn’t have to be cryptographically secure.
+        // https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Config.html
+        let mut conf = iface::Config::new(HardwareAddress::from(ne2000.read_mac()));
+        conf.random_seed = time as u64;
         let device_ne2k = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
         // create the network interface
         let mut interface = Interface::new(conf, device_ne2k, Instant::from_millis(time as i64));
@@ -308,17 +309,21 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         // update the ip addresses of the interface
         // IpCidr : A specification of a CIDR block, containing an address and a variable-length subnet masking prefix length.
         // ips = a Vector of Ip addresses
-        // pushes a new ip address to the vector list 
+        // pushes a new ip address to the vector list
         // Ipv4Address::new : IP address + subnet prefix (10.0.2.16/24).
 
         interface.update_ip_addrs(|ips| {
-            ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 16)), 24)).expect("Failed to add IP address (Ne2000)");
+            ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 16)), 24))
+                .expect("Failed to add IP address (Ne2000)");
         });
-        interface.routes_mut().add_default_ipv4_route(Ipv4Address::new(10,0,2,3)).expect("Failed to add default route (Ne2000)");
+        // define gateway (ipv4 route)
+        interface
+            .routes_mut()
+            .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
+            .expect("Failed to add default route (Ne2000)");
 
         // add the interface to the INTERFACES Vectors defined in network/mod.rs
         network::add_interface(interface);
-
     }
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
@@ -403,7 +408,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         bootloader_name
     );
 
-    // Dump information about all processes (including VMAs) 
+    // Dump information about all processes (including VMAs)
     process_manager().read().dump();
 
     // Start APIC timer & scheduler

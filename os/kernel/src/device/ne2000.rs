@@ -27,6 +27,32 @@ static RECEIVE_START_PAGE: u8 = 0x46;
  */
 static RECEIVE_STOP_PAGE: u8 = 0x80;
 
+struct ParRegisters {
+    id: Mutex<(
+        PortReadOnly<u8>,
+        PortReadOnly<u8>,
+        PortReadOnly<u8>,
+        PortReadOnly<u8>,
+        PortReadOnly<u8>,
+        PortReadOnly<u8>,
+    )>,
+}
+
+impl ParRegisters {
+    fn new(base_address: u16) -> Self {
+        Self {
+            id: Mutex::new((
+                PortReadOnly::new(base_address + 0x01),
+                PortReadOnly::new(base_address + 0x02),
+                PortReadOnly::new(base_address + 0x03),
+                PortReadOnly::new(base_address + 0x04),
+                PortReadOnly::new(base_address + 0x05),
+                PortReadOnly::new(base_address + 0x06),
+            )),
+        }
+    }
+}
+
 struct Registers {
     reset_port: Port<u8>,
     command_port: Port<u8>,
@@ -309,6 +335,7 @@ bitflags! {
 pub struct Ne2000 {
     base_address: u16,
     registers: Registers,
+    par_registers: ParRegisters,
 }
 //& borrowing the Struct Ne2000
 // 'a lifetime annotation
@@ -400,14 +427,14 @@ impl Ne2000 {
         let bar0 = pci_device
             .bar(0, pci_bus().config_space())
             .expect("Failed to read base address!");
-
         let base_address = bar0.unwrap_io() as u16;
-        let registers = Registers::new(base_address);
-        let ne2000 = Self {
-            base_address,
-            registers,
-        };
         info!("NE2000 base address: [0x{:x}]", base_address);
+
+        let mut ne2000 = Self {
+            registers: Registers::new(base_address),
+            base_address: base_address,
+            par_registers: ParRegisters::new(base_address),
+        };
 
         ne2000
     }
@@ -755,27 +782,30 @@ impl Ne2000 {
     }
 
     // read the mac address and return it as array
-    pub fn read_mac(&mut self) -> [u8; 6] {
-        //pub fn read_mac(&self) -> EthernetAddress {
+    //pub fn read_mac(&mut self) -> [u8; 6] {
+    pub fn read_mac(&self) -> EthernetAddress {
         let mut mac2 = [0u8; 6];
+        let mut par_registers = self.par_registers.id.lock();
 
         unsafe {
             //Read 6 bytes (MAC address)
 
             // switch to page 1 to access PAR 0..5
-            self.registers.command_port.write(0x40);
+            //self.registers.command_port.write(0x40);
+            let mut registers = Registers::new(self.base_address);
+            registers.command_port.write(0x40);
 
-            mac2[0] = self.registers.par_0.read();
-            mac2[1] = self.registers.par_1.read();
-            mac2[2] = self.registers.par_2.read();
-            mac2[3] = self.registers.par_3.read();
-            mac2[4] = self.registers.par_4.read();
-            mac2[5] = self.registers.par_5.read();
+            mac2[0] = par_registers.0.read();
+            mac2[1] = par_registers.1.read();
+            mac2[2] = par_registers.2.read();
+            mac2[3] = par_registers.3.read();
+            mac2[4] = par_registers.4.read();
+            mac2[5] = par_registers.5.read();
 
-            let address3 = EthernetAddress::from_bytes(&mac2);
-            info!("fn read_mac: ({})", address3);
-
-            self.registers
+            //self.registers
+            //    .command_port
+            //    .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
+            registers
                 .command_port
                 .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
 
@@ -793,7 +823,10 @@ impl Ne2000 {
                 _ => unreachable!(),
             }*/
         }
-        mac2
+        let address3 = EthernetAddress::from_bytes(&mac2);
+        //info!("fn read_mac: ({})", address3);
+        //mac2
+        address3
     }
 }
 
