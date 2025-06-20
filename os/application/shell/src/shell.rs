@@ -4,136 +4,107 @@ extern crate alloc;
 
 mod build_in;
 mod context;
-mod controller;
-mod executable;
-mod service;
-mod sub_service;
+mod event;
+mod modules;
+mod sub_modules;
 
 use core::cell::RefCell;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
-use context::Context;
+use logger::info;
+use modules::{
+    command_line::CommandLine, executor::Executor, history::History, lexer::Lexer, parser::Parser, writer::Writer,
+};
 #[allow(unused_imports)]
 use runtime::*;
-use service::{
-    command_line_service::CommandLineService,
-    drawer_service::DrawerService,
-    executor_service::ExecutorService,
-    history_service::HistoryService,
-    lexer_service::LexerService,
-    parser_service::ParserService,
-    service::{Error, Service},
+use terminal::{print, println, read::read_mixed};
+
+use crate::{
+    context::context::Context,
+    event::{
+        event::Event,
+        event_handler::{Error, EventHandler},
+    },
+    modules::auto_completion::AutoCompletion,
+    sub_modules::alias::Alias,
 };
-use sub_service::alias_sub_service::AliasSubService;
-use terminal::{DecodedKey, KeyCode, print, println, read::read_mixed};
-
-use crate::service::auto_complete_service::AutoCompleteService;
-
-#[derive(Debug, PartialEq)]
-enum ShellState {
-    Prepare,
-    AwaitUserInput,
-}
-
-pub enum Event {
-    Prepare,
-    Submit,
-    HistoryUp,
-    HistoryDown,
-    CursorLeft,
-    CursorRight,
-    AutoComplete,
-    SimpleKey(char),
-}
 
 struct Shell {
-    state: ShellState,
-    context: Context,
-    services: Vec<Box<dyn Service>>,
+    clx: Context,
+    modules: Vec<Box<dyn EventHandler>>,
 }
 
 impl Shell {
     pub fn new() -> Self {
-        let alias_service = Rc::new(RefCell::new(AliasSubService::new()));
-        let mut services: Vec<Box<dyn Service>> = Vec::new();
+        let alias = Rc::new(RefCell::new(Alias::new()));
+        let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
 
-        services.push(Box::new(CommandLineService::new()));
-        services.push(Box::new(HistoryService::new()));
-        services.push(Box::new(LexerService::new(alias_service.clone())));
-        services.push(Box::new(AutoCompleteService::new()));
-        services.push(Box::new(LexerService::new(alias_service.clone()))); // TODO WORKAROUND (autocompletion writes to line, which means tokens need to be revalidated to show changes)
-        services.push(Box::new(DrawerService::new()));
-        services.push(Box::new(ParserService::new()));
-        services.push(Box::new(ExecutorService::new(alias_service.clone())));
+        modules.push(Box::new(CommandLine::new()));
+        modules.push(Box::new(History::new()));
+        modules.push(Box::new(Lexer::new(alias.clone())));
+        modules.push(Box::new(AutoCompletion::new()));
+        modules.push(Box::new(Writer::new()));
+        modules.push(Box::new(Parser::new()));
+        modules.push(Box::new(Executor::new(alias.clone())));
 
         Self {
-            state: ShellState::Prepare,
-            context: Context::new(),
-            services,
+            clx: Context::new(),
+            modules,
         }
     }
 
-    fn get_event(&mut self) -> Option<Event> {
-        if self.state == ShellState::Prepare {
-            return Some(Event::Prepare);
-        }
-
-        match read_mixed() {
-            Some(DecodedKey::Unicode('\n')) => Some(Event::Submit),
-            Some(DecodedKey::Unicode('\t')) => Some(Event::AutoComplete),
-            Some(DecodedKey::Unicode(ch)) => Some(Event::SimpleKey(ch)),
-            Some(DecodedKey::RawKey(KeyCode::ArrowUp)) => Some(Event::HistoryUp),
-            Some(DecodedKey::RawKey(KeyCode::ArrowDown)) => Some(Event::HistoryDown),
-            Some(DecodedKey::RawKey(KeyCode::ArrowLeft)) => Some(Event::CursorLeft),
-            Some(DecodedKey::RawKey(KeyCode::ArrowRight)) => Some(Event::CursorRight),
-            _ => None,
+    fn await_input_event(&mut self) -> Event {
+        loop {
+            let Some(key) = read_mixed() else {
+                continue;
+            };
+            return Event::KeyPressed(key);
         }
     }
 
     pub fn run(&mut self) {
-        loop {
-            let event = self.get_event();
-            let result = match &event {
-                Some(event) => self.handle_event(&event),
-                None => continue,
-            };
-            match result {
-                Ok(_) => self.handle_success(&event.unwrap()),
-                Err(error) => self.handle_error(error),
-            }
-        }
-    }
+        self.clx.events.trigger(Event::PrepareNewLine);
 
-    fn handle_success(&mut self, event: &Event) {
-        match event {
-            Event::Prepare => self.state = ShellState::AwaitUserInput,
-            Event::Submit => self.state = ShellState::Prepare,
-            _ => (),
+        loop {
+            while let Some(event) = self.clx.events.process() {
+                let Err(error) = self.handle_event(&event) else {
+                    continue;
+                };
+                self.handle_error(error);
+            }
+
+            self.handle_event(&Event::ProcessCompleted);
+
+            let input_event = self.await_input_event();
+            self.handle_event(&input_event);
         }
     }
 
     fn handle_error(&mut self, error: Error) {
         println!("{}", error.message);
-        self.state = ShellState::Prepare;
+        self.clx.events.trigger(Event::PrepareNewLine);
     }
 
     fn handle_event(&mut self, event: &Event) -> Result<(), Error> {
-        for service in &mut self.services {
+        info!("Events in queue: {:?}", self.clx.events);
+        info!("Processing event: {:?}", event);
+        for event_handler in &mut self.modules {
             let result = match event {
-                Event::Prepare => service.prepare(&mut self.context),
-                Event::Submit => service.submit(&mut self.context),
-                Event::HistoryUp => service.history_up(&mut self.context),
-                Event::HistoryDown => service.history_down(&mut self.context),
-                Event::CursorLeft => service.cursor_left(&mut self.context),
-                Event::CursorRight => service.cursor_right(&mut self.context),
-                Event::AutoComplete => service.auto_complete(&mut self.context),
-                Event::SimpleKey(key) => service.simple_key(&mut self.context, *key),
+                Event::KeyPressed(key) => event_handler.on_key_pressed(&mut self.clx, *key),
+                Event::CursorMoved(step) => event_handler.on_cursor_moved(&mut self.clx, *step),
+                Event::HistoryRestored => event_handler.on_history_restored(&mut self.clx),
+                Event::LineWritten => event_handler.on_line_written(&mut self.clx),
+                Event::TokensWritten => event_handler.on_tokens_written(&mut self.clx),
+                Event::PrepareNewLine => event_handler.on_prepare_next_line(&mut self.clx),
+                Event::Submit => event_handler.on_submit(&mut self.clx),
+                Event::ProcessCompleted => event_handler.on_process_completed(&mut self.clx),
             };
 
             if result.is_err() {
                 return Err(result.unwrap_err());
             }
         }
+        info!("-------------------------------------------");
         Ok(())
     }
 }

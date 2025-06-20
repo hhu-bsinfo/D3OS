@@ -65,7 +65,7 @@ unsafe extern "C" {
 }
 
 const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS
-const BOOT_TO_GUI: bool = true; // Immediately start the GUI instead of terminal (Debug)
+const BOOT_TO_GUI: bool = false; // Immediately start the GUI instead of terminal (Debug)
 
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \

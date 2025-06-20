@@ -7,9 +7,14 @@ use alloc::{
 };
 use logger::info;
 
-use crate::{context::Context, sub_service::alias_sub_service::AliasSubService};
-
-use super::service::{Error, Response, Service};
+use crate::{
+    context::{context::Context, tokens_context::TokensContext},
+    event::{
+        event::Event,
+        event_handler::{Error, EventHandler, Response},
+    },
+    sub_modules::alias::Alias,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
@@ -64,12 +69,12 @@ pub struct TokenContext {
     pub(crate) quote: QuoteState,
     pub(crate) ambiguous: AmbiguousState,
     pub(crate) argument_type: Option<ArgumentType>,
-    assigned_command_pos: Option<usize>,
-    assigned_short_flag_pos: Option<usize>,
+    pub(crate) assigned_command_pos: Option<usize>,
+    pub(crate) assigned_short_flag_pos: Option<usize>,
 }
 
-pub struct LexerService {
-    alias: Rc<RefCell<AliasSubService>>,
+pub struct Lexer {
+    alias: Rc<RefCell<Alias>>,
 }
 
 impl Token {
@@ -121,48 +126,6 @@ impl Token {
     }
 }
 
-pub trait FindLastCommand {
-    fn find_last_command(&self) -> Option<&Token>;
-    fn find_last_short_flag(&self) -> Option<&Token>;
-    fn total_len(&self) -> usize;
-}
-
-impl FindLastCommand for Vec<Token> {
-    fn find_last_command(&self) -> Option<&Token> {
-        let last_token = match self.last() {
-            Some(token) => token,
-            None => return None,
-        };
-        let last_command_pos = match last_token.context().assigned_command_pos {
-            Some(pos) => pos,
-            None => return None,
-        };
-        Some(&self[last_command_pos])
-    }
-
-    fn find_last_short_flag(&self) -> Option<&Token> {
-        let last_token = match self.last() {
-            Some(token) => token,
-            None => return None,
-        };
-        let last_command_pos = match last_token.context().assigned_short_flag_pos {
-            Some(pos) => pos,
-            None => return None,
-        };
-        Some(&self[last_command_pos])
-    }
-
-    fn total_len(&self) -> usize {
-        self.iter()
-            .map(|token| match token {
-                Token::Command(_clx, s) => s.len(),
-                Token::Argument(_clx, s) => s.len(),
-                _ => 1,
-            })
-            .sum()
-    }
-}
-
 impl TokenContext {
     pub const fn new(
         quote: QuoteState,
@@ -181,55 +144,72 @@ impl TokenContext {
     }
 }
 
-impl Service for LexerService {
-    fn prepare(&mut self, context: &mut Context) -> Result<Response, Error> {
-        context.tokens.clear();
+impl EventHandler for Lexer {
+    fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.tokens.reset();
         Ok(Response::Ok)
     }
 
-    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.retokenize_with_alias(context)
+    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.retokenize_with_alias(clx)
     }
 
-    fn simple_key(&mut self, context: &mut Context, _key: char) -> Result<Response, Error> {
-        self.detokenize_to_dirty(context);
-        self.tokenize_from_dirty(context)
-    }
-}
+    fn on_line_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        let detokenize_res = match self.detokenize_to_dirty(clx) {
+            Ok(res) => res,
+            Err(err) => return Err(err),
+        };
+        let tokenize_res = match self.tokenize_from_dirty(clx) {
+            Ok(res) => res,
+            Err(err) => return Err(err),
+        };
 
-impl LexerService {
-    pub const fn new(alias: Rc<RefCell<AliasSubService>>) -> Self {
-        Self { alias }
-    }
-
-    fn detokenize_to_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
-        let total_len = context.tokens.total_len();
-
-        if total_len <= context.line.get_dirty_index() {
+        if detokenize_res == Response::Skip && tokenize_res == Response::Skip {
             return Ok(Response::Skip);
         }
 
-        let n = total_len - context.line.get_dirty_index();
+        clx.events.trigger(Event::TokensWritten);
+        Ok(Response::Ok)
+    }
+}
+
+impl Lexer {
+    pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
+        Self { alias }
+    }
+
+    fn detokenize_to_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        let total_len = clx.tokens.total_len();
+
+        if total_len <= clx.line.get_dirty_index() {
+            return Ok(Response::Skip);
+        }
+
+        let n = total_len - clx.line.get_dirty_index();
         for _ in 0..n {
-            self.pop(&mut context.tokens);
+            self.pop(&mut clx.tokens);
         }
 
         Ok(Response::Ok)
     }
 
-    fn tokenize_from_dirty(&mut self, context: &mut Context) -> Result<Response, Error> {
-        for ch in context.line.get_dirty_part().chars() {
-            self.push(&mut context.tokens, ch);
+    fn tokenize_from_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        if !clx.line.is_dirty() {
+            return Ok(Response::Skip);
         }
 
-        info!("Lexer tokens: {:?}", context.tokens);
+        for ch in clx.line.get_dirty_part().chars() {
+            self.push(&mut clx.tokens, ch);
+        }
+
+        info!("Lexer tokens: {:?}", clx.tokens);
         Ok(Response::Ok)
     }
 
-    fn retokenize_with_alias(&mut self, context: &mut Context) -> Result<Response, Error> {
-        context.tokens.clear();
+    fn retokenize_with_alias(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.tokens.reset();
 
-        let new_line = context
+        let new_line = clx
             .line
             .get()
             .split_whitespace()
@@ -241,15 +221,14 @@ impl LexerService {
             .join(" ");
 
         for ch in new_line.chars() {
-            self.push(&mut context.tokens, ch);
+            self.push(&mut clx.tokens, ch);
         }
 
-        info!("Lexer tokens with alias: {:?}", context.tokens);
-
+        info!("Lexer tokens with alias: {:?}", clx.tokens);
         Ok(Response::Ok)
     }
 
-    fn push(&mut self, tokens: &mut Vec<Token>, ch: char) {
+    fn push(&mut self, tokens: &mut TokensContext, ch: char) {
         match ch {
             '\"' => self.handle_double_quote(tokens),
             '\'' => self.handle_single_quote(tokens),
@@ -258,7 +237,7 @@ impl LexerService {
         }
     }
 
-    fn pop(&mut self, tokens: &mut Vec<Token>) {
+    fn pop(&mut self, tokens: &mut TokensContext) {
         if tokens.last().is_none() {
             return;
         }
@@ -278,16 +257,10 @@ impl LexerService {
         tokens.pop();
     }
 
-    fn handle_other(&mut self, tokens: &mut Vec<Token>, ch: char) {
+    fn handle_other(&mut self, tokens: &mut TokensContext, ch: char) {
         if tokens.last().is_none() {
             tokens.push(self.choose_ambiguous_token(
-                &TokenContext::new(
-                    QuoteState::Pending,
-                    AmbiguousState::Pending,
-                    None,
-                    None,
-                    None,
-                ),
+                &TokenContext::new(QuoteState::Pending, AmbiguousState::Pending, None, None, None),
                 ch,
                 tokens.len(),
             ));
@@ -315,7 +288,7 @@ impl LexerService {
         }
     }
 
-    fn handle_whitespace(&mut self, tokens: &mut Vec<Token>) {
+    fn handle_whitespace(&mut self, tokens: &mut TokensContext) {
         if tokens.last().is_none() {
             return tokens.push(Token::Whitespace(TokenContext::new(
                 QuoteState::Pending,
@@ -347,13 +320,7 @@ impl LexerService {
     fn choose_ambiguous_token(&mut self, clx: &TokenContext, ch: char, len: usize) -> Token {
         match clx.ambiguous {
             AmbiguousState::Pending => {
-                let next_clx = TokenContext::new(
-                    clx.quote.clone(),
-                    AmbiguousState::Command,
-                    None,
-                    Some(len),
-                    None,
-                );
+                let next_clx = TokenContext::new(clx.quote.clone(), AmbiguousState::Command, None, Some(len), None);
                 Token::Command(next_clx, ch.to_string())
             }
             AmbiguousState::Command | AmbiguousState::Argument => {
@@ -387,11 +354,7 @@ impl LexerService {
         Some(ArgumentType::Unknown)
     }
 
-    fn choose_argument_pos(
-        &mut self,
-        argument_type: Option<ArgumentType>,
-        len: usize,
-    ) -> Option<usize> {
+    fn choose_argument_pos(&mut self, argument_type: Option<ArgumentType>, len: usize) -> Option<usize> {
         if argument_type == Some(ArgumentType::ShortFlag) {
             Some(len)
         } else {
@@ -399,15 +362,9 @@ impl LexerService {
         }
     }
 
-    fn handle_double_quote(&mut self, tokens: &mut Vec<Token>) {
+    fn handle_double_quote(&mut self, tokens: &mut TokensContext) {
         if tokens.last().is_none() {
-            let clx = TokenContext::new(
-                QuoteState::Double,
-                AmbiguousState::Pending,
-                None,
-                None,
-                None,
-            );
+            let clx = TokenContext::new(QuoteState::Double, AmbiguousState::Pending, None, None, None);
             tokens.push(Token::QuoteStart(clx, '\"'));
             return;
         }
@@ -452,15 +409,9 @@ impl LexerService {
         }
     }
 
-    fn handle_single_quote(&mut self, tokens: &mut Vec<Token>) {
+    fn handle_single_quote(&mut self, tokens: &mut TokensContext) {
         if tokens.last().is_none() {
-            let clx = TokenContext::new(
-                QuoteState::Single,
-                AmbiguousState::Pending,
-                None,
-                None,
-                None,
-            );
+            let clx = TokenContext::new(QuoteState::Single, AmbiguousState::Pending, None, None, None);
             tokens.push(Token::QuoteStart(clx, '\''));
             return;
         }

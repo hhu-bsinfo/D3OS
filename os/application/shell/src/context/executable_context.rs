@@ -19,14 +19,22 @@ impl Job {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Executable {
+#[derive(Debug, Clone, Default)]
+pub struct ExecutableContext {
     pub jobs: Vec<Job>,
 }
 
-impl Executable {
-    pub const fn new() -> Self {
-        Self { jobs: Vec::new() }
+impl ExecutableContext {
+    pub fn new() -> Self {
+        ExecutableContext::default()
+    }
+
+    pub fn reset(&mut self) {
+        *self = ExecutableContext::default()
+    }
+
+    pub fn get_jobs(&self) -> &Vec<Job> {
+        &self.jobs
     }
 
     pub fn create_job(&mut self, command: String) {

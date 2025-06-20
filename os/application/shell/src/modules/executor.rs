@@ -5,44 +5,40 @@ use concurrent::thread;
 
 use crate::{
     build_in::{
-        alias::AliasBuildIn, build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn,
-        echo::EchoBuildIn, exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn,
-        unalias::UnaliasBuildIn,
+        alias::AliasBuildIn, build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn, echo::EchoBuildIn,
+        exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn, unalias::UnaliasBuildIn,
     },
-    context::Context,
-    executable::Job,
-    sub_service::alias_sub_service::AliasSubService,
+    context::{context::Context, executable_context::Job},
+    event::{
+        event::Event,
+        event_handler::{Error, EventHandler, Response},
+    },
+    sub_modules::alias::Alias,
 };
 
-use super::service::{Error, Response, Service};
-
-pub struct ExecutorService {
-    alias: Rc<RefCell<AliasSubService>>,
+pub struct Executor {
+    alias: Rc<RefCell<Alias>>,
 }
 
-impl Service for ExecutorService {
-    fn submit(&mut self, context: &mut Context) -> Result<Response, Error> {
-        self.execute(context)
+impl EventHandler for Executor {
+    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.execute(clx)
     }
 }
 
-impl ExecutorService {
-    pub const fn new(alias: Rc<RefCell<AliasSubService>>) -> Self {
+impl Executor {
+    pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
         Self { alias }
     }
 
-    pub fn execute(&self, context: &Context) -> Result<Response, Error> {
-        let executable = match &context.executable {
-            Some(executable) => executable,
-            None => return Err(Error::new("No executable", None, None)),
-        };
-
-        for job in &executable.jobs {
+    pub fn execute(&self, clx: &mut Context) -> Result<Response, Error> {
+        for job in &clx.executable.jobs {
             match self.execute_job(&job) {
                 Ok(_) => continue,
                 Err(msg) => return Err(msg),
             };
         }
+        clx.events.trigger(Event::PrepareNewLine);
         Ok(Response::Ok)
     }
 
