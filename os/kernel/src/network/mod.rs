@@ -175,13 +175,19 @@ fn poll_sockets() {
 
 fn poll_ne2000() {
     let ne = NE2000.get().unwrap();
-    let mut sockets = SOCKETS.get().unwrap().write();
     // interface is connection between smoltcp crate and driver
-    //let mut interface = ;
-
-    // Cast Arc<Ne2000> to &mut Ne2000 for poll:
-    let dev = unsafe { ptr::from_ref(ne.deref()).cast_mut().as_mut().unwrap() };
+    // interfaces stores a Vector off all added Network Interfaces
+    let mut interfaces = INTERFACES.write();
+    let mut sockets = SOCKETS.get().unwrap().write();
     let time = Instant::from_millis(timer().systime_ms() as i64);
 
-    //interface.poll(time, dev, &mut *sockets).unwrap();
+    // Cast Arc<Ne2000> to &mut Ne2000 for poll:
+    let dev_ne2k = unsafe { ptr::from_ref(ne.deref()).cast_mut().as_mut().unwrap() };
+
+    // poll:Transmit packets queued in the sockets, and receive packets queued in the device.
+    //This function returns a value indicating whether the state of any socket might have changed.
+
+    for interface in interfaces.iter_mut() {
+        interface.poll(time, dev_ne2k, &mut sockets);
+    }
 }
