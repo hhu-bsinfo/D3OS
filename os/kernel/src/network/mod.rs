@@ -65,28 +65,19 @@ pub fn init() {
             info!("Ne2000 MAC address: [{}]", ne2k.read_mac());
             ne2k
         });
-        //let mac = ne2k.read_mac();
-        // ensure, that only one thread has access
-        //info!(
-        //    "NE2000 MAC address: [{:02X}-{:02X}-{:02X}-{:02X}-{:02X}-{:02X}]",
-        //    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
-        //);
-        // initial value which will be stored in Once
-        //ne2k.clone()
-        /*scheduler().ready(Thread::new_kernel_thread(|| loop {
-                poll_ne2000();
-            }, "Ne2K"));
-        }*/
+    }
 
-        //let mut ne2000 = Ne2000::new(devices2[0]);
-        //ne2000.init();
-        //let mac = ne2000.read_mac();
-        //info!("8029 MAC address: [{}]", ne2000.read_mac());
-        //info!(
-        //    "NE2000 MAC address: [{:02X}-{:02X}-{:02X}-{:02X}-{:02X}-{:02X}]",
-        //    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
-        //);
-        //});
+    // if NE2000 is initialized, start a new thread,
+    // which calls poll_ne2000 in an infinite loop
+    // the method checks for any outgoing or incoming packages in the buffers of
+    // the device or in the buffers of the sockets
+    if NE2000.get().is_some() {
+        scheduler().ready(Thread::new_kernel_thread(
+            || loop {
+                poll_ne2000();
+            },
+            "NE2000",
+        ));
     }
 }
 
