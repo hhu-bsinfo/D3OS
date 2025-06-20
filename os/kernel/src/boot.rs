@@ -268,7 +268,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
         conf.random_seed = time as u64;
 
-        // The Ssoltcp interface struct wants a mutable reference to the device. However, the RTL8139 driver is designed to work with shared references.
+        // The smoltcp interface struct wants a mutable reference to the device. However, the RTL8139 driver is designed to work with shared references.
         // Since smoltcp does not actually store the mutable reference anywhere, we can safely cast the shared reference to a mutable one.
         // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device, since it does not modify the device itself)
         let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };

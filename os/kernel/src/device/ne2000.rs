@@ -436,6 +436,8 @@ impl Ne2000 {
             par_registers: ParRegisters::new(base_address),
         };
 
+        ne2000.init();
+
         ne2000
     }
 

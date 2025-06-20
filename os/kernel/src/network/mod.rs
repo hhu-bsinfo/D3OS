@@ -61,6 +61,7 @@ pub fn init() {
         NE2000.call_once(|| {
             info!("Found Realtek 8029 network controller");
             let ne2k = Arc::new(Ne2000::new(devices2[0]));
+
             info!("Ne2000 MAC address: [{}]", ne2k.read_mac());
             ne2k
         });
