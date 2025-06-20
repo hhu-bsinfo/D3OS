@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::modules::lexer::Token;
+use crate::modules::lexer::token::Token;
 
 #[derive(Debug, Clone, Default)]
 pub struct TokensContext {

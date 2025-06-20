@@ -11,7 +11,7 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::lexer::{AmbiguousState, ArgumentType, Token, TokenContext},
+    modules::lexer::token::{AmbiguousState, ArgumentType, Token, TokenContext},
 };
 
 #[derive(Debug)]

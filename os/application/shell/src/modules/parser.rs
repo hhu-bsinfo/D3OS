@@ -4,7 +4,7 @@ use logger::info;
 use crate::{
     context::context::Context,
     event::event_handler::{Error, EventHandler, Response},
-    modules::lexer::Token,
+    modules::lexer::token::Token,
 };
 
 pub struct Parser {}

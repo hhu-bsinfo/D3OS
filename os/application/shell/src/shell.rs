@@ -12,9 +12,7 @@ use core::cell::RefCell;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use logger::info;
-use modules::{
-    command_line::CommandLine, executor::Executor, history::History, lexer::Lexer, parser::Parser, writer::Writer,
-};
+use modules::{command_line::CommandLine, executor::Executor, history::History, parser::Parser, writer::Writer};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::{print, println, read::read_mixed};
@@ -25,7 +23,7 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler},
     },
-    modules::auto_completion::AutoCompletion,
+    modules::{auto_completion::AutoCompletion, lexer::lexer::Lexer},
     sub_modules::alias::Alias,
 };
 
