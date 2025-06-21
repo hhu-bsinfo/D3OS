@@ -36,6 +36,7 @@ impl View {
         let mut x = position.x;
         let mut y = position.y;
         let mut i = 0;
+        let mut new_lines = Vec::<u32>::new();
         while let Some(c) = text.chars().nth(i) {
             if i == rel_caret.unwrap_or(usize::MAX) {
                 buffer.draw_line(x, y, x, y + font.char_height * font.scale, YELLOW);
@@ -44,11 +45,13 @@ impl View {
                 y += font.char_height * font.scale;
                 x = 0;
                 i += 1;
+                new_lines.push(i as u32);
                 continue;
             }
             if buffer.width - x + 1 < font.char_width * font.scale {
                 x = 0;
                 y += font.char_height * font.scale;
+                new_lines.push(i as u32);
             }
             x += buffer.draw_char_scaled(
                 x + 1,
@@ -201,13 +204,13 @@ impl View {
         let mut last_index: Range<usize>;
         font.push(normal);
         for (event, range) in iterator {
+            let rel_caret = document.caret().head().checked_sub(range.start);
             if position.y > buffer.height {
                 break;
             }
             last_index = range.clone();
             match event {
                 Event::Text(text) => {
-                    let rel_caret = document.caret().head().checked_sub(range.start);
                     if heading {
                         position = View::render_string(
                             &String::from("\n"),
@@ -225,7 +228,6 @@ impl View {
                                 s.push('.');
                             }
 
-                            let rel_caret = document.caret().head().checked_sub(range.start);
                             position = View::render_string(
                                 &format!("{}{} ", " ".repeat(list_indentation), s),
                                 buffer,
@@ -247,7 +249,6 @@ impl View {
                             first_in_list_item = false;
                         }
                     }
-                    let rel_caret = document.caret().head().checked_sub(range.start);
                     position = View::render_string(
                         &text.to_string(),
                         buffer,
@@ -266,7 +267,6 @@ impl View {
                     }
                 }
                 Event::HardBreak | Event::SoftBreak => {
-                    let rel_caret = document.caret().head().checked_sub(range.start);
                     position = View::render_string(
                         &String::from("\n"),
                         buffer,
@@ -276,6 +276,15 @@ impl View {
                     );
                 }
                 Event::Start(t) => match t {
+                    pulldown_cmark::Tag::Paragraph => {
+                        position = View::render_string(
+                        &String::from("\n"),
+                            buffer,
+                            *font.last().unwrap_or(&normal),
+                            position,
+                            rel_caret,
+                        );
+                    }
                     pulldown_cmark::Tag::Item => {
                         first_in_list_item = true;
                         if ordererd_start {
@@ -292,7 +301,6 @@ impl View {
                         first_in_list_item = true;
                         ordererd_start = true;
                         ordered = s;
-                        let rel_caret = document.caret().head().checked_sub(range.start);
                         position = View::render_string(
                             &String::from("\n"),
                             buffer,
@@ -322,7 +330,6 @@ impl View {
                     _ => (),
                 },
                 Event::Rule => {
-                    let rel_caret = document.caret().head().checked_sub(range.start);
                     position = View::render_string(
                         &String::from("\n"),
                         buffer,
@@ -346,8 +353,16 @@ impl View {
                     );
                 }
                 Event::End(t) => match t {
+                    pulldown_cmark::TagEnd::Paragraph =>  {
+                        position = View::render_string(
+                        &String::from("\n"),
+                            buffer,
+                            *font.last().unwrap_or(&normal),
+                            position,
+                            rel_caret,
+                        );
+                    },
                     pulldown_cmark::TagEnd::Item => {
-                        let rel_caret = document.caret().head().checked_sub(range.start);
                         position = View::render_string(
                             &String::from("\n"),
                             buffer,
