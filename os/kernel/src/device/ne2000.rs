@@ -380,11 +380,12 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
 pub struct Ne2000RxToken;
 
 impl phy::RxToken for Ne2000RxToken {
-    fn consume<R, F>(self, _f: F) -> R
+    fn consume<R, F>(self, f: F) -> R
     where
         F: FnOnce(&[u8]) -> R,
     {
-        panic!("receive logic ")
+        // Return empty slice
+        f(&[])
     }
 }
 
@@ -400,7 +401,8 @@ impl phy::Device for Ne2000 {
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // disable receive for now; only transmit exists
-        self.transmit(_timestamp).map(|tx| (Ne2000RxToken, tx))
+        //self.transmit(_timestamp).map(|tx| (Ne2000RxToken, tx))
+        None
     }
 
     fn transmit(&mut self, _: Instant) -> Option<Self::TxToken<'_>> {
