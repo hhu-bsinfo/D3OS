@@ -1,5 +1,6 @@
 use terminal::DecodedKey;
 
+#[derive(Debug, PartialEq)]
 pub enum ViewMessage {
     // represent the chars to move up or down (not the lines)
     ScrollDown(u32),
