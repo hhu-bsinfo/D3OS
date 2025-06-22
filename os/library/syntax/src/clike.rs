@@ -6,12 +6,13 @@ use nom::{
     IResult, Parser,
     bytes::complete::{tag, take_while1},
     character::complete::{alphanumeric1, digit1},
-    combinator::{not, peek},
+    combinator::{map, not, peek},
     sequence::{preceded, terminated},
 };
 
 // use located_token to always know where a Token is from
 pub type LToken<'s> = Located<Token<'s>, &'s str>;
+#[derive(Debug, PartialEq)]
 pub enum Token<'s> {
     Keyword(&'s str),
     Identifier(&'s str),
@@ -34,8 +35,12 @@ pub fn match_any<'arr, 's>(
     }
 }
 
-fn keyword<'a, 's>(input: &'s str, keywords: &'a [&'s str]) -> IResult<&'s str, &'s str> {
-    terminated(match_any(keywords), peek(not(alphanumeric1))).parse(input)
+fn keyword<'a, 's>(input: &'s str, keywords: &'a [&'s str]) -> IResult<&'s str, Token<'s>> {
+    map(
+        terminated(match_any(keywords), peek(not(alphanumeric1))),
+        Token::Keyword,
+    )
+    .parse(input)
 }
 
 fn identifier(input: &str) -> IResult<&str, &str> {
@@ -53,7 +58,7 @@ mod tests {
     #[test]
     fn keyword_0() {
         let tags = &["int", "return", "if"];
-        assert_eq!(keyword("int x", tags), Ok((" x", "int")));
+        assert_eq!(keyword("int x", tags), Ok((" x", Token::Keyword("int"))));
     }
     #[test]
     fn keyword_prefix_int() {
@@ -69,7 +74,7 @@ mod tests {
     #[test]
     fn keyword_prefix_punc() {
         let tags = &["int", "return", "if"];
-        assert_eq!(keyword("if(", tags), Ok(("(", "if")));
+        assert_eq!(keyword("if(", tags), Ok(("(", Token::Keyword("if"))));
     }
     #[test]
     fn keyword_prefix_alph() {

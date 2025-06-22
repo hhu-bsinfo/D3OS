@@ -8,6 +8,8 @@ authors = ["Julius Carl Drodofsky <julius@drodofsky.xyz>"]
 default = ["alloc"]
 alloc = []
 
+[workspace]
+
 [dependencies]
 
 [dependencies.nom]
