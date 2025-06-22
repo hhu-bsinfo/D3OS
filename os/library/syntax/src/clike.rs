@@ -1,13 +1,16 @@
 use crate::located::Located;
 use nom::Err;
+use nom::character::is_newline;
+use nom::character::is_space;
 use nom::error::Error;
 use nom::error::ErrorKind;
 use nom::{
     IResult, Parser,
+    branch::alt,
     bytes::complete::{tag, take_while1},
-    character::complete::{alphanumeric1, digit1},
-    combinator::{map, not, peek},
-    sequence::{preceded, terminated},
+    character::complete::{alphanumeric1, digit1, multispace1},
+    combinator::{map, not, peek, recognize},
+    sequence::{preceded, separated_pair, terminated, tuple},
 };
 
 // use located_token to always know where a Token is from
@@ -43,10 +46,28 @@ fn keyword<'a, 's>(input: &'s str, keywords: &'a [&'s str]) -> IResult<&'s str, 
     .parse(input)
 }
 
-fn identifier(input: &str) -> IResult<&str, &str> {
-    preceded(
-        not(digit1),
-        take_while1(|c: char| c.is_alphanumeric() || c == '_'),
+fn identifier(input: &str) -> IResult<&str, Token> {
+    map(
+        preceded(
+            not(digit1),
+            take_while1(|c: char| c.is_alphanumeric() || c == '_'),
+        ),
+        Token::Identifier,
+    )
+    .parse(input)
+}
+
+pub fn whitespace(input: &str) -> IResult<&str, Token> {
+    map(multispace1, Token::Whitespace).parse(input)
+}
+
+fn number(input: &str) -> IResult<&str, Token> {
+    map(
+        recognize(alt((
+            recognize(tuple((digit1, tag("."), digit1))), // "1.23"
+            digit1,                                       // "42"
+        ))),
+        Token::Number,
     )
     .parse(input)
 }
@@ -81,4 +102,55 @@ mod tests {
         let tags = &["int", "return", "if"];
         assert!(keyword("introspect", tags).is_err());
     }
+}
+
+#[test]
+fn identifier_0() {
+    assert_eq!(
+        identifier("ab01_cd23"),
+        Ok(("", Token::Identifier("ab01_cd23")))
+    );
+}
+
+#[test]
+fn identifier_start_digit() {
+    assert!(identifier("0123abc").is_err());
+}
+
+#[test]
+fn identifier_1() {
+    assert_eq!(identifier("a"), Ok(("", Token::Identifier("a"))));
+}
+
+#[test]
+fn number_0() {
+    assert_eq!(number("123"), Ok(("", Token::Number("123"))));
+}
+
+#[test]
+fn number_1() {
+    assert_eq!(number("3.14"), Ok(("", Token::Number("3.14"))));
+}
+
+#[test]
+fn number_2() {
+    assert!(number("abc").is_err());
+}
+
+#[test]
+fn whitespace_0() {
+    assert_eq!(whitespace(" "), Ok(("", Token::Whitespace(" "))));
+}
+
+#[test]
+fn whitespace_1() {
+    assert_eq!(
+        whitespace(" \r\n\t\n"),
+        Ok(("", Token::Whitespace(" \r\n\t\n")))
+    );
+}
+
+#[test]
+fn whitespace_2() {
+    assert!(whitespace("a").is_err());
 }
