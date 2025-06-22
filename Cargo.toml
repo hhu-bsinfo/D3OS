@@ -14,7 +14,7 @@ members = [
     "os/application/window_manager",
     "os/application/terminal_emulator",
     "os/application/keytest"
-]
+, "os/library/syntax"]
 
 # [profile.release]
 # debug = true
