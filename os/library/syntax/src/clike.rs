@@ -8,7 +8,7 @@ use nom::{
     IResult, Parser,
     branch::alt,
     bytes::complete::{tag, take_while1},
-    character::complete::{alphanumeric1, digit1, multispace1},
+    character::complete::{alphanumeric1, digit1, multispace1, one_of},
     combinator::{map, not, peek, recognize},
     sequence::{preceded, separated_pair, terminated, tuple},
 };
@@ -21,7 +21,7 @@ pub enum Token<'s> {
     Identifier(&'s str),
     Number(&'s str),
     Operator(&'s str),
-    Punctuation(&'s str),
+    Punctuation(char),
     Whitespace(&'s str),
 }
 
@@ -72,6 +72,10 @@ fn number(input: &str) -> IResult<&str, Token> {
     .parse(input)
 }
 
+fn punctuation(input: &str) -> IResult<&str, Token> {
+    map(one_of("(){}[];,."), Token::Punctuation).parse(input)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,55 +106,85 @@ mod tests {
         let tags = &["int", "return", "if"];
         assert!(keyword("introspect", tags).is_err());
     }
-}
 
-#[test]
-fn identifier_0() {
-    assert_eq!(
-        identifier("ab01_cd23"),
-        Ok(("", Token::Identifier("ab01_cd23")))
-    );
-}
+    #[test]
+    fn identifier_0() {
+        assert_eq!(
+            identifier("ab01_cd23"),
+            Ok(("", Token::Identifier("ab01_cd23")))
+        );
+    }
 
-#[test]
-fn identifier_start_digit() {
-    assert!(identifier("0123abc").is_err());
-}
+    #[test]
+    fn identifier_start_digit() {
+        assert!(identifier("0123abc").is_err());
+    }
 
-#[test]
-fn identifier_1() {
-    assert_eq!(identifier("a"), Ok(("", Token::Identifier("a"))));
-}
+    #[test]
+    fn identifier_1() {
+        assert_eq!(identifier("a"), Ok(("", Token::Identifier("a"))));
+    }
 
-#[test]
-fn number_0() {
-    assert_eq!(number("123"), Ok(("", Token::Number("123"))));
-}
+    #[test]
+    fn number_0() {
+        assert_eq!(number("123"), Ok(("", Token::Number("123"))));
+    }
 
-#[test]
-fn number_1() {
-    assert_eq!(number("3.14"), Ok(("", Token::Number("3.14"))));
-}
+    #[test]
+    fn number_1() {
+        assert_eq!(number("3.14"), Ok(("", Token::Number("3.14"))));
+    }
 
-#[test]
-fn number_2() {
-    assert!(number("abc").is_err());
-}
+    #[test]
+    fn number_2() {
+        assert!(number("abc").is_err());
+    }
 
-#[test]
-fn whitespace_0() {
-    assert_eq!(whitespace(" "), Ok(("", Token::Whitespace(" "))));
-}
+    #[test]
+    fn whitespace_0() {
+        assert_eq!(whitespace(" "), Ok(("", Token::Whitespace(" "))));
+    }
 
-#[test]
-fn whitespace_1() {
-    assert_eq!(
-        whitespace(" \r\n\t\n"),
-        Ok(("", Token::Whitespace(" \r\n\t\n")))
-    );
-}
+    #[test]
+    fn whitespace_1() {
+        assert_eq!(
+            whitespace(" \r\n\t\n"),
+            Ok(("", Token::Whitespace(" \r\n\t\n")))
+        );
+    }
 
-#[test]
-fn whitespace_2() {
-    assert!(whitespace("a").is_err());
+    #[test]
+    fn whitespace_2() {
+        assert!(whitespace("a").is_err());
+    }
+
+    #[test]
+    fn punctuation_0() {
+        assert_eq!(punctuation(";"), Ok(("", Token::Punctuation(';'))));
+    }
+
+    #[test]
+    fn punctuation_1() {
+        assert_eq!(punctuation(") "), Ok((" ", Token::Punctuation(')'))));
+    }
+
+    #[test]
+    fn punctuation_2() {
+        assert_eq!(punctuation("{x"), Ok(("x", Token::Punctuation('{'))));
+    }
+
+    #[test]
+    fn punctuation_3() {
+        assert_eq!(punctuation("}else"), Ok(("else", Token::Punctuation('}'))));
+    }
+
+    #[test]
+    fn punctuation_4() {
+        assert!(punctuation("abc").is_err());
+    }
+
+    #[test]
+    fn punctuation_5() {
+        assert!(punctuation("").is_err());
+    }
 }
