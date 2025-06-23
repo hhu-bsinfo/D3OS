@@ -1,4 +1,5 @@
 use crate::located::Located;
+use crate::located::locate;
 use nom::Err;
 use nom::character::is_newline;
 use nom::character::is_space;
@@ -15,7 +16,7 @@ use nom::{
 
 // use located_token to always know where a Token is from
 pub type LToken<'s> = Located<Token<'s>, &'s str>;
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Token<'s> {
     Keyword(&'s str),
     Identifier(&'s str),
@@ -38,6 +39,17 @@ pub fn match_any<'arr, 's>(
     }
 }
 
+fn parse_clike<'a, 's>(input: &'s str, keywords: &'a [&'s str]) -> IResult<&'s str, LToken<'s>> {
+    alt((
+        locate(whitespace),
+        locate(|c| keyword(c, keywords)),
+        locate(identifier),
+        locate(number),
+        locate(punctuation),
+    ))
+    .parse(input)
+}
+
 fn keyword<'a, 's>(input: &'s str, keywords: &'a [&'s str]) -> IResult<&'s str, Token<'s>> {
     map(
         terminated(match_any(keywords), peek(not(alphanumeric1))),
@@ -57,7 +69,7 @@ fn identifier(input: &str) -> IResult<&str, Token> {
     .parse(input)
 }
 
-pub fn whitespace(input: &str) -> IResult<&str, Token> {
+fn whitespace(input: &str) -> IResult<&str, Token> {
     map(multispace1, Token::Whitespace).parse(input)
 }
 
@@ -79,6 +91,7 @@ fn punctuation(input: &str) -> IResult<&str, Token> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
 
     #[test]
     fn keyword_0() {
@@ -186,5 +199,40 @@ mod tests {
     #[test]
     fn punctuation_5() {
         assert!(punctuation("").is_err());
+    }
+
+    #[test]
+    fn parse_clike_0() {
+        let input = "int main()\n { return 0; }";
+        let mut rest = input;
+        let keywords = &["int", "return"];
+
+        let mut tokens = Vec::<Token>::new();
+        while !rest.is_empty() {
+            match parse_clike(rest, keywords) {
+                Ok((new_rest, token)) => {
+                    tokens.push(*token);
+                    rest = new_rest;
+                }
+                Err(_) => break,
+            }
+        }
+
+        assert_eq!(tokens.len(), 14);
+
+        assert_eq!(tokens[0], Token::Keyword("int"));
+        assert_eq!(tokens[1], Token::Whitespace(" "));
+        assert_eq!(tokens[2], Token::Identifier("main"));
+        assert_eq!(tokens[3], Token::Punctuation('('));
+        assert_eq!(tokens[4], Token::Punctuation(')'));
+        assert_eq!(tokens[5], Token::Whitespace("\n "));
+        assert_eq!(tokens[6], Token::Punctuation('{'));
+        assert_eq!(tokens[7], Token::Whitespace(" "));
+        assert_eq!(tokens[8], Token::Keyword("return"));
+        assert_eq!(tokens[9], Token::Whitespace(" "));
+        assert_eq!(tokens[10], Token::Number("0"));
+        assert_eq!(tokens[11], Token::Punctuation(';'));
+        assert_eq!(tokens[12], Token::Whitespace(" "));
+        assert_eq!(tokens[13], Token::Punctuation('}'));
     }
 }
