@@ -13,11 +13,12 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::lexer::token::{AmbiguousState, ArgumentType, QuoteState, Token, TokenContext},
+    modules::lexer::token::{Token, TokenKind},
     sub_modules::alias::Alias,
 };
 
 pub struct Lexer {
+    // Sub module for processing aliases
     alias: Rc<RefCell<Alias>>,
 }
 
@@ -64,7 +65,7 @@ impl Lexer {
 
         let n = total_len - clx.line.get_dirty_index();
         for _ in 0..n {
-            self.pop(&mut clx.tokens);
+            self.remove(&mut clx.tokens);
         }
 
         Ok(Response::Ok)
@@ -76,10 +77,12 @@ impl Lexer {
         }
 
         for ch in clx.line.get_dirty_part().chars() {
-            self.push(&mut clx.tokens, ch);
+            self.add(&mut clx.tokens, ch);
         }
 
-        info!("Lexer tokens: {:?}", clx.tokens);
+        for token in clx.tokens.get() {
+            info!("{:?}", token);
+        }
         Ok(Response::Ok)
     }
 
@@ -98,238 +101,109 @@ impl Lexer {
             .join(" ");
 
         for ch in new_line.chars() {
-            self.push(&mut clx.tokens, ch);
+            self.add(&mut clx.tokens, ch);
         }
 
         info!("Lexer tokens with alias: {:?}", clx.tokens);
         Ok(Response::Ok)
     }
 
-    fn push(&mut self, tokens: &mut TokensContext, ch: char) {
+    fn add(&mut self, tokens: &mut TokensContext, ch: char) {
         match ch {
-            '\"' => self.handle_double_quote(tokens),
-            '\'' => self.handle_single_quote(tokens),
-            ' ' => self.handle_whitespace(tokens),
-            ch => self.handle_other(tokens, ch),
+            // Job control
+            ';' => { /* TODO separator */ }
+            '&' => { /* TODO background || and */ }
+            '|' => { /* TODO pipe || or */ }
+            // Redirection
+            '>' => { /* TODO redirect_out_truncate || redirect_out_append */ }
+            '<' => { /* TODO redirect_in_truncate || redirect_in_append */ }
+            // Quotes
+            '\"' | '\'' => self.add_quote(tokens, ch),
+            // Other
+            ' ' | '\t' => self.add_blank(tokens, ch),
+            ch => self.add_ambiguous(tokens, ch),
         }
     }
 
-    fn pop(&mut self, tokens: &mut TokensContext) {
-        if tokens.last().is_none() {
+    fn remove(&mut self, tokens: &mut TokensContext) {
+        let Some(last_token) = tokens.last_mut() else {
             return;
-        }
-        match tokens.last_mut().unwrap() {
-            Token::Command(_clx, cmd) => {
-                if cmd.pop().is_some() && !cmd.is_empty() {
-                    return;
-                }
-            }
-            Token::Argument(_clx, arg) => {
-                if arg.pop().is_some() && !arg.is_empty() {
-                    return;
-                }
-            }
-            _ => (),
         };
-        tokens.pop();
-    }
 
-    fn handle_other(&mut self, tokens: &mut TokensContext, ch: char) {
-        if tokens.last().is_none() {
-            tokens.push(self.choose_ambiguous_token(
-                &TokenContext::new(QuoteState::Pending, AmbiguousState::Pending, None, None, None),
-                ch,
-                tokens.len(),
-            ));
-            return;
-        }
-
-        let len = tokens.len();
-        let token = match tokens.last_mut().unwrap() {
-            Token::Command(_clx, cmd) => return cmd.push(ch),
-            Token::Argument(clx, arg) => return self.update_argument(clx, arg, ch),
-            Token::QuoteStart(clx, _) => self.choose_ambiguous_token(clx, ch, len),
-            Token::QuoteEnd(..) => panic!("Not supported"),
-            Token::Whitespace(clx) => self.choose_ambiguous_token(clx, ch, len),
+        match last_token.pop() {
+            Ok(_) => return,
+            Err(_) => tokens.pop(),
         };
-        tokens.push(token);
     }
 
-    fn update_argument(&mut self, clx: &mut TokenContext, arg: &mut String, ch: char) {
-        arg.push(ch);
+    fn add_ambiguous(&mut self, tokens: &mut TokensContext, ch: char) {
+        // If no token => create first token
+        let Some(last_token) = tokens.last_mut() else {
+            let first_token = Token::new_first(TokenKind::Command, ch);
+            tokens.push(first_token);
+            return;
+        };
 
-        if arg == "--" && clx.argument_type == Some(ArgumentType::Unknown) {
-            clx.argument_type = Some(ArgumentType::LongFlag);
-        } else if arg.starts_with('-') {
-            clx.argument_type = Some(ArgumentType::ShortFlag)
-        }
-    }
-
-    fn handle_whitespace(&mut self, tokens: &mut TokensContext) {
-        if tokens.last().is_none() {
-            return tokens.push(Token::Whitespace(TokenContext::new(
-                QuoteState::Pending,
-                AmbiguousState::Pending,
-                None,
-                None,
-                None,
-            )));
-        }
-
-        let last_token = tokens.last().unwrap();
-        let len = tokens.len();
-        if last_token.context().quote != QuoteState::Pending {
-            let token = match tokens.last_mut().unwrap() {
-                Token::QuoteStart(clx, _) => self.choose_ambiguous_token(clx, ' ', len),
-                Token::Command(_clx, cmd) => return cmd.push(' '),
-                Token::Argument(_clx, arg) => return arg.push(' '),
-                _ => panic!("Invalid token state"),
-            };
-            return tokens.push(token);
-        }
-
-        let mut clx = last_token.context().clone();
-        clx.argument_type = self.choose_argument_type(&clx, ' ');
-
-        tokens.push(Token::Whitespace(clx));
-    }
-
-    fn choose_ambiguous_token(&mut self, clx: &TokenContext, ch: char, len: usize) -> Token {
-        match clx.ambiguous {
-            AmbiguousState::Pending => {
-                let next_clx = TokenContext::new(clx.quote.clone(), AmbiguousState::Command, None, Some(len), None);
-                Token::Command(next_clx, ch.to_string())
-            }
-            AmbiguousState::Command | AmbiguousState::Argument => {
-                let argument_type = self.choose_argument_type(clx, ch);
-
-                let next_clx = TokenContext::new(
-                    clx.quote.clone(),
-                    AmbiguousState::Argument,
-                    argument_type.clone(),
-                    clx.assigned_command_pos,
-                    self.choose_argument_pos(argument_type, len),
-                );
-                Token::Argument(next_clx, ch.to_string())
-            }
-        }
-    }
-
-    fn choose_argument_type(&mut self, clx: &TokenContext, ch: char) -> Option<ArgumentType> {
-        if clx.ambiguous != AmbiguousState::Command && clx.ambiguous != AmbiguousState::Argument {
-            return None;
-        }
-        if clx.argument_type == Some(ArgumentType::ShortFlag) {
-            return Some(ArgumentType::ShortFlagValue);
-        }
-        if clx.argument_type == Some(ArgumentType::ShortFlagValue) {
-            return None;
-        }
-        if ch == '-' {
-            return Some(ArgumentType::ShortFlag);
-        }
-        Some(ArgumentType::Unknown)
-    }
-
-    fn choose_argument_pos(&mut self, argument_type: Option<ArgumentType>, len: usize) -> Option<usize> {
-        if argument_type == Some(ArgumentType::ShortFlag) {
-            Some(len)
-        } else {
-            None
-        }
-    }
-
-    fn handle_double_quote(&mut self, tokens: &mut TokensContext) {
-        if tokens.last().is_none() {
-            let clx = TokenContext::new(QuoteState::Double, AmbiguousState::Pending, None, None, None);
-            tokens.push(Token::QuoteStart(clx, '\"'));
+        // If last token is ambiguous => add to token
+        if last_token.is_ambiguous() {
+            last_token.push(ch);
             return;
         }
 
-        let len = tokens.len();
-        let last_token = tokens.last_mut().unwrap();
-        let last_clx = last_token.context();
-        let argument_type = self.choose_argument_type(last_clx, '\"');
-        let argument_pos = self.choose_argument_pos(argument_type.clone(), len);
-
-        match last_clx.quote {
-            QuoteState::Double => {
-                // Exit double quote & Enable alias in quotes
-                let clx = TokenContext::new(
-                    QuoteState::Pending,
-                    last_clx.ambiguous.clone(),
-                    argument_type,
-                    last_clx.assigned_command_pos,
-                    argument_pos,
-                );
-                tokens.push(Token::QuoteEnd(clx, '\"'));
-            }
-            QuoteState::Single => {
-                // Pass through
-                match last_token {
-                    Token::Command(_clx, cmd) => cmd.push('\"'),
-                    Token::Argument(_clx, arg) => arg.push('\"'),
-                    _ => panic!("Invalid token state"),
-                }
-            }
-            QuoteState::Pending => {
-                // Enter double quote & Disable alias in quotes
-                let clx = TokenContext::new(
-                    QuoteState::Double,
-                    last_clx.ambiguous.clone(),
-                    argument_type,
-                    last_clx.assigned_command_pos,
-                    argument_pos,
-                );
-                tokens.push(Token::QuoteStart(clx, '\"'));
-            }
-        }
+        // Else => create new ambiguous token
+        let next_kind = match last_token.has_segment_cmd() {
+            true => TokenKind::Argument,
+            false => TokenKind::Command,
+        };
+        let prev_clx = last_token.clx();
+        let next_token = Token::new_after(next_kind, ch, prev_clx);
+        tokens.push(next_token);
     }
 
-    fn handle_single_quote(&mut self, tokens: &mut TokensContext) {
-        if tokens.last().is_none() {
-            let clx = TokenContext::new(QuoteState::Single, AmbiguousState::Pending, None, None, None);
-            tokens.push(Token::QuoteStart(clx, '\''));
+    fn add_blank(&mut self, tokens: &mut TokensContext, ch: char) {
+        // If no token => create first token
+        let Some(last_token) = tokens.last_mut() else {
+            let first_token = Token::new_first(TokenKind::Blank, ch);
+            tokens.push(first_token);
+            return;
+        };
+
+        // If in quote => add to in quote token
+        if last_token.is_in_quote() {
+            last_token.push(ch);
             return;
         }
 
-        let len = tokens.len();
-        let last_token = tokens.last_mut().unwrap();
-        let last_clx = last_token.context();
-        let argument_type = self.choose_argument_type(last_clx, '\'');
-        let argument_pos = self.choose_argument_pos(argument_type.clone(), len);
+        // Else => Append blank token
+        let prev_clx = last_token.clx();
+        let next_token = Token::new_after(TokenKind::Blank, ch, prev_clx);
+        tokens.push(next_token);
+    }
 
-        match last_clx.quote {
-            QuoteState::Double => {
-                // Pass through
-                match last_token {
-                    Token::Command(_clx, cmd) => cmd.push('\''),
-                    Token::Argument(_clx, arg) => arg.push('\''),
-                    _ => panic!("Invalid token state"),
-                }
-            }
-            QuoteState::Single => {
-                // Exit single quote & Enable alias in quotes
-                let clx = TokenContext::new(
-                    QuoteState::Pending,
-                    last_clx.ambiguous.clone(),
-                    argument_type,
-                    last_clx.assigned_command_pos,
-                    argument_pos,
-                );
-                tokens.push(Token::QuoteEnd(clx, '\''));
-            }
-            QuoteState::Pending => {
-                // Enter single quote & Disable alias in quotes
-                let clx = TokenContext::new(
-                    QuoteState::Single,
-                    last_clx.ambiguous.clone(),
-                    argument_type,
-                    last_clx.assigned_command_pos,
-                    argument_pos,
-                );
-                tokens.push(Token::QuoteStart(clx, '\''));
-            }
+    fn add_quote(&mut self, tokens: &mut TokensContext, ch: char) {
+        // If no token => create first token
+        let Some(last_token) = tokens.last_mut() else {
+            let first_token = Token::new_first(TokenKind::QuoteStart, ch);
+            tokens.push(first_token);
+            return;
+        };
+
+        // If in quote and char matches quote char => exit quote
+        if last_token.is_in_quote_of(ch) {
+            let prev_clx = last_token.clx();
+            let next_token = Token::new_after(TokenKind::QuoteEnd, ch, prev_clx);
+            tokens.push(next_token);
+            return;
         }
+        // If in quote with different char => add to in quote token
+        else if last_token.is_in_quote() {
+            last_token.push(ch);
+            return;
+        }
+
+        // Else => Enter quote
+        let prev_clx = last_token.clx();
+        let next_token = Token::new_after(TokenKind::QuoteStart, ch, prev_clx);
+        tokens.push(next_token);
     }
 }

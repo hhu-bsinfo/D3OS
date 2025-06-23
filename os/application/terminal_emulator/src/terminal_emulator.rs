@@ -62,9 +62,7 @@ impl TerminalEmulator {
     pub fn enter_gui(&self) {
         let mut display = self.terminal.display.lock();
         display.lfb.direct_lfb().draw_loader();
-        thread::start_application("window_manager", vec![])
-            .unwrap()
-            .join(); // Wait for window manager to exit, then continue
+        thread::start_application("window_manager", vec![]).unwrap().join(); // Wait for window manager to exit, then continue
         display.lfb.direct_lfb().draw_loader();
         sleep(500); // Solves an issue where sometimes workspaces from window manager are still visible when toggling quickly between text and gui
         display.lfb.flush();
@@ -107,3 +105,5 @@ pub fn main() {
     emulator.init();
     emulator.run()
 }
+
+// TODO#9 BUG: terminal won't print just parentheses (Example ['''''''] => [], [''''''] => [], ["'"'"'"] => [], but [a'b'c"d"e] => [a'b'c"d"e])

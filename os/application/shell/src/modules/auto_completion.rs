@@ -3,6 +3,7 @@ use alloc::{
     vec::Vec,
 };
 use globals::application::{APPLICATION_REGISTRY, Application};
+use logger::warn;
 use terminal::DecodedKey;
 
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::lexer::token::{AmbiguousState, ArgumentType, Token, TokenContext},
+    modules::lexer::token::{ArgumentKind, Token, TokenKind},
 };
 
 #[derive(Debug)]
@@ -135,7 +136,7 @@ impl AutoCompletion {
             return;
         };
 
-        let target = last_short_flag.to_string();
+        let target = last_short_flag.as_str();
         if self
             .current_short_flag
             .as_ref()
@@ -158,7 +159,7 @@ impl AutoCompletion {
             self.current_suggestion = None;
             return;
         };
-        let last_command = last_command.to_string();
+        let last_command = last_command.as_str();
         if self.current_app.as_ref().is_some_and(|app| app.command == last_command) {
             return;
         }
@@ -171,22 +172,8 @@ impl AutoCompletion {
     }
 
     fn cycle_suggestion(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        let token = clx.tokens.last().cloned();
-        let suggestion = match &token {
-            None => self.cycle_command(&String::new()),
-
-            Some(Token::Command(_, cmd)) => self.cycle_command(&cmd),
-
-            Some(Token::Argument(clx, arg)) => self.cycle_argument(clx, &arg),
-
-            Some(Token::Whitespace(clx)) => match clx.ambiguous {
-                AmbiguousState::Pending => self.cycle_command(&String::new()),
-                AmbiguousState::Command => self.cycle_argument(clx, &String::new()),
-                AmbiguousState::Argument => self.cycle_argument(clx, &String::new()),
-            },
-            _ => None,
-        };
-
+        let token = clx.tokens.last();
+        let suggestion = self.cycle_token(token);
         self.current_suggestion = suggestion.clone();
 
         if suggestion.is_none() {
@@ -203,22 +190,55 @@ impl AutoCompletion {
         Ok(Response::Ok)
     }
 
-    fn cycle_command(&mut self, cmd: &String) -> Option<String> {
+    fn cycle_token(&mut self, token: Option<&Token>) -> Option<String> {
+        let Some(token) = token else {
+            return self.cycle_command(&String::new());
+        };
+
+        match token.kind() {
+            TokenKind::Command => self.cycle_command(token.as_str()),
+
+            TokenKind::Argument => self.cycle_argument(token, token.as_str()),
+
+            TokenKind::Blank => match token.expect_command() {
+                true => self.cycle_command(&String::new()),
+                false => self.cycle_argument(token, &String::new()),
+            },
+
+            _ => None,
+        }
+    }
+
+    fn cycle_command(&mut self, cmd: &str) -> Option<String> {
         let commands: Vec<&'static str> = self.applications.iter().map(|app| app.command).collect();
         self.cycle(cmd, &commands)
     }
 
-    fn cycle_argument(&mut self, clx: &TokenContext, arg: &String) -> Option<String> {
-        match clx.argument_type {
-            None | Some(ArgumentType::Unknown) => self.cycle_all_arguments(arg),
-            Some(ArgumentType::Generic) => self.cycle_generic_argument(arg),
-            Some(ArgumentType::ShortFlag) => self.cycle_short_flag(arg),
-            Some(ArgumentType::ShortFlagValue) => self.cycle_short_flag_value(arg),
-            Some(ArgumentType::LongFlag) => self.cycle_long_flag(arg),
+    fn cycle_argument(&mut self, token: &Token, arg: &str) -> Option<String> {
+        if self.current_app.is_none() {
+            return None;
+        }
+        warn!("{:?}", token);
+        match token.clx().arg_kind {
+            ArgumentKind::None | ArgumentKind::ShortOrLongFlag => self.cycle_all_arguments(arg),
+
+            ArgumentKind::Generic => self.cycle_generic_argument(arg),
+
+            ArgumentKind::ShortFlag => match token.clx().short_flag_pos.is_some() {
+                true => self.cycle_short_flag_value(arg),
+                false => self.cycle_short_flag(arg),
+            },
+
+            ArgumentKind::ShortFlagValue => match token.kind() {
+                TokenKind::Argument => self.cycle_short_flag_value(arg),
+                _ => self.cycle_generic_argument(arg),
+            },
+
+            ArgumentKind::LongFlag => self.cycle_long_flag(arg),
         }
     }
 
-    fn cycle_all_arguments(&mut self, arg: &String) -> Option<String> {
+    fn cycle_all_arguments(&mut self, arg: &str) -> Option<String> {
         let app = self.current_app.as_mut().unwrap();
         let mut args = Vec::new();
         args.extend(app.sub_commands.iter());
@@ -228,12 +248,12 @@ impl AutoCompletion {
         self.cycle(arg, &args)
     }
 
-    fn cycle_generic_argument(&mut self, arg: &String) -> Option<String> {
+    fn cycle_generic_argument(&mut self, arg: &str) -> Option<String> {
         let sub_commands = self.current_app.as_mut().unwrap().sub_commands;
         self.cycle(arg, &sub_commands)
     }
 
-    fn cycle_short_flag(&mut self, arg: &String) -> Option<String> {
+    fn cycle_short_flag(&mut self, arg: &str) -> Option<String> {
         let short_flags: Vec<&'static str> = self
             .current_app
             .as_ref()
@@ -246,7 +266,7 @@ impl AutoCompletion {
         self.cycle(arg, &short_flags)
     }
 
-    fn cycle_short_flag_value(&mut self, arg: &String) -> Option<String> {
+    fn cycle_short_flag_value(&mut self, arg: &str) -> Option<String> {
         if self.current_app.is_none() || self.current_short_flag.is_none() {
             return None;
         }
@@ -255,7 +275,7 @@ impl AutoCompletion {
         self.cycle(arg, &values)
     }
 
-    fn cycle_long_flag(&mut self, arg: &String) -> Option<String> {
+    fn cycle_long_flag(&mut self, arg: &str) -> Option<String> {
         if self.current_app.is_none() {
             return None;
         }
@@ -263,7 +283,7 @@ impl AutoCompletion {
         self.cycle(arg, &long_flags)
     }
 
-    fn cycle(&mut self, target: &String, list: &[&'static str]) -> Option<String> {
+    fn cycle(&mut self, target: &str, list: &[&'static str]) -> Option<String> {
         list.iter()
             .enumerate()
             .cycle()

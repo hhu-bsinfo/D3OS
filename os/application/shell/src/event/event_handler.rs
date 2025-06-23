@@ -9,7 +9,7 @@ pub enum Response {
     Ignore,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Error {
     pub(crate) message: &'static str,
     pub(crate) reason: Option<&'static str>,

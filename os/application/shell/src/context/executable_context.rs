@@ -1,4 +1,7 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Job {
@@ -37,14 +40,14 @@ impl ExecutableContext {
         &self.jobs
     }
 
-    pub fn create_job(&mut self, command: String) {
-        self.jobs.push(Job::new(command));
+    pub fn create_job(&mut self, command: &str) {
+        self.jobs.push(Job::new(command.to_string()));
     }
 
-    pub fn add_argument_to_latest_job(&mut self, argument: String) {
+    pub fn add_argument_to_latest_job(&mut self, argument: &str) {
         self.jobs
             .last_mut()
             .expect("Expected at least one job, to add arguments too")
-            .add_argument(argument);
+            .add_argument(argument.to_string());
     }
 }

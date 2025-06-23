@@ -1,10 +1,9 @@
-use alloc::string::ToString;
 use logger::info;
 
 use crate::{
     context::context::Context,
     event::event_handler::{Error, EventHandler, Response},
-    modules::lexer::token::Token,
+    modules::lexer::token::TokenKind,
 };
 
 pub struct Parser {}
@@ -26,12 +25,12 @@ impl Parser {
     }
 
     pub fn parse(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        clx.tokens.get().iter().for_each(|token| match token {
-            Token::Command(_clx, command) => {
-                clx.executable.create_job(command.to_string());
+        clx.tokens.get().iter().for_each(|token| match token.kind() {
+            TokenKind::Command => {
+                clx.executable.create_job(token.as_str());
             }
-            Token::Argument(_clx, argument) => {
-                clx.executable.add_argument_to_latest_job(argument.to_string());
+            TokenKind::Argument => {
+                clx.executable.add_argument_to_latest_job(token.as_str());
             }
             _ => (),
         });
