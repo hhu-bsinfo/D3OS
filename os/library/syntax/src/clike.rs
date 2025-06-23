@@ -1,15 +1,13 @@
 use crate::located::Located;
 use crate::located::locate;
 use nom::Err;
-use nom::character::is_newline;
-use nom::character::is_space;
 use nom::error::Error;
 use nom::error::ErrorKind;
 use nom::{
     IResult, Parser,
     branch::alt,
     bytes::complete::{escaped, is_not, tag, take_while1},
-    character::complete::{alphanumeric1, char, digit1, multispace1, one_of},
+    character::complete::{alphanumeric1, char, digit1, multispace1, one_of, satisfy},
     combinator::{map, not, peek, recognize},
     sequence::{preceded, separated_pair, terminated, tuple},
 };
@@ -25,6 +23,7 @@ pub enum Token<'s> {
     Operator(&'s str),
     Punctuation(char),
     Whitespace(&'s str),
+    Other(char),
 }
 
 pub fn match_any<'arr, 's>(
@@ -48,6 +47,8 @@ fn parse_clike<'a, 's>(input: &'s str, keywords: &'a [&'s str]) -> IResult<&'s s
         locate(identifier),
         locate(number),
         locate(punctuation),
+        locate(operator),
+        locate(other),
     ))
     .parse(input)
 }
@@ -77,10 +78,7 @@ fn whitespace(input: &str) -> IResult<&str, Token> {
 
 fn number(input: &str) -> IResult<&str, Token> {
     map(
-        recognize(alt((
-            recognize(tuple((digit1, tag("."), digit1))), // "1.23"
-            digit1,                                       // "42"
-        ))),
+        recognize(alt((recognize(tuple((digit1, tag("."), digit1))), digit1))),
         Token::Number,
     )
     .parse(input)
@@ -100,6 +98,18 @@ fn string(input: &str) -> IResult<&str, Token> {
         Token::String,
     )
     .parse(input)
+}
+
+fn operator(input: &str) -> IResult<&str, Token> {
+    const OPERATORS: &[&str] = &[
+        "+", "-", "*", "/", "%", "&", "|", "^", "~", "!", "=", "<", ">", "+=", "-=", "*=", "/=",
+        "%=", "&=", "|=", "^=", "<<", ">>", "++", "--", "==", "!=", "<=", ">=", "&&", "||",
+    ];
+    map(match_any(OPERATORS), Token::Operator).parse(input)
+}
+
+fn other(input: &str) -> IResult<&str, Token> {
+    map(satisfy(|_| true), Token::Other).parse(input)
 }
 
 #[cfg(test)]
@@ -217,7 +227,8 @@ mod tests {
 
     #[test]
     fn parse_clike_0() {
-        let input = "int main()\n { printf(\"Hello World\");\n return 0; }";
+        use Token::*;
+        let input = "int main() {\n  int a = 3+4;\n  printf(\"%d\",a);\n  return 0;\n}";
         let mut rest = input;
         let keywords = &["int", "return"];
 
@@ -232,28 +243,42 @@ mod tests {
             }
         }
 
-        //assert_eq!(tokens.len(), 14);
-
-        assert_eq!(tokens[0], Token::Keyword("int"));
-        assert_eq!(tokens[1], Token::Whitespace(" "));
-        assert_eq!(tokens[2], Token::Identifier("main"));
-        assert_eq!(tokens[3], Token::Punctuation('('));
-        assert_eq!(tokens[4], Token::Punctuation(')'));
-        assert_eq!(tokens[5], Token::Whitespace("\n "));
-        assert_eq!(tokens[6], Token::Punctuation('{'));
-        assert_eq!(tokens[7], Token::Whitespace(" "));
-        assert_eq!(tokens[8], Token::Identifier("printf"));
-        assert_eq!(tokens[9], Token::Punctuation('('));
-        assert_eq!(tokens[10], Token::String("\"Hello World\""));
-        assert_eq!(tokens[11], Token::Punctuation(')'));
-        assert_eq!(tokens[12], Token::Punctuation(';'));
-        assert_eq!(tokens[13], Token::Whitespace("\n "));
-        assert_eq!(tokens[14], Token::Keyword("return"));
-        assert_eq!(tokens[15], Token::Whitespace(" "));
-        assert_eq!(tokens[16], Token::Number("0"));
-        assert_eq!(tokens[17], Token::Punctuation(';'));
-        assert_eq!(tokens[18], Token::Whitespace(" "));
-        assert_eq!(tokens[19], Token::Punctuation('}'));
+        let expected = [
+            Keyword("int"),
+            Whitespace(" "),
+            Identifier("main"),
+            Punctuation('('),
+            Punctuation(')'),
+            Whitespace(" "),
+            Punctuation('{'),
+            Whitespace("\n  "),
+            Keyword("int"),
+            Whitespace(" "),
+            Identifier("a"),
+            Whitespace(" "),
+            Operator("="),
+            Whitespace(" "),
+            Number("3"),
+            Operator("+"),
+            Number("4"),
+            Punctuation(';'),
+            Whitespace("\n  "),
+            Identifier("printf"),
+            Punctuation('('),
+            String("\"%d\""),
+            Punctuation(','),
+            Identifier("a"),
+            Punctuation(')'),
+            Punctuation(';'),
+            Whitespace("\n  "),
+            Keyword("return"),
+            Whitespace(" "),
+            Number("0"),
+            Punctuation(';'),
+            Whitespace("\n"),
+            Punctuation('}'),
+        ];
+        assert_eq!(tokens, expected);
     }
 
     #[test]
