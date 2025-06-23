@@ -6,7 +6,7 @@ use nom::error::ErrorKind;
 use nom::{
     IResult, Parser,
     branch::alt,
-    bytes::complete::{escaped, is_not, tag, take_while1},
+    bytes::complete::{escaped, is_not, tag, take_till, take_while1},
     character::complete::{alphanumeric1, char, digit1, multispace1, one_of, satisfy},
     combinator::{map, not, peek, recognize},
     sequence::{preceded, separated_pair, terminated, tuple},
@@ -23,6 +23,7 @@ pub enum Token<'s> {
     Operator(&'s str),
     Punctuation(char),
     Whitespace(&'s str),
+    Comment(&'s str),
     Other(char),
 }
 
@@ -39,8 +40,12 @@ pub fn match_any<'arr, 's>(
     }
 }
 
-fn parse_clike<'a, 's>(input: &'s str, keywords: &'a [&'s str]) -> IResult<&'s str, LToken<'s>> {
+pub fn parse_clike<'a, 's>(
+    input: &'s str,
+    keywords: &'a [&'s str],
+) -> IResult<&'s str, LToken<'s>> {
     alt((
+        locate(comment),
         locate(string),
         locate(whitespace),
         locate(|c| keyword(c, keywords)),
@@ -100,6 +105,13 @@ fn string(input: &str) -> IResult<&str, Token> {
     .parse(input)
 }
 
+fn comment(input: &str) -> IResult<&str, Token> {
+    map(
+        recognize(preceded(tag("//"), take_till(|c| c == '\n'))),
+        Token::Comment,
+    )
+    .parse(input)
+}
 fn operator(input: &str) -> IResult<&str, Token> {
     const OPERATORS: &[&str] = &[
         "+", "-", "*", "/", "%", "&", "|", "^", "~", "!", "=", "<", ">", "+=", "-=", "*=", "/=",

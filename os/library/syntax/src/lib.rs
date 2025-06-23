@@ -6,8 +6,8 @@ compile_error!("The 'alloc' feature must be enabled.");
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-mod clike;
-mod located;
+pub mod clike;
+pub mod located;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
