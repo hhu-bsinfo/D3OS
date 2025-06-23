@@ -13,6 +13,8 @@ pub enum CommandMessage {
     Redo,
     // toggle between markdown and normal view
     Markdown,
+    //clike syntax highlighting
+    CLike,
 }
 
 pub enum Message {

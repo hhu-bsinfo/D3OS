@@ -1,3 +1,4 @@
+use crate::apps::text_editor::model::Caret;
 use alloc::{
     format,
     string::{String, ToString},
@@ -13,8 +14,8 @@ use graphic::{
 };
 use logger::warn;
 use pulldown_cmark::{Event, HeadingLevel, Parser};
-
-use crate::apps::text_editor::model::Caret;
+use syntax::clike::{parse_clike, Token};
+use syntax::located::Located;
 
 use super::{
     font::Font,
@@ -438,6 +439,52 @@ impl View {
         }
         None
     }
+    fn render_code(
+        document: &Document,
+        buffer: &mut Bitmap,
+        normal: Font,
+        keyword: Font,
+        string: Font,
+        number: Font,
+        comment: Font,
+    ) -> Option<ViewMessage> {
+        buffer.clear(normal.bg_color);
+        let input = document.text_buffer().to_string();
+        let mut position = Vertex::zero();
+        let mut rest: &str = &input;
+        let keywords = &["int", "return", "for", "if", "while", "unsigned", "long"];
+        while let Ok((new_rest, token)) = parse_clike(rest, keywords) {
+            rest = new_rest;
+            match token.get() {
+                Token::Identifier(s) | Token::Operator(s) | Token::Whitespace(s) => {
+                    (position, _) =
+                        View::render_string(&String::from(*s), buffer, normal, position, None);
+                }
+                Token::Keyword(s) => {
+                    (position, _) =
+                        View::render_string(&String::from(*s), buffer, keyword, position, None);
+                }
+                Token::Number(s) => {
+                    (position, _) =
+                        View::render_string(&String::from(*s), buffer, number, position, None);
+                }
+                Token::String(s) => {
+                    (position, _) =
+                        View::render_string(&String::from(*s), buffer, string, position, None);
+                }
+                Token::Comment(s) => {
+                    (position, _) =
+                        View::render_string(&String::from(*s), buffer, comment, position, None);
+                }
+                Token::Punctuation(c) | Token::Other(c) => {
+                    (position, _) =
+                        View::render_string(&String::from(*c), buffer, normal, position, None);
+                }
+            }
+        }
+
+        None
+    }
     pub fn render(document: &Document, buffer: &mut Bitmap) -> Option<ViewMessage> {
         let ret = match *document.view_config() {
             ViewConfig::Simple {
@@ -450,6 +497,13 @@ impl View {
                 emphasis,
                 strong,
             } => View::render_markdown(document, buffer, normal, emphasis, strong),
+            ViewConfig::Code {
+                normal,
+                keyword,
+                string,
+                number,
+                comment,
+            } => View::render_code(document, buffer, normal, keyword, string, number, comment),
         };
         warn!("scroll: {:?}", ret);
         return ret;

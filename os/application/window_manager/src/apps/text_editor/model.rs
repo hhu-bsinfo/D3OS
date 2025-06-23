@@ -51,6 +51,13 @@ pub enum ViewConfig {
         emphasis: Font,
         strong: Font,
     },
+    Code {
+        normal: Font,
+        keyword: Font,
+        string: Font,
+        number: Font,
+        comment: Font,
+    },
 }
 
 pub struct Document<'b> {
@@ -371,6 +378,22 @@ impl<'b> Document<'b> {
                         fg_color: _,
                         bg_color: _,
                     } => self.current_view = self.config.markdown_view,
+                    _ => (),
+                },
+                CommandMessage::CLike => match self.current_view {
+                    ViewConfig::Code {
+                        normal: _,
+                        keyword: _,
+                        string: _,
+                        number: _,
+                        comment: _,
+                    } => self.current_view = self.config.simple_view,
+                    ViewConfig::Simple {
+                        font_scale: _,
+                        fg_color: _,
+                        bg_color: _,
+                    } => self.current_view = self.config.code_view,
+                    _ => (),
                 },
             },
             Message::ViewMessage(msg) => self.scroll(msg),
@@ -418,6 +441,13 @@ mod tests {
                 font_scale: 1,
                 fg_color: WHITE,
                 bg_color: bg_color,
+            },
+            code_view: ViewConfig::Code {
+                normal: font,
+                keyword: font,
+                string: font,
+                number: font,
+                comment: font,
             },
         }
     }
