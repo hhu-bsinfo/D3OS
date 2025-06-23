@@ -314,4 +314,17 @@ mod tests {
     fn string_4() {
         assert!(string("\"bad\\xescape\"").is_err());
     }
+
+    #[test]
+    fn parse_other() {
+        let input = "@";
+        let keywords = &[];
+        let result = parse_clike(input, keywords);
+
+        assert_eq!(
+            result.unwrap().1,
+            Token::Other('@'),
+            "Expected @ to be parsed as Token::Char"
+        );
+    }
 }
