@@ -10,7 +10,7 @@ use nom::{
     bytes::complete::{escaped, is_not, tag, take_till, take_while1},
     character::complete::{alphanumeric1, char, digit1, multispace1, one_of, satisfy},
     combinator::{map, not, peek, recognize},
-    sequence::{preceded, separated_pair, terminated, tuple},
+    sequence::{preceded, separated_pair, terminated},
 };
 
 // use located_token to always know where a Token is from
@@ -41,10 +41,7 @@ pub fn match_any<'arr, 's>(
     }
 }
 
-pub fn parse_clike<'a, 's>(
-    input: &'s str,
-    keywords: &'a [&'s str],
-) -> IResult<&'s str, LToken<'s>> {
+pub fn lex_clike<'a, 's>(input: &'s str, keywords: &'a [&'s str]) -> IResult<&'s str, LToken<'s>> {
     alt((
         locate(comment),
         locate(string),
@@ -84,7 +81,7 @@ fn whitespace(input: &str) -> IResult<&str, Token> {
 
 fn number(input: &str) -> IResult<&str, Token> {
     map(
-        recognize(alt((recognize(tuple((digit1, tag("."), digit1))), digit1))),
+        recognize(alt((recognize((digit1, tag("."), digit1)), digit1))),
         Token::Number,
     )
     .parse(input)
@@ -144,7 +141,7 @@ impl<'s> Located<Token<'s>, &'s str> {
 
 #[cfg(test)]
 mod tests {
-    use crate::located::Span;
+    use crate::{clike::lex_clike, located::Span};
 
     use super::*;
     use alloc::vec::Vec;
@@ -258,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_clike_0() {
+    fn lex_clike_0() {
         use Token::*;
         let input = "int main() {\n  int a = 3+4;\n  printf(\"%d\",a);\n  return 0;\n}";
         let mut rest = input;
@@ -267,7 +264,7 @@ mod tests {
         let mut located_tokens = Vec::<Located<Token, &str>>::new();
         let mut tokens = Vec::<Token>::new();
         while !rest.is_empty() {
-            match parse_clike(rest, keywords) {
+            match lex_clike(rest, keywords) {
                 Ok((new_rest, token)) => {
                     located_tokens.push(token);
                     tokens.push(*token);
@@ -362,10 +359,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_other() {
+    fn other() {
         let input = "@";
         let keywords = &[];
-        let result = parse_clike(input, keywords);
+        let result = lex_clike(input, keywords);
 
         assert_eq!(
             result.unwrap().1,
