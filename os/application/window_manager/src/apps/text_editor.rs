@@ -44,8 +44,43 @@ int main() {
     printf("Factorial of %d is %llu\n", n, factorial);
     return 0;
 }
-"#;
+[package]
+name = "syntax"
+version = "0.1.0"
+edition = "2024"
+authors = ["Julius Carl Drodofsky <julius@drodofsky.xyz>"]
 
+[features]
+default = ["alloc"]
+alloc = []
+
+
+[dependencies]
+
+[dependencies.nom]
+version = "8"
+default-features = false
+features = ["alloc"]
+
+
+
+echo -n "Enter a number: "
+read num
+
+if test "$num" -lt 0
+    exit 1
+end
+
+result = 1
+counter = $num
+
+while test "$counter" -gt 1
+    result = (expr $result \* $counter)
+    counter = (expr $counter - 1)
+end
+
+echo "Factorial of $num is $result"
+"#;
 static MARKDOWN_EXAMPLE: &str = r#"
 # Heading 1
 
