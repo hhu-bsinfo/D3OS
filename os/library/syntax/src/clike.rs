@@ -1,4 +1,5 @@
 use crate::located::Located;
+use crate::located::Span;
 use crate::located::locate;
 use nom::Err;
 use nom::error::Error;
@@ -124,8 +125,27 @@ fn other(input: &str) -> IResult<&str, Token> {
     map(satisfy(|_| true), Token::Other).parse(input)
 }
 
+impl<'s> Located<Token<'s>, &'s str> {
+    pub fn auto_span(&self, src: &'s str) -> Span {
+        let len = match **self {
+            Token::Keyword(s)
+            | Token::Identifier(s)
+            | Token::Number(s)
+            | Token::String(s)
+            | Token::Operator(s)
+            | Token::Whitespace(s)
+            | Token::Comment(s) => s.len(),
+
+            Token::Punctuation(_) | Token::Other(_) => 1,
+        };
+        self.span(src, len)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::located::Span;
+
     use super::*;
     use alloc::vec::Vec;
 
@@ -244,10 +264,12 @@ mod tests {
         let mut rest = input;
         let keywords = &["int", "return"];
 
+        let mut located_tokens = Vec::<Located<Token, &str>>::new();
         let mut tokens = Vec::<Token>::new();
         while !rest.is_empty() {
             match parse_clike(rest, keywords) {
                 Ok((new_rest, token)) => {
+                    located_tokens.push(token);
                     tokens.push(*token);
                     rest = new_rest;
                 }
@@ -291,6 +313,18 @@ mod tests {
             Punctuation('}'),
         ];
         assert_eq!(tokens, expected);
+        assert_eq!(
+            located_tokens[0].auto_span(input),
+            Span { start: 0, end: 2 }
+        );
+        assert_eq!(
+            located_tokens[1].auto_span(input),
+            Span { start: 3, end: 3 }
+        );
+        assert_eq!(
+            located_tokens[2].auto_span(input),
+            Span { start: 4, end: 7 }
+        );
     }
 
     #[test]

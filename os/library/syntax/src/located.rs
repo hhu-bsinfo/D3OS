@@ -2,11 +2,13 @@ use alloc::fmt;
 use core::fmt::Debug;
 use core::ops::{Deref, DerefMut};
 use nom::Offset;
+use nom::Parser;
 use nom::{IResult, error::ParseError};
 
 #[derive(Copy, Clone)]
 pub struct Located<T, I: Offset>(T, I);
 
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -48,14 +50,14 @@ impl<'s> Located<&'s str, &'s str> {
     }
 }
 
-pub fn locate<I, O, E: ParseError<I>, F>(mut f: F) -> impl FnMut(I) -> IResult<I, Located<O, I>, E>
+pub fn locate<I, F>(mut f: F) -> impl Parser<I, Output = Located<F::Output, I>, Error = F::Error>
 where
     I: Clone + Offset,
-    F: FnMut(I) -> IResult<I, O, E>,
+    F: Parser<I>,
 {
-    move |i: I| match f(i.clone()) {
+    move |input: I| match f.parse(input) {
         Err(e) => Err(e),
-        Ok((next_input, result)) => Ok((next_input, Located(result, i))),
+        Ok((next_input, output)) => Ok((next_input.clone(), Located(output, next_input))),
     }
 }
 
