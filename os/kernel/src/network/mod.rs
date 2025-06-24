@@ -15,6 +15,9 @@ use smoltcp::time::Instant;
 use smoltcp::wire::Ipv4Address;
 use spin::{Mutex, Once, RwLock};
 
+use smoltcp::socket::udp::{PacketBuffer, PacketMetadata, Socket};
+use smoltcp::wire::{IpAddress, IpEndpoint};
+
 static RTL8139: Once<Arc<Rtl8139>> = Once::new();
 // ensure that the driver is only initialized once
 //static NE2000: Once<Arc<Mutex<Ne2000>>> = Once::new();
@@ -165,20 +168,35 @@ fn poll_sockets() {
 // poll for ne2k
 
 fn poll_ne2000() {
-    let ne = NE2000.get().unwrap();
     // interface is connection between smoltcp crate and driver
     // interfaces stores a Vector off all added Network Interfaces
-    let mut interfaces = INTERFACES.write();
-    let mut sockets = SOCKETS.get().unwrap().write();
-    let time = Instant::from_millis(timer().systime_ms() as i64);
-
     // Cast Arc<Ne2000> to &mut Ne2000 for poll:
+    let now = Instant::from_millis(timer().systime_ms() as i64);
+    let ne = NE2000.get().unwrap();
     let dev_ne2k = unsafe { ptr::from_ref(ne.deref()).cast_mut().as_mut().unwrap() };
 
-    // poll:Transmit packets queued in the sockets, and receive packets queued in the device.
-    //This function returns a value indicating whether the state of any socket might have changed.
+    let mut sockets = SOCKETS.get().unwrap().write();
 
-    for interface in interfaces.iter_mut() {
-        interface.poll(time, dev_ne2k, &mut sockets);
+    // Crate UDP socket with buffers
+    let rx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
+    let tx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
+    let socket = Socket::new(rx_buffer, tx_buffer);
+    let handle = sockets.add(socket);
+
+    // Bind, enqueue packet
+    {
+        let mut sock = sockets.get_mut::<Socket>(handle);
+        sock.bind(1234).unwrap();
+
+        let destination = IpEndpoint::new(IpAddress::v4(10, 0, 2, 2), 5678);
+        sock.send_slice(b"i hope this works", destination).unwrap();
+    }
+
+    // start interface
+    let mut interfaces = INTERFACES.write();
+    for iface in interfaces.iter_mut() {
+        // This will call your NE2000 TxToken and perform the send
+        info!("i hope this works");
+        iface.poll(now, dev_ne2k, &mut sockets);
     }
 }

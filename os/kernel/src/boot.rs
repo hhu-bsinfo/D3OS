@@ -9,8 +9,8 @@
 */
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
-use crate::device::qemu_cfg;
 use crate::device::serial::SerialPort;
+use crate::device::{self, qemu_cfg};
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
 use crate::memory::pages::page_table_index;

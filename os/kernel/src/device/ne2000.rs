@@ -423,7 +423,7 @@ impl Ne2000 {
     pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
         info!("Configuring PCI registers");
         //Self { base_address }
-        let pci_config_space = pci_bus().config_space();
+        //let pci_config_space = pci_bus().config_space();
         let pci_device = pci_device.write();
 
         let bar0 = pci_device
@@ -439,6 +439,9 @@ impl Ne2000 {
         };
 
         ne2000.init();
+        let mut buffer = [0u8; 1514];
+        let data = &mut buffer[..1514];
+        ne2000.send_packet(data);
 
         ne2000
     }
@@ -651,6 +654,8 @@ impl Ne2000 {
             self.registers
                 .command_port
                 .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
+            self.registers.command_port.write(0x22);
+            info!("CR REAd after init: {}", self.registers.command_port.read());
 
             /* 11) Initialize TCR and RCR */
             self.registers.tcr_port.write(0);
@@ -660,6 +665,7 @@ impl Ne2000 {
                     | ReceiveConfigurationRegister::RCR_AM)
                     .bits(),
             );
+            info!("CR REAd after init: {}", self.registers.command_port.read());
 
             //Set up Remote DMA to read from address 0x0000
             // RSAR0,1 : points to the start of the block of data to be transfered
@@ -701,11 +707,15 @@ impl Ne2000 {
 
     pub fn send_packet(&mut self, packet: &[u8]) {
         let packet_length = packet.len() as u16;
+
+        // check, if the nic is ready for transmit
         unsafe {
-            let transmit_status = !(self.registers.command_port.read() & CR::TXP.bits());
+            info!("status cr {}", self.registers.command_port.read());
+            /*let transmit_status = !(self.registers.command_port.read() & CR::TXP.bits());
             while transmit_status != 0 {
+                info!("{transmit_status}");
                 info!("Transmit bit still set!");
-            }
+            }*/
 
             //dummy_read (see thiel bachelor thesis)
 
@@ -812,6 +822,7 @@ impl Ne2000 {
             registers
                 .command_port
                 .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
+            info!("CR REAd after init: {}", registers.command_port.read());
 
             // check if on correct Page (on Page 1 are the PARs Registers for the MAC Adress)
 

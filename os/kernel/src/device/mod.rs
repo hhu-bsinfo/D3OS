@@ -5,11 +5,11 @@ pub mod qemu_cfg;
 pub mod speaker;
 #[macro_use]
 pub mod terminal;
+pub mod ide;
 pub mod lfb_terminal;
-pub mod serial;
 pub mod pci;
 pub mod rtl8139;
-pub mod ide;
+pub mod serial;
 
-// make module public 
+// make module public
 pub mod ne2000;
