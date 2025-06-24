@@ -1,5 +1,7 @@
 use super::runnable::Runnable;
 use crate::api::LOG_SCREEN;
+use crate::apps::text_editor::config::TextEditorConfig;
+use crate::apps::text_editor::messages::Message;
 use crate::apps::text_editor::view::View;
 use crate::components::container::basic_container::{AlignmentMode, LayoutMode, StretchMode};
 use crate::components::container::ContainerStyling;
@@ -7,107 +9,79 @@ use crate::signal::{ComponentRef, Signal};
 use crate::{api::Command, WindowManager};
 use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
-use font::Font;
-use graphic::color::{Color, WHITE};
-use graphic::lfb::DEFAULT_CHAR_WIDTH;
-use graphic::{
-    bitmap::{Bitmap, ScalingMode},
-    lfb::DEFAULT_CHAR_HEIGHT,
-};
-use logger::warn;
-use meassages::Message;
-use model::{Document, ViewConfig};
+use graphic::bitmap::{Bitmap, ScalingMode};
+use model::Document;
 use spin::rwlock::RwLock;
 use terminal::DecodedKey;
 use text_buffer::TextBuffer;
 
+mod config;
 mod font;
-mod meassages;
+mod messages;
 mod model;
 mod view;
 
 // Julius Drodofsky
-pub struct TextEditor;
 
-#[derive(Debug, Clone, Copy)]
-pub struct TextEditorConfig {
-    pub width: usize,
-    pub height: usize,
-    pub background_color: Color,
-    pub markdown_view: ViewConfig,
-    pub simple_view: ViewConfig,
-}
+static FAC_EXAMPLE: &str = r#"
+// Calculate fac!
+int main() {
+    int n;
+    unsigned long long factorial = 1;
 
-fn render_msg(document: &Rc<RwLock<Document>>, canvas: &Rc<RwLock<Bitmap>>, msg: Message) {
-    document.write().update(msg);
-    let mut msg = View::render(&document.read(), &mut canvas.write());
-    while msg.is_some() {
-        document.write().update(Message::ViewMessage(msg.unwrap()));
-        msg = View::render(&document.read(), &mut canvas.write());
+    printf("Enter a positive integer: ");
+    scanf("%d", &n);
+
+    if (n < 0) {
+        printf("Error: Factorial is not defined for negative integers.\n");
+        return 1;
     }
-}
 
-impl TextEditorConfig {
-    pub fn new(width: usize, height: usize) -> Self {
-        let bg_color = Color::new(20, 20, 20, 255);
-        let normal = Font {
-            scale: 1,
-            fg_color: WHITE,
-            bg_color: bg_color,
-            char_width: DEFAULT_CHAR_WIDTH,
-            char_height: DEFAULT_CHAR_HEIGHT,
-        };
-        let strong = Font {
-            scale: 1,
-            fg_color: Color::new(69, 133, 136, 255),
-            bg_color: bg_color,
-            char_width: DEFAULT_CHAR_WIDTH,
-            char_height: DEFAULT_CHAR_HEIGHT,
-        };
-        let emphasis = Font {
-            scale: 1,
-            fg_color: Color::new(131, 165, 152, 255),
-            bg_color: bg_color,
-            char_width: DEFAULT_CHAR_WIDTH,
-            char_height: DEFAULT_CHAR_HEIGHT,
-        };
-        let markdown_view = ViewConfig::Markdown {
-            normal: normal,
-            emphasis: emphasis,
-            strong: strong,
-        };
-
-        let simple_view = ViewConfig::Simple {
-            font_scale: normal.scale,
-            fg_color: normal.fg_color,
-            bg_color: normal.bg_color,
-        };
-        TextEditorConfig {
-            width: width,
-            height: height,
-            background_color: bg_color,
-            markdown_view: markdown_view,
-            simple_view: simple_view,
-        }
+    for (int i = 1; i <= n; ++i) {
+        factorial *= i;
     }
-}
 
-impl Runnable for TextEditor {
-    fn run() {
-        let config = TextEditorConfig::new(900, 600);
-        let bitmap = Bitmap {
-            width: (0.7 * (config.width as f32)) as u32,
-            height: (0.7 * (config.height as f32)) as u32,
-            data: vec![config.background_color; config.width * config.height],
-        };
-        let handle = concurrent::thread::current()
-            .expect("Failed to get thread")
-            .id();
-        let api = WindowManager::get_api();
-        let canvas = Rc::new(RwLock::new(bitmap));
-        let canvs_clone = Rc::clone(&canvas);
-        let edit_canvas: Rc<RwLock<Option<ComponentRef>>> = Rc::new(RwLock::new(None));
-        let markdown_example = r#"
+    printf("Factorial of %d is %llu\n", n, factorial);
+    return 0;
+}
+[package]
+name = "syntax"
+version = "0.1.0"
+edition = "2024"
+authors = ["Julius Carl Drodofsky <julius@drodofsky.xyz>"]
+
+[features]
+default = ["alloc"]
+alloc = []
+
+
+[dependencies]
+
+[dependencies.nom]
+version = "8"
+default-features = false
+features = ["alloc"]
+
+
+
+echo -n "Enter a number: "
+read num
+
+if test "$num" -lt 0
+    exit 1
+end
+
+result = 1
+counter = $num
+
+while test "$counter" -gt 1
+    result = (expr $result \* $counter)
+    counter = (expr $counter - 1)
+end
+
+echo "Factorial of $num is $result"
+"#;
+static MARKDOWN_EXAMPLE: &str = r#"
 # Heading 1
 
 ## Heading 2
@@ -134,14 +108,57 @@ Some *Emphasis* Text.
    1. Nested ordered item  
    2. Another nested item
 "#;
-        let text_buffer = TextBuffer::from_str(markdown_example);
-        let mut document = Document::new(Some(String::from("scratch")), text_buffer, config);
+
+const KEYWORDS: &[&str] = &[
+    "int",
+    "return",
+    "for",
+    "if",
+    "end",
+    "while",
+    "unsigned",
+    "long",
+    "package",
+    "dependencies",
+    "features",
+    "echo",
+    "read",
+];
+
+pub struct TextEditor;
+
+fn apply_message(document: &Rc<RwLock<Document>>, canvas: &Rc<RwLock<Bitmap>>, msg: Message) {
+    document.write().update(msg);
+    let mut msg = View::render(&document.read(), &mut canvas.write());
+    while msg.is_some() {
+        document.write().update(Message::ViewMessage(msg.unwrap()));
+        msg = View::render(&document.read(), &mut canvas.write());
+    }
+}
+
+impl Runnable for TextEditor {
+    fn run() {
+        let config = TextEditorConfig::new(900, 600, &KEYWORDS);
+        let bitmap = Bitmap {
+            width: (0.7 * (config.width as f32)) as u32,
+            height: (0.7 * (config.height as f32)) as u32,
+            data: vec![config.background_color; config.width * config.height],
+        };
+        let handle = concurrent::thread::current()
+            .expect("Failed to get thread")
+            .id();
+        let api = WindowManager::get_api();
+        let canvas = Rc::new(RwLock::new(bitmap));
+        let canvs_clone = Rc::clone(&canvas);
+        let edit_canvas: Rc<RwLock<Option<ComponentRef>>> = Rc::new(RwLock::new(None));
+        let text_buffer = TextBuffer::from_str(FAC_EXAMPLE);
+        let document = Document::new(Some(String::from("scratch")), text_buffer, config);
         View::render(&document, &mut canvas.write());
         let mut container_styling = ContainerStyling::default();
         container_styling.show_border = false;
         container_styling.maintain_aspect_ratio = false;
         container_styling.child_padding = 2;
-        let model = Rc::new(RwLock::<Document<'_>>::new(document));
+        let model = Rc::new(RwLock::<Document<'_, '_>>::new(document));
         let _parent_container = api
             .execute(
                 handle,
@@ -166,7 +183,7 @@ Some *Emphasis* Text.
                     log_rect_data: RectData {
                         top_left: Vertex { x: 0, y: 0 },
                         width: LOG_SCREEN.0 as u32,
-                        height: 60,
+                        height: 40,
                     },
                     layout: LayoutMode::Horizontal(AlignmentMode::Top),
                     stretch: StretchMode::Fill,
@@ -190,10 +207,10 @@ Some *Emphasis* Text.
                 },
                 label: Some((Signal::new(String::from("Undo")), 0)),
                 on_click: Some(Box::new(move || {
-                    render_msg(
+                    apply_message(
                         &model_clone,
                         &Rc::clone(&canvas_clone),
-                        Message::CommandMessage(meassages::CommandMessage::Undo),
+                        Message::CommandMessage(messages::CommandMessage::Undo),
                     );
                     edit_canvas_clone
                         .write()
@@ -221,10 +238,10 @@ Some *Emphasis* Text.
                 },
                 label: Some((Signal::new(String::from("Redo")), 1)),
                 on_click: Some(Box::new(move || {
-                    render_msg(
+                    apply_message(
                         &model_clone,
                         &Rc::clone(&canvas_clone),
-                        Message::CommandMessage(meassages::CommandMessage::Redo),
+                        Message::CommandMessage(messages::CommandMessage::Redo),
                     );
                     edit_canvas_clone
                         .write()
@@ -251,10 +268,41 @@ Some *Emphasis* Text.
                 },
                 label: Some((Signal::new(String::from("MD - Preview")), 1)),
                 on_click: Some(Box::new(move || {
-                    render_msg(
+                    apply_message(
                         &model_clone,
                         &Rc::clone(&canvas_clone),
-                        Message::CommandMessage(meassages::CommandMessage::Markdown),
+                        Message::CommandMessage(messages::CommandMessage::Markdown),
+                    );
+                    edit_canvas_clone
+                        .write()
+                        .as_ref()
+                        .unwrap()
+                        .write()
+                        .mark_dirty();
+                })),
+                styling: None,
+            },
+        );
+
+        let model_clone = Rc::clone(&model);
+        let canvas_clone = Rc::clone(&canvas);
+        let edit_canvas_clone = Rc::clone(&edit_canvas);
+
+        let _code = api.execute(
+            handle,
+            Some(_menu_container.clone()),
+            Command::CreateButton {
+                log_rect_data: RectData {
+                    top_left: Vertex::new(0, 0),
+                    width: 140,
+                    height: 60,
+                },
+                label: Some((Signal::new(String::from("Code")), 1)),
+                on_click: Some(Box::new(move || {
+                    apply_message(
+                        &model_clone,
+                        &Rc::clone(&canvas_clone),
+                        Message::CommandMessage(messages::CommandMessage::CLike),
                     );
                     edit_canvas_clone
                         .write()
@@ -279,7 +327,7 @@ Some *Emphasis* Text.
                         height: config.height as u32,
                     },
                     input: Some(Box::new(move |c: DecodedKey| {
-                        render_msg(&model, &canvs_clone, Message::DecodedKey(c));
+                        apply_message(&model, &canvs_clone, Message::DecodedKey(c));
                     })),
                     buffer: Rc::clone(&canvas),
                     scaling_mode: ScalingMode::Bilinear,

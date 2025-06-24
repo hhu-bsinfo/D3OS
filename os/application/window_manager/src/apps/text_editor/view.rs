@@ -1,3 +1,4 @@
+use crate::apps::text_editor::model::Caret;
 use alloc::{
     format,
     string::{String, ToString},
@@ -11,17 +12,33 @@ use graphic::{
     color::{Color, WHITE, YELLOW},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
-use logger::warn;
-use pulldown_cmark::{DefaultBrokenLinkCallback, Event, HeadingLevel, Parser};
-
-use crate::apps::text_editor::model::Caret;
+use pulldown_cmark::{Event, HeadingLevel, Parser};
+use syntax::{
+    clike::{lex_clike, Token},
+    located::Span,
+};
 
 use super::{
     font::Font,
-    meassages::ViewMessage,
+    messages::ViewMessage,
     model::{Document, ViewConfig},
 };
 //Julius Drodofsky
+
+trait VecScrollDown<T> {
+    fn scroll_down(&self) -> Option<&T>;
+}
+// The value (5) specify to which line to scroll a higher value means more redraws
+// it should not be lower than 1
+impl<T> VecScrollDown<T> for Vec<T> {
+    fn scroll_down(&self) -> Option<&T> {
+        if self.is_empty() {
+            None
+        } else {
+            self.get(self.len() / 5)
+        }
+    }
+}
 
 pub struct View;
 
@@ -32,10 +49,11 @@ impl View {
         font: Font,
         position: Vertex,
         rel_caret: Option<usize>,
-    ) -> Vertex {
+    ) -> (Vertex, Vec<u32>) {
         let mut x = position.x;
         let mut y = position.y;
         let mut i = 0;
+        let mut new_lines = Vec::<u32>::new();
         while let Some(c) = text.chars().nth(i) {
             if i == rel_caret.unwrap_or(usize::MAX) {
                 buffer.draw_line(x, y, x, y + font.char_height * font.scale, YELLOW);
@@ -44,11 +62,13 @@ impl View {
                 y += font.char_height * font.scale;
                 x = 0;
                 i += 1;
+                new_lines.push(i as u32);
                 continue;
             }
             if buffer.width - x + 1 < font.char_width * font.scale {
                 x = 0;
                 y += font.char_height * font.scale;
+                new_lines.push(i as u32);
             }
             x += buffer.draw_char_scaled(
                 x + 1,
@@ -65,7 +85,7 @@ impl View {
         if i == rel_caret.unwrap_or(usize::MAX) {
             buffer.draw_line(x, y, x, y + font.char_height * font.scale, YELLOW);
         }
-        return Vertex { x: x, y: y };
+        return (Vertex { x: x, y: y }, new_lines);
     }
     fn render_simple(
         document: &Document,
@@ -93,7 +113,6 @@ impl View {
                 buffer.draw_line(x, y, x, y + DEFAULT_CHAR_HEIGHT * font_scale, YELLOW);
                 caret_pos = y;
                 found_caret = true;
-                warn!("caret: {}", document.caret().head())
             }
             if c == '\n' {
                 y += DEFAULT_CHAR_HEIGHT * font_scale;
@@ -184,12 +203,8 @@ impl View {
         strong: Font,
     ) -> Option<ViewMessage> {
         buffer.clear(normal.bg_color);
-        let raw_text: String = document
-            .text_buffer()
-            .clone()
-            .into_iter()
-            .skip(document.scroll_offset() as usize)
-            .collect();
+        let raw_text: String = document.text_buffer().to_string();
+
         let iterator = Parser::new(&raw_text).into_offset_iter();
         let mut position = Vertex::zero();
         let mut font = Vec::<Font>::new();
@@ -198,18 +213,23 @@ impl View {
         let mut ordererd_start = false;
         let mut ordered: Option<u64> = None;
         let mut heading = false;
-        let mut last_index: Range<usize>;
+        let mut last_index: Range<usize> = 0..0;
+        let mut tmp_line_start: Vec<u32> = Vec::new();
+        let mut line_start: Vec<u32> = Vec::new();
         font.push(normal);
         for (event, range) in iterator {
+            if range.end < document.scroll_offset() as usize {
+                continue;
+            }
+            let rel_caret = document.caret().head().checked_sub(range.start);
             if position.y > buffer.height {
                 break;
             }
             last_index = range.clone();
             match event {
                 Event::Text(text) => {
-                    let rel_caret = document.caret().head().checked_sub(range.start);
                     if heading {
-                        position = View::render_string(
+                        (position, tmp_line_start) = View::render_string(
                             &String::from("\n"),
                             buffer,
                             *font.last().unwrap_or(&normal),
@@ -225,8 +245,7 @@ impl View {
                                 s.push('.');
                             }
 
-                            let rel_caret = document.caret().head().checked_sub(range.start);
-                            position = View::render_string(
+                            (position, tmp_line_start) = View::render_string(
                                 &format!("{}{} ", " ".repeat(list_indentation), s),
                                 buffer,
                                 *font.last().unwrap_or(&normal),
@@ -247,8 +266,7 @@ impl View {
                             first_in_list_item = false;
                         }
                     }
-                    let rel_caret = document.caret().head().checked_sub(range.start);
-                    position = View::render_string(
+                    (position, tmp_line_start) = View::render_string(
                         &text.to_string(),
                         buffer,
                         *font.last().unwrap_or(&normal),
@@ -256,7 +274,7 @@ impl View {
                         rel_caret,
                     );
                     if heading {
-                        position = View::render_string(
+                        (position, tmp_line_start) = View::render_string(
                             &String::from("\n"),
                             buffer,
                             *font.last().unwrap_or(&normal),
@@ -266,8 +284,7 @@ impl View {
                     }
                 }
                 Event::HardBreak | Event::SoftBreak => {
-                    let rel_caret = document.caret().head().checked_sub(range.start);
-                    position = View::render_string(
+                    (position, tmp_line_start) = View::render_string(
                         &String::from("\n"),
                         buffer,
                         *font.last().unwrap_or(&normal),
@@ -276,6 +293,15 @@ impl View {
                     );
                 }
                 Event::Start(t) => match t {
+                    pulldown_cmark::Tag::Paragraph => {
+                        (position, tmp_line_start) = View::render_string(
+                            &String::from("\n"),
+                            buffer,
+                            *font.last().unwrap_or(&normal),
+                            position,
+                            rel_caret,
+                        );
+                    }
                     pulldown_cmark::Tag::Item => {
                         first_in_list_item = true;
                         if ordererd_start {
@@ -292,8 +318,7 @@ impl View {
                         first_in_list_item = true;
                         ordererd_start = true;
                         ordered = s;
-                        let rel_caret = document.caret().head().checked_sub(range.start);
-                        position = View::render_string(
+                        (position, tmp_line_start) = View::render_string(
                             &String::from("\n"),
                             buffer,
                             *font.last().unwrap_or(&normal),
@@ -322,8 +347,7 @@ impl View {
                     _ => (),
                 },
                 Event::Rule => {
-                    let rel_caret = document.caret().head().checked_sub(range.start);
-                    position = View::render_string(
+                    (position, tmp_line_start) = View::render_string(
                         &String::from("\n"),
                         buffer,
                         *font.last().unwrap_or(&normal),
@@ -337,7 +361,7 @@ impl View {
                         position.y + (normal.char_height * normal.scale / 2),
                         WHITE,
                     );
-                    position = View::render_string(
+                    (position, tmp_line_start) = View::render_string(
                         &String::from("\n"),
                         buffer,
                         *font.last().unwrap_or(&normal),
@@ -346,9 +370,17 @@ impl View {
                     );
                 }
                 Event::End(t) => match t {
+                    pulldown_cmark::TagEnd::Paragraph => {
+                        (position, tmp_line_start) = View::render_string(
+                            &String::from("\n"),
+                            buffer,
+                            *font.last().unwrap_or(&normal),
+                            position,
+                            rel_caret,
+                        );
+                    }
                     pulldown_cmark::TagEnd::Item => {
-                        let rel_caret = document.caret().head().checked_sub(range.start);
-                        position = View::render_string(
+                        (position, tmp_line_start) = View::render_string(
                             &String::from("\n"),
                             buffer,
                             *font.last().unwrap_or(&normal),
@@ -377,16 +409,143 @@ impl View {
                 },
                 _ => {}
             }
+            for e in tmp_line_start.iter() {
+                line_start.push(e + range.start as u32);
+            }
         }
+        // scroll up if curosor bevore visible document
         if document.scroll_offset() > document.caret().head() as u32 {
             return Some(ViewMessage::ScrollUp(
-                document.scroll_offset() - document.caret().head() as u32,
+                document
+                    .scroll_offset()
+                    .checked_sub(document.caret().head() as u32)
+                    .unwrap_or(0) as u32,
             ));
+        // scroll down if cursor below visible document
+        } else if last_index.start < document.caret().head() {
+            let ret = ViewMessage::ScrollDown(
+                (line_start
+                    .scroll_down()
+                    .unwrap_or(&document.scroll_offset()))
+                .checked_sub(document.scroll_offset())
+                .unwrap_or(0),
+            );
+            if ret == ViewMessage::ScrollDown(0) {
+                return None;
+            }
+            return Some(ret);
+        }
+        None
+    }
+    fn render_code(
+        document: &Document,
+        buffer: &mut Bitmap,
+        normal: Font,
+        keyword: Font,
+        string: Font,
+        number: Font,
+        comment: Font,
+        keywords: &[&str],
+    ) -> Option<ViewMessage> {
+        buffer.clear(normal.bg_color);
+        let input = document.text_buffer().to_string();
+        let mut position = Vertex::zero();
+        let mut rest: &str = &input;
+        let mut tmp_line_start: Vec<u32> = Vec::new();
+        let mut line_start: Vec<u32> = Vec::new();
+        let mut last_index: Span = Span { start: 0, end: 0 };
+        let mut caret_pos: u32 = 0;
+        while let Ok((new_rest, token)) = lex_clike(rest, keywords) {
+            rest = new_rest;
+            if position.y > buffer.height {
+                break;
+            }
+            last_index = token.auto_span(&input);
+            let rel_caret = document.caret().head().checked_sub(last_index.start);
+            if last_index.start < document.scroll_offset() as usize {
+                continue;
+            }
+
+            match token.get() {
+                Token::Identifier(s) | Token::Operator(s) | Token::Whitespace(s) => {
+                    (position, tmp_line_start) =
+                        View::render_string(&String::from(*s), buffer, normal, position, rel_caret);
+                }
+                Token::Keyword(s) => {
+                    (position, tmp_line_start) = View::render_string(
+                        &String::from(*s),
+                        buffer,
+                        keyword,
+                        position,
+                        rel_caret,
+                    );
+                }
+                Token::Number(s) => {
+                    (position, tmp_line_start) =
+                        View::render_string(&String::from(*s), buffer, number, position, rel_caret);
+                }
+                Token::String(s) => {
+                    (position, tmp_line_start) =
+                        View::render_string(&String::from(*s), buffer, string, position, rel_caret);
+                }
+                Token::Comment(s) => {
+                    (position, tmp_line_start) = View::render_string(
+                        &String::from(*s),
+                        buffer,
+                        comment,
+                        position,
+                        rel_caret,
+                    );
+                }
+                Token::Punctuation(c) | Token::Other(c) => {
+                    (position, tmp_line_start) =
+                        View::render_string(&String::from(*c), buffer, normal, position, rel_caret);
+                }
+            }
+            if last_index.start >= document.caret().head()
+                && last_index.start <= document.caret().head()
+            {
+                caret_pos = position.y;
+            }
+            for start in tmp_line_start {
+                line_start.push(start + last_index.start as u32);
+            }
+        }
+        // scroll up when scroll offeste > cursor
+        if document.scroll_offset() > document.caret().head() as u32 {
+            return Some(ViewMessage::ScrollUp(
+                document
+                    .scroll_offset()
+                    .checked_sub(document.caret().head() as u32)
+                    .unwrap_or(0) as u32,
+            ));
+        // scroll down if cursor below visible document
+        } else if last_index.start < document.caret().head() {
+            let ret = ViewMessage::ScrollDown(
+                (line_start
+                    .scroll_down()
+                    .unwrap_or(&document.scroll_offset()))
+                .checked_sub(document.scroll_offset())
+                .unwrap_or(0),
+            );
+            if ret == ViewMessage::ScrollDown(0) {
+                return None;
+            }
+            return Some(ret);
+        } else if caret_pos > buffer.height / 2 + buffer.height / 3 {
+            let scroll = *match line_start.first() {
+                Some(v) => v,
+                None => return None,
+            } - document.scroll_offset();
+            if scroll == 0 {
+                return None;
+            }
+            return Some(ViewMessage::ScrollDown(scroll));
         }
         None
     }
     pub fn render(document: &Document, buffer: &mut Bitmap) -> Option<ViewMessage> {
-        match *document.view_config() {
+        let ret = match *document.view_config() {
             ViewConfig::Simple {
                 font_scale,
                 fg_color,
@@ -397,6 +556,17 @@ impl View {
                 emphasis,
                 strong,
             } => View::render_markdown(document, buffer, normal, emphasis, strong),
-        }
+            ViewConfig::Code {
+                normal,
+                keyword,
+                string,
+                number,
+                comment,
+                keywords,
+            } => View::render_code(
+                document, buffer, normal, keyword, string, number, comment, keywords,
+            ),
+        };
+        return ret;
     }
 }

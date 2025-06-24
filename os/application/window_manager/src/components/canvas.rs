@@ -1,6 +1,4 @@
-use graphic::ansi::BACKGROUND_BLACK;
 use graphic::bitmap::ScalingMode;
-use logger::warn;
 // Julius Drodofsky
 use terminal::DecodedKey;
 
@@ -161,7 +159,7 @@ impl Interactable for Canvas {
         &mut self,
         keyboard_press: DecodedKey,
     ) -> Option<Box<dyn FnOnce() -> ()>> {
-        if !self.is_selected || self.is_disabled {
+        if self.is_disabled {
             return None;
         }
         self.mark_dirty();
