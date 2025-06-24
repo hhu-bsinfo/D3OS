@@ -40,7 +40,7 @@ impl Caret {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum ViewConfig {
+pub enum ViewConfig<'s> {
     Simple {
         font_scale: u32,
         fg_color: Color,
@@ -57,26 +57,27 @@ pub enum ViewConfig {
         string: Font,
         number: Font,
         comment: Font,
+        keywords: &'s [&'s str],
     },
 }
 
-pub struct Document<'b> {
+pub struct Document<'b, 'v> {
     path: Option<String>,
     text_buffer: TextBuffer<'b>,
     copy_buffer: String,
     caret: Caret,
     edit_mode: EditMode,
-    config: TextEditorConfig,
-    current_view: ViewConfig,
+    config: TextEditorConfig<'v>,
+    current_view: ViewConfig<'v>,
     scroll_offset: u32,
 }
 
-impl<'b> Document<'b> {
+impl<'b, 'v, 'r> Document<'b, 'v> {
     pub fn new(
         path: Option<String>,
         text_buffer: TextBuffer<'b>,
-        config: TextEditorConfig,
-    ) -> Document<'b> {
+        config: TextEditorConfig<'v>,
+    ) -> Document<'b, 'v> {
         Document {
             path: path,
             text_buffer: text_buffer,
@@ -387,6 +388,7 @@ impl<'b> Document<'b> {
                         string: _,
                         number: _,
                         comment: _,
+                        keywords: _,
                     } => self.current_view = self.config.simple_view,
                     ViewConfig::Simple {
                         font_scale: _,
@@ -414,7 +416,7 @@ mod tests {
 
     use super::*;
 
-    fn generate_dummy_config() -> TextEditorConfig {
+    fn generate_dummy_config() -> TextEditorConfig<'static> {
         let bg_color = Color {
             red: 20,
             green: 20,
@@ -448,6 +450,7 @@ mod tests {
                 string: font,
                 number: font,
                 comment: font,
+                keywords: &[],
             },
         }
     }
@@ -636,9 +639,9 @@ mod tests {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret.set_head(0);
-        doc.update_insert(DecodedKey::Unicode(('H')));
-        doc.update_insert(DecodedKey::Unicode(('e')));
-        doc.update_insert(DecodedKey::Unicode(('y')));
+        doc.update_insert(DecodedKey::Unicode('H'));
+        doc.update_insert(DecodedKey::Unicode('e'));
+        doc.update_insert(DecodedKey::Unicode('y'));
         doc.update(Message::CommandMessage(CommandMessage::Undo));
         assert_eq!(doc.text_buffer.to_string(), String::from("HeDas\nTest"));
     }

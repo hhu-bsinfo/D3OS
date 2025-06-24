@@ -14,7 +14,7 @@ use graphic::{
 };
 use pulldown_cmark::{Event, HeadingLevel, Parser};
 use syntax::{
-    clike::{parse_clike, Token},
+    clike::{lex_clike, Token},
     located::Span,
 };
 
@@ -445,31 +445,17 @@ impl View {
         string: Font,
         number: Font,
         comment: Font,
+        keywords: &[&str],
     ) -> Option<ViewMessage> {
         buffer.clear(normal.bg_color);
         let input = document.text_buffer().to_string();
         let mut position = Vertex::zero();
         let mut rest: &str = &input;
-        let keywords = &[
-            "int",
-            "return",
-            "for",
-            "if",
-            "end",
-            "while",
-            "unsigned",
-            "long",
-            "package",
-            "dependencies",
-            "features",
-            "echo",
-            "read",
-        ];
         let mut tmp_line_start: Vec<u32> = Vec::new();
         let mut line_start: Vec<u32> = Vec::new();
         let mut last_index: Span = Span { start: 0, end: 0 };
         let mut caret_pos: u32 = 0;
-        while let Ok((new_rest, token)) = parse_clike(rest, keywords) {
+        while let Ok((new_rest, token)) = lex_clike(rest, keywords) {
             rest = new_rest;
             if position.y > buffer.height {
                 break;
@@ -576,7 +562,10 @@ impl View {
                 string,
                 number,
                 comment,
-            } => View::render_code(document, buffer, normal, keyword, string, number, comment),
+                keywords,
+            } => View::render_code(
+                document, buffer, normal, keyword, string, number, comment, keywords,
+            ),
         };
         return ret;
     }

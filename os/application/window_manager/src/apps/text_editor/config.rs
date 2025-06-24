@@ -4,17 +4,17 @@ use graphic::color::{Color, WHITE};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
 
 #[derive(Debug, Clone, Copy)]
-pub struct TextEditorConfig {
+pub struct TextEditorConfig<'v> {
     pub width: usize,
     pub height: usize,
     pub background_color: Color,
-    pub markdown_view: ViewConfig,
-    pub simple_view: ViewConfig,
-    pub code_view: ViewConfig,
+    pub markdown_view: ViewConfig<'v>,
+    pub simple_view: ViewConfig<'v>,
+    pub code_view: ViewConfig<'v>,
 }
 
-impl TextEditorConfig {
-    pub fn new(width: usize, height: usize) -> Self {
+impl<'c> TextEditorConfig<'c> {
+    pub fn new(width: usize, height: usize, keywords: &'c [&'c str]) -> TextEditorConfig<'c> {
         let bg_color = Color::new(20, 20, 20, 255);
         let normal = Font {
             scale: 1,
@@ -76,12 +76,14 @@ impl TextEditorConfig {
             fg_color: normal.fg_color,
             bg_color: normal.bg_color,
         };
+
         let code_view = ViewConfig::Code {
             normal: normal,
             keyword: keyword,
             string: string,
             number: number,
             comment: comment,
+            keywords: keywords,
         };
         TextEditorConfig {
             width: width,

@@ -109,6 +109,22 @@ Some *Emphasis* Text.
    2. Another nested item
 "#;
 
+const KEYWORDS: &[&str] = &[
+    "int",
+    "return",
+    "for",
+    "if",
+    "end",
+    "while",
+    "unsigned",
+    "long",
+    "package",
+    "dependencies",
+    "features",
+    "echo",
+    "read",
+];
+
 pub struct TextEditor;
 
 fn apply_message(document: &Rc<RwLock<Document>>, canvas: &Rc<RwLock<Bitmap>>, msg: Message) {
@@ -122,7 +138,7 @@ fn apply_message(document: &Rc<RwLock<Document>>, canvas: &Rc<RwLock<Bitmap>>, m
 
 impl Runnable for TextEditor {
     fn run() {
-        let config = TextEditorConfig::new(900, 600);
+        let config = TextEditorConfig::new(900, 600, &KEYWORDS);
         let bitmap = Bitmap {
             width: (0.7 * (config.width as f32)) as u32,
             height: (0.7 * (config.height as f32)) as u32,
@@ -142,7 +158,7 @@ impl Runnable for TextEditor {
         container_styling.show_border = false;
         container_styling.maintain_aspect_ratio = false;
         container_styling.child_padding = 2;
-        let model = Rc::new(RwLock::<Document<'_>>::new(document));
+        let model = Rc::new(RwLock::<Document<'_, '_>>::new(document));
         let _parent_container = api
             .execute(
                 handle,
