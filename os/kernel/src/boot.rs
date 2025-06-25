@@ -60,7 +60,7 @@ use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use x86_64::registers::segmentation::SegmentSelector;
 use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::{PageTable, PageTableFlags, PhysFrame};
+use x86_64::structures::paging::{Page, PageTable, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
 
 // import labels from linker script 'link.ld'
@@ -98,8 +98,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     init_gdt();
 
     // The bootloader marks the kernel image region as available, so we need to reserve it manually
+    let image_region = kernel_image_region();
     unsafe {
-        memory::frames::reserve(kernel_image_region());
+        memory::frames::reserve(image_region);
     }
 
     // and initialize kernel heap, after which formatted strings may be used in logs and panics.
@@ -122,6 +123,37 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Create kernel process (and initialize virtual memory management)
     info!("Create kernel process and initialize paging");
     let kernel_process = process_manager().write().create_process();
+    // TODO: adjust this when removing 1:1 mapping
+    kernel_process
+        .virtual_address_space
+        .alloc_vma(
+            Some(
+                Page::from_start_address(VirtAddr::new(heap_region.start.start_address().as_u64()))
+                    .unwrap(),
+            ),
+            heap_region.len(),
+            MemorySpace::Kernel,
+            VmaType::Heap,
+            "heap",
+        )
+        .expect("failed to create VMA for kernel heap");
+    // TODO: stack is part of BSS, which is part of code
+    kernel_process
+        .virtual_address_space
+        .alloc_vma(
+            Some(
+                Page::from_start_address(VirtAddr::new(
+                    image_region.start.start_address().as_u64(),
+                ))
+                .unwrap(),
+            ),
+            image_region.len(),
+            MemorySpace::Kernel,
+            VmaType::Code,
+            "code",
+        )
+        .expect("failed to create VMA for kernel code");
+    kernel_process.dump();
     kernel_process.virtual_address_space.load_address_space();
 
     // Initialize serial port and enable serial logging

@@ -67,6 +67,7 @@ pub fn clone_address_space(other: &VirtualAddressSpace) -> Arc<Paging> {
 /// Create kernel address space. Used during process creation.
 pub fn create_kernel_address_space() -> Arc<Paging> {
     let address_space = Paging::new(4);
+    // map all physical addresses 1:1
     let max_phys_addr = phys_limit().start_address();
     let range = PageRange {
         start: Page::containing_address(VirtAddr::zero()),
