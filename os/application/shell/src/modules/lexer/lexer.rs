@@ -156,7 +156,7 @@ impl Lexer {
             false => TokenKind::Command,
         };
         let prev_clx = last_token.clx();
-        let next_token = Token::new_after(next_kind, ch, prev_clx);
+        let next_token = Token::new_after(prev_clx, next_kind, ch);
         tokens.push(next_token);
     }
 
@@ -176,7 +176,7 @@ impl Lexer {
 
         // Else => Append blank token
         let prev_clx = last_token.clx();
-        let next_token = Token::new_after(TokenKind::Blank, ch, prev_clx);
+        let next_token = Token::new_after(prev_clx, TokenKind::Blank, ch);
         tokens.push(next_token);
     }
 
@@ -191,7 +191,7 @@ impl Lexer {
         // If in quote and char matches quote char => exit quote
         if last_token.is_in_quote_of(ch) {
             let prev_clx = last_token.clx();
-            let next_token = Token::new_after(TokenKind::QuoteEnd, ch, prev_clx);
+            let next_token = Token::new_after(prev_clx, TokenKind::QuoteEnd, ch);
             tokens.push(next_token);
             return;
         }
@@ -203,7 +203,7 @@ impl Lexer {
 
         // Else => Enter quote
         let prev_clx = last_token.clx();
-        let next_token = Token::new_after(TokenKind::QuoteStart, ch, prev_clx);
+        let next_token = Token::new_after(prev_clx, TokenKind::QuoteStart, ch);
         tokens.push(next_token);
     }
 }
