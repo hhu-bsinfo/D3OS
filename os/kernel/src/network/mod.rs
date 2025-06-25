@@ -168,6 +168,7 @@ fn poll_sockets() {
 // poll for ne2k
 
 fn poll_ne2000() {
+    info!("i hope this works");
     // interface is connection between smoltcp crate and driver
     // interfaces stores a Vector off all added Network Interfaces
     // Cast Arc<Ne2000> to &mut Ne2000 for poll:
@@ -184,13 +185,11 @@ fn poll_ne2000() {
     let handle = sockets.add(socket);
 
     // Bind, enqueue packet
-    {
-        let mut sock = sockets.get_mut::<Socket>(handle);
-        sock.bind(1234).unwrap();
+    let mut sock = sockets.get_mut::<Socket>(handle);
+    sock.bind(1234).unwrap();
 
-        let destination = IpEndpoint::new(IpAddress::v4(10, 0, 2, 2), 5678);
-        sock.send_slice(b"i hope this works", destination).unwrap();
-    }
+    let destination = IpEndpoint::new(IpAddress::v4(10, 0, 2, 2), 5678);
+    sock.send_slice(b"i hope this works", destination).unwrap();
 
     // start interface
     let mut interfaces = INTERFACES.write();
