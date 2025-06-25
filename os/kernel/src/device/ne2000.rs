@@ -1,5 +1,6 @@
 use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use bitflags::bitflags;
+use core::{ptr, slice};
 use log::info;
 use pci_types::{CommandRegister, EndpointHeader};
 use smallmap::Page;
@@ -342,14 +343,18 @@ pub struct Ne2000 {
 // implementation is orientated on the rtl8139.rs module
 
 // changed to mut because send packet expects mutable self reference
+//
 pub struct Ne2000TxToken<'a> {
-    device: &'a mut Ne2000,
+    device: &'a Ne2000,
 }
 
 // implementation is orientated on the rtl8139.rs module
 // generate new transmission token
+// a token to send a single network packet
+// see: https://docs.rs/smoltcp/latest/smoltcp/phy/trait.TxToken.html
+
 impl<'a> Ne2000TxToken<'a> {
-    pub fn new(device: &'a mut Ne2000) -> Self {
+    pub fn new(device: &'a Ne2000) -> Self {
         Self { device }
     }
 }
@@ -357,6 +362,10 @@ impl<'a> Ne2000TxToken<'a> {
 // implementation is orientated on the rtl8139.rs module
 // len: size of packet
 impl<'a> phy::TxToken for Ne2000TxToken<'a> {
+    // consumes the token to send a single network packet
+    // constructs buffer (size len) -> calls passed closure f
+    // in the closure a valid network packet should be constructed
+    // when closure returns, packet gets send out
     fn consume<R, F>(self, len: usize, f: F) -> R
     where
         F: FnOnce(&mut [u8]) -> R,
@@ -364,13 +373,13 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         // Allocate and fill local buffer
         // max. buffer size is 1514 (see documentation )
         // TODO: add reference in manual for this
-        let mut buffer = [0u8; 1514];
-        let data = &mut buffer[..len];
-        let result = f(data);
+        //let mut buffer = [0u8; 1514];
+        //let data = &mut buffer[..len];
+        //let result = f(data);
 
         // call send method using the NE2000
         // TODO: implement send Methode
-        self.device.send_packet(data);
+        //self.device.send_packet(data);
 
         result
     }
@@ -399,16 +408,25 @@ impl phy::Device for Ne2000 {
     where
         Self: 'a;
 
+    // called by smoltcp, when polling for new packets
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // disable receive for now; only transmit exists
         //self.transmit(_timestamp).map(|tx| (Ne2000RxToken, tx))
         None
     }
 
-    fn transmit(&mut self, _: Instant) -> Option<Self::TxToken<'_>> {
-        Some(Ne2000TxToken::new(self))
+    // Converts &mut self to &Ne2000 safely.
+    // Needed because RxToken and TxToken store a shared reference to the driver (not &mut self). See RTL8139 impl
+    // Returns a TxToken, which accepts the packet contents
+    fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
+        let device = unsafe { ptr::from_ref(self).as_ref()? };
+        Some(Ne2000TxToken::new(device))
     }
 
+    // define what the device supports
+    //max_burst_size = only send one packet at a time
+    // medium = send packet over Ethernet
+    // max_transmission_unit = define max. size of a packet
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
         caps.max_transmission_unit = 1514;
@@ -722,6 +740,8 @@ impl Ne2000 {
         ne2000.send_packet(&dummy);
         ne2000
     }
+
+    // TODO: check how to build a correct data packet in the documentation
 
     pub fn send_packet(&mut self, packet: &[u8]) {
         let packet_length = packet.len() as u16;
