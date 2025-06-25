@@ -6,6 +6,7 @@ use crate::{
         argument_token::ArgumentTokenContextFactory, blank_token::BlankTokenContextFactory,
         command_token::CommandTokenContextFactory, pipe_token::PipeTokenContextFactory,
         quote_end_token::QuoteEndTokenContextFactory, quote_start_token::QuoteStartTokenContextFactory,
+        separator_token::SeparatorTokenContextFactory,
     },
 };
 
@@ -17,6 +18,7 @@ pub enum TokenKind {
     QuoteStart,
     QuoteEnd,
     Pipe,
+    Separator,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -69,6 +71,7 @@ impl TokenContext {
             TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_after(prev_clx, kind, ch),
             TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_after(prev_clx, kind, ch),
             TokenKind::Pipe => PipeTokenContextFactory::create_after(prev_clx, kind, ch),
+            TokenKind::Separator => SeparatorTokenContextFactory::create_after(prev_clx, kind, ch),
         }
     }
 
@@ -80,6 +83,7 @@ impl TokenContext {
             TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_first(kind, ch),
             TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_first(kind, ch),
             TokenKind::Pipe => PipeTokenContextFactory::create_first(kind, ch),
+            TokenKind::Separator => SeparatorTokenContextFactory::create_first(kind, ch),
         }
     }
 
@@ -91,6 +95,7 @@ impl TokenContext {
             TokenKind::QuoteStart => QuoteStartTokenContextFactory::revalidate(self, kind, string),
             TokenKind::QuoteEnd => QuoteEndTokenContextFactory::revalidate(self, kind, string),
             TokenKind::Pipe => PipeTokenContextFactory::revalidate(self, kind, string),
+            TokenKind::Separator => SeparatorTokenContextFactory::revalidate(self, kind, string),
         }
     }
 }

@@ -1,0 +1,29 @@
+use crate::modules::lexer::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind, TokenStatus};
+
+pub struct SeparatorTokenContextFactory {}
+
+impl TokenContextFactory for SeparatorTokenContextFactory {
+    fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
+        TokenContext {
+            pos: 0,
+            cmd_pos: None,
+            short_flag_pos: None,
+            in_quote: None,
+            arg_kind: ArgumentKind::None,
+            status: TokenStatus::Valid,
+            is_pipe_open: false,
+        }
+    }
+
+    fn create_after(prev_clx: &TokenContext, _kind: &TokenKind, _ch: char) -> TokenContext {
+        TokenContext {
+            pos: prev_clx.pos + 1,
+            cmd_pos: None,
+            short_flag_pos: None,
+            in_quote: None,
+            arg_kind: ArgumentKind::None,
+            status: prev_clx.status.clone(),
+            is_pipe_open: false,
+        }
+    }
+}

@@ -122,7 +122,7 @@ impl Lexer {
     fn add(&mut self, tokens: &mut TokensContext, ch: char) {
         match ch {
             // Job control
-            ';' => { /* TODO separator */ }
+            ';' => self.add_separator(tokens, ch),
             '&' => { /* TODO background || and */ }
             '|' => self.add_pipe_or_logical_or(tokens, ch),
             // Redirection
@@ -145,6 +145,18 @@ impl Lexer {
             Ok(_) => return,
             Err(_) => tokens.pop(),
         };
+    }
+
+    fn add_separator(&mut self, tokens: &mut TokensContext, ch: char) {
+        // If no token => create first token
+        let Some(last_token) = tokens.last_mut() else {
+            let first_token = Token::new_first(TokenKind::Separator, ch);
+            tokens.push(first_token);
+            return;
+        };
+
+        let next_token = Token::new_after(last_token.clx(), TokenKind::Separator, ch);
+        tokens.push(next_token);
     }
 
     fn add_pipe_or_logical_or(&mut self, tokens: &mut TokensContext, ch: char) {
