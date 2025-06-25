@@ -11,6 +11,7 @@ impl TokenContextFactory for BlankTokenContextFactory {
             in_quote: None,
             arg_kind: ArgumentKind::None,
             status: TokenStatus::Valid,
+            is_pipe_open: false,
         }
     }
 
@@ -22,6 +23,7 @@ impl TokenContextFactory for BlankTokenContextFactory {
             in_quote: prev_clx.in_quote,
             arg_kind: prev_clx.arg_kind.clone(),
             status: prev_clx.status.clone(),
+            is_pipe_open: prev_clx.is_pipe_open,
         }
     }
 }

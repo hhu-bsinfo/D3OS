@@ -29,6 +29,7 @@ impl TokenContextFactory for ArgumentTokenContextFactory {
             in_quote: prev_clx.in_quote,
             arg_kind,
             status: prev_clx.status.clone(),
+            is_pipe_open: false,
         }
     }
 

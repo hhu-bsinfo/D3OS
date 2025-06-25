@@ -4,8 +4,8 @@ use crate::{
     event::event_handler::Error,
     modules::lexer::{
         argument_token::ArgumentTokenContextFactory, blank_token::BlankTokenContextFactory,
-        command_token::CommandTokenContextFactory, quote_end_token::QuoteEndTokenContextFactory,
-        quote_start_token::QuoteStartTokenContextFactory,
+        command_token::CommandTokenContextFactory, pipe_token::PipeTokenContextFactory,
+        quote_end_token::QuoteEndTokenContextFactory, quote_start_token::QuoteStartTokenContextFactory,
     },
 };
 
@@ -16,6 +16,7 @@ pub enum TokenKind {
     Blank,
     QuoteStart,
     QuoteEnd,
+    Pipe,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -56,6 +57,7 @@ pub struct TokenContext {
     // Kind of argument (if argument)
     pub arg_kind: ArgumentKind,
     pub status: TokenStatus,
+    pub is_pipe_open: bool,
 }
 
 impl TokenContext {
@@ -66,6 +68,7 @@ impl TokenContext {
             TokenKind::Blank => BlankTokenContextFactory::create_after(prev_clx, kind, ch),
             TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_after(prev_clx, kind, ch),
             TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_after(prev_clx, kind, ch),
+            TokenKind::Pipe => PipeTokenContextFactory::create_after(prev_clx, kind, ch),
         }
     }
 
@@ -76,6 +79,7 @@ impl TokenContext {
             TokenKind::Blank => BlankTokenContextFactory::create_first(kind, ch),
             TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_first(kind, ch),
             TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_first(kind, ch),
+            TokenKind::Pipe => PipeTokenContextFactory::create_first(kind, ch),
         }
     }
 
@@ -86,6 +90,7 @@ impl TokenContext {
             TokenKind::Blank => BlankTokenContextFactory::revalidate(self, kind, string),
             TokenKind::QuoteStart => QuoteStartTokenContextFactory::revalidate(self, kind, string),
             TokenKind::QuoteEnd => QuoteEndTokenContextFactory::revalidate(self, kind, string),
+            TokenKind::Pipe => PipeTokenContextFactory::revalidate(self, kind, string),
         }
     }
 }

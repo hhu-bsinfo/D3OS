@@ -15,6 +15,7 @@ impl TokenContextFactory for QuoteEndTokenContextFactory {
             in_quote: None,
             arg_kind: prev_clx.arg_kind.clone(),
             status: prev_clx.status.clone(),
+            is_pipe_open: prev_clx.is_pipe_open,
         }
     }
 }

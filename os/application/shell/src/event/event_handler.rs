@@ -12,13 +12,12 @@ pub enum Response {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Error {
     pub(crate) message: &'static str,
-    pub(crate) reason: Option<&'static str>,
     pub(crate) hint: Option<&'static str>,
 }
 
 impl Error {
-    pub const fn new(message: &'static str, reason: Option<&'static str>, hint: Option<&'static str>) -> Self {
-        Self { message, reason, hint }
+    pub const fn new(message: &'static str, hint: Option<&'static str>) -> Self {
+        Self { message, hint }
     }
 }
 

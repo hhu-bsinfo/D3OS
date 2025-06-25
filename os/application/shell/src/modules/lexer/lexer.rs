@@ -17,6 +17,17 @@ use crate::{
     sub_modules::alias::Alias,
 };
 
+pub struct ParserError {}
+
+impl ParserError {
+    pub fn create(hint: Option<&'static str>) -> Error {
+        Error {
+            message: "Invalid command line",
+            hint,
+        }
+    }
+}
+
 pub struct Lexer {
     // Sub module for processing aliases
     alias: Rc<RefCell<Alias>>,
@@ -113,7 +124,7 @@ impl Lexer {
             // Job control
             ';' => { /* TODO separator */ }
             '&' => { /* TODO background || and */ }
-            '|' => { /* TODO pipe || or */ }
+            '|' => self.add_pipe_or_logical_or(tokens, ch),
             // Redirection
             '>' => { /* TODO redirect_out_truncate || redirect_out_append */ }
             '<' => { /* TODO redirect_in_truncate || redirect_in_append */ }
@@ -134,6 +145,20 @@ impl Lexer {
             Ok(_) => return,
             Err(_) => tokens.pop(),
         };
+    }
+
+    fn add_pipe_or_logical_or(&mut self, tokens: &mut TokensContext, ch: char) {
+        // If no token => create first token
+        let Some(last_token) = tokens.last_mut() else {
+            let first_token = Token::new_first(TokenKind::Pipe, ch);
+            tokens.push(first_token);
+            return;
+        };
+
+        // TODO If last token is pipe => remove it and add logical or token
+
+        let next_token = Token::new_after(last_token.clx(), TokenKind::Pipe, ch);
+        tokens.push(next_token);
     }
 
     fn add_ambiguous(&mut self, tokens: &mut TokensContext, ch: char) {

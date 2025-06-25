@@ -11,6 +11,7 @@ impl TokenContextFactory for QuoteStartTokenContextFactory {
             in_quote: Some(ch),
             arg_kind: ArgumentKind::None,
             status: TokenStatus::Incomplete,
+            is_pipe_open: false,
         }
     }
 
@@ -22,6 +23,7 @@ impl TokenContextFactory for QuoteStartTokenContextFactory {
             in_quote: Some(ch),
             arg_kind: prev_clx.arg_kind.clone(),
             status: prev_clx.status.clone(),
+            is_pipe_open: prev_clx.is_pipe_open,
         }
     }
 }
