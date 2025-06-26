@@ -166,6 +166,7 @@ impl Lexer {
             return;
         }
 
+        // Else add next background token
         let next_token = Token::new_after(last_token.clx(), TokenKind::Background, ch);
         tokens.push(next_token);
     }
@@ -178,6 +179,7 @@ impl Lexer {
             return;
         };
 
+        // Else add next separator token
         let next_token = Token::new_after(last_token.clx(), TokenKind::Separator, ch);
         tokens.push(next_token);
     }
@@ -190,8 +192,18 @@ impl Lexer {
             return;
         };
 
-        // TODO If last token is pipe => remove it and add logical or token
+        // If last token is pipe => remove it and add logical or token
+        if *last_token.kind() == TokenKind::Pipe {
+            tokens.pop();
+            let next_token = match tokens.last() {
+                Some(token) => Token::new_after(token.clx(), TokenKind::Or, ch),
+                None => Token::new_first(TokenKind::Or, ch),
+            };
+            tokens.push(next_token);
+            return;
+        }
 
+        // Else add next pipe token
         let next_token = Token::new_after(last_token.clx(), TokenKind::Pipe, ch);
         tokens.push(next_token);
     }

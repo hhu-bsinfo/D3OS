@@ -4,6 +4,7 @@ mod background_token;
 mod blank_token;
 mod command_token;
 pub mod lexer;
+mod or_token;
 mod pipe_token;
 mod quote_end_token;
 mod quote_start_token;
