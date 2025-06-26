@@ -3,10 +3,11 @@ use alloc::string::{String, ToString};
 use crate::{
     event::event_handler::Error,
     modules::lexer::{
-        argument_token::ArgumentTokenContextFactory, background_token::BackgroundTokenContextFactory,
-        blank_token::BlankTokenContextFactory, command_token::CommandTokenContextFactory,
-        pipe_token::PipeTokenContextFactory, quote_end_token::QuoteEndTokenContextFactory,
-        quote_start_token::QuoteStartTokenContextFactory, separator_token::SeparatorTokenContextFactory,
+        and_token::AndTokenContextFactory, argument_token::ArgumentTokenContextFactory,
+        background_token::BackgroundTokenContextFactory, blank_token::BlankTokenContextFactory,
+        command_token::CommandTokenContextFactory, pipe_token::PipeTokenContextFactory,
+        quote_end_token::QuoteEndTokenContextFactory, quote_start_token::QuoteStartTokenContextFactory,
+        separator_token::SeparatorTokenContextFactory,
     },
 };
 
@@ -20,6 +21,7 @@ pub enum TokenKind {
     Pipe,
     Separator,
     Background,
+    And,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -74,6 +76,7 @@ impl TokenContext {
             TokenKind::Pipe => PipeTokenContextFactory::create_after(prev_clx, kind, ch),
             TokenKind::Separator => SeparatorTokenContextFactory::create_after(prev_clx, kind, ch),
             TokenKind::Background => BackgroundTokenContextFactory::create_after(prev_clx, kind, ch),
+            TokenKind::And => AndTokenContextFactory::create_after(prev_clx, kind, ch),
         }
     }
 
@@ -87,6 +90,7 @@ impl TokenContext {
             TokenKind::Pipe => PipeTokenContextFactory::create_first(kind, ch),
             TokenKind::Separator => SeparatorTokenContextFactory::create_first(kind, ch),
             TokenKind::Background => BackgroundTokenContextFactory::create_first(kind, ch),
+            TokenKind::And => AndTokenContextFactory::create_first(kind, ch),
         }
     }
 
@@ -100,6 +104,7 @@ impl TokenContext {
             TokenKind::Pipe => PipeTokenContextFactory::revalidate(self, kind, string),
             TokenKind::Separator => SeparatorTokenContextFactory::revalidate(self, kind, string),
             TokenKind::Background => BackgroundTokenContextFactory::revalidate(self, kind, string),
+            TokenKind::And => AndTokenContextFactory::revalidate(self, kind, string),
         }
     }
 }

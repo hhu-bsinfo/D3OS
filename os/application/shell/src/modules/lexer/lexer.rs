@@ -155,7 +155,16 @@ impl Lexer {
             return;
         };
 
-        // TODO If last token is background => remove it and add logical and token
+        // If last token is background => remove it and add logical and token
+        if *last_token.kind() == TokenKind::Background {
+            tokens.pop();
+            let next_token = match tokens.last() {
+                Some(token) => Token::new_after(token.clx(), TokenKind::And, ch),
+                None => Token::new_first(TokenKind::And, ch),
+            };
+            tokens.push(next_token);
+            return;
+        }
 
         let next_token = Token::new_after(last_token.clx(), TokenKind::Background, ch);
         tokens.push(next_token);
