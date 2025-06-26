@@ -141,10 +141,30 @@ impl Lexer {
             return;
         };
 
-        match last_token.pop() {
-            Ok(_) => return,
-            Err(_) => tokens.pop(),
-        };
+        match *last_token.kind() {
+            TokenKind::And => {
+                tokens.pop();
+                let replace_token = match tokens.last() {
+                    Some(token) => Token::new_after(token.clx(), TokenKind::Background, '&'),
+                    None => Token::new_first(TokenKind::Background, '&'),
+                };
+                tokens.push(replace_token);
+            }
+            TokenKind::Or => {
+                tokens.pop();
+                let replace_token = match tokens.last() {
+                    Some(token) => Token::new_after(token.clx(), TokenKind::Pipe, '|'),
+                    None => Token::new_first(TokenKind::Pipe, '|'),
+                };
+                tokens.push(replace_token);
+            }
+            _ => {
+                match last_token.pop() {
+                    Ok(_) => return,
+                    Err(_) => tokens.pop(),
+                };
+            }
+        }
     }
 
     fn add_background_or_logical_and(&mut self, tokens: &mut TokensContext, ch: char) {
