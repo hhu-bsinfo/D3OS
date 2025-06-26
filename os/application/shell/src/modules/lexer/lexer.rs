@@ -178,10 +178,11 @@ impl Lexer {
         // If last token is background => remove it and add logical and token
         if *last_token.kind() == TokenKind::Background {
             tokens.pop();
-            let next_token = match tokens.last() {
+            let mut next_token = match tokens.last() {
                 Some(token) => Token::new_after(token.clx(), TokenKind::And, ch),
                 None => Token::new_first(TokenKind::And, ch),
             };
+            next_token.push(ch);
             tokens.push(next_token);
             return;
         }
@@ -215,10 +216,11 @@ impl Lexer {
         // If last token is pipe => remove it and add logical or token
         if *last_token.kind() == TokenKind::Pipe {
             tokens.pop();
-            let next_token = match tokens.last() {
+            let mut next_token = match tokens.last() {
                 Some(token) => Token::new_after(token.clx(), TokenKind::Or, ch),
                 None => Token::new_first(TokenKind::Or, ch),
             };
+            next_token.push(ch);
             tokens.push(next_token);
             return;
         }
