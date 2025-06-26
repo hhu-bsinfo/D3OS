@@ -3,10 +3,10 @@ use alloc::string::{String, ToString};
 use crate::{
     event::event_handler::Error,
     modules::lexer::{
-        argument_token::ArgumentTokenContextFactory, blank_token::BlankTokenContextFactory,
-        command_token::CommandTokenContextFactory, pipe_token::PipeTokenContextFactory,
-        quote_end_token::QuoteEndTokenContextFactory, quote_start_token::QuoteStartTokenContextFactory,
-        separator_token::SeparatorTokenContextFactory,
+        argument_token::ArgumentTokenContextFactory, background_token::BackgroundTokenContextFactory,
+        blank_token::BlankTokenContextFactory, command_token::CommandTokenContextFactory,
+        pipe_token::PipeTokenContextFactory, quote_end_token::QuoteEndTokenContextFactory,
+        quote_start_token::QuoteStartTokenContextFactory, separator_token::SeparatorTokenContextFactory,
     },
 };
 
@@ -19,6 +19,7 @@ pub enum TokenKind {
     QuoteEnd,
     Pipe,
     Separator,
+    Background,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -72,6 +73,7 @@ impl TokenContext {
             TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_after(prev_clx, kind, ch),
             TokenKind::Pipe => PipeTokenContextFactory::create_after(prev_clx, kind, ch),
             TokenKind::Separator => SeparatorTokenContextFactory::create_after(prev_clx, kind, ch),
+            TokenKind::Background => BackgroundTokenContextFactory::create_after(prev_clx, kind, ch),
         }
     }
 
@@ -84,6 +86,7 @@ impl TokenContext {
             TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_first(kind, ch),
             TokenKind::Pipe => PipeTokenContextFactory::create_first(kind, ch),
             TokenKind::Separator => SeparatorTokenContextFactory::create_first(kind, ch),
+            TokenKind::Background => BackgroundTokenContextFactory::create_first(kind, ch),
         }
     }
 
@@ -96,6 +99,7 @@ impl TokenContext {
             TokenKind::QuoteEnd => QuoteEndTokenContextFactory::revalidate(self, kind, string),
             TokenKind::Pipe => PipeTokenContextFactory::revalidate(self, kind, string),
             TokenKind::Separator => SeparatorTokenContextFactory::revalidate(self, kind, string),
+            TokenKind::Background => BackgroundTokenContextFactory::revalidate(self, kind, string),
         }
     }
 }
