@@ -229,7 +229,7 @@ impl View {
             match event {
                 Event::Text(text) => {
                     if heading {
-                        (position, tmp_line_start) = View::render_string(
+                        (position, _) = View::render_string(
                             &String::from("\n"),
                             buffer,
                             *font.last().unwrap_or(&normal),
@@ -245,7 +245,7 @@ impl View {
                                 s.push('.');
                             }
 
-                            (position, tmp_line_start) = View::render_string(
+                            (position, _) = View::render_string(
                                 &format!("{}{} ", " ".repeat(list_indentation), s),
                                 buffer,
                                 *font.last().unwrap_or(&normal),
@@ -347,7 +347,7 @@ impl View {
                     _ => (),
                 },
                 Event::Rule => {
-                    (position, tmp_line_start) = View::render_string(
+                    (position, _) = View::render_string(
                         &String::from("\n"),
                         buffer,
                         *font.last().unwrap_or(&normal),
@@ -451,7 +451,7 @@ impl View {
         let input = document.text_buffer().to_string();
         let mut position = Vertex::zero();
         let mut rest: &str = &input;
-        let mut tmp_line_start: Vec<u32> = Vec::new();
+        let mut tmp_line_start: Vec<u32>;
         let mut line_start: Vec<u32> = Vec::new();
         let mut last_index: Span = Span { start: 0, end: 0 };
         let mut caret_pos: u32 = 0;
