@@ -1,6 +1,6 @@
 use crate::device::rtl8139::Rtl8139;
 // add the N2000 driver
-use crate::device::ne2000::Ne2000;
+use crate::device::ne2000::{Ne2000, Ne2000TxToken};
 use crate::process::thread::Thread;
 use crate::{pci_bus, scheduler, timer};
 use alloc::sync::Arc;
@@ -176,25 +176,24 @@ fn poll_ne2000() {
     let ne = NE2000.get().unwrap();
     let dev_ne2k = unsafe { ptr::from_ref(ne.deref()).cast_mut().as_mut().unwrap() };
 
-    let mut sockets = SOCKETS.get().unwrap().write();
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized").write();
 
     // Crate UDP socket with buffers
-    let rx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
-    let tx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
-    let socket = Socket::new(rx_buffer, tx_buffer);
-    let handle = sockets.add(socket);
+    //let rx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
+    //let tx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
+    //let socket = Socket::new(rx_buffer, tx_buffer);
+    //let handle = sockets.add(socket);
 
     // Bind, enqueue packet
-    let mut sock = sockets.get_mut::<Socket>(handle);
-    sock.bind(1234).unwrap();
+    //let mut sock = sockets.get_mut::<Socket>(handle);
+    //sock.bind(1234).unwrap();
 
-    let destination = IpEndpoint::new(IpAddress::v4(10, 0, 2, 2), 5678);
-    sock.send_slice(b"i hope this works", destination).unwrap();
+    //let destination = IpEndpoint::new(IpAddress::v4(10, 0, 2, 2), 5678);
+    //sock.send_slice(b"i hope this works", destination).unwrap();
 
     // start interface
     let mut interfaces = INTERFACES.write();
     for iface in interfaces.iter_mut() {
-        // This will call your NE2000 TxToken and perform the send
         info!("i hope this works");
         iface.poll(now, dev_ne2k, &mut sockets);
     }

@@ -1,15 +1,29 @@
+use crate::memory::{PAGE_SIZE, frames};
 use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use bitflags::bitflags;
+use core::ops::BitOr;
 use core::{ptr, slice};
 use log::info;
+// lock free algorithms and datastructes
+// queues: different queue implementations
+// mpsc : has the jiffy queue ; lock-free unbounded
+use nolock::queues::{mpmc, mpsc};
+
 use pci_types::{CommandRegister, EndpointHeader};
-use smallmap::Page;
+// smoltcp provides a full network stack for creating packets, sending, receiving etc.
+use alloc::sync::Arc;
 use smoltcp::phy;
 use smoltcp::phy::{DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 use smoltcp::wire::EthernetAddress;
 use spin::{Mutex, RwLock};
+
+// for writing to the registers
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
+use x86_64::structures::paging::frame::PhysFrameRange;
+use x86_64::structures::paging::page::PageRange;
+use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
+use x86_64::{PhysAddr, VirtAddr};
 
 static RESET: u8 = 0x1F;
 static TRANSMIT_START_PAGE: u8 = 0x40;
@@ -333,10 +347,16 @@ bitflags! {
     }
 }
 
+// par_registers : store the MAC ADDRESS
+// send_queue: needed for packet transmission process in smoltcp
 pub struct Ne2000 {
     base_address: u16,
     registers: Registers,
     par_registers: ParRegisters,
+    send_queue: (
+        Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>,
+        mpsc::jiffy::Sender<PhysFrameRange>,
+    ),
 }
 //& borrowing the Struct Ne2000
 // 'a lifetime annotation
@@ -380,6 +400,44 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         // call send method using the NE2000
         // TODO: implement send Methode
         //self.device.send_packet(data);
+        let phys_buffer = frames::alloc(1);
+        let phys_start_addr = phys_buffer.start.start_address();
+        let pages = PageRange {
+            start: Page::from_start_address(VirtAddr::new(phys_start_addr.as_u64())).unwrap(),
+            end: Page::from_start_address(VirtAddr::new(phys_buffer.end.start_address().as_u64()))
+                .unwrap(),
+        };
+
+        let kernel_process = process_manager().read().kernel_process().unwrap();
+        kernel_process.virtual_address_space.set_flags(
+            pages,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
+        );
+
+        // Queue physical memory buffer for deallocation after transmission (.enqueue)
+        //.1 is the Sender here
+        self.device
+            .send_queue
+            .1
+            .enqueue(phys_buffer)
+            .expect("Failed to enqueue physical buffer!");
+
+        // Let smoltcp write the packet data to the buffer
+        // slice : a view into a block of memory represented as a pointer and a length.
+        // example:
+        //let mut x = [1, 2, 3];
+        //let x = &mut x[..]; // Take a full slice of `x`.
+        //x[1] = 7;
+        //assert_eq!(x, &[1, 7, 3]);
+        // from_raw_parts_mut : Forms a mutable slice from a pointer and a length.
+
+        let buffer = unsafe {
+            slice::from_raw_parts_mut(phys_buffer.start.start_address().as_u64() as *mut u8, len)
+        };
+        let result = f(buffer);
+
+        // Send packet by writing physical address and packet length to transmit registers
+        self.device.send_packet(buffer);
 
         result
     }
@@ -450,10 +508,19 @@ impl Ne2000 {
         let base_address = bar0.unwrap_io() as u16;
         info!("NE2000 base address: [0x{:x}]", base_address);
 
+        // mpsc (multiple-producer, single-consumer)
+        // FIFO queue implementation
+
+        // queue creates a new empty queue and returns (Receiver, Sender)
+        // send_queue.enqueue(13) -> enque data
+        // see: https://docs.rs/nolock/latest/nolock/queues/mpsc/jiffy/index.html
+        let send_queue = mpsc::jiffy::queue();
+
         let mut ne2000 = Self {
             registers: Registers::new(base_address),
             base_address: base_address,
             par_registers: ParRegisters::new(base_address),
+            send_queue: (Mutex::new(send_queue.0), send_queue.1),
         };
 
         //ne2000.init();
@@ -736,8 +803,8 @@ impl Ne2000 {
             }*/
             info!("Finished Initialization");
         }
-        let dummy: [u8; 0] = [];
-        ne2000.send_packet(&dummy);
+        //let dummy: [u8; 0] = [];
+        //ne2000.send_packet(&dummy);
         ne2000
     }
 
