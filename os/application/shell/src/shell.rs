@@ -12,7 +12,7 @@ use core::cell::RefCell;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use logger::info;
-use modules::{command_line::CommandLine, executor::Executor, history::History, parser::Parser, writer::Writer};
+use modules::{command_line::CommandLine, executor::Executor, history::History, writer::Writer};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::{print, println, read::read_mixed};
@@ -42,7 +42,6 @@ impl Shell {
         modules.push(Box::new(Lexer::new(alias.clone())));
         modules.push(Box::new(AutoCompletion::new()));
         modules.push(Box::new(Writer::new()));
-        modules.push(Box::new(Parser::new()));
         modules.push(Box::new(Executor::new(alias.clone())));
 
         Self {

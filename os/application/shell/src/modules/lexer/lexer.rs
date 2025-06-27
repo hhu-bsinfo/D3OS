@@ -24,12 +24,14 @@ pub struct Lexer {
 
 impl EventHandler for Lexer {
     fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.executable.reset();
         clx.tokens.reset();
         Ok(Response::Ok)
     }
 
     fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.retokenize_with_alias(clx)
+        self.retokenize_with_alias(clx);
+        self.parse(clx)
     }
 
     fn on_line_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
@@ -54,6 +56,21 @@ impl EventHandler for Lexer {
 impl Lexer {
     pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
         Self { alias }
+    }
+
+    fn parse(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.tokens.get().iter().for_each(|token| match token.kind() {
+            TokenKind::Command => {
+                clx.executable.create_job(token.as_str());
+            }
+            TokenKind::Argument => {
+                clx.executable.add_argument_to_latest_job(token.as_str());
+            }
+            _ => (),
+        });
+
+        info!("{:?}", &clx.executable);
+        Ok(Response::Ok)
     }
 
     fn detokenize_to_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
