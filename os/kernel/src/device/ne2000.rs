@@ -1,5 +1,5 @@
 use crate::memory::{PAGE_SIZE, frames};
-use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
+use crate::{apic, device, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use bitflags::bitflags;
 use core::ops::BitOr;
 use core::{ptr, slice};
@@ -24,6 +24,8 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
+
+//type Ne2000Device = Arc<Mutex<Ne2000>>;
 
 static RESET: u8 = 0x1F;
 static TRANSMIT_START_PAGE: u8 = 0x40;
@@ -365,7 +367,7 @@ pub struct Ne2000 {
 // changed to mut because send packet expects mutable self reference
 //
 pub struct Ne2000TxToken<'a> {
-    device: &'a Ne2000,
+    device: &'a mut Ne2000,
 }
 
 // implementation is orientated on the rtl8139.rs module
@@ -374,7 +376,7 @@ pub struct Ne2000TxToken<'a> {
 // see: https://docs.rs/smoltcp/latest/smoltcp/phy/trait.TxToken.html
 
 impl<'a> Ne2000TxToken<'a> {
-    pub fn new(device: &'a Ne2000) -> Self {
+    pub fn new(device: &'a mut Ne2000) -> Self {
         Self { device }
     }
 }
@@ -400,6 +402,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         // call send method using the NE2000
         // TODO: implement send Methode
         //self.device.send_packet(data);
+        info!("Don't leave me here");
         let phys_buffer = frames::alloc(1);
         let phys_start_addr = phys_buffer.start.start_address();
         let pages = PageRange {
@@ -477,8 +480,9 @@ impl phy::Device for Ne2000 {
     // Needed because RxToken and TxToken store a shared reference to the driver (not &mut self). See RTL8139 impl
     // Returns a TxToken, which accepts the packet contents
     fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
-        let device = unsafe { ptr::from_ref(self).as_ref()? };
-        Some(Ne2000TxToken::new(device))
+        //let device = unsafe { ptr::from_ref(self).as_ref()? };
+        info!("==> transmit() requested by smoltcp!");
+        Some(Ne2000TxToken::new(self))
     }
 
     // define what the device supports
