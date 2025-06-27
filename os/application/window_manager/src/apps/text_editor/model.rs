@@ -100,6 +100,9 @@ impl<'b, 'v, 'r> Document<'b, 'v> {
     pub fn caret(&self) -> Caret {
         self.caret
     }
+    pub fn path(&self) -> Option<String> {
+        self.path.clone()
+    }
     fn next_line(&self, pos: usize) -> Option<usize> {
         let mut index = 0;
         if self.text_buffer.get_char(pos).is_some_and(|c| c == '\n') {
@@ -426,6 +429,7 @@ impl<'b, 'v, 'r> Document<'b, 'v> {
                     } => self.current_view = self.config.code_view,
                     _ => (),
                 },
+                CommandMessage::None => (),
             },
             Message::ViewMessage(msg) => self.scroll(msg),
             Message::DecodedKey(k) => match self.edit_mode {

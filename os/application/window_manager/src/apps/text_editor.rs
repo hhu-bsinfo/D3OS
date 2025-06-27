@@ -1,6 +1,7 @@
 use super::runnable::Runnable;
 use crate::api::LOG_SCREEN;
 use crate::apps::text_editor::config::TextEditorConfig;
+use crate::apps::text_editor::editor::OpenDocuments;
 use crate::apps::text_editor::messages::Message;
 use crate::apps::text_editor::view::View;
 use crate::components::container::basic_container::{AlignmentMode, LayoutMode, StretchMode};
@@ -9,13 +10,13 @@ use crate::signal::{ComponentRef, Signal};
 use crate::{api::Command, WindowManager};
 use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
+use editor::apply_message;
 use graphic::bitmap::{Bitmap, ScalingMode};
-use model::Document;
 use spin::rwlock::RwLock;
 use terminal::DecodedKey;
-use text_buffer::TextBuffer;
 
 mod config;
+mod editor;
 mod font;
 mod messages;
 mod model;
@@ -23,122 +24,11 @@ mod view;
 
 // Julius Drodofsky
 
-static FAC_EXAMPLE: &str = r#"
-// Calculate fac!
-int main() {
-    int n;
-    unsigned long long factorial = 1;
-
-    printf("Enter a positive integer: ");
-    scanf("%d", &n);
-
-    if (n < 0) {
-        printf("Error: Factorial is not defined for negative integers.\n");
-        return 1;
-    }
-
-    for (int i = 1; i <= n; ++i) {
-        factorial *= i;
-    }
-
-    printf("Factorial of %d is %llu\n", n, factorial);
-    return 0;
-}
-[package]
-name = "syntax"
-version = "0.1.0"
-edition = "2024"
-authors = ["Julius Carl Drodofsky <julius@drodofsky.xyz>"]
-
-[features]
-default = ["alloc"]
-alloc = []
-
-
-[dependencies]
-
-[dependencies.nom]
-version = "8"
-default-features = false
-features = ["alloc"]
-
-
-
-echo -n "Enter a number: "
-read num
-
-if test "$num" -lt 0
-    exit 1
-end
-
-result = 1
-counter = $num
-
-while test "$counter" -gt 1
-    result = (expr $result \* $counter)
-    counter = (expr $counter - 1)
-end
-
-echo "Factorial of $num is $result"
-"#;
-static MARKDOWN_EXAMPLE: &str = r#"
-# Heading 1
-
-## Heading 2
-
-This is a paragraph with **bold text** and *italic text*.
-
----
-
-Another paragraph after a horizontal rule.
-
-Some **Strong** Text.
-
-Some *Emphasis* Text.
-
-### Heading3
-
-- Unordered item 1  
-- Unordered item 2  
-  - Nested unordered item  
-  - Another nested item  
-
-1. Ordered item 1  
-2. Ordered item 2  
-   1. Nested ordered item  
-   2. Another nested item
-"#;
-
-const KEYWORDS: &[&str] = &[
-    "int",
-    "return",
-    "for",
-    "if",
-    "end",
-    "while",
-    "unsigned",
-    "long",
-    "package",
-    "dependencies",
-    "features",
-    "echo",
-    "read",
-];
-
 pub struct TextEditor;
-
-fn apply_message(document: &Rc<RwLock<Document>>, canvas: &Rc<RwLock<Bitmap>>, msg: Message) {
-    document.write().update(msg);
-    let mut msg = View::render(&document.read(), &mut canvas.write());
-    while msg.is_some() {
-        document.write().update(Message::ViewMessage(msg.unwrap()));
-        msg = View::render(&document.read(), &mut canvas.write());
-    }
-}
 
 impl Runnable for TextEditor {
     fn run() {
-        let config = TextEditorConfig::new(900, 600, &KEYWORDS);
+        let config = TextEditorConfig::new(900, 600, &[]);
         let bitmap = Bitmap {
             width: (0.7 * (config.width as f32)) as u32,
             height: (0.7 * (config.height as f32)) as u32,
@@ -151,14 +41,13 @@ impl Runnable for TextEditor {
         let canvas = Rc::new(RwLock::new(bitmap));
         let canvs_clone = Rc::clone(&canvas);
         let edit_canvas: Rc<RwLock<Option<ComponentRef>>> = Rc::new(RwLock::new(None));
-        let text_buffer = TextBuffer::from_str(FAC_EXAMPLE);
-        let document = Document::new(Some(String::from("scratch")), text_buffer, config);
-        View::render(&document, &mut canvas.write());
+        let mut documents = OpenDocuments::dummy();
+        View::render(documents.current().unwrap(), &mut canvas.write());
         let mut container_styling = ContainerStyling::default();
         container_styling.show_border = false;
         container_styling.maintain_aspect_ratio = false;
         container_styling.child_padding = 2;
-        let model = Rc::new(RwLock::<Document<'_, '_>>::new(document));
+        let model = Rc::new(RwLock::<OpenDocuments<'_, '_>>::new(documents));
         let _parent_container = api
             .execute(
                 handle,
@@ -303,6 +192,68 @@ impl Runnable for TextEditor {
                         &model_clone,
                         &Rc::clone(&canvas_clone),
                         Message::CommandMessage(messages::CommandMessage::CLike),
+                    );
+                    edit_canvas_clone
+                        .write()
+                        .as_ref()
+                        .unwrap()
+                        .write()
+                        .mark_dirty();
+                })),
+                styling: None,
+            },
+        );
+
+        let model_clone = Rc::clone(&model);
+        let canvas_clone = Rc::clone(&canvas);
+        let edit_canvas_clone = Rc::clone(&edit_canvas);
+        let _prev = api.execute(
+            handle,
+            Some(_menu_container.clone()),
+            Command::CreateButton {
+                log_rect_data: RectData {
+                    top_left: Vertex::new(0, 0),
+                    width: 60,
+                    height: 60,
+                },
+                label: Some((Signal::new(String::from("<")), 1)),
+                on_click: Some(Box::new(move || {
+                    model_clone.write().prev();
+                    apply_message(
+                        &model_clone,
+                        &Rc::clone(&canvas_clone),
+                        Message::CommandMessage(messages::CommandMessage::None),
+                    );
+                    edit_canvas_clone
+                        .write()
+                        .as_ref()
+                        .unwrap()
+                        .write()
+                        .mark_dirty();
+                })),
+                styling: None,
+            },
+        );
+
+        let model_clone = Rc::clone(&model);
+        let canvas_clone = Rc::clone(&canvas);
+        let edit_canvas_clone = Rc::clone(&edit_canvas);
+        let _next = api.execute(
+            handle,
+            Some(_menu_container.clone()),
+            Command::CreateButton {
+                log_rect_data: RectData {
+                    top_left: Vertex::new(0, 0),
+                    width: 60,
+                    height: 60,
+                },
+                label: Some((Signal::new(String::from(">")), 1)),
+                on_click: Some(Box::new(move || {
+                    model_clone.write().next();
+                    apply_message(
+                        &model_clone,
+                        &Rc::clone(&canvas_clone),
+                        Message::CommandMessage(messages::CommandMessage::None),
                     );
                     edit_canvas_clone
                         .write()

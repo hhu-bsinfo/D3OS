@@ -15,6 +15,8 @@ pub enum CommandMessage {
     Markdown,
     //clike syntax highlighting
     CLike,
+    // just redraw
+    None,
 }
 
 pub enum Message {
