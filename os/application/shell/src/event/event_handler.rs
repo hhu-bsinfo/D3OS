@@ -13,11 +13,24 @@ pub enum Response {
 pub struct Error {
     pub(crate) message: &'static str,
     pub(crate) hint: Option<&'static str>,
+    pub(crate) start_inline: bool,
 }
 
 impl Error {
     pub const fn new(message: &'static str, hint: Option<&'static str>) -> Self {
-        Self { message, hint }
+        Self {
+            message,
+            hint,
+            start_inline: false,
+        }
+    }
+
+    pub const fn new_inline(message: &'static str, hint: Option<&'static str>) -> Self {
+        Self {
+            message,
+            hint,
+            start_inline: true,
+        }
     }
 }
 

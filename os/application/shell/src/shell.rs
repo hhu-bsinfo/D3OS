@@ -78,7 +78,12 @@ impl Shell {
     }
 
     fn handle_error(&mut self, error: Error) {
-        println!("{}", error.message);
+        println!(
+            "{}[38;2;255;0;0m{}[0m\n[38;2;200;80;80m{}[0m",
+            if error.start_inline { "" } else { "\n" },
+            error.message,
+            error.hint.unwrap_or("")
+        );
         self.clx.events.trigger(Event::PrepareNewLine);
     }
 

@@ -13,7 +13,7 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::parser::token::{Token, TokenKind},
+    modules::parser::token::{Token, TokenKind, TokenStatus},
     sub_modules::alias::Alias,
 };
 
@@ -59,15 +59,21 @@ impl Parser {
     }
 
     fn parse(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        clx.tokens.get().iter().for_each(|token| match token.kind() {
-            TokenKind::Command => {
-                clx.executable.create_job(token.as_str());
+        for token in clx.tokens.get() {
+            match token.status() {
+                TokenStatus::Error(error) => return Err((*error).clone()),
+                _ => (),
             }
-            TokenKind::Argument => {
-                clx.executable.add_argument_to_latest_job(token.as_str());
+            match token.kind() {
+                TokenKind::Command => {
+                    clx.executable.create_job(token.as_str());
+                }
+                TokenKind::Argument => {
+                    clx.executable.add_argument_to_latest_job(token.as_str());
+                }
+                _ => (),
             }
-            _ => (),
-        });
+        }
 
         info!("{:?}", &clx.executable);
         Ok(Response::Ok)

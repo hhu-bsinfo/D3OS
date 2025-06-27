@@ -50,7 +50,7 @@ impl Executor {
         };
         match thread {
             Some(thread) => thread.join(),
-            None => return Err(Error::new("Command not found!", None)),
+            None => return Err(Error::new_inline("Command not found!", None)),
         };
         Ok(Response::Ok)
     }
