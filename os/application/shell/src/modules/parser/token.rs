@@ -2,7 +2,7 @@ use alloc::string::{String, ToString};
 
 use crate::{
     event::event_handler::Error,
-    modules::lexer::{
+    modules::parser::{
         and_token::AndTokenContextFactory, argument_token::ArgumentTokenContextFactory,
         background_token::BackgroundTokenContextFactory, blank_token::BlankTokenContextFactory,
         command_token::CommandTokenContextFactory, or_token::OrTokenContextFactory,

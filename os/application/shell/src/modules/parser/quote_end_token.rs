@@ -1,4 +1,4 @@
-use crate::modules::lexer::token::{TokenContext, TokenContextFactory, TokenKind};
+use crate::modules::parser::token::{TokenContext, TokenContextFactory, TokenKind};
 
 pub struct QuoteEndTokenContextFactory {}
 

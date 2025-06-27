@@ -1,6 +1,6 @@
 use crate::{
     event::event_handler::Error,
-    modules::lexer::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
+    modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
 };
 
 const MORE_THAN_ONE_CMD_IN_SEGMENT_ERROR: Error = Error::new(

@@ -1,18 +1,18 @@
 use crate::{
     event::event_handler::Error,
-    modules::lexer::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
+    modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
 };
 
-const LOGICAL_OR_BEFORE_CMD_ERROR: Error = Error::new(
+const LOGICAL_AND_BEFORE_CMD_ERROR: Error = Error::new(
     "Invalid command line",
     Some(
-        "If you want to use a or condition, try moving || between commands (Example: cmd1 || cmd2)\nIf you want || as normal char, try wrapping it in parentheses (Example: echo 'No || condition')",
+        "If you want to use a and condition, try moving && between commands (Example: cmd1 && cmd2)\nIf you want && as normal char, try wrapping it in parentheses (Example: echo 'No && condition')",
     ),
 );
 
-pub struct OrTokenContextFactory {}
+pub struct AndTokenContextFactory {}
 
-impl TokenContextFactory for OrTokenContextFactory {
+impl TokenContextFactory for AndTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
         TokenContext {
             pos: 0,
@@ -20,7 +20,7 @@ impl TokenContextFactory for OrTokenContextFactory {
             short_flag_pos: None,
             in_quote: None,
             arg_kind: ArgumentKind::None,
-            error: Some(&LOGICAL_OR_BEFORE_CMD_ERROR),
+            error: Some(&LOGICAL_AND_BEFORE_CMD_ERROR),
             require_cmd: true,
         }
     }
@@ -28,7 +28,7 @@ impl TokenContextFactory for OrTokenContextFactory {
     fn create_after(prev_clx: &TokenContext, _kind: &TokenKind, _ch: char) -> TokenContext {
         let error = prev_clx.error.or_else(|| {
             if prev_clx.cmd_pos.is_none() {
-                Some(&LOGICAL_OR_BEFORE_CMD_ERROR)
+                Some(&LOGICAL_AND_BEFORE_CMD_ERROR)
             } else {
                 None
             }

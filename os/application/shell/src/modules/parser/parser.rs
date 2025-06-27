@@ -13,16 +13,16 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::lexer::token::{Token, TokenKind},
+    modules::parser::token::{Token, TokenKind},
     sub_modules::alias::Alias,
 };
 
-pub struct Lexer {
+pub struct Parser {
     // Sub module for processing aliases
     alias: Rc<RefCell<Alias>>,
 }
 
-impl EventHandler for Lexer {
+impl EventHandler for Parser {
     fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
         clx.executable.reset();
         clx.tokens.reset();
@@ -53,7 +53,7 @@ impl EventHandler for Lexer {
     }
 }
 
-impl Lexer {
+impl Parser {
     pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
         Self { alias }
     }

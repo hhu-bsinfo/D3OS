@@ -23,7 +23,7 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler},
     },
-    modules::{auto_completion::AutoCompletion, lexer::lexer::Lexer},
+    modules::{auto_completion::AutoCompletion, parser::parser::Parser},
     sub_modules::alias::Alias,
 };
 
@@ -39,7 +39,7 @@ impl Shell {
 
         modules.push(Box::new(CommandLine::new()));
         modules.push(Box::new(History::new()));
-        modules.push(Box::new(Lexer::new(alias.clone())));
+        modules.push(Box::new(Parser::new(alias.clone())));
         modules.push(Box::new(AutoCompletion::new()));
         modules.push(Box::new(Writer::new()));
         modules.push(Box::new(Executor::new(alias.clone())));

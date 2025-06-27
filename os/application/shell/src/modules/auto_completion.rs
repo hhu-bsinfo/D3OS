@@ -12,7 +12,7 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::lexer::token::{ArgumentKind, Token, TokenKind},
+    modules::parser::token::{ArgumentKind, Token, TokenKind},
 };
 
 #[derive(Debug)]

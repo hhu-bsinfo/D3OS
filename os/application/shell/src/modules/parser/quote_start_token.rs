@@ -1,6 +1,6 @@
 use crate::{
     event::event_handler::Error,
-    modules::lexer::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
+    modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
 };
 
 const NESTED_QUOTE_ERROR: Error = Error::new("Invalid command line", Some("Nesting quotes is not supported"));

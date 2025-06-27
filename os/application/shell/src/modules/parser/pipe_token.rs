@@ -1,18 +1,18 @@
 use crate::{
     event::event_handler::Error,
-    modules::lexer::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
+    modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
 };
 
-const BG_BEFORE_CMD_ERROR: Error = Error::new(
+const PIPE_BEFORE_CMD_ERROR: Error = Error::new(
     "Invalid command line",
     Some(
-        "If you want to use a background execution, try moving & after the command (Example: cmd1 arg1 arg2 &)\nIf you want & as normal char, try wrapping it in parentheses (Example: echo 'No & background execution')",
+        "If you want to use a pipe, try moving | between commands (Example: cmd1 | cmd2)\nIf you want | as normal char, try wrapping it in parentheses (Example: echo 'No | pipe')",
     ),
 );
 
-pub struct BackgroundTokenContextFactory {}
+pub struct PipeTokenContextFactory {}
 
-impl TokenContextFactory for BackgroundTokenContextFactory {
+impl TokenContextFactory for PipeTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
         TokenContext {
             pos: 0,
@@ -20,7 +20,7 @@ impl TokenContextFactory for BackgroundTokenContextFactory {
             short_flag_pos: None,
             in_quote: None,
             arg_kind: ArgumentKind::None,
-            error: Some(&BG_BEFORE_CMD_ERROR),
+            error: Some(&PIPE_BEFORE_CMD_ERROR),
             require_cmd: true,
         }
     }
@@ -28,7 +28,7 @@ impl TokenContextFactory for BackgroundTokenContextFactory {
     fn create_after(prev_clx: &TokenContext, _kind: &TokenKind, _ch: char) -> TokenContext {
         let error = prev_clx.error.or_else(|| {
             if prev_clx.cmd_pos.is_none() {
-                Some(&BG_BEFORE_CMD_ERROR)
+                Some(&PIPE_BEFORE_CMD_ERROR)
             } else {
                 None
             }
