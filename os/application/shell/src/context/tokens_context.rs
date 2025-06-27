@@ -1,19 +1,24 @@
 use alloc::vec::Vec;
 
-use crate::modules::lexer::token::Token;
+use crate::modules::lexer::token::{Token, TokenStatus};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct TokensContext {
     tokens: Vec<Token>,
+    error_count: usize,
 }
 
 impl TokensContext {
     pub fn new() -> Self {
-        TokensContext::default()
+        Self {
+            tokens: Vec::new(),
+            error_count: 0,
+        }
     }
 
     pub fn reset(&mut self) {
-        *self = TokensContext::default()
+        self.tokens.clear();
+        self.error_count = 0;
     }
 
     pub fn get(&self) -> &Vec<Token> {
@@ -29,15 +34,36 @@ impl TokensContext {
     }
 
     pub fn push(&mut self, token: Token) {
+        if matches!(token.clx().status, TokenStatus::Error(_)) {
+            self.error_count += 1;
+        }
         self.tokens.push(token);
     }
 
     pub fn pop(&mut self) -> Option<Token> {
-        self.tokens.pop()
+        let token = self.tokens.pop();
+        if token
+            .as_ref()
+            .is_some_and(|token| matches!(token.clx().status, TokenStatus::Error(_)))
+        {
+            self.error_count -= 1;
+        }
+        token
     }
 
     pub fn is_empty(&self) -> bool {
         self.tokens.is_empty()
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.error_count > 0
+    }
+
+    pub fn is_incomplete(&self) -> bool {
+        match self.tokens.last() {
+            Some(token) => token.clx().status == TokenStatus::Incomplete,
+            None => false,
+        }
     }
 
     pub fn find_last_command(&self) -> Option<&Token> {
