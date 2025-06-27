@@ -132,6 +132,14 @@ impl Parser {
     }
 
     fn add(&mut self, tokens: &mut TokensContext, ch: char) {
+        if tokens
+            .last()
+            .is_some_and(|token| token.clx().in_quote.is_some_and(|quote| quote != ch))
+        {
+            self.add_ambiguous(tokens, ch);
+            return;
+        }
+
         match ch {
             // Job control
             ';' => self.add_separator(tokens, ch),
@@ -273,12 +281,6 @@ impl Parser {
             tokens.push(first_token);
             return;
         };
-
-        // If in quote => add to in quote token
-        if last_token.is_in_quote() {
-            last_token.push(ch);
-            return;
-        }
 
         // Else => Append blank token
         let prev_clx = last_token.clx();
