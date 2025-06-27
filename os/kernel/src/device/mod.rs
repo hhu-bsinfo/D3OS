@@ -12,4 +12,4 @@ pub mod rtl8139;
 pub mod serial;
 
 // make module public
-pub mod ne2000;
+pub mod ne2k;

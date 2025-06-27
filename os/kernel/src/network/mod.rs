@@ -1,6 +1,6 @@
 use crate::device::rtl8139::Rtl8139;
 // add the N2000 driver
-use crate::device::ne2000::{Ne2000, Ne2000TxToken};
+use crate::device::ne2k::ne2000::{Ne2000, Ne2000TxToken};
 use crate::process::thread::Thread;
 use crate::{pci_bus, scheduler, timer};
 use alloc::sync::Arc;
@@ -63,11 +63,11 @@ pub fn init() {
     let devices2 = pci_bus().search_by_ids(0x10ec, 0x8029);
     if devices2.len() > 0 {
         NE2000.call_once(|| {
-            info!("Found Realtek 8029 network controller");
+            info!("\x1b[1;31mFound Realtek 8029 network controller");
             //let ne2k = Arc::new(Ne2000::new(devices2[0]));
             let ne2k = Arc::new(Ne2000::new(devices2[0]));
 
-            info!("Ne2000 MAC address: [{}]", ne2k.read_mac());
+            info!("\x1b[1;31mNe2000 MAC address: [{}]", ne2k.read_mac());
             ne2k
         });
     }
@@ -195,11 +195,14 @@ fn poll_ne2000() {
     let destination = IpEndpoint::new(IpAddress::v4(10, 0, 2, 2), 1798);
     sock.send_slice(b"i hope this works", destination).unwrap();
 
-    info!("i hope this works (before loop)");
+    //info!("i hope this works (before loop)");
     // start interface
+    let mut counter: u8 = 0;
     for iface in interfaces.iter_mut() {
+        info!("Polling, Iteration: {}", counter);
         // check if smoltcp processes something
-        info!("i hope this works");
+        //info!("i hope this works");
         iface.poll(now, dev_ne2k, &mut sockets);
+        counter += 1;
     }
 }
