@@ -17,17 +17,6 @@ use crate::{
     sub_modules::alias::Alias,
 };
 
-pub struct ParserError {}
-
-impl ParserError {
-    pub fn create(hint: Option<&'static str>) -> Error {
-        Error {
-            message: "Invalid command line",
-            hint,
-        }
-    }
-}
-
 pub struct Lexer {
     // Sub module for processing aliases
     alias: Rc<RefCell<Alias>>,

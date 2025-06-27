@@ -1,4 +1,4 @@
-use crate::modules::lexer::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind, TokenStatus};
+use crate::modules::lexer::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind};
 
 pub struct SeparatorTokenContextFactory {}
 
@@ -10,8 +10,8 @@ impl TokenContextFactory for SeparatorTokenContextFactory {
             short_flag_pos: None,
             in_quote: None,
             arg_kind: ArgumentKind::None,
-            status: TokenStatus::Valid,
-            is_pipe_open: false,
+            error: None,
+            require_cmd: false,
         }
     }
 
@@ -22,8 +22,8 @@ impl TokenContextFactory for SeparatorTokenContextFactory {
             short_flag_pos: None,
             in_quote: None,
             arg_kind: ArgumentKind::None,
-            status: prev_clx.status.clone(),
-            is_pipe_open: false,
+            error: prev_clx.error,
+            require_cmd: false,
         }
     }
 }

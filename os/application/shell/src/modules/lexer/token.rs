@@ -29,7 +29,21 @@ pub enum TokenKind {
 pub enum TokenStatus {
     Valid,
     Incomplete,
-    Error(Error),
+    Error(&'static Error),
+}
+
+impl TokenStatus {
+    pub fn is_error(&self) -> bool {
+        matches!(self, Self::Error(_))
+    }
+
+    pub fn is_incomplete(&self) -> bool {
+        *self == Self::Incomplete
+    }
+
+    pub fn is_valid(&self) -> bool {
+        *self == Self::Valid
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -62,8 +76,8 @@ pub struct TokenContext {
     pub in_quote: Option<char>,
     // Kind of argument (if argument)
     pub arg_kind: ArgumentKind,
-    pub status: TokenStatus,
-    pub is_pipe_open: bool,
+    pub error: Option<&'static Error>,
+    pub require_cmd: bool,
 }
 
 impl TokenContext {
@@ -118,19 +132,58 @@ pub struct Token {
     kind: TokenKind,
     content: String,
     clx: TokenContext,
+    status: TokenStatus,
 }
 
 impl Token {
     pub fn new_first(kind: TokenKind, ch: char) -> Self {
         let clx = TokenContext::create_first(&kind, ch);
         let content = ch.to_string();
-        Self { kind, content, clx }
+        let status = match clx.error {
+            Some(error) => TokenStatus::Error(error),
+            None => Self::check_status(&clx),
+        };
+
+        Self {
+            kind,
+            content,
+            clx,
+            status,
+        }
     }
 
     pub fn new_after(prev_clx: &TokenContext, kind: TokenKind, ch: char) -> Self {
         let clx = TokenContext::create_after(&kind, ch, prev_clx);
         let content = ch.to_string();
-        Self { kind, content, clx }
+        let status = match clx.error {
+            Some(error) => TokenStatus::Error(error),
+            None => Self::check_status(&clx),
+        };
+
+        Self {
+            kind,
+            content,
+            clx,
+            status,
+        }
+    }
+
+    fn check_status(clx: &TokenContext) -> TokenStatus {
+        if clx.require_cmd {
+            return TokenStatus::Incomplete;
+        }
+        if clx.in_quote.is_some() {
+            return TokenStatus::Incomplete;
+        }
+
+        Self::check_dynamic_status(clx)
+    }
+
+    fn check_dynamic_status(clx: &TokenContext) -> TokenStatus {
+        match clx.arg_kind {
+            ArgumentKind::ShortFlag | ArgumentKind::ShortOrLongFlag => TokenStatus::Incomplete,
+            _ => TokenStatus::Valid,
+        }
     }
 
     pub fn kind(&self) -> &TokenKind {
@@ -139,6 +192,10 @@ impl Token {
 
     pub fn clx(&self) -> &TokenContext {
         &self.clx
+    }
+
+    pub fn status(&self) -> &TokenStatus {
+        &self.status
     }
 
     pub fn as_str(&self) -> &str {
@@ -165,6 +222,10 @@ impl Token {
 
     fn revalidate(&mut self) {
         self.clx.revalidate(&self.kind, &self.content);
+
+        if self.status.is_valid() {
+            self.status = Self::check_dynamic_status(&self.clx);
+        }
     }
 
     pub fn is_ambiguous(&self) -> bool {

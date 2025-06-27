@@ -28,8 +28,8 @@ impl TokenContextFactory for ArgumentTokenContextFactory {
             short_flag_pos,
             in_quote: prev_clx.in_quote,
             arg_kind,
-            status: prev_clx.status.clone(),
-            is_pipe_open: false,
+            error: prev_clx.error,
+            require_cmd: false,
         }
     }
 
