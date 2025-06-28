@@ -5,6 +5,12 @@
    ║ space. This includes managing virtual memory areas, allocating frames   ║
    ║ for full or partial vmas, as well as creating page mappings.            ║
    ║                                                                         ║
+   ║ Public conevience functions:                                            ║
+   ║   - map_devmem_identity       map physical device memory in kernel space║
+   ║                               (identity mapped) and allocate a vma      ║
+   ║   - alloc_map_identity        allocate, map page frames in kernel space ║
+   ║                               (identity mapped) and allocate a vma      ║
+   ║                                                                         ║
    ║ Public functions:                                                       ║
    ║   - alloc_vma                 allocate a page range in an address space ║
    ║   - alloc_pfr_for_vma         allocate pf range for full vma            ║
@@ -31,15 +37,15 @@
 /// a process address space. Below is a description of steps for typical
 /// memory allocations.
 ///
-///     Device memory:
-///     1. alloc_vma
-///     2. map_pfr_for_vma
+///  Map device memory:
+///     => map_devmem_identity
 ///  
 /// User stack:
 ///     1. alloc_vma
 ///     2. alloc_pfr_for_partial_vma
-///     3, map_pfr_for_partial_vma
+///     3. map_partial_vma
 ///
+
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::ops::Deref;
@@ -55,6 +61,7 @@ use x86_64::structures::paging::{Page, PageTableFlags};
 use crate::cpu;
 use crate::memory::frames;
 use crate::memory::frames::phys_limit;
+use crate::memory::pages;
 use crate::memory::pages::Paging;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::vma::{VirtualMemoryArea, VmaType};
@@ -122,6 +129,7 @@ pub struct VirtualAddressSpace {
 }
 
 impl VirtualAddressSpace {
+
     /// Initialize a new virtual address space with the given `page_tables`.
     pub fn new(page_tables: Arc<Paging>) -> Self {
         let first_usable_user_addr = VirtAddr::new(crate::consts::USER_SPACE_START as u64);
@@ -384,6 +392,99 @@ impl VirtualAddressSpace {
             info!("{area:?}");
         }
     }
+
+    /// Helper function to align an address up to the next page boundary.
+    fn align_up(addr: u64) -> u64 {
+        let ps = PAGE_SIZE as u64;
+        (addr + ps - 1) & !(ps - 1)
+    }
+        
+    /// Map the page frame range [`start_phys_addr`, `end_phys_addr`) - identity mapped in kernel space. No page frames are allocated! \
+    /// `start_phys_addr` must be page aligned. \
+    /// `end_phys_addr` must be greater than `start_phys_addr` but no need to be page aligned. If it is not page aligned, it will be aligned up. \
+    /// A vma ist created using the parameters `typ` and `tag`.
+    pub fn map_devmem_identity(
+        &self,
+        start_phys_addr: u64,
+        end_phys_addr: u64,
+        flags: PageTableFlags,
+        typ: VmaType,
+        tag: &str,
+    ) -> Page {
+        assert!(end_phys_addr > start_phys_addr , "'end_phys_addr' must be larger than 'start_phys_addr'");
+
+        /// Calc page frame range (nneded for mapping))
+        let start_page_frame =
+            frames::frame_from_u64(start_phys_addr).expect("start_phys_addr is not page aligned");
+        let end_page_frame = frames::frame_from_u64( Self::align_up(end_phys_addr)).expect("end_phys_addr is not page aligned");
+        let pfr = PhysFrameRange {
+            start: start_page_frame,
+            end: end_page_frame,
+        };
+
+        /// Calc page range and alloc vma
+        let start_page_addr =
+            pages::page_from_u64(start_phys_addr).expect("start_phys_addr is not page aligned");
+        let end_page_addr = pages::page_from_u64( Self::align_up(end_phys_addr)).expect("end_phys_addr is not page aligned");
+        let pr = PageRange {
+            start: start_page_addr,
+            end: end_page_addr,
+        };
+        let vma = self
+            .alloc_vma(
+                Some(start_page_addr),
+                pr.len() as u64,
+                MemorySpace::Kernel,
+                typ,
+                tag,
+            )
+            .expect("alloc_vma failed");
+
+        // Now we do the mapping
+        self.map_pfr_for_vma(&vma, pfr, flags)
+            .expect("map_pfr_for_vma failed in map_devmem_identity");
+
+
+        pr.start
+    }
+
+
+    /// Alloc `num_pf` page frames, en bloc, identity mapped in kernel space. 
+    /// A vma ist created using the parameters `typ` and `tag`.
+    pub fn alloc_map_identity(
+        &self,
+        num_pf: u64,
+        flags: PageTableFlags,
+        typ: VmaType,
+        tag: &str,
+    ) -> PageRange {
+
+        /// Alloc page frame range
+        let pfr = frames::alloc(num_pf as usize);
+
+        // Create page from pfr.start
+        let start_page = pages::page_from_u64(pfr.start.start_address().as_u64()).expect("pfr.start is not page aligned");   
+
+        let vma = self
+            .alloc_vma(
+                Some(start_page),
+                pfr.len() as u64,
+                MemorySpace::Kernel,
+                typ,
+                tag,
+            )
+            .expect("alloc_vma failed");
+
+        // Now we do the mapping
+        self.map_pfr_for_vma(&vma, pfr, flags)
+            .expect("map_pfr_for_vma failed");
+
+        PageRange {
+            start: start_page,
+            end: start_page + num_pf,
+        }
+    }
+
 }
 
 impl Drop for VirtualAddressSpace {

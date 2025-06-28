@@ -1,6 +1,6 @@
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::memory::{frames,pages,MemorySpace};
+use crate::memory::frames;
 use crate::memory::vma::VmaType;
 use crate::{acpi_tables, allocator, interrupt_dispatcher, process_manager, scheduler, timer};
 use acpi::InterruptModel;
@@ -12,9 +12,9 @@ use alloc::vec::Vec;
 use log::{info, warn};
 use raw_cpuid::CpuId;
 use spin::Mutex;
+use uefi::boot::PAGE_SIZE;
 use x2apic::ioapic::{IoApic, IrqFlags, IrqMode, RedirectionTableEntry};
 use x2apic::lapic::{LocalApic, LocalApicBuilder, TimerDivide, TimerMode};
-use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::PageTableFlags;
 
 pub struct Apic {
@@ -271,27 +271,16 @@ impl Apic {
         let process = process_manager().read().kernel_process().unwrap();
 
         let lapic_registers_phys_addr = madt.local_apic_address as u64;
-        let lapic_registers_page_frame = frames::frame_from_u64(lapic_registers_phys_addr).expect("Local Apic MMIO address is not page aligned");
-        let lapic_registers_page = pages::page_from_u64(lapic_registers_phys_addr).expect("Local Apic MMIO address is not page aligned");
-
-        // Allocate virtual memory area for the LAPIC 
-        let vma = process.virtual_address_space.alloc_vma(
-            Some(lapic_registers_page),
-            1,
-            MemorySpace::Kernel,
+        let lapic_registers_page_frame = frames::frame_from_u64(lapic_registers_phys_addr)
+            .expect("Local Apic MMIO address is not page aligned");
+        
+        let lapic_registers_page = process.virtual_address_space.map_devmem_identity(
+            lapic_registers_phys_addr,
+            lapic_registers_phys_addr + PAGE_SIZE as u64,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
             VmaType::DeviceMemory,
             "lapic",
-        ).expect("alloc_vma failed for LAPIC");
-
-        // Map LAPIC registers to the kernel address space
-        process.virtual_address_space.map_pfr_for_vma(
-            &vma,
-            PhysFrameRange {
-                start: lapic_registers_page_frame,
-                end: lapic_registers_page_frame + 1,
-            },
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
-        ).expect("map_pfr_for_vma failed for LAPIC");
+        );
 
         LocalApicBuilder::new()
             .timer_vector(InterruptVector::ApicTimer as usize)
@@ -306,27 +295,15 @@ impl Apic {
         let process = process_manager().read().kernel_process().unwrap();
 
         let ioapic_registers_phys_addr = io_apic_desc.address as u64;
-        let lapic_registers_page_frame = frames::frame_from_u64(ioapic_registers_phys_addr).expect("IO Apic MMIO address is not page aligned");
-        let ioapic_registers_page = pages::page_from_u64(ioapic_registers_phys_addr).expect("IO Apic MMIO address is not page aligned");
-
-        // Allocate virtual memory area for the IO-APIC 
-        let vma = process.virtual_address_space.alloc_vma(
-            Some(ioapic_registers_page),
-            1,
-            MemorySpace::Kernel,
+        let lapic_registers_page_frame = frames::frame_from_u64(ioapic_registers_phys_addr)
+            .expect("IO Apic MMIO address is not page aligned");
+        let ioapic_registers_page = process.virtual_address_space.map_devmem_identity(
+            ioapic_registers_phys_addr,
+            ioapic_registers_phys_addr + PAGE_SIZE as u64,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
             VmaType::DeviceMemory,
             "ioapic",
-        ).expect("alloc_vma failed for IO-APIC");
-
-        // Map IO-APIC registers to the kernel address space
-        process.virtual_address_space.map_pfr_for_vma(
-            &vma,
-            PhysFrameRange {
-                start: lapic_registers_page_frame,
-                end: lapic_registers_page_frame + 1,
-            },
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
-        ).expect("map_pfr_for_vma failed for IO-APIC");
+        );
 
         unsafe {
             let mut io_apic = IoApic::new(lapic_registers_page_frame.start_address().as_u64());
@@ -417,14 +394,18 @@ fn override_for_source(
     irq_overrides: &[InterruptSourceOverride],
     source_irq: u8,
 ) -> Option<&InterruptSourceOverride> {
-    irq_overrides.iter().find(|&irq_override| irq_override.isa_source == source_irq)
+    irq_overrides
+        .iter()
+        .find(|&irq_override| irq_override.isa_source == source_irq)
 }
 
 fn override_for_target(
     irq_overrides: &[InterruptSourceOverride],
     target_gsi: u32,
 ) -> Option<&InterruptSourceOverride> {
-    irq_overrides.iter().find(|&irq_override| irq_override.global_system_interrupt == target_gsi)
+    irq_overrides
+        .iter()
+        .find(|&irq_override| irq_override.global_system_interrupt == target_gsi)
 }
 
 fn io_apic_for_target(

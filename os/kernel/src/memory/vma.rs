@@ -1,12 +1,33 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: virtual memory area                                             ║
+   ║ Module: virtual memory management                                       ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Functions related to a virtual memory areas.                            ║
+   ║ Functions related to a virtual memory management of a process address   ║
+   ║ space. This includes managing virtual memory areas, allocating frames   ║
+   ║ for full or partial vmas, as well as creating page mappings.            ║
+   ║                                                                         ║
+   ║ Public functions:                                                       ║
+   ║   - alloc_vma                 allocate a page range in an address space ║
+   ║   - alloc_pfr_for_vma         allocate pf range for full vma            ║
+   ║   - alloc_pfr_for_partial_vma alloc pf range for a subrange of a vma    ║
+   ║   - map_pfr_for_vma           map pf range for full vma                 ║
+   ║   - map_pfr_for_partial_vma   map pf range for subrange of a vma        ║
+   ║   - map_partial_vma           map a sub page range of a vma by          ║
+   ║                               allocating frames as needed               ║
+   ║                                                                         ║
+   ║   - map_pfr_identity          map the given pf range - identity mapped  ║
+   ║                                                                         ║
+   ║   - clone_address_space       used for process creation                 ║
+   ║   - create_kernel_address_space   used for process creation             ║
+   ║   - iter_vmas                 Iterate over all VMAs                     ║
+   ║   - dump                      dump all VMAs of an address space         ║
+   ║   - page_table_address        get root page table address               ║
+   ║   - set_flags                 set page table flags                      ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland and Michael Schoettner                           ║
-   ║         Univ. Duesseldorf, 26.05.2025                                   ║
+   ║         Univ. Duesseldorf, 26.06.2025                                   ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+
 use core::fmt;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::page::PageRange;
@@ -158,7 +179,8 @@ impl fmt::Debug for VirtualMemoryArea {
 
         write!(
             f,
-            "   VMA {:?}, [0x{:x}; 0x{:x}], #pages: {}, tag: {:?}",
+            "   VMA: Space: {:?}, Type: {:?}, [0x{:x}; 0x{:x}], #pages: {}, tag: {:?}",
+            self.space,
             self.typ,
             self.range.start.start_address().as_u64(),
             self.range.end.start_address().as_u64(),

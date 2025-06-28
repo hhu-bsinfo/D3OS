@@ -23,9 +23,8 @@ use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_cpu_info,
-    init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory,
-    network, process_manager, scheduler, serial_port, terminal, timer, tss,
+    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd,
+    keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss,
 };
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
@@ -38,10 +37,7 @@ use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
 use log::{LevelFilter, debug, info, warn};
-use multiboot2::{
-    BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag,
-    TagHeader,
-};
+use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
 use smoltcp::iface;
 use smoltcp::iface::Interface;
 use smoltcp::time::Instant;
@@ -116,7 +112,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     );
     debug!("Page frame allocator:\n{}", memory::frames::dump());
 
-
     // Initialize CPU information
     init_cpu_info();
 
@@ -127,10 +122,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     kernel_process
         .virtual_address_space
         .alloc_vma(
-            Some(
-                Page::from_start_address(VirtAddr::new(heap_region.start.start_address().as_u64()))
-                    .unwrap(),
-            ),
+            Some(Page::from_start_address(VirtAddr::new(heap_region.start.start_address().as_u64())).unwrap()),
             heap_region.len(),
             MemorySpace::Kernel,
             VmaType::Heap,
@@ -141,12 +133,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     kernel_process
         .virtual_address_space
         .alloc_vma(
-            Some(
-                Page::from_start_address(VirtAddr::new(
-                    image_region.start.start_address().as_u64(),
-                ))
-                .unwrap(),
-            ),
+            Some(Page::from_start_address(VirtAddr::new(image_region.start.start_address().as_u64())).unwrap()),
             image_region.len(),
             MemorySpace::Kernel,
             VmaType::Code,
@@ -170,64 +157,20 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     let fb_start_phys_addr = fb_info.address();
     let fb_end_phys_addr = fb_start_phys_addr + (fb_info.height() * fb_info.pitch()) as u64;
 
-    // Start PhysFrame for the Framebuffer
-    let fb_start_page_frame = frames::frame_from_u64(fb_start_phys_addr)
-        .expect("Framebuffer start address is not page aligned");
-
-    // End PhysFrame for the Framebuffer
-    let fb_end_page_frame = frames::frame_from_u64(fb_end_phys_addr)
-        .expect("Framebuffer end address is not page aligned");
-
-    let fb_frame_range = PhysFrameRange {
-        start: fb_start_page_frame,
-        end: fb_end_page_frame,
-    };
-
-    // Start Page for the Framebuffer
-    let fb_start_page = pages::page_from_u64(fb_start_phys_addr)
-        .expect("Framebuffer start address is not page aligned");
-
-    // Allocate virtual memory area for the Framebuffer and add it to the kernel process
-    let vma = kernel_process
-        .virtual_address_space
-        .alloc_vma(
-            Some(fb_start_page),
-            fb_frame_range.len(),
-            MemorySpace::Kernel,
-            VmaType::DeviceMemory,
-            "framebuffer",
-        )
-        .expect("alloc_vma failed");
-
-    // Map linear framebuffer in the kernel process address space
-    kernel_process
-        .virtual_address_space
-        .map_pfr_for_vma(
-            &vma,
-            fb_frame_range,
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
-        )
-        .expect("map_pfr_for_vma failed for LAPIC");
+    kernel_process.virtual_address_space.map_devmem_identity(
+        fb_start_phys_addr,
+        fb_end_phys_addr,
+        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
+        VmaType::DeviceMemory,
+        "framebuffer",
+    );
 
     // Initialize terminal kernel thread and enable terminal logging
-    init_terminal(
-        fb_info.address() as *mut u8,
-        fb_info.pitch(),
-        fb_info.width(),
-        fb_info.height(),
-        fb_info.bpp(),
-    );
-    // Terminal output uses locks => hangs up when used for debugging
-    // MS logger().register(terminal());
+    init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
     // Dumping basic infos
     info!("Welcome to D3OS!");
-    let version = format!(
-        "v{} ({} - O{})",
-        built_info::PKG_VERSION,
-        built_info::PROFILE,
-        built_info::OPT_LEVEL
-    );
+    let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
     let git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("Unknown");
     let build_date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
@@ -245,11 +188,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         None => "Unknown",
     };
     info!("OS Version: [{version}]");
-    info!(
-        "Git Version: [{} - {}]",
-        built_info::GIT_HEAD_REF.unwrap_or("Unknown"),
-        git_commit
-    );
+    info!("Git Version: [{} - {}]", built_info::GIT_HEAD_REF.unwrap_or("Unknown"), git_commit);
     info!("Build Date: [{build_date}]");
     info!("Compiler: [{}]", built_info::RUSTC_VERSION);
     info!("Bootloader: [{bootloader_name}]");
@@ -420,11 +359,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         git_ref.rsplit("/").next().unwrap_or(git_ref),
         git_commit,
         build_date,
-        built_info::RUSTC_VERSION
-            .split_once("(")
-            .unwrap_or((built_info::RUSTC_VERSION, ""))
-            .0
-            .trim(),
+        built_info::RUSTC_VERSION.split_once("(").unwrap_or((built_info::RUSTC_VERSION, "")).0.trim(),
         bootloader_name
     );
 
@@ -434,7 +369,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Start APIC timer & scheduler
     info!("Starting scheduler");
     apic().start_timer(10);
-     
+
     scheduler().start();
 }
 
@@ -480,14 +415,8 @@ fn kernel_image_region() -> PhysFrameRange {
     let end: PhysFrame;
 
     unsafe {
-        start = PhysFrame::from_start_address(PhysAddr::new(
-            ptr::from_ref(&___KERNEL_DATA_START__) as u64,
-        ))
-        .expect("Kernel code is not page aligned");
-        end = PhysFrame::from_start_address(
-            PhysAddr::new(ptr::from_ref(&___KERNEL_DATA_END__) as u64).align_up(PAGE_SIZE as u64),
-        )
-        .unwrap();
+        start = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(&___KERNEL_DATA_START__) as u64)).expect("Kernel code is not page aligned");
+        end = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(&___KERNEL_DATA_END__) as u64).align_up(PAGE_SIZE as u64)).unwrap();
     }
 
     PhysFrameRange { start, end }
@@ -496,28 +425,19 @@ fn kernel_image_region() -> PhysFrameRange {
 /// Identifies usable memory and initialize physical memory management \
 /// and returns `BootInformation` by searching the memory maps, provided by bootloader of EFI. \
 ///   `multiboot2_addr` is the address of multiboot2 info records
-fn multiboot2_search_memory_map(
-    multiboot2_addr: *const BootInformationHeader,
-) -> BootInformation<'static> {
-    let multiboot = unsafe {
-        BootInformation::load(multiboot2_addr).expect("Failed to get Multiboot2 information")
-    };
+fn multiboot2_search_memory_map(multiboot2_addr: *const BootInformationHeader) -> BootInformation<'static> {
+    let multiboot = unsafe { BootInformation::load(multiboot2_addr).expect("Failed to get Multiboot2 information") };
 
     // Search memory map, provided by bootloader of EFI, for usable memory and initialize physical memory management
     if multiboot.efi_bs_not_exited_tag().is_some() {
         // EFI boot services have not been exited, and we obtain access to the memory map and EFI runtime services by exiting them manually
         info!("EFI boot services have not been exited yet");
-        let image_tag = multiboot
-            .efi_ih64_tag()
-            .expect("EFI image handle not available!");
-        let sdt_tag = multiboot
-            .efi_sdt64_tag()
-            .expect("EFI system table not available!");
+        let image_tag = multiboot.efi_ih64_tag().expect("EFI image handle not available!");
+        let sdt_tag = multiboot.efi_sdt64_tag().expect("EFI system table not available!");
         let memory_map;
 
         unsafe {
-            let image_handle = Handle::from_ptr(image_tag.image_handle() as *mut c_void)
-                .expect("Failed to create EFI image handle struct from pointer!");
+            let image_handle = Handle::from_ptr(image_tag.image_handle() as *mut c_void).expect("Failed to create EFI image handle struct from pointer!");
             uefi::table::set_system_table(sdt_tag.sdt_address() as *const SystemTable);
             uefi::boot::set_image_handle(image_handle);
 
@@ -553,14 +473,8 @@ fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag) {
         .filter(|area| area.typ() == MemoryAreaType::Available)
         .for_each(|area| unsafe {
             memory::frames::insert(PhysFrameRange {
-                start: PhysFrame::from_start_address(
-                    PhysAddr::new(area.start_address()).align_up(PAGE_SIZE as u64),
-                )
-                .unwrap(),
-                end: PhysFrame::from_start_address(
-                    PhysAddr::new(area.end_address()).align_down(PAGE_SIZE as u64),
-                )
-                .unwrap(),
+                start: PhysFrame::from_start_address(PhysAddr::new(area.start_address()).align_up(PAGE_SIZE as u64)).unwrap(),
+                end: PhysFrame::from_start_address(PhysAddr::new(area.end_address()).align_down(PAGE_SIZE as u64)).unwrap(),
             });
         });
 }
@@ -580,10 +494,7 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
                 || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0
         }) // .0 necessary because of different version dependencies to uefi-crate
         .for_each(|area| {
-            let start = PhysFrame::from_start_address(
-                PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64),
-            )
-            .unwrap();
+            let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
             let frames = PhysFrame::range(start, start + area.page_count);
 
             // Non-conventional memory may be write-protected, and we need to unprotect it first
@@ -610,10 +521,7 @@ fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
                 || area.ty == MemoryType::BOOT_SERVICES_DATA
         })
         .for_each(|area| {
-            let start = PhysFrame::from_start_address(
-                PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64),
-            )
-            .unwrap();
+            let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
             let frames = PhysFrame::range(start, start + area.page_count);
 
             // Non-conventional memory may be write-protected, and we need to unprotect it first
@@ -630,11 +538,7 @@ fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
 fn unprotect_frames(frames: PhysFrameRange) {
     unsafe { Cr0::update(|flags| flags.remove(Cr0Flags::WRITE_PROTECT)) };
 
-    let root_level = if Cr4::read().contains(Cr4Flags::L5_PAGING) {
-        5
-    } else {
-        4
-    };
+    let root_level = if Cr4::read().contains(Cr4Flags::L5_PAGING) { 5 } else { 4 };
     for frame in frames {
         unprotect_frame(frame, root_level);
     }
@@ -644,11 +548,7 @@ fn unprotect_frames(frames: PhysFrameRange) {
 
 fn unprotect_frame(frame: PhysFrame, root_level: usize) {
     let addr = VirtAddr::new(frame.start_address().as_u64());
-    let mut page_table = unsafe {
-        (Cr3::read().0.start_address().as_u64() as *mut PageTable)
-            .as_mut()
-            .unwrap()
-    };
+    let mut page_table = unsafe { (Cr3::read().0.start_address().as_u64() as *mut PageTable).as_mut().unwrap() };
 
     let mut level = root_level;
     loop {

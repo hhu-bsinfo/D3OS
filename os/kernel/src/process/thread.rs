@@ -28,7 +28,7 @@
    ║  'MAIN_USER_STACK_START'. The next stack for the next user stack is     ║
    ║  allocated at 'MAIN_USER_STACK_START' + 'MAX_USER_STACK_SIZE' and so on.║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland & Michael Schoettner, 25.5.2025, HHU             ║
+   ║ Author: Fabian Ruhland & Michael Schoettner, 28.6.2025, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -119,23 +119,9 @@ impl Thread {
         let pid = process.id();
         let tid = scheduler::next_thread_id();
         
-        info!("new_kernel_thread: pid = {pid}, tid = {tid}, tag = {tag_str}");
-
         // Allocate the kernel stack for the kernel thread
-        let kernel_stack = stack::alloc_kernel_stack(pid, tid);
-
-        // Allocate virtual memory area for kernel stack
-        let _vma = process
-            .virtual_address_space
-            .alloc_vma(
-                Some( kernel_stack.allocator().get_start_page()),
-                kernel_stack.allocator().get_num_pages(),
-                MemorySpace::Kernel,
-                VmaType::KernelStack,
-                tag_str,
-            )
-            .expect("alloc_vma failed for kernel stack");
-
+        let kernel_stack = stack::alloc_kernel_stack(&process, pid, tid, tag_str);
+            
         // Create empty user stack, so need to add it to the virtual address space
         let user_stack: Vec<u64, StackAllocator> = stack::alloc_user_stack(pid, tid, MAIN_USER_STACK_START, 0);
         
@@ -332,19 +318,7 @@ impl Thread {
         //
 
         // Allocate kernel stack for the main thread
-        let kernel_stack = stack::alloc_kernel_stack(pid, tid);
-
-        // Allocate virtual memory area for kernel stack
-        let _kernel_stack_vma = parent
-            .virtual_address_space
-            .alloc_vma(
-                Some( kernel_stack.allocator().get_start_page()),
-                kernel_stack.allocator().get_num_pages(),
-                MemorySpace::Kernel,
-                VmaType::KernelStack,
-                "user",
-            )
-            .expect("alloc_vma failed for kernel stack of user thread");
+        let kernel_stack = stack::alloc_kernel_stack(&parent, pid, tid, "userthread");
 
         //
         // Create user stack for the application
@@ -380,7 +354,7 @@ impl Thread {
             .alloc_vma(
                 Some( user_stack.allocator().get_start_page() ),
                 user_stack.allocator().get_num_pages(),
-                MemorySpace::Kernel,
+                MemorySpace::User,
                 VmaType::UserStack,
                 "user"
             )
