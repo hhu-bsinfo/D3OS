@@ -1,6 +1,12 @@
-use crate::modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind};
+use crate::{
+    event::event_handler::Error,
+    modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
+};
 
 pub struct ArgumentTokenContextFactory {}
+
+const ARGUMENT_INSTEAD_OF_FILE_ERROR: Error =
+    Error::new("Invalid command line", Some("Expected a filename but got argument"));
 
 impl TokenContextFactory for ArgumentTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
@@ -8,6 +14,13 @@ impl TokenContextFactory for ArgumentTokenContextFactory {
     }
 
     fn create_after(prev_clx: &TokenContext, _kind: &TokenKind, ch: char) -> TokenContext {
+        let error = prev_clx.error.or_else(|| {
+            if prev_clx.require_file {
+                Some(&ARGUMENT_INSTEAD_OF_FILE_ERROR)
+            } else {
+                None
+            }
+        });
         let arg_kind: ArgumentKind;
         let short_flag_pos: Option<usize>;
 
@@ -28,8 +41,9 @@ impl TokenContextFactory for ArgumentTokenContextFactory {
             short_flag_pos,
             in_quote: prev_clx.in_quote,
             arg_kind,
-            error: prev_clx.error,
+            error,
             require_cmd: false,
+            require_file: false,
         }
     }
 

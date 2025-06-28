@@ -21,9 +21,18 @@ use crate::{
     sub_modules::alias::Alias,
 };
 
+enum IoType {
+    None,
+    InAppend,
+    InTruncate,
+    OutAppend,
+    OutTruncate,
+}
+
 pub struct Parser {
     // Sub module for processing aliases
     alias: Rc<RefCell<Alias>>,
+    current_io_type: IoType,
 }
 
 impl EventHandler for Parser {
@@ -59,12 +68,16 @@ impl EventHandler for Parser {
 
 impl Parser {
     pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
-        Self { alias }
+        Self {
+            alias,
+            current_io_type: IoType::None,
+        }
     }
 
     fn parse(&mut self, clx: &mut Context) -> Result<Response, Error> {
         let mut job_builder = JobBuilder::new();
         job_builder.id(clx.executable.len());
+        self.current_io_type = IoType::None;
 
         for token in clx.tokens.get() {
             match token.status() {
@@ -122,6 +135,22 @@ impl Parser {
                     last_job.output = Io::Job(job_builder.peek_id().expect("Next job id should be set by now"));
                     job_builder.use_input(Io::Job(last_job.id));
                 }
+
+                TokenKind::File => {
+                    match self.current_io_type {
+                        IoType::InAppend => job_builder.use_input(Io::FileAppend(token.to_string())),
+                        IoType::InTruncate => job_builder.use_input(Io::FileTruncate(token.to_string())),
+                        IoType::OutAppend => job_builder.use_output(Io::FileAppend(token.to_string())),
+                        IoType::OutTruncate => job_builder.use_output(Io::FileTruncate(token.to_string())),
+                        IoType::None => return Err(Error::new("Received file without redirection instruction", None)),
+                    };
+                    self.current_io_type = IoType::None;
+                }
+
+                TokenKind::RedirectInAppend => self.current_io_type = IoType::InAppend,
+                TokenKind::RedirectInTruncate => self.current_io_type = IoType::InTruncate,
+                TokenKind::RedirectOutAppend => self.current_io_type = IoType::OutAppend,
+                TokenKind::RedirectOutTruncate => self.current_io_type = IoType::OutTruncate,
 
                 TokenKind::QuoteStart | TokenKind::QuoteEnd | TokenKind::Blank => (),
             }
@@ -204,8 +233,8 @@ impl Parser {
             '&' => self.add_background_or_logical_and(tokens, ch),
             '|' => self.add_pipe_or_logical_or(tokens, ch),
             // Redirection
-            '>' => { /* TODO redirect_out_truncate || redirect_out_append */ }
-            '<' => { /* TODO redirect_in_truncate || redirect_in_append */ }
+            '>' => self.add_redirect_out_append_or_truncate(tokens, ch),
+            '<' => self.add_redirect_in_append_or_truncate(tokens, ch),
             // Quotes
             '\"' | '\'' => self.add_quote(tokens, ch),
             // Other
@@ -236,6 +265,22 @@ impl Parser {
                 };
                 tokens.push(replace_token);
             }
+            TokenKind::RedirectInAppend => {
+                tokens.pop();
+                let replace_token = match tokens.last() {
+                    Some(token) => Token::new_after(token.clx(), TokenKind::RedirectInTruncate, '<'),
+                    None => Token::new_first(TokenKind::RedirectInTruncate, '<'),
+                };
+                tokens.push(replace_token);
+            }
+            TokenKind::RedirectOutAppend => {
+                tokens.pop();
+                let replace_token = match tokens.last() {
+                    Some(token) => Token::new_after(token.clx(), TokenKind::RedirectOutTruncate, '>'),
+                    None => Token::new_first(TokenKind::RedirectOutTruncate, '>'),
+                };
+                tokens.push(replace_token);
+            }
             _ => {
                 match last_token.pop() {
                     Ok(_) => return,
@@ -243,6 +288,56 @@ impl Parser {
                 };
             }
         }
+    }
+
+    fn add_redirect_out_append_or_truncate(&mut self, tokens: &mut TokensContext, ch: char) {
+        // If no token => create first token
+        let Some(last_token) = tokens.last_mut() else {
+            let first_token = Token::new_first(TokenKind::RedirectOutTruncate, ch);
+            tokens.push(first_token);
+            return;
+        };
+
+        // If last token is truncate => remove it and add append
+        if *last_token.kind() == TokenKind::RedirectOutTruncate {
+            tokens.pop();
+            let mut next_token = match tokens.last() {
+                Some(token) => Token::new_after(token.clx(), TokenKind::RedirectOutAppend, ch),
+                None => Token::new_first(TokenKind::RedirectOutAppend, ch),
+            };
+            next_token.push(ch);
+            tokens.push(next_token);
+            return;
+        }
+
+        // Else add next background token
+        let next_token = Token::new_after(last_token.clx(), TokenKind::RedirectOutTruncate, ch);
+        tokens.push(next_token);
+    }
+
+    fn add_redirect_in_append_or_truncate(&mut self, tokens: &mut TokensContext, ch: char) {
+        // If no token => create first token
+        let Some(last_token) = tokens.last_mut() else {
+            let first_token = Token::new_first(TokenKind::RedirectInTruncate, ch);
+            tokens.push(first_token);
+            return;
+        };
+
+        // If last token is truncate => remove it and add append
+        if *last_token.kind() == TokenKind::RedirectInTruncate {
+            tokens.pop();
+            let mut next_token = match tokens.last() {
+                Some(token) => Token::new_after(token.clx(), TokenKind::RedirectInAppend, ch),
+                None => Token::new_first(TokenKind::RedirectInAppend, ch),
+            };
+            next_token.push(ch);
+            tokens.push(next_token);
+            return;
+        }
+
+        // Else add next background token
+        let next_token = Token::new_after(last_token.clx(), TokenKind::RedirectInTruncate, ch);
+        tokens.push(next_token);
     }
 
     fn add_background_or_logical_and(&mut self, tokens: &mut TokensContext, ch: char) {
@@ -323,9 +418,12 @@ impl Parser {
         }
 
         // Else => create new ambiguous token
-        let next_kind = match last_token.has_segment_cmd() {
-            true => TokenKind::Argument,
-            false => TokenKind::Command,
+        let next_kind = if last_token.clx().require_file {
+            TokenKind::File
+        } else if last_token.has_segment_cmd() {
+            TokenKind::Argument
+        } else {
+            TokenKind::Command
         };
         let prev_clx = last_token.clx();
         let next_token = Token::new_after(prev_clx, next_kind, ch);

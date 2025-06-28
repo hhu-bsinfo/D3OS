@@ -5,9 +5,14 @@ use crate::{
     modules::parser::{
         and_token::AndTokenContextFactory, argument_token::ArgumentTokenContextFactory,
         background_token::BackgroundTokenContextFactory, blank_token::BlankTokenContextFactory,
-        command_token::CommandTokenContextFactory, or_token::OrTokenContextFactory,
-        pipe_token::PipeTokenContextFactory, quote_end_token::QuoteEndTokenContextFactory,
-        quote_start_token::QuoteStartTokenContextFactory, separator_token::SeparatorTokenContextFactory,
+        command_token::CommandTokenContextFactory, file_token::FileTokenContextFactory,
+        or_token::OrTokenContextFactory, pipe_token::PipeTokenContextFactory,
+        quote_end_token::QuoteEndTokenContextFactory, quote_start_token::QuoteStartTokenContextFactory,
+        redirect_in_append_token::RedirectInAppendTokenContextFactory,
+        redirect_in_truncate_token::RedirectInTruncateTokenContextFactory,
+        redirect_out_append_token::RedirectOutAppendTokenContextFactory,
+        redirect_out_truncate_token::RedirectOutTruncateTokenContextFactory,
+        separator_token::SeparatorTokenContextFactory,
     },
 };
 
@@ -23,6 +28,11 @@ pub enum TokenKind {
     Background,
     And,
     Or,
+    RedirectInTruncate,
+    RedirectInAppend,
+    RedirectOutTruncate,
+    RedirectOutAppend,
+    File,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -78,6 +88,7 @@ pub struct TokenContext {
     pub arg_kind: ArgumentKind,
     pub error: Option<&'static Error>,
     pub require_cmd: bool,
+    pub require_file: bool,
 }
 
 impl TokenContext {
@@ -93,6 +104,11 @@ impl TokenContext {
             TokenKind::Background => BackgroundTokenContextFactory::create_after(prev_clx, kind, ch),
             TokenKind::And => AndTokenContextFactory::create_after(prev_clx, kind, ch),
             TokenKind::Or => OrTokenContextFactory::create_after(prev_clx, kind, ch),
+            TokenKind::RedirectInAppend => RedirectInAppendTokenContextFactory::create_after(prev_clx, kind, ch),
+            TokenKind::RedirectInTruncate => RedirectInTruncateTokenContextFactory::create_after(prev_clx, kind, ch),
+            TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::create_after(prev_clx, kind, ch),
+            TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::create_after(prev_clx, kind, ch),
+            TokenKind::File => FileTokenContextFactory::create_after(prev_clx, kind, ch),
         }
     }
 
@@ -108,6 +124,11 @@ impl TokenContext {
             TokenKind::Background => BackgroundTokenContextFactory::create_first(kind, ch),
             TokenKind::And => AndTokenContextFactory::create_first(kind, ch),
             TokenKind::Or => OrTokenContextFactory::create_first(kind, ch),
+            TokenKind::RedirectInAppend => RedirectInAppendTokenContextFactory::create_first(kind, ch),
+            TokenKind::RedirectInTruncate => RedirectInTruncateTokenContextFactory::create_first(kind, ch),
+            TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::create_first(kind, ch),
+            TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::create_first(kind, ch),
+            TokenKind::File => FileTokenContextFactory::create_first(kind, ch),
         }
     }
 
@@ -123,6 +144,11 @@ impl TokenContext {
             TokenKind::Background => BackgroundTokenContextFactory::revalidate(self, kind, string),
             TokenKind::And => AndTokenContextFactory::revalidate(self, kind, string),
             TokenKind::Or => OrTokenContextFactory::revalidate(self, kind, string),
+            TokenKind::RedirectInAppend => RedirectInAppendTokenContextFactory::revalidate(self, kind, string),
+            TokenKind::RedirectInTruncate => RedirectInTruncateTokenContextFactory::revalidate(self, kind, string),
+            TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::revalidate(self, kind, string),
+            TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::revalidate(self, kind, string),
+            TokenKind::File => FileTokenContextFactory::revalidate(self, kind, string),
         }
     }
 }
@@ -173,6 +199,9 @@ impl Token {
             return TokenStatus::Incomplete;
         }
         if clx.in_quote.is_some() {
+            return TokenStatus::Incomplete;
+        }
+        if clx.require_file {
             return TokenStatus::Incomplete;
         }
 
@@ -233,7 +262,7 @@ impl Token {
     }
 
     pub fn is_ambiguous(&self) -> bool {
-        self.kind == TokenKind::Command || self.kind == TokenKind::Argument
+        self.kind == TokenKind::Command || self.kind == TokenKind::Argument || self.kind == TokenKind::File
     }
 
     pub fn has_segment_cmd(&self) -> bool {

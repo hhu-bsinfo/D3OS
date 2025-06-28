@@ -8,6 +8,9 @@ const MORE_THAN_ONE_CMD_IN_SEGMENT_ERROR: Error = Error::new(
     Some("Can not handle more than one command per segment"),
 );
 
+const COMMAND_INSTEAD_OF_FILE_ERROR: Error =
+    Error::new("Invalid command line", Some("Expected a filename but got command"));
+
 pub struct CommandTokenContextFactory {}
 
 impl TokenContextFactory for CommandTokenContextFactory {
@@ -20,6 +23,7 @@ impl TokenContextFactory for CommandTokenContextFactory {
             arg_kind: ArgumentKind::None,
             error: None,
             require_cmd: false,
+            require_file: false,
         }
     }
 
@@ -27,6 +31,8 @@ impl TokenContextFactory for CommandTokenContextFactory {
         let error = prev_clx.error.or_else(|| {
             if prev_clx.cmd_pos.is_some() {
                 Some(&MORE_THAN_ONE_CMD_IN_SEGMENT_ERROR)
+            } else if prev_clx.require_file {
+                Some(&COMMAND_INSTEAD_OF_FILE_ERROR)
             } else {
                 None
             }
@@ -40,6 +46,7 @@ impl TokenContextFactory for CommandTokenContextFactory {
             arg_kind: ArgumentKind::None,
             error,
             require_cmd: false,
+            require_file: false,
         }
     }
 }

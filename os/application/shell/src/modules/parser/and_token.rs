@@ -10,6 +10,9 @@ const LOGICAL_AND_BEFORE_CMD_ERROR: Error = Error::new(
     ),
 );
 
+const LOGICAL_AND_INSTEAD_OF_FILE_ERROR: Error =
+    Error::new("Invalid command line", Some("Expected a filename but got &&"));
+
 pub struct AndTokenContextFactory {}
 
 impl TokenContextFactory for AndTokenContextFactory {
@@ -22,6 +25,7 @@ impl TokenContextFactory for AndTokenContextFactory {
             arg_kind: ArgumentKind::None,
             error: Some(&LOGICAL_AND_BEFORE_CMD_ERROR),
             require_cmd: true,
+            require_file: false,
         }
     }
 
@@ -29,6 +33,8 @@ impl TokenContextFactory for AndTokenContextFactory {
         let error = prev_clx.error.or_else(|| {
             if prev_clx.cmd_pos.is_none() {
                 Some(&LOGICAL_AND_BEFORE_CMD_ERROR)
+            } else if prev_clx.require_file {
+                Some(&LOGICAL_AND_INSTEAD_OF_FILE_ERROR)
             } else {
                 None
             }
@@ -42,6 +48,7 @@ impl TokenContextFactory for AndTokenContextFactory {
             arg_kind: ArgumentKind::None,
             error,
             require_cmd: true,
+            require_file: false,
         }
     }
 }

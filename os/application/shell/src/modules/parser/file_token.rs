@@ -1,14 +1,8 @@
-use crate::{
-    event::event_handler::Error,
-    modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
-};
+use crate::modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind};
 
-pub struct SeparatorTokenContextFactory {}
+pub struct FileTokenContextFactory {}
 
-const SEPARATOR_INSTEAD_OF_FILE_ERROR: Error =
-    Error::new("Invalid command line", Some("Expected a filename but got ;"));
-
-impl TokenContextFactory for SeparatorTokenContextFactory {
+impl TokenContextFactory for FileTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
         TokenContext {
             pos: 0,
@@ -23,21 +17,13 @@ impl TokenContextFactory for SeparatorTokenContextFactory {
     }
 
     fn create_after(prev_clx: &TokenContext, _kind: &TokenKind, _ch: char) -> TokenContext {
-        let error = prev_clx.error.or_else(|| {
-            if prev_clx.require_file {
-                Some(&SEPARATOR_INSTEAD_OF_FILE_ERROR)
-            } else {
-                None
-            }
-        });
-
         TokenContext {
             pos: prev_clx.pos + 1,
-            cmd_pos: None,
+            cmd_pos: prev_clx.cmd_pos,
             short_flag_pos: None,
-            in_quote: None,
+            in_quote: prev_clx.in_quote,
             arg_kind: ArgumentKind::None,
-            error,
+            error: prev_clx.error,
             require_cmd: false,
             require_file: false,
         }

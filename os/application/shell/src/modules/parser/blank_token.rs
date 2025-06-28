@@ -12,6 +12,7 @@ impl TokenContextFactory for BlankTokenContextFactory {
             arg_kind: ArgumentKind::None,
             error: None,
             require_cmd: false,
+            require_file: false,
         }
     }
 
@@ -24,6 +25,7 @@ impl TokenContextFactory for BlankTokenContextFactory {
             arg_kind: prev_clx.arg_kind.clone(),
             error: prev_clx.error,
             require_cmd: prev_clx.require_cmd,
+            require_file: prev_clx.require_file,
         }
     }
 }
