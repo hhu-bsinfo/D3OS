@@ -202,6 +202,10 @@ impl Token {
         &self.content
     }
 
+    pub fn to_string(&self) -> String {
+        self.content.to_string()
+    }
+
     pub fn len(&self) -> usize {
         self.content.len()
     }

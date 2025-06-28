@@ -8,7 +8,11 @@ use alloc::{
 use logger::info;
 
 use crate::{
-    context::{context::Context, tokens_context::TokensContext},
+    context::{
+        context::Context,
+        executable_context::{Io, JobBuilder, JobResult},
+        tokens_context::TokensContext,
+    },
     event::{
         event::Event,
         event_handler::{Error, EventHandler, Response},
@@ -59,21 +63,74 @@ impl Parser {
     }
 
     fn parse(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        let mut job_builder = JobBuilder::new();
+        job_builder.id(clx.executable.len());
+
         for token in clx.tokens.get() {
             match token.status() {
                 TokenStatus::Error(error) => return Err((*error).clone()),
                 _ => (),
             }
+
             match token.kind() {
                 TokenKind::Command => {
-                    clx.executable.create_job(token.as_str());
+                    let Ok(job) = job_builder.build() else {
+                        job_builder.command(token.to_string());
+                        continue;
+                    };
+                    clx.executable.add_job(job);
+                    job_builder = JobBuilder::new();
+                    job_builder.id(clx.executable.len());
                 }
+
                 TokenKind::Argument => {
-                    clx.executable.add_argument_to_latest_job(token.as_str());
+                    job_builder.add_argument(token.to_string());
                 }
-                _ => (),
+
+                TokenKind::Background => {
+                    job_builder.run_in_background(true);
+                }
+
+                TokenKind::Separator => {
+                    let job = job_builder.build();
+                    if job.is_ok() {
+                        clx.executable.add_job(job.unwrap());
+                    }
+                    job_builder = JobBuilder::new();
+                    job_builder.id(clx.executable.len());
+                }
+
+                TokenKind::And => {
+                    let Some(last_job) = clx.executable.last_job() else {
+                        return Err(Error::new("And condition requires a preceding job", None));
+                    };
+                    job_builder.requires_job(last_job.id, JobResult::Success);
+                }
+
+                TokenKind::Or => {
+                    let Some(last_job) = clx.executable.last_job() else {
+                        return Err(Error::new("Or condition requires a preceding job", None));
+                    };
+                    job_builder.requires_job(last_job.id, JobResult::Error);
+                }
+
+                TokenKind::Pipe => {
+                    let Some(last_job) = clx.executable.last_job_mut() else {
+                        return Err(Error::new("Pipe requires a preceding job", None));
+                    };
+
+                    last_job.output = Io::Job(job_builder.peek_id().expect("Next job id should be set by now"));
+                    job_builder.use_input(Io::Job(last_job.id));
+                }
+
+                TokenKind::QuoteStart | TokenKind::QuoteEnd | TokenKind::Blank => (),
             }
         }
+
+        match job_builder.build() {
+            Ok(job) => clx.executable.add_job(job),
+            Err(_) => (),
+        };
 
         info!("{:?}", &clx.executable);
         Ok(Response::Ok)
@@ -109,6 +166,7 @@ impl Parser {
         Ok(Response::Ok)
     }
 
+    // TODO FIX: echo " hhu " => " Heinrich Heine Universitaet ", but should be " hhu "
     fn retokenize_with_alias(&mut self, clx: &mut Context) -> Result<Response, Error> {
         clx.tokens.reset();
 
