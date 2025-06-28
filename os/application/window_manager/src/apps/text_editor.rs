@@ -4,14 +4,17 @@ use crate::apps::text_editor::config::TextEditorConfig;
 use crate::apps::text_editor::editor::OpenDocuments;
 use crate::apps::text_editor::messages::Message;
 use crate::apps::text_editor::view::View;
+use crate::components::component::ComponentStyling;
 use crate::components::container::basic_container::{AlignmentMode, LayoutMode, StretchMode};
 use crate::components::container::ContainerStyling;
+use crate::config::DEFAULT_BACKGROUND_COLOR;
 use crate::signal::{ComponentRef, Signal};
 use crate::{api::Command, WindowManager};
 use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use editor::apply_message;
 use graphic::bitmap::{Bitmap, ScalingMode};
+use graphic::color::{RED, YELLOW};
 use spin::rwlock::RwLock;
 use terminal::DecodedKey;
 
@@ -28,7 +31,8 @@ pub struct TextEditor;
 
 impl Runnable for TextEditor {
     fn run() {
-        let config = TextEditorConfig::new(900, 600, &[]);
+        let config =
+            TextEditorConfig::new(LOG_SCREEN.0 as usize - 100, LOG_SCREEN.1 as usize - 40, &[]);
         let bitmap = Bitmap {
             width: (0.7 * (config.width as f32)) as u32,
             height: (0.7 * (config.height as f32)) as u32,
@@ -44,9 +48,13 @@ impl Runnable for TextEditor {
         let mut documents = OpenDocuments::dummy();
         View::render(documents.current().unwrap(), &mut canvas.write());
         let mut container_styling = ContainerStyling::default();
+        let curret_file = Signal::new(documents.current().unwrap().path().unwrap());
         container_styling.show_border = false;
         container_styling.maintain_aspect_ratio = false;
         container_styling.child_padding = 2;
+        container_styling.background_color = DEFAULT_BACKGROUND_COLOR;
+        container_styling.show_background = true;
+        let label_styling = ComponentStyling::default();
         let model = Rc::new(RwLock::<OpenDocuments<'_, '_>>::new(documents));
         let _parent_container = api
             .execute(
@@ -55,11 +63,11 @@ impl Runnable for TextEditor {
                 Command::CreateContainer {
                     log_rect_data: RectData {
                         top_left: Vertex { x: 50, y: 50 },
-                        width: LOG_SCREEN.0,
-                        height: LOG_SCREEN.1,
+                        width: LOG_SCREEN.0 - 100,
+                        height: LOG_SCREEN.1 - 140,
                     },
                     layout: LayoutMode::Vertical(AlignmentMode::Top),
-                    stretch: StretchMode::None,
+                    stretch: StretchMode::Fill,
                     styling: Some(container_styling),
                 },
             )
@@ -71,7 +79,7 @@ impl Runnable for TextEditor {
                 Command::CreateContainer {
                     log_rect_data: RectData {
                         top_left: Vertex { x: 0, y: 0 },
-                        width: LOG_SCREEN.0 as u32,
+                        width: LOG_SCREEN.0 as u32 - 100,
                         height: 40,
                     },
                     layout: LayoutMode::Horizontal(AlignmentMode::Top),
@@ -80,6 +88,18 @@ impl Runnable for TextEditor {
                 },
             )
             .expect("failed to create container");
+
+        let _current_file = api.execute(
+            handle,
+            Some(_menu_container.clone()),
+            Command::CreateLabel {
+                log_pos: Vertex::new(0, 0),
+                text: Rc::clone(&curret_file),
+                on_loop_iter: None,
+                font_size: Some(1),
+                styling: Some(label_styling),
+            },
+        );
 
         let model_clone = Rc::clone(&model);
         let canvas_clone = Rc::clone(&canvas);
@@ -207,6 +227,7 @@ impl Runnable for TextEditor {
         let model_clone = Rc::clone(&model);
         let canvas_clone = Rc::clone(&canvas);
         let edit_canvas_clone = Rc::clone(&edit_canvas);
+        let current_file_clone = Rc::clone(&curret_file);
         let _prev = api.execute(
             handle,
             Some(_menu_container.clone()),
@@ -218,7 +239,14 @@ impl Runnable for TextEditor {
                 },
                 label: Some((Signal::new(String::from("<")), 1)),
                 on_click: Some(Box::new(move || {
-                    model_clone.write().prev();
+                    {
+                        let mut models = model_clone.write();
+                        let prev = models.prev();
+                        if prev.is_some() {
+                            current_file_clone
+                                .set(prev.unwrap().path().unwrap_or(String::from("scratch")));
+                        }
+                    }
                     apply_message(
                         &model_clone,
                         &Rc::clone(&canvas_clone),
@@ -238,6 +266,7 @@ impl Runnable for TextEditor {
         let model_clone = Rc::clone(&model);
         let canvas_clone = Rc::clone(&canvas);
         let edit_canvas_clone = Rc::clone(&edit_canvas);
+        let current_file_clone = Rc::clone(&curret_file);
         let _next = api.execute(
             handle,
             Some(_menu_container.clone()),
@@ -249,7 +278,14 @@ impl Runnable for TextEditor {
                 },
                 label: Some((Signal::new(String::from(">")), 1)),
                 on_click: Some(Box::new(move || {
-                    model_clone.write().next();
+                    {
+                        let mut models = model_clone.write();
+                        let next = models.next();
+                        if next.is_some() {
+                            current_file_clone
+                                .set(next.unwrap().path().unwrap_or(String::from("scratch")));
+                        }
+                    }
                     apply_message(
                         &model_clone,
                         &Rc::clone(&canvas_clone),

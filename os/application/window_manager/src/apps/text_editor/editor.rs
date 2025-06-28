@@ -168,15 +168,15 @@ impl<'a, 'b> OpenDocuments<'a, 'b> {
     }
     pub fn dummy() -> OpenDocuments<'a, 'b> {
         let mut ret = OpenDocuments::new();
-        let text_buffer = TextBuffer::from_str(MARKDOWN_EXAMPLE);
-        ret.insert(Document::new(
-            Some(String::from("ReadMe.md")),
-            text_buffer,
-            TextEditorConfig::new(900, 600, &KEYWORDS),
-        ));
         let text_buffer = TextBuffer::from_str(CODE_EXAMPLE);
         ret.insert(Document::new(
             Some(String::from("Code.clike")),
+            text_buffer,
+            TextEditorConfig::new(900, 600, &KEYWORDS),
+        ));
+        let text_buffer = TextBuffer::from_str(MARKDOWN_EXAMPLE);
+        ret.insert(Document::new(
+            Some(String::from("ReadMe.md")),
             text_buffer,
             TextEditorConfig::new(900, 600, &KEYWORDS),
         ));
