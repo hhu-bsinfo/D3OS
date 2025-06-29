@@ -1,6 +1,5 @@
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::memory::frames;
 use crate::memory::vma::VmaType;
 use crate::{acpi_tables, allocator, interrupt_dispatcher, process_manager, scheduler, timer};
 use acpi::InterruptModel;
@@ -39,6 +38,8 @@ impl InterruptHandler for ApicTimerInterruptHandler {
 
 impl Apic {
     pub fn new() -> Self {
+        info!("Initializing APIC");
+
         // Check if APIC is available
         let cpuid = CpuId::new();
         match cpuid.get_feature_info() {
@@ -49,9 +50,9 @@ impl Apic {
                 }
 
                 if features.has_x2apic() {
-                    info!("X2Apic detected")
+                    info!("   X2Apic detected")
                 } else {
-                    info!("APIC detected");
+                    info!("   APIC detected");
                 }
             }
         }
@@ -68,7 +69,7 @@ impl Apic {
         let cpu_info = int_model.1.expect("CPU info not found in interrupt model");
 
         info!(
-            "[{}] application {} detected",
+            "   [{}] application {} detected",
             cpu_info.application_processors.len(),
             if cpu_info.application_processors.len() == 1 {
                 "processor"
@@ -77,7 +78,7 @@ impl Apic {
             }
         );
         info!(
-            "CPU [{}] is the bootstrap processor",
+            "   CPU [{}] is the bootstrap processor",
             cpu_info.boot_processor.processor_uid
         );
 
@@ -95,7 +96,7 @@ impl Apic {
             InterruptModel::Apic(apic_desc) => {
                 // Read and store IRQ override entries
                 info!(
-                    "[{}] interrupt source {} detected",
+                    "   [{}] interrupt source {} detected",
                     apic_desc.interrupt_source_overrides.len(),
                     if apic_desc.interrupt_source_overrides.len() == 1 {
                         "override"
@@ -106,7 +107,7 @@ impl Apic {
 
                 for irq_override in apic_desc.interrupt_source_overrides.iter() {
                     info!(
-                        "IRQ override [{}]->[{}], Polarity: [{:?}], Trigger: [{:?}]",
+                        "   IRQ override [{}]->[{}], Polarity: [{:?}], Trigger: [{:?}]",
                         irq_override.isa_source,
                         irq_override.global_system_interrupt,
                         irq_override.polarity,
@@ -122,7 +123,7 @@ impl Apic {
 
                 // Read and store non-maskable interrupts sources
                 info!(
-                    "[{}] NMI {} detected",
+                    "   [{}] NMI {} detected",
                     apic_desc.nmi_sources.len(),
                     if apic_desc.nmi_sources.len() == 1 {
                         "source"
@@ -133,7 +134,7 @@ impl Apic {
 
                 for nmi_source in apic_desc.nmi_sources.iter() {
                     info!(
-                        "NMI source [{}], Polarity: [{:?}], Trigger: [{:?}]",
+                        "   NMI source [{}], Polarity: [{:?}], Trigger: [{:?}]",
                         nmi_source.global_system_interrupt,
                         nmi_source.polarity,
                         nmi_source.trigger_mode
@@ -146,7 +147,7 @@ impl Apic {
                 }
 
                 info!(
-                    "[{}] IO {} detected",
+                    "   [{}] IO {} detected",
                     apic_desc.io_apics.len(),
                     if apic_desc.io_apics.len() == 1 {
                         "APIC"
@@ -157,7 +158,7 @@ impl Apic {
 
                 // Iterate over IO APIC entries in MADT and initialize IO APICs (should only be a single one on most systems)
                 for (i, io_apic_desc) in apic_desc.io_apics.iter().enumerate() {
-                    info!("Initializing IO APIC [{i}]");
+                    info!("   Initializing IO APIC [{i}]");
                     let mut io_apic = Self::create_io_apic(io_apic_desc);
 
                     // Initialize redirection table with regards to IRQ override entries
@@ -165,7 +166,7 @@ impl Apic {
                     let max_entry = io_apic_desc.global_system_interrupt_base
                         + unsafe { io_apic.max_table_entry() } as u32;
                     info!(
-                        "IO APIC [{}] handles interrupts [{}-{}]",
+                        "   IO APIC [{}] handles interrupts [{}-{}]",
                         i + 1,
                         io_apic_desc.global_system_interrupt_base,
                         max_entry
@@ -248,7 +249,7 @@ impl Apic {
         // Initialization is finished -> Enable Local Apic
         unsafe {
             info!(
-                "Enabling Local APIC [{}]",
+                "   Enabling Local APIC [{}]",
                 cpu_info.boot_processor.local_apic_id
             );
             local_apic.lock().enable();
@@ -256,7 +257,7 @@ impl Apic {
 
         // Calibrate APIC timer
         let timer_ticks_per_ms = Apic::calibrate_timer(&mut local_apic.lock());
-        info!("APIC Timer ticks per millisecond: [{timer_ticks_per_ms}]");
+        info!("   APIC Timer ticks per millisecond: [{timer_ticks_per_ms}]");
 
         Self {
             local_apic,
@@ -271,8 +272,6 @@ impl Apic {
         let process = process_manager().read().kernel_process().unwrap();
 
         let lapic_registers_phys_addr = madt.local_apic_address as u64;
-        let lapic_registers_page_frame = frames::frame_from_u64(lapic_registers_phys_addr)
-            .expect("Local Apic MMIO address is not page aligned");
         
         let lapic_registers_page = process.virtual_address_space.map_devmem_identity(
             lapic_registers_phys_addr,
@@ -295,8 +294,6 @@ impl Apic {
         let process = process_manager().read().kernel_process().unwrap();
 
         let ioapic_registers_phys_addr = io_apic_desc.address as u64;
-        let lapic_registers_page_frame = frames::frame_from_u64(ioapic_registers_phys_addr)
-            .expect("IO Apic MMIO address is not page aligned");
         let ioapic_registers_page = process.virtual_address_space.map_devmem_identity(
             ioapic_registers_phys_addr,
             ioapic_registers_phys_addr + PAGE_SIZE as u64,
@@ -306,7 +303,7 @@ impl Apic {
         );
 
         unsafe {
-            let mut io_apic = IoApic::new(lapic_registers_page_frame.start_address().as_u64());
+            let mut io_apic = IoApic::new(ioapic_registers_page.start_address().as_u64());
             io_apic.init(io_apic_desc.global_system_interrupt_base as u8);
 
             io_apic

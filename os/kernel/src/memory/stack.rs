@@ -128,7 +128,7 @@ unsafe impl Allocator for StackAllocator {
     }
 
     /// Deallocate is called when a thread terminates.
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+    unsafe fn deallocate(&self, _ptr: NonNull<u8>, _layout: Layout) {
         // memory is automaticallyfreed when page tables are dropped */
         info!("Deallocating stack memory for pid: {}, tid: {}", self.pid, self.tid);
     }

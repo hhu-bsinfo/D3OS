@@ -13,9 +13,7 @@ use crate::device::ps2::Keyboard;
 use crate::device::qemu_cfg;
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
-use crate::memory::frames;
 use crate::memory::nvmem::Nfit;
-use crate::memory::pages;
 use crate::memory::pages::page_table_index;
 use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE, nvmem};
@@ -168,6 +166,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize terminal kernel thread and enable terminal logging
     init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
+
+
     // Dumping basic infos
     info!("Welcome to D3OS!");
     let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
@@ -204,12 +204,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     };
     init_acpi_tables(rsdp_addr);
 
-    // Initialize interrupts
-    info!("Initializing IDT");
     interrupt_dispatcher::setup_idt();
-    info!("Initializing system calls");
+
     syscall_dispatcher::init();
-    info!("Initializing APIC");
+
     init_apic();
 
     // Initialize timer
@@ -240,7 +238,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     );
 
     // Initialize keyboard
-    info!("Initializing PS/2 devices");
     if let Some(keyboard) = keyboard() {
         Keyboard::plugin(keyboard);
     }

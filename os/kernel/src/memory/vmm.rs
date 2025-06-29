@@ -413,7 +413,7 @@ impl VirtualAddressSpace {
     ) -> Page {
         assert!(end_phys_addr > start_phys_addr , "'end_phys_addr' must be larger than 'start_phys_addr'");
 
-        /// Calc page frame range (nneded for mapping))
+        // Calc page frame range (nneded for mapping))
         let start_page_frame =
             frames::frame_from_u64(start_phys_addr).expect("start_phys_addr is not page aligned");
         let end_page_frame = frames::frame_from_u64( Self::align_up(end_phys_addr)).expect("end_phys_addr is not page aligned");
@@ -422,7 +422,7 @@ impl VirtualAddressSpace {
             end: end_page_frame,
         };
 
-        /// Calc page range and alloc vma
+        // Calc page range and alloc vma
         let start_page_addr =
             pages::page_from_u64(start_phys_addr).expect("start_phys_addr is not page aligned");
         let end_page_addr = pages::page_from_u64( Self::align_up(end_phys_addr)).expect("end_phys_addr is not page aligned");
@@ -459,7 +459,7 @@ impl VirtualAddressSpace {
         tag: &str,
     ) -> PageRange {
 
-        /// Alloc page frame range
+        // Alloc page frame range
         let pfr = frames::alloc(num_pf as usize);
 
         // Create page from pfr.start
