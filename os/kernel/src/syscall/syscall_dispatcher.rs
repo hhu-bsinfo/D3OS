@@ -23,6 +23,8 @@ use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write};
 use crate::syscall::sys_naming::*;
 
 use crate::{core_local_storage, tss};
+use log::info;
+
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -43,6 +45,8 @@ impl CoreLocalStorage {
 }
 
 pub fn init() {
+    info!("Initializing system calls");
+
     // Enable system call extensions
     unsafe { Efer::update(|flags| flags.set(EferFlags::SYSTEM_CALL_EXTENSIONS, true)) }
 

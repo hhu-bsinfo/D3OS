@@ -4,13 +4,12 @@
    ║ Support of NVRAM.                                                       ║
    ║   - init   find and map NVRAM in kernel space                           ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 24.5.2025                    ║
+   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 29.6.2025                    ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use crate::memory::frames;
-use crate::memory::pages;
+
 use crate::memory::vma::VmaType;
-use crate::memory::{MemorySpace, PAGE_SIZE};
+use crate::memory::PAGE_SIZE;
 use crate::{acpi_tables, process_manager};
 use acpi::AcpiTable;
 use acpi::sdt::{SdtHeader, Signature};
@@ -19,9 +18,9 @@ use bitflags::bitflags;
 use core::cmp::PartialEq;
 use core::ptr;
 use log::info;
+use x86_64::PhysAddr;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{PageTableFlags, PhysFrame};
-use x86_64::PhysAddr;
 
 #[allow(dead_code)]
 #[repr(u16)]
@@ -161,8 +160,7 @@ impl Nfit {
                 let structure = *structure_ptr;
                 tables.push(structure_ptr.as_ref().expect("Invalid NFIT structure"));
 
-                structure_ptr = (structure_ptr as *const u8).add(structure.length as usize)
-                    as *const NfitStructureHeader;
+                structure_ptr = (structure_ptr as *const u8).add(structure.length as usize) as *const NfitStructureHeader;
                 remaining -= structure.length as usize;
             }
         }
@@ -186,19 +184,13 @@ impl Nfit {
 
 impl NfitStructureHeader {
     pub fn as_structure<T>(&self) -> &T {
-        unsafe {
-            ptr::from_ref(self)
-                .cast::<T>()
-                .as_ref()
-                .expect("Invalid NFIT structure")
-        }
+        unsafe { ptr::from_ref(self).cast::<T>().as_ref().expect("Invalid NFIT structure") }
     }
 }
 
 impl SystemPhysicalAddressRange {
     pub fn as_phys_frame_range(&self) -> PhysFrameRange {
-        let start =
-            PhysFrame::from_start_address(PhysAddr::new(self.base)).expect("Invalid start address");
+        let start = PhysFrame::from_start_address(PhysAddr::new(self.base)).expect("Invalid start address");
 
         PhysFrameRange {
             start,
@@ -223,47 +215,25 @@ impl FlushHintAddressStructure {
 }
 
 pub fn init() {
-        info!("Found NFIT table");
+    info!("Found NFIT table");
 
-        let process = process_manager()
-                .read()
-                .kernel_process()
-                .expect("Failed to get kernel process");
-                if let Ok(nfit) = acpi_tables().lock().find_table::<Nfit>() {
-        
+    let process = process_manager().read().kernel_process().expect("Failed to get kernel process");
+    if let Ok(nfit) = acpi_tables().lock().find_table::<Nfit>() {
         // Search NFIT table for non-volatile memory ranges
         for spa in nfit.get_phys_addr_ranges() {
+
             // Copy values to avoid unaligned access of packed struct fields
             let address = spa.base;
             let length = spa.length;
-            info!(
-                "Found non-volatile memory (Address: [0x{:x}], Length: [{} MiB])",
+            info!("Found non-volatile memory (Address: [0x{:x}], Length: [{} MiB])", address, length / 1024 / 1024);
+            
+            process.virtual_address_space.map_devmem_identity(
                 address,
-                length / 1024 / 1024
-            );
-
-            // Map non-volatile memory range to kernel address space
-            let start_page = pages::page_from_u64(address).expect("NVRAM address is not page aligned");
-            let start_page_frame = frames::frame_from_u64(address).expect("NVRAM address is not page aligned");
-
-            // Allocate virtual memory area for the non-volatile memory 
-            let vma = process.virtual_address_space.alloc_vma(
-                Some(start_page),
-                length / PAGE_SIZE as u64,
-                MemorySpace::Kernel,
-                VmaType::DeviceMemory,
-                "NVRAM",
-            ).expect("alloc_vma failed for NVRAM");
-
-            // Map non-volatile memory to the kernel address space
-            process.virtual_address_space.map_pfr_for_vma(
-                &vma,
-                PhysFrameRange {
-                    start: start_page_frame,
-                    end: start_page_frame + (length / PAGE_SIZE as u64),
-                },
+                address + length,
                 PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-            ).expect("map_pfr_for_vma failed for NVRAM");
+                VmaType::DeviceMemory,
+                "nvram",
+            );
         }
     }
 }

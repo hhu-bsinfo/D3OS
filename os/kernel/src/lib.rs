@@ -36,7 +36,7 @@ use crate::process::process_manager::ProcessManager;
 use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher::CoreLocalStorage;
-use ::log::{Level, Log, Record, error};
+use ::log::{Level, Log, Record, error, info};
 use acpi::AcpiTables;
 use alloc::sync::Arc;
 use core::fmt::Arguments;
@@ -372,6 +372,7 @@ pub fn terminal() -> Arc<dyn Terminal> {
 static PS2: Once<Arc<PS2>> = Once::new();
 
 pub fn keyboard() -> Option<Arc<Keyboard>> {
+    info!("Initializing PS/2 devices");
     PS2.call_once(|| {
         let mut ps2 = PS2::new();
         match ps2.init_controller() {

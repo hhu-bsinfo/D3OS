@@ -12,6 +12,7 @@ use x86_64::structures::paging::{Page, PageTableFlags};
 use x86_64::structures::paging::page::PageRange;
 use crate::{apic, idt, interrupt_dispatcher, scheduler};
 use crate::memory::MemorySpace;
+use log::info;
 
 #[repr(u8)]
 #[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
@@ -188,6 +189,8 @@ unsafe impl Send for InterruptDispatcher {}
 unsafe impl Sync for InterruptDispatcher {}
 
 pub fn setup_idt() {
+    info!("Initializing IDT");
+
     let mut idt = idt().lock();
 
     set_general_handler!(&mut idt, handle_exception, 0..31);
