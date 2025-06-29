@@ -187,13 +187,13 @@ fn poll_ne2000() {
     let handle = sockets.add(socket);
 
     // Bind, enqueue packet
-    let mut sock = sockets.get_mut::<Socket>(handle);
+    //let mut sock = sockets.get_mut::<Socket>(handle);
     // choose 1234 as the local port to listen on
     // socket receives incoming udp datagrams to that port
-    sock.bind(1234).unwrap();
+    //sock.bind(1234).unwrap();
 
-    let destination = IpEndpoint::new(IpAddress::v4(10, 0, 2, 2), 1798);
-    sock.send_slice(b"i hope this works", destination).unwrap();
+    //let destination = IpEndpoint::new(IpAddress::v4(10, 0, 2, 2), 1798);
+    //sock.send_slice(b"i hope this works", destination).unwrap();
 
     //info!("i hope this works (before loop)");
     // start interface

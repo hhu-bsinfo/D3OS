@@ -326,6 +326,13 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         network::add_interface(interface);
     }
 
+    // send a test datagram (suggested by Michael Schöttner on 27.06.2025)
+    let datagram = b"Hello from D3OS!";
+    let socket = network::open_socket(network::SocketType::Udp);
+    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
+    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
+        .expect("Failed to send UDP datagram");
+
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
 
