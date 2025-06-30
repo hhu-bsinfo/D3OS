@@ -61,7 +61,7 @@ impl TokenContextFactory for RedirectInAppendTokenContextFactory {
 
         TokenContext {
             pos: prev_clx.pos + 1,
-            cmd_pos: None,
+            cmd_pos: prev_clx.cmd_pos,
             short_flag_pos: None,
             in_quote: None,
             arg_kind: ArgumentKind::None,

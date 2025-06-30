@@ -5,7 +5,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use logger::info;
+use logger::{info, warn};
 
 use crate::{
     context::{
@@ -21,6 +21,7 @@ use crate::{
     sub_modules::alias::Alias,
 };
 
+#[derive(Debug)]
 enum IoType {
     None,
     InAppend,
@@ -85,15 +86,18 @@ impl Parser {
                 _ => (),
             }
 
+            if !token.has_segment_cmd() {
+                let Ok(job) = job_builder.build() else {
+                    continue;
+                };
+                clx.executable.add_job(job);
+                job_builder = JobBuilder::new();
+                job_builder.id(clx.executable.len());
+            }
+
             match token.kind() {
                 TokenKind::Command => {
-                    let Ok(job) = job_builder.build() else {
-                        job_builder.command(token.to_string());
-                        continue;
-                    };
-                    clx.executable.add_job(job);
-                    job_builder = JobBuilder::new();
-                    job_builder.id(clx.executable.len());
+                    job_builder.command(token.to_string());
                 }
 
                 TokenKind::Argument => {
@@ -105,15 +109,6 @@ impl Parser {
                         job.background_execution = true
                     }
                     job_builder.run_in_background(true);
-                }
-
-                TokenKind::Separator => {
-                    let job = job_builder.build();
-                    if job.is_ok() {
-                        clx.executable.add_job(job.unwrap());
-                    }
-                    job_builder = JobBuilder::new();
-                    job_builder.id(clx.executable.len());
                 }
 
                 TokenKind::And => {
@@ -140,6 +135,7 @@ impl Parser {
                 }
 
                 TokenKind::File => {
+                    warn!("{:?}", self.current_io_type);
                     match self.current_io_type {
                         IoType::InAppend => job_builder.use_input(Io::FileAppend(token.to_string())),
                         IoType::InTruncate => job_builder.use_input(Io::FileTruncate(token.to_string())),
@@ -160,7 +156,7 @@ impl Parser {
                 TokenKind::RedirectOutAppend => self.current_io_type = IoType::OutAppend,
                 TokenKind::RedirectOutTruncate => self.current_io_type = IoType::OutTruncate,
 
-                TokenKind::QuoteStart | TokenKind::QuoteEnd | TokenKind::Blank => (),
+                TokenKind::QuoteStart | TokenKind::QuoteEnd | TokenKind::Blank | TokenKind::Separator => (),
             }
         }
 
@@ -169,7 +165,7 @@ impl Parser {
             Err(_) => (),
         };
 
-        info!("{:?}", &clx.executable);
+        info!("{:#?}", &clx.executable);
         Ok(Response::Ok)
     }
 
@@ -198,7 +194,7 @@ impl Parser {
         }
 
         for token in clx.tokens.get() {
-            info!("{:?}", token);
+            info!("{:#?}", token);
         }
         Ok(Response::Ok)
     }
@@ -222,7 +218,7 @@ impl Parser {
             self.add(&mut clx.tokens, ch);
         }
 
-        info!("Lexer tokens with alias: {:?}", clx.tokens);
+        info!("Lexer tokens with alias: {:#?}", clx.tokens);
         Ok(Response::Ok)
     }
 

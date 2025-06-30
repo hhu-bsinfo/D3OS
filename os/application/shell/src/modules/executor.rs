@@ -105,7 +105,7 @@ impl Executor {
             };
 
             hint.push_str(&format!(
-                "Execute: {}, with arguments: {:?}\nInput from: {:?}\nOutput to: {:?}\nBackground execution: {:?}",
+                "Execute: {}, with arguments: {:?}\n\tInput from: {:?}\n\tOutput to: {:?}\n\tBackground execution: {:?}\n",
                 job.command, job.arguments, input, output, job.background_execution
             ));
         }

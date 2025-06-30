@@ -25,7 +25,7 @@ use super::{
     terminal::Terminal,
 };
 
-const TAB_SPACES: u16 = 8;
+const TAB_SPACES: u16 = 4;
 
 pub struct LFBTerminal {
     pub(crate) display: Mutex<DisplayState>,
@@ -163,12 +163,7 @@ impl LFBTerminal {
         }
     }
 
-    fn print_char_at(
-        display: &mut DisplayState,
-        color: &mut ColorState,
-        c: char,
-        pos: (u16, u16),
-    ) -> u32 {
+    fn print_char_at(display: &mut DisplayState, color: &mut ColorState, c: char, pos: (u16, u16)) -> u32 {
         display.lfb.lfb().draw_char(
             pos.0 as u32 * lfb::DEFAULT_CHAR_WIDTH,
             pos.1 as u32 * lfb::DEFAULT_CHAR_HEIGHT,
@@ -211,13 +206,10 @@ impl LFBTerminal {
             thread_count
         );
 
-        display.lfb.lfb().draw_string(
-            0,
-            0,
-            color::HHU_BLUE,
-            color::INVISIBLE,
-            info_string.as_str(),
-        );
+        display
+            .lfb
+            .lfb()
+            .draw_string(0, 0, color::HHU_BLUE, color::INVISIBLE, info_string.as_str());
 
         // Draw date
         let date_str = date().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -263,12 +255,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn position(
-        display: &mut DisplayState,
-        cursor: &mut CursorState,
-        color: &mut ColorState,
-        pos: (u16, u16),
-    ) {
+    fn position(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState, pos: (u16, u16)) {
         if pos.1 == 0 {
             cursor.pos = (pos.0, 1);
         } else {
@@ -296,10 +283,7 @@ impl LFBTerminal {
                 display,
                 cursor,
                 color,
-                (
-                    ((cursor.pos.0 + TAB_SPACES) / TAB_SPACES) * TAB_SPACES,
-                    cursor.pos.1,
-                ),
+                (((cursor.pos.0 + TAB_SPACES) / TAB_SPACES) * TAB_SPACES, cursor.pos.1),
             );
         }
     }
@@ -326,11 +310,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn clear_screen_to_cursor(
-        display: &mut DisplayState,
-        cursor: &mut CursorState,
-        color: &mut ColorState,
-    ) {
+    fn clear_screen_to_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
         let pos = cursor.pos;
         let size = display.size;
 
@@ -368,11 +348,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn clear_screen_from_cursor(
-        display: &mut DisplayState,
-        cursor: &mut CursorState,
-        color: &mut ColorState,
-    ) {
+    fn clear_screen_from_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
         let pos = cursor.pos;
         let size = display.size;
 
@@ -440,11 +416,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn clear_line_to_cursor(
-        display: &mut DisplayState,
-        cursor: &mut CursorState,
-        color: &mut ColorState,
-    ) {
+    fn clear_line_to_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
         let pos = cursor.pos;
         let size = display.size;
 
@@ -476,11 +448,7 @@ impl LFBTerminal {
         display.lfb.flush();
     }
 
-    fn clear_line_from_cursor(
-        display: &mut DisplayState,
-        cursor: &mut CursorState,
-        color: &mut ColorState,
-    ) {
+    fn clear_line_from_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
         let pos = cursor.pos;
         let size = display.size;
 
@@ -622,12 +590,7 @@ impl LFBTerminal {
                 if param.is_some() {
                     let y_move = param.unwrap()[0];
                     let row = cursor.pos.1 - if y_move == 0 { 1 } else { y_move };
-                    LFBTerminal::position(
-                        display,
-                        cursor,
-                        color,
-                        (cursor.pos.0, if row > 0 { row } else { 0 }),
-                    );
+                    LFBTerminal::position(display, cursor, color, (cursor.pos.0, if row > 0 { row } else { 0 }));
                 }
             }
             0x42 => {
@@ -642,11 +605,7 @@ impl LFBTerminal {
                         color,
                         (
                             cursor.pos.0,
-                            if row < display.size.1 {
-                                row
-                            } else {
-                                display.size.1 - 1
-                            },
+                            if row < display.size.1 { row } else { display.size.1 - 1 },
                         ),
                     );
                 };
@@ -695,14 +654,7 @@ impl LFBTerminal {
                         display,
                         cursor,
                         color,
-                        (
-                            0,
-                            if row < display.size.1 {
-                                row
-                            } else {
-                                display.size.1 - 1
-                            },
-                        ),
+                        (0, if row < display.size.1 { row } else { display.size.1 - 1 }),
                     );
                 };
             }
@@ -711,12 +663,7 @@ impl LFBTerminal {
                 let param = iter.next();
                 if param.is_some() {
                     let row = cursor.pos.1 - param.unwrap()[0] - 1;
-                    LFBTerminal::position(
-                        display,
-                        cursor,
-                        color,
-                        (0, if row > 0 { row } else { 0 }),
-                    );
+                    LFBTerminal::position(display, cursor, color, (0, if row > 0 { row } else { 0 }));
                 };
             }
             0x47 => {
@@ -758,11 +705,7 @@ impl LFBTerminal {
                             } else {
                                 column
                             },
-                            if row > display.size.1 {
-                                display.size.1 - 1
-                            } else {
-                                row
-                            },
+                            if row > display.size.1 { display.size.1 - 1 } else { row },
                         ),
                     );
                 } else {
@@ -791,11 +734,7 @@ impl LFBTerminal {
     ) {
         let mut iter = params.iter();
         let param = iter.next();
-        let erase_code = if param.is_some() {
-            param.unwrap()[0]
-        } else {
-            0
-        };
+        let erase_code = if param.is_some() { param.unwrap()[0] } else { 0 };
 
         match code {
             0x4a => match erase_code {
