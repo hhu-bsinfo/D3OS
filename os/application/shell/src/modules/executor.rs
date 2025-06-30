@@ -41,7 +41,7 @@ impl Executor {
 
     pub fn execute(&self, clx: &mut Context) -> Result<Response, Error> {
         for job in clx.executable.get_jobs() {
-            if job.input != Io::Std || job.output != Io::Std {
+            if job.input != Io::Std || job.output != Io::Std || job.background_execution {
                 return Err(self.handle_unsupported_error(&clx.executable.jobs));
             }
         }
@@ -67,7 +67,8 @@ impl Executor {
         match thread {
             Some(thread) => thread.join(),
             None => return Err(Error::new_inline("Command not found!".to_string(), None)),
-        };
+        }
+
         Ok(Response::Ok)
     }
 
@@ -87,7 +88,7 @@ impl Executor {
     }
 
     fn handle_unsupported_error(&self, jobs: &Vec<Job>) -> Error {
-        let message = "Pipes and Redirections are not jet supported by D3OS".to_string();
+        let message = "Pipes, Redirections and background executions are not jet supported by D3OS".to_string();
         let mut hint = "Assume the following execution:\n".to_string();
 
         for job in jobs {
@@ -105,7 +106,7 @@ impl Executor {
             };
 
             hint.push_str(&format!(
-                "Execute: {}, with arguments: {:?}\n\tInput from: {:?}\n\tOutput to: {:?}\n\tBackground execution: {:?}\n",
+                "Execute: {}, with arguments: {:?}\n\tInput from: {}\n\tOutput to: {}\n\tBackground execution: {:?}\n",
                 job.command, job.arguments, input, output, job.background_execution
             ));
         }
