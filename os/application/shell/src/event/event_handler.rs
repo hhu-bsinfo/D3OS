@@ -9,16 +9,28 @@ pub enum Response {
     Ignore,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Error {
     pub(crate) message: &'static str,
-    pub(crate) reason: Option<&'static str>,
     pub(crate) hint: Option<&'static str>,
+    pub(crate) start_inline: bool,
 }
 
 impl Error {
-    pub const fn new(message: &'static str, reason: Option<&'static str>, hint: Option<&'static str>) -> Self {
-        Self { message, reason, hint }
+    pub const fn new(message: &'static str, hint: Option<&'static str>) -> Self {
+        Self {
+            message,
+            hint,
+            start_inline: false,
+        }
+    }
+
+    pub const fn new_inline(message: &'static str, hint: Option<&'static str>) -> Self {
+        Self {
+            message,
+            hint,
+            start_inline: true,
+        }
     }
 }
 

@@ -1,19 +1,19 @@
 use alloc::vec::Vec;
 
-use crate::modules::lexer::Token;
+use crate::modules::parser::token::Token;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct TokensContext {
     tokens: Vec<Token>,
 }
 
 impl TokensContext {
     pub fn new() -> Self {
-        TokensContext::default()
+        Self { tokens: Vec::new() }
     }
 
     pub fn reset(&mut self) {
-        *self = TokensContext::default()
+        self.tokens.clear();
     }
 
     pub fn get(&self) -> &Vec<Token> {
@@ -36,12 +36,24 @@ impl TokensContext {
         self.tokens.pop()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.tokens.last().is_some_and(|token| token.status().is_error())
+    }
+
+    pub fn is_incomplete(&self) -> bool {
+        self.tokens.last().is_some_and(|token| token.status().is_incomplete())
+    }
+
     pub fn find_last_command(&self) -> Option<&Token> {
         let last_token = match self.tokens.last() {
             Some(token) => token,
             None => return None,
         };
-        let last_command_pos = match last_token.context().assigned_command_pos {
+        let last_command_pos = match last_token.clx().cmd_pos {
             Some(pos) => pos,
             None => return None,
         };
@@ -53,7 +65,7 @@ impl TokensContext {
             Some(token) => token,
             None => return None,
         };
-        let last_command_pos = match last_token.context().assigned_short_flag_pos {
+        let last_command_pos = match last_token.clx().short_flag_pos {
             Some(pos) => pos,
             None => return None,
         };
@@ -64,14 +76,8 @@ impl TokensContext {
         self.tokens.len()
     }
 
+    // TODO add pos to token context, then if last last.pos + last.len else 0
     pub fn total_len(&self) -> usize {
-        self.tokens
-            .iter()
-            .map(|token| match token {
-                Token::Command(_clx, s) => s.len(),
-                Token::Argument(_clx, s) => s.len(),
-                _ => 1,
-            })
-            .sum()
+        self.tokens.iter().map(|token| token.len()).sum()
     }
 }

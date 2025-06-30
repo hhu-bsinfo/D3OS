@@ -24,7 +24,8 @@ impl EventHandler for Writer {
     }
 
     fn on_process_completed(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(clx)
+        self.draw_at_dirty(clx);
+        self.recolor_indicator(clx) // TODO improve performance
     }
 }
 
@@ -52,6 +53,28 @@ impl Writer {
         clx.line.mark_clean();
         clx.indicator.mark_clean();
         clx.suggestion.mark_clean();
+
+        Ok(Response::Ok)
+    }
+
+    fn recolor_indicator(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        let (color_start, color_end) = if clx.tokens.is_error() {
+            ("[38;2;255;0;0m", "[0m")
+        } else if clx.tokens.is_incomplete() {
+            ("[38;2;255;255;0m", "[0m")
+        } else {
+            ("", "")
+        };
+
+        print!(
+            "{}{}{}{}{}{}",
+            "\x1b[s",
+            "\x1b[G",
+            color_start,
+            clx.indicator.get(),
+            color_end,
+            "\x1b[u",
+        );
 
         Ok(Response::Ok)
     }
