@@ -7,6 +7,7 @@ use terminal::print;
 use crate::{
     context::context::Context,
     event::event_handler::{Error, EventHandler, Response},
+    modules::parser::token::TokenStatus,
 };
 
 pub struct Writer {
@@ -20,12 +21,11 @@ impl EventHandler for Writer {
     }
 
     fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.draw_next_line(clx)
+        self.write_next_line(clx)
     }
 
     fn on_process_completed(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.draw_at_dirty(clx);
-        self.recolor_indicator(clx) // TODO improve performance
+        self.write_at_dirty(clx)
     }
 }
 
@@ -34,63 +34,53 @@ impl Writer {
         Self { terminal_cursor_pos: 0 }
     }
 
-    fn draw_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        print!("{}\n", self.cursor_to_end(clx));
-        Ok(Response::Ok)
-    }
-
-    fn draw_at_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        print!(
-            "{}{}{}[38;2;100;100;100m{}[0m{}",
-            self.cursor_to_dirty(clx),
-            self.clear_right_of_cursor(),
-            self.dirty_line(clx),
-            self.dirty_suggestion(clx),
-            self.restore_cursor_position(clx)
-        );
-
-        clx.line.mark_clean();
-        clx.suggestion.mark_clean();
-
-        Ok(Response::Ok)
-    }
-
     fn write_indicator(&mut self, clx: &mut Context) -> Result<Response, Error> {
         print!("{}", clx.indicator.get());
         self.terminal_cursor_pos += clx.indicator.len();
         Ok(Response::Ok)
     }
 
-    fn recolor_indicator(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        let (color_start, color_end) = if clx.tokens.is_error() {
-            ("[38;2;255;0;0m", "[0m")
-        } else if clx.tokens.is_incomplete() {
-            ("[38;2;255;255;0m", "[0m")
-        } else {
-            ("", "")
-        };
+    fn write_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        print!("{}\n", self.cursor_to_end(clx));
+        Ok(Response::Ok)
+    }
 
+    fn write_at_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
         print!(
+            "{}{}{}{}[38;2;100;100;100m{}[0m{}",
+            self.dirty_status_indicator(clx),
+            self.cursor_to_dirty_line(clx),
+            Self::clear_right_of_cursor(),
+            self.dirty_line(clx),
+            self.dirty_suggestion(clx),
+            self.restore_cursor_position(clx)
+        );
+
+        clx.line.mark_clean();
+        clx.tokens.mark_status_clean();
+        clx.suggestion.mark_clean();
+
+        Ok(Response::Ok)
+    }
+
+    fn dirty_status_indicator(&mut self, clx: &mut Context) -> String {
+        if !clx.tokens.is_status_dirty() {
+            return String::new();
+        }
+        let (color_start, color_end) = match clx.tokens.status() {
+            TokenStatus::Valid => ("", ""),
+            TokenStatus::Incomplete => ("[38;2;255;255;0m", "[0m"),
+            TokenStatus::Error(_) => ("[38;2;255;0;0m", "[0m"),
+        };
+        format!(
             "{}{}{}{}{}{}",
-            "\x1b[s",
-            "\x1b[G",
+            Self::save_cursor_pos(),
+            Self::cursor_to_start(),
             color_start,
             clx.indicator.get(),
             color_end,
-            "\x1b[u",
-        );
-
-        Ok(Response::Ok)
-    }
-
-    fn draw_cursor(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        print!("{}", self.restore_cursor_position(clx));
-        Ok(Response::Ok)
-    }
-
-    fn cursor_to_start(&mut self) -> String {
-        let step = -(self.terminal_cursor_pos as isize);
-        self.move_cursor_by(step)
+            Self::restore_cursor_pos(),
+        )
     }
 
     fn cursor_to_end(&mut self, clx: &mut Context) -> String {
@@ -98,7 +88,7 @@ impl Writer {
         self.move_cursor_by(step)
     }
 
-    fn cursor_to_dirty(&mut self, clx: &mut Context) -> String {
+    fn cursor_to_dirty_line(&mut self, clx: &mut Context) -> String {
         let offset = clx.indicator.len() + clx.line.get_dirty_index();
         let step = self.terminal_cursor_pos as isize - offset as isize;
         self.move_cursor_by(step)
@@ -123,10 +113,6 @@ impl Writer {
         }
     }
 
-    fn clear_right_of_cursor(&self) -> &'static str {
-        "\x1b[0K"
-    }
-
     fn dirty_line(&mut self, clx: &mut Context) -> String {
         let line = clx.line.get_dirty_part();
         self.terminal_cursor_pos += line.len();
@@ -141,5 +127,21 @@ impl Writer {
 
         self.terminal_cursor_pos += line.len();
         line
+    }
+
+    fn clear_right_of_cursor() -> &'static str {
+        "\x1b[0K"
+    }
+
+    fn cursor_to_start() -> &'static str {
+        "\x1b[G"
+    }
+
+    fn save_cursor_pos() -> &'static str {
+        "\x1b[s"
+    }
+
+    fn restore_cursor_pos() -> &'static str {
+        "\x1b[u"
     }
 }
