@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Io {
     Std,
     Job(usize),

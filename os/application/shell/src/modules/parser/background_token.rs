@@ -1,19 +1,35 @@
+use alloc::string::ToString;
+use spin::Lazy;
+
 use crate::{
     event::event_handler::Error,
     modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
 };
 
-const BG_BEFORE_CMD_ERROR: Error = Error::new(
-    "Invalid command line",
-    Some(
-        "If you want to use a background execution, try moving & after the command (Example: cmd1 arg1 arg2 &)\nIf you want & as normal char, try wrapping it in parentheses (Example: echo 'No & background execution')",
-    ),
-);
+static BG_BEFORE_CMD_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some(
+            "If you want to use a background execution, try moving & after the command (Example: cmd1 arg1 arg2 &)
+If you want & as normal char, try wrapping it in parentheses (Example: echo 'No & background execution')"
+                .to_string(),
+        ),
+    )
+});
 
-const BACKGROUND_INSTEAD_OF_FILE_ERROR: Error =
-    Error::new("Invalid command line", Some("Expected a filename but got &"));
+static BACKGROUND_INSTEAD_OF_FILE_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected a filename but got &".to_string()),
+    )
+});
 
-const MULTIPLE_BACKGROUND_ERROR: Error = Error::new("Invalid command line", Some("Expected end of line"));
+static MULTIPLE_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected end of line".to_string()),
+    )
+});
 
 pub struct BackgroundTokenContextFactory {}
 

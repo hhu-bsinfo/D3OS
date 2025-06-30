@@ -1,17 +1,31 @@
+use alloc::string::ToString;
+use spin::Lazy;
+
 use crate::{
     event::event_handler::Error,
     modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
 };
 
-const MORE_THAN_ONE_CMD_IN_SEGMENT_ERROR: Error = Error::new(
-    "Invalid command line",
-    Some("Can not handle more than one command per segment"),
-);
+static MORE_THAN_ONE_CMD_IN_SEGMENT_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Can not handle more than one command per segment".to_string()),
+    )
+});
 
-const COMMAND_INSTEAD_OF_FILE_ERROR: Error =
-    Error::new("Invalid command line", Some("Expected a filename but got command"));
+static COMMAND_INSTEAD_OF_FILE_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected a filename but got command".to_string()),
+    )
+});
 
-const COMMAND_AFTER_BACKGROUND_ERROR: Error = Error::new("Invalid command line", Some("Expected end of line"));
+static COMMAND_AFTER_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected end of line".to_string()),
+    )
+});
 
 pub struct CommandTokenContextFactory {}
 

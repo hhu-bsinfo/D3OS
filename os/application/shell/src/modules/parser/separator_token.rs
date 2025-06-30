@@ -1,3 +1,6 @@
+use alloc::string::ToString;
+use spin::Lazy;
+
 use crate::{
     event::event_handler::Error,
     modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
@@ -5,10 +8,19 @@ use crate::{
 
 pub struct SeparatorTokenContextFactory {}
 
-const SEPARATOR_INSTEAD_OF_FILE_ERROR: Error =
-    Error::new("Invalid command line", Some("Expected a filename but got ;"));
+static SEPARATOR_INSTEAD_OF_FILE_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected a filename but got ;".to_string()),
+    )
+});
 
-const SEPARATOR_AFTER_BACKGROUND_ERROR: Error = Error::new("Invalid command line", Some("Expected end of line"));
+static SEPARATOR_AFTER_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected end of line".to_string()),
+    )
+});
 
 impl TokenContextFactory for SeparatorTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {

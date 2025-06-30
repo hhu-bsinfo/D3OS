@@ -10,7 +10,7 @@ mod sub_modules;
 
 use core::cell::RefCell;
 
-use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 use logger::info;
 use modules::{command_line::CommandLine, executor::Executor, history::History, writer::Writer};
 #[allow(unused_imports)]
@@ -82,7 +82,7 @@ impl Shell {
             "{}[38;2;255;0;0m{}[0m\n[38;2;200;80;80m{}[0m",
             if error.start_inline { "" } else { "\n" },
             error.message,
-            error.hint.unwrap_or("")
+            error.hint.unwrap_or(String::new()),
         );
         self.clx.events.trigger(Event::PrepareNewLine);
     }

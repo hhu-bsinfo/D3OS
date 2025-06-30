@@ -118,21 +118,21 @@ impl Parser {
 
                 TokenKind::And => {
                     let Some(last_job) = clx.executable.last_job() else {
-                        return Err(Error::new("And condition requires a preceding job", None));
+                        return Err(Error::new("And condition requires a preceding job".to_string(), None));
                     };
                     job_builder.requires_job(last_job.id, JobResult::Success);
                 }
 
                 TokenKind::Or => {
                     let Some(last_job) = clx.executable.last_job() else {
-                        return Err(Error::new("Or condition requires a preceding job", None));
+                        return Err(Error::new("Or condition requires a preceding job".to_string(), None));
                     };
                     job_builder.requires_job(last_job.id, JobResult::Error);
                 }
 
                 TokenKind::Pipe => {
                     let Some(last_job) = clx.executable.last_job_mut() else {
-                        return Err(Error::new("Pipe requires a preceding job", None));
+                        return Err(Error::new("Pipe requires a preceding job".to_string(), None));
                     };
 
                     last_job.output = Io::Job(job_builder.peek_id().expect("Next job id should be set by now"));
@@ -145,7 +145,12 @@ impl Parser {
                         IoType::InTruncate => job_builder.use_input(Io::FileTruncate(token.to_string())),
                         IoType::OutAppend => job_builder.use_output(Io::FileAppend(token.to_string())),
                         IoType::OutTruncate => job_builder.use_output(Io::FileTruncate(token.to_string())),
-                        IoType::None => return Err(Error::new("Received file without redirection instruction", None)),
+                        IoType::None => {
+                            return Err(Error::new(
+                                "Received file without redirection instruction".to_string(),
+                                None,
+                            ));
+                        }
                     };
                     self.current_io_type = IoType::None;
                 }
