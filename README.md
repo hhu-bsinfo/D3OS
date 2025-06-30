@@ -90,7 +90,7 @@ Use following command (in the D3OS directory) to create a bootable media for the
 ### Using balenaEtcher
 Write the file `d3os.img` using [balenaEtcher](https://etcher.balena.io) to your USB stick.
 
-## Passing an existing PCI device to the host
+## Passing an existing PCI device to the VM
 
 To use a real device with QEMU, change the Makefile so that it uses `${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/qemu-pci.sh` instead of `qemu-system-x86_64`.
 Also take a look at that script and fill in the constants at the top.
