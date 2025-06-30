@@ -1,20 +1,33 @@
+use alloc::string::ToString;
+use spin::Lazy;
+
 use crate::{
     event::event_handler::Error,
     modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
 };
 
-const REDIRECT_IN_TRUNCATE_BEFORE_CMD_ERROR: Error = Error::new(
-    "Invalid command line",
-    Some(
-        "If you want to redirect some input, try moving < after a command (Example: cmd1 < file)\nIf you want < as normal char, try wrapping it in parentheses (Example: echo 'No < redirection')",
-    ),
-);
+static REDIRECT_IN_TRUNCATE_BEFORE_CMD_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some(
+            "If you want to redirect some input, try moving < after a command (Example: cmd1 < file)\nIf you want < as normal char, try wrapping it in parentheses (Example: echo 'No < redirection')".to_string(),
+        ),
+    )
+});
 
-const REDIRECT_IN_TRUNCATE_INSTEAD_OF_FILE_ERROR: Error =
-    Error::new("Invalid command line", Some("Expected a filename but got <"));
+static REDIRECT_IN_TRUNCATE_INSTEAD_OF_FILE_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected a filename but got <".to_string()),
+    )
+});
 
-const REDIRECT_IN_TRUNCATE_AFTER_BACKGROUND_ERROR: Error =
-    Error::new("Invalid command line", Some("Expected end of line"));
+static REDIRECT_IN_TRUNCATE_AFTER_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected end of line".to_string()),
+    )
+});
 
 pub struct RedirectInTruncateTokenContextFactory {}
 
@@ -48,7 +61,7 @@ impl TokenContextFactory for RedirectInTruncateTokenContextFactory {
 
         TokenContext {
             pos: prev_clx.pos + 1,
-            cmd_pos: None,
+            cmd_pos: prev_clx.cmd_pos,
             short_flag_pos: None,
             in_quote: None,
             arg_kind: ArgumentKind::None,

@@ -1,19 +1,33 @@
+use alloc::string::ToString;
+use spin::Lazy;
+
 use crate::{
     event::event_handler::Error,
     modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
 };
 
-const LOGICAL_AND_BEFORE_CMD_ERROR: Error = Error::new(
-    "Invalid command line",
-    Some(
-        "If you want to use a and condition, try moving && between commands (Example: cmd1 && cmd2)\nIf you want && as normal char, try wrapping it in parentheses (Example: echo 'No && condition')",
-    ),
-);
+static LOGICAL_AND_BEFORE_CMD_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some(
+            "If you want to use a and condition, try moving && between commands (Example: cmd1 && cmd2)\nIf you want && as normal char, try wrapping it in parentheses (Example: echo 'No && condition')".to_string(),
+        ),
+    )
+});
 
-const LOGICAL_AND_INSTEAD_OF_FILE_ERROR: Error =
-    Error::new("Invalid command line", Some("Expected a filename but got &&"));
+static LOGICAL_AND_INSTEAD_OF_FILE_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected a filename but got &&".to_string()),
+    )
+});
 
-const LOGICAL_AND_AFTER_BACKGROUND_ERROR: Error = Error::new("Invalid command line", Some("Expected end of line"));
+static LOGICAL_AND_AFTER_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected end of line".to_string()),
+    )
+});
 
 pub struct AndTokenContextFactory {}
 

@@ -1,3 +1,4 @@
+use alloc::string::String;
 use terminal::DecodedKey;
 
 use crate::context::context::Context;
@@ -11,13 +12,13 @@ pub enum Response {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Error {
-    pub(crate) message: &'static str,
-    pub(crate) hint: Option<&'static str>,
+    pub(crate) message: String,
+    pub(crate) hint: Option<String>,
     pub(crate) start_inline: bool,
 }
 
 impl Error {
-    pub const fn new(message: &'static str, hint: Option<&'static str>) -> Self {
+    pub fn new(message: String, hint: Option<String>) -> Self {
         Self {
             message,
             hint,
@@ -25,7 +26,7 @@ impl Error {
         }
     }
 
-    pub const fn new_inline(message: &'static str, hint: Option<&'static str>) -> Self {
+    pub fn new_inline(message: String, hint: Option<String>) -> Self {
         Self {
             message,
             hint,

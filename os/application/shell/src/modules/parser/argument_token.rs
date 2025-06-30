@@ -1,3 +1,6 @@
+use alloc::string::ToString;
+use spin::Lazy;
+
 use crate::{
     event::event_handler::Error,
     modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
@@ -5,10 +8,19 @@ use crate::{
 
 pub struct ArgumentTokenContextFactory {}
 
-const ARGUMENT_INSTEAD_OF_FILE_ERROR: Error =
-    Error::new("Invalid command line", Some("Expected a filename but got argument"));
+static ARGUMENT_INSTEAD_OF_FILE_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected a filename but got argument".to_string()),
+    )
+});
 
-const ARGUMENT_AFTER_BACKGROUND_ERROR: Error = Error::new("Invalid command line", Some("Expected end of line"));
+static ARGUMENT_AFTER_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
+    Error::new(
+        "Invalid command line".to_string(),
+        Some("Expected end of line".to_string()),
+    )
+});
 
 impl TokenContextFactory for ArgumentTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {

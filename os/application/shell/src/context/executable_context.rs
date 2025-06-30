@@ -1,6 +1,7 @@
 use alloc::{string::String, vec::Vec};
+use logger::warn;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Io {
     Std,
     Job(usize),
@@ -69,6 +70,7 @@ impl JobBuilder {
     }
 
     pub fn use_output(&mut self, output: Io) -> &mut Self {
+        warn!("builder: id:{:?} {:?}", self.id, output);
         self.output = output;
         self
     }
@@ -85,6 +87,10 @@ impl JobBuilder {
 
     pub fn peek_id(&self) -> Option<usize> {
         self.id
+    }
+
+    pub fn peek_command(&self) -> Option<&str> {
+        self.command.as_deref()
     }
 
     pub fn build(&self) -> Result<Job, &'static str> {
