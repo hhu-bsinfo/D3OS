@@ -13,6 +13,8 @@ const LOGICAL_OR_BEFORE_CMD_ERROR: Error = Error::new(
 const LOGICAL_OR_INSTEAD_OF_FILE_ERROR: Error =
     Error::new("Invalid command line", Some("Expected a filename but got ||"));
 
+const LOGICAL_OR_AFTER_BACKGROUND_ERROR: Error = Error::new("Invalid command line", Some("Expected end of line"));
+
 pub struct OrTokenContextFactory {}
 
 impl TokenContextFactory for OrTokenContextFactory {
@@ -26,6 +28,7 @@ impl TokenContextFactory for OrTokenContextFactory {
             error: Some(&LOGICAL_OR_BEFORE_CMD_ERROR),
             require_cmd: true,
             require_file: false,
+            has_background: false,
         }
     }
 
@@ -35,6 +38,8 @@ impl TokenContextFactory for OrTokenContextFactory {
                 Some(&LOGICAL_OR_BEFORE_CMD_ERROR)
             } else if prev_clx.require_file {
                 Some(&LOGICAL_OR_INSTEAD_OF_FILE_ERROR)
+            } else if prev_clx.has_background {
+                Some(&LOGICAL_OR_AFTER_BACKGROUND_ERROR)
             } else {
                 None
             }
@@ -49,6 +54,7 @@ impl TokenContextFactory for OrTokenContextFactory {
             error,
             require_cmd: true,
             require_file: false,
+            has_background: prev_clx.has_background,
         }
     }
 }

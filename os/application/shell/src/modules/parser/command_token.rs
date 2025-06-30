@@ -11,6 +11,8 @@ const MORE_THAN_ONE_CMD_IN_SEGMENT_ERROR: Error = Error::new(
 const COMMAND_INSTEAD_OF_FILE_ERROR: Error =
     Error::new("Invalid command line", Some("Expected a filename but got command"));
 
+const COMMAND_AFTER_BACKGROUND_ERROR: Error = Error::new("Invalid command line", Some("Expected end of line"));
+
 pub struct CommandTokenContextFactory {}
 
 impl TokenContextFactory for CommandTokenContextFactory {
@@ -24,6 +26,7 @@ impl TokenContextFactory for CommandTokenContextFactory {
             error: None,
             require_cmd: false,
             require_file: false,
+            has_background: false,
         }
     }
 
@@ -33,6 +36,8 @@ impl TokenContextFactory for CommandTokenContextFactory {
                 Some(&MORE_THAN_ONE_CMD_IN_SEGMENT_ERROR)
             } else if prev_clx.require_file {
                 Some(&COMMAND_INSTEAD_OF_FILE_ERROR)
+            } else if prev_clx.has_background {
+                Some(&COMMAND_AFTER_BACKGROUND_ERROR)
             } else {
                 None
             }
@@ -47,6 +52,7 @@ impl TokenContextFactory for CommandTokenContextFactory {
             error,
             require_cmd: false,
             require_file: false,
+            has_background: prev_clx.has_background,
         }
     }
 }

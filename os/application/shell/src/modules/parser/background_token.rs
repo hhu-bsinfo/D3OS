@@ -13,7 +13,7 @@ const BG_BEFORE_CMD_ERROR: Error = Error::new(
 const BACKGROUND_INSTEAD_OF_FILE_ERROR: Error =
     Error::new("Invalid command line", Some("Expected a filename but got &"));
 
-// TODO FIX: background operator must be always at end of command line
+const MULTIPLE_BACKGROUND_ERROR: Error = Error::new("Invalid command line", Some("Expected end of line"));
 
 pub struct BackgroundTokenContextFactory {}
 
@@ -26,8 +26,9 @@ impl TokenContextFactory for BackgroundTokenContextFactory {
             in_quote: None,
             arg_kind: ArgumentKind::None,
             error: Some(&BG_BEFORE_CMD_ERROR),
-            require_cmd: true,
+            require_cmd: false,
             require_file: false,
+            has_background: true,
         }
     }
 
@@ -37,6 +38,8 @@ impl TokenContextFactory for BackgroundTokenContextFactory {
                 Some(&BG_BEFORE_CMD_ERROR)
             } else if prev_clx.require_file {
                 Some(&BACKGROUND_INSTEAD_OF_FILE_ERROR)
+            } else if prev_clx.has_background {
+                Some(&MULTIPLE_BACKGROUND_ERROR)
             } else {
                 None
             }
@@ -49,8 +52,9 @@ impl TokenContextFactory for BackgroundTokenContextFactory {
             in_quote: None,
             arg_kind: ArgumentKind::None,
             error,
-            require_cmd: true,
+            require_cmd: false,
             require_file: false,
+            has_background: true,
         }
     }
 }

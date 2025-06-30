@@ -17,6 +17,7 @@ impl TokenContextFactory for QuoteEndTokenContextFactory {
             error: prev_clx.error,
             require_cmd: prev_clx.require_cmd,
             require_file: prev_clx.require_file,
+            has_background: prev_clx.has_background,
         }
     }
 }

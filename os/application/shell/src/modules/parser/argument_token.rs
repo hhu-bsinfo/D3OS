@@ -8,6 +8,8 @@ pub struct ArgumentTokenContextFactory {}
 const ARGUMENT_INSTEAD_OF_FILE_ERROR: Error =
     Error::new("Invalid command line", Some("Expected a filename but got argument"));
 
+const ARGUMENT_AFTER_BACKGROUND_ERROR: Error = Error::new("Invalid command line", Some("Expected end of line"));
+
 impl TokenContextFactory for ArgumentTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
         panic!("The first token can not be a argument");
@@ -17,6 +19,8 @@ impl TokenContextFactory for ArgumentTokenContextFactory {
         let error = prev_clx.error.or_else(|| {
             if prev_clx.require_file {
                 Some(&ARGUMENT_INSTEAD_OF_FILE_ERROR)
+            } else if prev_clx.has_background {
+                Some(&ARGUMENT_AFTER_BACKGROUND_ERROR)
             } else {
                 None
             }
@@ -44,6 +48,7 @@ impl TokenContextFactory for ArgumentTokenContextFactory {
             error,
             require_cmd: false,
             require_file: false,
+            has_background: prev_clx.has_background,
         }
     }
 

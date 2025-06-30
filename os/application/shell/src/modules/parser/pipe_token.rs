@@ -12,6 +12,8 @@ const PIPE_BEFORE_CMD_ERROR: Error = Error::new(
 
 const PIPE_INSTEAD_OF_FILE_ERROR: Error = Error::new("Invalid command line", Some("Expected a filename but got |"));
 
+const PIPE_AFTER_BACKGROUND_ERROR: Error = Error::new("Invalid command line", Some("Expected end of line"));
+
 pub struct PipeTokenContextFactory {}
 
 impl TokenContextFactory for PipeTokenContextFactory {
@@ -25,6 +27,7 @@ impl TokenContextFactory for PipeTokenContextFactory {
             error: Some(&PIPE_BEFORE_CMD_ERROR),
             require_cmd: true,
             require_file: false,
+            has_background: false,
         }
     }
 
@@ -34,6 +37,8 @@ impl TokenContextFactory for PipeTokenContextFactory {
                 Some(&PIPE_BEFORE_CMD_ERROR)
             } else if prev_clx.require_file {
                 Some(&PIPE_INSTEAD_OF_FILE_ERROR)
+            } else if prev_clx.has_background {
+                Some(&PIPE_AFTER_BACKGROUND_ERROR)
             } else {
                 None
             }
@@ -48,6 +53,7 @@ impl TokenContextFactory for PipeTokenContextFactory {
             error,
             require_cmd: true,
             require_file: false,
+            has_background: prev_clx.has_background,
         }
     }
 }

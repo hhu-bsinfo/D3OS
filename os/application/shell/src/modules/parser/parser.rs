@@ -101,6 +101,9 @@ impl Parser {
                 }
 
                 TokenKind::Background => {
+                    for job in &mut clx.executable.jobs {
+                        job.background_execution = true
+                    }
                     job_builder.run_in_background(true);
                 }
 

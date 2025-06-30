@@ -89,6 +89,7 @@ pub struct TokenContext {
     pub error: Option<&'static Error>,
     pub require_cmd: bool,
     pub require_file: bool,
+    pub has_background: bool,
 }
 
 impl TokenContext {

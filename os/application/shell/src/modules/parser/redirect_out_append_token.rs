@@ -13,6 +13,9 @@ const REDIRECT_OUT_APPEND_BEFORE_CMD_ERROR: Error = Error::new(
 const REDIRECT_OUT_APPEND_INSTEAD_OF_FILE_ERROR: Error =
     Error::new("Invalid command line", Some("Expected a filename but got >>"));
 
+const REDIRECT_OUT_APPEND_AFTER_BACKGROUND_ERROR: Error =
+    Error::new("Invalid command line", Some("Expected end of line"));
+
 pub struct RedirectOutAppendTokenContextFactory {}
 
 impl TokenContextFactory for RedirectOutAppendTokenContextFactory {
@@ -26,6 +29,7 @@ impl TokenContextFactory for RedirectOutAppendTokenContextFactory {
             error: Some(&REDIRECT_OUT_APPEND_BEFORE_CMD_ERROR),
             require_cmd: false,
             require_file: true,
+            has_background: false,
         }
     }
 
@@ -35,6 +39,8 @@ impl TokenContextFactory for RedirectOutAppendTokenContextFactory {
                 Some(&REDIRECT_OUT_APPEND_BEFORE_CMD_ERROR)
             } else if prev_clx.require_file {
                 Some(&REDIRECT_OUT_APPEND_INSTEAD_OF_FILE_ERROR)
+            } else if prev_clx.has_background {
+                Some(&REDIRECT_OUT_APPEND_AFTER_BACKGROUND_ERROR)
             } else {
                 None
             }
@@ -49,6 +55,7 @@ impl TokenContextFactory for RedirectOutAppendTokenContextFactory {
             error,
             require_cmd: false,
             require_file: true,
+            has_background: prev_clx.has_background,
         }
     }
 }

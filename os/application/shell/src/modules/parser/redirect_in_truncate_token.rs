@@ -13,6 +13,9 @@ const REDIRECT_IN_TRUNCATE_BEFORE_CMD_ERROR: Error = Error::new(
 const REDIRECT_IN_TRUNCATE_INSTEAD_OF_FILE_ERROR: Error =
     Error::new("Invalid command line", Some("Expected a filename but got <"));
 
+const REDIRECT_IN_TRUNCATE_AFTER_BACKGROUND_ERROR: Error =
+    Error::new("Invalid command line", Some("Expected end of line"));
+
 pub struct RedirectInTruncateTokenContextFactory {}
 
 impl TokenContextFactory for RedirectInTruncateTokenContextFactory {
@@ -26,6 +29,7 @@ impl TokenContextFactory for RedirectInTruncateTokenContextFactory {
             error: Some(&REDIRECT_IN_TRUNCATE_BEFORE_CMD_ERROR),
             require_cmd: false,
             require_file: true,
+            has_background: false,
         }
     }
 
@@ -35,6 +39,8 @@ impl TokenContextFactory for RedirectInTruncateTokenContextFactory {
                 Some(&REDIRECT_IN_TRUNCATE_BEFORE_CMD_ERROR)
             } else if prev_clx.require_file {
                 Some(&REDIRECT_IN_TRUNCATE_INSTEAD_OF_FILE_ERROR)
+            } else if prev_clx.has_background {
+                Some(&REDIRECT_IN_TRUNCATE_AFTER_BACKGROUND_ERROR)
             } else {
                 None
             }
@@ -49,6 +55,7 @@ impl TokenContextFactory for RedirectInTruncateTokenContextFactory {
             error,
             require_cmd: false,
             require_file: true,
+            has_background: prev_clx.has_background,
         }
     }
 }

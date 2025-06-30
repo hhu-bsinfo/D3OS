@@ -18,6 +18,7 @@ impl TokenContextFactory for QuoteStartTokenContextFactory {
             error: None,
             require_cmd: false,
             require_file: false,
+            has_background: false,
         }
     }
 
@@ -39,6 +40,7 @@ impl TokenContextFactory for QuoteStartTokenContextFactory {
             error,
             require_cmd: prev_clx.require_cmd,
             require_file: prev_clx.require_file,
+            has_background: prev_clx.has_background,
         }
     }
 }
