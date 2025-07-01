@@ -16,8 +16,10 @@
 // DEPENDENCIES:
 // =============================================================================
 
+use crate::device::ne2k::register_flags::ReceiveStatusRegister;
 use crate::memory::{PAGE_SIZE, frames};
 use crate::{apic, device, interrupt_dispatcher, pci_bus, process_manager, scheduler};
+use core::mem;
 use core::ops::BitOr;
 use core::{ptr, slice};
 use log::info;
@@ -62,13 +64,28 @@ const DISPLAY_RED: &'static str = "\x1b[1;31m";
  * Page 4 PSTART
  */
 static RECEIVE_START_PAGE: u8 = 0x46;
+static MINIMUM_ETHERNET_PACKET_SIZE: u8 = 64;
+static MAXIMUM_ETHERNET_PACKET_SIZE: u32 = 1522;
+static mut CURRENT_NEXT_PAGE_POINTER: u8 = 0x00;
 
-/**
- * Reception Buffer Ring End
- * P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
- * Accessed:
- */
+/*
+* Reception Buffer Ring End
+* P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
+* Accessed:
+*/
 static RECEIVE_STOP_PAGE: u8 = 0x80;
+
+// The Structure of the PacketHeader is definied in the datasheet
+// TODO: add reference
+// receive status : holds the content of the Receive Status Register
+// next_packet : Pointer, which holds the next ringbuffer address
+
+#[repr(C)]
+struct PacketHeader {
+    receive_status: u8,
+    next_packet: u8,
+    length: u8,
+}
 
 struct ParRegisters {
     id: Mutex<(
@@ -182,6 +199,7 @@ impl Registers {
 
 // par_registers : store the MAC ADDRESS
 // send_queue: needed for packet transmission process in smoltcp
+// TODO: implement receive queue, see rtl8139
 pub struct Ne2000 {
     base_address: u16,
     registers: Registers,
@@ -574,10 +592,10 @@ impl Ne2000 {
             /* P.156 http://www.bitsavers.org/components/national/_dataBooks/1988_National_Data_Communications_Local_Area_Networks_UARTs_Handbook.pdf#page=156
             Accessed: 2024-03-29
             */
-            let current_next_page_pointer = RECEIVE_START_PAGE + 1;
+            CURRENT_NEXT_PAGE_POINTER = RECEIVE_START_PAGE + 1;
 
             /* 9) iii) Initialize Current Pointer: CURR */
-            ne2000.registers.curr.write(current_next_page_pointer);
+            ne2000.registers.curr.write(CURRENT_NEXT_PAGE_POINTER);
 
             /* 10) Start NIC */
             ne2000
@@ -748,6 +766,93 @@ impl Ne2000 {
                 .write((CR::STA | CR::TXP | CR::STOP_DMA | CR::PAGE_0).bits());
 
             info!("finished send_packet fn");
+        }
+    }
+
+    pub fn receive_packet(&mut self) {
+        unsafe {
+            self.registers
+                .command_port
+                .write((CR::STA | CR::STOP_DMA | CR::PAGE_1).bits());
+
+            let current = self.registers.curr.read();
+            self.registers
+                .command_port
+                .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
+
+            while current != CURRENT_NEXT_PAGE_POINTER {
+                // write size of header
+                self.registers
+                    .rbcr0
+                    .write(mem::size_of::<PacketHeader>() as u8);
+                self.registers.rbcr1.write(0);
+                self.registers.rsar0.write(0);
+                self.registers.rsar1.write(CURRENT_NEXT_PAGE_POINTER);
+
+                // enable remote Read
+                self.registers
+                    .command_port
+                    .write((CR::STA | CR::REMOTE_READ | CR::PAGE_0).bits());
+
+                // build the PacketHeader struct from the buffer ring
+                let packet_header = PacketHeader {
+                    receive_status: self.registers.data_port.read(),
+                    next_packet: self.registers.data_port.read(),
+                    length: self.registers.data_port.read()
+                        + (self.registers.data_port.read() << 8)
+                        - size_of::<PacketHeader>() as u8,
+                };
+
+                // check received packet
+
+                // rust doesn't treat integers as boolean in an if clause, so a comparison has to be made
+                if (packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits()) != 0
+                    && packet_header.length as u32 <= MAXIMUM_ETHERNET_PACKET_SIZE as u32
+                {
+                    let mut packet: [u8; 1522] = [0u8; 1522];
+                    // Write packet length into RBCR
+                    self.registers.rbcr0.write(packet_header.length & 0xFF);
+                    self.registers.rbcr1.write(packet_header.length >> 8);
+                    // Set RSAR0 to nicHeaderLength to skip the packet header during the read operation
+                    self.registers.rsar0.write(size_of::<PacketHeader>() as u8);
+                    self.registers.rsar1.write(CURRENT_NEXT_PAGE_POINTER);
+                    self.registers
+                        .command_port
+                        .write((CR::STA | CR::REMOTE_READ | CR::PAGE_0).bits());
+
+                    // Read Packet Data from I/O Port and write it into packet */
+                    for i in 0..packet_header.length {
+                        // slice indices must be of type usize
+                        packet[i as usize] = self.registers.data_port.read();
+                    }
+                    // let smoltcp handle the packet
+                    // TODO: check network/mod.rs for the handling of the packet
+                    // probably an interrupt handler has to be assigned, check this
+                }
+                // update
+                CURRENT_NEXT_PAGE_POINTER = packet_header.next_packet;
+                if (packet_header.next_packet - 1) < RECEIVE_START_PAGE {
+                    self.registers.bnry_port.write(RECEIVE_STOP_PAGE - 1);
+                } else {
+                    self.registers
+                        .bnry_port
+                        .write(CURRENT_NEXT_PAGE_POINTER - 1);
+                }
+
+                // Read current register to prepare for the next packet
+                // switch to page 1 to read curr register
+                self.registers
+                    .command_port
+                    .write((CR::STA | CR::STOP_DMA | CR::PAGE_1).bits());
+                let current = self.registers.curr.read();
+                // switch back to Page 0
+                self.registers
+                    .command_port
+                    .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
+            }
+            self.registers
+                .isr_port
+                .write(InterruptStatusRegister::ISR_RDC.bits());
         }
     }
 
