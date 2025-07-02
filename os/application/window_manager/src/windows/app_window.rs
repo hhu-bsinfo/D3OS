@@ -54,6 +54,7 @@ impl AppWindow {
             screen_rect,
             LayoutMode::Vertical(AlignmentMode::Top),
             StretchMode::Fill,
+            false,
             Some(
                 ContainerStylingBuilder::new()
                     .show_border(false)
@@ -71,6 +72,7 @@ impl AppWindow {
             },
             LayoutMode::Horizontal(AlignmentMode::Right),
             StretchMode::Fill,
+            false,
             Some(ContainerStylingBuilder::new().show_border(true).show_background(true).build()),
         ));
 
@@ -144,6 +146,7 @@ impl AppWindow {
             },
             LayoutMode::None,
             StretchMode::None,
+            false,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
         )));
 

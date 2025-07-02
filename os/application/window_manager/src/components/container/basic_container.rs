@@ -37,6 +37,7 @@ pub struct BasicContainer {
     childs: Vec<ComponentRef>,
     layout: LayoutMode,
     stretch: StretchMode,
+    fit: bool,
 
     rel_rect_data: RectData,
     abs_rect_data: RectData,
@@ -55,6 +56,7 @@ impl BasicContainer {
         rel_rect_data: RectData,
         layout: LayoutMode,
         stretch: StretchMode,
+        fit: bool,
         styling: Option<ContainerStyling>,
     ) -> Self {
         Self {
@@ -62,6 +64,7 @@ impl BasicContainer {
             childs: Vec::new(),
             layout,
             stretch,
+            fit,
 
             rel_rect_data,
             abs_rect_data: RectData::zero(),
@@ -131,6 +134,30 @@ impl BasicContainer {
         }
     }
 
+    fn apply_fit(&mut self) {
+        if self.childs.is_empty() {
+            return;
+        }
+
+        let mut mins = Vertex::new(u32::MAX, u32::MAX);
+        let mut maxs = Vertex::new(0, 0);
+
+        for child in &self.childs {
+            let abs_rect_data = child.read().get_abs_rect_data();
+            mins.x = mins.x.min(abs_rect_data.top_left.x - 1);
+            mins.y = mins.y.min(abs_rect_data.top_left.y - 1);
+            maxs.x = maxs.x.max(abs_rect_data.top_left.x + abs_rect_data.width + 1);
+            maxs.y = maxs.y.max(abs_rect_data.top_left.y + abs_rect_data.height + 1);
+        }
+
+        // Calculate the new absolute rectangle
+        self.abs_rect_data = RectData {
+            top_left: mins,
+            width: maxs.x - mins.x,
+            height: maxs.y - mins.y,
+        };
+    }
+
     fn apply_layout(&mut self) {
         self.cursor = Vertex::zero();
 
@@ -140,6 +167,10 @@ impl BasicContainer {
             LayoutMode::Grid(cols) => self.apply_grid_layout(cols),
 
             _ => self.apply_default_layout(),
+        }
+
+        if self.fit {
+            self.apply_fit();
         }
     }
 
@@ -298,6 +329,8 @@ impl Component for BasicContainer {
     fn draw(&mut self, focus_id: Option<usize>) {
         // Apply the layout & styling BEFORE redrawing components
         if self.is_dirty {
+            self.apply_layout();
+
             if self.styling.show_background {
                 Drawer::draw_filled_rectangle(
                     self.abs_rect_data,
@@ -311,7 +344,6 @@ impl Component for BasicContainer {
             }
 
             self.drawn_rect_data = self.abs_rect_data.clone();
-            self.apply_layout();
         }
 
         // Retrieve all dirty components

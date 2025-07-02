@@ -26,15 +26,15 @@ impl RadioButtonGroup {
         on_change: Option<Rc<Box<dyn Fn(usize) -> ()>>>,
         styling: Option<ComponentStyling>,
     ) -> BasicContainer {
-        // TODO: Implement a special kind of container for this
         let mut button_container = BasicContainer::new(
             RectData {
                 top_left: rel_center,
-                width: 100,
-                height: 50,
+                width: 0,
+                height: 0,
             },
             LayoutMode::Horizontal(AlignmentMode::Left),
             StretchMode::None,
+            true,
             Some(ContainerStylingBuilder::new().child_padding(spacing).show_border(true).build()),
         );
 

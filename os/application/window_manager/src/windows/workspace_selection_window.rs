@@ -53,6 +53,7 @@ impl WorkspaceSelectionWindow {
             screen_rect,
             LayoutMode::None,
             StretchMode::Fill,
+            false,
             None,
         ));
 
@@ -68,6 +69,7 @@ impl WorkspaceSelectionWindow {
             },
             LayoutMode::Horizontal(AlignmentMode::Left),
             StretchMode::Fill,
+            false,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
         ));
 
@@ -80,6 +82,7 @@ impl WorkspaceSelectionWindow {
             },
             LayoutMode::Horizontal(AlignmentMode::Right),
             StretchMode::Fill,
+            false,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
         ));
 

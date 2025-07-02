@@ -482,7 +482,7 @@ impl Api {
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
-                let container = BasicContainer::new(rel_rect_data, layout, stretch, styling);
+                let container = BasicContainer::new(rel_rect_data, layout, stretch, false, styling);
                 let component: ComponentRef = ComponentRef::from_component(Box::new(container));
 
                 let dispatch_data = NewCompData {
