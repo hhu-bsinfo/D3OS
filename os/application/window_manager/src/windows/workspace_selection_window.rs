@@ -17,7 +17,7 @@ use crate::{
         button::Button,
         component::{Casts, Component, ComponentStylingBuilder},
         container::{
-            basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
+            basic_container::{AlignmentMode, BasicContainer, FitMode, LayoutMode, StretchMode},
             Container, ContainerStylingBuilder,
         },
     },
@@ -53,7 +53,7 @@ impl WorkspaceSelectionWindow {
             screen_rect,
             LayoutMode::None,
             StretchMode::Fill,
-            false,
+            FitMode::None,
             None,
         ));
 
@@ -69,7 +69,7 @@ impl WorkspaceSelectionWindow {
             },
             LayoutMode::Horizontal(AlignmentMode::Left),
             StretchMode::Fill,
-            false,
+            FitMode::None,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
         ));
 
@@ -82,7 +82,7 @@ impl WorkspaceSelectionWindow {
             },
             LayoutMode::Horizontal(AlignmentMode::Right),
             StretchMode::Fill,
-            false,
+            FitMode::None,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
         ));
 

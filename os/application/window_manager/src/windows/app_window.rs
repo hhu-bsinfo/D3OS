@@ -8,7 +8,7 @@ use crate::{
         button::Button,
         component::ComponentStylingBuilder,
         container::{
-            basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
+            basic_container::{AlignmentMode, BasicContainer, FitMode, LayoutMode, StretchMode},
             Container, ContainerStylingBuilder,
         },
     },
@@ -54,7 +54,7 @@ impl AppWindow {
             screen_rect,
             LayoutMode::Vertical(AlignmentMode::Top),
             StretchMode::Fill,
-            false,
+            FitMode::None,
             Some(
                 ContainerStylingBuilder::new()
                     .show_border(false)
@@ -72,7 +72,7 @@ impl AppWindow {
             },
             LayoutMode::Horizontal(AlignmentMode::Right),
             StretchMode::Fill,
-            false,
+            FitMode::None,
             Some(ContainerStylingBuilder::new().show_border(true).show_background(true).build()),
         ));
 
@@ -146,7 +146,7 @@ impl AppWindow {
             },
             LayoutMode::None,
             StretchMode::None,
-            false,
+            FitMode::None,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
         )));
 

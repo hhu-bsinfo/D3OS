@@ -10,7 +10,7 @@ use spin::rwlock::RwLock;
 use terminal::DecodedKey;
 
 use crate::{
-    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel, text_editor::TextEditor}, components::{bitmap::BitmapGraphic, button::Button, canvas::Canvas, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, LayoutMode, StretchMode}, Container, ContainerStyling}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, ComponentRefExt, Signal, Stateful}, SCREEN
+    apps::{bitmap_app::BitmapApp, calculator::Calculator, canvas_example::CanvasApp, clock::Clock, counter::Counter, layout_app::LayoutApp, radio_buttons::RadioButtonApp, runnable::Runnable, slider_app::SliderApp, submit_label::SubmitLabel, text_editor::TextEditor}, components::{bitmap::BitmapGraphic, button::Button, canvas::Canvas, checkbox::Checkbox, component::{self, Component}, container::{basic_container::{self, BasicContainer, FitMode, LayoutMode, StretchMode}, Container, ContainerStyling}, input_field::InputField, label::Label, radio_button_group::RadioButtonGroup, slider::Slider}, config::PADDING_BORDERS_AND_CHARS, signal::{ComponentRef, ComponentRefExt, Signal, Stateful}, SCREEN
 };
 
 use self::component::ComponentStyling;
@@ -482,7 +482,7 @@ impl Api {
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
-                let container = BasicContainer::new(rel_rect_data, layout, stretch, false, styling);
+                let container = BasicContainer::new(rel_rect_data, layout, stretch, FitMode::None, styling);
                 let component: ComponentRef = ComponentRef::from_component(Box::new(container));
 
                 let dispatch_data = NewCompData {

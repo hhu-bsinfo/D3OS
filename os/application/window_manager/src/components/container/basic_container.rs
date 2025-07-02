@@ -32,12 +32,18 @@ pub enum StretchMode {
     Fill,
 }
 
+#[derive(PartialEq)]
+pub enum FitMode {
+    None,
+    GrowAndShrink,
+}
+
 pub struct BasicContainer {
     id: usize,
     childs: Vec<ComponentRef>,
     layout: LayoutMode,
     stretch: StretchMode,
-    fit: bool,
+    fit: FitMode,
 
     rel_rect_data: RectData,
     abs_rect_data: RectData,
@@ -56,7 +62,7 @@ impl BasicContainer {
         rel_rect_data: RectData,
         layout: LayoutMode,
         stretch: StretchMode,
-        fit: bool,
+        fit: FitMode,
         styling: Option<ContainerStyling>,
     ) -> Self {
         Self {
@@ -169,7 +175,7 @@ impl BasicContainer {
             _ => self.apply_default_layout(),
         }
 
-        if self.fit {
+        if self.fit == FitMode::GrowAndShrink {
             self.apply_fit();
         }
     }

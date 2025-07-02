@@ -2,7 +2,7 @@ use alloc::{boxed::Box, rc::Rc};
 use drawer::{rect_data::RectData, vertex::Vertex};
 
 use crate::{
-    components::container::ContainerStylingBuilder, signal::Stateful
+    components::container::{basic_container::FitMode, ContainerStylingBuilder}, signal::Stateful
 };
 
 use super::{
@@ -34,7 +34,7 @@ impl RadioButtonGroup {
             },
             LayoutMode::Horizontal(AlignmentMode::Left),
             StretchMode::None,
-            true,
+            FitMode::GrowAndShrink,
             Some(ContainerStylingBuilder::new().child_padding(spacing).show_border(true).build()),
         );
 
