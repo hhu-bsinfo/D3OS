@@ -85,6 +85,10 @@ impl AutoCompletion {
     }
 
     fn adopt(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        if clx.suggestion.is_empty() {
+            return Ok(Response::Skip);
+        }
+
         let intercept_char = clx.line.pop().expect("Expected at least one char in line");
         clx.line.push_str(&clx.suggestion.get());
         clx.line.push(intercept_char);
