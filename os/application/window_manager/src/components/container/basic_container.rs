@@ -2,7 +2,7 @@ use alloc::{format, vec::Vec};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 
 use crate::{
-    components::component::{Casts, Component, ComponentStyling},
+    components::{component::{Casts, Component, ComponentStyling}, container::container_layout::{AlignmentMode, ContainerLayout, FitMode, HorDirection, StretchMode, VertDirection}},
     signal::ComponentRef,
     utils::{scale_pos_to_rect, scale_radius_to_rect, scale_rect_to_rect},
     WindowManager,
@@ -10,40 +10,10 @@ use crate::{
 
 use super::{Container, ContainerStyling, FocusManager};
 
-#[derive(Copy, Clone, PartialEq)]
-pub enum AlignmentMode {
-    Left,
-    Right,
-    Top,
-    Bottom,
-}
-
-#[derive(PartialEq)]
-pub enum LayoutMode {
-    None,
-    Horizontal(AlignmentMode),
-    Vertical(AlignmentMode),
-    Grid(u32),
-}
-
-#[derive(PartialEq)]
-pub enum StretchMode {
-    None,
-    Fill,
-}
-
-#[derive(PartialEq)]
-pub enum FitMode {
-    None,
-    GrowAndShrink,
-}
-
 pub struct BasicContainer {
     id: usize,
     childs: Vec<ComponentRef>,
-    layout: LayoutMode,
-    stretch: StretchMode,
-    fit: FitMode,
+    layout: ContainerLayout,
 
     rel_rect_data: RectData,
     abs_rect_data: RectData,
@@ -60,17 +30,13 @@ pub struct BasicContainer {
 impl BasicContainer {
     pub fn new(
         rel_rect_data: RectData,
-        layout: LayoutMode,
-        stretch: StretchMode,
-        fit: FitMode,
+        layout: Option<ContainerLayout>,
         styling: Option<ContainerStyling>,
     ) -> Self {
         Self {
             id: WindowManager::generate_id(),
             childs: Vec::new(),
-            layout,
-            stretch,
-            fit,
+            layout: layout.unwrap_or_default(),
 
             rel_rect_data,
             abs_rect_data: RectData::zero(),
@@ -167,15 +133,15 @@ impl BasicContainer {
     fn apply_layout(&mut self) {
         self.cursor = Vertex::zero();
 
-        match self.layout {
-            LayoutMode::Horizontal(_) => self.apply_horizontal_layout(),
-            LayoutMode::Vertical(_) => self.apply_vertical_layout(),
-            LayoutMode::Grid(cols) => self.apply_grid_layout(cols),
+        match self.layout.alignment {
+            AlignmentMode::Horizontal(_) => self.apply_horizontal_layout(),
+            AlignmentMode::Vertical(_) => self.apply_vertical_layout(),
+            AlignmentMode::Grid(cols) => self.apply_grid_layout(cols),
 
             _ => self.apply_default_layout(),
         }
 
-        if self.fit == FitMode::GrowAndShrink {
+        if self.layout.fit == FitMode::GrowAndShrink {
             self.apply_fit();
         }
     }
@@ -218,14 +184,14 @@ impl Container for BasicContainer {
         // Adjust max dimensions based on stretching
         // TODO: Since the max dimension is always relative to the screen, do components really need
         // to calculate it themselves?
-        let max_dim = match (&self.layout, &self.stretch) {
-            (LayoutMode::Horizontal(_), StretchMode::Fill) => {
+        let max_dim = match (&self.layout.alignment, &self.layout.stretch) {
+            (AlignmentMode::Horizontal(_), StretchMode::Fill) => {
                 (max_dim.0, u32::max(content_area.height, min_dim.1))
             }
-            (LayoutMode::Vertical(_), StretchMode::Fill) => {
+            (AlignmentMode::Vertical(_), StretchMode::Fill) => {
                 (u32::max(content_area.width, min_dim.0), max_dim.1)
             }
-            (LayoutMode::None, StretchMode::Fill) => (
+            (AlignmentMode::None, StretchMode::Fill) => (
                 u32::max(content_area.width, min_dim.0),
                 u32::max(content_area.height, min_dim.1),
             ),
@@ -242,16 +208,16 @@ impl Container for BasicContainer {
         );
 
         // Adjust the position based on the layout/alignment
-        let new_abs_pos = match &self.layout {
-            LayoutMode::Horizontal(AlignmentMode::Left)
-            | LayoutMode::Vertical(AlignmentMode::Top) => new_abs_rect.top_left + self.cursor,
+        let new_abs_pos = match &self.layout.alignment {
+            AlignmentMode::Horizontal(HorDirection::Left)
+            | AlignmentMode::Vertical(VertDirection::Top) => new_abs_rect.top_left + self.cursor,
 
-            LayoutMode::Horizontal(AlignmentMode::Right) => {
+            AlignmentMode::Horizontal(HorDirection::Right) => {
                 new_abs_rect.top_left.add(content_area.width, 0)
                     - self.cursor.add(new_abs_rect.width, 0)
             }
 
-            LayoutMode::Vertical(AlignmentMode::Bottom) => {
+            AlignmentMode::Vertical(VertDirection::Bottom) => {
                 new_abs_rect.top_left.add(0, content_area.height)
                     - self.cursor.add(0, new_abs_rect.height)
             }
@@ -261,10 +227,10 @@ impl Container for BasicContainer {
 
         // Adjust the size of the received abs rect
         // TODO: Use rel_rect as paddding, if stretching is active
-        let layout_abs_rect = match &self.layout {
-            LayoutMode::Horizontal(_) => RectData {
+        let layout_abs_rect = match &self.layout.alignment {
+            AlignmentMode::Horizontal(_) => RectData {
                 top_left: new_abs_pos, // Use original rel as offset
-                height: match self.stretch {
+                height: match self.layout.stretch {
                     StretchMode::Fill => content_area.height,
                     _ => new_abs_rect.height,
                 },
@@ -272,9 +238,9 @@ impl Container for BasicContainer {
                 ..new_abs_rect
             },
 
-            LayoutMode::Vertical(_) => RectData {
+            AlignmentMode::Vertical(_) => RectData {
                 top_left: new_abs_pos, // Use original rel as offset
-                width: match self.stretch {
+                width: match self.layout.stretch {
                     StretchMode::Fill => content_area.width,
                     _ => new_abs_rect.width,
                 },
@@ -282,7 +248,7 @@ impl Container for BasicContainer {
                 ..new_abs_rect
             },
 
-            _ => match self.stretch {
+            _ => match self.layout.stretch {
                 StretchMode::Fill => RectData {
                     top_left: new_abs_pos,
                     width: content_area.width,

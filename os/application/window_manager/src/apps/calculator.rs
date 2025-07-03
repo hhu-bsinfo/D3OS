@@ -3,7 +3,9 @@ use crate::{
     components::{
         component::ComponentStylingBuilder,
         container::{
-            basic_container::{AlignmentMode, LayoutMode, StretchMode},
+            container_layout::{
+                AlignmentMode, ContainerLayoutBuilder, HorDirection, StretchMode, VertDirection,
+            },
             ContainerStylingBuilder,
         },
     },
@@ -63,8 +65,12 @@ impl Runnable for Calculator {
                         width: 250,
                         height: 400,
                     },
-                    layout: LayoutMode::Vertical(AlignmentMode::Top),
-                    stretch: StretchMode::Fill,
+                    layout: Some(
+                        ContainerLayoutBuilder::new()
+                            .alignment(AlignmentMode::Vertical(VertDirection::Top))
+                            .stretch(StretchMode::Fill)
+                            .build(),
+                    ),
                     styling: Some(
                         ContainerStylingBuilder::new()
                             .maintain_aspect_ratio(true)
@@ -100,8 +106,11 @@ impl Runnable for Calculator {
                         width: 0,
                         height: 500,
                     },
-                    layout: LayoutMode::Grid(4),
-                    stretch: StretchMode::None,
+                    layout: Some(
+                        ContainerLayoutBuilder::new()
+                            .alignment(AlignmentMode::Grid(4))
+                            .build(),
+                    ),
                     styling: Some(
                         ContainerStylingBuilder::new()
                             .maintain_aspect_ratio(true)
@@ -122,8 +131,12 @@ impl Runnable for Calculator {
                         width: 0,
                         height: 100,
                     },
-                    layout: LayoutMode::Horizontal(AlignmentMode::Left),
-                    stretch: StretchMode::Fill,
+                    layout: Some(
+                        ContainerLayoutBuilder::new()
+                            .alignment(AlignmentMode::Horizontal(HorDirection::Left))
+                            .stretch(StretchMode::Fill)
+                            .build(),
+                    ),
                     styling: Some(
                         ContainerStylingBuilder::new()
                             .maintain_aspect_ratio(true)

@@ -17,7 +17,8 @@ use crate::{
         button::Button,
         component::{Casts, Component, ComponentStylingBuilder},
         container::{
-            basic_container::{AlignmentMode, BasicContainer, FitMode, LayoutMode, StretchMode},
+            basic_container::BasicContainer,
+            container_layout::{AlignmentMode, ContainerLayoutBuilder, HorDirection, StretchMode},
             Container, ContainerStylingBuilder,
         },
     },
@@ -51,9 +52,11 @@ impl WorkspaceSelectionWindow {
         // Root container that will hold all buttons
         let mut root_container = Box::new(BasicContainer::new(
             screen_rect,
-            LayoutMode::None,
-            StretchMode::Fill,
-            FitMode::None,
+            Some(
+                ContainerLayoutBuilder::new()
+                    .stretch(StretchMode::Fill)
+                    .build(),
+            ),
             None,
         ));
 
@@ -67,9 +70,12 @@ impl WorkspaceSelectionWindow {
                 width: 0,
                 height: 0,
             },
-            LayoutMode::Horizontal(AlignmentMode::Left),
-            StretchMode::Fill,
-            FitMode::None,
+            Some(
+                ContainerLayoutBuilder::new()
+                    .alignment(AlignmentMode::Horizontal(HorDirection::Left))
+                    .stretch(StretchMode::Fill)
+                    .build(),
+            ),
             Some(ContainerStylingBuilder::new().show_border(false).build()),
         ));
 
@@ -80,9 +86,12 @@ impl WorkspaceSelectionWindow {
                 width: 0,
                 height: 0,
             },
-            LayoutMode::Horizontal(AlignmentMode::Right),
-            StretchMode::Fill,
-            FitMode::None,
+            Some(
+                ContainerLayoutBuilder::new()
+                    .alignment(AlignmentMode::Horizontal(HorDirection::Right))
+                    .stretch(StretchMode::Fill)
+                    .build(),
+            ),
             Some(ContainerStylingBuilder::new().show_border(false).build()),
         ));
 

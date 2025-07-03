@@ -2,17 +2,15 @@ use alloc::{boxed::Box, rc::Rc};
 use drawer::{rect_data::RectData, vertex::Vertex};
 
 use crate::{
-    components::container::{basic_container::FitMode, ContainerStylingBuilder}, signal::Stateful
+    components::container::{
+        basic_container::BasicContainer,
+        container_layout::{AlignmentMode, ContainerLayoutBuilder, FitMode, HorDirection},
+        ContainerStylingBuilder,
+    },
+    signal::Stateful,
 };
 
-use super::{
-    component::ComponentStyling,
-    container::{
-        basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
-        Container,
-    },
-    radio_button::RadioButton,
-};
+use super::{component::ComponentStyling, container::Container, radio_button::RadioButton};
 
 pub struct RadioButtonGroup;
 
@@ -32,10 +30,18 @@ impl RadioButtonGroup {
                 width: 0,
                 height: 0,
             },
-            LayoutMode::Horizontal(AlignmentMode::Left),
-            StretchMode::None,
-            FitMode::GrowAndShrink,
-            Some(ContainerStylingBuilder::new().child_padding(spacing).show_border(true).build()),
+            Some(
+                ContainerLayoutBuilder::new()
+                    .alignment(AlignmentMode::Horizontal(HorDirection::Left))
+                    .fit(FitMode::GrowAndShrink)
+                    .build(),
+            ),
+            Some(
+                ContainerStylingBuilder::new()
+                    .child_padding(spacing)
+                    .show_border(false)
+                    .build(),
+            ),
         );
 
         // Create and add radio buttons

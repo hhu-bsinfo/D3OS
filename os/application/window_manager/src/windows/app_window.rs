@@ -8,7 +8,10 @@ use crate::{
         button::Button,
         component::ComponentStylingBuilder,
         container::{
-            basic_container::{AlignmentMode, BasicContainer, FitMode, LayoutMode, StretchMode},
+            basic_container::BasicContainer,
+            container_layout::{
+                AlignmentMode, ContainerLayoutBuilder, HorDirection, StretchMode, VertDirection,
+            },
             Container, ContainerStylingBuilder,
         },
     },
@@ -52,9 +55,12 @@ impl AppWindow {
         // Root container for the window
         let mut root_container = Box::new(BasicContainer::new(
             screen_rect,
-            LayoutMode::Vertical(AlignmentMode::Top),
-            StretchMode::Fill,
-            FitMode::None,
+            Some(
+                ContainerLayoutBuilder::new()
+                    .alignment(AlignmentMode::Vertical(VertDirection::Top))
+                    .stretch(StretchMode::Fill)
+                    .build(),
+            ),
             Some(
                 ContainerStylingBuilder::new()
                     .show_border(false)
@@ -70,10 +76,18 @@ impl AppWindow {
                 width: 0,
                 height: 40,
             },
-            LayoutMode::Horizontal(AlignmentMode::Right),
-            StretchMode::Fill,
-            FitMode::None,
-            Some(ContainerStylingBuilder::new().show_border(true).show_background(true).build()),
+            Some(
+                ContainerLayoutBuilder::new()
+                    .alignment(AlignmentMode::Horizontal(HorDirection::Right))
+                    .stretch(StretchMode::Fill)
+                    .build(),
+            ),
+            Some(
+                ContainerStylingBuilder::new()
+                    .show_border(true)
+                    .show_background(true)
+                    .build(),
+            ),
         ));
 
         let button_rect = RectData {
@@ -144,9 +158,7 @@ impl AppWindow {
                 width: 0,
                 height: 560,
             },
-            LayoutMode::None,
-            StretchMode::None,
-            FitMode::None,
+            None,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
         )));
 

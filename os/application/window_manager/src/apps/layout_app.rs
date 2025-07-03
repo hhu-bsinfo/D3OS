@@ -8,7 +8,9 @@ use crate::{
     components::{
         component::ComponentStylingBuilder,
         container::{
-            basic_container::{AlignmentMode, LayoutMode, StretchMode},
+            container_layout::{
+                AlignmentMode, ContainerLayoutBuilder, HorDirection, StretchMode, VertDirection,
+            },
             ContainerStylingBuilder,
         },
     },
@@ -36,8 +38,12 @@ impl Runnable for LayoutApp {
                         width: 300,
                         height: 500,
                     },
-                    layout: LayoutMode::Vertical(AlignmentMode::Top),
-                    stretch: StretchMode::Fill,
+                    layout: Some(
+                        ContainerLayoutBuilder::new()
+                            .alignment(AlignmentMode::Vertical(VertDirection::Top))
+                            .stretch(StretchMode::Fill)
+                            .build(),
+                    ),
                     styling: None,
                 },
             )
@@ -53,8 +59,12 @@ impl Runnable for LayoutApp {
                         width: 0,
                         height: 100,
                     },
-                    layout: LayoutMode::Horizontal(AlignmentMode::Right),
-                    stretch: StretchMode::Fill,
+                    layout: Some(
+                        ContainerLayoutBuilder::new()
+                            .alignment(AlignmentMode::Horizontal(HorDirection::Right))
+                            .stretch(StretchMode::Fill)
+                            .build(),
+                    ),
                     styling: Some(
                         ContainerStylingBuilder::new()
                             .border_color(Color::new(255, 0, 0, 255))
@@ -74,8 +84,12 @@ impl Runnable for LayoutApp {
                         width: 0,
                         height: 400,
                     },
-                    layout: LayoutMode::Vertical(AlignmentMode::Bottom),
-                    stretch: StretchMode::Fill,
+                    layout: Some(
+                        ContainerLayoutBuilder::new()
+                            .alignment(AlignmentMode::Vertical(VertDirection::Bottom))
+                            .stretch(StretchMode::Fill)
+                            .build(),
+                    ),
                     styling: Some(
                         ContainerStylingBuilder::new()
                             .border_color(Color::new(0, 255, 0, 255))
@@ -96,8 +110,11 @@ impl Runnable for LayoutApp {
                         width: 0,
                         height: 100,
                     },
-                    layout: LayoutMode::None,
-                    stretch: StretchMode::Fill,
+                    layout: Some(
+                        ContainerLayoutBuilder::new()
+                            .stretch(StretchMode::Fill)
+                            .build(),
+                    ),
                     styling: Some(
                         ContainerStylingBuilder::new()
                             .border_color(Color::new(255, 0, 255, 255))
@@ -150,9 +167,16 @@ impl Runnable for LayoutApp {
                         width: 250,
                         height: 250,
                     },
-                    layout: LayoutMode::Grid(3),
-                    stretch: StretchMode::None,
-                    styling: Some(ContainerStylingBuilder::new().maintain_aspect_ratio(true).build()),
+                    layout: Some(
+                        ContainerLayoutBuilder::new()
+                            .alignment(AlignmentMode::Grid(3))
+                            .build(),
+                    ),
+                    styling: Some(
+                        ContainerStylingBuilder::new()
+                            .maintain_aspect_ratio(true)
+                            .build(),
+                    ),
                 },
             )
             .expect("failed to create container");
@@ -211,7 +235,7 @@ impl Runnable for LayoutApp {
             0,
             "Hello!",
         );
-        
+
         for i in 0..9 {
             let _ = create_button(
                 &api,
