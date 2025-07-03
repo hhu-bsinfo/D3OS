@@ -256,7 +256,7 @@ impl Parser {
             TokenKind::And => {
                 tokens.pop();
                 let replace_token = match tokens.last() {
-                    Some(token) => Token::new_after(token.clx(), TokenKind::Background, '&'),
+                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::Background, '&'),
                     None => Token::new_first(TokenKind::Background, '&'),
                 };
                 tokens.push(replace_token);
@@ -264,7 +264,7 @@ impl Parser {
             TokenKind::Or => {
                 tokens.pop();
                 let replace_token = match tokens.last() {
-                    Some(token) => Token::new_after(token.clx(), TokenKind::Pipe, '|'),
+                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::Pipe, '|'),
                     None => Token::new_first(TokenKind::Pipe, '|'),
                 };
                 tokens.push(replace_token);
@@ -272,7 +272,7 @@ impl Parser {
             TokenKind::RedirectInAppend => {
                 tokens.pop();
                 let replace_token = match tokens.last() {
-                    Some(token) => Token::new_after(token.clx(), TokenKind::RedirectInTruncate, '<'),
+                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::RedirectInTruncate, '<'),
                     None => Token::new_first(TokenKind::RedirectInTruncate, '<'),
                 };
                 tokens.push(replace_token);
@@ -280,7 +280,7 @@ impl Parser {
             TokenKind::RedirectOutAppend => {
                 tokens.pop();
                 let replace_token = match tokens.last() {
-                    Some(token) => Token::new_after(token.clx(), TokenKind::RedirectOutTruncate, '>'),
+                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::RedirectOutTruncate, '>'),
                     None => Token::new_first(TokenKind::RedirectOutTruncate, '>'),
                 };
                 tokens.push(replace_token);
@@ -306,7 +306,7 @@ impl Parser {
         if *last_token.kind() == TokenKind::RedirectOutTruncate {
             tokens.pop();
             let mut next_token = match tokens.last() {
-                Some(token) => Token::new_after(token.clx(), TokenKind::RedirectOutAppend, ch),
+                Some(token) => Token::new_after(token.clx(), "", TokenKind::RedirectOutAppend, ch),
                 None => Token::new_first(TokenKind::RedirectOutAppend, ch),
             };
             next_token.push(ch);
@@ -315,7 +315,12 @@ impl Parser {
         }
 
         // Else add next background token
-        let next_token = Token::new_after(last_token.clx(), TokenKind::RedirectOutTruncate, ch);
+        let next_token = Token::new_after(
+            last_token.clx(),
+            last_token.as_str(),
+            TokenKind::RedirectOutTruncate,
+            ch,
+        );
         tokens.push(next_token);
     }
 
@@ -331,7 +336,7 @@ impl Parser {
         if *last_token.kind() == TokenKind::RedirectInTruncate {
             tokens.pop();
             let mut next_token = match tokens.last() {
-                Some(token) => Token::new_after(token.clx(), TokenKind::RedirectInAppend, ch),
+                Some(token) => Token::new_after(token.clx(), "", TokenKind::RedirectInAppend, ch),
                 None => Token::new_first(TokenKind::RedirectInAppend, ch),
             };
             next_token.push(ch);
@@ -340,7 +345,7 @@ impl Parser {
         }
 
         // Else add next background token
-        let next_token = Token::new_after(last_token.clx(), TokenKind::RedirectInTruncate, ch);
+        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::RedirectInTruncate, ch);
         tokens.push(next_token);
     }
 
@@ -356,7 +361,7 @@ impl Parser {
         if *last_token.kind() == TokenKind::Background {
             tokens.pop();
             let mut next_token = match tokens.last() {
-                Some(token) => Token::new_after(token.clx(), TokenKind::And, ch),
+                Some(token) => Token::new_after(token.clx(), "", TokenKind::And, ch),
                 None => Token::new_first(TokenKind::And, ch),
             };
             next_token.push(ch);
@@ -365,7 +370,7 @@ impl Parser {
         }
 
         // Else add next background token
-        let next_token = Token::new_after(last_token.clx(), TokenKind::Background, ch);
+        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::Background, ch);
         tokens.push(next_token);
     }
 
@@ -378,7 +383,7 @@ impl Parser {
         };
 
         // Else add next separator token
-        let next_token = Token::new_after(last_token.clx(), TokenKind::Separator, ch);
+        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::Separator, ch);
         tokens.push(next_token);
     }
 
@@ -394,7 +399,7 @@ impl Parser {
         if *last_token.kind() == TokenKind::Pipe {
             tokens.pop();
             let mut next_token = match tokens.last() {
-                Some(token) => Token::new_after(token.clx(), TokenKind::Or, ch),
+                Some(token) => Token::new_after(token.clx(), "", TokenKind::Or, ch),
                 None => Token::new_first(TokenKind::Or, ch),
             };
             next_token.push(ch);
@@ -403,7 +408,7 @@ impl Parser {
         }
 
         // Else add next pipe token
-        let next_token = Token::new_after(last_token.clx(), TokenKind::Pipe, ch);
+        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::Pipe, ch);
         tokens.push(next_token);
     }
 
@@ -430,7 +435,7 @@ impl Parser {
             TokenKind::Command
         };
         let prev_clx = last_token.clx();
-        let next_token = Token::new_after(prev_clx, next_kind, ch);
+        let next_token = Token::new_after(prev_clx, last_token.as_str(), next_kind, ch);
         tokens.push(next_token);
     }
 
@@ -444,7 +449,7 @@ impl Parser {
 
         // Else => Append blank token
         let prev_clx = last_token.clx();
-        let next_token = Token::new_after(prev_clx, TokenKind::Blank, ch);
+        let next_token = Token::new_after(prev_clx, last_token.as_str(), TokenKind::Blank, ch);
         tokens.push(next_token);
     }
 
@@ -459,7 +464,7 @@ impl Parser {
         // If in quote and char matches quote char => exit quote
         if last_token.is_in_quote_of(ch) {
             let prev_clx = last_token.clx();
-            let next_token = Token::new_after(prev_clx, TokenKind::QuoteEnd, ch);
+            let next_token = Token::new_after(prev_clx, last_token.as_str(), TokenKind::QuoteEnd, ch);
             tokens.push(next_token);
             return;
         }
@@ -471,7 +476,7 @@ impl Parser {
 
         // Else => Enter quote
         let prev_clx = last_token.clx();
-        let next_token = Token::new_after(prev_clx, TokenKind::QuoteStart, ch);
+        let next_token = Token::new_after(prev_clx, last_token.as_str(), TokenKind::QuoteStart, ch);
         tokens.push(next_token);
     }
 }

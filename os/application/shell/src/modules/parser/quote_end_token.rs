@@ -7,9 +7,10 @@ impl TokenContextFactory for QuoteEndTokenContextFactory {
         panic!("The first token can not be a end of quote");
     }
 
-    fn create_after(prev_clx: &TokenContext, _kind: &TokenKind, _ch: char) -> TokenContext {
+    fn create_after(prev_clx: &TokenContext, prev_content: &str, _kind: &TokenKind, _ch: char) -> TokenContext {
         TokenContext {
             pos: prev_clx.pos + 1,
+            line_pos: prev_clx.line_pos + prev_content.len(),
             cmd_pos: prev_clx.cmd_pos,
             short_flag_pos: prev_clx.short_flag_pos,
             in_quote: None,

@@ -33,6 +33,16 @@ impl TokensContext {
         self.tokens.last_mut()
     }
 
+    pub fn slice_at_line_index(&self, index: usize) -> &[Token] {
+        let start_at = self
+            .tokens
+            .iter()
+            .rposition(|token| token.clx().line_pos + token.len() <= index)
+            .map_or(0, |i| i + 1);
+
+        &self.tokens[start_at..]
+    }
+
     pub fn push(&mut self, token: Token) {
         self.is_status_dirty |= if let Some(last) = self.tokens.last() {
             last.status() != token.status()
@@ -98,8 +108,7 @@ impl TokensContext {
         self.tokens.len()
     }
 
-    // TODO add pos to token context, then if last last.pos + last.len else 0
     pub fn total_len(&self) -> usize {
-        self.tokens.iter().map(|token| token.len()).sum()
+        self.tokens.last().map_or(0, |t| t.clx().line_pos + t.len())
     }
 }

@@ -19,6 +19,7 @@ impl TokenContextFactory for FileTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
         TokenContext {
             pos: 0,
+            line_pos: 0,
             cmd_pos: None,
             short_flag_pos: None,
             in_quote: None,
@@ -30,7 +31,7 @@ impl TokenContextFactory for FileTokenContextFactory {
         }
     }
 
-    fn create_after(prev_clx: &TokenContext, _kind: &TokenKind, _ch: char) -> TokenContext {
+    fn create_after(prev_clx: &TokenContext, prev_content: &str, _kind: &TokenKind, _ch: char) -> TokenContext {
         let error = prev_clx.error.or_else(|| {
             if prev_clx.has_background {
                 Some(&FILE_AFTER_BACKGROUND_ERROR)
@@ -41,6 +42,7 @@ impl TokenContextFactory for FileTokenContextFactory {
 
         TokenContext {
             pos: prev_clx.pos + 1,
+            line_pos: prev_clx.line_pos + prev_content.len(),
             cmd_pos: prev_clx.cmd_pos,
             short_flag_pos: None,
             in_quote: prev_clx.in_quote,

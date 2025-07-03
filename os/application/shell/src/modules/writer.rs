@@ -7,7 +7,7 @@ use terminal::print;
 use crate::{
     context::context::Context,
     event::event_handler::{Error, EventHandler, Response},
-    modules::parser::token::TokenStatus,
+    modules::parser::token::{ArgumentKind, TokenKind, TokenStatus},
 };
 
 pub struct Writer {
@@ -51,7 +51,7 @@ impl Writer {
             self.dirty_status_indicator(clx),
             self.cursor_to_dirty_line(clx),
             Self::clear_right_of_cursor(),
-            self.dirty_line(clx),
+            self.dirty_tokens(clx),
             self.dirty_suggestion(clx),
             self.restore_cursor_position(clx)
         );
@@ -113,10 +113,51 @@ impl Writer {
         }
     }
 
+    /// Replaced with dirty_tokens
     fn dirty_line(&mut self, clx: &mut Context) -> String {
         let line = clx.line.get_dirty_part();
         self.terminal_cursor_pos += line.len();
         line.to_string()
+    }
+
+    fn dirty_tokens(&mut self, clx: &mut Context) -> String {
+        let mut formatted_tokens = String::new();
+        for token in clx.tokens.slice_at_line_index(clx.line.get_dirty_index()) {
+            let color = if token.clx().in_quote.is_some() {
+                "\x1b[38;2;0;255;0m" // lime
+            } else {
+                match token.kind() {
+                    TokenKind::Command => "\x1b[38;2;255;215;0m", // gold
+                    TokenKind::Argument => match token.clx().arg_kind {
+                        ArgumentKind::None => "\x1b[38;2;192;192;255m",            // pale blue
+                        ArgumentKind::ShortOrLongFlag => "\x1b[38;2;160;160;255m", // light blue
+                        ArgumentKind::Generic => "\x1b[38;2;128;128;255m",         // medium blue
+                        ArgumentKind::ShortFlag => "\x1b[38;2;64;64;255m",         // blue
+                        ArgumentKind::ShortFlagValue => "\x1b[38;2;0;0;255m",      // vivid blue
+                        ArgumentKind::LongFlag => "\x1b[38;2;0;0;200m",            // deep blue
+                    },
+                    TokenKind::Blank => "\x1b[38;2;128;128;128m",  // gray
+                    TokenKind::QuoteStart => "\x1b[38;2;0;255;0m", // lime
+                    TokenKind::QuoteEnd => "\x1b[38;2;0;255;0m",   // lime
+                    TokenKind::Pipe => "\x1b[38;2;255;0;0m",       // red
+                    TokenKind::Separator => "\x1b[38;2;255;0;0m",  // red
+                    TokenKind::Background => "\x1b[38;2;210;180;140m", // tan
+                    TokenKind::And => "\x1b[38;2;255;165;0m",      // orange
+                    TokenKind::Or => "\x1b[38;2;255;165;0m",       // orange
+                    TokenKind::RedirectInTruncate => "\x1b[38;2;255;0;0m", // red
+                    TokenKind::RedirectInAppend => "\x1b[38;2;255;0;0m", // red
+                    TokenKind::RedirectOutTruncate => "\x1b[38;2;255;0;0m", // red
+                    TokenKind::RedirectOutAppend => "\x1b[38;2;255;0;0m", // red
+                    TokenKind::File => "\x1b[38;2;128;0;128m",     // purple
+                }
+            };
+            let dirty_content = token.as_str_at_line_index(clx.line.get_dirty_index());
+            formatted_tokens.push_str(color);
+            formatted_tokens.push_str(dirty_content);
+            formatted_tokens.push_str("\x1b[0m");
+            self.terminal_cursor_pos += dirty_content.len();
+        }
+        formatted_tokens
     }
 
     fn dirty_suggestion(&mut self, clx: &mut Context) -> String {
