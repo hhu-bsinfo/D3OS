@@ -372,8 +372,8 @@ pub fn terminal() -> Arc<dyn Terminal> {
 static PS2: Once<Arc<PS2>> = Once::new();
 
 pub fn keyboard() -> Option<Arc<Keyboard>> {
-    info!("Initializing PS/2 devices");
     PS2.call_once(|| {
+        info!("Initializing PS/2 devices");
         let mut ps2 = PS2::new();
         match ps2.init_controller() {
             Ok(_) => match ps2.init_keyboard() {

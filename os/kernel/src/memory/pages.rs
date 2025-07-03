@@ -107,7 +107,6 @@ impl Paging {
         let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
         let frames = PhysFrameRange { start: PhysFrame::from_start_address(PhysAddr::zero()).unwrap(), end: PhysFrame::from_start_address(PhysAddr::zero()).unwrap() };
-
         Paging::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
@@ -163,6 +162,7 @@ impl Paging {
 
         Paging::set_flags_in_table(root_table, pages, flags, depth);
     }
+
 
     /// Internal recursive function to copy page tables from `source` to `target`
     fn copy_table(source: &PageTable, target: &mut PageTable, level: usize) {
@@ -395,6 +395,7 @@ impl Paging {
             }
 
             let phys_frame = frames::alloc(1).start;
+            //info!("map_user: page: {:?} phys_frame: {:?}", pages.start + count as u64, phys_frame);
             entry.set_frame(phys_frame, flags);
         }
 
