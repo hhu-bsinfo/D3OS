@@ -17,11 +17,12 @@ use num_enum::FromPrimitive;
 
 use crate::naming::api;
 
-pub unsafe fn sys_open(path: *const u8, flags: OpenOptions) -> isize {
+pub unsafe extern "sysv64" fn sys_open(path: *const u8, flag_bits: usize) -> isize {
+    let flags = OpenOptions::from_bits(flag_bits).unwrap();
     return_vals::convert_syscall_result_to_ret_code(api::open(&unsafe { ptr_to_string(path).unwrap() }, flags))
 }
 
-pub unsafe fn sys_read(fh: usize, buffer: *mut u8, buffer_length: usize) -> isize {
+pub unsafe extern "sysv64" fn sys_read(fh: usize, buffer: *mut u8, buffer_length: usize) -> isize {
     if buffer.is_null() || buffer_length == 0 {
         return Errno::EINVAL as isize;
     }
@@ -32,7 +33,7 @@ pub unsafe fn sys_read(fh: usize, buffer: *mut u8, buffer_length: usize) -> isiz
     return_vals::convert_syscall_result_to_ret_code(api::read(fh, buf))
 }
 
-pub unsafe fn sys_write(fh: usize, buffer: *const u8, buffer_length: usize) -> isize {
+pub unsafe extern "sysv64" fn sys_write(fh: usize, buffer: *const u8, buffer_length: usize) -> isize {
     if buffer.is_null() || buffer_length == 0 {
         return Errno::EINVAL as isize;
     }
@@ -43,19 +44,19 @@ pub unsafe fn sys_write(fh: usize, buffer: *const u8, buffer_length: usize) -> i
     return_vals::convert_syscall_result_to_ret_code(api::write(fh, buf))
 }
 
-pub fn sys_seek(fh: usize, offset: usize, origin: usize) -> isize {
+pub extern "sysv64" fn sys_seek(fh: usize, offset: usize, origin: usize) -> isize {
     return_vals::convert_syscall_result_to_ret_code(api::seek(fh, offset, SeekOrigin::from_primitive(origin)))
 }
 
-pub fn sys_close(fh: usize) -> isize {
+pub extern "sysv64" fn sys_close(fh: usize) -> isize {
     return_vals::convert_syscall_result_to_ret_code(api::close(fh))
 }
 
-pub unsafe fn sys_mkdir(path: *const u8) -> isize {
+pub unsafe extern "sysv64" fn sys_mkdir(path: *const u8) -> isize {
     return_vals::convert_syscall_result_to_ret_code(api::mkdir(&unsafe { ptr_to_string(path).unwrap() }))
 }
 
-pub unsafe fn sys_touch(path: *const u8) -> isize {
+pub unsafe extern "sysv64" fn sys_touch(path: *const u8) -> isize {
     return_vals::convert_syscall_result_to_ret_code(api::touch(&unsafe { ptr_to_string(path).unwrap() }))
 }
 
@@ -80,7 +81,7 @@ unsafe fn ptr_to_string(ptr: *const u8) -> Result<String, Errno> {
     }   
 }
 
-pub unsafe fn sys_readdir(fh: usize, buffer: *mut u8, buffer_length: usize) -> isize {
+pub unsafe extern "sysv64" fn sys_readdir(fh: usize, buffer: *mut u8, buffer_length: usize) -> isize {
     if buffer.is_null() || buffer_length == 0 || buffer_length <  mem::size_of::<RawDirent>() {
         return Errno::EINVAL as isize;
     }
@@ -90,7 +91,7 @@ pub unsafe fn sys_readdir(fh: usize, buffer: *mut u8, buffer_length: usize) -> i
 }
 
 
-pub unsafe fn sys_cwd(buffer: *mut u8, buffer_length: usize) -> isize {
+pub unsafe extern "sysv64" fn sys_cwd(buffer: *mut u8, buffer_length: usize) -> isize {
     if buffer.is_null() || buffer_length == 0 {
         return Errno::EINVAL as isize;
     }
@@ -101,6 +102,6 @@ pub unsafe fn sys_cwd(buffer: *mut u8, buffer_length: usize) -> isize {
     return_vals::convert_syscall_result_to_ret_code(api::cwd(buf))
 }
 
-pub unsafe fn sys_cd(path: *const u8) -> isize {
+pub unsafe extern "sysv64" fn sys_cd(path: *const u8) -> isize {
     return_vals::convert_syscall_result_to_ret_code(api::cd(&unsafe {ptr_to_string(path)}.unwrap()))
 }

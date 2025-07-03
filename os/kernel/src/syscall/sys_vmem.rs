@@ -19,7 +19,7 @@ use syscall::return_vals::Errno;
 ///
 /// This just sets up the VMA, no page tables are created yet.
 /// This happens later on on page faults.
-pub fn sys_map_memory(start: usize, size: usize) -> isize {
+pub extern "sysv64" fn sys_map_memory(start: usize, size: usize) -> isize {
     let process = process_manager().read().current_process();
 
     let start_addr = VirtAddr::new(start.try_into().unwrap());
