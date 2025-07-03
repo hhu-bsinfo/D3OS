@@ -23,6 +23,11 @@ use core::mem;
 use core::ops::BitOr;
 use core::{ptr, slice};
 use log::info;
+// for allocator impl
+use core::alloc::{AllocError, Allocator, Layout};
+// for allocator impl
+use core::ptr::NonNull;
+
 // lock free algorithms and datastructes
 // queues: different queue implementations
 // mpsc : has the jiffy queue ; lock-free unbounded
@@ -31,6 +36,7 @@ use nolock::queues::{mpmc, mpsc};
 use pci_types::{CommandRegister, EndpointHeader};
 // smoltcp provides a full network stack for creating packets, sending, receiving etc.
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use smoltcp::phy;
 use smoltcp::phy::{DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
@@ -296,10 +302,37 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
     }
 }
 
-//for the moment not implemented
-pub struct Ne2000RxToken;
+#[derive(Default)]
+pub struct PacketAllocator;
 
-impl phy::RxToken for Ne2000RxToken {
+unsafe impl Allocator for PacketAllocator {
+    fn allocate(&self, _layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        panic!("PacketAllocator does not support allocate!");
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        if layout.size() != PAGE_SIZE {
+            panic!("PacketAllocator may only be used with page frames!");
+        }
+
+        let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64))
+            .expect("PacketAllocator may only be used with page frames!");
+        unsafe {
+            frames::free(PhysFrameRange {
+                start,
+                end: start + 1,
+            })
+        }
+    }
+}
+
+//for the moment not implemented
+pub struct Ne2000RxToken<'a> {
+    buffer: Vec<u8, PacketAllocator>,
+    device: &'a Ne2000,
+}
+
+impl<'a> phy::RxToken for Ne2000RxToken<'a> {
     fn consume<R, F>(self, f: F) -> R
     where
         F: FnOnce(&[u8]) -> R,
@@ -311,7 +344,7 @@ impl phy::RxToken for Ne2000RxToken {
 
 impl phy::Device for Ne2000 {
     type RxToken<'a>
-        = Ne2000RxToken
+        = Ne2000RxToken<'a>
     where
         Self: 'a;
     type TxToken<'a>
