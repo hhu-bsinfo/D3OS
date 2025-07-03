@@ -92,7 +92,7 @@ pub struct Thread {
     /// for user threads: the address to jump to
     user_kickoff: VirtAddr,
     /// the actual entry point (eg. for user threads the single parameter to kickoff)
-    entry: fn(),
+    entry: extern "sysv64" fn(),
 }
 
 impl Stacks {
@@ -108,7 +108,7 @@ impl Stacks {
 impl Thread {
     /// Create a kernel thread. Not started yet, nor registered in the scheduler. \
     /// `entry` is the thread entry function.
-    pub fn new_kernel_thread(entry: fn(), tag_str: &str) -> Arc<Thread> {
+    pub fn new_kernel_thread(entry: extern "sysv64" fn(), tag_str: &str) -> Arc<Thread> {
         let process = process_manager().read().current_process();
         let pid = process.id();
         let tid = scheduler::next_thread_id();
@@ -156,7 +156,10 @@ impl Thread {
         // this first thread is special in that there is not really a kickoff;
         // we just jump to the ELF's entry point
         // TODO: this leaks a kernel address to user space
-        Self::new_user_thread(new_process, VirtAddr::new(entry), || {})
+        extern "sysv64" fn entry_fn() {
+            unreachable!()
+        }
+        Self::new_user_thread(new_process, VirtAddr::new(entry), entry_fn)
     }
 
     /// Create user thread. Not started yet, nor registered in the scheduler. \
@@ -164,7 +167,11 @@ impl Thread {
     /// `kickoff_addr` address of the first function to be called,
     /// with the `entry` function is the parameter. \
     /// This indirection ensures that the thread calls exit when it is done, see `library::concurrent::thread`.
-    pub fn new_user_thread(parent: Arc<Process>, kickoff_addr: VirtAddr, entry: fn()) -> Arc<Thread> {
+    pub fn new_user_thread(
+        parent: Arc<Process>,
+        kickoff_addr: VirtAddr,
+        entry: extern "sysv64" fn(),
+    ) -> Arc<Thread> {
         let pid = parent.id();
         let tid = scheduler::next_thread_id(); // get id for new thread
 
@@ -551,7 +558,7 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
 /// Low-level function for starting a thread in user mode
 #[unsafe(naked)]
 #[allow(improper_ctypes_definitions)] // 'entry' takes no arguments and has no return value, so we just assume that the "C" and "Rust" ABIs act the same way in this case
-unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) -> ! {
+unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: extern "sysv64" fn()) -> ! {
     naked_asm!(
         "mov rsp, rdi", // Load 'old_rsp' (first parameter)
         "mov rdi, rsi", // Second parameter becomes first parameter for 'kickoff_user_thread()'

@@ -323,15 +323,13 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Create and register the cleanup thread in the scheduler
     // (If the last thread of a process terminates, it cannot delete its own address space)
-    scheduler().ready(Thread::new_kernel_thread(
-        || {
-            loop {
-                scheduler().sleep(100);
-                process_manager().write().drop_exited_process();
-            }
-        },
-        "cleanup",
-    ));
+    extern "sysv64" fn cleanup() {
+        loop {
+            scheduler().sleep(100);
+            process_manager().write().drop_exited_process();
+        }
+    }
+    scheduler().ready(Thread::new_kernel_thread(cleanup, "cleanup"));
 
     // Create and register the 'shell' thread (from app image in ramdisk) in the scheduler
     scheduler().ready(Thread::load_application(

@@ -31,7 +31,7 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn entry() {
+extern "sysv64" fn entry() {
     syscall(SystemCall::MapMemory, &[env::HEAP_START, env::HEAP_SIZE])
         .expect("Could not create user heap.");
 
