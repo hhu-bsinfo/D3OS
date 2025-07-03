@@ -1,5 +1,8 @@
+use core::cell::RefCell;
+
 use alloc::{
     format,
+    rc::Rc,
     string::{String, ToString},
 };
 use terminal::print;
@@ -7,10 +10,12 @@ use terminal::print;
 use crate::{
     context::context::Context,
     event::event_handler::{Error, EventHandler, Response},
-    modules::parser::token::{ArgumentKind, TokenKind, TokenStatus},
+    modules::parser::token::{ArgumentKind, Token, TokenKind, TokenStatus},
+    sub_modules::theme_provider::ThemeProvider,
 };
 
 pub struct Writer {
+    theme_provider: Rc<RefCell<ThemeProvider>>,
     terminal_cursor_pos: usize,
 }
 
@@ -30,12 +35,19 @@ impl EventHandler for Writer {
 }
 
 impl Writer {
-    pub const fn new() -> Self {
-        Self { terminal_cursor_pos: 0 }
+    pub const fn new(theme_provider: Rc<RefCell<ThemeProvider>>) -> Self {
+        Self {
+            theme_provider,
+            terminal_cursor_pos: 0,
+        }
     }
 
     fn write_indicator(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        print!("{}", clx.indicator.get());
+        print!(
+            "{}{}\x1b[0m",
+            self.indicator_color(&TokenStatus::Valid),
+            clx.indicator.get()
+        );
         self.terminal_cursor_pos += clx.indicator.len();
         Ok(Response::Ok)
     }
@@ -47,7 +59,7 @@ impl Writer {
 
     fn write_at_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
         print!(
-            "{}{}{}{}[38;2;100;100;100m{}[0m{}",
+            "{}{}{}{}{}{}",
             self.dirty_status_indicator(clx),
             self.cursor_to_dirty_line(clx),
             Self::clear_right_of_cursor(),
@@ -67,18 +79,12 @@ impl Writer {
         if !clx.tokens.is_status_dirty() {
             return String::new();
         }
-        let (color_start, color_end) = match clx.tokens.status() {
-            TokenStatus::Valid => ("", ""),
-            TokenStatus::Incomplete => ("[38;2;255;255;0m", "[0m"),
-            TokenStatus::Error(_) => ("[38;2;255;0;0m", "[0m"),
-        };
         format!(
-            "{}{}{}{}{}{}",
+            "{}{}{}{}\x1b[0m{}",
             Self::save_cursor_pos(),
             Self::cursor_to_start(),
-            color_start,
+            self.indicator_color(clx.tokens.status()),
             clx.indicator.get(),
-            color_end,
             Self::restore_cursor_pos(),
         )
     }
@@ -123,35 +129,8 @@ impl Writer {
     fn dirty_tokens(&mut self, clx: &mut Context) -> String {
         let mut formatted_tokens = String::new();
         for token in clx.tokens.slice_at_line_index(clx.line.get_dirty_index()) {
-            let color = if token.clx().in_quote.is_some() {
-                "\x1b[38;2;0;255;0m" // lime
-            } else {
-                match token.kind() {
-                    TokenKind::Command => "\x1b[38;2;255;215;0m", // gold
-                    TokenKind::Argument => match token.clx().arg_kind {
-                        ArgumentKind::None => "\x1b[38;2;192;192;255m",            // pale blue
-                        ArgumentKind::ShortOrLongFlag => "\x1b[38;2;160;160;255m", // light blue
-                        ArgumentKind::Generic => "\x1b[38;2;128;128;255m",         // medium blue
-                        ArgumentKind::ShortFlag => "\x1b[38;2;64;64;255m",         // blue
-                        ArgumentKind::ShortFlagValue => "\x1b[38;2;0;0;255m",      // vivid blue
-                        ArgumentKind::LongFlag => "\x1b[38;2;0;0;200m",            // deep blue
-                    },
-                    TokenKind::Blank => "\x1b[38;2;128;128;128m",  // gray
-                    TokenKind::QuoteStart => "\x1b[38;2;0;255;0m", // lime
-                    TokenKind::QuoteEnd => "\x1b[38;2;0;255;0m",   // lime
-                    TokenKind::Pipe => "\x1b[38;2;255;0;0m",       // red
-                    TokenKind::Separator => "\x1b[38;2;255;0;0m",  // red
-                    TokenKind::Background => "\x1b[38;2;210;180;140m", // tan
-                    TokenKind::And => "\x1b[38;2;255;165;0m",      // orange
-                    TokenKind::Or => "\x1b[38;2;255;165;0m",       // orange
-                    TokenKind::RedirectInTruncate => "\x1b[38;2;255;0;0m", // red
-                    TokenKind::RedirectInAppend => "\x1b[38;2;255;0;0m", // red
-                    TokenKind::RedirectOutTruncate => "\x1b[38;2;255;0;0m", // red
-                    TokenKind::RedirectOutAppend => "\x1b[38;2;255;0;0m", // red
-                    TokenKind::File => "\x1b[38;2;128;0;128m",     // purple
-                }
-            };
             let dirty_content = token.as_str_at_line_index(clx.line.get_dirty_index());
+            let color = self.token_color(token);
             formatted_tokens.push_str(color);
             formatted_tokens.push_str(dirty_content);
             formatted_tokens.push_str("\x1b[0m");
@@ -161,13 +140,52 @@ impl Writer {
     }
 
     fn dirty_suggestion(&mut self, clx: &mut Context) -> String {
-        let line = match clx.suggestion.is_dirty() {
-            true => clx.suggestion.get().clone(),
-            false => String::new(),
-        };
-
+        if !clx.suggestion.is_dirty() {
+            return String::new();
+        }
+        let theme = self.theme_provider.borrow().get();
+        let line = clx.suggestion.get();
         self.terminal_cursor_pos += line.len();
-        line
+        format!("{}{}\x1b[0m", theme.suggestion, line)
+    }
+
+    fn indicator_color(&self, status: &TokenStatus) -> &'static str {
+        let theme = self.theme_provider.borrow().get();
+        match *status {
+            TokenStatus::Valid => theme.indicator,
+            TokenStatus::Incomplete => theme.indicator_warning,
+            TokenStatus::Error(_) => theme.indicator_error,
+        }
+    }
+
+    fn token_color(&self, token: &Token) -> &'static str {
+        let theme = self.theme_provider.borrow().get();
+        if token.clx().in_quote.is_some() {
+            return theme.in_quote;
+        }
+        match token.kind() {
+            TokenKind::Command => theme.cmd,
+            TokenKind::Argument => match token.clx().arg_kind {
+                ArgumentKind::None => "",
+                ArgumentKind::Generic | ArgumentKind::ShortOrLongFlag => theme.generic_arg,
+                ArgumentKind::ShortFlag => theme.short_flag_arg,
+                ArgumentKind::ShortFlagValue => theme.short_flag_value_arg,
+                ArgumentKind::LongFlag => theme.long_flag_arg,
+            },
+            TokenKind::Blank => "",
+            TokenKind::QuoteStart => theme.quote_start,
+            TokenKind::QuoteEnd => theme.quote_end,
+            TokenKind::Pipe => theme.pipe,
+            TokenKind::Separator => theme.separator,
+            TokenKind::Background => theme.background,
+            TokenKind::And => theme.logical_and,
+            TokenKind::Or => theme.logical_or,
+            TokenKind::RedirectInTruncate => theme.redirection_in_truncate,
+            TokenKind::RedirectInAppend => theme.redirection_in_append,
+            TokenKind::RedirectOutTruncate => theme.redirection_out_truncate,
+            TokenKind::RedirectOutAppend => theme.redirection_out_append,
+            TokenKind::File => theme.file,
+        }
     }
 
     fn clear_right_of_cursor() -> &'static str {

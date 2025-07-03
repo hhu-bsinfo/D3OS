@@ -24,29 +24,32 @@ use crate::{
         event_handler::{Error, EventHandler},
     },
     modules::{auto_completion::AutoCompletion, parser::parser::Parser},
-    sub_modules::alias::Alias,
+    sub_modules::{alias::Alias, theme_provider::ThemeProvider},
 };
 
 struct Shell {
     clx: Context,
     modules: Vec<Box<dyn EventHandler>>,
+    theme_provider: Rc<RefCell<ThemeProvider>>,
 }
 
 impl Shell {
     pub fn new() -> Self {
         let alias = Rc::new(RefCell::new(Alias::new()));
+        let theme_provider = Rc::new(RefCell::new(ThemeProvider::new()));
         let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
 
         modules.push(Box::new(CommandLine::new()));
         modules.push(Box::new(History::new()));
         modules.push(Box::new(Parser::new(alias.clone())));
         modules.push(Box::new(AutoCompletion::new()));
-        modules.push(Box::new(Writer::new()));
+        modules.push(Box::new(Writer::new(theme_provider.clone())));
         modules.push(Box::new(Executor::new(alias.clone())));
 
         Self {
             clx: Context::new(),
             modules,
+            theme_provider,
         }
     }
 
@@ -78,10 +81,14 @@ impl Shell {
     }
 
     fn handle_error(&mut self, error: Error) {
+        let theme = self.theme_provider.borrow().get();
+        let line_break = if error.start_inline { "" } else { "\n" };
         println!(
-            "{}[38;2;255;0;0m{}[0m\n[38;2;200;80;80m{}[0m",
-            if error.start_inline { "" } else { "\n" },
+            "{}{}{}\x1b[0m\n{}{}\x1b[0m",
+            line_break,
+            theme.error_msg,
             error.message,
+            theme.error_hint,
             error.hint.unwrap_or(String::new()),
         );
         self.clx.events.trigger(Event::PrepareNewLine);
