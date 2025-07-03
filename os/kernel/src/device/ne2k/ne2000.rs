@@ -120,7 +120,7 @@ struct Registers {
     rsar1: Port<u8>,
     rbcr0: Port<u8>,
     rbcr1: Port<u8>,
-    data_port: Port<u8>,
+    data_port: Port<u16>,
     isr_port: Port<u8>,
     rst_port: Port<u8>,
     imr_port: Port<u8>,
@@ -155,6 +155,7 @@ struct Registers {
 
 impl Registers {
     fn new(base_address: u16) -> Self {
+        // TODO: replace hex with Register names defined in a different struct for better readibility
         Self {
             reset_port: Port::new(base_address + 0x1F),
             command_port: Port::new(base_address + 0x00),
@@ -740,7 +741,7 @@ impl Ne2000 {
             let data_port = &mut self.registers.data_port;
 
             for &data in packet {
-                data_port.write(data);
+                data_port.write(data as u16);
             }
 
             // 6) Poll ISR until remote DMA Bit is set
@@ -796,11 +797,11 @@ impl Ne2000 {
 
                 // build the PacketHeader struct from the buffer ring
                 let packet_header = PacketHeader {
-                    receive_status: self.registers.data_port.read(),
-                    next_packet: self.registers.data_port.read(),
-                    length: self.registers.data_port.read()
-                        + (self.registers.data_port.read() << 8)
-                        - size_of::<PacketHeader>() as u8,
+                    receive_status: self.registers.data_port.read() as u8,
+                    next_packet: self.registers.data_port.read() as u8,
+                    length: self.registers.data_port.read() as u8
+                        + (((self.registers.data_port.read() as u16) << 8)
+                            - size_of::<PacketHeader>() as u16) as u8,
                 };
 
                 // check received packet
@@ -812,7 +813,10 @@ impl Ne2000 {
                     let mut packet: [u8; 1522] = [0u8; 1522];
                     // Write packet length into RBCR
                     self.registers.rbcr0.write(packet_header.length & 0xFF);
-                    self.registers.rbcr1.write(packet_header.length >> 8);
+                    //self.registers.rbcr1.write(packet_header.length >> 8);
+                    // fix overflow warning
+                    let length: u16 = packet_header.length as u16;
+                    self.registers.rbcr1.write((length >> 8) as u8);
                     // Set RSAR0 to nicHeaderLength to skip the packet header during the read operation
                     self.registers.rsar0.write(size_of::<PacketHeader>() as u8);
                     self.registers.rsar1.write(CURRENT_NEXT_PAGE_POINTER);
@@ -823,7 +827,7 @@ impl Ne2000 {
                     // Read Packet Data from I/O Port and write it into packet */
                     for i in 0..packet_header.length {
                         // slice indices must be of type usize
-                        packet[i as usize] = self.registers.data_port.read();
+                        packet[i as usize] = self.registers.data_port.read() as u8;
                     }
                     // let smoltcp handle the packet
                     // TODO: check network/mod.rs for the handling of the packet
