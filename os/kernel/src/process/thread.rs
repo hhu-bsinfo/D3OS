@@ -65,18 +65,18 @@ struct Stacks {
 }
 
 /// A thread is the unit of execution.
-/// 
+///
 /// All threads have a kernel part; you can check whether this thread *just* has
 /// a kernel part by calling [`Thread::is_kernel_thread`].
-/// 
+///
 /// Threads can be created in the following ways:
 /// * [`Thread::new_kernel_thread`]: for kernel threads
 /// * [`Thread::load_application`]: for the main thread of an application
 /// * [`Thread::new_user_thread`]: for additional threads of an application
-/// 
+///
 /// This will allocate all required ressources, but will not actually start the
 /// thread. You need to call [`scheduler::Scheduler::ready`] to enqueue it.
-/// 
+///
 /// When the scheduler first switches to the new thread, it will start with
 /// [`Thread::kickoff_kernel_thread`]. This sets up the TSS and then:
 /// * for a kernel thread: call the `entry` function,
@@ -96,10 +96,7 @@ pub struct Thread {
 }
 
 impl Stacks {
-    const fn new(
-        kernel_stack: Vec<u64, StackAllocator>,
-        user_stack: Vec<u64, StackAllocator>,
-    ) -> Self {
+    const fn new(kernel_stack: Vec<u64, StackAllocator>, user_stack: Vec<u64, StackAllocator>) -> Self {
         Self {
             kernel_stack,
             user_stack,
@@ -109,22 +106,19 @@ impl Stacks {
 }
 
 impl Thread {
-
     /// Create a kernel thread. Not started yet, nor registered in the scheduler. \
     /// `entry` is the thread entry function.
     pub fn new_kernel_thread(entry: fn(), tag_str: &str) -> Arc<Thread> {
-        let process = process_manager()
-            .read()
-            .current_process();
+        let process = process_manager().read().current_process();
         let pid = process.id();
         let tid = scheduler::next_thread_id();
-        
+
         // Allocate the kernel stack for the kernel thread
         let kernel_stack = stack::alloc_kernel_stack(&process, pid, tid, tag_str);
-            
+
         // Create empty user stack, so need to add it to the virtual address space
         let user_stack: Vec<u64, StackAllocator> = stack::alloc_user_stack(pid, tid, MAIN_USER_STACK_START, 0);
-        
+
         // Create the thread struct
         let thread = Thread {
             id: tid,
@@ -141,175 +135,36 @@ impl Thread {
         Arc::new(thread)
     }
 
-
     /// Load application code from `elf_buffer`, create a process with a main thread. \
     /// `name` is the name of the application, `args` are the arguments passed to the application. \
     /// Returns the main thread of the application which is not yet registered in the scheduler.
     pub fn load_application(elf_buffer: &[u8], name: &str, args: &Vec<&str>) -> Arc<Thread> {
-        let process = process_manager().write().create_process();
-        let pid = process.id();
+        let current_process = process_manager().read().current_process();
+        let new_process = process_manager().write().create_process();
+        let pid = new_process.id();
         let tid = scheduler::next_thread_id();
 
-        info!(
-            "load_application: pid = {pid}, tid = {tid}, name = {name}",
-        );
+        info!("load_application: pid = {pid}, tid = {tid}, name = {name}",);
 
-        //
-        // Parse elf file headers and map code if successful
-        //
-        let elf = Elf::parse(elf_buffer).expect("Failed to parse application");
-        elf.program_headers
-            .iter()
-            .filter(|header| header.p_type == elf64::program_header::PT_LOAD)
-            .for_each(|header| {
-                let page_count = if header.p_memsz as usize % PAGE_SIZE == 0 {
-                    header.p_memsz as usize / PAGE_SIZE
-                } else {
-                    (header.p_memsz as usize / PAGE_SIZE) + 1
-                };
+        // parse elf file headers and map and copy code if successful
+        let entry = Thread::parse_and_map_elf_bin(&current_process, &new_process, elf_buffer, name);
 
-                let virt_start = Page::from_start_address(VirtAddr::new(header.p_vaddr))
-                    .expect("ELF: Program section not page aligned");
-                /*let pages = PageRange {
-                    start: virt_start,
-                    end: virt_start + page_count as u64,
-                };*/
-
-                // Allocate virtual memory area for the code and add it to the process
-                let vma = process.virtual_address_space.alloc_vma(
-                    Some(virt_start),
-                    page_count as u64,
-                    MemorySpace::User,
-                    VmaType::Code,
-                    name,
-                );
-                if vma.is_none() {
-                    panic!("alloc_vma failed for code section");
-                }
-                let vma = vma.unwrap();
-
-                // Allocate frames for the code section
-                let frames = process.virtual_address_space.alloc_pf_for_vma(&vma);
-                if frames.is_none() {
-                    panic!("alloc_pf_for_vma failed for code section");
-                }
-                let frames = frames.unwrap();
-
-                // Map code section to the process
-                let res = process.virtual_address_space.map_pfr_for_vma(
-                    &vma,
-                    frames,
-                    PageTableFlags::PRESENT
-                        | PageTableFlags::WRITABLE
-                        | PageTableFlags::USER_ACCESSIBLE,
-                );
-                if res.is_err() {
-                    panic!("map_pfr_for_vma failed");
-                }
-
-                // copy code from the ELF file to the allocated frames
-                unsafe {
-                    let code = elf_buffer.as_ptr().offset(header.p_offset as isize);
-                    let target = frames.start.start_address().as_u64() as *mut u8;
-                    target.copy_from(code, header.p_filesz as usize);
-                    target
-                        .offset(header.p_filesz as isize)
-                        .write_bytes(0, (header.p_memsz - header.p_filesz) as usize);
-                }
-            });
-
-        //
-        // Create and init environment for the application
-        //
-
-        // create environment for the application
-        let args_size = args.iter().map(|arg| arg.len()).sum::<usize>();
-        let env_virt_start =
-            Page::from_start_address(VirtAddr::new(USER_SPACE_ENV_START as u64)).unwrap();
-        let env_size = args_size;
-        let env_page_count = if env_size > 0 && env_size % PAGE_SIZE == 0 {
-            env_size / PAGE_SIZE
-        } else {
-            (env_size / PAGE_SIZE) + 1
-        };
-
-        // Allocate virtual memory area for environment of the application
-        let env_vma = process
-            .virtual_address_space
-            .alloc_vma(
-                Some( env_virt_start ),
-                env_page_count as u64,
-                MemorySpace::User,
-                VmaType::Environment,
-                "",
-            )
-            .expect("alloc_vma failed for kernel stack of main thread");
-
-        // Allocate frames for the environment of the application
-        let env_frames = process.virtual_address_space.alloc_pf_for_vma(&env_vma)
-            .expect("alloc_pf_for_vma failed for environment");
-
-        // Map environment of the application
-        let res = process.virtual_address_space.map_pfr_for_vma(
-            &env_vma,
-            env_frames,
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-        );
-        if res.is_err() {
-            panic!("map_pfr_for_vma failed for environment");
-        }
-
-        // create argc and argv in the user space environment
-        let env_addr = VirtAddr::new(env_frames.start.start_address().as_u64()); // Start address of user space environment
-        let argc = env_addr.as_mut_ptr::<usize>(); // First entry in environment is argc (number of arguments)
-        let argv = (env_addr + size_of::<usize>() as u64).as_mut_ptr::<*const u8>(); // Second entry in environment is argv (array of pointers to arguments)
-
-        // copy arguments directly behind argv array and store pointers to them in argv
-        unsafe {
-            argc.write(args.len() + 1);
-
-            let args_begin = argv.add(args.len() + 1) as *mut u8; // Physical start address of arguments (we use this address to copy them)
-            let args_begin_virt = env_virt_start.start_address()
-                + size_of::<usize>() as u64
-                + ((args.len() + 1) * size_of::<usize>()) as u64; // Virtual start address of arguments (they will be visible here in user space)
-
-            // copy program name as first argument
-            args_begin.copy_from(name.as_bytes().as_ptr(), name.len());
-            args_begin.add(name.len()).write(0); // null-terminate the string for C compatibility
-            argv.write(args_begin_virt.as_ptr());
-
-            let mut offset = name.len() + 1;
-
-            // copy remaining arguments
-            for (i, arg) in args.iter().enumerate() {
-                let target = args_begin.add(offset);
-                target.copy_from(arg.as_bytes().as_ptr(), arg.len());
-                target.add(arg.len()).write(0); // null-terminate the string for C compatibility
-
-                argv.add(i + 1)
-                    .write((args_begin_virt + offset as u64).as_ptr());
-                offset += arg.len() + 1;
-            }
-        }
+        // create environment for the application and copy arguments
+        Thread::copy_args(&new_process, name, args);
 
         // create thread
         // this first thread is special in that there is not really a kickoff;
         // we just jump to the ELF's entry point
         // TODO: this leaks a kernel address to user space
-        Self::new_user_thread(process, VirtAddr::new(elf.entry), || {})
+        Self::new_user_thread(new_process, VirtAddr::new(entry), || {})
     }
-
 
     /// Create user thread. Not started yet, nor registered in the scheduler. \
     /// `parent` is the process the thread belongs to. \
     /// `kickoff_addr` address of the first function to be called,
     /// with the `entry` function is the parameter. \
     /// This indirection ensures that the thread calls exit when it is done, see `library::concurrent::thread`.
-    pub fn new_user_thread(
-        parent: Arc<Process>,
-        kickoff_addr: VirtAddr,
-        entry: fn(),
-    ) -> Arc<Thread> {
+    pub fn new_user_thread(parent: Arc<Process>, kickoff_addr: VirtAddr, entry: fn()) -> Arc<Thread> {
         let pid = parent.id();
         let tid = scheduler::next_thread_id(); // get id for new thread
 
@@ -325,15 +180,14 @@ impl Thread {
         //
 
         // get highest stack vma in my address space
-        let highest_stack_vma = parent.virtual_address_space
+        let highest_stack_vma = parent
+            .virtual_address_space
             .iter_vmas()
             .filter(|vma| vma.typ == VmaType::UserStack)
             .max_by(|a, b| a.range.end.cmp(&b.range.end));
         let stack_start = if let Some(vma) = highest_stack_vma {
             // from there allocate new user stack
-            let user_stack_start : Page<Size4KiB> = Page::from_start_address(
-                vma.end(),
-            ).unwrap();
+            let user_stack_start: Page<Size4KiB> = Page::from_start_address(vma.end()).unwrap();
             let user_stack_end = user_stack_start + (MAX_USER_STACK_SIZE / PAGE_SIZE) as u64;
 
             let user_stack_pages = PageRange {
@@ -352,21 +206,24 @@ impl Thread {
         let user_stack_vma = parent
             .virtual_address_space
             .alloc_vma(
-                Some( user_stack.allocator().get_start_page() ),
+                Some(user_stack.allocator().get_start_page()),
                 user_stack.allocator().get_num_pages(),
                 MemorySpace::User,
                 VmaType::UserStack,
-                "user"
+                "user",
             )
             .expect("alloc_vma failed for user stack of user thread");
 
         parent.virtual_address_space.map_partial_vma(
             &user_stack_vma,
-            PageRange {start: user_stack_vma.range.end - 1, end: user_stack_vma.range.end},
+            PageRange {
+                start: user_stack_vma.range.end - 1,
+                end: user_stack_vma.range.end,
+            },
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
         );
-        
+
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
             id: tid,
@@ -423,11 +280,7 @@ impl Thread {
         let current_rsp0 = ptr::from_ref(&current.stacks.lock().old_rsp0) as *mut u64;
         let next_rsp0 = next.stacks.lock().old_rsp0.as_u64();
         let next_rsp0_end = next.kernel_stack_addr().as_u64();
-        let next_address_space = next
-            .process
-            .virtual_address_space
-            .page_table_address()
-            .as_u64();
+        let next_address_space = next.process.virtual_address_space.page_table_address().as_u64();
 
         unsafe {
             thread_switch(current_rsp0, next_rsp0, next_rsp0_end, next_address_space);
@@ -479,7 +332,7 @@ impl Thread {
         let stack_addr = stacks.kernel_stack.as_ptr() as u64;
         let capacity = stacks.kernel_stack.capacity();
 
-/*        info!(
+        /*        info!(
             "Preparing kernel stack for thread {} with capacity {}",
             self.id, capacity
         );*/
@@ -528,8 +381,7 @@ impl Thread {
 
             stacks.kernel_stack[capacity - 5] = SegmentSelector::new(4, Ring3).0 as u64; // cs = user code segment
             stacks.kernel_stack[capacity - 4] = 0x202; // rflags (Interrupts enabled)
-            stacks.kernel_stack[capacity - 3] =
-                user_stack_addr + (stacks.user_stack.capacity() - 1) as u64 * 8; // rsp for user stack
+            stacks.kernel_stack[capacity - 3] = user_stack_addr + (stacks.user_stack.capacity() - 1) as u64 * 8; // rsp for user stack
             stacks.kernel_stack[capacity - 2] = SegmentSelector::new(3, Ring3).0 as u64; // ss = user data segment
 
             stacks.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
@@ -540,6 +392,132 @@ impl Thread {
 
         unsafe {
             thread_user_start(old_rsp0, self.entry);
+        }
+    }
+
+    /// Helper function to parse ELF binary and map it into the new process's address space
+    /// Used only by `load_application()`
+    fn parse_and_map_elf_bin(current_process: &Arc<Process>, new_process: &Arc<Process>, elf_buffer: &[u8], name: &str) -> u64 {
+        let elf = Elf::parse(elf_buffer).expect("Failed to parse application");
+        elf.program_headers
+            .iter()
+            .filter(|header| header.p_type == elf64::program_header::PT_LOAD)
+            .for_each(|header| {
+                // Calc total number of pages for .text and .bss = 'p_memsz'
+                let total_page_count = if header.p_memsz as usize % PAGE_SIZE == 0 {
+                    header.p_memsz as usize / PAGE_SIZE
+                } else {
+                    (header.p_memsz as usize / PAGE_SIZE) + 1
+                };
+
+                // Calc number of pages needed for the .text section = 'p_filesz'
+                let code_page_count = if header.p_filesz as usize % PAGE_SIZE == 0 {
+                    header.p_filesz as usize / PAGE_SIZE
+                } else {
+                    (header.p_filesz as usize / PAGE_SIZE) + 1
+                };
+
+                // create mapping for 'total_page_count'
+                let virt_start = Page::from_start_address(VirtAddr::new(header.p_vaddr)).expect("ELF: Program section not page aligned");
+                let vma = new_process
+                    .virtual_address_space
+                    .user_alloc_map_full(Some(virt_start), total_page_count as u64, VmaType::Code, name)
+                    .expect("user_alloc_map_full failed");
+
+                // copy code from the ELF file to the allocated frames
+                // as the target address space is not loaded we need to copy page by page by retrieving physical addresses manually from page tables of the target process
+                unsafe {
+                    let src_ptr = elf_buffer.as_ptr().offset(header.p_offset as isize);
+                    current_process.virtual_address_space.copy_to_addr_space(
+                        src_ptr,
+                        &new_process.virtual_address_space,
+                        vma.range.start,
+                        header.p_filesz as u64,
+                        true,
+                    );
+                }
+
+                // Zero remaining pages for .bss
+                if total_page_count > code_page_count {
+                    let bss_page_count = total_page_count - code_page_count;
+                    let dest_page_start = vma.range.start.start_address().as_u64();
+                    let mut dest_offset: u64 = code_page_count as u64 * PAGE_SIZE as u64;
+
+                    // copy remaining pages
+                    for _i in 0..bss_page_count {
+                        // get destination physical address
+                        let dest_phys_addr = new_process
+                            .virtual_address_space
+                            .get_phys(dest_page_start + dest_offset)
+                            .expect("get_phys failed");
+                        let dest = dest_phys_addr.as_u64() as *mut u8;
+
+                        // zero rest of the page
+                        unsafe {
+                            dest.write_bytes(0, PAGE_SIZE);
+                        }
+                        dest_offset += PAGE_SIZE as u64;
+                    }
+                }
+            });
+
+        elf.entry
+    }
+
+    /// Helper function to provide arguments to a new application
+    /// Used only by `load_application()`
+    fn copy_args(new_process: &Arc<Process>, name: &str, args: &Vec<&str>) {
+        let args_size = args.iter().map(|arg| arg.len()).sum::<usize>();
+        let env_size = args_size;
+
+        let env_virt_start = Page::from_start_address(VirtAddr::new(USER_SPACE_ENV_START as u64)).unwrap();
+        let env_page_count = if env_size > 0 && env_size % PAGE_SIZE == 0 {
+            env_size / PAGE_SIZE
+        } else {
+            (env_size / PAGE_SIZE) + 1
+        };
+
+        // create mapping for 'total_page_count'
+        let _vma = new_process
+            .virtual_address_space
+            .user_alloc_map_full(Some(env_virt_start), env_page_count as u64, VmaType::Environment, "env")
+            .expect("user_alloc_map_full failed");
+
+        if env_page_count > 1 {
+            panic!("Environment size exceeds one page, which is not supported yet");
+        }
+
+        let env_frame = new_process.virtual_address_space.get_phys(env_virt_start.start_address().as_u64())
+            .expect("get_phys failed for environment");
+
+        // create argc and argv in the user space environment
+        let env_addr = VirtAddr::new(env_frame.as_u64()); // Start address of user space environment
+        let argc = env_addr.as_mut_ptr::<usize>(); // First entry in environment is argc (number of arguments)
+        let argv = (env_addr + size_of::<usize>() as u64).as_mut_ptr::<*const u8>(); // Second entry in environment is argv (array of pointers to arguments)
+
+        // copy arguments directly behind argv array and store pointers to them in argv
+        unsafe {
+            argc.write(args.len() + 1);
+
+            let args_begin = argv.add(args.len() + 1) as *mut u8; // Physical start address of arguments (we use this address to copy them)
+            let args_begin_virt = env_virt_start.start_address() + size_of::<usize>() as u64 + ((args.len() + 1) * size_of::<usize>()) as u64; // Virtual start address of arguments (they will be visible here in user space)
+
+            // copy program name as first argument
+            args_begin.copy_from(name.as_bytes().as_ptr(), name.len());
+            args_begin.add(name.len()).write(0); // null-terminate the string for C compatibility
+            argv.write(args_begin_virt.as_ptr());
+
+            let mut offset = name.len() + 1;
+
+            // copy remaining arguments
+            for (i, arg) in args.iter().enumerate() {
+                let target = args_begin.add(offset);
+                target.copy_from(arg.as_bytes().as_ptr(), arg.len());
+                target.add(arg.len()).write(0); // null-terminate the string for C compatibility
+
+                argv.add(i + 1).write((args_begin_virt + offset as u64).as_ptr());
+                offset += arg.len() + 1;
+            }
         }
     }
 }
@@ -583,12 +561,7 @@ unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) -> ! {
 
 /// Low-level thread switching function
 #[unsafe(naked)]
-unsafe extern "C" fn thread_switch(
-    current_rsp0: *mut u64,
-    next_rsp0: u64,
-    next_rsp0_end: u64,
-    next_cr3: u64,
-) {
+unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_rsp0_end: u64, next_cr3: u64) {
     naked_asm!(
     // Save registers of current thread
     "pushf",

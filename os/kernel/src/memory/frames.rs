@@ -238,27 +238,27 @@ impl PageFrameListAllocator {
 
     /// Allocate a block with `frame_count` contiguous page frames.
     fn alloc_block(&mut self, frame_count: usize) -> PhysFrameRange {
-        //      info!("frames: alloc_block:{} frames!", frame_count);
+//              info!("frames: alloc_block:{} frames!", frame_count);
         match self.find_free_block(frame_count) {
             Some(block) => {
                 let remaining = PhysFrameRange {
                     start: block.start() + frame_count as u64,
                     end: block.end(),
                 };
-                // info!("   found free block: [0x{:x} - 0x{:x}], Frame count: [{}]", block.start().start_address().as_u64(), block.end().start_address().as_u64(), block.frame_count);
+//                info!("   found free block: [0x{:x} - 0x{:x}], Frame count: [{}]", block.start().start_address().as_u64(), block.end().start_address().as_u64(), block.frame_count);
                 if (remaining.end - remaining.start) > 0 {
                     //   info!("   remaining frames: [{}]", remaining.end - remaining.start);
                     unsafe {
                         self.insert(remaining);
                     }
                 }
-                //info!("   remaining block: [0x{:x} - 0x{:x}], Frame count: [{}]", remaining.start.start_address().as_u64(), remaining.end.start_address().as_u64(), remaining.end - remaining.start);
+//                info!("   remaining block: [0x{:x} - 0x{:x}], Frame count: [{}]", remaining.start.start_address().as_u64(), remaining.end.start_address().as_u64(), remaining.end - remaining.start);
 
                 let ret_block = PhysFrameRange {
                     start: block.start(),
                     end: remaining.start,
                 };
-                //info!("   returning block: [0x{:x} - 0x{:x}], Frame count: [{}]", ret_block.start.start_address().as_u64(), ret_block.end.start_address().as_u64(), ret_block.end - ret_block.start);
+//                info!("   returning block: [0x{:x} - 0x{:x}], Frame count: [{}]", ret_block.start.start_address().as_u64(), ret_block.end.start_address().as_u64(), ret_block.end - ret_block.start);
                 ret_block
                 //                return PhysFrameRange { start: block.start(), end: remaining.start };
             }
