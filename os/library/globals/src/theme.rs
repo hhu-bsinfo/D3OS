@@ -75,9 +75,9 @@ pub const DEBUG_THEME: Theme = Theme {
     short_flag_value_arg: VIVID_BLUE,
     long_flag_arg: DEEP_BLUE,
     // Redirection
-    redirection_in_truncate: PURPLE,
+    redirection_in_truncate: ORANGE,
     redirection_in_append: PURPLE,
-    redirection_out_truncate: PURPLE,
+    redirection_out_truncate: ORANGE,
     redirection_out_append: PURPLE,
     // Condition
     logical_or: PURPLE,
