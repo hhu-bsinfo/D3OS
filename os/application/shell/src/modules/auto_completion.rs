@@ -85,7 +85,7 @@ impl AutoCompletion {
     }
 
     fn adopt(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        if clx.suggestion.is_empty() {
+        if clx.suggestion.is_empty() || !clx.suggestion.has_focus() {
             return Ok(Response::Skip);
         }
 
