@@ -1,6 +1,6 @@
 use crate::device::rtl8139::Rtl8139;
 // add the N2000 driver
-use crate::device::ne2k::ne2000::{Ne2000, Ne2000TxToken};
+use crate::device::ne2k::{ne2000::Ne2000, network_stack::Ne2000TxToken};
 use crate::process::thread::Thread;
 use crate::{pci_bus, scheduler, timer};
 use alloc::sync::Arc;
