@@ -14,7 +14,6 @@ use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use editor::apply_message;
 use graphic::bitmap::{Bitmap, ScalingMode};
-use graphic::color::{RED, YELLOW};
 use spin::rwlock::RwLock;
 use terminal::DecodedKey;
 
