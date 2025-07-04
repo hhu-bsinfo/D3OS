@@ -141,6 +141,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
     }
 }
 
+// allocate blocks of data
 #[derive(Default)]
 pub struct PacketAllocator;
 
@@ -172,12 +173,20 @@ pub struct Ne2000RxToken<'a> {
 }
 
 impl<'a> phy::RxToken for Ne2000RxToken<'a> {
-    fn consume<R, F>(self, f: F) -> R
+    fn consume<R, F>(mut self, f: F) -> R
     where
         F: FnOnce(&[u8]) -> R,
     {
+        let result = f(&mut self.buffer);
+        self.device
+            .recv_buffers_empty
+            .1
+            .try_enqueue(self.buffer)
+            .expect("Failed to enqueue used receive buffer!");
+
+        result
         // Return empty slice
-        f(&[])
+        //f(&[])
     }
 }
 

@@ -68,10 +68,12 @@ use super::register_flags::{
     ReceiveConfigurationRegister, TransmitConfigurationRegister,
 };
 
+use super::network_stack::*;
+
 // =============================================================================
 
 //type Ne2000Device = Arc<Mutex<Ne2000>>;
-
+const RECV_QUEUE_CAP: usize = 16;
 static RESET: u8 = 0x1F;
 static TRANSMIT_START_PAGE: u8 = 0x40;
 const DISPLAY_RED: &'static str = "\x1b[1;31m";
@@ -223,9 +225,13 @@ pub struct Ne2000 {
     base_address: u16,
     registers: Registers,
     par_registers: ParRegisters,
-    pub(crate) send_queue: (
+    pub send_queue: (
         Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>,
         mpsc::jiffy::Sender<PhysFrameRange>,
+    ),
+    pub recv_buffers_empty: (
+        mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
+        mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
 }
 
@@ -249,12 +255,46 @@ impl Ne2000 {
         // send_queue.enqueue(13) -> enque data
         // see: https://docs.rs/nolock/latest/nolock/queues/mpsc/jiffy/index.html
         let send_queue = mpsc::jiffy::queue();
+        let kernel_process = process_manager().read().kernel_process().unwrap();
+        let recv_buffers = mpmc::bounded::scq::queue(RECV_QUEUE_CAP);
+        for _ in 0..RECV_QUEUE_CAP {
+            let phys_frame = frames::alloc(1);
+            let pages = PageRange {
+                start: Page::from_start_address(VirtAddr::new(
+                    phys_frame.start.start_address().as_u64(),
+                ))
+                .unwrap(),
+                end: Page::from_start_address(VirtAddr::new(
+                    phys_frame.end.start_address().as_u64(),
+                ))
+                .unwrap(),
+            };
+
+            kernel_process.virtual_address_space.set_flags(
+                pages,
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
+            );
+
+            let buffer = unsafe {
+                Vec::from_raw_parts_in(
+                    phys_frame.start.start_address().as_u64() as *mut u8,
+                    PAGE_SIZE,
+                    PAGE_SIZE,
+                    PacketAllocator::default(),
+                )
+            };
+            recv_buffers
+                .1
+                .try_enqueue(buffer)
+                .expect("Failed to enqueue receive buffer!");
+        }
 
         let mut ne2000 = Self {
             registers: Registers::new(base_address),
             base_address: base_address,
             par_registers: ParRegisters::new(base_address),
             send_queue: (Mutex::new(send_queue.0), send_queue.1),
+            recv_buffers_empty: recv_buffers,
         };
 
         //ne2000.init();
