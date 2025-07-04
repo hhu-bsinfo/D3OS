@@ -316,7 +316,7 @@ impl Runnable for TextEditor {
                         apply_message(&model, &canvs_clone, Message::DecodedKey(c));
                     })),
                     buffer: Rc::clone(&canvas),
-                    scaling_mode: ScalingMode::Bilinear,
+                    scaling_mode: ScalingMode::None,
                 },
             )
             .unwrap(),
