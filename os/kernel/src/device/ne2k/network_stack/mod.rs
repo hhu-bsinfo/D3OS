@@ -61,6 +61,14 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
 
 use super::ne2000::*;
+
+const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
+const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
+    BUFFER_SIZE / PAGE_SIZE
+} else {
+    BUFFER_SIZE / PAGE_SIZE + 1
+};
+
 pub struct Ne2000TxToken<'a> {
     device: &'a mut Ne2000,
 }
@@ -142,22 +150,37 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
 }
 
 // allocate blocks of data
+// Ne2000 uses buffer ring,
+// packets can be overwritten by new incoming packets once
+// the buffer is full
+// driver allocates memory in RAM to copy the packet there
+// and free the buffer on NE2000
 #[derive(Default)]
 pub struct PacketAllocator;
 
 unsafe impl Allocator for PacketAllocator {
+    // allocates a block of memory
+    // returns NonNull, which meets the size and alignment of layout, remains
+    // valid as long as it is currently allocated
     fn allocate(&self, _layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         panic!("PacketAllocator does not support allocate!");
     }
 
+    // deallocate memory referenced by the pointer
+    // return one page frame of physical memory back to allocator
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         if layout.size() != PAGE_SIZE {
             panic!("PacketAllocator may only be used with page frames!");
         }
 
+        // get the raw pointer, convert to u64 -> physical memory adress
+        // PhysAddr wraps address in a PhysAddr type
+        // contruct Frame from the Address, must be page-aligned, (divisible by page size )
         let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64))
             .expect("PacketAllocator may only be used with page frames!");
         unsafe {
+            // create one physical page frage
+            // frames::free -> return to memory allocator
             frames::free(PhysFrameRange {
                 start,
                 end: start + 1,
@@ -166,6 +189,31 @@ unsafe impl Allocator for PacketAllocator {
     }
 }
 
+pub struct ReceiveBuffer {
+    index: usize,
+    data: Vec<u8>,
+}
+
+impl ReceiveBuffer {
+    pub fn new() -> Self {
+        // allocate memory for buffer
+        let receive_memory = frames::alloc(BUFFER_PAGES);
+        // define pointer where the buffer starts in memory
+        //, buffer length and capacity, save in vec and safe
+        let receive_buffer = unsafe {
+            Vec::from_raw_parts(
+                receive_memory.start.start_address().as_u64() as *mut u8,
+                BUFFER_SIZE,
+                BUFFER_SIZE,
+            )
+        };
+
+        Self {
+            index: 0,
+            data: receive_buffer,
+        }
+    }
+}
 //for the moment not implemented
 pub struct Ne2000RxToken<'a> {
     buffer: Vec<u8, PacketAllocator>,
@@ -179,7 +227,7 @@ impl<'a> phy::RxToken for Ne2000RxToken<'a> {
     {
         let result = f(&mut self.buffer);
         self.device
-            .recv_buffers_empty
+            .receive_buffers_empty
             .1
             .try_enqueue(self.buffer)
             .expect("Failed to enqueue used receive buffer!");

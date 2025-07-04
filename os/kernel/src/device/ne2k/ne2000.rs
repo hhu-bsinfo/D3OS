@@ -40,7 +40,8 @@ use core::ptr::NonNull;
 
 // lock free algorithms and datastructes
 // queues: different queue implementations
-// mpsc : has the jiffy queue ; lock-free unbounded
+// mpsc : has the jiffy queue ; lock-free unbounded, for send
+// mpmpc : multiple producers, multiple consumers, for receive
 use nolock::queues::{mpmc, mpsc};
 
 use pci_types::{CommandRegister, EndpointHeader};
@@ -221,6 +222,18 @@ impl Registers {
 // par_registers : store the MAC ADDRESS
 // send_queue: needed for packet transmission process in smoltcp
 // TODO: implement receive queue, see rtl8139
+// EXAMPLE for a sender and receiver
+//#![feature(mpmc_channel)]
+//
+//use std::thread;
+//use std::sync::mpmc::channel;
+//
+//// Create a simple streaming channel
+//let (tx, rx) = channel();
+//thread::spawn(move || {
+//    tx.send(10).unwrap();
+//});
+assert_eq!(rx.recv().unwrap(), 10);
 pub struct Ne2000 {
     base_address: u16,
     registers: Registers,
@@ -229,7 +242,13 @@ pub struct Ne2000 {
         Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>,
         mpsc::jiffy::Sender<PhysFrameRange>,
     ),
-    pub recv_buffers_empty: (
+    receive_buffer: Mutex<ReceiveBuffer>,
+    pub receive_buffers_empty: (
+        mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
+        // Sender send data to a set of Receivers
+        mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
+    ),
+    receive_messages: (
         mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
@@ -294,7 +313,9 @@ impl Ne2000 {
             base_address: base_address,
             par_registers: ParRegisters::new(base_address),
             send_queue: (Mutex::new(send_queue.0), send_queue.1),
-            recv_buffers_empty: recv_buffers,
+            receive_buffers_empty: recv_buffers,
+            receive_buffer: Mutex::new(ReceiveBuffer::new()),
+            receive_messages: mpmc::bounded::scq::queue(RECV_QUEUE_CAP),
         };
 
         //ne2000.init();
