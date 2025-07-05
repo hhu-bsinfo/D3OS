@@ -330,6 +330,7 @@ impl Ne2000 {
         //pub fn init(&mut self) {
         info!("\x1b[1;31mPowering on device");
         info!(include_str!("banner.txt"), " ", base_address);
+        scheduler().sleep(1500);
         unsafe {
             //command_port.write(0x02);
             //let registers = &mut self.registers;
@@ -719,6 +720,9 @@ impl Ne2000 {
 
     pub fn receive_packet(&mut self) {
         unsafe {
+            // Read current register to prepare for the next packet
+            // switch to page 1 to read curr register
+            // switch back to Page 0
             self.registers
                 .command_port
                 .write((CR::STA | CR::STOP_DMA | CR::PAGE_1).bits());
@@ -743,6 +747,8 @@ impl Ne2000 {
                     .write((CR::STA | CR::REMOTE_READ | CR::PAGE_0).bits());
 
                 // build the PacketHeader struct from the buffer ring
+                // the nic always stores a packet header at the beginning of the first
+                // buffer page which is used to store the received package
                 let packet_header = PacketHeader {
                     receive_status: self.registers.data_port.read() as u8,
                     next_packet: self.registers.data_port.read() as u8,
@@ -780,7 +786,7 @@ impl Ne2000 {
                     // TODO: check network/mod.rs for the handling of the packet
                     // probably an interrupt handler has to be assigned, check this
                 }
-                // update
+                // update pointers for the next package
                 CURRENT_NEXT_PAGE_POINTER = packet_header.next_packet;
                 if (packet_header.next_packet - 1) < RECEIVE_START_PAGE {
                     self.registers.bnry_port.write(RECEIVE_STOP_PAGE - 1);
@@ -789,17 +795,6 @@ impl Ne2000 {
                         .bnry_port
                         .write(CURRENT_NEXT_PAGE_POINTER - 1);
                 }
-
-                // Read current register to prepare for the next packet
-                // switch to page 1 to read curr register
-                self.registers
-                    .command_port
-                    .write((CR::STA | CR::STOP_DMA | CR::PAGE_1).bits());
-                let current = self.registers.curr.read();
-                // switch back to Page 0
-                self.registers
-                    .command_port
-                    .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
             }
             self.registers
                 .isr_port
@@ -905,6 +900,7 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .lock()
                     .write(InterruptStatusRegister::ISR_PTX.bits());
             }
+            // TODO: write overwrite Method
         }
     }
 }

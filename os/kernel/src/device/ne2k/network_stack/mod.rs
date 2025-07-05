@@ -159,6 +159,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
 pub struct PacketAllocator;
 
 unsafe impl Allocator for PacketAllocator {
+    // from rtl8139.rs
     // allocates a block of memory
     // returns NonNull, which meets the size and alignment of layout, remains
     // valid as long as it is currently allocated
