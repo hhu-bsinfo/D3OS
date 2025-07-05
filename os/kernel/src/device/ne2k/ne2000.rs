@@ -36,7 +36,9 @@ use log::info;
 // for allocator impl
 use core::alloc::{AllocError, Allocator, Layout};
 // for allocator impl
+use crate::interrupt::interrupt_handler::InterruptHandler;
 use core::ptr::NonNull;
+use spin::{Mutex, RwLock};
 
 // lock free algorithms and datastructes
 // queues: different queue implementations
@@ -52,7 +54,6 @@ use smoltcp::phy;
 use smoltcp::phy::{DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 use smoltcp::wire::EthernetAddress;
-use spin::{Mutex, RwLock};
 
 // for writing to the registers
 use alloc::str;
@@ -134,7 +135,7 @@ impl ParRegisters {
     }
 }
 
-struct Registers {
+pub struct Registers {
     reset_port: Port<u8>,
     command_port: Port<u8>,
     rsar0: Port<u8>,
@@ -142,9 +143,10 @@ struct Registers {
     rbcr0: Port<u8>,
     rbcr1: Port<u8>,
     data_port: Port<u16>,
-    isr_port: Port<u8>,
+    // add Mutex (05.07.2025)
+    isr_port: Mutex<Port<u8>>,
+    imr_port: Mutex<Port<u8>>,
     rst_port: Port<u8>,
-    imr_port: Port<u8>,
     dcr_port: Port<u8>,
     tcr_port: Port<u8>,
     rcr_port: Port<u8>,
@@ -185,9 +187,9 @@ impl Registers {
             rbcr0: Port::new(base_address + 0x0A),
             rbcr1: Port::new(base_address + 0x0B),
             data_port: Port::new(base_address + 0x10),
-            isr_port: Port::new(base_address + 0x07),
+            isr_port: Mutex::new(Port::new(base_address + 0x07)),
             rst_port: Port::new(base_address + 0x80),
-            imr_port: Port::new(base_address + 0x0F),
+            imr_port: Mutex::new(Port::new(base_address + 0x0F)),
             dcr_port: Port::new(base_address + 0x0E),
             tcr_port: Port::new(base_address + 0x0D),
             rcr_port: Port::new(base_address + 0x0C),
@@ -233,10 +235,10 @@ impl Registers {
 //thread::spawn(move || {
 //    tx.send(10).unwrap();
 //});
-assert_eq!(rx.recv().unwrap(), 10);
+//assert_eq!(rx.recv().unwrap(), 10);
 pub struct Ne2000 {
     base_address: u16,
-    registers: Registers,
+    pub registers: Registers,
     par_registers: ParRegisters,
     pub send_queue: (
         Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>,
@@ -359,7 +361,7 @@ impl Ne2000 {
             //self.registers.isr_port.write(isr_value);
 
             // bitwise and operation, checks if highest bit is set
-            while (ne2000.registers.isr_port.read() & 0x80) == 0 {
+            while (ne2000.registers.isr_port.lock().read() & 0x80) == 0 {
                 info!("Reset in Progress");
             }
             info!("\x1b[1;31mNe2000 reset complete");
@@ -427,10 +429,10 @@ impl Ne2000 {
             ne2000.registers.pstop_port.write(RECEIVE_STOP_PAGE);
 
             //  Clear ISR
-            ne2000.registers.isr_port.write(0xFF);
+            ne2000.registers.isr_port.lock().write(0xFF);
 
             // Initialize IMR
-            ne2000.registers.imr_port.write(
+            ne2000.registers.imr_port.lock().write(
                 (InterruptMaskRegister::IMR_PRXE
                     | InterruptMaskRegister::IMR_PTXE
                     | InterruptMaskRegister::IMR_OVWE)
@@ -669,6 +671,7 @@ impl Ne2000 {
             // 2) Clear RDC Interrupt
             self.registers
                 .isr_port
+                .lock()
                 .write(InterruptStatusRegister::ISR_RDC.bits());
             // 3) Load RSAR with 0 (low bits) and Page Number (high bits)
             self.registers.rsar0.write(0);
@@ -686,7 +689,9 @@ impl Ne2000 {
             }
 
             // 6) Poll ISR until remote DMA Bit is set
-            while (self.registers.isr_port.read() & InterruptStatusRegister::ISR_RDC.bits()) == 0 {
+            while (self.registers.isr_port.lock().read() & InterruptStatusRegister::ISR_RDC.bits())
+                == 0
+            {
                 scheduler().sleep(1);
                 info!("polling")
             }
@@ -694,6 +699,7 @@ impl Ne2000 {
             // 7) Clear ISR RDC Interrupt
             self.registers
                 .isr_port
+                .lock()
                 .write(InterruptStatusRegister::ISR_RDC.bits());
 
             // Set TBCR Bits before Transmit and TPSR Bit
@@ -797,6 +803,7 @@ impl Ne2000 {
             }
             self.registers
                 .isr_port
+                .lock()
                 .write(InterruptStatusRegister::ISR_RDC.bits());
         }
     }
@@ -848,6 +855,57 @@ impl Ne2000 {
         //info!("fn read_mac: ({})", address3);
         //mac2
         address3
+    }
+}
+
+pub struct Ne2000InterruptHandler {
+    device: Arc<Ne2000>,
+}
+
+// implement the InterruptHandler
+// creates a new Instance of Ne2000InterruptHandler
+impl Ne2000InterruptHandler {
+    pub fn new(device: Arc<Ne2000>) -> Self {
+        Self { device }
+    }
+}
+
+impl InterruptHandler for Ne2000InterruptHandler {
+    fn trigger(&self) {
+        // a mutex is required for IMR and ISR, because these registers are also used by the
+        // transmit and receive function, and Init routine
+        if self.device.registers.isr_port.is_locked() {
+            panic!("Interrupt status register is locked during interrupt!");
+        }
+
+        unsafe {
+            // clear Interrupt Mask Register
+            // add mutex because Arc object,
+            self.device.registers.imr_port.lock().write(0);
+
+            // Read interrupt status register (Each bit corresponds to an interrupt type or error)
+            let mut status_reg = self.device.registers.isr_port.lock();
+            let status = InterruptStatusRegister::from_bits_retain(status_reg.read());
+
+            // Check interrupt flags
+            // Packet Reception Flag set (PRX) ?
+            if status.contains(InterruptStatusRegister::ISR_PRX) {
+                // reset prx bit in isr
+                self.device
+                    .registers
+                    .isr_port
+                    .lock()
+                    .write(InterruptStatusRegister::ISR_PRX.bits());
+                // check for Packet Transmission Interrupt
+            } else if status.contains(InterruptStatusRegister::ISR_PTX) {
+                // reset ptx bit in isr
+                self.device
+                    .registers
+                    .isr_port
+                    .lock()
+                    .write(InterruptStatusRegister::ISR_PTX.bits());
+            }
+        }
     }
 }
 
