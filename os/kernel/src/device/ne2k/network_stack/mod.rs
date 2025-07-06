@@ -106,14 +106,20 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         // TODO: implement send Methode
         //self.device.send_packet(data);
         //info!("Don't leave me here");
+        //allocate one pyhsical frame
+        // the phys_buffers gets a start and end PhysFrame (Range)
+        // for defining where the packet gets wriiten
         let phys_buffer = frames::alloc(1);
         let phys_start_addr = phys_buffer.start.start_address();
+        // map to kernel space
         let pages = PageRange {
             start: Page::from_start_address(VirtAddr::new(phys_start_addr.as_u64())).unwrap(),
             end: Page::from_start_address(VirtAddr::new(phys_buffer.end.start_address().as_u64()))
                 .unwrap(),
         };
 
+        // set kernel page tables to writable, no_caching for DMA,
+        // ensure buffer is present in memory
         let kernel_process = process_manager().read().kernel_process().unwrap();
         kernel_process.virtual_address_space.set_flags(
             pages,
@@ -122,6 +128,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
 
         // Queue physical memory buffer for deallocation after transmission (.enqueue)
         //.1 is the Sender here
+        // nic then sends the packet over the network
         self.device
             .send_queue
             .1
@@ -215,10 +222,21 @@ impl ReceiveBuffer {
         }
     }
 }
-//for the moment not implemented
+
+// Receive Token for the driver, points to the
+// ne2000 struct,
+// tokens are types that allow to receive/send a single packet,
+// receive and transmit construct the tokens only
+// real sending, tranmitting is done by the consume
 pub struct Ne2000RxToken<'a> {
     buffer: Vec<u8, PacketAllocator>,
     device: &'a Ne2000,
+}
+
+impl<'a> Ne2000RxToken<'a> {
+    pub fn new(buffer: Vec<u8, PacketAllocator>, device: &'a Ne2000) -> Self {
+        Self { buffer, device }
+    }
 }
 
 impl<'a> phy::RxToken for Ne2000RxToken<'a> {
@@ -253,14 +271,21 @@ impl phy::Device for Ne2000 {
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // disable receive for now; only transmit exists
         //self.transmit(_timestamp).map(|tx| (Ne2000RxToken, tx))
-        None
+        let mut device = unsafe { ptr::from_ref(self).as_ref()? };
+        match self.receive_messages.0.try_dequeue() {
+            Ok(recv_buf) => Some((
+                Ne2000RxToken::new(recv_buf, device),
+                Ne2000TxToken::new(self),
+            )),
+            Err(_) => None,
+        }
     }
 
     // Converts &mut self to &Ne2000 safely.
     // Needed because RxToken and TxToken store a shared reference to the driver (not &mut self). See RTL8139 impl
     // Returns a TxToken, which accepts the packet contents
     fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
-        //let device = unsafe { ptr::from_ref(self).as_ref()? };
+        let mut device = unsafe { ptr::from_ref(self).as_ref()? };
         info!("==> transmit() requested by smoltcp!");
         Some(Ne2000TxToken::new(self))
     }

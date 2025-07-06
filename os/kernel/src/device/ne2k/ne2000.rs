@@ -238,17 +238,21 @@ pub struct Ne2000 {
     base_address: u16,
     pub registers: Registers,
     par_registers: ParRegisters,
+    // physical memory ranges, that need transmitting
+    // in TxToken consume the outgoing packet gets loaded into the buffer
     pub send_queue: (
         Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>,
         mpsc::jiffy::Sender<PhysFrameRange>,
     ),
     receive_buffer: Mutex<ReceiveBuffer>,
+    // pre-allocated, empty Vec<u8> buffers which get filled with incoming packets
     pub receive_buffers_empty: (
         mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
         // Sender send data to a set of Receivers
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
-    receive_messages: (
+    // contain the actual data which is received
+    pub receive_messages: (
         mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
