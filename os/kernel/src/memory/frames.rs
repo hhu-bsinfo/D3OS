@@ -32,13 +32,13 @@ static PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> =
 static PHYS_LIMIT: Once<Mutex<Cell<PhysFrame>>> = Once::new();
 
 /// Check if the page frame allocator is currently locked.
-pub fn allocator_locked() -> bool {
+pub(super) fn allocator_locked() -> bool {
     PAGE_FRAME_ALLOCATOR.is_locked()
 }
 
 /// Helper function to convert a u64 address to a PhysFrame.
 /// The given address is aligned up to the page size (4 KiB).
-pub fn frame_from_u64(
+pub(super) fn frame_from_u64(
     addr: u64,
 ) -> Result<PhysFrame<Size4KiB>, x86_64::structures::paging::page::AddressNotAligned> {
     let pa = PhysAddr::new(addr).align_up(PAGE_SIZE as u64);
@@ -75,13 +75,13 @@ pub unsafe fn insert(mut region: PhysFrameRange) {
 }
 
 /// Allocate `frame_count` contiguous page frames.
-pub fn alloc(frame_count: usize) -> PhysFrameRange {
+pub(super) fn alloc(frame_count: usize) -> PhysFrameRange {
     PAGE_FRAME_ALLOCATOR.lock().alloc_block(frame_count)
 }
 
 /// Free a contiguous range of page `frames`.
 /// Unsafe because invalid parameters may break the list allocator.
-pub unsafe fn free(frames: PhysFrameRange) {
+pub(super) unsafe fn free(frames: PhysFrameRange) {
     unsafe {
         PAGE_FRAME_ALLOCATOR.lock().free_block(frames);
     }

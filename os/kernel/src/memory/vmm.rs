@@ -67,7 +67,6 @@ use crate::memory::pages::Paging;
 use crate::memory::vma::{VirtualMemoryArea, VmaType};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 
-
 /// Clone address space. Used during process creation.
 pub fn clone_address_space(other: &VirtualAddressSpace) -> Arc<Paging> {
     Arc::new(Paging::from_other(&other.page_tables()))
@@ -91,6 +90,25 @@ pub fn create_kernel_address_space() -> Arc<Paging> {
 fn last_usable_virtual_address() -> u64 {
     let virtual_bits = cpu().linear_address_bits();
     (1u64 << (virtual_bits - 1)) - 1
+}
+
+/// Wrapper function
+/// Allocate `frame_count` contiguous page frames.
+pub fn alloc_frames(frame_count: usize) -> PhysFrameRange {
+    frames::alloc(frame_count)
+}
+
+/// Wrapper function
+/// Free a contiguous range of page `frames`.
+pub fn free_frames(frames: PhysFrameRange) {
+    unsafe {
+        frames::free(frames);
+    }
+}
+
+/// Wrapper function
+pub fn frame_allocator_locked() -> bool {
+    frames::allocator_locked()
 }
 
 pub struct VmaIterator {
@@ -429,10 +447,9 @@ impl VirtualAddressSpace {
         Some(vma)
     }
 
-
     /// Manually get the physical address of a virtual address in this address space. \
     pub fn get_phys(&self, virt_addr: u64) -> Option<PhysAddr> {
-        self.page_tables.translate(VirtAddr::new(virt_addr) )
+        self.page_tables.translate(VirtAddr::new(virt_addr))
     }
 
     /// Copy `total_bytes_to_copy` from `src_ptr` in the `self` address space to `dest_page_start` in the `dest_process` address space. \

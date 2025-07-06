@@ -8,22 +8,22 @@
    ╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
 */
 
+use crate::interrupt::interrupt_dispatcher::InterruptVector;
+use crate::interrupt::interrupt_handler::InterruptHandler;
+use crate::memory::PAGE_SIZE;
+use crate::storage::block::BlockDevice;
+use crate::storage::{add_block_device, block};
+use crate::{apic, interrupt_dispatcher, memory, pci_bus, scheduler, timer};
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::{ops::BitOr, slice, str};
-use core::sync::atomic::{AtomicBool, Ordering};
 use bitflags::bitflags;
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::{ops::BitOr, slice, str};
 use log::{error, info, warn};
 use pci_types::{CommandRegister, ConfigRegionAccess, EndpointHeader};
 use spin::{Mutex, RwLock};
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
-use crate::{apic, interrupt_dispatcher, memory, pci_bus, scheduler, timer};
-use crate::interrupt::interrupt_dispatcher::InterruptVector;
-use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::memory::PAGE_SIZE;
-use crate::storage::{add_block_device, block};
-use crate::storage::block::BlockDevice;
 
 /// Initialize all IDE controllers found on the PCI bus.
 /// Each connected drive gets registered as a block device in the storage module.
@@ -50,8 +50,8 @@ pub fn init() {
 */
 const CHANNELS_PER_CONTROLLER: u8 = 2;
 const DEVICES_PER_CHANNEL: u8 = 2;
-const DEFAULT_BASE_ADDRESSES: [u16; DEVICES_PER_CHANNEL as usize] = [ 0x01f0, 0x0170 ];
-const DEFAULT_CONTROL_BASE_ADDRESSES: [u16; DEVICES_PER_CHANNEL as usize] = [ 0x03f4, 0x0374 ];
+const DEFAULT_BASE_ADDRESSES: [u16; DEVICES_PER_CHANNEL as usize] = [0x01f0, 0x0170];
+const DEFAULT_CONTROL_BASE_ADDRESSES: [u16; DEVICES_PER_CHANNEL as usize] = [0x03f4, 0x0374];
 const COMMAND_SET_WORD_COUNT: usize = 6;
 const WAIT_ON_STATUS_TIMEOUT: usize = 4095;
 const DMA_TIMEOUT: usize = 30000;
@@ -70,14 +70,14 @@ const ATAPI_CYLINDER_HIGH_V2: u8 = 0x96;
 enum DriveType {
     Ata,
     Atapi,
-    Other
+    Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 enum TransferMode {
     Read,
-    Write
+    Write,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -85,7 +85,7 @@ enum TransferMode {
 enum AddressType {
     Chs = 0x00,
     Lba28 = 0x01,
-    Lba48 = 0x02
+    Lba48 = 0x02,
 }
 
 enum IdentifyFieldOffset {
@@ -116,7 +116,7 @@ enum Command {
     WriteDmaLba28 = 0xca,
     WriteDmaLba48 = 0x35,
     IdentifyAtaDrive = 0xec,
-    IdentifyAtapiDrive = 0xa1
+    IdentifyAtapiDrive = 0xa1,
 }
 
 bitflags! {
@@ -134,7 +134,7 @@ bitflags! {
 #[repr(u8)]
 enum DmaCommand {
     Enable = 0x01,
-    Direction = 0x08
+    Direction = 0x08,
 }
 
 bitflags! {
@@ -163,7 +163,7 @@ bitflags! {
 struct PrdEntry {
     base_address: u32,
     byte_count: u16,
-    flags: PrdFlags
+    flags: PrdFlags,
 }
 
 /* ╔═════════════════════════════════════════════════════════════════════════╗
@@ -174,7 +174,7 @@ struct PrdEntry {
 
 struct ControlRegisters {
     alternate_status: PortReadOnly<u8>,
-    device_control: PortWriteOnly<u8>
+    device_control: PortWriteOnly<u8>,
 }
 
 impl ControlRegisters {
@@ -182,7 +182,10 @@ impl ControlRegisters {
         let alternate_status = PortReadOnly::new(base_address + 0x02);
         let device_control = PortWriteOnly::new(base_address + 0x02);
 
-        Self { alternate_status, device_control }
+        Self {
+            alternate_status,
+            device_control,
+        }
     }
 }
 
@@ -216,7 +219,20 @@ impl CommandRegisters {
         let status = PortReadOnly::new(base_address + 0x07);
         let command = PortWriteOnly::new(base_address + 0x07);
 
-        Self { data, error, sector_count, sector_number, lba_low, cylinder_low, lba_mid, cylinder_high, lba_high, drive_head, status, command }
+        Self {
+            data,
+            error,
+            sector_count,
+            sector_number,
+            lba_low,
+            cylinder_low,
+            lba_mid,
+            cylinder_high,
+            lba_high,
+            drive_head,
+            status,
+            command,
+        }
     }
 }
 
@@ -247,7 +263,7 @@ impl DmaRegisters {
 /// Each IDE controller has two channels, each of which can have up to two drives connected to it.
 /// This struct only manages the controller itself. Drive access is implemented in the `IdeChannel` struct.
 struct IdeController {
-    channels: [Mutex<IdeChannel>; CHANNELS_PER_CONTROLLER as usize]
+    channels: [Mutex<IdeChannel>; CHANNELS_PER_CONTROLLER as usize],
 }
 
 impl IdeController {
@@ -263,7 +279,8 @@ impl IdeController {
 
         let mut supports_dma = false;
         pci_device.update_command(pci_config_space, |command| {
-            if rev_and_class.3 & 0x80 == 0x80 { // Bit 7 in programming defines whether the controller supports DMA
+            if rev_and_class.3 & 0x80 == 0x80 {
+                // Bit 7 in programming defines whether the controller supports DMA
                 info!("IDE controller supports DMA");
                 supports_dma = true;
                 command.bitor(CommandRegister::IO_ENABLE | CommandRegister::BUS_MASTER_ENABLE)
@@ -276,13 +293,13 @@ impl IdeController {
         for i in 0..CHANNELS_PER_CONTROLLER {
             let dma_base_address: u16 = match supports_dma {
                 true => pci_device.bar(4, pci_config_space).expect("Failed to read DMA base address").unwrap_io() as u16,
-                false => 0
+                false => 0,
             };
 
             let mut interface = rev_and_class.3 >> i * 2; // Each channel has two bits in the programming interface
             // First bit defines whether the channel is running in compatibility or native mode
             // Second bit defines whether mode change is supported
-            if interface & 0x01 == 0x00 && interface  & 0x02 == 0x02 {
+            if interface & 0x01 == 0x00 && interface & 0x02 == 0x02 {
                 info!("Changing mode of channel [{i}] to native mode");
                 unsafe {
                     // Set first bit of channel interface to 1
@@ -300,18 +317,27 @@ impl IdeController {
                     // Channel is running in compatibility mode -> Use default base address
                     info!("Channel [{i}] is running in compatibility mode");
                     (DEFAULT_BASE_ADDRESSES[i as usize], DEFAULT_CONTROL_BASE_ADDRESSES[i as usize])
-                },
+                }
                 _ => {
                     // Channel is running in native mode -> Read base address from PCI registers
                     info!("Channel [{i}] is running in native mode");
                     interrupts[i as usize] = InterruptVector::try_from(pci_device.interrupt(pci_config_space).0).unwrap();
 
-                    (pci_device.bar(0, pci_config_space).expect("Failed to read command base address").unwrap_io() as u16,
-                     pci_device.bar(1, pci_config_space).expect("Failed to read control base address").unwrap_io() as u16)
+                    (
+                        pci_device.bar(0, pci_config_space).expect("Failed to read command base address").unwrap_io() as u16,
+                        pci_device.bar(1, pci_config_space).expect("Failed to read control base address").unwrap_io() as u16,
+                    )
                 }
             };
 
-            channels[i as usize] = Mutex::new(IdeChannel::new(i, interrupts[i as usize], supports_dma, command_and_control_base_address.0, command_and_control_base_address.1, dma_base_address));
+            channels[i as usize] = Mutex::new(IdeChannel::new(
+                i,
+                interrupts[i as usize],
+                supports_dma,
+                command_and_control_base_address.0,
+                command_and_control_base_address.1,
+                dma_base_address,
+            ));
         }
 
         Self { channels }
@@ -328,7 +354,14 @@ impl IdeController {
                 }
 
                 if let Some(info) = channel.identify_drive(i) {
-                    info!("Found {:?} drive on channel [{}]: {} {} (Firmware: [{}])", info.typ, channel.index, info.model(), info.serial(), info.firmware());
+                    info!(
+                        "Found {:?} drive on channel [{}]: {} {} (Firmware: [{}])",
+                        info.typ,
+                        channel.index,
+                        info.model(),
+                        info.serial(),
+                        info.firmware()
+                    );
                     drives.push(info);
                 }
             }
@@ -341,10 +374,16 @@ impl IdeController {
         let primary_channel = controller.channels[0].lock();
         let secondary_channel = controller.channels[1].lock();
 
-        interrupt_dispatcher().assign(primary_channel.interrupt, Box::new(IdeInterruptHandler::new(Arc::clone(&primary_channel.received_interrupt))));
+        interrupt_dispatcher().assign(
+            primary_channel.interrupt,
+            Box::new(IdeInterruptHandler::new(Arc::clone(&primary_channel.received_interrupt))),
+        );
         apic().allow(primary_channel.interrupt);
 
-        interrupt_dispatcher().assign(secondary_channel.interrupt, Box::new(IdeInterruptHandler::new(Arc::clone(&secondary_channel.received_interrupt))));
+        interrupt_dispatcher().assign(
+            secondary_channel.interrupt,
+            Box::new(IdeInterruptHandler::new(Arc::clone(&secondary_channel.received_interrupt))),
+        );
         apic().allow(secondary_channel.interrupt);
     }
 
@@ -362,7 +401,7 @@ impl IdeController {
 /// It implements the `BlockDevice` trait by calling `perform_ata_io()` on the channel.
 pub struct IdeDrive {
     controller: Arc<IdeController>,
-    info: DriveInfo
+    info: DriveInfo,
 }
 
 impl IdeDrive {
@@ -399,26 +438,26 @@ impl BlockDevice for IdeDrive {
 /// This struct is created in the `IdeChannel::identify_drive()` method.
 #[derive(Copy, Clone)]
 struct DriveInfo {
-    channel: u8,                                    // 0 (Primary Channel) or 1 (Secondary Channel)
-    drive: u8,                                      // 0 (Master Drive) or 1 (Slave Drive)
-    typ: DriveType,                                 // 0 (ATA) or 1 (ATAPI)
-    cylinders: u16,                                 // Number of logical cylinders of the drive
-    heads: u16,                                     // Number of logical heads of the drive
-    sectors_per_track: u16,                         // Number of sectors per track of the drive
-    signature: u16,                                 // Drive Signature
-    capabilities: u16,                              // Features
-    multiword_dma: u8,                              // Supported versions of multiword dma
-    ultra_dma: u8,                                  // Supported versions of ultra dma
-    command_sets: [u16; COMMAND_SET_WORD_COUNT],    // Supported command sets
-    max_sectors_lba48: u32,                         // Size in Sectors LBA48
-    max_sectors_lba28: u32,                         // Size in Sectors LBA28 / CHS
-    model: [u8; 40],                                // Model as string
-    serial: [u8; 10],                               // Serial number as string
-    firmware: [u8; 4],                              // Firmware revision as string
-    major_version: u16,                             // Major ATA Version supported
-    minor_version: u16,                             // Minor ATA Version supported
-    addressing: AddressType,                        // CHS (0), LBA28 (1), LBA48 (2)
-    sector_size: u16,                               // Sector size
+    channel: u8,                                 // 0 (Primary Channel) or 1 (Secondary Channel)
+    drive: u8,                                   // 0 (Master Drive) or 1 (Slave Drive)
+    typ: DriveType,                              // 0 (ATA) or 1 (ATAPI)
+    cylinders: u16,                              // Number of logical cylinders of the drive
+    heads: u16,                                  // Number of logical heads of the drive
+    sectors_per_track: u16,                      // Number of sectors per track of the drive
+    signature: u16,                              // Drive Signature
+    capabilities: u16,                           // Features
+    multiword_dma: u8,                           // Supported versions of multiword dma
+    ultra_dma: u8,                               // Supported versions of ultra dma
+    command_sets: [u16; COMMAND_SET_WORD_COUNT], // Supported command sets
+    max_sectors_lba48: u32,                      // Size in Sectors LBA48
+    max_sectors_lba28: u32,                      // Size in Sectors LBA28 / CHS
+    model: [u8; 40],                             // Model as string
+    serial: [u8; 10],                            // Serial number as string
+    firmware: [u8; 4],                           // Firmware revision as string
+    major_version: u16,                          // Major ATA Version supported
+    minor_version: u16,                          // Minor ATA Version supported
+    addressing: AddressType,                     // CHS (0), LBA28 (1), LBA48 (2)
+    sector_size: u16,                            // Sector size
 }
 
 impl Default for DriveInfo {
@@ -443,7 +482,7 @@ impl Default for DriveInfo {
             major_version: 0,
             minor_version: 0,
             addressing: AddressType::Chs,
-            sector_size: 0
+            sector_size: 0,
         }
     }
 }
@@ -469,7 +508,7 @@ impl DriveInfo {
         match self.addressing {
             AddressType::Chs => self.cylinders as u64 * self.heads as u64 * self.sectors_per_track as u64,
             AddressType::Lba28 => self.max_sectors_lba28 as u64,
-            AddressType::Lba48 => self.max_sectors_lba48 as u64
+            AddressType::Lba48 => self.max_sectors_lba48 as u64,
         }
     }
 }
@@ -477,21 +516,21 @@ impl DriveInfo {
 /// The channel contains the main part of the IDE driver.
 /// It manages the communication with the drives and the DMA controller.
 struct IdeChannel {
-    index: u8,                              // Channel number
-    interrupt: InterruptVector,             // Interrupt number
-    supports_dma: bool,                     // DMA support
-    received_interrupt: Arc<AtomicBool>,    // Received interrupt flag (shared with interrupt handler)
-    last_device_control: u8,                // Saves current state of deviceControlRegister
-    interrupts_disabled: bool,              // nIEN (No Interrupt)
-    drive_types: [DriveType; 2],            // Initially found drive types
-    command: CommandRegisters,              // Command registers (IO ports)
-    control: ControlRegisters,              // Control registers (IO ports)
-    dma: DmaRegisters                       // DMA registers (IO ports)
+    index: u8,                           // Channel number
+    interrupt: InterruptVector,          // Interrupt number
+    supports_dma: bool,                  // DMA support
+    received_interrupt: Arc<AtomicBool>, // Received interrupt flag (shared with interrupt handler)
+    last_device_control: u8,             // Saves current state of deviceControlRegister
+    interrupts_disabled: bool,           // nIEN (No Interrupt)
+    drive_types: [DriveType; 2],         // Initially found drive types
+    command: CommandRegisters,           // Command registers (IO ports)
+    control: ControlRegisters,           // Control registers (IO ports)
+    dma: DmaRegisters,                   // DMA registers (IO ports)
 }
 
 impl Default for IdeChannel {
     fn default() -> Self {
-        Self::new(0 , InterruptVector::PrimaryAta, false, 0, 0, 0)
+        Self::new(0, InterruptVector::PrimaryAta, false, 0, 0, 0)
     }
 }
 
@@ -511,7 +550,7 @@ impl IdeChannel {
             drive_types: [DriveType::Other, DriveType::Other],
             command,
             control,
-            dma
+            dma,
         }
     }
 
@@ -615,7 +654,10 @@ impl IdeChannel {
         let sector_count = unsafe { self.command.sector_count.read() };
         let sector_number = unsafe { self.command.sector_number.read() };
         if sector_count != 0x01 || sector_number != 0x01 {
-            error!("Failed to reset drive [{}] on channel [{}] (Got unexpected values from sector registers)", drive, self.index);
+            error!(
+                "Failed to reset drive [{}] on channel [{}] (Got unexpected values from sector registers)",
+                drive, self.index
+            );
             self.drive_types[drive as usize] = DriveType::Other;
             return false;
         }
@@ -623,8 +665,9 @@ impl IdeChannel {
         let cylinder_low = unsafe { self.command.cylinder_low.read() };
         let cylinder_high = unsafe { self.command.cylinder_high.read() };
 
-        if (cylinder_low == ATAPI_CYLINDER_LOW_V1 && cylinder_high == ATAPI_CYLINDER_HIGH_V1) ||
-            (cylinder_low == ATAPI_CYLINDER_LOW_V2 && cylinder_high == ATAPI_CYLINDER_HIGH_V2) {
+        if (cylinder_low == ATAPI_CYLINDER_LOW_V1 && cylinder_high == ATAPI_CYLINDER_HIGH_V1)
+            || (cylinder_low == ATAPI_CYLINDER_LOW_V2 && cylinder_high == ATAPI_CYLINDER_HIGH_V2)
+        {
             self.drive_types[drive as usize] = DriveType::Atapi;
             return true;
         }
@@ -634,7 +677,10 @@ impl IdeChannel {
             return true;
         }
 
-        error!("Failed to reset drive [{}] on channel [{}] (Got unexpected values from cylinder registers)", drive, self.index);
+        error!(
+            "Failed to reset drive [{}] on channel [{}] (Got unexpected values from cylinder registers)",
+            drive, self.index
+        );
         false
     }
 
@@ -656,7 +702,11 @@ impl IdeChannel {
 
         let mut info = DriveInfo::default();
         let mut buffer: [u16; 256] = [0; 256];
-        let identify_command = if drive_type == DriveType::Ata { Command::IdentifyAtaDrive } else { Command::IdentifyAtapiDrive };
+        let identify_command = if drive_type == DriveType::Ata {
+            Command::IdentifyAtaDrive
+        } else {
+            Command::IdentifyAtapiDrive
+        };
 
         unsafe { self.command.command.write(identify_command as u8) };
         scheduler().sleep(1);
@@ -696,7 +746,6 @@ impl IdeChannel {
             AddressType::Chs
         };
 
-
         IdeController::copy_byte_swapped_string(&buffer[(IdentifyFieldOffset::Model as usize)..], &mut info.model);
         IdeController::copy_byte_swapped_string(&buffer[(IdentifyFieldOffset::Serial as usize)..], &mut info.serial);
         IdeController::copy_byte_swapped_string(&buffer[(IdentifyFieldOffset::Firmware as usize)..], &mut info.firmware);
@@ -716,7 +765,9 @@ impl IdeChannel {
         // Read 256 bytes in each iteration until a timeout occurs
         while Self::wait_status(&mut self.control.alternate_status, Status::DataRequest, timeout) {
             for _ in 0..128 {
-                unsafe { self.command.data.read(); }
+                unsafe {
+                    self.command.data.read();
+                }
             }
 
             sector_size += 256;
@@ -784,17 +835,31 @@ impl IdeChannel {
 
         // Find the correct command for the operation
         let command = match mode {
-            TransferMode::Read => if info.addressing == AddressType::Lba48 { Command::ReadPioLba48 } else { Command::ReadPioLba28 },
-            TransferMode::Write => if info.addressing == AddressType::Lba48 { Command::WritePioLba48 } else { Command::WritePioLba28 }
+            TransferMode::Read => {
+                if info.addressing == AddressType::Lba48 {
+                    Command::ReadPioLba48
+                } else {
+                    Command::ReadPioLba28
+                }
+            }
+            TransferMode::Write => {
+                if info.addressing == AddressType::Lba48 {
+                    Command::WritePioLba48
+                } else {
+                    Command::WritePioLba28
+                }
+            }
         };
 
         // Start the operation by writing the command
         unsafe { self.command.command.write(command as u8) };
         if !Self::wait_status(&mut self.control.alternate_status, Status::DataRequest, WAIT_ON_STATUS_TIMEOUT) {
-            error!("Failed to perform PIO {:?} operation on drive [{}] on channel [{}]: Data request not answered", mode, info.drive, self.index);
+            error!(
+                "Failed to perform PIO {:?} operation on drive [{}] on channel [{}]: Data request not answered",
+                mode, info.drive, self.index
+            );
             return 0;
         }
-
 
         match mode {
             TransferMode::Read => {
@@ -818,7 +883,7 @@ impl IdeChannel {
                 }
 
                 read
-            },
+            }
             TransferMode::Write => {
                 let mut written = 0;
                 while written < count {
@@ -846,8 +911,20 @@ impl IdeChannel {
     fn perform_ata_dma(&mut self, info: &DriveInfo, mode: TransferMode, sector: u64, count: u16, buffer: &mut [u8]) -> u16 {
         // Find the correct command for the operation
         let command = match mode {
-            TransferMode::Read => if info.addressing == AddressType::Lba48 { Command::ReadDmaLba48 } else { Command::ReadDmaLba28 },
-            TransferMode::Write => if info.addressing == AddressType::Lba48 { Command::WriteDmaLba48 } else { Command::WriteDmaLba28 }
+            TransferMode::Read => {
+                if info.addressing == AddressType::Lba48 {
+                    Command::ReadDmaLba48
+                } else {
+                    Command::ReadDmaLba28
+                }
+            }
+            TransferMode::Write => {
+                if info.addressing == AddressType::Lba48 {
+                    Command::WriteDmaLba48
+                } else {
+                    Command::WriteDmaLba28
+                }
+            }
         };
 
         // Calculate the amount of pages needed for the operation
@@ -857,11 +934,12 @@ impl IdeChannel {
         // Each page corresponds to an 8-byte entry in the PRD
         let prd_size = pages * 8;
         let prd_pages = prd_size / PAGE_SIZE + if (prd_size % PAGE_SIZE) == 0 { 0 } else { 1 };
-        let prd_frames = memory::frames::alloc(prd_pages);
+
+        let prd_frames = memory::vmm::alloc_frames(prd_pages);
         let prd = unsafe { slice::from_raw_parts_mut(prd_frames.start.start_address().as_u64() as *mut PrdEntry, pages) };
 
         // Allocate memory for the DMA transfer
-        let dma_frames = memory::frames::alloc(pages);
+        let dma_frames = memory::vmm::alloc_frames(pages);
         let dma_buffer = unsafe { slice::from_raw_parts_mut(dma_frames.start.start_address().as_u64() as *mut u8, buffer.len()) };
 
         // Copy data to the DMA buffer if we are writing
@@ -874,7 +952,7 @@ impl IdeChannel {
             prd[i] = PrdEntry {
                 base_address: (dma_frames.start.start_address().as_u64() as usize + i * PAGE_SIZE) as u32,
                 byte_count: PAGE_SIZE as u16,
-                flags: PrdFlags::empty()
+                flags: PrdFlags::empty(),
             };
         }
 
@@ -882,13 +960,15 @@ impl IdeChannel {
         prd[pages - 1] = PrdEntry {
             base_address: (dma_frames.start.start_address().as_u64() as usize + (pages - 1) * PAGE_SIZE) as u32,
             byte_count: PAGE_SIZE as u16,
-            flags: PrdFlags::END_OF_TRANSMISSION
+            flags: PrdFlags::END_OF_TRANSMISSION,
         };
 
         // Prepare DMA transfer
         unsafe {
             self.dma.address.write(prd_frames.start.start_address().as_u64() as u32); // Set PRD address
-            self.dma.command.write(if mode == TransferMode::Read { 0x00 } else { DmaCommand::Direction as u8 }); // Set DMA direction
+            self.dma
+                .command
+                .write(if mode == TransferMode::Read { 0x00 } else { DmaCommand::Direction as u8 }); // Set DMA direction
             self.dma.status.write(!(DmaStatus::DmaError | DmaStatus::Interrupt).bits()); // Clear interrupt and error flags
         }
 
@@ -898,12 +978,13 @@ impl IdeChannel {
         // Send command to the drive
         unsafe { self.command.command.write(command as u8) };
         if !Self::wait_status(&mut self.control.alternate_status, Status::DataRequest, WAIT_ON_STATUS_TIMEOUT) {
-            error!("Failed to perform DMA {:?} operation on drive [{}] on channel [{}]: Data request not answered", mode, info.drive, self.index);
+            error!(
+                "Failed to perform DMA {:?} operation on drive [{}] on channel [{}]: Data request not answered",
+                mode, info.drive, self.index
+            );
 
-            unsafe {
-                memory::frames::free(dma_frames);
-                memory::frames::free(prd_frames);
-            }
+            memory::vmm::free_frames(dma_frames);
+            memory::vmm::free_frames(prd_frames);
             return 0;
         }
 
@@ -934,11 +1015,14 @@ impl IdeChannel {
         }
 
         if timer().systime_ms() >= timeout {
-            error!("Failed to perform DMA {:?} operation on drive [{}] on channel [{}]: Timeout occurred", mode, info.drive, self.index);
+            error!(
+                "Failed to perform DMA {:?} operation on drive [{}] on channel [{}]: Timeout occurred",
+                mode, info.drive, self.index
+            );
 
             unsafe {
-                memory::frames::free(dma_frames);
-                memory::frames::free(prd_frames);
+                memory::vmm::free_frames(dma_frames);
+                memory::vmm::free_frames(prd_frames);
             }
             return 0;
         }
@@ -949,10 +1033,8 @@ impl IdeChannel {
         }
 
         // Free allocated page frames
-        unsafe {
-            memory::frames::free(dma_frames);
-            memory::frames::free(prd_frames);
-        }
+        memory::vmm::free_frames(dma_frames);
+        memory::vmm::free_frames(prd_frames);
 
         count
     }
@@ -973,7 +1055,10 @@ impl IdeChannel {
         }
 
         if !Self::wait_status(&mut self.control.alternate_status, Status::DriveReady, WAIT_ON_STATUS_TIMEOUT) {
-            error!("Failed to perform {:?} operation on drive [{}] on channel [{}]: Drive not ready", mode, info.drive, self.index);
+            error!(
+                "Failed to perform {:?} operation on drive [{}] on channel [{}]: Drive not ready",
+                mode, info.drive, self.index
+            );
             return 0;
         }
 
@@ -1007,7 +1092,7 @@ impl IdeChannel {
 /// Once an interrupt occurs, the handler sets the flag to `true`. This usually means, that a DMA transfer has finished.
 /// It must be set to `false` manually by the channel before starting a new DMA transfer.
 pub struct IdeInterruptHandler {
-    received_interrupt: Arc<AtomicBool>
+    received_interrupt: Arc<AtomicBool>,
 }
 
 impl IdeInterruptHandler {
