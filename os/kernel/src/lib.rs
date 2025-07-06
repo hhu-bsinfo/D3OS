@@ -347,13 +347,11 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
     lfb_terminal.clear();
     TERMINAL.call_once(|| lfb_terminal);
 
-    scheduler().ready(Thread::new_kernel_thread(
-        || {
-            let mut cursor_thread = CursorThread::new(terminal());
-            cursor_thread.run();
-        },
-        "cursor",
-    ));
+    extern "sysv64" fn cursor() {
+        let mut cursor_thread = CursorThread::new(terminal());
+        cursor_thread.run();
+    }
+    scheduler().ready(Thread::new_kernel_thread(cursor, "cursor"));
 }
 
 pub fn terminal_initialized() -> bool {
