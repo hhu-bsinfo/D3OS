@@ -92,22 +92,7 @@ static RECEIVE_START_PAGE: u8 = 0x46;
 //P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
 static RECEIVE_STOP_PAGE: u8 = 0x80;
 
-// 0x80 - 0x46 = 0x58 = 58 pages
-// total buffer size = 58 * 256 Bytes  = 14.KiB
-
-// The Structure of the PacketHeader is definied in the datasheet
-// TODO: add reference
-// receive status : holds the content of the Receive Status Register
-// next_packet : Pointer, which holds the next ringbuffer address
-
-#[repr(C)]
-struct PacketHeader {
-    receive_status: u8,
-    next_packet: u8,
-    length: u8,
-}
-
-struct ParRegisters {
+pub struct ParRegisters {
     id: Mutex<(
         PortReadOnly<u8>,
         PortReadOnly<u8>,
@@ -119,7 +104,7 @@ struct ParRegisters {
 }
 
 impl ParRegisters {
-    fn new(base_address: u16) -> Self {
+    pub fn new(base_address: u16) -> Self {
         Self {
             id: Mutex::new((
                 PortReadOnly::new(base_address + 0x01),
@@ -175,7 +160,7 @@ pub struct Registers {
 }
 
 impl Registers {
-    fn new(base_address: u16) -> Self {
+    pub fn new(base_address: u16) -> Self {
         // TODO: replace hex with Register names defined in a different struct for better readibility
         Self {
             reset_port: Port::new(base_address + 0x1F),
@@ -217,6 +202,28 @@ impl Registers {
             tbcr1_p0: Port::new(base_address + 0x06),
         }
     }
+
+    fn read_isr(&self) -> u8 {
+        unsafe { self.isr_port.lock().read() }
+    }
+    pub fn write_imr(&self, val: u8) {
+        unsafe { self.imr_port.lock().write(val) }
+    }
+}
+
+// 0x80 - 0x46 = 0x58 = 58 pages
+// total buffer size = 58 * 256 Bytes  = 14.KiB
+
+// The Structure of the PacketHeader is definied in the datasheet
+// TODO: add reference
+// receive status : holds the content of the Receive Status Register
+// next_packet : Pointer, which holds the next ringbuffer address
+
+#[repr(C)]
+struct PacketHeader {
+    receive_status: u8,
+    next_packet: u8,
+    length: u8,
 }
 
 // par_registers : store the MAC ADDRESS
@@ -365,6 +372,9 @@ impl Ne2000 {
 
             // bitwise and operation, checks if highest bit is set
             while (ne2000.registers.isr_port.lock().read() & 0x80) == 0 {
+                info!("Reset in Progress");
+            }
+            while (ne2000.registers.read_isr() & 0x80) == 0 {
                 info!("Reset in Progress");
             }
             info!("\x1b[1;31mNe2000 reset complete");
@@ -688,9 +698,7 @@ impl Ne2000 {
             }
 
             // 6) Poll ISR until remote DMA Bit is set
-            while (self.registers.isr_port.lock().read() & InterruptStatusRegister::ISR_RDC.bits())
-                == 0
-            {
+            while (self.registers.read_isr() & InterruptStatusRegister::ISR_RDC.bits()) == 0 {
                 scheduler().sleep(1);
                 info!("polling")
             }
@@ -874,11 +882,11 @@ impl InterruptHandler for Ne2000InterruptHandler {
         unsafe {
             // clear Interrupt Mask Register
             // add mutex because Arc object,
-            self.device.registers.imr_port.lock().write(0);
+            self.device.registers.write_imr(0);
 
             // Read interrupt status register (Each bit corresponds to an interrupt type or error)
-            let mut status_reg = self.device.registers.isr_port.lock();
-            let status = InterruptStatusRegister::from_bits_retain(status_reg.read());
+            let status_reg = self.device.registers.read_isr();
+            let status = InterruptStatusRegister::from_bits_retain(status_reg);
 
             // Check interrupt flags
             // Packet Reception Flag set (PRX) ?
