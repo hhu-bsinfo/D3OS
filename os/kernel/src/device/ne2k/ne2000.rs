@@ -79,23 +79,21 @@ const RECV_QUEUE_CAP: usize = 16;
 static RESET: u8 = 0x1F;
 static TRANSMIT_START_PAGE: u8 = 0x40;
 const DISPLAY_RED: &'static str = "\x1b[1;31m";
-
-/**
- * Reception Buffer Ring Start Page
- * http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
- * Page 4 PSTART
- */
-static RECEIVE_START_PAGE: u8 = 0x46;
 static MINIMUM_ETHERNET_PACKET_SIZE: u8 = 64;
 static MAXIMUM_ETHERNET_PACKET_SIZE: u32 = 1522;
 static mut CURRENT_NEXT_PAGE_POINTER: u8 = 0x00;
 
-/*
-* Reception Buffer Ring End
-* P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
-* Accessed:
-*/
+// Reception Buffer Ring Start Page
+// http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
+// Page 4 PSTART
+static RECEIVE_START_PAGE: u8 = 0x46;
+
+//Reception Buffer Ring End
+//P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
 static RECEIVE_STOP_PAGE: u8 = 0x80;
+
+// 0x80 - 0x46 = 0x58 = 58 pages
+// total buffer size = 58 * 256 Bytes  = 14.KiB
 
 // The Structure of the PacketHeader is definied in the datasheet
 // TODO: add reference
@@ -418,12 +416,8 @@ impl Ne2000 {
                 .tcr_port
                 .write(TransmitConfigurationRegister::TCR_LB0.bits());
 
-            // Buffer Initialization
-            //baseRegister.writeByte(P0_TPSR, TRANSMIT_START_PAGE);
-            //baseRegister.writeByte(P0_PSTART, RECEIVE_START_PAGE);
-            //baseRegister.writeByte(P0_BNRY, RECEIVE_START_PAGE + 1);
-            //baseRegister.writeByte(P0_PSTOP, RECEIVE_STOP_PAGE);
-
+            // initialize buffer
+            // pstart and pstop define the size of the buffer (pstop - pstart = buffer size )
             ne2000.registers.tpsr_port.write(TRANSMIT_START_PAGE);
             ne2000.registers.pstart_port.write(RECEIVE_START_PAGE);
             ne2000.registers.bnry_port.write(RECEIVE_START_PAGE + 1);
@@ -446,9 +440,9 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STP | CR::STOP_DMA | CR::PAGE_1).bits());
 
-            /* 9) i) Initialize Physical Address Register: PAR0-PAR5
-            each mac address bit is written two times into the buffer
-            */
+            // Initialize Physical Address Register: PAR0-PAR5
+            //each mac address bit is written two times into the buffer
+
             //Read 6 bytes (MAC address)
             /*for byte in mac.iter_mut() {
                 *byte = self.registers.data_port.read();
