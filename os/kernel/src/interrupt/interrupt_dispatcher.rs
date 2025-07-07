@@ -224,7 +224,7 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
                 // If we found a user stack, we can map the page
                 let fault_page = Page::containing_address(fault_addr);
                 thread.process().virtual_address_space.map_partial_vma(&stack, PageRange { start: fault_page, end: fault_page + 1, }, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
-
+                info!("resolved page fault for user stack of tid = {}, process id  = {}", thread.id(), thread.process().id());
                 ()
             })
             // Check if page fault occurred inside the allocated, but not yet mapped heap.
