@@ -857,6 +857,70 @@ impl Ne2000 {
         //mac2
         address3
     }
+
+    // gets called, if the buffer ring is full
+    // this is analogous to the nic datasheet
+    pub fn handle_overflow_interrupt(&mut self) {
+        unsafe {
+            // 1. save the value of the TXP Bit in CR
+            let txp_bit = self.registers.command_port.read() & CR::TXP.bits();
+            // 2. Issue stop command
+            self.registers
+                .command_port
+                .write((CR::STOP | CR::PAGE_0).bits());
+
+            // 3. wait for at least 1.6 ms
+            scheduler().sleep(1600);
+            // 4. Clear RBCR0 and RBCR1
+            self.registers.rbcr0.write(0);
+            self.registers.rbcr1.write(0);
+            // 5. read value of TXP bit, check if there was a transmission in progress when the
+            // stop command was issued
+            // if value = 0 -> set resend = 0
+            // if value = 1 -> read ISR
+            //      if PTX or TXE = 1 -> resend = 0
+            //      else resend 1
+            let mut resend = 0;
+            if txp_bit == 0 {
+                resend = 0;
+            }
+            if txp_bit == 1 {
+                if self.registers.read_isr()
+                    & (InterruptStatusRegister::ISR_PTX | InterruptStatusRegister::ISR_TXE).bits()
+                    != 0
+                {
+                    resend = 0
+                } else {
+                    resend = 1;
+                }
+            }
+
+            // 6. Place the nic in loopback mode
+            self.registers
+                .tcr_port
+                .write(TransmitConfigurationRegister::TCR_LB0.bits());
+            // 7. Issue start command
+            self.registers
+                .command_port
+                .write((CR::STA | CR::PAGE_0).bits());
+            // 8. remove packets in the buffer
+            self.receive_packet();
+            //9. Reset Overwrite warning (OVW)
+            self.registers
+                .isr_port
+                .lock()
+                .write(InterruptStatusRegister::ISR_OVW.bits());
+            //10. take nic out of loopback
+            self.registers.tcr_port.write(0);
+
+            //11. if resend = 1, reset variable, reissure transmit command
+            if resend == 1 {
+                self.registers
+                    .command_port
+                    .write((CR::STA | CR::TXP | CR::STOP_DMA | CR::PAGE_0).bits());
+            }
+        }
+    }
 }
 
 pub struct Ne2000InterruptHandler {
