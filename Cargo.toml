@@ -11,6 +11,7 @@ members = [
     "os/application/date",
     "os/application/ls",
     "os/application/heaptest",
+    "os/application/threadtest",
     "os/application/ntest"
 ]
 
