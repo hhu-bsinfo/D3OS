@@ -1,8 +1,9 @@
-use alloc::vec::Vec;
-use libm::floorf;
-use libm::Libm;
-use unifont::get_glyph;
 use crate::lfb::DEFAULT_CHAR_HEIGHT;
+use alloc::vec;
+use alloc::vec::Vec;
+use libm::Libm;
+use libm::floorf;
+use unifont::get_glyph;
 
 use crate::color::Color;
 
@@ -20,6 +21,7 @@ macro_rules! keep_iterating_for_dim {
 pub enum ScalingMode {
     NearestNeighbor,
     Bilinear,
+    None,
 }
 
 #[derive(Clone)]
@@ -32,20 +34,23 @@ pub struct Bitmap {
 impl Bitmap {
     pub fn scale(&self, target_width: u32, target_height: u32, mode: ScalingMode) -> Bitmap {
         match mode {
-            ScalingMode::NearestNeighbor => self.scale_nearest_neighbor(target_width, target_height),
+            ScalingMode::NearestNeighbor => {
+                self.scale_nearest_neighbor(target_width, target_height)
+            }
             ScalingMode::Bilinear => self.scale_bilinear(target_width, target_height),
+            ScalingMode::None => self.scale_none(target_width, target_height),
         }
     }
 
     // Julius Drodofsky
     pub fn read_pixel(&self, x: u32, y: u32) -> Color {
-        match self.data.get((y*self.width+x) as usize){
+        match self.data.get((y * self.width + x) as usize) {
             Some(c) => *c,
-            None => panic!("Bitmap: Trying to read a pixel out of bounds!")
+            None => panic!("Bitmap: Trying to read a pixel out of bounds!"),
         }
     }
 
-    #[inline]  //Julius Drodofsky
+    #[inline] //Julius Drodofsky
     pub fn draw_pixel(&mut self, x: u32, y: u32, color: Color) {
         // Check if pixel is outside the framebuffer
         if x >= self.width || y >= self.height {
@@ -60,9 +65,9 @@ impl Bitmap {
         // Blend if necessary and draw pixel
         if color.alpha < 255 {
             let blend = self.read_pixel(x, y).blend(color);
-            self.data[(self.width*y+x) as usize] = blend;           
+            self.data[(self.width * y + x) as usize] = blend;
         } else {
-            self.data[(self.width*y+x) as usize] = color;           
+            self.data[(self.width * y + x) as usize] = color;
         }
     }
 
@@ -92,7 +97,7 @@ impl Bitmap {
                     Libm::<f32>::round(y_curr) as u32,
                 );
                 let blend = self.read_pixel(x_u32, y_u32).blend(color);
-                self.data[(self.width*y_u32+x_u32) as usize] = blend;           
+                self.data[(self.width * y_u32 + x_u32) as usize] = blend;
                 x_curr += x_stepsize;
                 y_curr += y_stepsize;
             }
@@ -104,15 +109,14 @@ impl Bitmap {
                     Libm::<f32>::round(x_curr) as u32,
                     Libm::<f32>::round(y_curr) as u32,
                 );
-                self.data[(self.width*y_u32+x_u32) as usize] = color;           
+                self.data[(self.width * y_u32 + x_u32) as usize] = color;
                 x_curr += x_stepsize;
                 y_curr += y_stepsize;
             }
         }
-
     }
 
-pub fn draw_char_scaled(
+    pub fn draw_char_scaled(
         &mut self,
         x: u32,
         y: u32,
@@ -155,12 +159,12 @@ pub fn draw_char_scaled(
 
     // Julius Drodofsky
     pub fn clear(&mut self, color: Color) {
-        for i in 0..self.width*self.height {
+        for i in 0..self.width * self.height {
             self.data[i as usize] = color;
         }
     }
 
-        // schnell aber schlechte Qualität
+    // schnell aber schlechte Qualität
     fn scale_nearest_neighbor(&self, target_width: u32, target_height: u32) -> Bitmap {
         if target_height == self.height && target_width == self.width {
             return self.clone();
@@ -184,24 +188,45 @@ pub fn draw_char_scaled(
         }
     }
 
-    pub fn scale_in_place(&mut self, target_width: u32, target_height: u32) {
+    fn scale_none(&self, target_width: u32, target_height: u32) -> Bitmap {
+        let mut scaled_data = vec![
+            Color {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 0,
+            };
+            (target_width * target_height) as usize
+        ];
+
+        let copy_width = self.width.min(target_width);
+        let copy_height = self.height.min(target_height);
+
+        for y in 0..copy_height {
+            for x in 0..copy_width {
+                let src_index = (y * self.width + x) as usize;
+                let dst_index = (y * target_width + x) as usize;
+                scaled_data[dst_index] = self.data[src_index];
+            }
+        }
+
+        Bitmap {
+            width: target_width,
+            height: target_height,
+            data: scaled_data,
+        }
+    }
+
+    pub fn scale_in_place(&mut self, mode: ScalingMode, target_width: u32, target_height: u32) {
         if target_height == self.height && target_width == self.width {
             return;
         }
 
-        let mut scaled_data = Vec::with_capacity((target_width * target_height) as usize);
+        let scaled = self.scale_none(target_width, target_height);
 
-        for y in 0..target_height {
-            for x in 0..target_width {
-                let orig_x = x * self.width / target_width;
-                let orig_y = y * self.height / target_height;
-                scaled_data.push(self.data[(orig_y * self.width + orig_x) as usize]);
-            }
-        }
-
+        self.data = scaled.data;
         self.width = target_width;
         self.height = target_height;
-        self.data = scaled_data;
     }
 
     // langsam aber gute Qualität
@@ -245,13 +270,18 @@ pub fn draw_char_scaled(
                     + (c2.blue as f32) * tx * (1.0 - ty)
                     + (c3.blue as f32) * (1.0 - tx) * ty
                     + (c4.blue as f32) * tx * ty) as u8;
-                
+
                 let alpha = ((c1.alpha as f32) * (1.0 - tx) * (1.0 - ty)
                     + (c2.alpha as f32) * tx * (1.0 - ty)
                     + (c3.alpha as f32) * (1.0 - tx) * ty
                     + (c4.alpha as f32) * tx * ty) as u8;
 
-                scaled_data.push(Color {red, green, blue, alpha});
+                scaled_data.push(Color {
+                    red,
+                    green,
+                    blue,
+                    alpha,
+                });
             }
         }
 
@@ -266,7 +296,7 @@ pub fn draw_char_scaled(
         let mut x = 0;
         let mut y = radius as i32;
         let mut d = 3 - 2 * radius as i32; // Entscheidungsvariable
-    
+
         while x <= y {
             // Zeichne alle symmetrischen Punkte
             self.draw_pixel((cx + x) as u32, (cy + y) as u32, color);
@@ -277,7 +307,7 @@ pub fn draw_char_scaled(
             self.draw_pixel((cx - y) as u32, (cy + x) as u32, color);
             self.draw_pixel((cx + y) as u32, (cy - x) as u32, color);
             self.draw_pixel((cx - y) as u32, (cy - x) as u32, color);
-    
+
             // Aktualisiere die Entscheidungsvariable und Positionen
             if d <= 0 {
                 d += 4 * x + 6;

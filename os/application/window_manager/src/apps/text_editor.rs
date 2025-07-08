@@ -14,7 +14,6 @@ use alloc::{boxed::Box, rc::Rc, string::String, vec};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use editor::apply_message;
 use graphic::bitmap::{Bitmap, ScalingMode};
-use graphic::color::{RED, YELLOW};
 use spin::rwlock::RwLock;
 use terminal::DecodedKey;
 
@@ -34,8 +33,8 @@ impl Runnable for TextEditor {
         let config =
             TextEditorConfig::new(LOG_SCREEN.0 as usize - 100, LOG_SCREEN.1 as usize - 40, &[]);
         let bitmap = Bitmap {
-            width: (0.7 * (config.width as f32)) as u32,
-            height: (0.7 * (config.height as f32)) as u32,
+            width: config.width as u32,
+            height: config.height as u32,
             data: vec![config.background_color; config.width * config.height],
         };
         let handle = concurrent::thread::current()
@@ -317,7 +316,7 @@ impl Runnable for TextEditor {
                         apply_message(&model, &canvs_clone, Message::DecodedKey(c));
                     })),
                     buffer: Rc::clone(&canvas),
-                    scaling_mode: ScalingMode::Bilinear,
+                    scaling_mode: ScalingMode::None,
                 },
             )
             .unwrap(),

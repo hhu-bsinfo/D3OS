@@ -214,17 +214,28 @@ impl<'b, 'v, 'r> Document<'b, 'v> {
         self.caret.set_head(prev_prev_line + origin_len);
     }
 
+    fn move_cursor_right(&mut self) {
+        self.caret.set_head(self.caret.head()+1);
+    }
+
+    fn move_cursor_left(&mut self) {
+        if self.caret.head() == 0 {
+            return;
+        }
+        self.caret.set_head(self.caret.head()-1);
+    }
+
     fn update_insert(&mut self, k: DecodedKey) {
         //delete
         match k {
             // delete
             DecodedKey::Unicode('\x08') => {
-                let res = self.text_buffer.delete(self.caret.head() - 1);
+                self.move_cursor_left();
+                let res = self.text_buffer.delete(self.caret.head());
                 if res.is_err() {
                     #[cfg(feature = "with_runtime")]
                     error!("Editor delete failed: {:?}", res);
                 }
-                self.caret.set_head(self.caret.head() - 1);
             }
             // esc
             DecodedKey::Unicode('\x1B') => {
@@ -239,10 +250,10 @@ impl<'b, 'v, 'r> Document<'b, 'v> {
                 self.caret.set_head(self.caret.head() + 1);
             }
             DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => {
-                self.caret.set_head(self.caret.head() - 1)
+                self.move_cursor_left();
             }
             DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => {
-                self.caret.set_head(self.caret.head() + 1)
+                self.move_cursor_right();
             }
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
@@ -308,16 +319,12 @@ impl<'b, 'v, 'r> Document<'b, 'v> {
             DecodedKey::Unicode('\x1B') => {
                 self.edit_mode = EditMode::Normal;
             }
-            DecodedKey::Unicode('h') => self.caret.set_head(self.caret.head() - 1),
-            DecodedKey::Unicode('l') => self.caret.set_head(self.caret.head() + 1),
+            DecodedKey::Unicode('h') => self.move_cursor_left(),
+            DecodedKey::Unicode('l') => self.move_cursor_right(),
             DecodedKey::Unicode('j') => self.move_cursor_down(),
             DecodedKey::Unicode('k') => self.move_cursor_up(),
-            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => {
-                self.caret.set_head(self.caret.head() - 1)
-            }
-            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => {
-                self.caret.set_head(self.caret.head() + 1)
-            }
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.move_cursor_left(),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.move_cursor_right(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             DecodedKey::Unicode('y') => self.yank(),
@@ -344,19 +351,15 @@ impl<'b, 'v, 'r> Document<'b, 'v> {
                     error!("Editor redo failed: {:?}", res);
                 }
             }
-            DecodedKey::Unicode('h') => self.caret.set_head(self.caret.head() - 1),
-            DecodedKey::Unicode('l') => self.caret.set_head(self.caret.head() + 1),
+            DecodedKey::Unicode('h') => self.move_cursor_left(),
+            DecodedKey::Unicode('l') => self.move_cursor_right(),
             DecodedKey::Unicode('j') => self.move_cursor_down(),
             DecodedKey::Unicode('k') => self.move_cursor_up(),
             DecodedKey::Unicode('i') => self.edit_mode = EditMode::Insert,
             DecodedKey::Unicode('n') => self.current_view = self.config.simple_view,
             DecodedKey::Unicode('m') => self.current_view = self.config.markdown_view,
-            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => {
-                self.caret.set_head(self.caret.head() - 1)
-            }
-            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => {
-                self.caret.set_head(self.caret.head() + 1)
-            }
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.move_cursor_left(),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.move_cursor_right(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             DecodedKey::Unicode('v') => {

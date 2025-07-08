@@ -49,13 +49,15 @@ impl View {
         font: Font,
         position: Vertex,
         rel_caret: Option<usize>,
+        rel_caret_anker: Option<usize>,
+        render_caret: bool,
     ) -> (Vertex, Vec<u32>) {
         let mut x = position.x;
         let mut y = position.y;
         let mut i = 0;
         let mut new_lines = Vec::<u32>::new();
         while let Some(c) = text.chars().nth(i) {
-            if i == rel_caret.unwrap_or(usize::MAX) {
+            if i == rel_caret.unwrap_or(usize::MAX) && render_caret {
                 buffer.draw_line(x, y, x, y + font.char_height * font.scale, YELLOW);
             }
             if c == '\n' {
@@ -69,6 +71,24 @@ impl View {
                 x = 0;
                 y += font.char_height * font.scale;
                 new_lines.push(i as u32);
+            }
+            if rel_caret_anker.is_some_and(|x|x <= i) && rel_caret.is_some_and( |c| c>=i) {
+                buffer.draw_line(x, y, x, y + font.char_height * font.scale - 1, font.fg_color);
+                x += buffer.draw_char_scaled(
+                    x + 1,
+                    y,
+                    font.scale,
+                    font.scale,
+                    font.bg_color,
+                    font.fg_color,
+                    c,
+                ) * font.scale
+                    + 1;
+                i += 1;
+                if  rel_caret.is_some_and(|c| c == i)  {
+                    buffer.draw_line(x, y, x, y + font.char_height * font.scale, YELLOW);
+                }
+                continue;
             }
             x += buffer.draw_char_scaled(
                 x + 1,
@@ -235,6 +255,8 @@ impl View {
                             *font.last().unwrap_or(&normal),
                             position,
                             rel_caret,
+                            None,
+                            false
                         );
                     }
                     let mut s = String::new();
@@ -251,6 +273,8 @@ impl View {
                                 *font.last().unwrap_or(&normal),
                                 position,
                                 rel_caret,
+                                None,
+                                false
                             );
                             if ordered.is_none() {
                                 buffer.draw_circle_bresenham(
@@ -272,6 +296,8 @@ impl View {
                         *font.last().unwrap_or(&normal),
                         position,
                         rel_caret,
+                        None,
+                        false
                     );
                     if heading {
                         (position, tmp_line_start) = View::render_string(
@@ -280,6 +306,8 @@ impl View {
                             *font.last().unwrap_or(&normal),
                             position,
                             rel_caret,
+                            None,
+                            false
                         );
                     }
                 }
@@ -290,6 +318,8 @@ impl View {
                         *font.last().unwrap_or(&normal),
                         position,
                         rel_caret,
+                        None,
+                        false
                     );
                 }
                 Event::Start(t) => match t {
@@ -300,6 +330,8 @@ impl View {
                             *font.last().unwrap_or(&normal),
                             position,
                             rel_caret,
+                            None,
+                            false
                         );
                     }
                     pulldown_cmark::Tag::Item => {
@@ -324,6 +356,8 @@ impl View {
                             *font.last().unwrap_or(&normal),
                             position,
                             rel_caret,
+                            None,
+                            false
                         );
                     }
                     pulldown_cmark::Tag::Emphasis => font.push(emphasis),
@@ -353,6 +387,8 @@ impl View {
                         *font.last().unwrap_or(&normal),
                         position,
                         rel_caret,
+                        None,
+                        false
                     );
                     buffer.draw_line(
                         (buffer.width as f32 * 0.1) as u32,
@@ -367,6 +403,8 @@ impl View {
                         *font.last().unwrap_or(&normal),
                         position,
                         rel_caret,
+                        None,
+                        false
                     );
                 }
                 Event::End(t) => match t {
@@ -377,6 +415,8 @@ impl View {
                             *font.last().unwrap_or(&normal),
                             position,
                             rel_caret,
+                            None,
+                            false
                         );
                     }
                     pulldown_cmark::TagEnd::Item => {
@@ -386,6 +426,8 @@ impl View {
                             *font.last().unwrap_or(&normal),
                             position,
                             rel_caret,
+                            None,
+                            false
                         );
                     }
                     pulldown_cmark::TagEnd::List(_) => {
@@ -461,15 +503,21 @@ impl View {
                 break;
             }
             last_index = token.auto_span(&input);
-            let rel_caret = document.caret().head().checked_sub(last_index.start);
-            if last_index.start < document.scroll_offset() as usize {
+            if last_index.end < document.scroll_offset() as usize {
                 continue;
             }
+            let rel_caret = document.caret().head().checked_sub(last_index.start);
+            let rel_caret_anchor = match document.caret() {
+                Caret::Normal(_) => None,
+                Caret::Visual { anchor: a, head: _ } => Some(a.saturating_sub(last_index.start)),
+                    
+            };
+            
 
             match token.get() {
                 Token::Identifier(s) | Token::Operator(s) | Token::Whitespace(s) => {
                     (position, tmp_line_start) =
-                        View::render_string(&String::from(*s), buffer, normal, position, rel_caret);
+                        View::render_string(&String::from(*s), buffer, normal, position, rel_caret, rel_caret_anchor,true);
                 }
                 Token::Keyword(s) => {
                     (position, tmp_line_start) = View::render_string(
@@ -478,15 +526,17 @@ impl View {
                         keyword,
                         position,
                         rel_caret,
+                        rel_caret_anchor,
+                       true 
                     );
                 }
                 Token::Number(s) => {
                     (position, tmp_line_start) =
-                        View::render_string(&String::from(*s), buffer, number, position, rel_caret);
+                        View::render_string(&String::from(*s), buffer, number, position, rel_caret, rel_caret_anchor,true);
                 }
                 Token::String(s) => {
                     (position, tmp_line_start) =
-                        View::render_string(&String::from(*s), buffer, string, position, rel_caret);
+                        View::render_string(&String::from(*s), buffer, string, position, rel_caret, rel_caret_anchor, true);
                 }
                 Token::Comment(s) => {
                     (position, tmp_line_start) = View::render_string(
@@ -495,11 +545,13 @@ impl View {
                         comment,
                         position,
                         rel_caret,
+                        rel_caret_anchor,
+                        true
                     );
                 }
                 Token::Punctuation(c) | Token::Other(c) => {
                     (position, tmp_line_start) =
-                        View::render_string(&String::from(*c), buffer, normal, position, rel_caret);
+                        View::render_string(&String::from(*c), buffer, normal, position, rel_caret, rel_caret_anchor, true);
                 }
             }
             if last_index.start >= document.caret().head()
@@ -516,7 +568,8 @@ impl View {
             return Some(ViewMessage::ScrollUp(
                 document
                     .scroll_offset()
-                    .checked_sub(document.caret().head() as u32)
+                    .checked_sub(document.prev_line(document.caret().head()).unwrap_or(document.scroll_offset() as usize) as u32
+                )
                     .unwrap_or(0) as u32,
             ));
         // scroll down if cursor below visible document
