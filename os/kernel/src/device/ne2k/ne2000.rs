@@ -924,13 +924,15 @@ impl Ne2000 {
 }
 
 pub struct Ne2000InterruptHandler {
-    device: Arc<Ne2000>,
+    // Added Mutex, because i need shared, mutable access for the handle_overflow method,
+    // without it there is no interior mutability to safely call the method
+    device: Arc<Mutex<Ne2000>>,
 }
 
 // implement the InterruptHandler
 // creates a new Instance of Ne2000InterruptHandler
 impl Ne2000InterruptHandler {
-    pub fn new(device: Arc<Ne2000>) -> Self {
+    pub fn new(device: Arc<Mutex<Ne2000>>) -> Self {
         Self { device }
     }
 }
@@ -939,38 +941,44 @@ impl InterruptHandler for Ne2000InterruptHandler {
     fn trigger(&self) {
         // a mutex is required for IMR and ISR, because these registers are also used by the
         // transmit and receive function, and Init routine
-        if self.device.registers.isr_port.is_locked() {
+        let mut dev = self.device.lock();
+        if dev.registers.isr_port.is_locked() {
             panic!("Interrupt status register is locked during interrupt!");
         }
 
         unsafe {
             // clear Interrupt Mask Register
             // add mutex because Arc object,
-            self.device.registers.write_imr(0);
+            dev.registers.write_imr(0);
+        }
 
-            // Read interrupt status register (Each bit corresponds to an interrupt type or error)
-            let status_reg = self.device.registers.read_isr();
-            let status = InterruptStatusRegister::from_bits_retain(status_reg);
+        // Read interrupt status register (Each bit corresponds to an interrupt type or error)
+        let status_reg = dev.registers.read_isr();
+        let status = InterruptStatusRegister::from_bits_retain(status_reg);
 
-            // Check interrupt flags
-            // Packet Reception Flag set (PRX) ?
-            if status.contains(InterruptStatusRegister::ISR_PRX) {
-                // reset prx bit in isr
-                self.device
-                    .registers
+        // Check interrupt flags
+        // Packet Reception Flag set (PRX) ?
+        if status.contains(InterruptStatusRegister::ISR_PRX) {
+            // reset prx bit in isr
+            unsafe {
+                dev.registers
                     .isr_port
                     .lock()
                     .write(InterruptStatusRegister::ISR_PRX.bits());
-                // check for Packet Transmission Interrupt
-            } else if status.contains(InterruptStatusRegister::ISR_PTX) {
-                // reset ptx bit in isr
-                self.device
-                    .registers
+            }
+            // check for Packet Transmission Interrupt
+        } else if status.contains(InterruptStatusRegister::ISR_PTX) {
+            // reset ptx bit in isr
+            unsafe {
+                dev.registers
                     .isr_port
                     .lock()
                     .write(InterruptStatusRegister::ISR_PTX.bits());
             }
-            // TODO: write overwrite Method
+        }
+        // write overwrite Method
+        if status.contains(InterruptStatusRegister::ISR_OVW) {
+            dev.handle_overflow_interrupt();
         }
     }
 }
