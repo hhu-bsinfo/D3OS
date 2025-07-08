@@ -4,7 +4,6 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use logger::warn;
 use core::ops::Range;
 use core::usize;
 use drawer::vertex::Vertex;
@@ -504,15 +503,16 @@ impl View {
                 break;
             }
             last_index = token.auto_span(&input);
+            if last_index.end < document.scroll_offset() as usize {
+                continue;
+            }
             let rel_caret = document.caret().head().checked_sub(last_index.start);
             let rel_caret_anchor = match document.caret() {
                 Caret::Normal(_) => None,
                 Caret::Visual { anchor: a, head: _ } => Some(a.saturating_sub(last_index.start)),
                     
             };
-            if last_index.start < document.scroll_offset() as usize {
-                continue;
-            }
+            
 
             match token.get() {
                 Token::Identifier(s) | Token::Operator(s) | Token::Whitespace(s) => {
@@ -568,7 +568,8 @@ impl View {
             return Some(ViewMessage::ScrollUp(
                 document
                     .scroll_offset()
-                    .checked_sub(document.caret().head() as u32)
+                    .checked_sub(document.prev_line(document.caret().head()).unwrap_or(document.scroll_offset() as usize) as u32
+                )
                     .unwrap_or(0) as u32,
             ));
         // scroll down if cursor below visible document
