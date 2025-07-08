@@ -33,8 +33,8 @@ impl Runnable for TextEditor {
         let config =
             TextEditorConfig::new(LOG_SCREEN.0 as usize - 100, LOG_SCREEN.1 as usize - 40, &[]);
         let bitmap = Bitmap {
-            width: (0.7 * (config.width as f32)) as u32,
-            height: (0.7 * (config.height as f32)) as u32,
+            width: config.width as u32,
+            height: config.height as u32,
             data: vec![config.background_color; config.width * config.height],
         };
         let handle = concurrent::thread::current()
