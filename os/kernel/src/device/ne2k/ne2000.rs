@@ -966,6 +966,24 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .lock()
                     .write(InterruptStatusRegister::ISR_PRX.bits());
             }
+            // call the packet received method
+            info!("RECEIVE");
+
+            // Actually fetch the packet and queue it
+            /*if let Some(buffer) = dev.receive_packet() {
+                dev.receive_messages
+                    .1
+                    .try_enqueue(buffer)
+                    .expect("rx queue full");
+            }*/
+
+            // from rtl8139
+            let mut queue = dev.send_queue.0.lock();
+            let mut buffer = queue.try_dequeue();
+            while buffer.is_ok() {
+                unsafe { frames::free(buffer.unwrap()) };
+                buffer = queue.try_dequeue();
+            }
             // check for Packet Transmission Interrupt
         } else if status.contains(InterruptStatusRegister::ISR_PTX) {
             // reset ptx bit in isr
