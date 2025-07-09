@@ -9,7 +9,7 @@ members = [
     "os/application/uptime",
     "os/application/date",
     "os/application/ls",
-    "os/application/ntest"
+    "os/application/ntest",
 ]
 
 # [profile.release]

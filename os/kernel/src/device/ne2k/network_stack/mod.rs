@@ -272,7 +272,7 @@ impl phy::Device for Ne2000 {
         // disable receive for now; only transmit exists
         //self.transmit(_timestamp).map(|tx| (Ne2000RxToken, tx))
         let mut device = unsafe { ptr::from_ref(self).as_ref()? };
-        info!("==> receive() requested by smoltcp!");
+        //info!("==> receive() requested by smoltcp!");
         match self.receive_messages.0.try_dequeue() {
             Ok(recv_buf) => Some((
                 Ne2000RxToken::new(recv_buf, device),
@@ -287,7 +287,7 @@ impl phy::Device for Ne2000 {
     // Returns a TxToken, which accepts the packet contents
     fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
         let mut device = unsafe { ptr::from_ref(self).as_ref()? };
-        info!("==> transmit() requested by smoltcp!");
+        //info!("==> transmit() requested by smoltcp!");
         Some(Ne2000TxToken::new(self))
     }
 

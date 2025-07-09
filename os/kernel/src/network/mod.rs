@@ -202,7 +202,7 @@ fn poll_ne2000() {
     // start interface
     let mut counter: u8 = 0;
     for iface in interfaces.iter_mut() {
-        info!("Polling, Iteration: {}", counter);
+        //info!("Polling, Iteration: {}", counter);
         // check if smoltcp processes something
         //info!("i hope this works");
         iface.poll(now, dev_ne2k, &mut sockets);

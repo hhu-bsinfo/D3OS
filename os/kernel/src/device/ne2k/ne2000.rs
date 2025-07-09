@@ -764,10 +764,27 @@ impl Ne2000 {
                 let packet_header = PacketHeader {
                     receive_status: self.registers.data_port.read() as u8,
                     next_packet: self.registers.data_port.read() as u8,
-                    length: self.registers.data_port.read() as u8
-                        + (((self.registers.data_port.read() as u16) << 8)
-                            - size_of::<PacketHeader>() as u16) as u8,
+                    length: {
+                        // Read the first byte (u8)
+                        let low_byte = self.registers.data_port.read() as u16;
+
+                        // Read the second byte (u8), shift it by 8 bits to form the higher part of the length
+                        let high_byte = self.registers.data_port.read() as u16;
+
+                        // Combine the two bytes to form the full length (in u16)
+                        let length_u16 = (high_byte << 8) | low_byte;
+
+                        // Subtract the size of the packet header
+                        let length_without_header = length_u16 - size_of::<PacketHeader>() as u16;
+
+                        // Return the length as u8
+                        length_without_header as u8
+                    },
                 };
+
+                info!("packet header rcr : {}", packet_header.receive_status);
+                info!("packet header length : {}", packet_header.length);
+                info!("packet header next_packet: {}", packet_header.next_packet);
 
                 // check received packet
 
@@ -794,6 +811,7 @@ impl Ne2000 {
                         // slice indices must be of type usize
                         packet[i as usize] = self.registers.data_port.read() as u8;
                     }
+                    info!("testing");
                     // let smoltcp handle the packet
                     // TODO: check network/mod.rs for the handling of the packet
                     // probably an interrupt handler has to be assigned, check this
@@ -951,10 +969,8 @@ impl Ne2000InterruptHandler {
 
 impl InterruptHandler for Ne2000InterruptHandler {
     fn trigger(&self) {
-        info!("Overflow interrupt detected");
         // a mutex is required for IMR and ISR, because these registers are also used by the
         // transmit and receive function, and Init routine
-        info!("Overflow interrupt detected 2");
         if self.device.registers.isr_port.is_locked() {
             panic!("Interrupt status register is locked during interrupt!");
         }
@@ -962,7 +978,6 @@ impl InterruptHandler for Ne2000InterruptHandler {
         // clear Interrupt Mask Register
         // add mutex because Arc object,
         self.device.registers.write_imr(0);
-        info!("Overflow interrupt detected 2");
 
         // Read interrupt status register (Each bit corresponds to an interrupt type or error)
         let status_reg = self.device.registers.read_isr();
@@ -981,16 +996,31 @@ impl InterruptHandler for Ne2000InterruptHandler {
             }
             // call the packet received method
             info!("RECEIVE");
-            self.device.receive_packet();
 
-            // from rtl8139
-            /*let mut queue = device.send_queue.0.lock();
-            let mut buffer = queue.try_dequeue();
-            while buffer.is_ok() {
-                unsafe { frames::free(buffer.unwrap()) };
-                buffer = queue.try_dequeue();
-            }*/
-            // check for Packet Transmission Interrupt
+            // `self.device` is of type `Arc<Ne2000>`, which is the shared reference
+            let device_ref: &Ne2000 = &self.device; // This is a shared reference
+
+            // Use unsafe to get a mutable reference to the inner `Ne2000` object
+            let device_mut = unsafe {
+                // Convert from a shared reference to a mutable raw pointer
+                ptr::from_ref(device_ref)
+                    .cast_mut() // Cast to a mutable pointer
+                    .as_mut() // Convert the raw pointer back to a mutable reference
+                    .unwrap() // Unwrap to ensure it’s valid
+            };
+
+            // mutable reference device_mut
+            device_mut.receive_packet(); // Call the method with mutable reference
+            info!("AFTER RECEIVE");
+
+        // from rtl8139
+        /*let mut queue = device.send_queue.0.lock();
+        let mut buffer = queue.try_dequeue();
+        while buffer.is_ok() {
+            unsafe { frames::free(buffer.unwrap()) };
+            buffer = queue.try_dequeue();
+        }*/
+        // check for Packet Transmission Interrupt
         } else if status.contains(InterruptStatusRegister::ISR_PTX) {
             // reset ptx bit in isr
             unsafe {
@@ -1004,7 +1034,18 @@ impl InterruptHandler for Ne2000InterruptHandler {
         }
         // write overwrite Method
         if status.contains(InterruptStatusRegister::ISR_OVW) {
-            self.device.handle_overflow_interrupt();
+            // `self.device` is of type `Arc<Ne2000>`, which is the shared reference
+            let device_ref: &Ne2000 = &self.device; // This is a shared reference
+            // Use unsafe to get a mutable reference to the inner `Ne2000` object
+            let device_mut = unsafe {
+                // Convert from a shared reference to a mutable raw pointer
+
+                ptr::from_ref(device_ref)
+                    .cast_mut() // Cast to a mutable pointer
+                    .as_mut() // Convert the raw pointer back to a mutable reference
+                    .unwrap() // Unwrap to ensure it’s valid
+            };
+            device_mut.handle_overflow_interrupt();
             info!("Overflow");
         }
     }
