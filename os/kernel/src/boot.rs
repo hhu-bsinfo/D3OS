@@ -304,6 +304,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         conf.random_seed = time as u64;
         let device_ne2k = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
         // create the network interface
+        // added mutex on 09.07.2025, because of interrupt handler,
+        // device.lock returns MutexGuard
+        // &mut * dereferences Guard into &mut Ne2000, which is needed by Interface
         let mut interface = Interface::new(conf, device_ne2k, Instant::from_millis(time as i64));
 
         // update the ip addresses of the interface

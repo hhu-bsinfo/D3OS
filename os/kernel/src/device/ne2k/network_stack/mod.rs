@@ -272,6 +272,7 @@ impl phy::Device for Ne2000 {
         // disable receive for now; only transmit exists
         //self.transmit(_timestamp).map(|tx| (Ne2000RxToken, tx))
         let mut device = unsafe { ptr::from_ref(self).as_ref()? };
+        info!("==> receive() requested by smoltcp!");
         match self.receive_messages.0.try_dequeue() {
             Ok(recv_buf) => Some((
                 Ne2000RxToken::new(recv_buf, device),

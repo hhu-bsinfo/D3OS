@@ -21,8 +21,8 @@ use smoltcp::wire::{IpAddress, IpEndpoint};
 static RTL8139: Once<Arc<Rtl8139>> = Once::new();
 // ensure that the driver is only initialized once
 //static NE2000: Once<Arc<Mutex<Ne2000>>> = Once::new();
-//static NE2000: Once<Arc<Ne2000>> = Once::new();
 static NE2000: Once<Arc<Ne2000>> = Once::new();
+//static NE2000: Once<Arc<Ne2000>> = Once::new();
 
 static INTERFACES: RwLock<Vec<Interface>> = RwLock::new(Vec::new());
 static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
@@ -65,9 +65,12 @@ pub fn init() {
         NE2000.call_once(|| {
             info!("\x1b[1;31mFound Realtek 8029 network controller");
             //let ne2k = Arc::new(Ne2000::new(devices2[0]));
-            let ne2k = Arc::new(Ne2000::new(devices2[0]));
+            let mut device = Ne2000::new(devices2[0]);
+            let ne2k = Arc::new(device);
 
             info!("\x1b[1;31mNe2000 MAC address: [{}]", ne2k.read_mac());
+            Ne2000::assign(Arc::clone(&ne2k));
+            info!("assigned Interrupt handler");
             ne2k
         });
     }
@@ -181,10 +184,10 @@ fn poll_ne2000() {
     let mut sockets = SOCKETS.get().expect("Socket set not initialized").write();
 
     // Crate UDP socket with buffers
-    let rx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
-    let tx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
-    let socket = Socket::new(rx_buffer, tx_buffer);
-    let handle = sockets.add(socket);
+    //let rx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
+    //let tx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
+    //let socket = Socket::new(rx_buffer, tx_buffer);
+    //let handle = sockets.add(socket);
 
     // Bind, enqueue packet
     //let mut sock = sockets.get_mut::<Socket>(handle);

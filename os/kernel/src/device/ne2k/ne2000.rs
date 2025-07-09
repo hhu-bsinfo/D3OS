@@ -25,8 +25,8 @@
 // =============================================================================
 // DEPENDENCIES:
 // =============================================================================
-
 use crate::device::ne2k::register_flags::ReceiveStatusRegister;
+use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{PAGE_SIZE, frames};
 use crate::{apic, device, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use core::mem;
@@ -34,6 +34,7 @@ use core::ops::BitOr;
 use core::{ptr, slice};
 use log::info;
 // for allocator impl
+use alloc::boxed::Box;
 use core::alloc::{AllocError, Allocator, Layout};
 // for allocator impl
 use crate::interrupt::interrupt_handler::InterruptHandler;
@@ -263,6 +264,7 @@ pub struct Ne2000 {
         mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
+    interrupt: InterruptVector,
 }
 
 impl Ne2000 {
@@ -271,6 +273,7 @@ impl Ne2000 {
         //Self { base_address }
         //let pci_config_space = pci_bus().config_space();
         let pci_device = pci_device.write();
+        let pci_config_space = pci_bus().config_space();
 
         let bar0 = pci_device
             .bar(0, pci_bus().config_space())
@@ -285,6 +288,8 @@ impl Ne2000 {
         // send_queue.enqueue(13) -> enque data
         // see: https://docs.rs/nolock/latest/nolock/queues/mpsc/jiffy/index.html
         let send_queue = mpsc::jiffy::queue();
+        let interrupt =
+            InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 + 32).unwrap();
         let kernel_process = process_manager().read().kernel_process().unwrap();
         let recv_buffers = mpmc::bounded::scq::queue(RECV_QUEUE_CAP);
         for _ in 0..RECV_QUEUE_CAP {
@@ -327,6 +332,7 @@ impl Ne2000 {
             receive_buffers_empty: recv_buffers,
             receive_buffer: Mutex::new(ReceiveBuffer::new()),
             receive_messages: mpmc::bounded::scq::queue(RECV_QUEUE_CAP),
+            interrupt,
         };
 
         //ne2000.init();
@@ -921,39 +927,45 @@ impl Ne2000 {
             }
         }
     }
+    // assign driver to interrupt handler
+    pub fn assign(device: Arc<Ne2000>) {
+        let interrupt = device.interrupt;
+        interrupt_dispatcher().assign(interrupt, Box::new(Ne2000InterruptHandler::new(device)));
+        apic().allow(interrupt);
+    }
 }
 
 pub struct Ne2000InterruptHandler {
     // Added Mutex, because i need shared, mutable access for the handle_overflow method,
     // without it there is no interior mutability to safely call the method
-    device: Arc<Mutex<Ne2000>>,
+    device: Arc<Ne2000>,
 }
 
 // implement the InterruptHandler
 // creates a new Instance of Ne2000InterruptHandler
 impl Ne2000InterruptHandler {
-    pub fn new(device: Arc<Mutex<Ne2000>>) -> Self {
+    pub fn new(device: Arc<Ne2000>) -> Self {
         Self { device }
     }
 }
 
 impl InterruptHandler for Ne2000InterruptHandler {
     fn trigger(&self) {
+        info!("Overflow interrupt detected");
         // a mutex is required for IMR and ISR, because these registers are also used by the
         // transmit and receive function, and Init routine
-        let mut dev = self.device.lock();
-        if dev.registers.isr_port.is_locked() {
+        info!("Overflow interrupt detected 2");
+        if self.device.registers.isr_port.is_locked() {
             panic!("Interrupt status register is locked during interrupt!");
         }
 
-        unsafe {
-            // clear Interrupt Mask Register
-            // add mutex because Arc object,
-            dev.registers.write_imr(0);
-        }
+        // clear Interrupt Mask Register
+        // add mutex because Arc object,
+        self.device.registers.write_imr(0);
+        info!("Overflow interrupt detected 2");
 
         // Read interrupt status register (Each bit corresponds to an interrupt type or error)
-        let status_reg = dev.registers.read_isr();
+        let status_reg = self.device.registers.read_isr();
         let status = InterruptStatusRegister::from_bits_retain(status_reg);
 
         // Check interrupt flags
@@ -961,42 +973,39 @@ impl InterruptHandler for Ne2000InterruptHandler {
         if status.contains(InterruptStatusRegister::ISR_PRX) {
             // reset prx bit in isr
             unsafe {
-                dev.registers
+                self.device
+                    .registers
                     .isr_port
                     .lock()
                     .write(InterruptStatusRegister::ISR_PRX.bits());
             }
             // call the packet received method
             info!("RECEIVE");
-
-            // Actually fetch the packet and queue it
-            /*if let Some(buffer) = dev.receive_packet() {
-                dev.receive_messages
-                    .1
-                    .try_enqueue(buffer)
-                    .expect("rx queue full");
-            }*/
+            self.device.receive_packet();
 
             // from rtl8139
-            let mut queue = dev.send_queue.0.lock();
+            /*let mut queue = device.send_queue.0.lock();
             let mut buffer = queue.try_dequeue();
             while buffer.is_ok() {
                 unsafe { frames::free(buffer.unwrap()) };
                 buffer = queue.try_dequeue();
-            }
+            }*/
             // check for Packet Transmission Interrupt
         } else if status.contains(InterruptStatusRegister::ISR_PTX) {
             // reset ptx bit in isr
             unsafe {
-                dev.registers
+                self.device
+                    .registers
                     .isr_port
                     .lock()
                     .write(InterruptStatusRegister::ISR_PTX.bits());
             }
+            info!("Transmit");
         }
         // write overwrite Method
         if status.contains(InterruptStatusRegister::ISR_OVW) {
-            dev.handle_overflow_interrupt();
+            self.device.handle_overflow_interrupt();
+            info!("Overflow");
         }
     }
 }
