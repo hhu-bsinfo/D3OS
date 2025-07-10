@@ -12,6 +12,7 @@ use crate::{
     build_in::{
         alias::AliasBuildIn, build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn, echo::EchoBuildIn,
         exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn, theme::ThemeBuildIn, unalias::UnaliasBuildIn,
+        window_manager::WindowManagerBuildIn,
     },
     context::{
         context::Context,
@@ -88,6 +89,7 @@ impl Executor {
                 self.theme_provider.clone(),
             )
             .start(),
+            "window_manager" => WindowManagerBuildIn::new(args).start(),
             _ => return Err(()),
         };
         Ok(())

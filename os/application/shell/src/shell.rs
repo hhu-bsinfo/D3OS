@@ -168,7 +168,6 @@ pub fn main() {
 // TODO IMPROVEMENT: Limit history len
 // TODO IMPROVEMENT: Limit alias len
 // TODO IMPROVEMENT: ????Move Context into SubModules???? after that rename SubModule to Context
-// TODO IMPROVEMENT: Block window_manager execution (show error message how to open window_manager correctly)
 // TODO IMPROVEMENT: Restore Lexer, Parser Separation
 // TODO IMPROVEMENT: Move mkdir from builtin into application
 // TODO IMPROVEMENT: Detach short / long flag from single flags / key value pairs
