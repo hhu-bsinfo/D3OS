@@ -123,3 +123,30 @@ pub fn main() {
     let mut shell = Shell::new();
     shell.run()
 }
+
+// TODO FEAT: Add BuildIn to switch themes
+// TODO FEAT: Add working directories!!!
+// TODO FEAT: Add help BuildIn
+// TODO FEAT: Show && and || executions with build ins (assume extern applications to always succeed)
+// TODO FEAT: Add application params to disable optional modules
+// TODO FEAT: Pos1 => Cursor to start
+// TODO FEAT: End => Cursor to end
+// TODO FEAT: ESCAPE => Unfocus suggestion
+
+// TODO IMPROVEMENT: Rework Token creation with less repetition (Assign rules to different kinds??? EolRule, reqCmdRule, ...)
+// TODO IMPROVEMENT: Token should accept string in constructor (multi char token are no longer a special case)
+// TODO IMPROVEMENT: Limit line len
+// TODO IMPROVEMENT: Limit history len
+// TODO IMPROVEMENT: Limit alias len
+// TODO IMPROVEMENT: ????Move Context into SubModules???? after that rename SubModule to Context
+// TODO IMPROVEMENT: Block window_manager execution (show error message how to open window_manager correctly)
+// TODO IMPROVEMENT: Move ArgumentKind management into AutoCompletion, remove it from Tokens
+// TODO IMPROVEMENT: Restore Lexer, Parser Separation
+// TODO IMPROVEMENT: Move mkdir from builtin into application
+
+// TODO FIX: ArgumentKind not updating in terminal
+// TODO FIX: Only generic arg suggestion after first generic arg is selected
+// TODO FIX: alias and unalias always shows usage error (Problem: builtin accepts only one argument, but alias key="value" has two [key=, "value"])
+// TODO FIX: Writer not updating when command history clears line (latest)
+// TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)
+// TODO FIX: If line is empty but auto completion has focus, pressing backspace doesn't restore terminal cursor position

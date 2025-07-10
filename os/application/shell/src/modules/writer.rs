@@ -163,7 +163,7 @@ impl Writer {
 
     fn token_color(&self, token: &Token) -> &'static str {
         let theme = self.theme_provider.borrow().get();
-        if token.clx().in_quote.is_some() {
+        if token.clx().in_quote.is_some() && !matches!(token.kind(), TokenKind::QuoteStart | TokenKind::QuoteEnd) {
             return theme.in_quote;
         }
         match token.kind() {
