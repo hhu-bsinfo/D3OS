@@ -13,6 +13,7 @@ use core::cell::RefCell;
 use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 use logger::info;
 use modules::{command_line::CommandLine, executor::Executor, history::History, writer::Writer};
+use runtime::env::Args;
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::{print, println, read::read_mixed};
@@ -27,6 +28,28 @@ use crate::{
     sub_modules::{alias::Alias, theme_provider::ThemeProvider},
 };
 
+#[derive(Debug, Default)]
+struct Config {
+    no_history: bool,
+    no_auto_completion: bool,
+}
+
+impl Config {
+    fn from_args(mut args: Args) -> Result<Self, ()> {
+        let mut cfg = Self::default();
+
+        let _skip_application_name = args.next();
+        for arg in args {
+            match arg.as_str() {
+                "--no-history" => cfg.no_history = true,
+                "--no-auto-completion" => cfg.no_auto_completion = true,
+                _ => return Err(()),
+            }
+        }
+        Ok(cfg)
+    }
+}
+
 struct Shell {
     clx: Context,
     modules: Vec<Box<dyn EventHandler>>,
@@ -34,15 +57,19 @@ struct Shell {
 }
 
 impl Shell {
-    pub fn new() -> Self {
+    pub fn new(cfg: Config) -> Self {
         let alias = Rc::new(RefCell::new(Alias::new()));
         let theme_provider = Rc::new(RefCell::new(ThemeProvider::new()));
         let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
 
         modules.push(Box::new(CommandLine::new()));
-        modules.push(Box::new(History::new()));
+        if !cfg.no_history {
+            modules.push(Box::new(History::new()));
+        }
         modules.push(Box::new(Parser::new(alias.clone())));
-        modules.push(Box::new(AutoCompletion::new()));
+        if !cfg.no_auto_completion {
+            modules.push(Box::new(AutoCompletion::new()));
+        }
         modules.push(Box::new(Writer::new(theme_provider.clone())));
         modules.push(Box::new(Executor::new(alias.clone(), theme_provider.clone())));
 
@@ -120,14 +147,20 @@ impl Shell {
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mut shell = Shell::new();
+    let args = env::args();
+    let Ok(cfg) = Config::from_args(args) else {
+        println!("Usage: shell [--no-history] [--no-auto-completion]");
+        return;
+    };
+
+    let mut shell = Shell::new(cfg);
     shell.run()
 }
 
 // TODO FEAT: Add working directories!!!
 // TODO FEAT: Add help BuildIn
 // TODO FEAT: Show && and || executions with build ins (assume extern applications to always succeed)
-// TODO FEAT: Add application params to disable optional modules
+// TODO FEAT: Add = args syntax to auto completion (KEY=VALUE)
 
 // TODO IMPROVEMENT: Rework Token creation with less repetition (Assign rules to different kinds??? EolRule, reqCmdRule, ...)
 // TODO IMPROVEMENT: Token should accept string in constructor (multi char token are no longer a special case)
@@ -139,6 +172,7 @@ pub fn main() {
 // TODO IMPROVEMENT: Move ArgumentKind management into AutoCompletion, remove it from Tokens
 // TODO IMPROVEMENT: Restore Lexer, Parser Separation
 // TODO IMPROVEMENT: Move mkdir from builtin into application
+// TODO IMPROVEMENT: Detach short / long flag from single flags / key value pairs
 
 // TODO FIX: ArgumentKind not updating in terminal
 // TODO FIX: Only generic arg suggestion after first generic arg is selected

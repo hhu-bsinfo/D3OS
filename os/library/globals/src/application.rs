@@ -35,7 +35,7 @@ pub const APPLICATION_REGISTRY: ApplicationRegistry = ApplicationRegistry {
             command: "shell",
             sub_commands: &[],
             short_flags: &[],
-            long_flags: &[],
+            long_flags: &["--no-history", "--no-auto-completion"],
         },
         Application {
             command: "date",
