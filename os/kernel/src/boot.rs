@@ -59,8 +59,8 @@ use x86_64::{PhysAddr, VirtAddr};
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
-    static ___KERNEL_DATA_START__: u64; // start address of OS image
-    static ___KERNEL_DATA_END__: u64; // end address of OS image
+    static ___KERNEL_DATA_START__: (); // start address of OS image
+    static ___KERNEL_DATA_END__: (); // end address of OS image
 }
 
 const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS
