@@ -27,11 +27,7 @@ impl AliasBuildIn {
             return self.list();
         }
 
-        if self.args.len() == 1 {
-            return self.add();
-        }
-
-        return self.error();
+        self.add()
     }
 
     fn list(&self) -> Result<(), ()> {
@@ -49,43 +45,31 @@ impl AliasBuildIn {
     }
 
     fn add(&self) -> Result<(), ()> {
-        let mut split = self.args.get(0).unwrap().splitn(2, "=");
-        let key = match split.next() {
-            Some(key) => key,
-            None => return self.error(),
-        };
-        let value = match split.next() {
-            Some(value) => value,
-            None => return self.error(),
-        };
-        let stripped_value = match self.strip_quotes(value) {
-            Ok(stripped_value) => stripped_value,
-            Err(_) => return self.error(),
-        };
+        let raw = self.args.join(" ");
+        let mut split = raw.splitn(2, "=");
+        let key = split.next().unwrap_or("");
+        let value = split.next().ok_or_else(|| self.usage().err().unwrap())?;
 
+        let stripped_value = self.strip_quotes(value)?;
         self.alias.borrow_mut().add(key, &stripped_value)
     }
 
     fn strip_quotes(&self, value: &str) -> Result<String, ()> {
         let bytes = value.as_bytes();
-        if bytes.len() < 2 {
-            return Err(());
-        }
 
-        let stripped_bytes = &value[1..value.len() - 1];
-
-        if bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\'' {
-            return Ok(stripped_bytes.to_string());
-        }
-        if bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"' {
-            return Ok(stripped_bytes.to_string());
+        if bytes.len() >= 2 {
+            let first = bytes[0];
+            let last = bytes[bytes.len() - 1];
+            if (first == b'\'' && last == b'\'') || (first == b'"' && last == b'"') {
+                return Ok(value[1..value.len() - 1].to_string());
+            }
         }
 
         Ok(value.to_string())
     }
 
-    fn error(&self) -> Result<(), ()> {
-        println!("Usage: alias KEY='VALUE'");
+    fn usage(&self) -> Result<(), ()> {
+        println!("Usage: alias KEY=VALUE");
         Err(())
     }
 }

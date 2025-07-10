@@ -173,8 +173,6 @@ pub fn main() {
 // TODO IMPROVEMENT: Move mkdir from builtin into application
 // TODO IMPROVEMENT: Detach short / long flag from single flags / key value pairs
 
-// TODO FIX: alias and unalias always shows usage error (Problem: builtin accepts only one argument, but alias key="value" has two [key=, "value"])
-
 // Should all be addressed with ArgKind migration
 // TODO IMPROVEMENT: Move ArgumentKind management into AutoCompletion, remove it from Tokens
 // TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)
