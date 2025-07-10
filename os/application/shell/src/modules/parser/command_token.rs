@@ -33,6 +33,7 @@ impl TokenContextFactory for CommandTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
         TokenContext {
             pos: 0,
+            line_pos: 0,
             cmd_pos: Some(0),
             short_flag_pos: None,
             in_quote: None,
@@ -44,7 +45,7 @@ impl TokenContextFactory for CommandTokenContextFactory {
         }
     }
 
-    fn create_after(prev_clx: &TokenContext, _kind: &TokenKind, _ch: char) -> TokenContext {
+    fn create_after(prev_clx: &TokenContext, prev_content: &str, _kind: &TokenKind, _ch: char) -> TokenContext {
         let error = prev_clx.error.or_else(|| {
             if prev_clx.cmd_pos.is_some() {
                 Some(&MORE_THAN_ONE_CMD_IN_SEGMENT_ERROR)
@@ -59,6 +60,7 @@ impl TokenContextFactory for CommandTokenContextFactory {
 
         TokenContext {
             pos: prev_clx.pos + 1,
+            line_pos: prev_clx.line_pos + prev_content.len(),
             cmd_pos: Some(prev_clx.pos + 1),
             short_flag_pos: None,
             in_quote: prev_clx.in_quote,

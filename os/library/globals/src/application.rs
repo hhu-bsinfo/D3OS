@@ -135,8 +135,11 @@ pub const APPLICATION_REGISTRY: ApplicationRegistry = ApplicationRegistry {
             short_flags: &[],
             long_flags: &[],
         },
-        //////////////////////////
-        // Window Manager BuildIns
-        // TODO SUPPORT
+        Application {
+            command: "theme",
+            sub_commands: &["d3os", "boring", "debug"],
+            short_flags: &[],
+            long_flags: &[],
+        },
     ],
 };

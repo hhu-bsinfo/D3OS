@@ -11,7 +11,6 @@ use crate::{
     context::{
         context::Context,
         executable_context::{Io, JobBuilder, JobResult},
-        tokens_context::TokensContext,
     },
     event::{
         event::Event,
@@ -49,11 +48,12 @@ impl EventHandler for Parser {
     }
 
     fn on_line_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        let detokenize_res = match self.detokenize_to_dirty(clx) {
+        let dirty_index = clx.line.get_dirty_index();
+        let detokenize_res = match self.detokenize_to(dirty_index, clx) {
             Ok(res) => res,
             Err(err) => return Err(err),
         };
-        let tokenize_res = match self.tokenize_from_dirty(clx) {
+        let tokenize_res = match self.tokenize_from(dirty_index, clx) {
             Ok(res) => res,
             Err(err) => return Err(err),
         };
@@ -169,32 +169,32 @@ impl Parser {
         Ok(Response::Ok)
     }
 
-    fn detokenize_to_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn detokenize_to(&mut self, index: usize, clx: &mut Context) -> Result<Response, Error> {
         let total_len = clx.tokens.total_len();
 
-        if total_len <= clx.line.get_dirty_index() {
+        if total_len <= index {
             return Ok(Response::Skip);
         }
 
-        let n = total_len - clx.line.get_dirty_index();
+        let n = total_len - index;
         for _ in 0..n {
-            self.remove(&mut clx.tokens);
+            self.remove(clx);
         }
 
         Ok(Response::Ok)
     }
 
-    fn tokenize_from_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        if !clx.line.is_dirty() {
+    fn tokenize_from(&mut self, index: usize, clx: &mut Context) -> Result<Response, Error> {
+        if index >= clx.line.len() {
             return Ok(Response::Skip);
         }
-
-        for ch in clx.line.get_dirty_part().chars() {
-            self.add(&mut clx.tokens, ch);
+        let dirty_line = clx.line.get()[index..].to_string();
+        for ch in dirty_line.chars() {
+            self.add(clx, ch);
         }
 
         for token in clx.tokens.get() {
-            info!("{:#?}", token);
+            info!("{:?}", token);
         }
         Ok(Response::Ok)
     }
@@ -215,203 +215,219 @@ impl Parser {
             .join(" ");
 
         for ch in new_line.chars() {
-            self.add(&mut clx.tokens, ch);
+            self.add(clx, ch);
         }
 
         info!("Lexer tokens with alias: {:#?}", clx.tokens);
         Ok(Response::Ok)
     }
 
-    fn add(&mut self, tokens: &mut TokensContext, ch: char) {
-        if tokens
+    fn add(&mut self, clx: &mut Context, ch: char) {
+        if clx
+            .tokens
             .last()
             .is_some_and(|token| token.clx().in_quote.is_some_and(|quote| quote != ch))
         {
-            self.add_ambiguous(tokens, ch);
+            self.add_ambiguous(clx, ch);
             return;
         }
 
         match ch {
             // Job control
-            ';' => self.add_separator(tokens, ch),
-            '&' => self.add_background_or_logical_and(tokens, ch),
-            '|' => self.add_pipe_or_logical_or(tokens, ch),
+            ';' => self.add_separator(clx, ch),
+            '&' => self.add_background_or_logical_and(clx, ch),
+            '|' => self.add_pipe_or_logical_or(clx, ch),
             // Redirection
-            '>' => self.add_redirect_out_append_or_truncate(tokens, ch),
-            '<' => self.add_redirect_in_append_or_truncate(tokens, ch),
+            '>' => self.add_redirect_out_append_or_truncate(clx, ch),
+            '<' => self.add_redirect_in_append_or_truncate(clx, ch),
             // Quotes
-            '\"' | '\'' => self.add_quote(tokens, ch),
+            '\"' | '\'' => self.add_quote(clx, ch),
             // Other
-            ' ' | '\t' => self.add_blank(tokens, ch),
-            ch => self.add_ambiguous(tokens, ch),
+            ' ' | '\t' => self.add_blank(clx, ch),
+            ch => self.add_ambiguous(clx, ch),
         }
     }
 
-    fn remove(&mut self, tokens: &mut TokensContext) {
-        let Some(last_token) = tokens.last_mut() else {
+    fn remove(&mut self, clx: &mut Context) {
+        let Some(last_token) = clx.tokens.last_mut() else {
             return;
         };
 
         match *last_token.kind() {
             TokenKind::And => {
-                tokens.pop();
-                let replace_token = match tokens.last() {
-                    Some(token) => Token::new_after(token.clx(), TokenKind::Background, '&'),
+                warn!("Before pop and");
+                let rm = clx.tokens.pop();
+                warn!("Removed and: {:?}", rm);
+                let replace_token = match clx.tokens.last() {
+                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::Background, '&'),
                     None => Token::new_first(TokenKind::Background, '&'),
                 };
-                tokens.push(replace_token);
+                clx.line.mark_dirty_at(replace_token.clx().line_pos);
+                clx.tokens.push(replace_token);
             }
             TokenKind::Or => {
-                tokens.pop();
-                let replace_token = match tokens.last() {
-                    Some(token) => Token::new_after(token.clx(), TokenKind::Pipe, '|'),
+                clx.tokens.pop();
+                let replace_token = match clx.tokens.last() {
+                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::Pipe, '|'),
                     None => Token::new_first(TokenKind::Pipe, '|'),
                 };
-                tokens.push(replace_token);
+                clx.line.mark_dirty_at(replace_token.clx().line_pos);
+                clx.tokens.push(replace_token);
             }
             TokenKind::RedirectInAppend => {
-                tokens.pop();
-                let replace_token = match tokens.last() {
-                    Some(token) => Token::new_after(token.clx(), TokenKind::RedirectInTruncate, '<'),
+                clx.tokens.pop();
+                let replace_token = match clx.tokens.last() {
+                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::RedirectInTruncate, '<'),
                     None => Token::new_first(TokenKind::RedirectInTruncate, '<'),
                 };
-                tokens.push(replace_token);
+                clx.line.mark_dirty_at(replace_token.clx().line_pos);
+                clx.tokens.push(replace_token);
             }
             TokenKind::RedirectOutAppend => {
-                tokens.pop();
-                let replace_token = match tokens.last() {
-                    Some(token) => Token::new_after(token.clx(), TokenKind::RedirectOutTruncate, '>'),
+                clx.tokens.pop();
+                let replace_token = match clx.tokens.last() {
+                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::RedirectOutTruncate, '>'),
                     None => Token::new_first(TokenKind::RedirectOutTruncate, '>'),
                 };
-                tokens.push(replace_token);
+                clx.line.mark_dirty_at(replace_token.clx().line_pos);
+                clx.tokens.push(replace_token);
             }
             _ => {
                 match last_token.pop() {
                     Ok(_) => return,
-                    Err(_) => tokens.pop(),
+                    Err(_) => clx.tokens.pop(),
                 };
             }
         }
     }
 
-    fn add_redirect_out_append_or_truncate(&mut self, tokens: &mut TokensContext, ch: char) {
+    fn add_redirect_out_append_or_truncate(&mut self, clx: &mut Context, ch: char) {
         // If no token => create first token
-        let Some(last_token) = tokens.last_mut() else {
+        let Some(last_token) = clx.tokens.last_mut() else {
             let first_token = Token::new_first(TokenKind::RedirectOutTruncate, ch);
-            tokens.push(first_token);
+            clx.tokens.push(first_token);
             return;
         };
 
         // If last token is truncate => remove it and add append
         if *last_token.kind() == TokenKind::RedirectOutTruncate {
-            tokens.pop();
-            let mut next_token = match tokens.last() {
-                Some(token) => Token::new_after(token.clx(), TokenKind::RedirectOutAppend, ch),
+            clx.tokens.pop();
+            let mut next_token = match clx.tokens.last() {
+                Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::RedirectOutAppend, ch),
                 None => Token::new_first(TokenKind::RedirectOutAppend, ch),
             };
             next_token.push(ch);
-            tokens.push(next_token);
+            clx.line.mark_dirty_at(next_token.clx().line_pos);
+            clx.tokens.push(next_token);
             return;
         }
 
         // Else add next background token
-        let next_token = Token::new_after(last_token.clx(), TokenKind::RedirectOutTruncate, ch);
-        tokens.push(next_token);
+        let next_token = Token::new_after(
+            last_token.clx(),
+            last_token.as_str(),
+            TokenKind::RedirectOutTruncate,
+            ch,
+        );
+        clx.tokens.push(next_token);
     }
 
-    fn add_redirect_in_append_or_truncate(&mut self, tokens: &mut TokensContext, ch: char) {
+    fn add_redirect_in_append_or_truncate(&mut self, clx: &mut Context, ch: char) {
         // If no token => create first token
-        let Some(last_token) = tokens.last_mut() else {
+        let Some(last_token) = clx.tokens.last_mut() else {
             let first_token = Token::new_first(TokenKind::RedirectInTruncate, ch);
-            tokens.push(first_token);
+            clx.tokens.push(first_token);
             return;
         };
 
         // If last token is truncate => remove it and add append
         if *last_token.kind() == TokenKind::RedirectInTruncate {
-            tokens.pop();
-            let mut next_token = match tokens.last() {
-                Some(token) => Token::new_after(token.clx(), TokenKind::RedirectInAppend, ch),
+            clx.tokens.pop();
+            let mut next_token = match clx.tokens.last() {
+                Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::RedirectInAppend, ch),
                 None => Token::new_first(TokenKind::RedirectInAppend, ch),
             };
             next_token.push(ch);
-            tokens.push(next_token);
+            clx.line.mark_dirty_at(next_token.clx().line_pos);
+            clx.tokens.push(next_token);
             return;
         }
 
         // Else add next background token
-        let next_token = Token::new_after(last_token.clx(), TokenKind::RedirectInTruncate, ch);
-        tokens.push(next_token);
+        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::RedirectInTruncate, ch);
+        clx.tokens.push(next_token);
     }
 
-    fn add_background_or_logical_and(&mut self, tokens: &mut TokensContext, ch: char) {
+    fn add_background_or_logical_and(&mut self, clx: &mut Context, ch: char) {
         // If no token => create first token
-        let Some(last_token) = tokens.last_mut() else {
+        let Some(last_token) = clx.tokens.last_mut() else {
             let first_token = Token::new_first(TokenKind::Background, ch);
-            tokens.push(first_token);
+            clx.tokens.push(first_token);
             return;
         };
 
         // If last token is background => remove it and add logical and token
         if *last_token.kind() == TokenKind::Background {
-            tokens.pop();
-            let mut next_token = match tokens.last() {
-                Some(token) => Token::new_after(token.clx(), TokenKind::And, ch),
+            clx.tokens.pop();
+            let mut next_token = match clx.tokens.last() {
+                Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::And, ch),
                 None => Token::new_first(TokenKind::And, ch),
             };
             next_token.push(ch);
-            tokens.push(next_token);
+            clx.line.mark_dirty_at(next_token.clx().line_pos);
+            clx.tokens.push(next_token);
             return;
         }
 
         // Else add next background token
-        let next_token = Token::new_after(last_token.clx(), TokenKind::Background, ch);
-        tokens.push(next_token);
+        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::Background, ch);
+        clx.tokens.push(next_token);
     }
 
-    fn add_separator(&mut self, tokens: &mut TokensContext, ch: char) {
+    fn add_separator(&mut self, clx: &mut Context, ch: char) {
         // If no token => create first token
-        let Some(last_token) = tokens.last_mut() else {
+        let Some(last_token) = clx.tokens.last_mut() else {
             let first_token = Token::new_first(TokenKind::Separator, ch);
-            tokens.push(first_token);
+            clx.tokens.push(first_token);
             return;
         };
 
         // Else add next separator token
-        let next_token = Token::new_after(last_token.clx(), TokenKind::Separator, ch);
-        tokens.push(next_token);
+        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::Separator, ch);
+        clx.tokens.push(next_token);
     }
 
-    fn add_pipe_or_logical_or(&mut self, tokens: &mut TokensContext, ch: char) {
+    fn add_pipe_or_logical_or(&mut self, clx: &mut Context, ch: char) {
         // If no token => create first token
-        let Some(last_token) = tokens.last_mut() else {
+        let Some(last_token) = clx.tokens.last_mut() else {
             let first_token = Token::new_first(TokenKind::Pipe, ch);
-            tokens.push(first_token);
+            clx.tokens.push(first_token);
             return;
         };
 
         // If last token is pipe => remove it and add logical or token
         if *last_token.kind() == TokenKind::Pipe {
-            tokens.pop();
-            let mut next_token = match tokens.last() {
-                Some(token) => Token::new_after(token.clx(), TokenKind::Or, ch),
+            clx.tokens.pop();
+            let mut next_token = match clx.tokens.last() {
+                Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::Or, ch),
                 None => Token::new_first(TokenKind::Or, ch),
             };
             next_token.push(ch);
-            tokens.push(next_token);
+            clx.line.mark_dirty_at(next_token.clx().line_pos);
+            clx.tokens.push(next_token);
             return;
         }
 
         // Else add next pipe token
-        let next_token = Token::new_after(last_token.clx(), TokenKind::Pipe, ch);
-        tokens.push(next_token);
+        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::Pipe, ch);
+        clx.tokens.push(next_token);
     }
 
-    fn add_ambiguous(&mut self, tokens: &mut TokensContext, ch: char) {
+    fn add_ambiguous(&mut self, clx: &mut Context, ch: char) {
         // If no token => create first token
-        let Some(last_token) = tokens.last_mut() else {
+        let Some(last_token) = clx.tokens.last_mut() else {
             let first_token = Token::new_first(TokenKind::Command, ch);
-            tokens.push(first_token);
+            clx.tokens.push(first_token);
             return;
         };
 
@@ -430,37 +446,37 @@ impl Parser {
             TokenKind::Command
         };
         let prev_clx = last_token.clx();
-        let next_token = Token::new_after(prev_clx, next_kind, ch);
-        tokens.push(next_token);
+        let next_token = Token::new_after(prev_clx, last_token.as_str(), next_kind, ch);
+        clx.tokens.push(next_token);
     }
 
-    fn add_blank(&mut self, tokens: &mut TokensContext, ch: char) {
+    fn add_blank(&mut self, clx: &mut Context, ch: char) {
         // If no token => create first token
-        let Some(last_token) = tokens.last_mut() else {
+        let Some(last_token) = clx.tokens.last_mut() else {
             let first_token = Token::new_first(TokenKind::Blank, ch);
-            tokens.push(first_token);
+            clx.tokens.push(first_token);
             return;
         };
 
         // Else => Append blank token
         let prev_clx = last_token.clx();
-        let next_token = Token::new_after(prev_clx, TokenKind::Blank, ch);
-        tokens.push(next_token);
+        let next_token = Token::new_after(prev_clx, last_token.as_str(), TokenKind::Blank, ch);
+        clx.tokens.push(next_token);
     }
 
-    fn add_quote(&mut self, tokens: &mut TokensContext, ch: char) {
+    fn add_quote(&mut self, clx: &mut Context, ch: char) {
         // If no token => create first token
-        let Some(last_token) = tokens.last_mut() else {
+        let Some(last_token) = clx.tokens.last_mut() else {
             let first_token = Token::new_first(TokenKind::QuoteStart, ch);
-            tokens.push(first_token);
+            clx.tokens.push(first_token);
             return;
         };
 
         // If in quote and char matches quote char => exit quote
         if last_token.is_in_quote_of(ch) {
             let prev_clx = last_token.clx();
-            let next_token = Token::new_after(prev_clx, TokenKind::QuoteEnd, ch);
-            tokens.push(next_token);
+            let next_token = Token::new_after(prev_clx, last_token.as_str(), TokenKind::QuoteEnd, ch);
+            clx.tokens.push(next_token);
             return;
         }
         // If in quote with different char => add to in quote token
@@ -471,7 +487,7 @@ impl Parser {
 
         // Else => Enter quote
         let prev_clx = last_token.clx();
-        let next_token = Token::new_after(prev_clx, TokenKind::QuoteStart, ch);
-        tokens.push(next_token);
+        let next_token = Token::new_after(prev_clx, last_token.as_str(), TokenKind::QuoteStart, ch);
+        clx.tokens.push(next_token);
     }
 }

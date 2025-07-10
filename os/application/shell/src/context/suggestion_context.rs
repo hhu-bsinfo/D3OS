@@ -16,7 +16,7 @@ impl SuggestionContext {
         *self = SuggestionContext::default()
     }
 
-    pub fn get(&self) -> &String {
+    pub fn get(&self) -> &str {
         &self.suggestion
     }
 

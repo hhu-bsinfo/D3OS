@@ -69,7 +69,7 @@ pub enum ArgumentKind {
 #[allow(unused_variables)]
 pub trait TokenContextFactory {
     fn create_first(kind: &TokenKind, ch: char) -> TokenContext;
-    fn create_after(prev_clx: &TokenContext, kind: &TokenKind, ch: char) -> TokenContext;
+    fn create_after(prev_clx: &TokenContext, prev_content: &str, kind: &TokenKind, ch: char) -> TokenContext;
     fn revalidate(clx: &mut TokenContext, kind: &TokenKind, string: &str) {}
 }
 
@@ -78,6 +78,7 @@ pub trait TokenContextFactory {
 pub struct TokenContext {
     // Position in tokens
     pub pos: usize,
+    pub line_pos: usize,
     // Position of Command in tokens, for the current segment
     pub cmd_pos: Option<usize>,
     // Position of assigned ShortFlag in tokens (if ShortFlagValue)
@@ -93,23 +94,31 @@ pub struct TokenContext {
 }
 
 impl TokenContext {
-    fn create_after(kind: &TokenKind, ch: char, prev_clx: &TokenContext) -> Self {
+    fn create_after(prev_clx: &TokenContext, prev_content: &str, kind: &TokenKind, ch: char) -> Self {
         match *kind {
-            TokenKind::Command => CommandTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::Argument => ArgumentTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::Blank => BlankTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::Pipe => PipeTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::Separator => SeparatorTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::Background => BackgroundTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::And => AndTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::Or => OrTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::RedirectInAppend => RedirectInAppendTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::RedirectInTruncate => RedirectInTruncateTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::create_after(prev_clx, kind, ch),
-            TokenKind::File => FileTokenContextFactory::create_after(prev_clx, kind, ch),
+            TokenKind::Command => CommandTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+            TokenKind::Argument => ArgumentTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+            TokenKind::Blank => BlankTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+            TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+            TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+            TokenKind::Pipe => PipeTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+            TokenKind::Separator => SeparatorTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+            TokenKind::Background => BackgroundTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+            TokenKind::And => AndTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+            TokenKind::Or => OrTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+            TokenKind::RedirectInAppend => {
+                RedirectInAppendTokenContextFactory::create_after(prev_clx, prev_content, kind, ch)
+            }
+            TokenKind::RedirectInTruncate => {
+                RedirectInTruncateTokenContextFactory::create_after(prev_clx, prev_content, kind, ch)
+            }
+            TokenKind::RedirectOutAppend => {
+                RedirectOutAppendTokenContextFactory::create_after(prev_clx, prev_content, kind, ch)
+            }
+            TokenKind::RedirectOutTruncate => {
+                RedirectOutTruncateTokenContextFactory::create_after(prev_clx, prev_content, kind, ch)
+            }
+            TokenKind::File => FileTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
         }
     }
 
@@ -179,8 +188,8 @@ impl Token {
         }
     }
 
-    pub fn new_after(prev_clx: &TokenContext, kind: TokenKind, ch: char) -> Self {
-        let clx = TokenContext::create_after(&kind, ch, prev_clx);
+    pub fn new_after(prev_clx: &TokenContext, prev_content: &str, kind: TokenKind, ch: char) -> Self {
+        let clx = TokenContext::create_after(prev_clx, prev_content, &kind, ch);
         let content = ch.to_string();
         let status = match clx.error {
             Some(error) => TokenStatus::Error(error),
@@ -230,6 +239,14 @@ impl Token {
 
     pub fn as_str(&self) -> &str {
         &self.content
+    }
+
+    pub fn as_str_at_line_index(&self, index: usize) -> &str {
+        if index < self.clx.line_pos {
+            return &self.content;
+        }
+
+        &self.content[index - self.clx.line_pos..]
     }
 
     pub fn to_string(&self) -> String {

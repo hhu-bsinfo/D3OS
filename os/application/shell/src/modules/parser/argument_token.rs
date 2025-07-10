@@ -27,7 +27,7 @@ impl TokenContextFactory for ArgumentTokenContextFactory {
         panic!("The first token can not be a argument");
     }
 
-    fn create_after(prev_clx: &TokenContext, _kind: &TokenKind, ch: char) -> TokenContext {
+    fn create_after(prev_clx: &TokenContext, prev_content: &str, _kind: &TokenKind, ch: char) -> TokenContext {
         let error = prev_clx.error.or_else(|| {
             if prev_clx.require_file {
                 Some(&ARGUMENT_INSTEAD_OF_FILE_ERROR)
@@ -53,6 +53,7 @@ impl TokenContextFactory for ArgumentTokenContextFactory {
 
         TokenContext {
             pos: prev_clx.pos + 1,
+            line_pos: prev_clx.line_pos + prev_content.len(),
             cmd_pos: prev_clx.cmd_pos,
             short_flag_pos,
             in_quote: prev_clx.in_quote,

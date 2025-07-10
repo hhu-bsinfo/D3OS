@@ -11,7 +11,7 @@ use concurrent::thread;
 use crate::{
     build_in::{
         alias::AliasBuildIn, build_in::BuildIn, cd::CdBuildIn, clear::ClearBuildIn, echo::EchoBuildIn,
-        exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn, unalias::UnaliasBuildIn,
+        exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn, theme::ThemeBuildIn, unalias::UnaliasBuildIn,
     },
     context::{
         context::Context,
@@ -21,11 +21,12 @@ use crate::{
         event::Event,
         event_handler::{Error, EventHandler, Response},
     },
-    sub_modules::alias::Alias,
+    sub_modules::{alias::Alias, theme_provider::ThemeProvider},
 };
 
 pub struct Executor {
     alias: Rc<RefCell<Alias>>,
+    theme_provider: Rc<RefCell<ThemeProvider>>,
 }
 
 impl EventHandler for Executor {
@@ -35,8 +36,8 @@ impl EventHandler for Executor {
 }
 
 impl Executor {
-    pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
-        Self { alias }
+    pub const fn new(alias: Rc<RefCell<Alias>>, theme_provider: Rc<RefCell<ThemeProvider>>) -> Self {
+        Self { alias, theme_provider }
     }
 
     pub fn execute(&self, clx: &mut Context) -> Result<Response, Error> {
@@ -82,6 +83,11 @@ impl Executor {
             "cd" => CdBuildIn::start(args),
             "alias" => AliasBuildIn::new(args, &self.alias).start(),
             "unalias" => UnaliasBuildIn::new(args, &self.alias).start(),
+            "theme" => ThemeBuildIn::new(
+                args.iter().map(|s| s.to_string()).collect(),
+                self.theme_provider.clone(),
+            )
+            .start(),
             _ => return Err(()),
         };
         Ok(())
