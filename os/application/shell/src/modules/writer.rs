@@ -5,7 +5,6 @@ use alloc::{
     rc::Rc,
     string::{String, ToString},
 };
-use logger::warn;
 use terminal::print;
 
 use crate::{
@@ -59,8 +58,6 @@ impl Writer {
     }
 
     fn write_at_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        warn!("last token: {:?}", clx.tokens.last());
-        warn!("dirty at: {}", clx.line.get_dirty_index());
         print!(
             "{}{}{}{}{}{}",
             self.dirty_status_indicator(clx),

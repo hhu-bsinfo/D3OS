@@ -169,13 +169,14 @@ pub fn main() {
 // TODO IMPROVEMENT: Limit alias len
 // TODO IMPROVEMENT: ????Move Context into SubModules???? after that rename SubModule to Context
 // TODO IMPROVEMENT: Block window_manager execution (show error message how to open window_manager correctly)
-// TODO IMPROVEMENT: Move ArgumentKind management into AutoCompletion, remove it from Tokens
 // TODO IMPROVEMENT: Restore Lexer, Parser Separation
 // TODO IMPROVEMENT: Move mkdir from builtin into application
 // TODO IMPROVEMENT: Detach short / long flag from single flags / key value pairs
 
+// TODO FIX: alias and unalias always shows usage error (Problem: builtin accepts only one argument, but alias key="value" has two [key=, "value"])
+
+// Should all be addressed with ArgKind migration
+// TODO IMPROVEMENT: Move ArgumentKind management into AutoCompletion, remove it from Tokens
+// TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)
 // TODO FIX: ArgumentKind not updating in terminal
 // TODO FIX: Only generic arg suggestion after first generic arg is selected
-// TODO FIX: alias and unalias always shows usage error (Problem: builtin accepts only one argument, but alias key="value" has two [key=, "value"])
-// TODO FIX: Writer not updating when command history clears line (latest)
-// TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)

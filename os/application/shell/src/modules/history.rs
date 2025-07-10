@@ -1,4 +1,4 @@
-use alloc::collections::vec_deque::VecDeque;
+use alloc::{collections::vec_deque::VecDeque, string::String};
 use terminal::{DecodedKey, KeyCode};
 
 use crate::{
@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub struct History {
-    history: VecDeque<Context>,
+    history: VecDeque<String>,
     history_position: isize,
 }
 
@@ -36,7 +36,7 @@ impl EventHandler for History {
 }
 
 impl History {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             history: VecDeque::new(),
             history_position: -1,
@@ -44,7 +44,7 @@ impl History {
     }
 
     fn add(&mut self, clx: &mut Context) {
-        self.history.push_front(clx.clone());
+        self.history.push_front(clx.line.get().clone());
     }
 
     fn reset_position(&mut self) {
@@ -52,30 +52,34 @@ impl History {
     }
 
     fn move_up(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        if self.history_position == self.history.len() as isize - 1 {
+        if self.history_position >= self.history.len() as isize - 1 {
             return Ok(Response::Skip);
         }
 
-        self.move_by(clx, 1)
+        self.history_position += 1;
+        self.restore(clx)
     }
 
     fn move_down(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        if self.history_position <= -1 {
+        if self.history_position == -1 {
             return Ok(Response::Skip);
         }
-        if self.history_position == 0 {
-            self.history_position = -1;
+        if self.history_position <= 0 {
             clx.line.reset();
+            clx.events.trigger(Event::HistoryRestored);
+            self.history_position = -1;
             return Ok(Response::Ok);
         }
 
-        self.move_by(clx, -1)
+        self.history_position -= 1;
+        self.restore(clx)
     }
 
-    fn move_by(&mut self, clx: &mut Context, step: isize) -> Result<Response, Error> {
-        self.history_position += step;
-        *clx = self.history.get(self.history_position as usize).unwrap().clone();
-        clx.line.mark_dirty_at(0);
+    fn restore(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        let line = self.history.get(self.history_position as usize).unwrap().clone();
+        clx.line.reset();
+        clx.line.push_str(&line);
+        clx.line.set_cursor_pos(clx.line.len());
         clx.events.trigger(Event::HistoryRestored);
         Ok(Response::Ok)
     }

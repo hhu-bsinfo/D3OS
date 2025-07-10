@@ -48,6 +48,23 @@ impl EventHandler for Parser {
     }
 
     fn on_line_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.tokenize_from_dirty(clx)
+    }
+
+    fn on_history_restored(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        self.tokenize_from_dirty(clx)
+    }
+}
+
+impl Parser {
+    pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
+        Self {
+            alias,
+            current_io_type: IoType::None,
+        }
+    }
+
+    fn tokenize_from_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
         let dirty_index = clx.line.get_dirty_index();
         let detokenize_res = match self.detokenize_to(dirty_index, clx) {
             Ok(res) => res,
@@ -64,15 +81,6 @@ impl EventHandler for Parser {
 
         clx.events.trigger(Event::TokensWritten);
         Ok(Response::Ok)
-    }
-}
-
-impl Parser {
-    pub const fn new(alias: Rc<RefCell<Alias>>) -> Self {
-        Self {
-            alias,
-            current_io_type: IoType::None,
-        }
     }
 
     fn parse(&mut self, clx: &mut Context) -> Result<Response, Error> {
