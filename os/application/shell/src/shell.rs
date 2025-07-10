@@ -44,7 +44,7 @@ impl Shell {
         modules.push(Box::new(Parser::new(alias.clone())));
         modules.push(Box::new(AutoCompletion::new()));
         modules.push(Box::new(Writer::new(theme_provider.clone())));
-        modules.push(Box::new(Executor::new(alias.clone())));
+        modules.push(Box::new(Executor::new(alias.clone(), theme_provider.clone())));
 
         Self {
             clx: Context::new(),
@@ -81,7 +81,7 @@ impl Shell {
     }
 
     fn handle_error(&mut self, error: Error) {
-        let theme = self.theme_provider.borrow().get();
+        let theme = self.theme_provider.borrow().get_current();
         let line_break = if error.start_inline { "" } else { "\n" };
         println!(
             "{}{}{}\x1b[0m\n{}{}\x1b[0m",

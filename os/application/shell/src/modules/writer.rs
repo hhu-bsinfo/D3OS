@@ -146,14 +146,14 @@ impl Writer {
         if !clx.suggestion.is_dirty() {
             return String::new();
         }
-        let theme = self.theme_provider.borrow().get();
+        let theme = self.theme_provider.borrow().get_current();
         let line = clx.suggestion.get();
         self.terminal_cursor_pos += line.len();
         format!("{}{}\x1b[0m", theme.suggestion, line)
     }
 
     fn indicator_color(&self, status: &TokenStatus) -> &'static str {
-        let theme = self.theme_provider.borrow().get();
+        let theme = self.theme_provider.borrow().get_current();
         match *status {
             TokenStatus::Valid => theme.indicator,
             TokenStatus::Incomplete => theme.indicator_warning,
@@ -162,7 +162,7 @@ impl Writer {
     }
 
     fn token_color(&self, token: &Token) -> &'static str {
-        let theme = self.theme_provider.borrow().get();
+        let theme = self.theme_provider.borrow().get_current();
         if token.clx().in_quote.is_some() && !matches!(token.kind(), TokenKind::QuoteStart | TokenKind::QuoteEnd) {
             return theme.in_quote;
         }

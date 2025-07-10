@@ -163,6 +163,6 @@ pub const BORING_THEME: Theme = Theme {
 };
 
 pub const THEME_REGISTRY: ThemeRegistry = ThemeRegistry {
-    default: &BORING_THEME,
+    default: &D3OS_THEME,
     themes: &[D3OS_THEME, BORING_THEME, DEBUG_THEME],
 };
