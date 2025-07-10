@@ -155,7 +155,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     let fb_start_phys_addr = fb_info.address();
     let fb_end_phys_addr = fb_start_phys_addr + (fb_info.height() * fb_info.pitch()) as u64;
 
-    kernel_process.virtual_address_space.map_devmem_identity(
+    kernel_process.virtual_address_space.kernel_map_devm_identity(
         fb_start_phys_addr,
         fb_end_phys_addr,
         PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,

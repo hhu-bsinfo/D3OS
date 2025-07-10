@@ -33,7 +33,7 @@ use crate::process::process::Process;
 pub fn alloc_kernel_stack(process: &Arc<Process>, pid: usize, tid: usize, tag_str: &str) -> Vec<u64, StackAllocator> {
 
     // Allocate physical frames for the kernel stack
-    let start_page = process.virtual_address_space.alloc_map_identity(
+    let start_page = process.virtual_address_space.kernel_alloc_map_identity(
         KERNEL_STACK_PAGES as u64,
         PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
         VmaType::KernelStack,

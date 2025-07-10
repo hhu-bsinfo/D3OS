@@ -227,7 +227,7 @@ pub fn init() {
             let length = spa.length;
             info!("Found non-volatile memory (Address: [0x{:x}], Length: [{} MiB])", address, length / 1024 / 1024);
             
-            process.virtual_address_space.map_devmem_identity(
+            process.virtual_address_space.kernel_map_devm_identity(
                 address,
                 address + length,
                 PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
