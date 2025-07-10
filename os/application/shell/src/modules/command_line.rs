@@ -19,6 +19,8 @@ impl EventHandler for CommandLine {
         match key {
             DecodedKey::RawKey(KeyCode::ArrowLeft) => self.move_cursor_left(clx),
             DecodedKey::RawKey(KeyCode::ArrowRight) => self.move_cursor_right(clx),
+            DecodedKey::RawKey(KeyCode::Home) => self.move_cursor_to_start(clx),
+            DecodedKey::RawKey(KeyCode::End) => self.move_cursor_to_end(clx),
             DecodedKey::RawKey(_) => Ok(Response::Skip),
 
             DecodedKey::Unicode('\t') | DecodedKey::Unicode('\x1B') => Ok(Response::Skip),
@@ -78,6 +80,17 @@ impl CommandLine {
         clx.line.insert(clx.line.get_cursor_pos(), ch);
         clx.line.move_cursor_right(1);
         clx.events.trigger(Event::LineWritten);
+        Ok(Response::Ok)
+    }
+
+    fn move_cursor_to_start(&self, clx: &mut Context) -> Result<Response, Error> {
+        clx.line.set_cursor_pos(0);
+        Ok(Response::Ok)
+    }
+
+    fn move_cursor_to_end(&self, clx: &mut Context) -> Result<Response, Error> {
+        let end_pos = clx.line.len();
+        clx.line.set_cursor_pos(end_pos);
         Ok(Response::Ok)
     }
 
