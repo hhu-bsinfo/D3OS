@@ -42,7 +42,9 @@ impl EventHandler for AutoCompletion {
                 self.revalidate(clx);
                 self.adopt(clx)
             }
-            DecodedKey::Unicode('\x1B') => self.unfocus_suggestion(clx),
+            DecodedKey::Unicode('\x1B') | DecodedKey::Unicode('\x08') | DecodedKey::Unicode('\x7F') => {
+                self.unfocus_suggestion(clx)
+            }
             _ => Ok(Response::Skip),
         }
     }

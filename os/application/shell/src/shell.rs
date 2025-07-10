@@ -179,4 +179,3 @@ pub fn main() {
 // TODO FIX: alias and unalias always shows usage error (Problem: builtin accepts only one argument, but alias key="value" has two [key=, "value"])
 // TODO FIX: Writer not updating when command history clears line (latest)
 // TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)
-// TODO FIX: If line is empty but auto completion has focus, pressing backspace doesn't restore terminal cursor position
