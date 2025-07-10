@@ -51,7 +51,8 @@ impl AliasBuildIn {
         let value = split.next().ok_or_else(|| self.usage().err().unwrap())?;
 
         let stripped_value = self.strip_quotes(value)?;
-        self.alias.borrow_mut().add(key, &stripped_value)
+        self.alias.borrow_mut().set(key, &stripped_value);
+        Ok(())
     }
 
     fn strip_quotes(&self, value: &str) -> Result<String, ()> {

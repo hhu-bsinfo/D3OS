@@ -30,19 +30,16 @@ impl Alias {
         Self { entries }
     }
 
-    pub fn add(&mut self, key: &str, value: &str) -> Result<(), ()> {
-        if self.exist(key) {
-            // TODO don't throw error, update value
-            return Err(());
-        }
+    pub fn set(&mut self, key: &str, value: &str) {
+        let Some(pos) = self.find_position(key) else {
+            self.entries.push(AliasEntry {
+                key: key.to_string(),
+                value: value.to_string(),
+            });
+            return;
+        };
 
-        self.entries.push(AliasEntry {
-            key: key.to_string(),
-            value: value.to_string(),
-        });
-
-        info!("{:?}", self);
-        Ok(())
+        self.entries[pos].value = value.to_string();
     }
 
     pub fn remove(&mut self, key: &str) -> Result<(), ()> {
