@@ -273,7 +273,7 @@ impl Apic {
 
         let lapic_registers_phys_addr = madt.local_apic_address as u64;
         
-        let lapic_registers_page = process.virtual_address_space.map_devmem_identity(
+        let lapic_registers_page = process.virtual_address_space.kernel_map_devm_identity(
             lapic_registers_phys_addr,
             lapic_registers_phys_addr + PAGE_SIZE as u64,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
@@ -294,7 +294,7 @@ impl Apic {
         let process = process_manager().read().kernel_process().unwrap();
 
         let ioapic_registers_phys_addr = io_apic_desc.address as u64;
-        let ioapic_registers_page = process.virtual_address_space.map_devmem_identity(
+        let ioapic_registers_page = process.virtual_address_space.kernel_map_devm_identity(
             ioapic_registers_phys_addr,
             ioapic_registers_phys_addr + PAGE_SIZE as u64,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,

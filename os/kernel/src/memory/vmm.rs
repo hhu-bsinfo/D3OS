@@ -6,9 +6,9 @@
    ║ for full or partial vmas, as well as creating page mappings.            ║
    ║                                                                         ║
    ║ Public convenience functions:                                           ║
-   ║   - map_devmem_identity       map physical device memory in kernel space║
+   ║   - kernel_map_devm_identity  map physical device memory in kernel space║
    ║                               (identity mapped) and allocate a vma      ║
-   ║   - alloc_map_identity        allocate page frames in kernel space and  ║
+   ║   - kernel_alloc_map_identity allocate page frames in kernel space and  ║
    ║                               a vma and create a identity mapping       ║
    ║   - user_alloc_map_full       create vma for pages, allocate and map it ║
    ║                               in user space.                            ║
@@ -140,8 +140,8 @@ impl Iterator for VmaIterator {
 pub struct VirtualAddressSpace {
     virtual_memory_areas: RwLock<Vec<Arc<VirtualMemoryArea>>>,
     page_tables: Arc<Paging>,
-    first_usable_user_addr: VirtAddr,
-    last_usable_user_addr: VirtAddr,
+    first_usable_user_addr: VirtAddr, // fixed, the first usable user address
+    last_usable_user_addr: VirtAddr, // fixed , the last usable user address
 }
 
 impl VirtualAddressSpace {
@@ -292,6 +292,9 @@ impl VirtualAddressSpace {
     /// No mappings are created in the page tables. \
     /// Returns the new [`VirtualMemoryArea`] if successful, otherwise `None`.
     fn alloc(&self, num_pages: u64, vma_space: MemorySpace, vma_type: VmaType, vma_tag: &str) -> Option<Arc<VirtualMemoryArea>> {
+
+        info!("*** VMA alloc");
+
         let mut vmas = self.virtual_memory_areas.write();
         vmas.sort_by(|a, b| a.range.start.cmp(&b.range.start));
 
@@ -373,7 +376,7 @@ impl VirtualAddressSpace {
     /// `start_phys_addr` must be page aligned. \
     /// `end_phys_addr` must be greater than `start_phys_addr` but no need to be page aligned. If it is not page aligned, it will be aligned up. \
     /// A vma ist created using the parameters `typ` and `tag`.
-    pub fn map_devmem_identity(&self, start_phys_addr: u64, end_phys_addr: u64, flags: PageTableFlags, typ: VmaType, tag: &str) -> Page {
+    pub fn kernel_map_devm_identity(&self, start_phys_addr: u64, end_phys_addr: u64, flags: PageTableFlags, typ: VmaType, tag: &str) -> Page {
         assert!(end_phys_addr > start_phys_addr, "'end_phys_addr' must be larger than 'start_phys_addr'");
 
         // Calc page frame range (nneded for mapping))
@@ -403,7 +406,7 @@ impl VirtualAddressSpace {
 
     /// Alloc `num_pf` page frames, en bloc, identity mapped in kernel space.
     /// A vma ist created using the parameters `typ` and `tag`.
-    pub fn alloc_map_identity(&self, num_pf: u64, flags: PageTableFlags, typ: VmaType, tag: &str) -> PageRange {
+    pub fn kernel_alloc_map_identity(&self, num_pf: u64, flags: PageTableFlags, typ: VmaType, tag: &str) -> PageRange {
         // Alloc page frame range
         let pfr = frames::alloc(num_pf as usize);
 

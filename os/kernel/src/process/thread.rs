@@ -175,10 +175,6 @@ impl Thread {
         let pid = parent.id();
         let tid = scheduler::next_thread_id(); // get id for new thread
 
-        //
-        // Create kernel stack of main thread
-        //
-
         // Allocate kernel stack for the main thread
         let kernel_stack = stack::alloc_kernel_stack(&parent, pid, tid, "userthread");
 
