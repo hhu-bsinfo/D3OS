@@ -1,14 +1,13 @@
 use alloc::string::String;
 use graphic::color::Color;
 use logger::warn;
-use terminal::print;
-use terminal::{println, DecodedKey};
+use terminal::DecodedKey;
 use text_buffer::TextBuffer;
 
 use super::font::Font;
-use super::meassages::{Message, ViewMessage};
+use super::messages::{Message, ViewMessage};
 use super::TextEditorConfig;
-use crate::apps::text_editor::meassages::CommandMessage;
+use crate::apps::text_editor::messages::CommandMessage;
 use logger::error;
 enum EditMode {
     Normal,
@@ -40,7 +39,7 @@ impl Caret {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum ViewConfig {
+pub enum ViewConfig<'s> {
     Simple {
         font_scale: u32,
         fg_color: Color,
@@ -51,25 +50,33 @@ pub enum ViewConfig {
         emphasis: Font,
         strong: Font,
     },
+    Code {
+        normal: Font,
+        keyword: Font,
+        string: Font,
+        number: Font,
+        comment: Font,
+        keywords: &'s [&'s str],
+    },
 }
 
-pub struct Document<'b> {
+pub struct Document<'b, 'v> {
     path: Option<String>,
     text_buffer: TextBuffer<'b>,
     copy_buffer: String,
     caret: Caret,
     edit_mode: EditMode,
-    config: TextEditorConfig,
-    current_view: ViewConfig,
+    config: TextEditorConfig<'v>,
+    current_view: ViewConfig<'v>,
     scroll_offset: u32,
 }
 
-impl<'b> Document<'b> {
+impl<'b, 'v, 'r> Document<'b, 'v> {
     pub fn new(
         path: Option<String>,
         text_buffer: TextBuffer<'b>,
-        config: TextEditorConfig,
-    ) -> Document<'b> {
+        config: TextEditorConfig<'v>,
+    ) -> Document<'b, 'v> {
         Document {
             path: path,
             text_buffer: text_buffer,
@@ -92,6 +99,9 @@ impl<'b> Document<'b> {
     }
     pub fn caret(&self) -> Caret {
         self.caret
+    }
+    pub fn path(&self) -> Option<String> {
+        self.path.clone()
     }
     fn next_line(&self, pos: usize) -> Option<usize> {
         let mut index = 0;
@@ -174,7 +184,7 @@ impl<'b> Document<'b> {
         let origin_len = self.caret.head() - prev_line;
         let prev_prev_line = self
             .prev_line(prev_line.checked_sub(1).unwrap_or(0))
-            .unwrap();
+            .unwrap_or(prev_line);
         if prev_line == prev_prev_line {
             self.caret.set_head(0);
             return;
@@ -204,33 +214,52 @@ impl<'b> Document<'b> {
         self.caret.set_head(prev_prev_line + origin_len);
     }
 
+    fn move_cursor_right(&mut self) {
+        self.caret.set_head(self.caret.head()+1);
+    }
+
+    fn move_cursor_left(&mut self) {
+        if self.caret.head() == 0 {
+            return;
+        }
+        self.caret.set_head(self.caret.head()-1);
+    }
+
     fn update_insert(&mut self, k: DecodedKey) {
         //delete
         match k {
             // delete
             DecodedKey::Unicode('\x08') => {
-                self.text_buffer.delete(self.caret.head() - 1);
-                self.caret.set_head(self.caret.head() - 1);
+                self.move_cursor_left();
+                let res = self.text_buffer.delete(self.caret.head());
+                if res.is_err() {
+                    #[cfg(feature = "with_runtime")]
+                    error!("Editor delete failed: {:?}", res);
+                }
             }
             // esc
             DecodedKey::Unicode('\x1B') => {
                 self.edit_mode = EditMode::Normal;
             }
             DecodedKey::Unicode(ch) => {
-                self.text_buffer.insert(self.caret.head(), ch);
+                let res = self.text_buffer.insert(self.caret.head(), ch);
+                if res.is_err() {
+                    #[cfg(feature = "with_runtime")]
+                    error!("Editor insert failed: {:?}", res);
+                }
                 self.caret.set_head(self.caret.head() + 1);
             }
             DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => {
-                self.caret.set_head(self.caret.head() - 1)
+                self.move_cursor_left();
             }
             DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => {
-                self.caret.set_head(self.caret.head() + 1)
+                self.move_cursor_right();
             }
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             DecodedKey::RawKey(k) => {
                 #[cfg(feature = "with_runtime")]
-                warn!("TextEditor can't process input: {:?}", k);
+                warn!("Editor: can't process input: {:?}", k);
             }
         }
         if self.caret.head() > self.text_buffer.len() {
@@ -245,7 +274,7 @@ impl<'b> Document<'b> {
         match self.caret {
             Caret::Normal(_) => {
                 #[cfg(feature = "with_runtime")]
-                error!("yank from normal caret");
+                error!("Editor: yank from normal caret");
                 return;
             }
             Caret::Visual { anchor, head } => {
@@ -262,7 +291,8 @@ impl<'b> Document<'b> {
             let v = match self.text_buffer.get_char(i) {
                 Some(s) => s,
                 None => {
-                    error!("yank from none caret");
+                    #[cfg(feature = "with_runtime")]
+                    error!("Editor: yank from none caret");
                     return;
                 }
             };
@@ -273,25 +303,28 @@ impl<'b> Document<'b> {
     }
 
     fn paste(&mut self) {
-        #[cfg(feature = "with_runtime")]
         for c in self.copy_buffer.chars() {
-            self.text_buffer.insert(self.caret.head(), c);
+            let res = self.text_buffer.insert(self.caret.head(), c);
+            if res.is_err() {
+                #[cfg(feature = "with_runtime")]
+                error!("Editor insert failed: {:?}", res);
+            }
             self.caret.set_head(self.caret.head() + 1);
         }
     }
 
     fn update_visual(&mut self, k: DecodedKey) {
         match k {
-            DecodedKey::Unicode('h') => self.caret.set_head(self.caret.head() - 1),
-            DecodedKey::Unicode('l') => self.caret.set_head(self.caret.head() + 1),
+            // esc
+            DecodedKey::Unicode('\x1B') => {
+                self.edit_mode = EditMode::Normal;
+            }
+            DecodedKey::Unicode('h') => self.move_cursor_left(),
+            DecodedKey::Unicode('l') => self.move_cursor_right(),
             DecodedKey::Unicode('j') => self.move_cursor_down(),
             DecodedKey::Unicode('k') => self.move_cursor_up(),
-            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => {
-                self.caret.set_head(self.caret.head() - 1)
-            }
-            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => {
-                self.caret.set_head(self.caret.head() + 1)
-            }
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.move_cursor_left(),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.move_cursor_right(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             DecodedKey::Unicode('y') => self.yank(),
@@ -303,28 +336,30 @@ impl<'b> Document<'b> {
     }
 
     fn update_normal(&mut self, k: DecodedKey) {
-        // funktioniert irgendwie nicht
-        println!("Ausgabe: {}", self.text_buffer.to_string());
         match k {
             DecodedKey::Unicode('u') => {
-                self.text_buffer.undo();
+                let res = self.text_buffer.undo();
+                if res.is_err() {
+                    #[cfg(feature = "with_runtime")]
+                    error!("Editor undo failed: {:?}", res);
+                }
             }
             DecodedKey::Unicode('r') => {
-                self.text_buffer.redo();
+                let res = self.text_buffer.redo();
+                if res.is_err() {
+                    #[cfg(feature = "with_runtime")]
+                    error!("Editor redo failed: {:?}", res);
+                }
             }
-            DecodedKey::Unicode('h') => self.caret.set_head(self.caret.head() - 1),
-            DecodedKey::Unicode('l') => self.caret.set_head(self.caret.head() + 1),
+            DecodedKey::Unicode('h') => self.move_cursor_left(),
+            DecodedKey::Unicode('l') => self.move_cursor_right(),
             DecodedKey::Unicode('j') => self.move_cursor_down(),
             DecodedKey::Unicode('k') => self.move_cursor_up(),
             DecodedKey::Unicode('i') => self.edit_mode = EditMode::Insert,
             DecodedKey::Unicode('n') => self.current_view = self.config.simple_view,
             DecodedKey::Unicode('m') => self.current_view = self.config.markdown_view,
-            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => {
-                self.caret.set_head(self.caret.head() - 1)
-            }
-            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => {
-                self.caret.set_head(self.caret.head() + 1)
-            }
+            DecodedKey::RawKey(terminal::KeyCode::ArrowLeft) => self.move_cursor_left(),
+            DecodedKey::RawKey(terminal::KeyCode::ArrowRight) => self.move_cursor_right(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowUp) => self.move_cursor_up(),
             DecodedKey::RawKey(terminal::KeyCode::ArrowDown) => self.move_cursor_down(),
             DecodedKey::Unicode('v') => {
@@ -355,10 +390,18 @@ impl<'b> Document<'b> {
         match m {
             Message::CommandMessage(c) => match c {
                 CommandMessage::Undo => {
-                    self.text_buffer.undo();
+                    let res = self.text_buffer.undo();
+                    if res.is_err() {
+                        #[cfg(feature = "with_runtime")]
+                        error!("Editor undo failed: {:?}", res);
+                    }
                 }
                 CommandMessage::Redo => {
-                    self.text_buffer.redo();
+                    let res = self.text_buffer.redo();
+                    if res.is_err() {
+                        #[cfg(feature = "with_runtime")]
+                        error!("Editor redo failed: {:?}", res);
+                    }
                 }
                 CommandMessage::Markdown => match self.current_view {
                     ViewConfig::Markdown {
@@ -371,7 +414,25 @@ impl<'b> Document<'b> {
                         fg_color: _,
                         bg_color: _,
                     } => self.current_view = self.config.markdown_view,
+                    _ => (),
                 },
+                CommandMessage::CLike => match self.current_view {
+                    ViewConfig::Code {
+                        normal: _,
+                        keyword: _,
+                        string: _,
+                        number: _,
+                        comment: _,
+                        keywords: _,
+                    } => self.current_view = self.config.simple_view,
+                    ViewConfig::Simple {
+                        font_scale: _,
+                        fg_color: _,
+                        bg_color: _,
+                    } => self.current_view = self.config.code_view,
+                    _ => (),
+                },
+                CommandMessage::None => (),
             },
             Message::ViewMessage(msg) => self.scroll(msg),
             Message::DecodedKey(k) => match self.edit_mode {
@@ -391,7 +452,7 @@ mod tests {
 
     use super::*;
 
-    fn generate_dummy_config() -> TextEditorConfig {
+    fn generate_dummy_config() -> TextEditorConfig<'static> {
         let bg_color = Color {
             red: 20,
             green: 20,
@@ -418,6 +479,14 @@ mod tests {
                 font_scale: 1,
                 fg_color: WHITE,
                 bg_color: bg_color,
+            },
+            code_view: ViewConfig::Code {
+                normal: font,
+                keyword: font,
+                string: font,
+                number: font,
+                comment: font,
+                keywords: &[],
             },
         }
     }
@@ -606,9 +675,9 @@ mod tests {
         let text = "Das\nTest";
         let mut doc = Document::new(None, TextBuffer::from_str(text), generate_dummy_config());
         doc.caret.set_head(0);
-        doc.update_insert(DecodedKey::Unicode(('H')));
-        doc.update_insert(DecodedKey::Unicode(('e')));
-        doc.update_insert(DecodedKey::Unicode(('y')));
+        doc.update_insert(DecodedKey::Unicode('H'));
+        doc.update_insert(DecodedKey::Unicode('e'));
+        doc.update_insert(DecodedKey::Unicode('y'));
         doc.update(Message::CommandMessage(CommandMessage::Undo));
         assert_eq!(doc.text_buffer.to_string(), String::from("HeDas\nTest"));
     }

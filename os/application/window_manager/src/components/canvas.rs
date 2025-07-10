@@ -1,6 +1,4 @@
-use graphic::ansi::BACKGROUND_BLACK;
 use graphic::bitmap::ScalingMode;
-use logger::warn;
 // Julius Drodofsky
 use terminal::DecodedKey;
 
@@ -134,7 +132,7 @@ impl Component for Canvas {
         {
             self.buffer
                 .write()
-                .scale_in_place(self.abs_rect_data.width, self.abs_rect_data.height);
+                .scale_in_place(self.scaling_mode, self.abs_rect_data.width, self.abs_rect_data.height);
         }
         self.mark_dirty();
     }
@@ -161,7 +159,7 @@ impl Interactable for Canvas {
         &mut self,
         keyboard_press: DecodedKey,
     ) -> Option<Box<dyn FnOnce() -> ()>> {
-        if !self.is_selected || self.is_disabled {
+        if self.is_disabled {
             return None;
         }
         self.mark_dirty();
@@ -234,7 +232,7 @@ impl Resizable for Canvas {
         {
             self.buffer
                 .write()
-                .scale_in_place(self.abs_rect_data.width, self.abs_rect_data.height);
+                .scale_in_place(self.scaling_mode ,self.abs_rect_data.width, self.abs_rect_data.height);
         }
         self.mark_dirty();
     }
@@ -257,7 +255,7 @@ impl Resizable for Canvas {
         {
             self.buffer
                 .write()
-                .scale_in_place(self.abs_rect_data.width, self.abs_rect_data.height);
+                .scale_in_place(self.scaling_mode, self.abs_rect_data.width, self.abs_rect_data.height);
         }
         self.mark_dirty();
     }

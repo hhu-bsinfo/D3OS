@@ -26,6 +26,7 @@ input = { path = "../../library/input" }
 globals = { path = "../../library/globals" }
 text_buffer = { path = "../../library/text_buffer" }
 logger = { path = "../../library/logger" }
+syntax = { path = "../../library/syntax" }
 
 hashbrown = "0.14.5"
 spin = "0.9.8"
