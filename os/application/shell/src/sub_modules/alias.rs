@@ -2,11 +2,10 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use logger::info;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Alias {
-    entries: Vec<AliasEntry>, // Todo#4 use lookup table instead??
+    entries: Vec<AliasEntry>,
 }
 
 #[derive(Debug)]
@@ -15,19 +14,20 @@ pub struct AliasEntry {
     pub(crate) value: String,
 }
 
+const INITIAL_ALIASES: &'static [(&'static str, &'static str)] = &[
+    ("hhu", "Heinrich Heine Universitaet"),
+    ("hi", "Hello there"),
+    ("d3", "cargo make --no-workspace"),
+    ("d3p", "cargo make --no-workspace --profile production"),
+];
+
 impl Alias {
     pub fn new() -> Self {
-        let mut entries = Vec::new();
-        // TODO Initial aliases for debugging, remove later or create proper defaults
-        entries.push(AliasEntry {
-            key: "hhu".to_string(),
-            value: "Heinrich Heine Universitaet".to_string(),
-        });
-        entries.push(AliasEntry {
-            key: "hi".to_string(),
-            value: "hello there".to_string(),
-        });
-        Self { entries }
+        let mut alias = Self::default();
+        for (key, value) in INITIAL_ALIASES {
+            alias.set(key, value);
+        }
+        alias
     }
 
     pub fn set(&mut self, key: &str, value: &str) {
@@ -49,7 +49,6 @@ impl Alias {
         };
 
         self.entries.swap_remove(position);
-        info!("{:?}", self);
         Ok(())
     }
 
