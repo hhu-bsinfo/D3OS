@@ -42,6 +42,7 @@ impl EventHandler for AutoCompletion {
                 self.revalidate(clx);
                 self.adopt(clx)
             }
+            DecodedKey::Unicode('\x1B') => self.unfocus_suggestion(clx),
             _ => Ok(Response::Skip),
         }
     }
@@ -122,6 +123,11 @@ impl AutoCompletion {
         }
 
         clx.suggestion.focus();
+        Ok(Response::Ok)
+    }
+
+    fn unfocus_suggestion(&mut self, clx: &mut Context) -> Result<Response, Error> {
+        clx.suggestion.unfocus();
         Ok(Response::Ok)
     }
 

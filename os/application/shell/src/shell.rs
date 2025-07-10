@@ -124,14 +124,12 @@ pub fn main() {
     shell.run()
 }
 
-// TODO FEAT: Add BuildIn to switch themes
 // TODO FEAT: Add working directories!!!
 // TODO FEAT: Add help BuildIn
 // TODO FEAT: Show && and || executions with build ins (assume extern applications to always succeed)
 // TODO FEAT: Add application params to disable optional modules
 // TODO FEAT: Pos1 => Cursor to start
 // TODO FEAT: End => Cursor to end
-// TODO FEAT: ESCAPE => Unfocus suggestion
 
 // TODO IMPROVEMENT: Rework Token creation with less repetition (Assign rules to different kinds??? EolRule, reqCmdRule, ...)
 // TODO IMPROVEMENT: Token should accept string in constructor (multi char token are no longer a special case)

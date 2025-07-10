@@ -21,7 +21,8 @@ impl EventHandler for CommandLine {
             DecodedKey::RawKey(KeyCode::ArrowRight) => self.move_cursor_right(clx),
             DecodedKey::RawKey(_) => Ok(Response::Skip),
 
-            DecodedKey::Unicode('\t') => Ok(Response::Skip),
+            DecodedKey::Unicode('\t') | DecodedKey::Unicode('\x1B') => Ok(Response::Skip),
+
             DecodedKey::Unicode('\n') => self.submit(clx),
             DecodedKey::Unicode('\x08') => self.remove_before_cursor(clx),
             DecodedKey::Unicode('\x7F') => self.remove_at_cursor(clx),
