@@ -40,6 +40,9 @@ use core::alloc::{AllocError, Allocator, Layout};
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use core::ptr::NonNull;
 use spin::{Mutex, RwLock};
+// let smoltcp handle the packet
+// TODO: check network/mod.rs for the handling of the packet
+// probably an interrupt handler has to be assigned, check this
 
 // lock free algorithms and datastructes
 // queues: different queue implementations
@@ -792,7 +795,11 @@ impl Ne2000 {
                 if (packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits()) != 0
                     && packet_header.length as u32 <= MAXIMUM_ETHERNET_PACKET_SIZE as u32
                 {
-                    let mut packet: [u8; 1522] = [0u8; 1522];
+                    let mut packet = self
+                        .receive_buffers_empty
+                        .0
+                        .try_dequeue()
+                        .expect("Error dequeuing");
                     // Write packet length into RBCR
                     self.registers.rbcr0.write(packet_header.length & 0xFF);
                     //self.registers.rbcr1.write(packet_header.length >> 8);
@@ -807,14 +814,16 @@ impl Ne2000 {
                         .write((CR::STA | CR::REMOTE_READ | CR::PAGE_0).bits());
 
                     // Read Packet Data from I/O Port and write it into packet */
+                    self.registers.data_port.read() as u8;
                     for i in 0..packet_header.length {
                         // slice indices must be of type usize
                         packet[i as usize] = self.registers.data_port.read() as u8;
                     }
+                    self.receive_messages
+                        .1
+                        .try_enqueue(packet)
+                        .expect("Error enqueuing packet");
                     info!("testing");
-                    // let smoltcp handle the packet
-                    // TODO: check network/mod.rs for the handling of the packet
-                    // probably an interrupt handler has to be assigned, check this
                 }
                 // update pointers for the next package
                 CURRENT_NEXT_PAGE_POINTER = packet_header.next_packet;

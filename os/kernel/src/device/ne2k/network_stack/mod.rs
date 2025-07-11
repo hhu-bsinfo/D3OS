@@ -250,6 +250,7 @@ impl<'a> phy::RxToken for Ne2000RxToken<'a> {
             .1
             .try_enqueue(self.buffer)
             .expect("Failed to enqueue used receive buffer!");
+        info!("consume");
 
         result
         // Return empty slice
