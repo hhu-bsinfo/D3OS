@@ -17,7 +17,7 @@ use crate::{
         event_bus::EventBus,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::parser::token::{ArgumentKind, Token, TokenKind, TokenStatus},
+    modules::parser::token::{Token, TokenKind, TokenStatus},
 };
 
 pub struct Writer {
@@ -215,13 +215,7 @@ impl Writer {
         }
         match token.kind() {
             TokenKind::Command => theme.cmd,
-            TokenKind::Argument => match token.clx().arg_kind {
-                ArgumentKind::None => "",
-                ArgumentKind::Generic | ArgumentKind::ShortOrLongFlag => theme.generic_arg,
-                ArgumentKind::ShortFlag => theme.short_flag_arg,
-                ArgumentKind::ShortFlagValue => theme.short_flag_value_arg,
-                ArgumentKind::LongFlag => theme.long_flag_arg,
-            },
+            TokenKind::Argument => theme.arg,
             TokenKind::Blank => "",
             TokenKind::QuoteStart => theme.quote_start,
             TokenKind::QuoteEnd => theme.quote_end,

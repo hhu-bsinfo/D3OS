@@ -6,7 +6,6 @@ use alloc::{
     vec::Vec,
 };
 use globals::application::{APPLICATION_REGISTRY, Application};
-use logger::warn;
 use terminal::DecodedKey;
 
 use crate::{
@@ -16,7 +15,7 @@ use crate::{
         event_bus::EventBus,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::parser::token::{ArgumentKind, Token, TokenKind},
+    modules::parser::token::{Token, TokenKind},
 };
 
 #[derive(Debug)]
@@ -25,10 +24,10 @@ pub struct AutoCompletion {
     tokens_provider: Rc<RefCell<TokensContext>>,
     suggestion_provider: Rc<RefCell<SuggestionContext>>,
 
-    applications: Vec<Application>,
+    applications: &'static [Application],
     current_index: usize,
     current_app: Option<Application>,
-    current_short_flag: Option<usize>,
+    current_key_value_idx: Option<usize>,
     current_suggestion: Option<String>,
 }
 
@@ -94,10 +93,10 @@ impl AutoCompletion {
             line_provider,
             tokens_provider,
             suggestion_provider,
-            applications: Vec::from(APPLICATION_REGISTRY.applications),
+            applications: APPLICATION_REGISTRY,
             current_index: 0,
             current_app: None,
-            current_short_flag: None,
+            current_key_value_idx: None,
             current_suggestion: None,
         }
     }
@@ -130,7 +129,7 @@ impl AutoCompletion {
 
     fn reset(&mut self) -> Result<Response, Error> {
         self.current_app = None;
-        self.current_short_flag = None;
+        self.current_key_value_idx = None;
         self.clear_suggestion()
     }
 
@@ -153,36 +152,38 @@ impl AutoCompletion {
 
     fn revalidate(&mut self) {
         self.revalidate_application();
-        self.revalidate_short_flag();
+        self.revalidate_key_value_idx();
     }
 
-    fn revalidate_short_flag(&mut self) {
+    fn revalidate_key_value_idx(&mut self) {
         let Some(current_app) = &self.current_app else {
-            self.current_short_flag = None;
+            self.current_key_value_idx = None;
+            return;
+        };
+        let Some(current_key_idx) = self.current_key_value_idx else {
             return;
         };
         let tokens_clx = self.tokens_provider.borrow_mut();
-        let Some(last_short_flag) = tokens_clx.find_last_short_flag() else {
-            self.current_short_flag = None;
+        let Some(last_arg_token) = tokens_clx.find_last_argument_in_segment() else {
+            self.current_key_value_idx = None;
             return;
         };
 
-        let target = last_short_flag.as_str();
-        if self
-            .current_short_flag
-            .as_ref()
-            .is_some_and(|&index| current_app.short_flags[index].0 == target)
-        {
+        let (current_key, _values) = current_app.key_value_pair[current_key_idx];
+        if current_key == last_arg_token.as_str() {
             return;
         }
 
-        self.current_short_flag = self
-            .current_app
-            .as_ref()
-            .unwrap()
-            .short_flags
+        let Some(found_idx) = current_app
+            .key_value_pair
             .iter()
-            .position(|&(key, _)| key == target);
+            .position(|(key, _value)| *key == last_arg_token.as_str())
+        else {
+            self.current_key_value_idx = None;
+            return;
+        };
+
+        self.current_key_value_idx = Some(found_idx);
     }
 
     fn revalidate_application(&mut self) {
@@ -192,14 +193,18 @@ impl AutoCompletion {
             return;
         };
         let last_command = last_command.as_str();
-        if self.current_app.as_ref().is_some_and(|app| app.command == last_command) {
+        if self
+            .current_app
+            .as_ref()
+            .is_some_and(|app| app.namespace == last_command)
+        {
             return;
         }
 
         self.current_app = self
             .applications
             .iter()
-            .find(|&app| app.command == last_command)
+            .find(|&app| app.namespace == last_command)
             .cloned();
     }
 
@@ -233,11 +238,11 @@ impl AutoCompletion {
         match token.kind() {
             TokenKind::Command => self.cycle_command(token.as_str()),
 
-            TokenKind::Argument => self.cycle_argument(token, token.as_str()),
+            TokenKind::Argument => self.cycle_argument(token.as_str()),
 
             TokenKind::Blank => match token.expect_command() {
                 true => self.cycle_command(&String::new()),
-                false => self.cycle_argument(token, &String::new()),
+                false => self.cycle_argument(&String::new()),
             },
 
             _ => None,
@@ -245,77 +250,27 @@ impl AutoCompletion {
     }
 
     fn cycle_command(&mut self, cmd: &str) -> Option<String> {
-        let commands: Vec<&'static str> = self.applications.iter().map(|app| app.command).collect();
+        let commands: Vec<&'static str> = self.applications.iter().map(|app| app.namespace).collect();
         self.cycle(cmd, &commands)
     }
 
-    fn cycle_argument(&mut self, token: &Token, arg: &str) -> Option<String> {
-        if self.current_app.is_none() {
+    fn cycle_argument(&mut self, arg: &str) -> Option<String> {
+        let Some(ref current_app) = self.current_app else {
             return None;
-        }
-        warn!("{:?}", token);
-        match token.clx().arg_kind {
-            ArgumentKind::None | ArgumentKind::ShortOrLongFlag => self.cycle_all_arguments(arg),
-
-            ArgumentKind::Generic => self.cycle_generic_argument(arg),
-
-            ArgumentKind::ShortFlag => match token.clx().short_flag_pos.is_some() {
-                true => self.cycle_short_flag_value(arg),
-                false => self.cycle_short_flag(arg),
-            },
-
-            ArgumentKind::ShortFlagValue => match token.kind() {
-                TokenKind::Argument => self.cycle_short_flag_value(arg),
-                _ => self.cycle_generic_argument(arg),
-            },
-
-            ArgumentKind::LongFlag => self.cycle_long_flag(arg),
+        };
+        match self.current_key_value_idx {
+            Some(idx) => self.cycle(arg, current_app.key_value_pair[idx].1),
+            None => self.cycle_all_arguments(arg),
         }
     }
 
     fn cycle_all_arguments(&mut self, arg: &str) -> Option<String> {
         let app = self.current_app.as_mut().unwrap();
         let mut args = Vec::new();
-        args.extend(app.sub_commands.iter());
-        args.extend(app.short_flags.into_iter().map(|&(key, _)| key));
-        args.extend(app.long_flags.iter());
+        args.extend(app.single_value.iter());
+        args.extend(app.key_value_pair.into_iter().map(|&(key, _)| key));
 
         self.cycle(arg, &args)
-    }
-
-    fn cycle_generic_argument(&mut self, arg: &str) -> Option<String> {
-        let sub_commands = self.current_app.as_mut().unwrap().sub_commands;
-        self.cycle(arg, &sub_commands)
-    }
-
-    fn cycle_short_flag(&mut self, arg: &str) -> Option<String> {
-        let short_flags: Vec<&'static str> = self
-            .current_app
-            .as_ref()
-            .unwrap()
-            .short_flags
-            .iter()
-            .map(|&(key, _)| key)
-            .collect();
-
-        self.cycle(arg, &short_flags)
-    }
-
-    fn cycle_short_flag_value(&mut self, arg: &str) -> Option<String> {
-        if self.current_app.is_none() || self.current_short_flag.is_none() {
-            return None;
-        }
-        let (_key, values) = self.current_app.as_mut().unwrap().short_flags[self.current_short_flag.unwrap()];
-
-        self.cycle(arg, &values)
-    }
-
-    fn cycle_long_flag(&mut self, arg: &str) -> Option<String> {
-        if self.current_app.is_none() {
-            return None;
-        }
-        let long_flags = self.current_app.as_mut().unwrap().long_flags;
-        self.cycle(arg, &long_flags)
     }
 
     fn cycle(&mut self, target: &str, list: &[&'static str]) -> Option<String> {

@@ -3,7 +3,7 @@ use spin::Lazy;
 
 use crate::{
     event::event_handler::Error,
-    modules::parser::token::{ArgumentKind, TokenContext, TokenContextFactory, TokenKind},
+    modules::parser::token::{TokenContext, TokenContextFactory, TokenKind},
 };
 
 static MORE_THAN_ONE_CMD_IN_SEGMENT_ERROR: Lazy<Error> = Lazy::new(|| {
@@ -35,9 +35,7 @@ impl TokenContextFactory for CommandTokenContextFactory {
             pos: 0,
             line_pos: 0,
             cmd_pos: Some(0),
-            short_flag_pos: None,
             in_quote: None,
-            arg_kind: ArgumentKind::None,
             error: None,
             require_cmd: false,
             require_file: false,
@@ -62,9 +60,7 @@ impl TokenContextFactory for CommandTokenContextFactory {
             pos: prev_clx.pos + 1,
             line_pos: prev_clx.line_pos + prev_content.len(),
             cmd_pos: Some(prev_clx.pos + 1),
-            short_flag_pos: None,
             in_quote: prev_clx.in_quote,
-            arg_kind: ArgumentKind::None,
             error,
             require_cmd: false,
             require_file: false,

@@ -56,21 +56,10 @@ impl TokenStatus {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum ArgumentKind {
-    None,
-    ShortOrLongFlag,
-    Generic,
-    ShortFlag,
-    ShortFlagValue,
-    LongFlag,
-}
-
 #[allow(unused_variables)]
 pub trait TokenContextFactory {
     fn create_first(kind: &TokenKind, ch: char) -> TokenContext;
     fn create_after(prev_clx: &TokenContext, prev_content: &str, kind: &TokenKind, ch: char) -> TokenContext;
-    fn revalidate(clx: &mut TokenContext, kind: &TokenKind, string: &str) {}
 }
 
 /// TODO docs: Difference to State: No changes after creation
@@ -81,12 +70,8 @@ pub struct TokenContext {
     pub line_pos: usize,
     // Position of Command in tokens, for the current segment
     pub cmd_pos: Option<usize>,
-    // Position of assigned ShortFlag in tokens (if ShortFlagValue)
-    pub short_flag_pos: Option<usize>,
     // Char of quote (if token is quote)
     pub in_quote: Option<char>,
-    // Kind of argument (if argument)
-    pub arg_kind: ArgumentKind,
     pub error: Option<&'static Error>,
     pub require_cmd: bool,
     pub require_file: bool,
@@ -139,26 +124,6 @@ impl TokenContext {
             TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::create_first(kind, ch),
             TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::create_first(kind, ch),
             TokenKind::File => FileTokenContextFactory::create_first(kind, ch),
-        }
-    }
-
-    fn revalidate(&mut self, kind: &TokenKind, string: &str) {
-        match *kind {
-            TokenKind::Command => CommandTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::Argument => ArgumentTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::Blank => BlankTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::QuoteStart => QuoteStartTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::QuoteEnd => QuoteEndTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::Pipe => PipeTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::Separator => SeparatorTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::Background => BackgroundTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::And => AndTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::Or => OrTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::RedirectInAppend => RedirectInAppendTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::RedirectInTruncate => RedirectInTruncateTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::revalidate(self, kind, string),
-            TokenKind::File => FileTokenContextFactory::revalidate(self, kind, string),
         }
     }
 }
@@ -215,14 +180,7 @@ impl Token {
             return TokenStatus::Incomplete;
         }
 
-        Self::check_dynamic_status(clx)
-    }
-
-    fn check_dynamic_status(clx: &TokenContext) -> TokenStatus {
-        match clx.arg_kind {
-            ArgumentKind::ShortFlag | ArgumentKind::ShortOrLongFlag => TokenStatus::Incomplete,
-            _ => TokenStatus::Valid,
-        }
+        TokenStatus::Valid
     }
 
     pub fn kind(&self) -> &TokenKind {
@@ -259,7 +217,6 @@ impl Token {
 
     pub fn push(&mut self, ch: char) {
         self.content.push(ch);
-        self.revalidate();
     }
 
     pub fn pop(&mut self) -> Result<char, ()> {
@@ -267,16 +224,7 @@ impl Token {
             return Err(());
         }
         let ch = self.content.pop().unwrap();
-        self.revalidate();
         Ok(ch)
-    }
-
-    fn revalidate(&mut self) {
-        self.clx.revalidate(&self.kind, &self.content);
-
-        if self.status.is_valid() {
-            self.status = Self::check_dynamic_status(&self.clx);
-        }
     }
 
     pub fn is_ambiguous(&self) -> bool {

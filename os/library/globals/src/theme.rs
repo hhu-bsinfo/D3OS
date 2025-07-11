@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[derive(Debug, Clone)]
 pub struct ThemeRegistry {
     pub default: &'static Theme,
@@ -19,11 +17,6 @@ pub struct Theme {
     pub quote_start: &'static str,
     pub quote_end: &'static str,
     pub in_quote: &'static str,
-    // Arguments
-    pub generic_arg: &'static str,
-    pub short_flag_arg: &'static str,
-    pub short_flag_value_arg: &'static str,
-    pub long_flag_arg: &'static str,
     // Redirection
     pub redirection_in_truncate: &'static str,
     pub redirection_in_append: &'static str,
@@ -34,6 +27,7 @@ pub struct Theme {
     pub logical_and: &'static str,
     // Other
     pub cmd: &'static str,
+    pub arg: &'static str,
     pub file: &'static str,
     pub pipe: &'static str,
     pub background: &'static str,
@@ -42,14 +36,10 @@ pub struct Theme {
 }
 
 const DEFAULT: &'static str = "";
-const WHITE: &'static str = "\x1b[38;2;255;255;255m";
 const LIME: &'static str = "\x1b[38;2;0;255;0m";
 const LIME_ACCENT: &'static str = "\x1b[38;2;0;200;0m";
 const GOLD: &'static str = "\x1b[38;2;255;215;0m";
 const PALE_BLUE: &'static str = "\x1b[38;2;192;192;255m";
-const BLUE: &'static str = "\x1b[38;2;64;64;255m";
-const VIVID_BLUE: &'static str = "\x1b[38;2;0;0;255m";
-const DEEP_BLUE: &'static str = "\x1b[38;2;0;0;200m";
 const GRAY: &'static str = "\x1b[38;2;128;128;128m";
 const RED: &'static str = "\x1b[38;2;255;0;0m";
 const MUTED_RED: &'static str = "\x1b[38;2;200;80;80m";
@@ -72,11 +62,6 @@ pub const DEBUG_THEME: Theme = Theme {
     quote_start: LIME_ACCENT,
     quote_end: LIME_ACCENT,
     in_quote: LIME,
-    // Arguments
-    generic_arg: PALE_BLUE,
-    short_flag_arg: BLUE,
-    short_flag_value_arg: VIVID_BLUE,
-    long_flag_arg: DEEP_BLUE,
     // Redirection
     redirection_in_truncate: ORANGE,
     redirection_in_append: PURPLE,
@@ -87,6 +72,7 @@ pub const DEBUG_THEME: Theme = Theme {
     logical_and: PURPLE,
     // Other
     cmd: GOLD,
+    arg: PALE_BLUE,
     file: TAN,
     pipe: ORANGE,
     background: ORANGE,
@@ -106,11 +92,6 @@ pub const D3OS_THEME: Theme = Theme {
     quote_start: LIME_ACCENT,
     quote_end: LIME_ACCENT,
     in_quote: LIME,
-    // Arguments
-    generic_arg: D3OS_GREEN,
-    short_flag_arg: D3OS_GREEN,
-    short_flag_value_arg: D3OS_GREEN,
-    long_flag_arg: D3OS_GREEN,
     // Redirection
     redirection_in_truncate: DEFAULT,
     redirection_in_append: DEFAULT,
@@ -121,6 +102,7 @@ pub const D3OS_THEME: Theme = Theme {
     logical_and: DEFAULT,
     // Other
     cmd: D3OS_BLUE,
+    arg: D3OS_GREEN,
     file: D3OS_BLUE,
     pipe: DEFAULT,
     background: DEFAULT,
@@ -140,11 +122,6 @@ pub const BORING_THEME: Theme = Theme {
     quote_start: DEFAULT,
     quote_end: DEFAULT,
     in_quote: DEFAULT,
-    // Arguments
-    generic_arg: DEFAULT,
-    short_flag_arg: DEFAULT,
-    short_flag_value_arg: DEFAULT,
-    long_flag_arg: DEFAULT,
     // Redirection
     redirection_in_truncate: DEFAULT,
     redirection_in_append: DEFAULT,
@@ -155,6 +132,7 @@ pub const BORING_THEME: Theme = Theme {
     logical_and: DEFAULT,
     // Other
     cmd: DEFAULT,
+    arg: DEFAULT,
     file: DEFAULT,
     pipe: DEFAULT,
     background: DEFAULT,

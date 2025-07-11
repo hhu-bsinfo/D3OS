@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::modules::parser::token::{Token, TokenStatus};
+use crate::modules::parser::token::{Token, TokenKind, TokenStatus};
 
 #[derive(Debug, Clone)]
 pub struct TokensContext {
@@ -92,16 +92,16 @@ impl TokensContext {
         Some(&self.tokens[last_command_pos])
     }
 
-    pub fn find_last_short_flag(&self) -> Option<&Token> {
-        let last_token = match self.tokens.last() {
-            Some(token) => token,
-            None => return None,
-        };
-        let last_command_pos = match last_token.clx().short_flag_pos {
-            Some(pos) => pos,
-            None => return None,
-        };
-        Some(&self.tokens[last_command_pos])
+    pub fn find_last_argument_in_segment(&self) -> Option<&Token> {
+        for token in self.tokens.iter().rev() {
+            if token.clx().cmd_pos.is_none() {
+                return None;
+            }
+            if *token.kind() == TokenKind::Argument {
+                return Some(token);
+            }
+        }
+        None
     }
 
     pub fn len(&self) -> usize {
