@@ -1,11 +1,11 @@
 use globals::theme::{THEME_REGISTRY, Theme};
 
 #[derive(Debug)]
-pub struct ThemeProvider {
+pub struct ThemeContext {
     current: &'static Theme,
 }
 
-impl ThemeProvider {
+impl ThemeContext {
     pub fn new() -> Self {
         Self {
             current: THEME_REGISTRY.default,

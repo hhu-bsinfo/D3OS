@@ -4,7 +4,7 @@ use alloc::{
 };
 
 #[derive(Debug, Default)]
-pub struct Alias {
+pub struct AliasContext {
     entries: Vec<AliasEntry>,
 }
 
@@ -21,7 +21,7 @@ const INITIAL_ALIASES: &'static [(&'static str, &'static str)] = &[
     ("d3p", "cargo make --no-workspace --profile production"),
 ];
 
-impl Alias {
+impl AliasContext {
     pub fn new() -> Self {
         let mut alias = Self::default();
         for (key, value) in INITIAL_ALIASES {

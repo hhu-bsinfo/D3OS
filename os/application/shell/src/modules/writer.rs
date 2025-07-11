@@ -10,14 +10,13 @@ use terminal::print;
 use crate::{
     context::{
         indicator_context::IndicatorContext, line_context::LineContext, suggestion_context::SuggestionContext,
-        tokens_context::TokensContext,
+        theme_context::ThemeContext, tokens_context::TokensContext,
     },
     event::{
         event_bus::EventBus,
         event_handler::{Error, EventHandler, Response},
     },
     modules::parser::token::{ArgumentKind, Token, TokenKind, TokenStatus},
-    sub_modules::theme_provider::ThemeProvider,
 };
 
 pub struct Writer {
@@ -25,8 +24,8 @@ pub struct Writer {
     tokens_provider: Rc<RefCell<TokensContext>>,
     indicator_provider: Rc<RefCell<IndicatorContext>>,
     suggestion_provider: Rc<RefCell<SuggestionContext>>,
+    theme_provider: Rc<RefCell<ThemeContext>>,
 
-    theme_provider: Rc<RefCell<ThemeProvider>>,
     terminal_cursor_pos: usize,
 }
 
@@ -51,7 +50,7 @@ impl Writer {
         tokens_provider: Rc<RefCell<TokensContext>>,
         indicator_provider: Rc<RefCell<IndicatorContext>>,
         suggestion_provider: Rc<RefCell<SuggestionContext>>,
-        theme_provider: Rc<RefCell<ThemeProvider>>,
+        theme_provider: Rc<RefCell<ThemeContext>>,
     ) -> Self {
         Self {
             line_provider,

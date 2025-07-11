@@ -14,19 +14,22 @@ use crate::{
         exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn, theme::ThemeBuildIn, unalias::UnaliasBuildIn,
         window_manager::WindowManagerBuildIn,
     },
-    context::executable_context::{ExecutableContext, Io, Job},
+    context::{
+        alias_context::AliasContext,
+        executable_context::{ExecutableContext, Io, Job},
+        theme_context::ThemeContext,
+    },
     event::{
         event::Event,
         event_bus::EventBus,
         event_handler::{Error, EventHandler, Response},
     },
-    sub_modules::{alias::Alias, theme_provider::ThemeProvider},
 };
 
 pub struct Executor {
     executable_provider: Rc<RefCell<ExecutableContext>>,
-    alias: Rc<RefCell<Alias>>,
-    theme_provider: Rc<RefCell<ThemeProvider>>,
+    alias_provider: Rc<RefCell<AliasContext>>,
+    theme_provider: Rc<RefCell<ThemeContext>>,
 }
 
 impl EventHandler for Executor {
@@ -38,12 +41,12 @@ impl EventHandler for Executor {
 impl Executor {
     pub const fn new(
         executable_provider: Rc<RefCell<ExecutableContext>>,
-        alias: Rc<RefCell<Alias>>,
-        theme_provider: Rc<RefCell<ThemeProvider>>,
+        alias_provider: Rc<RefCell<AliasContext>>,
+        theme_provider: Rc<RefCell<ThemeContext>>,
     ) -> Self {
         Self {
             executable_provider,
-            alias,
+            alias_provider,
             theme_provider,
         }
     }
@@ -91,8 +94,8 @@ impl Executor {
             "mkdir" => MkdirBuildIn::start(args),
             "pwd" => PwdBuildIn::start(args),
             "cd" => CdBuildIn::start(args),
-            "alias" => AliasBuildIn::new(args, &self.alias).start(),
-            "unalias" => UnaliasBuildIn::new(args, &self.alias).start(),
+            "alias" => AliasBuildIn::new(args, self.alias_provider.clone()).start(),
+            "unalias" => UnaliasBuildIn::new(args, self.alias_provider.clone()).start(),
             "theme" => ThemeBuildIn::new(
                 args.iter().map(|s| s.to_string()).collect(),
                 self.theme_provider.clone(),

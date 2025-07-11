@@ -3,15 +3,15 @@ use core::cell::RefCell;
 use alloc::{rc::Rc, string::String, vec::Vec};
 use terminal::{print, println};
 
-use crate::sub_modules::theme_provider::ThemeProvider;
+use crate::context::theme_context::ThemeContext;
 
 pub struct ThemeBuildIn {
     args: Vec<String>,
-    theme_provider: Rc<RefCell<ThemeProvider>>,
+    theme_provider: Rc<RefCell<ThemeContext>>,
 }
 
 impl ThemeBuildIn {
-    pub fn new(args: Vec<String>, theme_provider: Rc<RefCell<ThemeProvider>>) -> Self {
+    pub fn new(args: Vec<String>, theme_provider: Rc<RefCell<ThemeContext>>) -> Self {
         Self { args, theme_provider }
     }
 
@@ -51,7 +51,7 @@ impl ThemeBuildIn {
         Err(())
     }
 
-    fn map_themes_to_str(&self, theme: &ThemeProvider) -> String {
+    fn map_themes_to_str(&self, theme: &ThemeContext) -> String {
         theme
             .list_all()
             .iter()

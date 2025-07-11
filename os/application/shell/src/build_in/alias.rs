@@ -7,18 +7,18 @@ use alloc::{
 };
 use terminal::{print, println};
 
-use crate::sub_modules::alias::Alias;
+use crate::context::alias_context::AliasContext;
 
 pub struct AliasBuildIn {
     args: Vec<String>,
-    alias: Rc<RefCell<Alias>>,
+    alias_provider: Rc<RefCell<AliasContext>>,
 }
 
 impl AliasBuildIn {
-    pub fn new(args: Vec<&str>, alias: &Rc<RefCell<Alias>>) -> Self {
+    pub fn new(args: Vec<&str>, alias_provider: Rc<RefCell<AliasContext>>) -> Self {
         Self {
             args: args.into_iter().map(String::from).collect(),
-            alias: alias.clone(),
+            alias_provider,
         }
     }
 
@@ -31,8 +31,8 @@ impl AliasBuildIn {
     }
 
     fn list(&self) -> Result<(), ()> {
-        let alias = self.alias.borrow();
-        let entries = alias.get_all();
+        let alias_clx = self.alias_provider.borrow();
+        let entries = alias_clx.get_all();
         if entries.is_empty() {
             println!("No entries");
             return Ok(());
@@ -48,14 +48,14 @@ impl AliasBuildIn {
         let raw = self.args.join(" ");
         let mut split = raw.splitn(2, "=");
         let key = split.next().unwrap_or("");
-        let value = split.next().ok_or_else(|| self.usage().err().unwrap())?;
+        let value = split.next().ok_or_else(|| Self::usage().err().unwrap())?;
 
-        let stripped_value = self.strip_quotes(value)?;
-        self.alias.borrow_mut().set(key, &stripped_value);
+        let stripped_value = Self::strip_quotes(value)?;
+        self.alias_provider.borrow_mut().set(key, &stripped_value);
         Ok(())
     }
 
-    fn strip_quotes(&self, value: &str) -> Result<String, ()> {
+    fn strip_quotes(value: &str) -> Result<String, ()> {
         let bytes = value.as_bytes();
 
         if bytes.len() >= 2 {
@@ -69,7 +69,7 @@ impl AliasBuildIn {
         Ok(value.to_string())
     }
 
-    fn usage(&self) -> Result<(), ()> {
+    fn usage() -> Result<(), ()> {
         println!("Usage: alias KEY=VALUE");
         Err(())
     }

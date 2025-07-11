@@ -6,7 +6,6 @@ mod build_in;
 mod context;
 mod event;
 mod modules;
-mod sub_modules;
 
 use core::cell::RefCell;
 
@@ -20,8 +19,9 @@ use terminal::{print, println, read::read_mixed};
 
 use crate::{
     context::{
-        executable_context::ExecutableContext, indicator_context::IndicatorContext, line_context::LineContext,
-        suggestion_context::SuggestionContext, tokens_context::TokensContext,
+        alias_context::AliasContext, executable_context::ExecutableContext, indicator_context::IndicatorContext,
+        line_context::LineContext, suggestion_context::SuggestionContext, theme_context::ThemeContext,
+        tokens_context::TokensContext,
     },
     event::{
         event::Event,
@@ -29,7 +29,6 @@ use crate::{
         event_handler::{Error, EventHandler},
     },
     modules::{auto_completion::AutoCompletion, parser::parser::Parser},
-    sub_modules::{alias::Alias, theme_provider::ThemeProvider},
 };
 
 #[derive(Debug, Default)]
@@ -56,7 +55,7 @@ impl Config {
 
 struct Shell {
     modules: Vec<Box<dyn EventHandler>>,
-    theme_provider: Rc<RefCell<ThemeProvider>>,
+    theme_provider: Rc<RefCell<ThemeContext>>,
     event_bus: EventBus,
 }
 
@@ -69,8 +68,8 @@ impl Shell {
         let suggestion_provider = Rc::new(RefCell::new(SuggestionContext::new()));
         let tokens_provider = Rc::new(RefCell::new(TokensContext::new()));
         let executable_provider = Rc::new(RefCell::new(ExecutableContext::new()));
-        let alias = Rc::new(RefCell::new(Alias::new()));
-        let theme_provider = Rc::new(RefCell::new(ThemeProvider::new()));
+        let alias_provider = Rc::new(RefCell::new(AliasContext::new()));
+        let theme_provider = Rc::new(RefCell::new(ThemeContext::new()));
 
         let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
         modules.push(Box::new(CommandLine::new(
@@ -81,10 +80,10 @@ impl Shell {
             modules.push(Box::new(History::new(line_provider.clone())));
         }
         modules.push(Box::new(Parser::new(
-            alias.clone(),
             line_provider.clone(),
             tokens_provider.clone(),
             executable_provider.clone(),
+            alias_provider.clone(),
         )));
         if !cfg.no_auto_completion {
             modules.push(Box::new(AutoCompletion::new(
@@ -102,7 +101,7 @@ impl Shell {
         )));
         modules.push(Box::new(Executor::new(
             executable_provider.clone(),
-            alias.clone(),
+            alias_provider.clone(),
             theme_provider.clone(),
         )));
 
@@ -203,6 +202,8 @@ pub fn main() {
 // TODO IMPROVEMENT: Restore Lexer, Parser Separation
 // TODO IMPROVEMENT: Move mkdir from builtin into application
 // TODO IMPROVEMENT: Detach short / long flag from single flags / key value pairs
+// TODO IMPROVEMENT: Dont pass args in builtin constructor, instead in run method
+// TODO IMPROVEMENT: Construct builtins only once in executor constructor
 
 // Should all be addressed with ArgKind migration
 // TODO IMPROVEMENT: Move ArgumentKind management into AutoCompletion, remove it from Tokens

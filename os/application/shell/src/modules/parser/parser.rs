@@ -9,6 +9,7 @@ use logger::{info, warn};
 
 use crate::{
     context::{
+        alias_context::AliasContext,
         executable_context::{ExecutableContext, Io, JobBuilder, JobResult},
         line_context::LineContext,
         tokens_context::TokensContext,
@@ -19,7 +20,6 @@ use crate::{
         event_handler::{Error, EventHandler, Response},
     },
     modules::parser::token::{Token, TokenKind, TokenStatus},
-    sub_modules::alias::Alias,
 };
 
 #[derive(Debug)]
@@ -32,11 +32,11 @@ enum IoType {
 }
 
 pub struct Parser {
-    alias: Rc<RefCell<Alias>>,
     current_io_type: IoType,
     line_provider: Rc<RefCell<LineContext>>,
     tokens_provider: Rc<RefCell<TokensContext>>,
     executable_provider: Rc<RefCell<ExecutableContext>>,
+    alias_provider: Rc<RefCell<AliasContext>>,
 }
 
 impl EventHandler for Parser {
@@ -62,17 +62,17 @@ impl EventHandler for Parser {
 
 impl Parser {
     pub const fn new(
-        alias: Rc<RefCell<Alias>>,
         line_provider: Rc<RefCell<LineContext>>,
         tokens_provider: Rc<RefCell<TokensContext>>,
         executable_provider: Rc<RefCell<ExecutableContext>>,
+        alias_provider: Rc<RefCell<AliasContext>>,
     ) -> Self {
         Self {
-            alias,
             line_provider,
             tokens_provider,
             executable_provider,
             current_io_type: IoType::None,
+            alias_provider,
         }
     }
 
@@ -239,7 +239,7 @@ impl Parser {
         let new_line = line_clx
             .get()
             .split_whitespace()
-            .map(|raw_token| match self.alias.borrow().get(raw_token) {
+            .map(|raw_token| match self.alias_provider.borrow().get(raw_token) {
                 Some(alias_value) => alias_value.to_string(),
                 None => raw_token.to_string(),
             })

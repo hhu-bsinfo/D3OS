@@ -3,18 +3,18 @@ use core::cell::RefCell;
 use alloc::{rc::Rc, string::String, vec::Vec};
 use terminal::{print, println};
 
-use crate::sub_modules::alias::Alias;
+use crate::context::alias_context::AliasContext;
 
 pub struct UnaliasBuildIn {
     args: Vec<String>,
-    alias: Rc<RefCell<Alias>>,
+    alias_provider: Rc<RefCell<AliasContext>>,
 }
 
 impl UnaliasBuildIn {
-    pub fn new(args: Vec<&str>, alias: &Rc<RefCell<Alias>>) -> Self {
+    pub fn new(args: Vec<&str>, alias_provider: Rc<RefCell<AliasContext>>) -> Self {
         Self {
             args: args.into_iter().map(String::from).collect(),
-            alias: alias.clone(),
+            alias_provider,
         }
     }
 
@@ -24,7 +24,7 @@ impl UnaliasBuildIn {
         }
 
         let key = self.args.get(0).unwrap();
-        match self.alias.borrow_mut().remove(key) {
+        match self.alias_provider.borrow_mut().remove(key) {
             Ok(_) => println!("Removed {}", key),
             Err(_) => println!("Alias not found"),
         };
