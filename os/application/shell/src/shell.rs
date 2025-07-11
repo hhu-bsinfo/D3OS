@@ -188,12 +188,9 @@ pub fn main() {
 // TODO FEAT: Add usage to suggestion that does not autocomplete
 
 // TODO IMPROVEMENT: Rework Token creation with less repetition (Assign rules to different kinds??? EolRule, reqCmdRule, ...)
-// TODO IMPROVEMENT: Token should accept string in constructor (multi char token are no longer a special case)
 // TODO IMPROVEMENT: Limit line len
 // TODO IMPROVEMENT: Limit history len
 // TODO IMPROVEMENT: Limit alias len
-// TODO IMPROVEMENT: Restore Lexer, Parser Separation
-// TODO IMPROVEMENT: Detach short / long flag from single flags / key value pairs
 
 // TODO FIX: Unalias currently broken
 // TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)

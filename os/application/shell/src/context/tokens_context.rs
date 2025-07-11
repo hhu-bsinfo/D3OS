@@ -65,9 +65,9 @@ impl TokensContext {
         token
     }
 
-    pub fn status(&self) -> &TokenStatus {
+    pub fn status(&self) -> TokenStatus {
         if self.tokens.is_empty() {
-            return &TokenStatus::Valid;
+            return TokenStatus::Valid;
         }
         self.tokens.last().unwrap().status()
     }

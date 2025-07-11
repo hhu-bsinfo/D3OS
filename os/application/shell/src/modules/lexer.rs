@@ -172,8 +172,8 @@ impl Lexer {
                 let rm = tokens_clx.pop();
                 warn!("Removed and: {:?}", rm);
                 let replace_token = match tokens_clx.last() {
-                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::Background, '&'),
-                    None => Token::new_first(TokenKind::Background, '&'),
+                    Some(token) => Token::new_after(token, TokenKind::Background, "&".to_string()),
+                    None => Token::new_first(TokenKind::Background, "&".to_string()),
                 };
                 line_clx.mark_dirty_at(replace_token.clx().line_pos);
                 tokens_clx.push(replace_token);
@@ -181,8 +181,8 @@ impl Lexer {
             TokenKind::Or => {
                 tokens_clx.pop();
                 let replace_token = match tokens_clx.last() {
-                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::Pipe, '|'),
-                    None => Token::new_first(TokenKind::Pipe, '|'),
+                    Some(token) => Token::new_after(token, TokenKind::Pipe, "|".to_string()),
+                    None => Token::new_first(TokenKind::Pipe, "|".to_string()),
                 };
                 line_clx.mark_dirty_at(replace_token.clx().line_pos);
                 tokens_clx.push(replace_token);
@@ -190,8 +190,8 @@ impl Lexer {
             TokenKind::RedirectInAppend => {
                 tokens_clx.pop();
                 let replace_token = match tokens_clx.last() {
-                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::RedirectInTruncate, '<'),
-                    None => Token::new_first(TokenKind::RedirectInTruncate, '<'),
+                    Some(token) => Token::new_after(token, TokenKind::RedirectInTruncate, "<".to_string()),
+                    None => Token::new_first(TokenKind::RedirectInTruncate, "<".to_string()),
                 };
                 line_clx.mark_dirty_at(replace_token.clx().line_pos);
                 tokens_clx.push(replace_token);
@@ -199,8 +199,8 @@ impl Lexer {
             TokenKind::RedirectOutAppend => {
                 tokens_clx.pop();
                 let replace_token = match tokens_clx.last() {
-                    Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::RedirectOutTruncate, '>'),
-                    None => Token::new_first(TokenKind::RedirectOutTruncate, '>'),
+                    Some(token) => Token::new_after(token, TokenKind::RedirectOutTruncate, ">".to_string()),
+                    None => Token::new_first(TokenKind::RedirectOutTruncate, ">".to_string()),
                 };
                 line_clx.mark_dirty_at(replace_token.clx().line_pos);
                 tokens_clx.push(replace_token);
@@ -217,7 +217,7 @@ impl Lexer {
     fn add_redirect_out_append_or_truncate(line_clx: &mut LineContext, tokens_clx: &mut TokensContext, ch: char) {
         // If no token => create first token
         let Some(last_token) = tokens_clx.last_mut() else {
-            let first_token = Token::new_first(TokenKind::RedirectOutTruncate, ch);
+            let first_token = Token::new_first(TokenKind::RedirectOutTruncate, ch.to_string());
             tokens_clx.push(first_token);
             return;
         };
@@ -225,30 +225,24 @@ impl Lexer {
         // If last token is truncate => remove it and add append
         if *last_token.kind() == TokenKind::RedirectOutTruncate {
             tokens_clx.pop();
-            let mut next_token = match tokens_clx.last() {
-                Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::RedirectOutAppend, ch),
-                None => Token::new_first(TokenKind::RedirectOutAppend, ch),
+            let next_token = match tokens_clx.last() {
+                Some(token) => Token::new_after(token, TokenKind::RedirectOutAppend, ">>".to_string()),
+                None => Token::new_first(TokenKind::RedirectOutAppend, ">>".to_string()),
             };
-            next_token.push(ch);
             line_clx.mark_dirty_at(next_token.clx().line_pos);
             tokens_clx.push(next_token);
             return;
         }
 
         // Else add next background token
-        let next_token = Token::new_after(
-            last_token.clx(),
-            last_token.as_str(),
-            TokenKind::RedirectOutTruncate,
-            ch,
-        );
+        let next_token = Token::new_after(&last_token, TokenKind::RedirectOutTruncate, ch.to_string());
         tokens_clx.push(next_token);
     }
 
     fn add_redirect_in_append_or_truncate(line_clx: &mut LineContext, tokens_clx: &mut TokensContext, ch: char) {
         // If no token => create first token
         let Some(last_token) = tokens_clx.last_mut() else {
-            let first_token = Token::new_first(TokenKind::RedirectInTruncate, ch);
+            let first_token = Token::new_first(TokenKind::RedirectInTruncate, ch.to_string());
             tokens_clx.push(first_token);
             return;
         };
@@ -256,25 +250,24 @@ impl Lexer {
         // If last token is truncate => remove it and add append
         if *last_token.kind() == TokenKind::RedirectInTruncate {
             tokens_clx.pop();
-            let mut next_token = match tokens_clx.last() {
-                Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::RedirectInAppend, ch),
-                None => Token::new_first(TokenKind::RedirectInAppend, ch),
+            let next_token = match tokens_clx.last() {
+                Some(token) => Token::new_after(token, TokenKind::RedirectInAppend, "<<".to_string()),
+                None => Token::new_first(TokenKind::RedirectInAppend, "<<".to_string()),
             };
-            next_token.push(ch);
             line_clx.mark_dirty_at(next_token.clx().line_pos);
             tokens_clx.push(next_token);
             return;
         }
 
         // Else add next background token
-        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::RedirectInTruncate, ch);
+        let next_token = Token::new_after(&last_token, TokenKind::RedirectInTruncate, ch.to_string());
         tokens_clx.push(next_token);
     }
 
     fn add_background_or_logical_and(line_clx: &mut LineContext, tokens_clx: &mut TokensContext, ch: char) {
         // If no token => create first token
         let Some(last_token) = tokens_clx.last_mut() else {
-            let first_token = Token::new_first(TokenKind::Background, ch);
+            let first_token = Token::new_first(TokenKind::Background, ch.to_string());
             tokens_clx.push(first_token);
             return;
         };
@@ -282,38 +275,37 @@ impl Lexer {
         // If last token is background => remove it and add logical and token
         if *last_token.kind() == TokenKind::Background {
             tokens_clx.pop();
-            let mut next_token = match tokens_clx.last() {
-                Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::And, ch),
-                None => Token::new_first(TokenKind::And, ch),
+            let next_token = match tokens_clx.last() {
+                Some(token) => Token::new_after(token, TokenKind::And, "&&".to_string()),
+                None => Token::new_first(TokenKind::And, "&&".to_string()),
             };
-            next_token.push(ch);
             line_clx.mark_dirty_at(next_token.clx().line_pos);
             tokens_clx.push(next_token);
             return;
         }
 
         // Else add next background token
-        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::Background, ch);
+        let next_token = Token::new_after(&last_token, TokenKind::Background, ch.to_string());
         tokens_clx.push(next_token);
     }
 
     fn add_separator(tokens_clx: &mut TokensContext, ch: char) {
         // If no token => create first token
         let Some(last_token) = tokens_clx.last_mut() else {
-            let first_token = Token::new_first(TokenKind::Separator, ch);
+            let first_token = Token::new_first(TokenKind::Separator, ch.to_string());
             tokens_clx.push(first_token);
             return;
         };
 
         // Else add next separator token
-        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::Separator, ch);
+        let next_token = Token::new_after(&last_token, TokenKind::Separator, ch.to_string());
         tokens_clx.push(next_token);
     }
 
     fn add_pipe_or_logical_or(line_clx: &mut LineContext, tokens_clx: &mut TokensContext, ch: char) {
         // If no token => create first token
         let Some(last_token) = tokens_clx.last_mut() else {
-            let first_token = Token::new_first(TokenKind::Pipe, ch);
+            let first_token = Token::new_first(TokenKind::Pipe, ch.to_string());
             tokens_clx.push(first_token);
             return;
         };
@@ -321,25 +313,24 @@ impl Lexer {
         // If last token is pipe => remove it and add logical or token
         if *last_token.kind() == TokenKind::Pipe {
             tokens_clx.pop();
-            let mut next_token = match tokens_clx.last() {
-                Some(token) => Token::new_after(token.clx(), token.as_str(), TokenKind::Or, ch),
-                None => Token::new_first(TokenKind::Or, ch),
+            let next_token = match tokens_clx.last() {
+                Some(token) => Token::new_after(token, TokenKind::Or, "||".to_string()),
+                None => Token::new_first(TokenKind::Or, "||".to_string()),
             };
-            next_token.push(ch);
             line_clx.mark_dirty_at(next_token.clx().line_pos);
             tokens_clx.push(next_token);
             return;
         }
 
         // Else add next pipe token
-        let next_token = Token::new_after(last_token.clx(), last_token.as_str(), TokenKind::Pipe, ch);
+        let next_token = Token::new_after(&last_token, TokenKind::Pipe, ch.to_string());
         tokens_clx.push(next_token);
     }
 
     fn add_ambiguous(tokens_clx: &mut TokensContext, ch: char) {
         // If no token => create first token
         let Some(last_token) = tokens_clx.last_mut() else {
-            let first_token = Token::new_first(TokenKind::Command, ch);
+            let first_token = Token::new_first(TokenKind::Command, ch.to_string());
             tokens_clx.push(first_token);
             return;
         };
@@ -358,37 +349,34 @@ impl Lexer {
         } else {
             TokenKind::Command
         };
-        let prev_clx = last_token.clx();
-        let next_token = Token::new_after(prev_clx, last_token.as_str(), next_kind, ch);
+        let next_token = Token::new_after(&last_token, next_kind, ch.to_string());
         tokens_clx.push(next_token);
     }
 
     fn add_blank(tokens_clx: &mut TokensContext, ch: char) {
         // If no token => create first token
         let Some(last_token) = tokens_clx.last_mut() else {
-            let first_token = Token::new_first(TokenKind::Blank, ch);
+            let first_token = Token::new_first(TokenKind::Blank, ch.to_string());
             tokens_clx.push(first_token);
             return;
         };
 
         // Else => Append blank token
-        let prev_clx = last_token.clx();
-        let next_token = Token::new_after(prev_clx, last_token.as_str(), TokenKind::Blank, ch);
+        let next_token = Token::new_after(&last_token, TokenKind::Blank, ch.to_string());
         tokens_clx.push(next_token);
     }
 
     fn add_quote(tokens_clx: &mut TokensContext, ch: char) {
         // If no token => create first token
         let Some(last_token) = tokens_clx.last_mut() else {
-            let first_token = Token::new_first(TokenKind::QuoteStart, ch);
+            let first_token = Token::new_first(TokenKind::QuoteStart, ch.to_string());
             tokens_clx.push(first_token);
             return;
         };
 
         // If in quote and char matches quote char => exit quote
         if last_token.is_in_quote_of(ch) {
-            let prev_clx = last_token.clx();
-            let next_token = Token::new_after(prev_clx, last_token.as_str(), TokenKind::QuoteEnd, ch);
+            let next_token = Token::new_after(&last_token, TokenKind::QuoteEnd, ch.to_string());
             tokens_clx.push(next_token);
             return;
         }
@@ -399,8 +387,7 @@ impl Lexer {
         }
 
         // Else => Enter quote
-        let prev_clx = last_token.clx();
-        let next_token = Token::new_after(prev_clx, last_token.as_str(), TokenKind::QuoteStart, ch);
+        let next_token = Token::new_after(&last_token, TokenKind::QuoteStart, ch.to_string());
         tokens_clx.push(next_token);
     }
 }

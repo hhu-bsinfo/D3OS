@@ -128,7 +128,7 @@ impl Writer {
             "{}{}{}{}\x1b[0m{}",
             Self::save_cursor_pos(),
             Self::cursor_to_start(),
-            self.indicator_color(tokens_clx.status()),
+            self.indicator_color(&tokens_clx.status()),
             indicator_clx.get(),
             Self::restore_cursor_pos(),
         )

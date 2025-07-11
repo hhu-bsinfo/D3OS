@@ -58,8 +58,8 @@ impl TokenStatus {
 
 #[allow(unused_variables)]
 pub trait TokenContextFactory {
-    fn create_first(kind: &TokenKind, ch: char) -> TokenContext;
-    fn create_after(prev_clx: &TokenContext, prev_content: &str, kind: &TokenKind, ch: char) -> TokenContext;
+    fn create_first(content: &str) -> TokenContext;
+    fn create_after(prev_token: &Token, content: &str) -> TokenContext;
 }
 
 /// TODO docs: Difference to State: No changes after creation
@@ -79,51 +79,43 @@ pub struct TokenContext {
 }
 
 impl TokenContext {
-    fn create_after(prev_clx: &TokenContext, prev_content: &str, kind: &TokenKind, ch: char) -> Self {
-        match *kind {
-            TokenKind::Command => CommandTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
-            TokenKind::Argument => ArgumentTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
-            TokenKind::Blank => BlankTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
-            TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
-            TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
-            TokenKind::Pipe => PipeTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
-            TokenKind::Separator => SeparatorTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
-            TokenKind::Background => BackgroundTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
-            TokenKind::And => AndTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
-            TokenKind::Or => OrTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
-            TokenKind::RedirectInAppend => {
-                RedirectInAppendTokenContextFactory::create_after(prev_clx, prev_content, kind, ch)
-            }
-            TokenKind::RedirectInTruncate => {
-                RedirectInTruncateTokenContextFactory::create_after(prev_clx, prev_content, kind, ch)
-            }
-            TokenKind::RedirectOutAppend => {
-                RedirectOutAppendTokenContextFactory::create_after(prev_clx, prev_content, kind, ch)
-            }
-            TokenKind::RedirectOutTruncate => {
-                RedirectOutTruncateTokenContextFactory::create_after(prev_clx, prev_content, kind, ch)
-            }
-            TokenKind::File => FileTokenContextFactory::create_after(prev_clx, prev_content, kind, ch),
+    fn create_after(prev_token: &Token, kind: &TokenKind, content: &str) -> Self {
+        match kind {
+            TokenKind::Command => CommandTokenContextFactory::create_after(prev_token, content),
+            TokenKind::Argument => ArgumentTokenContextFactory::create_after(prev_token, content),
+            TokenKind::Blank => BlankTokenContextFactory::create_after(prev_token, content),
+            TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_after(prev_token, content),
+            TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_after(prev_token, content),
+            TokenKind::Pipe => PipeTokenContextFactory::create_after(prev_token, content),
+            TokenKind::Separator => SeparatorTokenContextFactory::create_after(prev_token, content),
+            TokenKind::Background => BackgroundTokenContextFactory::create_after(prev_token, content),
+            TokenKind::And => AndTokenContextFactory::create_after(prev_token, content),
+            TokenKind::Or => OrTokenContextFactory::create_after(prev_token, content),
+            TokenKind::RedirectInAppend => RedirectInAppendTokenContextFactory::create_after(prev_token, content),
+            TokenKind::RedirectInTruncate => RedirectInTruncateTokenContextFactory::create_after(prev_token, content),
+            TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::create_after(prev_token, content),
+            TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::create_after(prev_token, content),
+            TokenKind::File => FileTokenContextFactory::create_after(prev_token, content),
         }
     }
 
-    fn create_first(kind: &TokenKind, ch: char) -> Self {
+    fn create_first(kind: &TokenKind, content: &str) -> Self {
         match *kind {
-            TokenKind::Command => CommandTokenContextFactory::create_first(kind, ch),
-            TokenKind::Argument => ArgumentTokenContextFactory::create_first(kind, ch),
-            TokenKind::Blank => BlankTokenContextFactory::create_first(kind, ch),
-            TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_first(kind, ch),
-            TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_first(kind, ch),
-            TokenKind::Pipe => PipeTokenContextFactory::create_first(kind, ch),
-            TokenKind::Separator => SeparatorTokenContextFactory::create_first(kind, ch),
-            TokenKind::Background => BackgroundTokenContextFactory::create_first(kind, ch),
-            TokenKind::And => AndTokenContextFactory::create_first(kind, ch),
-            TokenKind::Or => OrTokenContextFactory::create_first(kind, ch),
-            TokenKind::RedirectInAppend => RedirectInAppendTokenContextFactory::create_first(kind, ch),
-            TokenKind::RedirectInTruncate => RedirectInTruncateTokenContextFactory::create_first(kind, ch),
-            TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::create_first(kind, ch),
-            TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::create_first(kind, ch),
-            TokenKind::File => FileTokenContextFactory::create_first(kind, ch),
+            TokenKind::Command => CommandTokenContextFactory::create_first(content),
+            TokenKind::Argument => ArgumentTokenContextFactory::create_first(content),
+            TokenKind::Blank => BlankTokenContextFactory::create_first(content),
+            TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_first(content),
+            TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_first(content),
+            TokenKind::Pipe => PipeTokenContextFactory::create_first(content),
+            TokenKind::Separator => SeparatorTokenContextFactory::create_first(content),
+            TokenKind::Background => BackgroundTokenContextFactory::create_first(content),
+            TokenKind::And => AndTokenContextFactory::create_first(content),
+            TokenKind::Or => OrTokenContextFactory::create_first(content),
+            TokenKind::RedirectInAppend => RedirectInAppendTokenContextFactory::create_first(content),
+            TokenKind::RedirectInTruncate => RedirectInTruncateTokenContextFactory::create_first(content),
+            TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::create_first(content),
+            TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::create_first(content),
+            TokenKind::File => FileTokenContextFactory::create_first(content),
         }
     }
 }
@@ -133,50 +125,27 @@ pub struct Token {
     kind: TokenKind,
     content: String,
     clx: TokenContext,
-    status: TokenStatus,
 }
 
 impl Token {
-    pub fn new_first(kind: TokenKind, ch: char) -> Self {
-        let clx = TokenContext::create_first(&kind, ch);
-        let content = ch.to_string();
-        let status = match clx.error {
-            Some(error) => TokenStatus::Error(error),
-            None => Self::check_status(&clx),
-        };
-
-        Self {
-            kind,
-            content,
-            clx,
-            status,
-        }
+    pub fn new_first(kind: TokenKind, content: String) -> Self {
+        let clx = TokenContext::create_first(&kind, &content);
+        Self { kind, content, clx }
     }
 
-    pub fn new_after(prev_clx: &TokenContext, prev_content: &str, kind: TokenKind, ch: char) -> Self {
-        let clx = TokenContext::create_after(prev_clx, prev_content, &kind, ch);
-        let content = ch.to_string();
-        let status = match clx.error {
-            Some(error) => TokenStatus::Error(error),
-            None => Self::check_status(&clx),
-        };
-
-        Self {
-            kind,
-            content,
-            clx,
-            status,
-        }
+    pub fn new_after(prev_token: &Token, kind: TokenKind, content: String) -> Self {
+        let clx = TokenContext::create_after(prev_token, &kind, &content);
+        Self { kind, content, clx }
     }
 
-    fn check_status(clx: &TokenContext) -> TokenStatus {
-        if clx.require_cmd {
+    fn check_status(&self) -> TokenStatus {
+        if self.clx.require_cmd {
             return TokenStatus::Incomplete;
         }
-        if clx.in_quote.is_some() {
+        if self.clx.in_quote.is_some() {
             return TokenStatus::Incomplete;
         }
-        if clx.require_file {
+        if self.clx.require_file {
             return TokenStatus::Incomplete;
         }
 
@@ -191,8 +160,11 @@ impl Token {
         &self.clx
     }
 
-    pub fn status(&self) -> &TokenStatus {
-        &self.status
+    pub fn status(&self) -> TokenStatus {
+        match self.clx.error {
+            Some(error) => TokenStatus::Error(error),
+            None => self.check_status(),
+        }
     }
 
     pub fn as_str(&self) -> &str {

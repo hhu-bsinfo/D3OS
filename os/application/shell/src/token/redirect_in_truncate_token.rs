@@ -3,7 +3,7 @@ use spin::Lazy;
 
 use crate::{
     event::event_handler::Error,
-    token::token::{TokenContext, TokenContextFactory, TokenKind},
+    token::token::{Token, TokenContext, TokenContextFactory},
 };
 
 static REDIRECT_IN_TRUNCATE_BEFORE_CMD_ERROR: Lazy<Error> = Lazy::new(|| {
@@ -32,7 +32,7 @@ static REDIRECT_IN_TRUNCATE_AFTER_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
 pub struct RedirectInTruncateTokenContextFactory {}
 
 impl TokenContextFactory for RedirectInTruncateTokenContextFactory {
-    fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
+    fn create_first(_content: &str) -> TokenContext {
         TokenContext {
             pos: 0,
             line_pos: 0,
@@ -45,7 +45,8 @@ impl TokenContextFactory for RedirectInTruncateTokenContextFactory {
         }
     }
 
-    fn create_after(prev_clx: &TokenContext, prev_content: &str, _kind: &TokenKind, _ch: char) -> TokenContext {
+    fn create_after(prev_token: &Token, _content: &str) -> TokenContext {
+        let prev_clx = prev_token.clx();
         let error = prev_clx.error.or_else(|| {
             if prev_clx.cmd_pos.is_none() {
                 Some(&REDIRECT_IN_TRUNCATE_BEFORE_CMD_ERROR)
@@ -60,7 +61,7 @@ impl TokenContextFactory for RedirectInTruncateTokenContextFactory {
 
         TokenContext {
             pos: prev_clx.pos + 1,
-            line_pos: prev_clx.line_pos + prev_content.len(),
+            line_pos: prev_clx.line_pos + prev_token.len(),
             cmd_pos: prev_clx.cmd_pos,
             in_quote: None,
             error,
