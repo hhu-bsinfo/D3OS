@@ -19,9 +19,13 @@ use runtime::*;
 use terminal::{print, println, read::read_mixed};
 
 use crate::{
-    context::context::Context,
+    context::{
+        executable_context::ExecutableContext, indicator_context::IndicatorContext, line_context::LineContext,
+        suggestion_context::SuggestionContext, tokens_context::TokensContext,
+    },
     event::{
         event::Event,
+        event_bus::EventBus,
         event_handler::{Error, EventHandler},
     },
     modules::{auto_completion::AutoCompletion, parser::parser::Parser},
@@ -51,30 +55,59 @@ impl Config {
 }
 
 struct Shell {
-    clx: Context,
     modules: Vec<Box<dyn EventHandler>>,
     theme_provider: Rc<RefCell<ThemeProvider>>,
+    event_bus: EventBus,
 }
 
 impl Shell {
     pub fn new(cfg: Config) -> Self {
+        let event_bus = EventBus::new();
+
+        let line_provider = Rc::new(RefCell::new(LineContext::new()));
+        let indicator_provider = Rc::new(RefCell::new(IndicatorContext::new()));
+        let suggestion_provider = Rc::new(RefCell::new(SuggestionContext::new()));
+        let tokens_provider = Rc::new(RefCell::new(TokensContext::new()));
+        let executable_provider = Rc::new(RefCell::new(ExecutableContext::new()));
         let alias = Rc::new(RefCell::new(Alias::new()));
         let theme_provider = Rc::new(RefCell::new(ThemeProvider::new()));
-        let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
 
-        modules.push(Box::new(CommandLine::new()));
+        let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
+        modules.push(Box::new(CommandLine::new(
+            line_provider.clone(),
+            indicator_provider.clone(),
+        )));
         if !cfg.no_history {
-            modules.push(Box::new(History::new()));
+            modules.push(Box::new(History::new(line_provider.clone())));
         }
-        modules.push(Box::new(Parser::new(alias.clone())));
+        modules.push(Box::new(Parser::new(
+            alias.clone(),
+            line_provider.clone(),
+            tokens_provider.clone(),
+            executable_provider.clone(),
+        )));
         if !cfg.no_auto_completion {
-            modules.push(Box::new(AutoCompletion::new()));
+            modules.push(Box::new(AutoCompletion::new(
+                line_provider.clone(),
+                tokens_provider.clone(),
+                suggestion_provider.clone(),
+            )));
         }
-        modules.push(Box::new(Writer::new(theme_provider.clone())));
-        modules.push(Box::new(Executor::new(alias.clone(), theme_provider.clone())));
+        modules.push(Box::new(Writer::new(
+            line_provider.clone(),
+            tokens_provider.clone(),
+            indicator_provider.clone(),
+            suggestion_provider.clone(),
+            theme_provider.clone(),
+        )));
+        modules.push(Box::new(Executor::new(
+            executable_provider.clone(),
+            alias.clone(),
+            theme_provider.clone(),
+        )));
 
         Self {
-            clx: Context::new(),
+            event_bus,
             modules,
             theme_provider,
         }
@@ -90,10 +123,10 @@ impl Shell {
     }
 
     pub fn run(&mut self) {
-        self.clx.events.trigger(Event::PrepareNewLine);
+        self.event_bus.trigger(Event::PrepareNewLine);
 
         loop {
-            while let Some(event) = self.clx.events.process() {
+            while let Some(event) = self.event_bus.process() {
                 let Err(error) = self.handle_event(&event) else {
                     continue;
                 };
@@ -118,22 +151,22 @@ impl Shell {
             theme.error_hint,
             error.hint.unwrap_or(String::new()),
         );
-        self.clx.events.trigger(Event::PrepareNewLine);
+        self.event_bus.trigger(Event::PrepareNewLine);
     }
 
     fn handle_event(&mut self, event: &Event) -> Result<(), Error> {
-        info!("Events in queue: {:?}", self.clx.events);
+        info!("Events in queue: {:?}", self.event_bus);
         info!("Processing event: {:?}", event);
         for event_handler in &mut self.modules {
             let result = match event {
-                Event::KeyPressed(key) => event_handler.on_key_pressed(&mut self.clx, *key),
-                Event::CursorMoved(step) => event_handler.on_cursor_moved(&mut self.clx, *step),
-                Event::HistoryRestored => event_handler.on_history_restored(&mut self.clx),
-                Event::LineWritten => event_handler.on_line_written(&mut self.clx),
-                Event::TokensWritten => event_handler.on_tokens_written(&mut self.clx),
-                Event::PrepareNewLine => event_handler.on_prepare_next_line(&mut self.clx),
-                Event::Submit => event_handler.on_submit(&mut self.clx),
-                Event::ProcessCompleted => event_handler.on_process_completed(&mut self.clx),
+                Event::KeyPressed(key) => event_handler.on_key_pressed(&mut self.event_bus, *key),
+                Event::CursorMoved(step) => event_handler.on_cursor_moved(&mut self.event_bus, *step),
+                Event::HistoryRestored => event_handler.on_history_restored(&mut self.event_bus),
+                Event::LineWritten => event_handler.on_line_written(&mut self.event_bus),
+                Event::TokensWritten => event_handler.on_tokens_written(&mut self.event_bus),
+                Event::PrepareNewLine => event_handler.on_prepare_next_line(&mut self.event_bus),
+                Event::Submit => event_handler.on_submit(&mut self.event_bus),
+                Event::ProcessCompleted => event_handler.on_process_completed(&mut self.event_bus),
             };
 
             if result.is_err() {
@@ -167,7 +200,6 @@ pub fn main() {
 // TODO IMPROVEMENT: Limit line len
 // TODO IMPROVEMENT: Limit history len
 // TODO IMPROVEMENT: Limit alias len
-// TODO IMPROVEMENT: ????Move Context into SubModules???? after that rename SubModule to Context
 // TODO IMPROVEMENT: Restore Lexer, Parser Separation
 // TODO IMPROVEMENT: Move mkdir from builtin into application
 // TODO IMPROVEMENT: Detach short / long flag from single flags / key value pairs

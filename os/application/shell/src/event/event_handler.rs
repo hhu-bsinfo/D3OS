@@ -1,7 +1,7 @@
 use alloc::string::String;
 use terminal::DecodedKey;
 
-use crate::context::context::Context;
+use crate::event::event_bus::EventBus;
 
 #[derive(Debug, PartialEq)]
 pub enum Response {
@@ -37,35 +37,35 @@ impl Error {
 
 #[allow(unused_variables)]
 pub trait EventHandler {
-    fn on_key_pressed(&mut self, clx: &mut Context, key: DecodedKey) -> Result<Response, Error> {
+    fn on_key_pressed(&mut self, event_bus: &mut EventBus, key: DecodedKey) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_prepare_next_line(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_cursor_moved(&mut self, clx: &mut Context, step: isize) -> Result<Response, Error> {
+    fn on_cursor_moved(&mut self, event_bus: &mut EventBus, step: isize) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_history_restored(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_history_restored(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_line_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_line_written(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_tokens_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_tokens_written(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_process_completed(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_process_completed(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_submit(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 }

@@ -14,48 +14,57 @@ use crate::{
         exit::ExitBuildIn, mkdir::MkdirBuildIn, pwd::PwdBuildIn, theme::ThemeBuildIn, unalias::UnaliasBuildIn,
         window_manager::WindowManagerBuildIn,
     },
-    context::{
-        context::Context,
-        executable_context::{Io, Job},
-    },
+    context::executable_context::{ExecutableContext, Io, Job},
     event::{
         event::Event,
+        event_bus::EventBus,
         event_handler::{Error, EventHandler, Response},
     },
     sub_modules::{alias::Alias, theme_provider::ThemeProvider},
 };
 
 pub struct Executor {
+    executable_provider: Rc<RefCell<ExecutableContext>>,
     alias: Rc<RefCell<Alias>>,
     theme_provider: Rc<RefCell<ThemeProvider>>,
 }
 
 impl EventHandler for Executor {
-    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.execute(clx)
+    fn on_submit(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
+        self.execute(event_bus)
     }
 }
 
 impl Executor {
-    pub const fn new(alias: Rc<RefCell<Alias>>, theme_provider: Rc<RefCell<ThemeProvider>>) -> Self {
-        Self { alias, theme_provider }
+    pub const fn new(
+        executable_provider: Rc<RefCell<ExecutableContext>>,
+        alias: Rc<RefCell<Alias>>,
+        theme_provider: Rc<RefCell<ThemeProvider>>,
+    ) -> Self {
+        Self {
+            executable_provider,
+            alias,
+            theme_provider,
+        }
     }
 
-    pub fn execute(&self, clx: &mut Context) -> Result<Response, Error> {
-        for job in clx.executable.get_jobs() {
+    fn execute(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
+        let executable_clx = self.executable_provider.borrow();
+
+        for job in executable_clx.get_jobs() {
             if job.input != Io::Std || job.output != Io::Std || job.background_execution {
-                return Err(self.handle_unsupported_error(&clx.executable.jobs));
+                return Err(self.handle_unsupported_error(&executable_clx.jobs));
             }
         }
 
-        for job in &clx.executable.jobs {
+        for job in &executable_clx.jobs {
             match self.execute_job(&job) {
                 Ok(_) => continue,
                 Err(msg) => return Err(msg),
             };
         }
 
-        clx.events.trigger(Event::PrepareNewLine);
+        event_bus.trigger(Event::PrepareNewLine);
         Ok(Response::Ok)
     }
 

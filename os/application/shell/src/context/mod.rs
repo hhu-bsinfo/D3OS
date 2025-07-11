@@ -1,4 +1,3 @@
-pub mod context;
 pub mod executable_context;
 pub mod indicator_context;
 pub mod line_context;

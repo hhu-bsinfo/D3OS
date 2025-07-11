@@ -8,103 +8,136 @@ use alloc::{
 use terminal::print;
 
 use crate::{
-    context::context::Context,
-    event::event_handler::{Error, EventHandler, Response},
+    context::{
+        indicator_context::IndicatorContext, line_context::LineContext, suggestion_context::SuggestionContext,
+        tokens_context::TokensContext,
+    },
+    event::{
+        event_bus::EventBus,
+        event_handler::{Error, EventHandler, Response},
+    },
     modules::parser::token::{ArgumentKind, Token, TokenKind, TokenStatus},
     sub_modules::theme_provider::ThemeProvider,
 };
 
 pub struct Writer {
+    line_provider: Rc<RefCell<LineContext>>,
+    tokens_provider: Rc<RefCell<TokensContext>>,
+    indicator_provider: Rc<RefCell<IndicatorContext>>,
+    suggestion_provider: Rc<RefCell<SuggestionContext>>,
+
     theme_provider: Rc<RefCell<ThemeProvider>>,
     terminal_cursor_pos: usize,
 }
 
 impl EventHandler for Writer {
-    fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_prepare_next_line(&mut self, _event_bus: &mut EventBus) -> Result<Response, Error> {
         self.terminal_cursor_pos = 0;
-        self.write_indicator(clx)
+        self.write_indicator()
     }
 
-    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.write_next_line(clx)
+    fn on_submit(&mut self, _event_bus: &mut EventBus) -> Result<Response, Error> {
+        self.write_next_line()
     }
 
-    fn on_process_completed(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        self.write_at_dirty(clx)
+    fn on_process_completed(&mut self, _event_bus: &mut EventBus) -> Result<Response, Error> {
+        self.write_at_dirty()
     }
 }
 
 impl Writer {
-    pub const fn new(theme_provider: Rc<RefCell<ThemeProvider>>) -> Self {
+    pub const fn new(
+        line_provider: Rc<RefCell<LineContext>>,
+        tokens_provider: Rc<RefCell<TokensContext>>,
+        indicator_provider: Rc<RefCell<IndicatorContext>>,
+        suggestion_provider: Rc<RefCell<SuggestionContext>>,
+        theme_provider: Rc<RefCell<ThemeProvider>>,
+    ) -> Self {
         Self {
+            line_provider,
+            tokens_provider,
+            indicator_provider,
+            suggestion_provider,
             theme_provider,
             terminal_cursor_pos: 0,
         }
     }
 
-    fn write_indicator(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn write_indicator(&mut self) -> Result<Response, Error> {
+        let indicator_clx = self.indicator_provider.borrow();
         print!(
             "{}{}\x1b[0m",
             self.indicator_color(&TokenStatus::Valid),
-            clx.indicator.get()
+            indicator_clx.get()
         );
-        self.terminal_cursor_pos += clx.indicator.len();
+        self.terminal_cursor_pos += indicator_clx.len();
         Ok(Response::Ok)
     }
 
-    fn write_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
-        print!("{}\n", self.cursor_to_end(clx));
+    fn write_next_line(&mut self) -> Result<Response, Error> {
+        print!("{}\n", self.cursor_to_end());
         Ok(Response::Ok)
     }
 
-    fn write_at_dirty(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn write_at_dirty(&mut self) -> Result<Response, Error> {
         print!(
             "{}{}{}{}{}{}",
-            self.dirty_status_indicator(clx),
-            self.cursor_to_dirty_line(clx),
+            self.dirty_status_indicator(),
+            self.cursor_to_dirty_line(),
             Self::clear_right_of_cursor(),
-            self.dirty_tokens(clx),
-            self.dirty_suggestion(clx),
-            self.restore_cursor_position(clx)
+            self.dirty_tokens(),
+            self.dirty_suggestion(),
+            self.restore_cursor_position()
         );
 
-        clx.line.mark_clean();
-        clx.tokens.mark_status_clean();
-        clx.suggestion.mark_clean();
+        self.line_provider.borrow_mut().mark_clean();
+        self.tokens_provider.borrow_mut().mark_status_clean();
+        self.suggestion_provider.borrow_mut().mark_clean();
 
         Ok(Response::Ok)
     }
 
-    fn dirty_status_indicator(&mut self, clx: &mut Context) -> String {
-        if !clx.tokens.is_status_dirty() {
+    fn dirty_status_indicator(&mut self) -> String {
+        let tokens_clx = self.tokens_provider.borrow();
+        let indicator_clx = self.indicator_provider.borrow();
+
+        if !tokens_clx.is_status_dirty() {
             return String::new();
         }
         format!(
             "{}{}{}{}\x1b[0m{}",
             Self::save_cursor_pos(),
             Self::cursor_to_start(),
-            self.indicator_color(clx.tokens.status()),
-            clx.indicator.get(),
+            self.indicator_color(tokens_clx.status()),
+            indicator_clx.get(),
             Self::restore_cursor_pos(),
         )
     }
 
-    fn cursor_to_end(&mut self, clx: &mut Context) -> String {
-        let step = self.terminal_cursor_pos as isize - clx.total_line_len() as isize;
+    fn cursor_to_end(&mut self) -> String {
+        let step = self.terminal_cursor_pos as isize - self.total_line_len() as isize;
         self.move_cursor_by(step)
     }
 
-    fn cursor_to_dirty_line(&mut self, clx: &mut Context) -> String {
-        let offset = clx.indicator.len() + clx.line.get_dirty_index();
+    fn cursor_to_dirty_line(&mut self) -> String {
+        let offset = self.indicator_provider.borrow().len() + self.line_provider.borrow().get_dirty_index();
         let step = self.terminal_cursor_pos as isize - offset as isize;
         self.move_cursor_by(step)
     }
 
-    fn restore_cursor_position(&mut self, clx: &mut Context) -> String {
-        let step = match clx.suggestion.has_focus() {
-            true => self.terminal_cursor_pos as isize - clx.total_line_len() as isize,
-            false => {
-                self.terminal_cursor_pos as isize - clx.line.get_cursor_pos() as isize - clx.indicator.len() as isize
+    fn restore_cursor_position(&mut self) -> String {
+        let step = {
+            let line_clx = self.line_provider.borrow();
+            let suggestion_clx = self.suggestion_provider.borrow();
+            let indicator_clx = self.indicator_provider.borrow();
+
+            match suggestion_clx.has_focus() {
+                true => self.terminal_cursor_pos as isize - self.total_line_len() as isize,
+                false => {
+                    self.terminal_cursor_pos as isize
+                        - line_clx.get_cursor_pos() as isize
+                        - indicator_clx.len() as isize
+                }
             }
         };
         self.move_cursor_by(step)
@@ -119,17 +152,13 @@ impl Writer {
         }
     }
 
-    /// Replaced with dirty_tokens
-    fn dirty_line(&mut self, clx: &mut Context) -> String {
-        let line = clx.line.get_dirty_part();
-        self.terminal_cursor_pos += line.len();
-        line.to_string()
-    }
-
-    fn dirty_tokens(&mut self, clx: &mut Context) -> String {
+    fn dirty_tokens(&mut self) -> String {
+        let line_clx = self.line_provider.borrow();
+        let tokens_clx = self.tokens_provider.borrow();
         let mut formatted_tokens = String::new();
-        for token in clx.tokens.slice_at_line_index(clx.line.get_dirty_index()) {
-            let dirty_content = token.as_str_at_line_index(clx.line.get_dirty_index());
+
+        for token in tokens_clx.slice_at_line_index(line_clx.get_dirty_index()) {
+            let dirty_content = token.as_str_at_line_index(line_clx.get_dirty_index());
             let color = self.token_color(token);
             formatted_tokens.push_str(color);
             formatted_tokens.push_str(dirty_content);
@@ -139,12 +168,13 @@ impl Writer {
         formatted_tokens
     }
 
-    fn dirty_suggestion(&mut self, clx: &mut Context) -> String {
-        if !clx.suggestion.is_dirty() {
+    fn dirty_suggestion(&mut self) -> String {
+        let suggestion_clx = self.suggestion_provider.borrow();
+        if !suggestion_clx.is_dirty() {
             return String::new();
         }
         let theme = self.theme_provider.borrow().get_current();
-        let line = clx.suggestion.get();
+        let line = suggestion_clx.get();
         self.terminal_cursor_pos += line.len();
         format!("{}{}\x1b[0m", theme.suggestion, line)
     }
@@ -186,6 +216,12 @@ impl Writer {
             TokenKind::RedirectOutAppend => theme.redirection_out_append,
             TokenKind::File => theme.file,
         }
+    }
+
+    fn total_line_len(&self) -> usize {
+        self.indicator_provider.borrow().len()
+            + self.line_provider.borrow().len()
+            + self.suggestion_provider.borrow().len()
     }
 
     fn clear_right_of_cursor() -> &'static str {
