@@ -43,12 +43,12 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
     },
     Application {
         namespace: "hello",
-        single_value: &[],
+        single_value: &["ARG"],
         key_value_pair: &[],
     },
     Application {
         namespace: "helloc",
-        single_value: &[],
+        single_value: &["ARG"],
         key_value_pair: &[],
     },
     Application {
@@ -80,12 +80,12 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
     // Shell BuildIns
     Application {
         namespace: "alias",
-        single_value: &[],
+        single_value: &["KEY=VALUE"],
         key_value_pair: &[],
     },
     Application {
         namespace: "cd",
-        single_value: &[],
+        single_value: &["DIR"],
         key_value_pair: &[],
     },
     Application {
@@ -95,7 +95,7 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
     },
     Application {
         namespace: "echo",
-        single_value: &[],
+        single_value: &["ARG"],
         key_value_pair: &[],
     },
     Application {
@@ -105,7 +105,7 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
     },
     Application {
         namespace: "mkdir",
-        single_value: &[],
+        single_value: &["DIR"],
         key_value_pair: &[],
     },
     Application {
@@ -115,12 +115,17 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
     },
     Application {
         namespace: "unalias",
-        single_value: &[],
+        single_value: &["KEY"],
         key_value_pair: &[],
     },
     Application {
         namespace: "theme",
         single_value: &["d3os", "boring", "debug"],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "window_manager",
+        single_value: &[],
         key_value_pair: &[],
     },
 ];

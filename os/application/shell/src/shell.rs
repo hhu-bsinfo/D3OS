@@ -181,6 +181,7 @@ pub fn main() {
 // TODO FEAT: Add help BuildIn
 // TODO FEAT: Show && and || executions with build ins (assume extern applications to always succeed)
 // TODO FEAT: Add = args syntax to auto completion (KEY=VALUE)
+// TODO FEAT: Add usage to suggestion that does not autocomplete
 
 // TODO IMPROVEMENT: Rework Token creation with less repetition (Assign rules to different kinds??? EolRule, reqCmdRule, ...)
 // TODO IMPROVEMENT: Token should accept string in constructor (multi char token are no longer a special case)
@@ -190,8 +191,5 @@ pub fn main() {
 // TODO IMPROVEMENT: Restore Lexer, Parser Separation
 // TODO IMPROVEMENT: Detach short / long flag from single flags / key value pairs
 
-// Should all be addressed with ArgKind migration
-// TODO IMPROVEMENT: Move ArgumentKind management into AutoCompletion, remove it from Tokens
+// TODO FIX: Unalias currently broken
 // TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)
-// TODO FIX: ArgumentKind not updating in terminal
-// TODO FIX: Only generic arg suggestion after first generic arg is selected
