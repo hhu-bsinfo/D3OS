@@ -32,7 +32,7 @@
 //
 
 use crate::memory::{PAGE_SIZE, frames};
-use crate::{apic, device, interrupt_dispatcher, pci_bus, process_manager, scheduler};
+use crate::process_manager;
 use core::{ptr, slice};
 use log::info;
 // for allocator impl
@@ -43,18 +43,14 @@ use core::ptr::NonNull;
 // lock free algorithms and datastructes
 // queues: different queue implementations
 // mpsc : has the jiffy queue ; lock-free unbounded
-use nolock::queues::{mpmc, mpsc};
 
-use pci_types::{CommandRegister, EndpointHeader};
 // smoltcp provides a full network stack for creating packets, sending, receiving etc.
 use alloc::vec::Vec;
 use smoltcp::phy;
 use smoltcp::phy::{DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
-use spin::{Mutex, RwLock};
 
 // for writing to the registers
-use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};

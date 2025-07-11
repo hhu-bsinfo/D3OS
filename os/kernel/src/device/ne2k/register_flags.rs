@@ -110,13 +110,13 @@ bitflags! {
 bitflags! {
 
     pub struct InterruptStatusRegister : u8 {
-        const ISR_PRX = 0x01;
-        const ISR_PTX = 0x02;
-        const ISR_RXE = 0x04;
-        const ISR_TXE = 0x08;
-        const ISR_OVW = 0x10;
-        const ISR_CNT = 0x20;
-        const ISR_RDC = 0x40;
+        const ISR_PRX = 0x01; //packet received
+        const ISR_PTX = 0x02; //packet transmitted
+        const ISR_RXE = 0x04; //receive error
+        const ISR_TXE = 0x08; // transmit error
+        const ISR_OVW = 0x10; // overwrite warning
+        const ISR_CNT = 0x20; // counter overflow
+        const ISR_RDC = 0x40; // dma complete
         const ISR_RST = 0x80;  // Reset Status
     }
 }

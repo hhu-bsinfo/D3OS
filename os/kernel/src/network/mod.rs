@@ -15,14 +15,9 @@ use smoltcp::time::Instant;
 use smoltcp::wire::Ipv4Address;
 use spin::{Mutex, Once, RwLock};
 
-use smoltcp::socket::udp::{PacketBuffer, PacketMetadata, Socket};
-use smoltcp::wire::{IpAddress, IpEndpoint};
-
 static RTL8139: Once<Arc<Rtl8139>> = Once::new();
 // ensure that the driver is only initialized once
-//static NE2000: Once<Arc<Mutex<Ne2000>>> = Once::new();
 static NE2000: Once<Arc<Ne2000>> = Once::new();
-//static NE2000: Once<Arc<Ne2000>> = Once::new();
 
 static INTERFACES: RwLock<Vec<Interface>> = RwLock::new(Vec::new());
 static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
@@ -55,7 +50,6 @@ pub fn init() {
         ));
     }*/
 
-    // TODO: Implement NE2000.rs
     // Register the Ne2000 card here
     // wrap into Arc for shared ownership
     // Scans PCI bus for Ne2000 cards or similar by looking at the device id and vendor id.
@@ -65,10 +59,12 @@ pub fn init() {
         NE2000.call_once(|| {
             info!("\x1b[1;31mFound Realtek 8029 network controller");
             //let ne2k = Arc::new(Ne2000::new(devices2[0]));
-            let mut device = Ne2000::new(devices2[0]);
+            let device = Ne2000::new(devices2[0]);
             let ne2k = Arc::new(device);
 
+            //read the mac address
             info!("\x1b[1;31mNe2000 MAC address: [{}]", ne2k.read_mac());
+            //enable interrupt handler
             Ne2000::assign(Arc::clone(&ne2k));
             info!("assigned Interrupt handler");
             ne2k
@@ -155,7 +151,8 @@ pub fn send_datagram(
     socket.send_slice(data, (destination, port))
 }
 
-fn poll_sockets() {
+// disabled fore the rtl8139.rs
+/*fn poll_sockets() {
     let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
     let mut interfaces = INTERFACES.write();
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
@@ -168,7 +165,7 @@ fn poll_sockets() {
     for interface in interfaces.iter_mut() {
         interface.poll(time, device, &mut sockets);
     }
-}
+}*/
 
 // poll for ne2k
 
@@ -177,35 +174,23 @@ fn poll_ne2000() {
     // interfaces stores a Vector off all added Network Interfaces
     // Cast Arc<Ne2000> to &mut Ne2000 for poll:
     let now = Instant::from_millis(timer().systime_ms() as i64);
-    let ne = NE2000.get().unwrap();
+    let ne = NE2000
+        .get()
+        .expect("[poll_ne2000] : Ne2000 not initialized.");
     let dev_ne2k = unsafe { ptr::from_ref(ne.deref()).cast_mut().as_mut().unwrap() };
 
+    // initialize Interfaces and sockets
     let mut interfaces = INTERFACES.write();
     let mut sockets = SOCKETS.get().expect("Socket set not initialized").write();
 
-    // Crate UDP socket with buffers
-    //let rx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
-    //let tx_buffer = PacketBuffer::new(vec![PacketMetadata::EMPTY], vec![0; 512]);
-    //let socket = Socket::new(rx_buffer, tx_buffer);
-    //let handle = sockets.add(socket);
-
-    // Bind, enqueue packet
-    //let mut sock = sockets.get_mut::<Socket>(handle);
-    // choose 1234 as the local port to listen on
-    // socket receives incoming udp datagrams to that port
-    //sock.bind(1234).unwrap();
-
-    //let destination = IpEndpoint::new(IpAddress::v4(10, 0, 2, 2), 1798);
-    //sock.send_slice(b"i hope this works", destination).unwrap();
-
-    //info!("i hope this works (before loop)");
     // start interface
-    let mut counter: u8 = 0;
+    //let mut counter: u8 = 0;
+    // iterate through every interface and call the poll method
     for iface in interfaces.iter_mut() {
         //info!("Polling, Iteration: {}", counter);
         // check if smoltcp processes something
-        //info!("i hope this works");
+        // poll calls the receive and transmit methods of the device impl in networks_stack/mod.rs
+        // checking if any packets have been send or received
         iface.poll(now, dev_ne2k, &mut sockets);
-        counter += 1;
     }
 }

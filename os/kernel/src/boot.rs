@@ -300,7 +300,12 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         //It is strongly recommended that the random seed is different on each boot, to avoid problems with TCP port/sequence collisions.
         //The seed doesn’t have to be cryptographically secure.
         // https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Config.html
+        info!(
+            "MAC Address in boot.rs, added to iface config: {}",
+            ne2000.read_mac()
+        );
         let mut conf = iface::Config::new(HardwareAddress::from(ne2000.read_mac()));
+
         conf.random_seed = time as u64;
         let device_ne2k = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
         // create the network interface
@@ -342,6 +347,32 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
         .expect("Failed to send UDP datagram");
 
+    let datagram = b"Please Don't leave me here";
+    let socket = network::open_socket(network::SocketType::Udp);
+    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
+    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
+        .expect("Failed to send UDP datagram");
+
+    let datagram = b"Please Don't leave me here";
+    let socket = network::open_socket(network::SocketType::Udp);
+    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
+    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
+        .expect("Failed to send UDP datagram");
+    let datagram = b"Please Don't leave me here";
+    let socket = network::open_socket(network::SocketType::Udp);
+    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
+    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
+        .expect("Failed to send UDP datagram");
+    let datagram = b"Please Don't leave me here";
+    let socket = network::open_socket(network::SocketType::Udp);
+    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
+    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
+        .expect("Failed to send UDP datagram");
+    let datagram = b"Please Don't leave me here";
+    let socket = network::open_socket(network::SocketType::Udp);
+    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
+    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
+        .expect("Failed to send UDP datagram");
     let datagram = b"Please Don't leave me here";
     let socket = network::open_socket(network::SocketType::Udp);
     network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");

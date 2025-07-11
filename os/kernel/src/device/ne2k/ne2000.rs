@@ -129,7 +129,7 @@ pub struct Registers {
     rsar1: Port<u8>,
     rbcr0: Port<u8>,
     rbcr1: Port<u8>,
-    data_port: Port<u16>,
+    data_port: Port<u8>,
     // add Mutex (05.07.2025)
     isr_port: Mutex<Port<u8>>,
     imr_port: Mutex<Port<u8>>,
@@ -628,7 +628,6 @@ impl Ne2000 {
 
     pub fn send_packet(&mut self, packet: &[u8]) {
         let packet_length = packet.len() as u16;
-        info!("i hope this works");
 
         // check, if the nic is ready for transmit
         unsafe {
@@ -638,7 +637,6 @@ impl Ne2000 {
             //    info!("{transmit_status}");
             //}
 
-            info!("i hope this works 2");
             while CR::from_bits_retain(self.registers.command_port.read()).contains(CR::TXP) {
                 scheduler().sleep(1);
                 info!("Transmit bit still set!");
@@ -703,7 +701,7 @@ impl Ne2000 {
             let data_port = &mut self.registers.data_port;
 
             for &data in packet {
-                data_port.write(data as u16);
+                data_port.write(data);
             }
 
             // 6) Poll ISR until remote DMA Bit is set
@@ -719,6 +717,7 @@ impl Ne2000 {
                 .write(InterruptStatusRegister::ISR_RDC.bits());
 
             // Set TBCR Bits before Transmit and TPSR Bit
+            //
 
             self.registers.tbcr0_p0.write(low);
             self.registers.tbcr1_p0.write(high);
@@ -747,6 +746,7 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
 
+            // as long as packets are there to be processed, loop
             while current != CURRENT_NEXT_PAGE_POINTER {
                 // write size of header
                 self.registers
@@ -795,6 +795,8 @@ impl Ne2000 {
                 if (packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits()) != 0
                     && packet_header.length as u32 <= MAXIMUM_ETHERNET_PACKET_SIZE as u32
                 {
+                    // get an empty packet from the receive_buffers_empty queue for
+                    // saving the data
                     let mut packet = self
                         .receive_buffers_empty
                         .0
@@ -819,11 +821,12 @@ impl Ne2000 {
                         // slice indices must be of type usize
                         packet[i as usize] = self.registers.data_port.read() as u8;
                     }
+                    // enqueue the packet in the receive_messages queue, this queue gets processed by
+                    // receive in smoltcp
                     self.receive_messages
                         .1
                         .try_enqueue(packet)
                         .expect("Error enqueuing packet");
-                    info!("testing");
                 }
                 // update pointers for the next package
                 CURRENT_NEXT_PAGE_POINTER = packet_header.next_packet;
@@ -835,6 +838,7 @@ impl Ne2000 {
                         .write(CURRENT_NEXT_PAGE_POINTER - 1);
                 }
             }
+            // clear the RDC Interrupt (Remote DMA Operation is complete)
             self.registers
                 .isr_port
                 .lock()
@@ -946,7 +950,7 @@ impl Ne2000 {
             //10. take nic out of loopback
             self.registers.tcr_port.write(0);
 
-            //11. if resend = 1, reset variable, reissure transmit command
+            //11. if resend = 1, reset variable, reissue transmit command
             if resend == 1 {
                 self.registers
                     .command_port
@@ -962,9 +966,8 @@ impl Ne2000 {
     }
 }
 
+// the interrupt handler holds a shared reference to the Ne2000 device
 pub struct Ne2000InterruptHandler {
-    // Added Mutex, because i need shared, mutable access for the handle_overflow method,
-    // without it there is no interior mutability to safely call the method
     device: Arc<Ne2000>,
 }
 
@@ -976,6 +979,8 @@ impl Ne2000InterruptHandler {
     }
 }
 
+// gets called, if the nic receives or transmits a package
+// or if an Buffer Overflow occurs
 impl InterruptHandler for Ne2000InterruptHandler {
     fn trigger(&self) {
         // a mutex is required for IMR and ISR, because these registers are also used by the
@@ -993,7 +998,7 @@ impl InterruptHandler for Ne2000InterruptHandler {
         let status = InterruptStatusRegister::from_bits_retain(status_reg);
 
         // Check interrupt flags
-        // Packet Reception Flag set (PRX) ?
+        // Packet Reception Flag set (PRX) ? (Packet received?)
         if status.contains(InterruptStatusRegister::ISR_PRX) {
             // reset prx bit in isr
             unsafe {
@@ -1003,8 +1008,6 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .lock()
                     .write(InterruptStatusRegister::ISR_PRX.bits());
             }
-            // call the packet received method
-            info!("RECEIVE");
 
             // `self.device` is of type `Arc<Ne2000>`, which is the shared reference
             let device_ref: &Ne2000 = &self.device; // This is a shared reference
@@ -1019,16 +1022,9 @@ impl InterruptHandler for Ne2000InterruptHandler {
             };
 
             // mutable reference device_mut
+            // call the packet received method
             device_mut.receive_packet(); // Call the method with mutable reference
-            info!("AFTER RECEIVE");
 
-        // from rtl8139
-        /*let mut queue = device.send_queue.0.lock();
-        let mut buffer = queue.try_dequeue();
-        while buffer.is_ok() {
-            unsafe { frames::free(buffer.unwrap()) };
-            buffer = queue.try_dequeue();
-        }*/
         // check for Packet Transmission Interrupt
         } else if status.contains(InterruptStatusRegister::ISR_PTX) {
             // reset ptx bit in isr
@@ -1039,9 +1035,8 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .lock()
                     .write(InterruptStatusRegister::ISR_PTX.bits());
             }
-            info!("Transmit");
         }
-        // write overwrite Method
+        // check for an buffer overflow
         if status.contains(InterruptStatusRegister::ISR_OVW) {
             // `self.device` is of type `Arc<Ne2000>`, which is the shared reference
             let device_ref: &Ne2000 = &self.device; // This is a shared reference
@@ -1054,8 +1049,8 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .as_mut() // Convert the raw pointer back to a mutable reference
                     .unwrap() // Unwrap to ensure it’s valid
             };
+            // call the method
             device_mut.handle_overflow_interrupt();
-            info!("Overflow");
         }
     }
 }
