@@ -13,6 +13,7 @@ use crate::{
         theme_context::ThemeContext, tokens_context::TokensContext,
     },
     event::{
+        event::Event,
         event_bus::EventBus,
         event_handler::{Error, EventHandler, Response},
     },
@@ -41,6 +42,10 @@ impl EventHandler for Writer {
 
     fn on_process_completed(&mut self, _event_bus: &mut EventBus) -> Result<Response, Error> {
         self.write_at_dirty()
+    }
+
+    fn on_process_failed(&mut self, event_bus: &mut EventBus, error: &Error) -> Result<Response, Error> {
+        self.write_error(event_bus, error)
     }
 }
 
@@ -93,6 +98,22 @@ impl Writer {
         self.tokens_provider.borrow_mut().mark_status_clean();
         self.suggestion_provider.borrow_mut().mark_clean();
 
+        Ok(Response::Ok)
+    }
+
+    fn write_error(&mut self, event_bus: &mut EventBus, error: &Error) -> Result<Response, Error> {
+        let theme = self.theme_provider.borrow().get_current();
+        let line_break = if error.is_in_execution { "" } else { "\n" };
+        print!(
+            "{}{}{}\x1b[0m\n{}{}\x1b[0m{}",
+            line_break,
+            theme.error_msg,
+            error.message,
+            theme.error_hint,
+            error.hint.as_deref().unwrap_or(""),
+            line_break
+        );
+        event_bus.trigger(Event::PrepareNewLine);
         Ok(Response::Ok)
     }
 

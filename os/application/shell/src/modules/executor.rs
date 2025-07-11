@@ -92,7 +92,7 @@ impl Executor {
         };
         match thread {
             Some(thread) => thread.join(),
-            None => return Err(Error::new_inline("Command not found!".to_string(), None)),
+            None => return Err(Error::new_mid_execution("Command not found!".to_string(), None)),
         }
 
         Ok(Response::Ok)
@@ -130,6 +130,6 @@ impl Executor {
             ));
         }
 
-        Error::new_inline(message, Some(hint))
+        Error::new_mid_execution(message, Some(hint))
     }
 }

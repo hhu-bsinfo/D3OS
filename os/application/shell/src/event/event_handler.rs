@@ -14,7 +14,7 @@ pub enum Response {
 pub struct Error {
     pub(crate) message: String,
     pub(crate) hint: Option<String>,
-    pub(crate) start_inline: bool,
+    pub(crate) is_in_execution: bool,
 }
 
 impl Error {
@@ -22,15 +22,15 @@ impl Error {
         Self {
             message,
             hint,
-            start_inline: false,
+            is_in_execution: false,
         }
     }
 
-    pub fn new_inline(message: String, hint: Option<String>) -> Self {
+    pub fn new_mid_execution(message: String, hint: Option<String>) -> Self {
         Self {
             message,
             hint,
-            start_inline: true,
+            is_in_execution: true,
         }
     }
 }
@@ -62,6 +62,10 @@ pub trait EventHandler {
     }
 
     fn on_process_completed(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
+        Ok(Response::Ignore)
+    }
+
+    fn on_process_failed(&mut self, event_bus: &mut EventBus, error: &Error) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 

@@ -9,7 +9,7 @@ mod modules;
 
 use core::cell::RefCell;
 
-use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use logger::info;
 use modules::{command_line::CommandLine, executor::Executor, history::History, writer::Writer};
 use runtime::env::Args;
@@ -126,46 +126,34 @@ impl Shell {
 
         loop {
             while let Some(event) = self.event_bus.process() {
-                let Err(error) = self.handle_event(&event) else {
+                let Err(error) = self.handle_event(event) else {
                     continue;
                 };
-                self.handle_error(error);
+                self.event_bus.clear();
+                self.event_bus.trigger(Event::ProcessFailed(error));
             }
 
-            self.handle_event(&Event::ProcessCompleted);
+            self.handle_event(Event::ProcessCompleted);
 
             let input_event = self.await_input_event();
-            self.handle_event(&input_event);
+            self.handle_event(input_event);
         }
     }
 
-    fn handle_error(&mut self, error: Error) {
-        let theme = self.theme_provider.borrow().get_current();
-        let line_break = if error.start_inline { "" } else { "\n" };
-        println!(
-            "{}{}{}\x1b[0m\n{}{}\x1b[0m",
-            line_break,
-            theme.error_msg,
-            error.message,
-            theme.error_hint,
-            error.hint.unwrap_or(String::new()),
-        );
-        self.event_bus.trigger(Event::PrepareNewLine);
-    }
-
-    fn handle_event(&mut self, event: &Event) -> Result<(), Error> {
+    fn handle_event(&mut self, event: Event) -> Result<(), Error> {
         info!("Events in queue: {:?}", self.event_bus);
         info!("Processing event: {:?}", event);
         for event_handler in &mut self.modules {
             let result = match event {
-                Event::KeyPressed(key) => event_handler.on_key_pressed(&mut self.event_bus, *key),
-                Event::CursorMoved(step) => event_handler.on_cursor_moved(&mut self.event_bus, *step),
+                Event::KeyPressed(key) => event_handler.on_key_pressed(&mut self.event_bus, key),
+                Event::CursorMoved(step) => event_handler.on_cursor_moved(&mut self.event_bus, step),
                 Event::HistoryRestored => event_handler.on_history_restored(&mut self.event_bus),
                 Event::LineWritten => event_handler.on_line_written(&mut self.event_bus),
                 Event::TokensWritten => event_handler.on_tokens_written(&mut self.event_bus),
                 Event::PrepareNewLine => event_handler.on_prepare_next_line(&mut self.event_bus),
                 Event::Submit => event_handler.on_submit(&mut self.event_bus),
                 Event::ProcessCompleted => event_handler.on_process_completed(&mut self.event_bus),
+                Event::ProcessFailed(ref error) => event_handler.on_process_failed(&mut self.event_bus, error),
             };
 
             if result.is_err() {
@@ -200,7 +188,6 @@ pub fn main() {
 // TODO IMPROVEMENT: Limit history len
 // TODO IMPROVEMENT: Limit alias len
 // TODO IMPROVEMENT: Restore Lexer, Parser Separation
-// TODO IMPROVEMENT: Move mkdir from builtin into application
 // TODO IMPROVEMENT: Detach short / long flag from single flags / key value pairs
 
 // Should all be addressed with ArgKind migration
