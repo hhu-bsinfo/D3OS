@@ -1,19 +1,10 @@
-use crate::modules::parser::token::{TokenContext, TokenContextFactory, TokenKind};
+use crate::token::token::{TokenContext, TokenContextFactory, TokenKind};
 
-pub struct BlankTokenContextFactory {}
+pub struct QuoteEndTokenContextFactory {}
 
-impl TokenContextFactory for BlankTokenContextFactory {
+impl TokenContextFactory for QuoteEndTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
-        TokenContext {
-            pos: 0,
-            line_pos: 0,
-            cmd_pos: None,
-            in_quote: None,
-            error: None,
-            require_cmd: false,
-            require_file: false,
-            has_background: false,
-        }
+        panic!("The first token can not be a end of quote");
     }
 
     fn create_after(prev_clx: &TokenContext, prev_content: &str, _kind: &TokenKind, _ch: char) -> TokenContext {
@@ -21,7 +12,7 @@ impl TokenContextFactory for BlankTokenContextFactory {
             pos: prev_clx.pos + 1,
             line_pos: prev_clx.line_pos + prev_content.len(),
             cmd_pos: prev_clx.cmd_pos,
-            in_quote: prev_clx.in_quote,
+            in_quote: None,
             error: prev_clx.error,
             require_cmd: prev_clx.require_cmd,
             require_file: prev_clx.require_file,

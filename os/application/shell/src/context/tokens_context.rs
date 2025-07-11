@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::modules::parser::token::{Token, TokenKind, TokenStatus};
+use crate::token::token::{Token, TokenKind, TokenStatus};
 
 #[derive(Debug, Clone)]
 pub struct TokensContext {

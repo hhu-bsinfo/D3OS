@@ -15,7 +15,7 @@ use crate::{
         event_bus::EventBus,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::parser::token::{Token, TokenKind},
+    token::token::{Token, TokenKind},
 };
 
 #[derive(Debug)]

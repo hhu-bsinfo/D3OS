@@ -3,42 +3,42 @@ use spin::Lazy;
 
 use crate::{
     event::event_handler::Error,
-    modules::parser::token::{TokenContext, TokenContextFactory, TokenKind},
+    token::token::{TokenContext, TokenContextFactory, TokenKind},
 };
 
-static REDIRECT_IN_APPEND_BEFORE_CMD_ERROR: Lazy<Error> = Lazy::new(|| {
+static REDIRECT_IN_TRUNCATE_BEFORE_CMD_ERROR: Lazy<Error> = Lazy::new(|| {
     Error::new(
         "Invalid command line".to_string(),
         Some(
-            "If you want to redirect some input, try moving << after a command (Example: cmd1 << file)\nIf you want << as normal char, try wrapping it in parentheses (Example: echo 'No << redirection')".to_string(),
+            "If you want to redirect some input, try moving < after a command (Example: cmd1 < file)\nIf you want < as normal char, try wrapping it in parentheses (Example: echo 'No < redirection')".to_string(),
         ),
     )
 });
 
-static REDIRECT_IN_APPEND_INSTEAD_OF_FILE_ERROR: Lazy<Error> = Lazy::new(|| {
+static REDIRECT_IN_TRUNCATE_INSTEAD_OF_FILE_ERROR: Lazy<Error> = Lazy::new(|| {
     Error::new(
         "Invalid command line".to_string(),
-        Some("Expected a filename but got <<".to_string()),
+        Some("Expected a filename but got <".to_string()),
     )
 });
 
-static REDIRECT_IN_APPEND_AFTER_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
+static REDIRECT_IN_TRUNCATE_AFTER_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
     Error::new(
         "Invalid command line".to_string(),
         Some("Expected end of line".to_string()),
     )
 });
 
-pub struct RedirectInAppendTokenContextFactory {}
+pub struct RedirectInTruncateTokenContextFactory {}
 
-impl TokenContextFactory for RedirectInAppendTokenContextFactory {
+impl TokenContextFactory for RedirectInTruncateTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
         TokenContext {
             pos: 0,
             line_pos: 0,
             cmd_pos: None,
             in_quote: None,
-            error: Some(&REDIRECT_IN_APPEND_BEFORE_CMD_ERROR),
+            error: Some(&REDIRECT_IN_TRUNCATE_BEFORE_CMD_ERROR),
             require_cmd: false,
             require_file: true,
             has_background: false,
@@ -48,11 +48,11 @@ impl TokenContextFactory for RedirectInAppendTokenContextFactory {
     fn create_after(prev_clx: &TokenContext, prev_content: &str, _kind: &TokenKind, _ch: char) -> TokenContext {
         let error = prev_clx.error.or_else(|| {
             if prev_clx.cmd_pos.is_none() {
-                Some(&REDIRECT_IN_APPEND_BEFORE_CMD_ERROR)
+                Some(&REDIRECT_IN_TRUNCATE_BEFORE_CMD_ERROR)
             } else if prev_clx.require_file {
-                Some(&REDIRECT_IN_APPEND_INSTEAD_OF_FILE_ERROR)
+                Some(&REDIRECT_IN_TRUNCATE_INSTEAD_OF_FILE_ERROR)
             } else if prev_clx.has_background {
-                Some(&REDIRECT_IN_APPEND_AFTER_BACKGROUND_ERROR)
+                Some(&REDIRECT_IN_TRUNCATE_AFTER_BACKGROUND_ERROR)
             } else {
                 None
             }

@@ -6,6 +6,7 @@ mod built_in;
 mod context;
 mod event;
 mod modules;
+mod token;
 
 use core::cell::RefCell;
 
@@ -28,7 +29,7 @@ use crate::{
         event_bus::EventBus,
         event_handler::{Error, EventHandler},
     },
-    modules::{auto_completion::AutoCompletion, parser::parser::Parser},
+    modules::{auto_completion::AutoCompletion, lexer::Lexer, parser::Parser},
 };
 
 #[derive(Debug, Default)]
@@ -79,10 +80,9 @@ impl Shell {
         if !cfg.no_history {
             modules.push(Box::new(History::new(line_provider.clone())));
         }
-        modules.push(Box::new(Parser::new(
+        modules.push(Box::new(Lexer::new(
             line_provider.clone(),
             tokens_provider.clone(),
-            executable_provider.clone(),
             alias_provider.clone(),
         )));
         if !cfg.no_auto_completion {
@@ -98,6 +98,10 @@ impl Shell {
             indicator_provider.clone(),
             suggestion_provider.clone(),
             theme_provider.clone(),
+        )));
+        modules.push(Box::new(Parser::new(
+            tokens_provider.clone(),
+            executable_provider.clone(),
         )));
         modules.push(Box::new(Executor::new(
             executable_provider.clone(),

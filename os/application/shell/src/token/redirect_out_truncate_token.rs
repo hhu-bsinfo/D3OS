@@ -3,7 +3,7 @@ use spin::Lazy;
 
 use crate::{
     event::event_handler::Error,
-    modules::parser::token::{TokenContext, TokenContextFactory, TokenKind},
+    token::token::{TokenContext, TokenContextFactory, TokenKind},
 };
 
 static REDIRECT_OUT_TRUNCATE_BEFORE_CMD_ERROR: Lazy<Error> = Lazy::new(|| {

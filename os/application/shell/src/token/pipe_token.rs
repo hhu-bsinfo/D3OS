@@ -3,58 +3,56 @@ use spin::Lazy;
 
 use crate::{
     event::event_handler::Error,
-    modules::parser::token::{TokenContext, TokenContextFactory, TokenKind},
+    token::token::{TokenContext, TokenContextFactory, TokenKind},
 };
 
-static BG_BEFORE_CMD_ERROR: Lazy<Error> = Lazy::new(|| {
+static PIPE_BEFORE_CMD_ERROR: Lazy<Error> = Lazy::new(|| {
     Error::new(
         "Invalid command line".to_string(),
         Some(
-            "If you want to use a background execution, try moving & after the command (Example: cmd1 arg1 arg2 &)
-If you want & as normal char, try wrapping it in parentheses (Example: echo 'No & background execution')"
-                .to_string(),
+            "If you want to use a pipe, try moving | between commands (Example: cmd1 | cmd2)\nIf you want | as normal char, try wrapping it in parentheses (Example: echo 'No | pipe')".to_string(),
         ),
     )
 });
 
-static BACKGROUND_INSTEAD_OF_FILE_ERROR: Lazy<Error> = Lazy::new(|| {
+static PIPE_INSTEAD_OF_FILE_ERROR: Lazy<Error> = Lazy::new(|| {
     Error::new(
         "Invalid command line".to_string(),
-        Some("Expected a filename but got &".to_string()),
+        Some("Expected a filename but got |".to_string()),
     )
 });
 
-static MULTIPLE_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
+static PIPE_AFTER_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
     Error::new(
         "Invalid command line".to_string(),
         Some("Expected end of line".to_string()),
     )
 });
 
-pub struct BackgroundTokenContextFactory {}
+pub struct PipeTokenContextFactory {}
 
-impl TokenContextFactory for BackgroundTokenContextFactory {
+impl TokenContextFactory for PipeTokenContextFactory {
     fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
         TokenContext {
             pos: 0,
             line_pos: 0,
             cmd_pos: None,
             in_quote: None,
-            error: Some(&BG_BEFORE_CMD_ERROR),
-            require_cmd: false,
+            error: Some(&PIPE_BEFORE_CMD_ERROR),
+            require_cmd: true,
             require_file: false,
-            has_background: true,
+            has_background: false,
         }
     }
 
     fn create_after(prev_clx: &TokenContext, prev_content: &str, _kind: &TokenKind, _ch: char) -> TokenContext {
         let error = prev_clx.error.or_else(|| {
             if prev_clx.cmd_pos.is_none() {
-                Some(&BG_BEFORE_CMD_ERROR)
+                Some(&PIPE_BEFORE_CMD_ERROR)
             } else if prev_clx.require_file {
-                Some(&BACKGROUND_INSTEAD_OF_FILE_ERROR)
+                Some(&PIPE_INSTEAD_OF_FILE_ERROR)
             } else if prev_clx.has_background {
-                Some(&MULTIPLE_BACKGROUND_ERROR)
+                Some(&PIPE_AFTER_BACKGROUND_ERROR)
             } else {
                 None
             }
@@ -66,9 +64,9 @@ impl TokenContextFactory for BackgroundTokenContextFactory {
             cmd_pos: None,
             in_quote: None,
             error,
-            require_cmd: false,
+            require_cmd: true,
             require_file: false,
-            has_background: true,
+            has_background: prev_clx.has_background,
         }
     }
 }

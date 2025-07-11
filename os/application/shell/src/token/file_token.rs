@@ -3,25 +3,25 @@ use spin::Lazy;
 
 use crate::{
     event::event_handler::Error,
-    modules::parser::token::{TokenContext, TokenContextFactory, TokenKind},
+    token::token::{TokenContext, TokenContextFactory, TokenKind},
 };
 
-static NESTED_QUOTE_ERROR: Lazy<Error> = Lazy::new(|| {
+pub struct FileTokenContextFactory {}
+
+static FILE_AFTER_BACKGROUND_ERROR: Lazy<Error> = Lazy::new(|| {
     Error::new(
         "Invalid command line".to_string(),
-        Some("Nesting quotes is not supported".to_string()),
+        Some("Expected end of line".to_string()),
     )
 });
 
-pub struct QuoteStartTokenContextFactory {}
-
-impl TokenContextFactory for QuoteStartTokenContextFactory {
-    fn create_first(_kind: &TokenKind, ch: char) -> TokenContext {
+impl TokenContextFactory for FileTokenContextFactory {
+    fn create_first(_kind: &TokenKind, _ch: char) -> TokenContext {
         TokenContext {
             pos: 0,
             line_pos: 0,
             cmd_pos: None,
-            in_quote: Some(ch),
+            in_quote: None,
             error: None,
             require_cmd: false,
             require_file: false,
@@ -29,10 +29,10 @@ impl TokenContextFactory for QuoteStartTokenContextFactory {
         }
     }
 
-    fn create_after(prev_clx: &TokenContext, prev_content: &str, _kind: &TokenKind, ch: char) -> TokenContext {
+    fn create_after(prev_clx: &TokenContext, prev_content: &str, _kind: &TokenKind, _ch: char) -> TokenContext {
         let error = prev_clx.error.or_else(|| {
-            if prev_clx.in_quote.is_some() {
-                Some(&NESTED_QUOTE_ERROR)
+            if prev_clx.has_background {
+                Some(&FILE_AFTER_BACKGROUND_ERROR)
             } else {
                 None
             }
@@ -42,10 +42,10 @@ impl TokenContextFactory for QuoteStartTokenContextFactory {
             pos: prev_clx.pos + 1,
             line_pos: prev_clx.line_pos + prev_content.len(),
             cmd_pos: prev_clx.cmd_pos,
-            in_quote: Some(ch),
+            in_quote: prev_clx.in_quote,
             error,
-            require_cmd: prev_clx.require_cmd,
-            require_file: prev_clx.require_file,
+            require_cmd: false,
+            require_file: false,
             has_background: prev_clx.has_background,
         }
     }

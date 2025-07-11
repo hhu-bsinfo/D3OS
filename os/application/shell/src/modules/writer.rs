@@ -17,7 +17,7 @@ use crate::{
         event_bus::EventBus,
         event_handler::{Error, EventHandler, Response},
     },
-    modules::parser::token::{Token, TokenKind, TokenStatus},
+    token::token::{Token, TokenKind, TokenStatus},
 };
 
 pub struct Writer {
