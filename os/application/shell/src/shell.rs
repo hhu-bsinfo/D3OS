@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-mod build_in;
+mod built_in;
 mod context;
 mod event;
 mod modules;
@@ -202,8 +202,6 @@ pub fn main() {
 // TODO IMPROVEMENT: Restore Lexer, Parser Separation
 // TODO IMPROVEMENT: Move mkdir from builtin into application
 // TODO IMPROVEMENT: Detach short / long flag from single flags / key value pairs
-// TODO IMPROVEMENT: Dont pass args in builtin constructor, instead in run method
-// TODO IMPROVEMENT: Construct builtins only once in executor constructor
 
 // Should all be addressed with ArgKind migration
 // TODO IMPROVEMENT: Move ArgumentKind management into AutoCompletion, remove it from Tokens

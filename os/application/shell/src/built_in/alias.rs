@@ -3,56 +3,62 @@ use core::cell::RefCell;
 use alloc::{
     rc::Rc,
     string::{String, ToString},
-    vec::Vec,
 };
 use terminal::{print, println};
 
-use crate::context::alias_context::AliasContext;
+use crate::{built_in::built_in::BuiltIn, context::alias_context::AliasContext};
 
-pub struct AliasBuildIn {
-    args: Vec<String>,
+pub struct AliasBuiltIn {
     alias_provider: Rc<RefCell<AliasContext>>,
 }
 
-impl AliasBuildIn {
-    pub fn new(args: Vec<&str>, alias_provider: Rc<RefCell<AliasContext>>) -> Self {
-        Self {
-            args: args.into_iter().map(String::from).collect(),
-            alias_provider,
-        }
+impl BuiltIn for AliasBuiltIn {
+    fn namespace(&self) -> &'static str {
+        "alias"
     }
 
-    pub fn start(&self) -> Result<(), ()> {
-        if self.args.is_empty() {
-            return self.list();
+    fn run(&mut self, args: &[&str]) -> isize {
+        if args.is_empty() {
+            return self.list_aliases();
         }
 
-        self.add()
+        self.set_alias(args)
+    }
+}
+
+impl AliasBuiltIn {
+    pub fn new(alias_provider: Rc<RefCell<AliasContext>>) -> Self {
+        Self { alias_provider }
     }
 
-    fn list(&self) -> Result<(), ()> {
+    fn list_aliases(&self) -> isize {
         let alias_clx = self.alias_provider.borrow();
         let entries = alias_clx.get_all();
         if entries.is_empty() {
             println!("No entries");
-            return Ok(());
+            return 0;
         }
 
         for entry in entries {
             println!("{}={}", entry.key, entry.value);
         }
-        Ok(())
+        0
     }
 
-    fn add(&self) -> Result<(), ()> {
-        let raw = self.args.join(" ");
+    fn set_alias(&self, args: &[&str]) -> isize {
+        let raw = args.join(" ");
         let mut split = raw.splitn(2, "=");
         let key = split.next().unwrap_or("");
-        let value = split.next().ok_or_else(|| Self::usage().err().unwrap())?;
-
-        let stripped_value = Self::strip_quotes(value)?;
+        let Ok(value) = split.next().ok_or_else(|| Self::print_usage()) else {
+            Self::print_usage();
+            return -1;
+        };
+        let Ok(stripped_value) = Self::strip_quotes(value) else {
+            Self::print_usage();
+            return -1;
+        };
         self.alias_provider.borrow_mut().set(key, &stripped_value);
-        Ok(())
+        0
     }
 
     fn strip_quotes(value: &str) -> Result<String, ()> {
@@ -69,8 +75,7 @@ impl AliasBuildIn {
         Ok(value.to_string())
     }
 
-    fn usage() -> Result<(), ()> {
+    fn print_usage() {
         println!("Usage: alias KEY=VALUE");
-        Err(())
     }
 }
