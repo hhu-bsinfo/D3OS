@@ -5,7 +5,6 @@ use alloc::{
     rc::Rc,
     string::{String, ToString},
 };
-use logger::warn;
 use terminal::print;
 
 use crate::{
@@ -94,9 +93,6 @@ impl Writer {
             self.dirty_suggestion(),
             self.restore_cursor_position()
         );
-
-        warn!("{:?}", self.tokens_provider.borrow().last());
-        warn!("{:?}", self.tokens_provider.borrow().status());
 
         self.line_provider.borrow_mut().mark_clean();
         self.tokens_provider.borrow_mut().mark_status_clean();

@@ -115,7 +115,7 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
     },
     Application {
         namespace: "unalias",
-        single_value: &["KEY"],
+        single_value: &["'KEY'"],
         key_value_pair: &[],
     },
     Application {

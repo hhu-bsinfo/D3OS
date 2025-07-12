@@ -187,10 +187,8 @@ pub fn main() {
 // TODO FEAT: Add = args syntax to auto completion (KEY=VALUE)
 // TODO FEAT: Add usage to suggestion that does not autocomplete
 
-// TODO IMPROVEMENT: Rework Token creation with less repetition (Assign rules to different kinds??? EolRule, reqCmdRule, ...)
 // TODO IMPROVEMENT: Limit line len
 // TODO IMPROVEMENT: Limit history len
 // TODO IMPROVEMENT: Limit alias len
 
-// TODO FIX: Unalias currently broken
 // TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)

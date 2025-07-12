@@ -42,7 +42,7 @@ impl AliasContext {
         self.entries[pos].value = value.to_string();
     }
 
-    pub fn remove(&mut self, key: &str) -> Result<(), ()> {
+    pub fn remove_with_key(&mut self, key: &str) -> Result<(), ()> {
         let position = match self.find_position(key) {
             Some(position) => position,
             None => return Err(()),

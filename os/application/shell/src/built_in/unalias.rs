@@ -21,13 +21,14 @@ impl BuiltIn for UnaliasBuiltIn {
         }
 
         let key = args.get(0).unwrap();
-        match self.alias_provider.borrow_mut().remove(key) {
+        match self.alias_provider.borrow_mut().remove_with_key(key) {
             Ok(_) => {
                 println!("Removed {}", key);
                 0
             }
             Err(_) => {
-                println!("Alias not found");
+                println!("Alias not found. Did you wrap the key in quotes?");
+                Self::print_usage();
                 -1
             }
         }
@@ -40,6 +41,6 @@ impl UnaliasBuiltIn {
     }
 
     fn print_usage() {
-        println!("Usage: unalias KEY");
+        println!("Usage: unalias 'KEY'");
     }
 }
