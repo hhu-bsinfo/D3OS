@@ -240,7 +240,7 @@ impl AutoCompletion {
 
             TokenKind::Argument => self.cycle_argument(token.as_str()),
 
-            TokenKind::Blank => match token.expect_command() {
+            TokenKind::Blank => match token.clx().segment.is_executable() {
                 true => self.cycle_command(&String::new()),
                 false => self.cycle_argument(&String::new()),
             },

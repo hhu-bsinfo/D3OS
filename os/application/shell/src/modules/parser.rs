@@ -67,7 +67,7 @@ impl Parser {
                 _ => (),
             }
 
-            if !token.has_segment_cmd() {
+            if !token.clx().segment.is_executable() {
                 let Ok(job) = job_builder.build() else {
                     continue;
                 };

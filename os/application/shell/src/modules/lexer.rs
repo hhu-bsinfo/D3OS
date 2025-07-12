@@ -111,7 +111,6 @@ impl Lexer {
         Ok(Response::Ok)
     }
 
-    // TODO FIX: echo " hhu " => " Heinrich Heine Universitaet ", but should be " hhu "
     fn retokenize_with_alias(&mut self) -> Result<Response, Error> {
         let mut tokens_clx = self.tokens_provider.borrow_mut();
         let mut line_clx = self.line_provider.borrow_mut();
@@ -251,9 +250,9 @@ impl Lexer {
         }
 
         // Else => create new ambiguous token
-        let next_kind = if last_token.clx().require_file {
+        let next_kind = if last_token.clx().next_segment.is_file() {
             TokenKind::File
-        } else if last_token.has_segment_cmd() {
+        } else if last_token.clx().segment.is_executable() {
             TokenKind::Argument
         } else {
             TokenKind::Command
@@ -280,7 +279,7 @@ impl Lexer {
                 return;
             }
             // Continue current quote if inside with different char
-            if last.is_in_quote() {
+            if last.clx().in_quote.is_some() {
                 tokens_clx
                     .push_to_last_token(ch)
                     .expect("Expected Tokens in quote to have dynamic content");

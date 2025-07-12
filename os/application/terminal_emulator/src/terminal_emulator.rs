@@ -105,5 +105,3 @@ pub fn main() {
     emulator.init();
     emulator.run()
 }
-
-// TODO#9 BUG: terminal won't print just parentheses (Example ['''''''] => [], [''''''] => [], ["'"'"'"] => [], but [a'b'c"d"e] => [a'b'c"d"e])

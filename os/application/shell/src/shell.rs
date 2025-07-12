@@ -182,9 +182,11 @@ pub fn main() {
 }
 
 // TODO FEAT: Add working directories!!!
-// TODO FEAT: Add help BuildIn
+// TODO FEAT: Add help BuiltIn
 // TODO FEAT: Show && and || executions with build ins (assume extern applications to always succeed)
-// TODO FEAT: Add = args syntax to auto completion (KEY=VALUE)
-// TODO FEAT: Add usage to suggestion that does not autocomplete
+// TODO FEAT: Add usage to suggestion without autocomplete
 
-// TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)
+// TODO IMPROVEMENT: Drop dirty tokens in O(1)
+
+// TODO FIX: Show error when line is incomplete
+// TODO FIX: echo " hhu " => " Heinrich Heine Universitaet ", but should be " hhu "

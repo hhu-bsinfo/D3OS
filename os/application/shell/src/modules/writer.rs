@@ -178,7 +178,7 @@ impl Writer {
         let mut formatted_tokens = String::new();
 
         for token in tokens_clx.slice_at_line_index(line_clx.get_dirty_index()) {
-            let dirty_content = token.as_str_at_line_index(line_clx.get_dirty_index());
+            let dirty_content = token.as_str_at_line_pos(line_clx.get_dirty_index());
             let color = self.token_color(token);
             formatted_tokens.push_str(color);
             formatted_tokens.push_str(dirty_content);

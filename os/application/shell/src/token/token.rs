@@ -47,15 +47,64 @@ impl TokenStatus {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Segment {
+    None,
+    Executable(usize),
+    File(usize),
+}
+
+impl Segment {
+    pub fn is_none(&self) -> bool {
+        *self == Segment::None
+    }
+
+    pub fn is_executable(&self) -> bool {
+        matches!(self, Segment::Executable(_))
+    }
+
+    pub fn is_file(&self) -> bool {
+        matches!(self, Segment::File(_))
+    }
+
+    pub fn pos(&self) -> Option<usize> {
+        match *self {
+            Segment::Executable(pos) => Some(pos),
+            Segment::File(pos) => Some(pos),
+            Segment::None => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SegmentType {
+    None,
+    Executable,
+    File,
+}
+
+impl SegmentType {
+    pub fn is_none(&self) -> bool {
+        *self == SegmentType::None
+    }
+
+    pub fn is_executable(&self) -> bool {
+        *self == SegmentType::Executable
+    }
+
+    pub fn is_file(&self) -> bool {
+        *self == SegmentType::File
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TokenContext {
     pub pos: usize,
     pub line_pos: usize,
-    pub cmd_pos: Option<usize>,
+    pub segment: Segment,
+    pub next_segment: SegmentType,
     pub in_quote: Option<char>,
-    pub require_cmd: bool,
-    pub require_file: bool,
-    pub has_background: bool,
+    pub is_end_of_line: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -92,12 +141,12 @@ impl Token {
         &self.content
     }
 
-    pub fn as_str_at_line_index(&self, index: usize) -> &str {
-        if index < self.clx.line_pos {
+    pub fn as_str_at_line_pos(&self, pos: usize) -> &str {
+        if pos < self.clx.line_pos {
             return &self.content;
         }
 
-        &self.content[index - self.clx.line_pos..]
+        &self.content[pos - self.clx.line_pos..]
     }
 
     pub fn to_string(&self) -> String {
@@ -124,30 +173,15 @@ impl Token {
         Ok(ch)
     }
 
-    pub fn is_ambiguous(&self) -> bool {
-        self.kind == TokenKind::Command || self.kind == TokenKind::Argument || self.kind == TokenKind::File
-    }
-
-    pub fn has_segment_cmd(&self) -> bool {
-        self.clx.cmd_pos.is_some()
-    }
-
-    pub fn is_in_quote(&self) -> bool {
-        self.clx.in_quote.is_some()
-    }
-
     pub fn is_in_quote_of(&self, ch: char) -> bool {
         self.clx.in_quote.is_some_and(|quote| quote == ch)
     }
 
-    pub fn expect_command(&self) -> bool {
-        self.clx.cmd_pos.is_none()
+    pub fn is_ambiguous(&self) -> bool {
+        matches!(self.kind, TokenKind::Command | TokenKind::Argument | TokenKind::File)
     }
 
     pub fn is_content_dynamic(&self) -> bool {
-        matches!(
-            self.kind,
-            TokenKind::Command | TokenKind::Argument | TokenKind::File | TokenKind::Blank
-        )
+        self.is_ambiguous() || self.kind == TokenKind::Blank
     }
 }
