@@ -67,11 +67,11 @@ args = [
     ## can be read with wireshark
     "-nic",
     "model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798",
-    #"model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798,mac=40:54:00:12:34:56",
     "-object",
-    "filter-dump,id=fd0,netdev=ne2k,file=ne2k.dump",
+    "filter-dump,id=filter0,netdev=ne2k,file=ne2k.dump",
+    #"filter-dump,id=fd0,netdev=ne2k,file=ne2k.dump",
+    #"model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798,mac=40:54:00:12:34:56",
     #    "-object",
-    #    "filter-dump,id=filter0,netdev=ne2k,file=ne2k.dump",
 
     # Audio configuration (Using pulse audio for Linux)
     "-audiodev",
