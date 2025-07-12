@@ -1,16 +1,3 @@
-pub mod and_token;
-pub mod argument_token;
-pub mod background_token;
-pub mod blank_token;
-pub mod command_token;
-pub mod file_token;
-pub mod or_token;
-pub mod pipe_token;
-pub mod quote_end_token;
-pub mod quote_start_token;
-pub mod redirect_in_append_token;
-pub mod redirect_in_truncate_token;
-pub mod redirect_out_append_token;
-pub mod redirect_out_truncate_token;
-pub mod separator_token;
+mod definition;
+pub mod factory;
 pub mod token;

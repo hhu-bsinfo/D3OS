@@ -5,6 +5,7 @@ use alloc::{
     rc::Rc,
     string::{String, ToString},
 };
+use logger::warn;
 use terminal::print;
 
 use crate::{
@@ -93,6 +94,9 @@ impl Writer {
             self.dirty_suggestion(),
             self.restore_cursor_position()
         );
+
+        warn!("{:?}", self.tokens_provider.borrow().last());
+        warn!("{:?}", self.tokens_provider.borrow().status());
 
         self.line_provider.borrow_mut().mark_clean();
         self.tokens_provider.borrow_mut().mark_status_clean();
@@ -203,7 +207,7 @@ impl Writer {
         let theme = self.theme_provider.borrow().get_current();
         match *status {
             TokenStatus::Valid => theme.indicator,
-            TokenStatus::Incomplete => theme.indicator_warning,
+            TokenStatus::Incomplete(_) => theme.indicator_warning,
             TokenStatus::Error(_) => theme.indicator_error,
         }
     }

@@ -1,45 +1,36 @@
 use alloc::string::{String, ToString};
 
-use crate::{
-    event::event_handler::Error,
-    token::{
-        and_token::AndTokenContextFactory, argument_token::ArgumentTokenContextFactory,
-        background_token::BackgroundTokenContextFactory, blank_token::BlankTokenContextFactory,
-        command_token::CommandTokenContextFactory, file_token::FileTokenContextFactory,
-        or_token::OrTokenContextFactory, pipe_token::PipeTokenContextFactory,
-        quote_end_token::QuoteEndTokenContextFactory, quote_start_token::QuoteStartTokenContextFactory,
-        redirect_in_append_token::RedirectInAppendTokenContextFactory,
-        redirect_in_truncate_token::RedirectInTruncateTokenContextFactory,
-        redirect_out_append_token::RedirectOutAppendTokenContextFactory,
-        redirect_out_truncate_token::RedirectOutTruncateTokenContextFactory,
-        separator_token::SeparatorTokenContextFactory,
-    },
-};
+use crate::event::event_handler::Error;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
+    // Ambiguous
     Command,
     Argument,
-    Blank,
+    File,
+    // Quote
     QuoteStart,
     QuoteEnd,
-    Pipe,
-    Separator,
-    Background,
-    And,
-    Or,
+    // Redirection
     RedirectInTruncate,
     RedirectInAppend,
     RedirectOutTruncate,
     RedirectOutAppend,
-    File,
+    // Logical Operator
+    And,
+    Or,
+    // Other
+    Blank,
+    Separator,
+    Pipe,
+    Background,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenStatus {
     Valid,
-    Incomplete,
-    Error(&'static Error),
+    Incomplete(Error),
+    Error(Error),
 }
 
 impl TokenStatus {
@@ -48,7 +39,7 @@ impl TokenStatus {
     }
 
     pub fn is_incomplete(&self) -> bool {
-        *self == Self::Incomplete
+        matches!(self, Self::Incomplete(_))
     }
 
     pub fn is_valid(&self) -> bool {
@@ -56,68 +47,15 @@ impl TokenStatus {
     }
 }
 
-#[allow(unused_variables)]
-pub trait TokenContextFactory {
-    fn create_first(content: &str) -> TokenContext;
-    fn create_after(prev_token: &Token, content: &str) -> TokenContext;
-}
-
-/// TODO docs: Difference to State: No changes after creation
 #[derive(Debug, Clone)]
 pub struct TokenContext {
-    // Position in tokens
     pub pos: usize,
     pub line_pos: usize,
-    // Position of Command in tokens, for the current segment
     pub cmd_pos: Option<usize>,
-    // Char of quote (if token is quote)
     pub in_quote: Option<char>,
-    pub error: Option<&'static Error>,
     pub require_cmd: bool,
     pub require_file: bool,
     pub has_background: bool,
-}
-
-impl TokenContext {
-    fn create_after(prev_token: &Token, kind: &TokenKind, content: &str) -> Self {
-        match kind {
-            TokenKind::Command => CommandTokenContextFactory::create_after(prev_token, content),
-            TokenKind::Argument => ArgumentTokenContextFactory::create_after(prev_token, content),
-            TokenKind::Blank => BlankTokenContextFactory::create_after(prev_token, content),
-            TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_after(prev_token, content),
-            TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_after(prev_token, content),
-            TokenKind::Pipe => PipeTokenContextFactory::create_after(prev_token, content),
-            TokenKind::Separator => SeparatorTokenContextFactory::create_after(prev_token, content),
-            TokenKind::Background => BackgroundTokenContextFactory::create_after(prev_token, content),
-            TokenKind::And => AndTokenContextFactory::create_after(prev_token, content),
-            TokenKind::Or => OrTokenContextFactory::create_after(prev_token, content),
-            TokenKind::RedirectInAppend => RedirectInAppendTokenContextFactory::create_after(prev_token, content),
-            TokenKind::RedirectInTruncate => RedirectInTruncateTokenContextFactory::create_after(prev_token, content),
-            TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::create_after(prev_token, content),
-            TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::create_after(prev_token, content),
-            TokenKind::File => FileTokenContextFactory::create_after(prev_token, content),
-        }
-    }
-
-    fn create_first(kind: &TokenKind, content: &str) -> Self {
-        match *kind {
-            TokenKind::Command => CommandTokenContextFactory::create_first(content),
-            TokenKind::Argument => ArgumentTokenContextFactory::create_first(content),
-            TokenKind::Blank => BlankTokenContextFactory::create_first(content),
-            TokenKind::QuoteStart => QuoteStartTokenContextFactory::create_first(content),
-            TokenKind::QuoteEnd => QuoteEndTokenContextFactory::create_first(content),
-            TokenKind::Pipe => PipeTokenContextFactory::create_first(content),
-            TokenKind::Separator => SeparatorTokenContextFactory::create_first(content),
-            TokenKind::Background => BackgroundTokenContextFactory::create_first(content),
-            TokenKind::And => AndTokenContextFactory::create_first(content),
-            TokenKind::Or => OrTokenContextFactory::create_first(content),
-            TokenKind::RedirectInAppend => RedirectInAppendTokenContextFactory::create_first(content),
-            TokenKind::RedirectInTruncate => RedirectInTruncateTokenContextFactory::create_first(content),
-            TokenKind::RedirectOutAppend => RedirectOutAppendTokenContextFactory::create_first(content),
-            TokenKind::RedirectOutTruncate => RedirectOutTruncateTokenContextFactory::create_first(content),
-            TokenKind::File => FileTokenContextFactory::create_first(content),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -125,31 +63,17 @@ pub struct Token {
     kind: TokenKind,
     content: String,
     clx: TokenContext,
+    status: TokenStatus,
 }
 
 impl Token {
-    pub fn new_first(kind: TokenKind, content: String) -> Self {
-        let clx = TokenContext::create_first(&kind, &content);
-        Self { kind, content, clx }
-    }
-
-    pub fn new_after(prev_token: &Token, kind: TokenKind, content: String) -> Self {
-        let clx = TokenContext::create_after(prev_token, &kind, &content);
-        Self { kind, content, clx }
-    }
-
-    fn check_status(&self) -> TokenStatus {
-        if self.clx.require_cmd {
-            return TokenStatus::Incomplete;
+    pub fn new(kind: TokenKind, content: String, clx: TokenContext, status: TokenStatus) -> Self {
+        Self {
+            kind,
+            content,
+            clx,
+            status,
         }
-        if self.clx.in_quote.is_some() {
-            return TokenStatus::Incomplete;
-        }
-        if self.clx.require_file {
-            return TokenStatus::Incomplete;
-        }
-
-        TokenStatus::Valid
     }
 
     pub fn kind(&self) -> &TokenKind {
@@ -160,11 +84,8 @@ impl Token {
         &self.clx
     }
 
-    pub fn status(&self) -> TokenStatus {
-        match self.clx.error {
-            Some(error) => TokenStatus::Error(error),
-            None => self.check_status(),
-        }
+    pub fn status(&self) -> &TokenStatus {
+        &self.status
     }
 
     pub fn as_str(&self) -> &str {
@@ -187,12 +108,16 @@ impl Token {
         self.content.len()
     }
 
-    pub fn push(&mut self, ch: char) {
+    pub fn push(&mut self, ch: char) -> Result<(), ()> {
+        if !self.is_content_dynamic() {
+            return Err(());
+        }
         self.content.push(ch);
+        Ok(())
     }
 
     pub fn pop(&mut self) -> Result<char, ()> {
-        if self.content.len() <= 1 {
+        if !self.is_content_dynamic() || self.content.len() <= 1 {
             return Err(());
         }
         let ch = self.content.pop().unwrap();
@@ -217,5 +142,12 @@ impl Token {
 
     pub fn expect_command(&self) -> bool {
         self.clx.cmd_pos.is_none()
+    }
+
+    pub fn is_content_dynamic(&self) -> bool {
+        matches!(
+            self.kind,
+            TokenKind::Command | TokenKind::Argument | TokenKind::File | TokenKind::Blank
+        )
     }
 }
