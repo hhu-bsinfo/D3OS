@@ -21,7 +21,7 @@ impl BuiltIn for UnaliasBuiltIn {
         }
 
         let key = args.get(0).unwrap();
-        match self.alias_provider.borrow_mut().remove_with_key(key) {
+        match self.alias_provider.borrow_mut().remove(key) {
             Ok(_) => {
                 println!("Removed {}", key);
                 0

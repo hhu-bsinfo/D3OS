@@ -187,8 +187,4 @@ pub fn main() {
 // TODO FEAT: Add = args syntax to auto completion (KEY=VALUE)
 // TODO FEAT: Add usage to suggestion that does not autocomplete
 
-// TODO IMPROVEMENT: Limit line len
-// TODO IMPROVEMENT: Limit history len
-// TODO IMPROVEMENT: Limit alias len
-
 // TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)

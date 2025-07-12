@@ -12,6 +12,8 @@ use crate::{
     },
 };
 
+const MAX_HISTORY_LEN: usize = 10;
+
 pub struct History {
     line_provider: Rc<RefCell<LineContext>>,
 
@@ -50,6 +52,10 @@ impl History {
     }
 
     fn add(&mut self) {
+        if self.history.len() >= MAX_HISTORY_LEN {
+            self.history.pop_back();
+        }
+
         let line_clx = self.line_provider.borrow();
         self.history.push_front(line_clx.get().clone());
     }

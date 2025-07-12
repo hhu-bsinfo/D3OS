@@ -14,6 +14,7 @@ use crate::{
 };
 
 const INDICATOR: char = '>';
+const MAX_LINE_LEN: usize = 256;
 
 pub struct CommandLine {
     line_provider: Rc<RefCell<LineContext>>,
@@ -94,6 +95,10 @@ impl CommandLine {
     }
 
     fn add_at_cursor(line_clx: &mut LineContext, event_bus: &mut EventBus, ch: char) -> Result<Response, Error> {
+        if line_clx.len() >= MAX_LINE_LEN {
+            return Ok(Response::Skip);
+        }
+
         line_clx.insert(line_clx.get_cursor_pos(), ch);
         line_clx.move_cursor_right(1);
         event_bus.trigger(Event::LineWritten);

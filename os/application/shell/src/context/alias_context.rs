@@ -3,6 +3,8 @@ use alloc::{
     vec::Vec,
 };
 
+use crate::event::event_handler::Error;
+
 #[derive(Debug, Default)]
 pub struct AliasContext {
     entries: Vec<AliasEntry>,
@@ -20,6 +22,7 @@ const INITIAL_ALIASES: &'static [(&'static str, &'static str)] = &[
     ("d3", "cargo make --no-workspace"),
     ("d3p", "cargo make --no-workspace --profile production"),
 ];
+const MAX_ALIAS_LEN: usize = 16;
 
 impl AliasContext {
     pub fn new() -> Self {
@@ -30,19 +33,24 @@ impl AliasContext {
         alias
     }
 
-    pub fn set(&mut self, key: &str, value: &str) {
-        let Some(pos) = self.find_position(key) else {
-            self.entries.push(AliasEntry {
-                key: key.to_string(),
-                value: value.to_string(),
-            });
-            return;
-        };
+    pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
+        if let Some(pos) = self.find_position(key) {
+            self.entries[pos].value = value.to_string();
+            return Ok(());
+        }
 
-        self.entries[pos].value = value.to_string();
+        if self.entries.len() >= MAX_ALIAS_LEN {
+            return Err(Error::new("Too many aliases".to_string(), None));
+        }
+
+        self.entries.push(AliasEntry {
+            key: key.to_string(),
+            value: value.to_string(),
+        });
+        Ok(())
     }
 
-    pub fn remove_with_key(&mut self, key: &str) -> Result<(), ()> {
+    pub fn remove(&mut self, key: &str) -> Result<(), ()> {
         let position = match self.find_position(key) {
             Some(position) => position,
             None => return Err(()),

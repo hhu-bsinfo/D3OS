@@ -57,7 +57,13 @@ impl AliasBuiltIn {
             Self::print_usage();
             return -1;
         };
-        self.alias_provider.borrow_mut().set(key, &stripped_value);
+
+        let mut alias_clx = self.alias_provider.borrow_mut();
+        if let Err(error) = alias_clx.set(key, &stripped_value) {
+            println!("{}", error.message);
+            return -1;
+        };
+
         0
     }
 
