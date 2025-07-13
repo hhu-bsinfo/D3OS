@@ -117,15 +117,31 @@ pub fn apply_message(
     if documents.write().current().is_none() {
         return;
     }
-    documents.write().current().unwrap().update(msg);
-    let mut msg = View::render(&documents.write().current().unwrap(), &mut canvas.write());
-    while msg.is_some() {
-        documents
-            .write()
-            .current()
-            .unwrap()
-            .update(Message::ViewMessage(msg.unwrap()));
-        msg = View::render(&documents.write().current().unwrap(), &mut canvas.write());
+    match documents.write().current() {
+        Some(d) => d.update(msg),
+        None => {
+            return;
+        }
+    };
+    let mut message = View::render(
+        match documents.write().current() {
+            Some(d) => d,
+            None => return,
+        },
+        &mut canvas.write(),
+    );
+    while let Some(msg) = message {
+        match documents.write().current() {
+            Some(d) => d.update(Message::ViewMessage(msg)),
+            None => return,
+        };
+        message = View::render(
+            match documents.write().current() {
+                Some(p) => p,
+                None => return,
+            },
+            &mut canvas.write(),
+        );
     }
 }
 
