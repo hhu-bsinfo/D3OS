@@ -128,4 +128,14 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
         single_value: &[],
         key_value_pair: &[],
     },
+    Application {
+        namespace: "debug_error",
+        single_value: &[],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "debug_success",
+        single_value: &[],
+        key_value_pair: &[],
+    },
 ];

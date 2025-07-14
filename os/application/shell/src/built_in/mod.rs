@@ -2,6 +2,8 @@ pub mod alias;
 pub mod built_in;
 pub mod cd;
 pub mod clear;
+pub mod debug_error;
+pub mod debug_success;
 pub mod echo;
 pub mod exit;
 pub mod mkdir;

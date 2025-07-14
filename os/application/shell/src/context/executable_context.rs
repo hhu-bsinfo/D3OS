@@ -9,10 +9,20 @@ pub enum Io {
     FileAppend(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum JobResult {
     Success,
     Error,
+}
+
+impl JobResult {
+    pub fn is_success(&self) -> bool {
+        *self == JobResult::Success
+    }
+
+    pub fn is_error(&self) -> bool {
+        *self == JobResult::Error
+    }
 }
 
 #[derive(Debug, Clone)]

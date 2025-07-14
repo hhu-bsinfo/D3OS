@@ -8,12 +8,13 @@ use alloc::{
     vec::Vec,
 };
 use concurrent::thread;
+use terminal::{print, println};
 
 use crate::{
     built_in::{
-        alias::AliasBuiltIn, built_in::BuiltIn, cd::CdBuiltIn, clear::ClearBuiltIn, echo::EchoBuiltIn,
-        exit::ExitBuiltIn, mkdir::MkdirBuiltIn, pwd::PwdBuiltIn, theme::ThemeBuiltIn, unalias::UnaliasBuiltIn,
-        window_manager::WindowManagerBuiltIn,
+        alias::AliasBuiltIn, built_in::BuiltIn, cd::CdBuiltIn, clear::ClearBuiltIn, debug_error::DebugErrorBuiltIn,
+        debug_success::DebugSuccessBuiltIn, echo::EchoBuiltIn, exit::ExitBuiltIn, mkdir::MkdirBuiltIn, pwd::PwdBuiltIn,
+        theme::ThemeBuiltIn, unalias::UnaliasBuiltIn, window_manager::WindowManagerBuiltIn,
     },
     context::{
         alias_context::AliasContext,
@@ -56,6 +57,8 @@ impl Executor {
         built_ins.push(Box::new(ThemeBuiltIn::new(theme_provider.clone())));
         built_ins.push(Box::new(UnaliasBuiltIn::new(alias_provider.clone())));
         built_ins.push(Box::new(WindowManagerBuiltIn::new()));
+        built_ins.push(Box::new(DebugSuccessBuiltIn::new()));
+        built_ins.push(Box::new(DebugErrorBuiltIn::new()));
 
         Self {
             executable_provider,
@@ -66,39 +69,44 @@ impl Executor {
     fn execute(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         let jobs = { self.executable_provider.borrow().get_jobs().clone() };
 
+        // Check if jobs contain unsupported operations
         for job in &jobs {
             if job.input != Io::Std || job.output != Io::Std || job.background_execution {
                 return Err(self.handle_unsupported_error(&jobs));
             }
         }
 
+        let mut exit_codes = Vec::with_capacity(jobs.len());
         for job in jobs {
-            match self.execute_job(&job) {
-                Ok(_) => continue,
-                Err(msg) => return Err(msg),
-            };
+            if Self::should_stop_on_dependency(&job, &exit_codes) {
+                break;
+            }
+
+            let exit_code = self.execute_job(&job);
+            exit_codes.push(exit_code);
         }
 
         event_bus.trigger(Event::PrepareNewLine);
         Ok(Response::Ok)
     }
 
-    fn execute_job(&mut self, job: &Job) -> Result<Response, Error> {
+    fn execute_job(&mut self, job: &Job) -> isize {
         let args: Vec<&str> = job.arguments.iter().map(String::as_str).collect();
 
-        let thread = match self.try_execute_build_in(&job.command, &args) {
-            Ok(_) => return Ok(Response::Ok),
-            Err(_) => thread::start_application(&job.command, args),
-        };
-        match thread {
-            Some(thread) => thread.join(),
-            None => return Err(Error::new_mid_execution("Command not found!".to_string(), None)),
+        if let Ok(built_in_exit_code) = self.execute_build_in(&job.command, &args) {
+            return built_in_exit_code;
         }
 
-        Ok(Response::Ok)
+        let Some(thread) = thread::start_application(&job.command, args) else {
+            println!("Command not found: {}", &job.command);
+            return -1;
+        };
+        // Extern applications don't yet provide a exit code => We assume success
+        thread.join();
+        0
     }
 
-    fn try_execute_build_in(&mut self, cmd: &str, args: &[&str]) -> Result<isize, ()> {
+    fn execute_build_in(&mut self, cmd: &str, args: &[&str]) -> Result<isize, ()> {
         self.built_ins
             .iter_mut()
             .find(|built_in| built_in.namespace() == cmd)
@@ -131,5 +139,14 @@ impl Executor {
         }
 
         Error::new_mid_execution(message, Some(hint))
+    }
+
+    fn should_stop_on_dependency(job: &Job, exit_codes: &[isize]) -> bool {
+        if let Some((idx, res)) = &job.requires_job {
+            if let Some(&prev_code) = exit_codes.get(*idx) {
+                return (res.is_success() && prev_code < 0) || (res.is_error() && prev_code >= 0);
+            }
+        }
+        false
     }
 }
