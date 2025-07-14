@@ -261,7 +261,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     network::init();
 
     // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
-    if let Some(rtl8139) = rtl8139()
+    /*if let Some(rtl8139) = rtl8139()
         && qemu_cfg::is_available()
     {
         let time = timer.systime_ms();
@@ -283,7 +283,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             .expect("Failed to add default route");
 
         network::add_interface(interface);
-    }
+    }*/
 
     // TODO: set up network interface for Ne2000
     // TODO: add ne2000() function
@@ -321,7 +321,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         // Ipv4Address::new : IP address + subnet prefix (10.0.2.16/24).
 
         interface.update_ip_addrs(|ips| {
-            ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 16)), 24))
+            ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
                 .expect("Failed to add IP address (Ne2000)");
         });
         // define gateway (ipv4 route)
@@ -338,46 +338,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     let datagram = b"Hello from D3OS!";
     let socket = network::open_socket(network::SocketType::Udp);
     network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
-        .expect("Failed to send UDP datagram");
-
-    let datagram = b"Don't leave me here";
-    let socket = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
-        .expect("Failed to send UDP datagram");
-
-    let datagram = b"Please Don't leave me here";
-    let socket = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
-        .expect("Failed to send UDP datagram");
-
-    let datagram = b"Please Don't leave me here";
-    let socket = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
-        .expect("Failed to send UDP datagram");
-    let datagram = b"Please Don't leave me here";
-    let socket = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
-        .expect("Failed to send UDP datagram");
-    let datagram = b"Please Don't leave me here";
-    let socket = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
-        .expect("Failed to send UDP datagram");
-    let datagram = b"Please Don't leave me here";
-    let socket = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
-        .expect("Failed to send UDP datagram");
-    let datagram = b"Please Don't leave me here";
-    let socket = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-    network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
-        .expect("Failed to send UDP datagram");
+    for _ in 0..1 {
+        network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
+            .expect("Failed to send UDP datagram");
+    }
+    //network::close_socket(socket);
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();

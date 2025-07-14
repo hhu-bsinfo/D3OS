@@ -29,6 +29,7 @@ use crate::device::ne2k::register_flags::ReceiveStatusRegister;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{PAGE_SIZE, frames};
 use crate::{apic, device, interrupt_dispatcher, pci_bus, process_manager, scheduler};
+use acpi::platform::interrupt;
 use core::mem;
 use core::ops::BitOr;
 use core::{ptr, slice};
@@ -173,6 +174,7 @@ impl Registers {
             rsar1: Port::new(base_address + 0x09),
             rbcr0: Port::new(base_address + 0x0A),
             rbcr1: Port::new(base_address + 0x0B),
+            // data port (or i/o port for reading received data)
             data_port: Port::new(base_address + 0x10),
             isr_port: Mutex::new(Port::new(base_address + 0x07)),
             rst_port: Port::new(base_address + 0x80),
@@ -219,15 +221,22 @@ impl Registers {
 // total buffer size = 58 * 256 Bytes  = 14.KiB
 
 // The Structure of the PacketHeader is definied in the datasheet
+// Header is 4 KB
 // TODO: add reference
 // receive status : holds the content of the Receive Status Register
 // next_packet : Pointer, which holds the next ringbuffer address
+// length : length of the received data
 
 #[repr(C)]
 struct PacketHeader {
     receive_status: u8,
     next_packet: u8,
     length: u8,
+}
+
+pub struct Interrupts {
+    ovw: bool,
+    rcv: bool,
 }
 
 // par_registers : store the MAC ADDRESS
@@ -268,6 +277,7 @@ pub struct Ne2000 {
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
     interrupt: InterruptVector,
+    interrupts: Interrupts,
 }
 
 impl Ne2000 {
@@ -291,6 +301,7 @@ impl Ne2000 {
         // send_queue.enqueue(13) -> enque data
         // see: https://docs.rs/nolock/latest/nolock/queues/mpsc/jiffy/index.html
         let send_queue = mpsc::jiffy::queue();
+        // enable interrupts
         let interrupt =
             InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 + 32).unwrap();
         let kernel_process = process_manager().read().kernel_process().unwrap();
@@ -327,6 +338,13 @@ impl Ne2000 {
                 .expect("Failed to enqueue receive buffer!");
         }
 
+        let interrupts = Interrupts {
+            ovw: (false),
+            rcv: (false),
+        };
+
+        // construct the ne2000 and return it at the end of the
+        // initialization
         let mut ne2000 = Self {
             registers: Registers::new(base_address),
             base_address: base_address,
@@ -336,24 +354,14 @@ impl Ne2000 {
             receive_buffer: Mutex::new(ReceiveBuffer::new()),
             receive_messages: mpmc::bounded::scq::queue(RECV_QUEUE_CAP),
             interrupt,
+            interrupts,
         };
 
-        //ne2000.init();
-        //let mut buffer = [0u8; 1514];
-        //let data = &mut buffer[..1514];
-        //ne2000.send_packet(data);
-
-        //}
-
-        //pub fn init(&mut self) {
         info!("\x1b[1;31mPowering on device");
+        // print an ascii banner to the log screen
         info!(include_str!("banner.txt"), " ", base_address);
-        scheduler().sleep(1500);
+        scheduler().sleep(1000);
         unsafe {
-            //command_port.write(0x02);
-            //let registers = &mut self.registers;
-            //let j = self.registers.isr_port.read();
-            //info!("ISR: {}", j);
             info!("\x1b[1;31mResetting Device NE2000");
 
             //Reset the NIC
@@ -371,13 +379,8 @@ impl Ne2000 {
             // just doing the read operation enables the reset, a write is not necessary, but the bits dont get set correctly
             // see spec in PDF
             //TODO:, add comments what registers are affected and which bits are set
-            let a = ne2000.registers.reset_port.read();
-            ne2000.registers.reset_port.write(a);
-            //info!("1: 0x{:X}", reset_port_value);
-            //reset_port.write(a);
-            //let isr_value = ne2000.registers.isr_port.read();
-            //info!("ISR: 0x{:X}", isr_value);
-            //self.registers.isr_port.write(isr_value);
+            let reset_value = ne2000.registers.reset_port.read();
+            ne2000.registers.reset_port.write(reset_value);
 
             // bitwise and operation, checks if highest bit is set
             while (ne2000.registers.isr_port.lock().read() & 0x80) == 0 {
@@ -399,14 +402,6 @@ impl Ne2000 {
             //scheduler().sleep(100);
 
             // Initialize DCR Register
-            //info!(
-            //    "DCR after setting bits: {:#x}",
-            //    (DataConfigurationRegister::DCR_AR
-            //        | DataConfigurationRegister::DCR_FT1
-            //        | DataConfigurationRegister::DCR_LS)
-            //        .bits()
-            //);
-
             // Command Register at Page 0 at this point
             ne2000.registers.dcr_port.write(
                 (DataConfigurationRegister::DCR_AR
@@ -414,8 +409,6 @@ impl Ne2000 {
                     | DataConfigurationRegister::DCR_LS)
                     .bits(),
             );
-            //ne2000.registers.command_port.write((CR::PAGE_2).bits());
-            //info!("dcr: {}", ne2000.registers.dcr_port.read());
 
             // clear RBCR1,0
             //RBCR0,1 : indicates the length of the block in bytes
@@ -466,10 +459,17 @@ impl Ne2000 {
             // Initialize Physical Address Register: PAR0-PAR5
             //each mac address bit is written two times into the buffer
 
-            //Read 6 bytes (MAC address)
-            /*for byte in mac.iter_mut() {
-                *byte = self.registers.data_port.read();
+            let mut packet = [0u8; 40];
+
+            for byte in packet.iter_mut() {
+                *byte = ne2000.registers.data_port.read();
             }
+
+            for byte in packet.iter_mut() {
+                info!("content: 0x{:02X} ", byte);
+            }
+
+            /*
 
             self.registers.par_0.write(mac[0]);
             self.registers.par_1.write(mac[1]);
@@ -477,12 +477,6 @@ impl Ne2000 {
             self.registers.par_3.write(mac[3]);
             self.registers.par_4.write(mac[4]);
             self.registers.par_5.write(mac[5]);*/
-
-            //ne2000
-            //    .registers
-            //    .command_port
-            //    .write((CR::PAGE_1 | CR::RD_1 | CR::STA).bits());
-
             let mut mac = [0u8; 6];
 
             let mut par_ports: [Port<u8>; 6] = [
@@ -517,28 +511,11 @@ impl Ne2000 {
             ne2000.registers.par_4.write(mac[4]);
             ne2000.registers.par_5.write(mac[5]);
 
+            //TODO: just for testing remove at end
             info!(
                 "NE2000 MAC address: [{:02X}-{:02X}-{:02X}-{:02X}-{:02X}-{:02X}]",
                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
             );
-
-            // Optionally switch back to Page 0
-            //ne2000
-            //    .registers
-            //    .command_port
-            //    .write((CR::PAGE_0 | CR::STOP_DMA | CR::STP).bits());
-
-            //let mut command_port = Port::<u8>::new(ne2000.base_address + 0x00);
-            //let cr = command_port.read();
-            //let ps = (cr >> 6) & 0b11;
-
-            /*match ps {
-                0 => info!("Currently on Page 0"),
-                1 => info!("Currently on Page 1"),
-                2 => info!("Currently on Page 2"),
-                3 => info!("Currently on Page 3"),
-                _ => unreachable!(),
-            }*/
 
             // located on Page 1
             /* 9) ii) Initialize Multicast Address Register: MAR0-MAR7 with 0xFF */
@@ -578,10 +555,6 @@ impl Ne2000 {
                     | ReceiveConfigurationRegister::RCR_AM)
                     .bits(),
             );
-            /*info!(
-                "CR REAd after init: {}",
-                ne2000.registers.command_port.read()
-            );*/
 
             //Set up Remote DMA to read from address 0x0000
             // RSAR0,1 : points to the start of the block of data to be transfered
@@ -990,16 +963,17 @@ impl InterruptHandler for Ne2000InterruptHandler {
         }
 
         // clear Interrupt Mask Register
-        // add mutex because Arc object,
         self.device.registers.write_imr(0);
 
         // Read interrupt status register (Each bit corresponds to an interrupt type or error)
         let status_reg = self.device.registers.read_isr();
+        info!("Hello from trigger");
         let status = InterruptStatusRegister::from_bits_retain(status_reg);
 
         // Check interrupt flags
         // Packet Reception Flag set (PRX) ? (Packet received?)
         if status.contains(InterruptStatusRegister::ISR_PRX) {
+            info!("Packet received");
             // reset prx bit in isr
             unsafe {
                 self.device
@@ -1024,9 +998,12 @@ impl InterruptHandler for Ne2000InterruptHandler {
             // mutable reference device_mut
             // call the packet received method
             device_mut.receive_packet(); // Call the method with mutable reference
+        }
 
         // check for Packet Transmission Interrupt
-        } else if status.contains(InterruptStatusRegister::ISR_PTX) {
+        if status.contains(InterruptStatusRegister::ISR_PTX) {
+            info!("Packet transmission");
+            //self.device.interrupts.ovw = true;
             // reset ptx bit in isr
             unsafe {
                 self.device
@@ -1034,6 +1011,13 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .isr_port
                     .lock()
                     .write(InterruptStatusRegister::ISR_PTX.bits());
+            }
+            // free the allocated memory after sending the packet
+            let mut queue = self.device.send_queue.0.lock();
+            let mut buffer = queue.try_dequeue();
+            while buffer.is_ok() {
+                unsafe { frames::free(buffer.unwrap()) };
+                buffer = queue.try_dequeue();
             }
         }
         // check for an buffer overflow
@@ -1055,6 +1039,7 @@ impl InterruptHandler for Ne2000InterruptHandler {
     }
 }
 
+// Tests, not working because of std remove at the end
 #[cfg(test)]
 mod tests {
     use super::CR;
