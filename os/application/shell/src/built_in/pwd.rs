@@ -1,9 +1,13 @@
-use naming::cwd;
+use core::cell::RefCell;
+
+use alloc::rc::Rc;
 use terminal::println;
 
-use crate::built_in::built_in::BuiltIn;
+use crate::{built_in::built_in::BuiltIn, context::working_directory_context::WorkingDirectoryContext};
 
-pub struct PwdBuiltIn {}
+pub struct PwdBuiltIn {
+    wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
+}
 
 impl BuiltIn for PwdBuiltIn {
     fn namespace(&self) -> &'static str {
@@ -11,22 +15,21 @@ impl BuiltIn for PwdBuiltIn {
     }
 
     fn run(&mut self, args: &[&str]) -> isize {
+        let wd_clx = self.wd_provider.borrow();
+
         if !args.is_empty() {
             Self::print_usage();
             return -1;
         }
-        let Ok(path) = cwd() else {
-            Self::print_usage();
-            return -1;
-        };
-        println!("{}", path);
+
+        println!("{}", wd_clx.pwd());
         0
     }
 }
 
 impl PwdBuiltIn {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(wd_provider: Rc<RefCell<WorkingDirectoryContext>>) -> Self {
+        Self { wd_provider }
     }
 
     fn print_usage() {

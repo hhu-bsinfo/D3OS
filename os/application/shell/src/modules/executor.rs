@@ -21,6 +21,7 @@ use crate::{
         alias_context::AliasContext,
         executable_context::{ExecutableContext, Io, Job},
         theme_context::ThemeContext,
+        working_directory_context::WorkingDirectoryContext,
     },
     event::{
         event::Event,
@@ -44,17 +45,18 @@ impl EventHandler for Executor {
 impl Executor {
     pub fn new(
         executable_provider: Rc<RefCell<ExecutableContext>>,
-        alias_provider: Rc<RefCell<AliasContext>>,
-        theme_provider: Rc<RefCell<ThemeContext>>,
+        alias_provider: &Rc<RefCell<AliasContext>>,
+        theme_provider: &Rc<RefCell<ThemeContext>>,
+        wd_provider: &Rc<RefCell<WorkingDirectoryContext>>,
     ) -> Self {
         let mut built_ins: Vec<Box<dyn BuiltIn>> = Vec::new();
         built_ins.push(Box::new(AliasBuiltIn::new(alias_provider.clone())));
-        built_ins.push(Box::new(CdBuiltIn::new()));
+        built_ins.push(Box::new(CdBuiltIn::new(wd_provider.clone())));
         built_ins.push(Box::new(ClearBuiltIn::new()));
         built_ins.push(Box::new(EchoBuiltIn::new()));
         built_ins.push(Box::new(ExitBuiltIn::new()));
-        built_ins.push(Box::new(MkdirBuiltIn::new()));
-        built_ins.push(Box::new(PwdBuiltIn::new()));
+        built_ins.push(Box::new(MkdirBuiltIn::new(wd_provider.clone())));
+        built_ins.push(Box::new(PwdBuiltIn::new(wd_provider.clone())));
         built_ins.push(Box::new(ThemeBuiltIn::new(theme_provider.clone())));
         built_ins.push(Box::new(UnaliasBuiltIn::new(alias_provider.clone())));
         built_ins.push(Box::new(WindowManagerBuiltIn::new()));

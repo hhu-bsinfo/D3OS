@@ -1,12 +1,13 @@
 use core::cell::RefCell;
 
 use alloc::{rc::Rc, string::ToString};
-use logger::{error, info, warn};
+use logger::info;
 
 use crate::{
     context::{
         executable_context::{ExecutableContext, Io, JobBuilder, JobResult},
         tokens_context::TokensContext,
+        working_directory_context::WorkingDirectoryContext,
     },
     event::{
         event_bus::EventBus,
@@ -17,7 +18,6 @@ use crate::{
 
 #[derive(Debug)]
 enum IoType {
-    None,
     InAppend,
     InTruncate,
     OutAppend,
@@ -25,9 +25,10 @@ enum IoType {
 }
 
 pub struct Parser {
-    current_io_type: IoType,
+    current_io_type: Option<IoType>,
     tokens_provider: Rc<RefCell<TokensContext>>,
     executable_provider: Rc<RefCell<ExecutableContext>>,
+    wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
 }
 
 impl EventHandler for Parser {
@@ -45,11 +46,13 @@ impl Parser {
     pub const fn new(
         tokens_provider: Rc<RefCell<TokensContext>>,
         executable_provider: Rc<RefCell<ExecutableContext>>,
+        wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
     ) -> Self {
         Self {
             tokens_provider,
             executable_provider,
-            current_io_type: IoType::None,
+            wd_provider,
+            current_io_type: None,
         }
     }
 
@@ -62,7 +65,7 @@ impl Parser {
 
         let mut job_builder = JobBuilder::new();
         job_builder.id(executable_clx.len());
-        self.current_io_type = IoType::None;
+        self.current_io_type = None;
 
         if let Some(last) = tokens.last() {
             match last.status() {
@@ -122,27 +125,28 @@ impl Parser {
                 }
 
                 TokenKind::File => {
-                    error!("{:?}", executable_clx.get_jobs());
-                    warn!("{:?}", self.current_io_type);
-                    match self.current_io_type {
-                        IoType::InAppend => job_builder.use_input(Io::FileAppend(token.to_string())),
-                        IoType::InTruncate => job_builder.use_input(Io::FileTruncate(token.to_string())),
-                        IoType::OutAppend => job_builder.use_output(Io::FileAppend(token.to_string())),
-                        IoType::OutTruncate => job_builder.use_output(Io::FileTruncate(token.to_string())),
-                        IoType::None => {
-                            return Err(Error::new(
-                                "Received file without redirection instruction".to_string(),
-                                None,
-                            ));
-                        }
+                    let Some(ref current_io_type) = self.current_io_type else {
+                        return Err(Error::new(
+                            "Received file without redirection instruction".to_string(),
+                            None,
+                        ));
                     };
-                    self.current_io_type = IoType::None;
+
+                    let wd_clx = self.wd_provider.borrow();
+                    let abs_path = wd_clx.resolve(&token.to_string());
+                    match current_io_type {
+                        IoType::InAppend => job_builder.use_input(Io::FileAppend(abs_path)),
+                        IoType::InTruncate => job_builder.use_input(Io::FileTruncate(abs_path)),
+                        IoType::OutAppend => job_builder.use_output(Io::FileAppend(abs_path)),
+                        IoType::OutTruncate => job_builder.use_output(Io::FileTruncate(abs_path)),
+                    };
+                    self.current_io_type = None;
                 }
 
-                TokenKind::RedirectInAppend => self.current_io_type = IoType::InAppend,
-                TokenKind::RedirectInTruncate => self.current_io_type = IoType::InTruncate,
-                TokenKind::RedirectOutAppend => self.current_io_type = IoType::OutAppend,
-                TokenKind::RedirectOutTruncate => self.current_io_type = IoType::OutTruncate,
+                TokenKind::RedirectInAppend => self.current_io_type = Some(IoType::InAppend),
+                TokenKind::RedirectInTruncate => self.current_io_type = Some(IoType::InTruncate),
+                TokenKind::RedirectOutAppend => self.current_io_type = Some(IoType::OutAppend),
+                TokenKind::RedirectOutTruncate => self.current_io_type = Some(IoType::OutTruncate),
 
                 TokenKind::QuoteStart | TokenKind::QuoteEnd | TokenKind::Blank | TokenKind::Separator => (),
             }

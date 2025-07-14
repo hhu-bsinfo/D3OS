@@ -1,9 +1,14 @@
+use core::cell::RefCell;
+
+use alloc::rc::Rc;
 use naming::mkdir;
 use terminal::println;
 
-use crate::built_in::built_in::BuiltIn;
+use crate::{built_in::built_in::BuiltIn, context::working_directory_context::WorkingDirectoryContext};
 
-pub struct MkdirBuiltIn {}
+pub struct MkdirBuiltIn {
+    wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
+}
 
 impl BuiltIn for MkdirBuiltIn {
     fn namespace(&self) -> &'static str {
@@ -11,11 +16,12 @@ impl BuiltIn for MkdirBuiltIn {
     }
 
     fn run(&mut self, args: &[&str]) -> isize {
+        let wd_clx = self.wd_provider.borrow();
         let Some(path) = args.get(0) else {
             Self::print_usage();
             return -1;
         };
-        if mkdir(path).is_err() {
+        if mkdir(&wd_clx.resolve(path)).is_err() {
             Self::print_usage();
             return -1;
         }
@@ -24,8 +30,8 @@ impl BuiltIn for MkdirBuiltIn {
 }
 
 impl MkdirBuiltIn {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(wd_provider: Rc<RefCell<WorkingDirectoryContext>>) -> Self {
+        Self { wd_provider }
     }
 
     fn print_usage() {

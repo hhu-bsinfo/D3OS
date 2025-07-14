@@ -22,7 +22,7 @@ use crate::{
     context::{
         alias_context::AliasContext, executable_context::ExecutableContext, indicator_context::IndicatorContext,
         line_context::LineContext, suggestion_context::SuggestionContext, theme_context::ThemeContext,
-        tokens_context::TokensContext,
+        tokens_context::TokensContext, working_directory_context::WorkingDirectoryContext,
     },
     event::{
         event::Event,
@@ -71,11 +71,13 @@ impl Shell {
         let executable_provider = Rc::new(RefCell::new(ExecutableContext::new()));
         let alias_provider = Rc::new(RefCell::new(AliasContext::new()));
         let theme_provider = Rc::new(RefCell::new(ThemeContext::new()));
+        let wd_provider = Rc::new(RefCell::new(WorkingDirectoryContext::new()));
 
         let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
         modules.push(Box::new(CommandLine::new(
             line_provider.clone(),
             indicator_provider.clone(),
+            wd_provider.clone(),
         )));
         if !cfg.no_history {
             modules.push(Box::new(History::new(line_provider.clone())));
@@ -102,11 +104,13 @@ impl Shell {
         modules.push(Box::new(Parser::new(
             tokens_provider.clone(),
             executable_provider.clone(),
+            wd_provider.clone(),
         )));
         modules.push(Box::new(Executor::new(
             executable_provider.clone(),
-            alias_provider.clone(),
-            theme_provider.clone(),
+            &alias_provider,
+            &theme_provider,
+            &wd_provider,
         )));
 
         Self {
@@ -181,8 +185,6 @@ pub fn main() {
     shell.run()
 }
 
-// TODO FEAT: Add working directories!!!
 // TODO FEAT: Add help BuiltIn
-// TODO FEAT: Add usage to suggestion without autocomplete
 
 // TODO IMPROVEMENT: Drop dirty tokens in O(1)

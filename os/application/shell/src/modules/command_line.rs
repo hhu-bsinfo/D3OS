@@ -1,11 +1,13 @@
 use core::cell::RefCell;
 
-use alloc::{format, rc::Rc, string::String};
-use naming::cwd;
+use alloc::{format, rc::Rc};
 use terminal::{DecodedKey, KeyCode};
 
 use crate::{
-    context::{indicator_context::IndicatorContext, line_context::LineContext},
+    context::{
+        indicator_context::IndicatorContext, line_context::LineContext,
+        working_directory_context::WorkingDirectoryContext,
+    },
     event::{
         event::Event,
         event_bus::EventBus,
@@ -19,6 +21,7 @@ const MAX_LINE_LEN: usize = 256;
 pub struct CommandLine {
     line_provider: Rc<RefCell<LineContext>>,
     indicator_provider: Rc<RefCell<IndicatorContext>>,
+    wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
 }
 
 impl EventHandler for CommandLine {
@@ -44,9 +47,10 @@ impl EventHandler for CommandLine {
     fn on_prepare_next_line(&mut self, _event_bus: &mut EventBus) -> Result<Response, Error> {
         let mut line_clx = self.line_provider.borrow_mut();
         let mut indicator_clx = self.indicator_provider.borrow_mut();
+        let wd_clx = self.wd_provider.borrow();
 
         line_clx.reset();
-        Self::set_prefix(&mut indicator_clx);
+        Self::set_indicator(&mut indicator_clx, &wd_clx);
         Ok(Response::Ok)
     }
 }
@@ -55,10 +59,12 @@ impl CommandLine {
     pub const fn new(
         line_provider: Rc<RefCell<LineContext>>,
         indicator_provider: Rc<RefCell<IndicatorContext>>,
+        wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
     ) -> Self {
         Self {
             line_provider,
             indicator_provider,
+            wd_provider,
         }
     }
 
@@ -67,8 +73,11 @@ impl CommandLine {
         Ok(Response::Ok)
     }
 
-    fn set_prefix(indicator_clx: &mut IndicatorContext) -> Result<Response, Error> {
-        let string = format!("{}{} ", cwd().unwrap_or(String::new()), INDICATOR);
+    fn set_indicator(
+        indicator_clx: &mut IndicatorContext,
+        wd_clx: &WorkingDirectoryContext,
+    ) -> Result<Response, Error> {
+        let string = format!("{}{} ", wd_clx.pwd(), INDICATOR);
         indicator_clx.set(&string);
         Ok(Response::Ok)
     }
