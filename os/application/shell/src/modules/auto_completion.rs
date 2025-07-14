@@ -235,6 +235,13 @@ impl AutoCompletion {
             return self.cycle_command(&String::new());
         };
 
+        if token.clx().is_end_of_line {
+            return None;
+        }
+        if token.clx().require_file {
+            return Some("PATH".to_string());
+        }
+
         match token.kind() {
             TokenKind::Command => self.cycle_command(token.as_str()),
 
