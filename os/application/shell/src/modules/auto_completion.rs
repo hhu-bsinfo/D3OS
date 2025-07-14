@@ -160,18 +160,18 @@ impl AutoCompletion {
             self.current_key_value_idx = None;
             return;
         };
-        let Some(current_key_idx) = self.current_key_value_idx else {
-            return;
-        };
+
         let tokens_clx = self.tokens_provider.borrow_mut();
         let Some(last_arg_token) = tokens_clx.find_last_argument_in_segment() else {
             self.current_key_value_idx = None;
             return;
         };
 
-        let (current_key, _values) = current_app.key_value_pair[current_key_idx];
-        if current_key == last_arg_token.as_str() {
-            return;
+        if let Some(idx) = self.current_key_value_idx {
+            let (current_key, _values) = current_app.key_value_pair[idx];
+            if current_key == last_arg_token.as_str() {
+                return;
+            }
         }
 
         let Some(found_idx) = current_app
@@ -241,8 +241,8 @@ impl AutoCompletion {
             TokenKind::Argument => self.cycle_argument(token.as_str()),
 
             TokenKind::Blank => match token.clx().cmd_pos_in_segment {
-                Some(_) => self.cycle_command(&String::new()),
-                None => self.cycle_argument(&String::new()),
+                Some(_) => self.cycle_argument(&String::new()),
+                None => self.cycle_command(&String::new()),
             },
 
             _ => None,
