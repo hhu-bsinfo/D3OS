@@ -54,19 +54,25 @@ impl Parser {
     }
 
     fn parse(&mut self) -> Result<Response, Error> {
-        let tokens_clx = self.tokens_provider.borrow();
         let mut executable_clx = self.executable_provider.borrow_mut();
+        let tokens_clx = self.tokens_provider.borrow();
+        let tokens = tokens_clx.get();
+
+        warn!("{:#?}", tokens);
 
         let mut job_builder = JobBuilder::new();
         job_builder.id(executable_clx.len());
         self.current_io_type = IoType::None;
 
-        for token in tokens_clx.get() {
-            match token.status() {
+        if let Some(last) = tokens.last() {
+            match last.status() {
                 TokenStatus::Error(error) => return Err((*error).clone()),
+                TokenStatus::Incomplete(error) => return Err((*error).clone()),
                 _ => (),
             }
+        }
 
+        for token in tokens {
             if !token.clx().segment.is_executable() {
                 let Ok(job) = job_builder.build() else {
                     continue;

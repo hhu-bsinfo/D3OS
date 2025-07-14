@@ -103,7 +103,7 @@ pub const D3OS_THEME: Theme = Theme {
     // Other
     cmd: D3OS_BLUE,
     arg: D3OS_GREEN,
-    file: D3OS_BLUE,
+    file: PALE_BLUE,
     pipe: DEFAULT,
     background: DEFAULT,
     separator: DEFAULT,

@@ -187,5 +187,4 @@ pub fn main() {
 
 // TODO IMPROVEMENT: Drop dirty tokens in O(1)
 
-// TODO FIX: Show error when line is incomplete
 // TODO FIX: echo " hhu " => " Heinrich Heine Universitaet ", but should be " hhu "
