@@ -1,0 +1,22 @@
+Built‑In Commands (2 of 2):
+
+  exit
+      Exit the shell.
+      Example: exit
+
+  mkdir DIR
+      Create directory named DIR.
+      Example: mkdir ./myDir
+
+  pwd
+      Print working directory.
+      Example: pwd
+
+  theme NAME
+      Set shell theme to NAME.
+      Available: d3os, boring, debug.
+      Example: theme debug
+
+Type “help controls” to see navigation keys.
+Type “help tokens”   to see special symbols.
+Type “help built‑in‑1” or “help built‑in‑2” for built‑ins.

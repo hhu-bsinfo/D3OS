@@ -179,7 +179,3 @@ pub fn main() {
     let mut shell = Shell::new(cfg);
     shell.run()
 }
-
-// TODO FEAT: Add help BuiltIn
-
-// TODO IMPROVEMENT: Drop dirty tokens in O(1)

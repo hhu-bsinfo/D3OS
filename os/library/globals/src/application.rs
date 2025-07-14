@@ -138,4 +138,9 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
         single_value: &[],
         key_value_pair: &[],
     },
+    Application {
+        namespace: "help",
+        single_value: &["controls", "tokens", "built-in-1", "built-in-2"],
+        key_value_pair: &[],
+    },
 ];

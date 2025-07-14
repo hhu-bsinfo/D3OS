@@ -14,8 +14,9 @@ use terminal::println;
 use crate::{
     built_in::{
         alias::AliasBuiltIn, built_in::BuiltIn, cd::CdBuiltIn, clear::ClearBuiltIn, debug_error::DebugErrorBuiltIn,
-        debug_success::DebugSuccessBuiltIn, echo::EchoBuiltIn, exit::ExitBuiltIn, mkdir::MkdirBuiltIn, pwd::PwdBuiltIn,
-        theme::ThemeBuiltIn, unalias::UnaliasBuiltIn, window_manager::WindowManagerBuiltIn,
+        debug_success::DebugSuccessBuiltIn, echo::EchoBuiltIn, exit::ExitBuiltIn, help::HelpBuiltIn,
+        mkdir::MkdirBuiltIn, pwd::PwdBuiltIn, theme::ThemeBuiltIn, unalias::UnaliasBuiltIn,
+        window_manager::WindowManagerBuiltIn,
     },
     context::{
         alias_context::AliasContext,
@@ -62,6 +63,7 @@ impl Executor {
         built_ins.push(Box::new(WindowManagerBuiltIn::new()));
         built_ins.push(Box::new(DebugSuccessBuiltIn::new()));
         built_ins.push(Box::new(DebugErrorBuiltIn::new()));
+        built_ins.push(Box::new(HelpBuiltIn::new()));
 
         Self {
             executable_provider,

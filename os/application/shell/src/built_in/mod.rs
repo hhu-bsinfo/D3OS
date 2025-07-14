@@ -6,6 +6,7 @@ pub mod debug_error;
 pub mod debug_success;
 pub mod echo;
 pub mod exit;
+pub mod help;
 pub mod mkdir;
 pub mod pwd;
 pub mod theme;
