@@ -231,7 +231,7 @@ impl Registers {
 struct PacketHeader {
     receive_status: u8,
     next_packet: u8,
-    length: u8,
+    length: u16,
 }
 
 pub struct Interrupts {
@@ -754,7 +754,7 @@ impl Ne2000 {
                         let length_without_header = length_u16 - size_of::<PacketHeader>() as u16;
 
                         // Return the length as u8
-                        length_without_header as u8
+                        length_without_header as u16
                     },
                 };
 
@@ -776,7 +776,9 @@ impl Ne2000 {
                         .try_dequeue()
                         .expect("Error dequeuing");
                     // Write packet length into RBCR
-                    self.registers.rbcr0.write(packet_header.length & 0xFF);
+                    self.registers
+                        .rbcr0
+                        .write(packet_header.length as u8 & 0xFF);
                     //self.registers.rbcr1.write(packet_header.length >> 8);
                     // fix overflow warning
                     let length: u16 = packet_header.length as u16;
@@ -789,7 +791,7 @@ impl Ne2000 {
                         .write((CR::STA | CR::REMOTE_READ | CR::PAGE_0).bits());
 
                     // Read Packet Data from I/O Port and write it into packet */
-                    self.registers.data_port.read() as u8;
+                    //self.registers.data_port.read() as u8;
                     for i in 0..packet_header.length {
                         // slice indices must be of type usize
                         packet[i as usize] = self.registers.data_port.read() as u8;
