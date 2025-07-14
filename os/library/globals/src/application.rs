@@ -29,53 +29,6 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
             ("-m", &["'message 1'", "'message 2'", "'message 3'"]),
         ],
     },
-    //////////////////////
-    // Extern Applications
-    Application {
-        namespace: "shell",
-        single_value: &["--no-history", "--no-auto-completion"],
-        key_value_pair: &[],
-    },
-    Application {
-        namespace: "date",
-        single_value: &[],
-        key_value_pair: &[],
-    },
-    Application {
-        namespace: "hello",
-        single_value: &["ARG"],
-        key_value_pair: &[],
-    },
-    Application {
-        namespace: "helloc",
-        single_value: &["ARG"],
-        key_value_pair: &[],
-    },
-    Application {
-        namespace: "keytest",
-        single_value: &["cooked", "mixed", "raw"],
-        key_value_pair: &[],
-    },
-    Application {
-        namespace: "legacy_shell",
-        single_value: &[],
-        key_value_pair: &[],
-    },
-    Application {
-        namespace: "ls",
-        single_value: &[],
-        key_value_pair: &[],
-    },
-    Application {
-        namespace: "ntest",
-        single_value: &[],
-        key_value_pair: &[],
-    },
-    Application {
-        namespace: "uptime",
-        single_value: &[],
-        key_value_pair: &[],
-    },
     /////////////////
     // Shell BuildIns
     Application {
@@ -141,6 +94,53 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
     Application {
         namespace: "help",
         single_value: &["controls", "tokens", "built-in-1", "built-in-2"],
+        key_value_pair: &[],
+    },
+    //////////////////////
+    // Extern Applications
+    Application {
+        namespace: "shell",
+        single_value: &["--no-history", "--no-auto-completion"],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "date",
+        single_value: &[],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "hello",
+        single_value: &["ARG"],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "helloc",
+        single_value: &["ARG"],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "keytest",
+        single_value: &["cooked", "mixed", "raw"],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "legacy_shell",
+        single_value: &[],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "ls",
+        single_value: &[],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "ntest",
+        single_value: &[],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "uptime",
+        single_value: &[],
         key_value_pair: &[],
     },
 ];
