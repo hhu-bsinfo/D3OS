@@ -24,8 +24,9 @@ impl TokenFactory {
         let clx = TokenContext {
             pos: 0,
             line_pos: 0,
-            segment: dto.segment,
-            next_segment: dto.next_segment,
+            cmd_pos_in_segment: dto.cmd_pos_in_segment,
+            require_segment: dto.require_segment,
+            require_file: dto.require_file,
             in_quote: dto.in_quote,
             is_end_of_line: dto.is_end_of_line,
         };
@@ -52,8 +53,9 @@ impl TokenFactory {
         let clx = TokenContext {
             pos: prev.clx().pos + 1,
             line_pos: prev.clx().line_pos + prev.len(),
-            segment: dto.segment.unwrap_or(prev_clx.segment.clone()),
-            next_segment: dto.next_segment.unwrap_or(prev_clx.next_segment.clone()),
+            cmd_pos_in_segment: dto.cmd_pos_in_segment.unwrap_or(prev_clx.cmd_pos_in_segment.clone()),
+            require_segment: dto.require_segment.unwrap_or(prev_clx.require_segment),
+            require_file: dto.require_file.unwrap_or(prev_clx.require_file),
             in_quote: dto.in_quote.unwrap_or(prev_clx.in_quote),
             is_end_of_line: dto.is_end_of_line.unwrap_or(prev_clx.is_end_of_line),
         };
@@ -95,9 +97,9 @@ impl TokenFactory {
     fn get_incomplete_status(clx: &TokenContext) -> Option<TokenStatus> {
         let reason = if clx.in_quote.is_some() {
             "Quote has not been closed"
-        } else if clx.next_segment.is_executable() {
+        } else if clx.require_segment {
             "Expected command but got end of line"
-        } else if clx.next_segment.is_file() {
+        } else if clx.require_file {
             "Expected file but got end of line"
         } else {
             return None;

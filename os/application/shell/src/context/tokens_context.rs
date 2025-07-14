@@ -110,7 +110,7 @@ impl TokensContext {
             Some(token) => token,
             None => return None,
         };
-        let last_command_pos = match last_token.clx().segment.pos() {
+        let last_command_pos = match last_token.clx().cmd_pos_in_segment {
             Some(pos) => pos,
             None => return None,
         };
@@ -119,7 +119,7 @@ impl TokensContext {
 
     pub fn find_last_argument_in_segment(&self) -> Option<&Token> {
         for token in self.tokens.iter().rev() {
-            if token.clx().segment.is_none() {
+            if token.clx().cmd_pos_in_segment.is_none() {
                 return None;
             }
             if *token.kind() == TokenKind::Argument {

@@ -250,9 +250,9 @@ impl Lexer {
         }
 
         // Else => create new ambiguous token
-        let next_kind = if last_token.clx().next_segment.is_file() {
+        let next_kind = if last_token.clx().require_file {
             TokenKind::File
-        } else if last_token.clx().segment.is_executable() {
+        } else if last_token.clx().cmd_pos_in_segment.is_some() {
             TokenKind::Argument
         } else {
             TokenKind::Command

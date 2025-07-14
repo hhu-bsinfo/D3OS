@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use alloc::{rc::Rc, string::ToString};
-use logger::{info, warn};
+use logger::{error, info, warn};
 
 use crate::{
     context::{
@@ -58,7 +58,7 @@ impl Parser {
         let tokens_clx = self.tokens_provider.borrow();
         let tokens = tokens_clx.get();
 
-        warn!("{:#?}", tokens);
+        // warn!("{:#?}", tokens);
 
         let mut job_builder = JobBuilder::new();
         job_builder.id(executable_clx.len());
@@ -73,7 +73,7 @@ impl Parser {
         }
 
         for token in tokens {
-            if !token.clx().segment.is_executable() {
+            if !token.clx().cmd_pos_in_segment.is_some() {
                 let Ok(job) = job_builder.build() else {
                     continue;
                 };
@@ -122,6 +122,7 @@ impl Parser {
                 }
 
                 TokenKind::File => {
+                    error!("{:?}", executable_clx.get_jobs());
                     warn!("{:?}", self.current_io_type);
                     match self.current_io_type {
                         IoType::InAppend => job_builder.use_input(Io::FileAppend(token.to_string())),

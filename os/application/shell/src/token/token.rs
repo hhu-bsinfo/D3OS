@@ -47,62 +47,13 @@ impl TokenStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Segment {
-    None,
-    Executable(usize),
-    File(usize),
-}
-
-impl Segment {
-    pub fn is_none(&self) -> bool {
-        *self == Segment::None
-    }
-
-    pub fn is_executable(&self) -> bool {
-        matches!(self, Segment::Executable(_))
-    }
-
-    pub fn is_file(&self) -> bool {
-        matches!(self, Segment::File(_))
-    }
-
-    pub fn pos(&self) -> Option<usize> {
-        match *self {
-            Segment::Executable(pos) => Some(pos),
-            Segment::File(pos) => Some(pos),
-            Segment::None => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum SegmentType {
-    None,
-    Executable,
-    File,
-}
-
-impl SegmentType {
-    pub fn is_none(&self) -> bool {
-        *self == SegmentType::None
-    }
-
-    pub fn is_executable(&self) -> bool {
-        *self == SegmentType::Executable
-    }
-
-    pub fn is_file(&self) -> bool {
-        *self == SegmentType::File
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct TokenContext {
     pub pos: usize,
     pub line_pos: usize,
-    pub segment: Segment,
-    pub next_segment: SegmentType,
+    pub cmd_pos_in_segment: Option<usize>,
+    pub require_segment: bool,
+    pub require_file: bool,
     pub in_quote: Option<char>,
     pub is_end_of_line: bool,
 }

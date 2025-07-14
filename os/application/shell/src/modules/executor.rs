@@ -69,7 +69,7 @@ impl Executor {
 
     fn execute(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         let jobs = { self.executable_provider.borrow().get_jobs().clone() };
-        warn!("{:?}", jobs);
+        warn!("{:#?}", jobs);
         // Check if jobs contain unsupported operations
         for job in &jobs {
             if job.input != Io::Std || job.output != Io::Std || job.background_execution {
