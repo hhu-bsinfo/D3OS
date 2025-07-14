@@ -2,23 +2,14 @@
 // FILE        : network_stack/mod.rs
 // AUTHOR      : Johann Spenrath
 // DESCRIPTION : file includes the network stack for the NE2000 driver
+//               which is provided by the smoltcp crate
 // =============================================================================
-//
-//
 //
 // TODO:
 //
 // NOTES:
 //
-// =============================================================================
 //
-//
-//
-//
-//
-//
-//
-
 // =============================================================================
 //
 //
@@ -57,6 +48,15 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
 
 use super::ne2000::*;
+
+// from OSDEV WIKI
+// NIC uses two ring buffers for packet handling, which are made of 256 Byte Pages
+// TODO: add reference and integrate into code
+const NE2K_PAGES: usize = 64;
+const NE2K_PAGE_BYTES: usize = 256;
+const BUFFER_RING_BYTES: usize = NE2K_PAGES * NE2K_PAGE_BYTES;
+// => (16 KiB + 4 KiB -1)/4 KiB = 4 pages
+const FRAME_PAGES: usize = (BUFFER_RING_BYTES + PAGE_SIZE - 1) / PAGE_SIZE;
 
 const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
 const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
@@ -268,7 +268,7 @@ impl phy::Device for Ne2000 {
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // disable receive for now; only transmit exists
         //self.transmit(_timestamp).map(|tx| (Ne2000RxToken, tx))
-        let mut device = unsafe { ptr::from_ref(self).as_ref()? };
+        let device = unsafe { ptr::from_ref(self).as_ref()? };
         //info!("==> receive() requested by smoltcp!");
         match self.receive_messages.0.try_dequeue() {
             Ok(recv_buf) => Some((
@@ -283,7 +283,7 @@ impl phy::Device for Ne2000 {
     // Needed because RxToken and TxToken store a shared reference to the driver (not &mut self). See RTL8139 impl
     // Returns a TxToken, which accepts the packet contents
     fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
-        let mut device = unsafe { ptr::from_ref(self).as_ref()? };
+        //let device = unsafe { ptr::from_ref(self).as_ref()? };
         //info!("==> transmit() requested by smoltcp!");
         Some(Ne2000TxToken::new(self))
     }

@@ -81,12 +81,14 @@ use super::network_stack::*;
 
 //type Ne2000Device = Arc<Mutex<Ne2000>>;
 const RECV_QUEUE_CAP: usize = 16;
-static RESET: u8 = 0x1F;
-static TRANSMIT_START_PAGE: u8 = 0x40;
+
 const DISPLAY_RED: &'static str = "\x1b[1;31m";
 static MINIMUM_ETHERNET_PACKET_SIZE: u8 = 64;
 static MAXIMUM_ETHERNET_PACKET_SIZE: u32 = 1522;
 static mut CURRENT_NEXT_PAGE_POINTER: u8 = 0x00;
+
+// Buffer Start Page for the transmitted pages
+static TRANSMIT_START_PAGE: u8 = 0x40;
 
 // Reception Buffer Ring Start Page
 // http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
@@ -168,7 +170,11 @@ impl Registers {
     pub fn new(base_address: u16) -> Self {
         // TODO: replace hex with Register names defined in a different struct for better readibility
         Self {
+            // Adress for reseting the device
+            // TODO: add OSDEV WIKI reference
             reset_port: Port::new(base_address + 0x1F),
+            // command Port for controlling the CR Register
+            //(starting, stopping the nic, switching between pages)
             command_port: Port::new(base_address + 0x00),
             rsar0: Port::new(base_address + 0x08),
             rsar1: Port::new(base_address + 0x09),
@@ -358,9 +364,6 @@ impl Ne2000 {
         };
 
         info!("\x1b[1;31mPowering on device");
-        // print an ascii banner to the log screen
-        info!(include_str!("banner.txt"), " ", base_address);
-        scheduler().sleep(1000);
         unsafe {
             info!("\x1b[1;31mResetting Device NE2000");
 
@@ -591,6 +594,9 @@ impl Ne2000 {
                 info!("MAC ADRESS INIT: {}", EthernetAddress::from_bytes(&mac));
             }*/
             info!("\x1b[1;31mFinished Initialization");
+            // print an ascii banner to the log screen
+            info!(include_str!("banner.txt"), ne2000.read_mac(), base_address);
+            scheduler().sleep(1000);
         }
         //let dummy: [u8; 0] = [];
         //ne2000.send_packet(&dummy);
