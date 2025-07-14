@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use alloc::rc::Rc;
-use terminal::{print, println};
+use terminal::println;
 
 use crate::{built_in::built_in::BuiltIn, context::alias_context::AliasContext};
 

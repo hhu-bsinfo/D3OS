@@ -16,7 +16,7 @@ use modules::{command_line::CommandLine, executor::Executor, history::History, w
 use runtime::env::Args;
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{print, println, read::read_mixed};
+use terminal::{println, read::read_mixed};
 
 use crate::{
     context::{
@@ -186,7 +186,6 @@ pub fn main() {
 // TODO FEAT: Add usage to suggestion without autocomplete
 
 // TODO IMPROVEMENT: Drop dirty tokens in O(1)
-// TODO IMPROVEMENT: println! also requires print! import
 
 // TODO FIX: Show error when line is incomplete
 // TODO FIX: echo " hhu " => " Heinrich Heine Universitaet ", but should be " hhu "

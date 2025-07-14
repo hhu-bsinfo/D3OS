@@ -4,7 +4,7 @@ use alloc::{
     rc::Rc,
     string::{String, ToString},
 };
-use terminal::{print, println};
+use terminal::println;
 
 use crate::{built_in::built_in::BuiltIn, context::alias_context::AliasContext};
 

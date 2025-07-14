@@ -8,7 +8,7 @@ use alloc::{
     vec::Vec,
 };
 use concurrent::thread;
-use terminal::{print, println};
+use terminal::println;
 
 use crate::{
     built_in::{

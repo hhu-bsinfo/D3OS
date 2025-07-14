@@ -1,4 +1,4 @@
-use terminal::{print, println};
+use terminal::println;
 
 use crate::built_in::built_in::BuiltIn;
 
