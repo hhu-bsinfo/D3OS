@@ -186,5 +186,3 @@ pub fn main() {
 // TODO FEAT: Add usage to suggestion without autocomplete
 
 // TODO IMPROVEMENT: Drop dirty tokens in O(1)
-
-// TODO FIX: echo " hhu " => " Heinrich Heine Universitaet ", but should be " hhu "

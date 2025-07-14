@@ -3,9 +3,7 @@ use core::{cell::RefCell, char};
 use alloc::{
     rc::Rc,
     string::{String, ToString},
-    vec::Vec,
 };
-use logger::info;
 
 use crate::{
     context::{alias_context::AliasContext, line_context::LineContext, tokens_context::TokensContext},
@@ -114,24 +112,26 @@ impl Lexer {
     fn retokenize_with_alias(&mut self) -> Result<Response, Error> {
         let mut tokens_clx = self.tokens_provider.borrow_mut();
         let mut line_clx = self.line_provider.borrow_mut();
+        let alias_clx = self.alias_provider.borrow();
+
+        let alias_line: String = tokens_clx
+            .get()
+            .iter()
+            .map(|token| {
+                if token.is_ambiguous() && token.clx().in_quote.is_none() {
+                    alias_clx.get(token.as_str()).unwrap_or(token.as_str())
+                } else {
+                    token.as_str()
+                }
+            })
+            .collect();
 
         tokens_clx.reset();
 
-        let new_line = line_clx
-            .get()
-            .split_whitespace()
-            .map(|raw_token| match self.alias_provider.borrow().get(raw_token) {
-                Some(alias_value) => alias_value.to_string(),
-                None => raw_token.to_string(),
-            })
-            .collect::<Vec<String>>()
-            .join(" ");
-
-        for ch in new_line.chars() {
+        for ch in alias_line.chars() {
             Self::add(&mut line_clx, &mut tokens_clx, ch);
         }
 
-        info!("Lexer tokens with alias: {:#?}", tokens_clx);
         Ok(Response::Ok)
     }
 
