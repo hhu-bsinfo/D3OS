@@ -9,8 +9,8 @@ use terminal::print;
 
 use crate::{
     context::{
-        indicator_context::IndicatorContext, line_context::LineContext, suggestion_context::SuggestionContext,
-        theme_context::ThemeContext, tokens_context::TokensContext,
+        line_context::LineContext, suggestion_context::SuggestionContext, theme_context::ThemeContext,
+        tokens_context::TokensContext, working_directory_context::WorkingDirectoryContext,
     },
     event::{
         event::Event,
@@ -20,12 +20,14 @@ use crate::{
     token::token::{Token, TokenKind, TokenStatus},
 };
 
+const INDICATOR: char = '>';
+
 pub struct Writer {
     line_provider: Rc<RefCell<LineContext>>,
     tokens_provider: Rc<RefCell<TokensContext>>,
-    indicator_provider: Rc<RefCell<IndicatorContext>>,
     suggestion_provider: Rc<RefCell<SuggestionContext>>,
     theme_provider: Rc<RefCell<ThemeContext>>,
+    wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
 
     terminal_cursor_pos: usize,
 }
@@ -53,28 +55,24 @@ impl Writer {
     pub const fn new(
         line_provider: Rc<RefCell<LineContext>>,
         tokens_provider: Rc<RefCell<TokensContext>>,
-        indicator_provider: Rc<RefCell<IndicatorContext>>,
         suggestion_provider: Rc<RefCell<SuggestionContext>>,
         theme_provider: Rc<RefCell<ThemeContext>>,
+        wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
     ) -> Self {
         Self {
             line_provider,
             tokens_provider,
-            indicator_provider,
             suggestion_provider,
             theme_provider,
+            wd_provider,
             terminal_cursor_pos: 0,
         }
     }
 
     fn write_indicator(&mut self) -> Result<Response, Error> {
-        let indicator_clx = self.indicator_provider.borrow();
-        print!(
-            "{}{}\x1b[0m",
-            self.indicator_color(&TokenStatus::Valid),
-            indicator_clx.get()
-        );
-        self.terminal_cursor_pos += indicator_clx.len();
+        let indicator = self.indicator();
+        print!("{}{}\x1b[0m", self.indicator_color(&TokenStatus::Valid), indicator);
+        self.terminal_cursor_pos += indicator.len();
         Ok(Response::Ok)
     }
 
@@ -119,8 +117,6 @@ impl Writer {
 
     fn dirty_status_indicator(&mut self) -> String {
         let tokens_clx = self.tokens_provider.borrow();
-        let indicator_clx = self.indicator_provider.borrow();
-
         if !tokens_clx.is_status_dirty() {
             return String::new();
         }
@@ -129,7 +125,7 @@ impl Writer {
             Self::save_cursor_pos(),
             Self::cursor_to_start(),
             self.indicator_color(&tokens_clx.status()),
-            indicator_clx.get(),
+            self.indicator(),
             Self::restore_cursor_pos(),
         )
     }
@@ -140,7 +136,7 @@ impl Writer {
     }
 
     fn cursor_to_dirty_line(&mut self) -> String {
-        let offset = self.indicator_provider.borrow().len() + self.line_provider.borrow().get_dirty_index();
+        let offset = self.indicator().len() + self.line_provider.borrow().get_dirty_index();
         let step = self.terminal_cursor_pos as isize - offset as isize;
         self.move_cursor_by(step)
     }
@@ -149,14 +145,13 @@ impl Writer {
         let step = {
             let line_clx = self.line_provider.borrow();
             let suggestion_clx = self.suggestion_provider.borrow();
-            let indicator_clx = self.indicator_provider.borrow();
 
             match suggestion_clx.has_focus() {
                 true => self.terminal_cursor_pos as isize - self.total_line_len() as isize,
                 false => {
                     self.terminal_cursor_pos as isize
                         - line_clx.get_cursor_pos() as isize
-                        - indicator_clx.len() as isize
+                        - self.indicator().len() as isize
                 }
             }
         };
@@ -199,6 +194,11 @@ impl Writer {
         format!("{}{}\x1b[0m", theme.suggestion, line)
     }
 
+    fn indicator(&self) -> String {
+        let wd_clx = self.wd_provider.borrow();
+        format!("{}{} ", wd_clx.pwd(), INDICATOR)
+    }
+
     fn indicator_color(&self, status: &TokenStatus) -> &'static str {
         let theme = self.theme_provider.borrow().get_current();
         match *status {
@@ -233,9 +233,7 @@ impl Writer {
     }
 
     fn total_line_len(&self) -> usize {
-        self.indicator_provider.borrow().len()
-            + self.line_provider.borrow().len()
-            + self.suggestion_provider.borrow().len()
+        self.indicator().len() + self.line_provider.borrow().len() + self.suggestion_provider.borrow().len()
     }
 
     fn clear_right_of_cursor() -> &'static str {

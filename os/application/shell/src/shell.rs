@@ -20,9 +20,9 @@ use terminal::{println, read::read_mixed};
 
 use crate::{
     context::{
-        alias_context::AliasContext, executable_context::ExecutableContext, indicator_context::IndicatorContext,
-        line_context::LineContext, suggestion_context::SuggestionContext, theme_context::ThemeContext,
-        tokens_context::TokensContext, working_directory_context::WorkingDirectoryContext,
+        alias_context::AliasContext, executable_context::ExecutableContext, line_context::LineContext,
+        suggestion_context::SuggestionContext, theme_context::ThemeContext, tokens_context::TokensContext,
+        working_directory_context::WorkingDirectoryContext,
     },
     event::{
         event::Event,
@@ -65,7 +65,6 @@ impl Shell {
         let event_bus = EventBus::new();
 
         let line_provider = Rc::new(RefCell::new(LineContext::new()));
-        let indicator_provider = Rc::new(RefCell::new(IndicatorContext::new()));
         let suggestion_provider = Rc::new(RefCell::new(SuggestionContext::new()));
         let tokens_provider = Rc::new(RefCell::new(TokensContext::new()));
         let executable_provider = Rc::new(RefCell::new(ExecutableContext::new()));
@@ -74,11 +73,7 @@ impl Shell {
         let wd_provider = Rc::new(RefCell::new(WorkingDirectoryContext::new()));
 
         let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
-        modules.push(Box::new(CommandLine::new(
-            line_provider.clone(),
-            indicator_provider.clone(),
-            wd_provider.clone(),
-        )));
+        modules.push(Box::new(CommandLine::new(line_provider.clone())));
         if !cfg.no_history {
             modules.push(Box::new(History::new(line_provider.clone())));
         }
@@ -97,9 +92,9 @@ impl Shell {
         modules.push(Box::new(Writer::new(
             line_provider.clone(),
             tokens_provider.clone(),
-            indicator_provider.clone(),
             suggestion_provider.clone(),
             theme_provider.clone(),
+            wd_provider.clone(),
         )));
         modules.push(Box::new(Parser::new(
             tokens_provider.clone(),
