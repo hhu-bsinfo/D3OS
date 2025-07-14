@@ -32,10 +32,6 @@ impl TokensContext {
         self.tokens.last()
     }
 
-    pub fn last_mut(&mut self) -> Option<&mut Token> {
-        self.tokens.last_mut()
-    }
-
     pub fn slice_at_line_index(&self, index: usize) -> &[Token] {
         let start_at = self
             .tokens
@@ -127,10 +123,6 @@ impl TokensContext {
             }
         }
         None
-    }
-
-    pub fn len(&self) -> usize {
-        self.tokens.len()
     }
 
     pub fn total_len(&self) -> usize {

@@ -161,7 +161,7 @@ impl Lexer {
     }
 
     fn remove(line_clx: &mut LineContext, tokens_clx: &mut TokensContext) {
-        let Some(last_token) = tokens_clx.last_mut() else {
+        let Some(last_token) = tokens_clx.last() else {
             return;
         };
 
