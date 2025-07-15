@@ -14,14 +14,14 @@ use crate::{
 
 const MAX_HISTORY_LEN: usize = 10;
 
-pub struct History {
+pub struct HistoryService {
     line_provider: Rc<RefCell<LineContext>>,
 
     history: VecDeque<String>,
     history_position: isize,
 }
 
-impl EventHandler for History {
+impl EventHandler for HistoryService {
     fn on_key_pressed(&mut self, event_bus: &mut EventBus, key: DecodedKey) -> Result<Response, Error> {
         match key {
             DecodedKey::RawKey(KeyCode::ArrowUp) => self.move_up(event_bus),
@@ -42,7 +42,7 @@ impl EventHandler for History {
     }
 }
 
-impl History {
+impl HistoryService {
     pub fn new(line_provider: Rc<RefCell<LineContext>>) -> Self {
         Self {
             line_provider,

@@ -24,14 +24,14 @@ enum IoType {
     OutTruncate,
 }
 
-pub struct Parser {
+pub struct ParserService {
     current_io_type: Option<IoType>,
     tokens_provider: Rc<RefCell<TokensContext>>,
     executable_provider: Rc<RefCell<ExecutableContext>>,
     wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
 }
 
-impl EventHandler for Parser {
+impl EventHandler for ParserService {
     fn on_prepare_next_line(&mut self, _event_bus: &mut EventBus) -> Result<Response, Error> {
         self.executable_provider.borrow_mut().reset();
         Ok(Response::Ok)
@@ -42,7 +42,7 @@ impl EventHandler for Parser {
     }
 }
 
-impl Parser {
+impl ParserService {
     pub const fn new(
         tokens_provider: Rc<RefCell<TokensContext>>,
         executable_provider: Rc<RefCell<ExecutableContext>>,

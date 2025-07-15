@@ -5,17 +5,19 @@ extern crate alloc;
 mod built_in;
 mod context;
 mod event;
-mod modules;
+mod service;
 mod token;
 
 use core::cell::RefCell;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use logger::info;
-use modules::{command_line::CommandLine, executor::Executor, history::History, writer::Writer};
 use runtime::env::Args;
 #[allow(unused_imports)]
 use runtime::*;
+use service::{
+    command_line::CommandLineService, executor::ExecutorService, history::HistoryService, writer::WriterService,
+};
 use terminal::{println, read::read_mixed};
 
 use crate::{
@@ -29,7 +31,7 @@ use crate::{
         event_bus::EventBus,
         event_handler::{Error, EventHandler},
     },
-    modules::{auto_completion::AutoCompletion, lexer::Lexer, parser::Parser},
+    service::{auto_completion::AutoCompletionService, lexer::LexerService, parser::ParserService},
 };
 
 #[derive(Debug, Default)]
@@ -55,7 +57,7 @@ impl Config {
 }
 
 struct Shell {
-    modules: Vec<Box<dyn EventHandler>>,
+    services: Vec<Box<dyn EventHandler>>,
     theme_provider: Rc<RefCell<ThemeContext>>,
     event_bus: EventBus,
 }
@@ -72,36 +74,36 @@ impl Shell {
         let theme_provider = Rc::new(RefCell::new(ThemeContext::new()));
         let wd_provider = Rc::new(RefCell::new(WorkingDirectoryContext::new()));
 
-        let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
-        modules.push(Box::new(CommandLine::new(line_provider.clone())));
+        let mut services: Vec<Box<dyn EventHandler>> = Vec::new();
+        services.push(Box::new(CommandLineService::new(line_provider.clone())));
         if !cfg.no_history {
-            modules.push(Box::new(History::new(line_provider.clone())));
+            services.push(Box::new(HistoryService::new(line_provider.clone())));
         }
-        modules.push(Box::new(Lexer::new(
+        services.push(Box::new(LexerService::new(
             line_provider.clone(),
             tokens_provider.clone(),
             alias_provider.clone(),
         )));
         if !cfg.no_auto_completion {
-            modules.push(Box::new(AutoCompletion::new(
+            services.push(Box::new(AutoCompletionService::new(
                 line_provider.clone(),
                 tokens_provider.clone(),
                 suggestion_provider.clone(),
             )));
         }
-        modules.push(Box::new(Writer::new(
+        services.push(Box::new(WriterService::new(
             line_provider.clone(),
             tokens_provider.clone(),
             suggestion_provider.clone(),
             theme_provider.clone(),
             wd_provider.clone(),
         )));
-        modules.push(Box::new(Parser::new(
+        services.push(Box::new(ParserService::new(
             tokens_provider.clone(),
             executable_provider.clone(),
             wd_provider.clone(),
         )));
-        modules.push(Box::new(Executor::new(
+        services.push(Box::new(ExecutorService::new(
             executable_provider.clone(),
             &alias_provider,
             &theme_provider,
@@ -110,7 +112,7 @@ impl Shell {
 
         Self {
             event_bus,
-            modules,
+            services,
             theme_provider,
         }
     }
@@ -146,7 +148,7 @@ impl Shell {
     fn handle_event(&mut self, event: Event) -> Result<(), Error> {
         info!("Events in queue: {:?}", self.event_bus);
         info!("Processing event: {:?}", event);
-        for event_handler in &mut self.modules {
+        for event_handler in &mut self.services {
             let result = match event {
                 Event::KeyPressed(key) => event_handler.on_key_pressed(&mut self.event_bus, key),
                 Event::CursorMoved(step) => event_handler.on_cursor_moved(&mut self.event_bus, step),

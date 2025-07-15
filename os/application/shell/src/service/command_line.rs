@@ -14,11 +14,11 @@ use crate::{
 
 const MAX_LINE_LEN: usize = 256;
 
-pub struct CommandLine {
+pub struct CommandLineService {
     line_provider: Rc<RefCell<LineContext>>,
 }
 
-impl EventHandler for CommandLine {
+impl EventHandler for CommandLineService {
     fn on_key_pressed(&mut self, event_bus: &mut EventBus, key: DecodedKey) -> Result<Response, Error> {
         let mut line_clx = self.line_provider.borrow_mut();
 
@@ -46,7 +46,7 @@ impl EventHandler for CommandLine {
     }
 }
 
-impl CommandLine {
+impl CommandLineService {
     pub const fn new(line_provider: Rc<RefCell<LineContext>>) -> Self {
         Self { line_provider }
     }

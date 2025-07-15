@@ -15,13 +15,13 @@ use crate::{
     token::token::TokenKind,
 };
 
-pub struct Lexer {
+pub struct LexerService {
     line_provider: Rc<RefCell<LineContext>>,
     tokens_provider: Rc<RefCell<TokensContext>>,
     alias_provider: Rc<RefCell<AliasContext>>,
 }
 
-impl EventHandler for Lexer {
+impl EventHandler for LexerService {
     fn on_prepare_next_line(&mut self, _event_bus: &mut EventBus) -> Result<Response, Error> {
         self.tokens_provider.borrow_mut().reset();
         Ok(Response::Ok)
@@ -40,7 +40,7 @@ impl EventHandler for Lexer {
     }
 }
 
-impl Lexer {
+impl LexerService {
     pub const fn new(
         line_provider: Rc<RefCell<LineContext>>,
         tokens_provider: Rc<RefCell<TokensContext>>,

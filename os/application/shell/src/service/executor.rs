@@ -31,19 +31,19 @@ use crate::{
     },
 };
 
-pub struct Executor {
+pub struct ExecutorService {
     executable_provider: Rc<RefCell<ExecutableContext>>,
 
     built_ins: Vec<Box<dyn BuiltIn>>,
 }
 
-impl EventHandler for Executor {
+impl EventHandler for ExecutorService {
     fn on_submit(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         self.execute(event_bus)
     }
 }
 
-impl Executor {
+impl ExecutorService {
     pub fn new(
         executable_provider: Rc<RefCell<ExecutableContext>>,
         alias_provider: &Rc<RefCell<AliasContext>>,

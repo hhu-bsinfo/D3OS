@@ -22,7 +22,7 @@ use crate::{
 
 const INDICATOR: char = '>';
 
-pub struct Writer {
+pub struct WriterService {
     line_provider: Rc<RefCell<LineContext>>,
     tokens_provider: Rc<RefCell<TokensContext>>,
     suggestion_provider: Rc<RefCell<SuggestionContext>>,
@@ -32,7 +32,7 @@ pub struct Writer {
     terminal_cursor_pos: usize,
 }
 
-impl EventHandler for Writer {
+impl EventHandler for WriterService {
     fn on_prepare_next_line(&mut self, _event_bus: &mut EventBus) -> Result<Response, Error> {
         self.terminal_cursor_pos = 0;
         self.write_indicator()
@@ -51,7 +51,7 @@ impl EventHandler for Writer {
     }
 }
 
-impl Writer {
+impl WriterService {
     pub const fn new(
         line_provider: Rc<RefCell<LineContext>>,
         tokens_provider: Rc<RefCell<TokensContext>>,

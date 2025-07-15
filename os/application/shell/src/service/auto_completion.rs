@@ -19,7 +19,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct AutoCompletion {
+pub struct AutoCompletionService {
     line_provider: Rc<RefCell<LineContext>>,
     tokens_provider: Rc<RefCell<TokensContext>>,
     suggestion_provider: Rc<RefCell<SuggestionContext>>,
@@ -31,7 +31,7 @@ pub struct AutoCompletion {
     current_suggestion: Option<String>,
 }
 
-impl EventHandler for AutoCompletion {
+impl EventHandler for AutoCompletionService {
     fn on_key_pressed(&mut self, event_bus: &mut EventBus, key: DecodedKey) -> Result<Response, Error> {
         if !self.line_provider.borrow().is_cursor_at_end() {
             return Ok(Response::Skip);
@@ -83,7 +83,7 @@ impl EventHandler for AutoCompletion {
     }
 }
 
-impl AutoCompletion {
+impl AutoCompletionService {
     pub fn new(
         line_provider: Rc<RefCell<LineContext>>,
         tokens_provider: Rc<RefCell<TokensContext>>,
