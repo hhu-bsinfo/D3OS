@@ -8,6 +8,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr;
+use core::sync::atomic::{AtomicPtr, Ordering};
 use log::info;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
 use smoltcp::socket::udp;
@@ -21,6 +22,7 @@ static NE2000: Once<Arc<Ne2000>> = Once::new();
 
 static INTERFACES: RwLock<Vec<Interface>> = RwLock::new(Vec::new());
 static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
+static NE2000_PTR: AtomicPtr<Ne2000> = AtomicPtr::new(core::ptr::null_mut());
 
 pub enum SocketType {
     Udp,
@@ -82,6 +84,22 @@ pub fn init() {
             },
             "NE2000",
         ));
+        scheduler().ready(Thread::new_kernel_thread(
+            ne2000_interrupt_thread,
+            "NE2000 Interrupts",
+        ));
+    }
+}
+fn ne2000_interrupt_thread() {
+    loop {
+        let ne2000 = unsafe { &mut *NE2000_PTR.load(Ordering::SeqCst) };
+        if ne2000.rcv.load(Ordering::Relaxed) {
+            ne2000.receive_packet();
+            ne2000.rcv.store(false, Ordering::Relaxed);
+        }
+        //if *ne2000.interrupts.ovw.lock() {
+        //    ne2000.handle_overflow_interrupt();
+        //}
     }
 }
 
@@ -151,7 +169,7 @@ pub fn send_datagram(
     socket.send_slice(data, (destination, port))
 }
 
-// disabled fore the rtl8139.rs
+// disabled for the rtl8139.rs
 /*fn poll_sockets() {
     let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
     let mut interfaces = INTERFACES.write();

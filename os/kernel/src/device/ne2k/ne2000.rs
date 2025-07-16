@@ -28,15 +28,16 @@
 use crate::device::ne2k::register_flags::ReceiveStatusRegister;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{PAGE_SIZE, frames};
+use crate::process::thread::Thread;
 use crate::{apic, device, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use acpi::platform::interrupt;
 use core::mem;
 use core::ops::BitOr;
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use core::{ptr, slice};
 use log::info;
 // for allocator impl
 use alloc::boxed::Box;
-use core::alloc::{AllocError, Allocator, Layout};
 // for allocator impl
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use core::ptr::NonNull;
@@ -51,23 +52,20 @@ use spin::{Mutex, RwLock};
 // mpmpc : multiple producers, multiple consumers, for receive
 use nolock::queues::{mpmc, mpsc};
 
-use pci_types::{CommandRegister, EndpointHeader};
+use pci_types::EndpointHeader;
 // smoltcp provides a full network stack for creating packets, sending, receiving etc.
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use smoltcp::phy;
-use smoltcp::phy::{DeviceCapabilities, Medium};
-use smoltcp::time::Instant;
 use smoltcp::wire::EthernetAddress;
 
 // for writing to the registers
 use alloc::str;
 use alloc::string::String;
+use x86_64::VirtAddr;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
-use x86_64::{PhysAddr, VirtAddr};
 
 // super looks in a relative path for other modules
 use super::register_flags::{
@@ -79,7 +77,13 @@ use super::network_stack::*;
 
 // =============================================================================
 
-//type Ne2000Device = Arc<Mutex<Ne2000>>;
+// Atomically store a pointer to Ne2000 when initializing.
+// and load the pointer inside the interrupt-handling thread.
+// This ensures no partial reads or writes happen.
+// It's safe to use across threads because atomic pointer operations are guaranteed
+// to be lock-free
+static NE2000_PTR: AtomicPtr<Ne2000> = AtomicPtr::new(core::ptr::null_mut());
+
 const RECV_QUEUE_CAP: usize = 16;
 
 const DISPLAY_RED: &'static str = "\x1b[1;31m";
@@ -241,8 +245,8 @@ struct PacketHeader {
 }
 
 pub struct Interrupts {
-    ovw: bool,
-    rcv: bool,
+    ovw: Mutex<bool>,
+    rcv: Mutex<bool>,
 }
 
 // par_registers : store the MAC ADDRESS
@@ -284,6 +288,7 @@ pub struct Ne2000 {
     ),
     interrupt: InterruptVector,
     interrupts: Interrupts,
+    pub(crate) rcv: AtomicBool,
 }
 
 impl Ne2000 {
@@ -345,8 +350,8 @@ impl Ne2000 {
         }
 
         let interrupts = Interrupts {
-            ovw: (false),
-            rcv: (false),
+            ovw: Mutex::new(false),
+            rcv: Mutex::new(false),
         };
 
         // construct the ne2000 and return it at the end of the
@@ -361,6 +366,7 @@ impl Ne2000 {
             receive_messages: mpmc::bounded::scq::queue(RECV_QUEUE_CAP),
             interrupt,
             interrupts,
+            rcv: AtomicBool::new(false),
         };
 
         info!("\x1b[1;31mPowering on device");
@@ -462,15 +468,15 @@ impl Ne2000 {
             // Initialize Physical Address Register: PAR0-PAR5
             //each mac address bit is written two times into the buffer
 
-            let mut packet = [0u8; 40];
+            //let mut packet = [0u8; 40];
 
-            for byte in packet.iter_mut() {
-                *byte = ne2000.registers.data_port.read();
-            }
+            //for byte in packet.iter_mut() {
+            //    *byte = ne2000.registers.data_port.read();
+            //}
 
-            for byte in packet.iter_mut() {
-                info!("content: 0x{:02X} ", byte);
-            }
+            //for byte in packet.iter_mut() {
+            //    info!("content: 0x{:02X} ", byte);
+            //}
 
             /*
 
@@ -598,8 +604,15 @@ impl Ne2000 {
             info!(include_str!("banner.txt"), ne2000.read_mac(), base_address);
             scheduler().sleep(1000);
         }
-        //let dummy: [u8; 0] = [];
-        //ne2000.send_packet(&dummy);
+        // set the static once
+        let ptr = &mut ne2000 as *mut Ne2000;
+        NE2000_PTR.store(ptr, Ordering::SeqCst);
+
+        /*scheduler().ready(Thread::new_kernel_thread(
+            Ne2000::ne2000_interrupt_thread,
+            "NE2000 Interrupts",
+        ));*/
+
         ne2000
     }
 
@@ -776,6 +789,7 @@ impl Ne2000 {
                 {
                     // get an empty packet from the receive_buffers_empty queue for
                     // saving the data
+                    // 0 is the Receiver
                     let mut packet = self
                         .receive_buffers_empty
                         .0
@@ -792,11 +806,12 @@ impl Ne2000 {
                     // Set RSAR0 to nicHeaderLength to skip the packet header during the read operation
                     self.registers.rsar0.write(size_of::<PacketHeader>() as u8);
                     self.registers.rsar1.write(CURRENT_NEXT_PAGE_POINTER);
+                    // issue remote read operation for reading the packet from the nics local buffer
                     self.registers
                         .command_port
                         .write((CR::STA | CR::REMOTE_READ | CR::PAGE_0).bits());
 
-                    // Read Packet Data from I/O Port and write it into packet */
+                    // Read Packet Data from I/O Port and write it into packet
                     //self.registers.data_port.read() as u8;
                     for i in 0..packet_header.length {
                         // slice indices must be of type usize
@@ -938,6 +953,8 @@ impl Ne2000 {
                     .write((CR::STA | CR::TXP | CR::STOP_DMA | CR::PAGE_0).bits());
             }
         }
+        let mut ovw = self.interrupts.ovw.lock();
+        *ovw = false;
     }
     // assign driver to interrupt handler
     pub fn assign(device: Arc<Ne2000>) {
@@ -989,23 +1006,12 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .isr_port
                     .lock()
                     .write(InterruptStatusRegister::ISR_PRX.bits());
-            }
-
-            // `self.device` is of type `Arc<Ne2000>`, which is the shared reference
-            let device_ref: &Ne2000 = &self.device; // This is a shared reference
-
-            // Use unsafe to get a mutable reference to the inner `Ne2000` object
-            let device_mut = unsafe {
-                // Convert from a shared reference to a mutable raw pointer
-                ptr::from_ref(device_ref)
-                    .cast_mut() // Cast to a mutable pointer
-                    .as_mut() // Convert the raw pointer back to a mutable reference
-                    .unwrap() // Unwrap to ensure it’s valid
             };
+            self.device.rcv.store(true, Ordering::Relaxed);
 
-            // mutable reference device_mut
+            // lock rcv Variable
+            // dereference the MutexGuard to access the value
             // call the packet received method
-            device_mut.receive_packet(); // Call the method with mutable reference
         }
 
         // check for Packet Transmission Interrupt
@@ -1035,7 +1041,6 @@ impl InterruptHandler for Ne2000InterruptHandler {
             // Use unsafe to get a mutable reference to the inner `Ne2000` object
             let device_mut = unsafe {
                 // Convert from a shared reference to a mutable raw pointer
-
                 ptr::from_ref(device_ref)
                     .cast_mut() // Cast to a mutable pointer
                     .as_mut() // Convert the raw pointer back to a mutable reference
@@ -1043,6 +1048,8 @@ impl InterruptHandler for Ne2000InterruptHandler {
             };
             // call the method
             device_mut.handle_overflow_interrupt();
+            let mut ovw = self.device.interrupts.ovw.lock();
+            *ovw = true;
         }
     }
 }

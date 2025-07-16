@@ -104,7 +104,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         //info!("Don't leave me here");
         //allocate one pyhsical frame
         // the phys_buffers gets a start and end PhysFrame (Range)
-        // for defining where the packet gets wriiten
+        // for defining where the packet gets wri tten
         let phys_buffer = frames::alloc(1);
         let phys_start_addr = phys_buffer.start.start_address();
         // map to kernel space
@@ -264,10 +264,8 @@ impl phy::Device for Ne2000 {
     where
         Self: 'a;
 
-    // called by smoltcp, when polling for new packets
+    // called by smoltcp, when polling for new packets in network/mod.rs in poll_ne2k
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
-        // disable receive for now; only transmit exists
-        //self.transmit(_timestamp).map(|tx| (Ne2000RxToken, tx))
         let device = unsafe { ptr::from_ref(self).as_ref()? };
         //info!("==> receive() requested by smoltcp!");
         match self.receive_messages.0.try_dequeue() {
