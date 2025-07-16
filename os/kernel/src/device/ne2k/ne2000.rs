@@ -392,9 +392,7 @@ impl Ne2000 {
             ne2000.registers.reset_port.write(reset_value);
 
             // bitwise and operation, checks if highest bit is set
-            while (ne2000.registers.isr_port.lock().read() & 0x80) == 0 {
-                info!("Reset in Progress");
-            }
+            // if register content equals 0, reset was successful
             while (ne2000.registers.read_isr() & 0x80) == 0 {
                 info!("Reset in Progress");
             }
@@ -403,14 +401,18 @@ impl Ne2000 {
             info!("\x1b[1;31mInitializing Registers of Device Ne2000");
 
             // Initialize CR Register
+            // Switch to Page0 , stop DMA and set the NIC in Stop mode
             ne2000
                 .registers
                 .command_port
                 .write((CR::STOP_DMA | CR::STP | CR::PAGE_0).bits());
-            //info!("cr: {}", ne2000.registers.command_port.read());
-            //scheduler().sleep(100);
 
             // Initialize DCR Register
+            // from the NS32490D.pdf :
+            // Register is used to program the NIC for 8- or 16-bit memory interface,
+            // select byte ordering in 16-bit applications and
+            // establish FIFO threshholds. The DCR must be initialized prior to loading the Remote Byte Count Registers.
+            // TODO: add reference
             // Command Register at Page 0 at this point
             ne2000.registers.dcr_port.write(
                 (DataConfigurationRegister::DCR_AR
@@ -424,10 +426,10 @@ impl Ne2000 {
             // MAC address has length of 6 Bytes
             ne2000.registers.rbcr0.write(0);
             ne2000.registers.rbcr1.write(0);
-            //info!("rbcr0: {}", self.registers.rbcr0.read());
-            //info!("rbcr1: {}", self.registers.rbcr1.read());
 
             // initialize RCR
+            // determines operation of the NIC during reception of a packet and is used to program what types of packets to
+            // accept.
             ne2000.registers.rcr_port.write(
                 (ReceiveConfigurationRegister::RCR_AR
                     | ReceiveConfigurationRegister::RCR_AB
@@ -436,12 +438,13 @@ impl Ne2000 {
             );
 
             // Place the NIC in Loopback Mode (Mode 1)
+            // TODO: add reference from the handbook
             ne2000
                 .registers
                 .tcr_port
                 .write(TransmitConfigurationRegister::TCR_LB0.bits());
 
-            // initialize buffer
+            // initialize the NIC's buffer
             // pstart and pstop define the size of the buffer (pstop - pstart = buffer size )
             ne2000.registers.tpsr_port.write(TRANSMIT_START_PAGE);
             ne2000.registers.pstart_port.write(RECEIVE_START_PAGE);
@@ -488,6 +491,7 @@ impl Ne2000 {
             self.registers.par_5.write(mac[5]);*/
             let mut mac = [0u8; 6];
 
+            // define the location of the data for the mac address
             let mut par_ports: [Port<u8>; 6] = [
                 Port::new(ne2000.base_address + 0x01),
                 Port::new(ne2000.base_address + 0x02),
@@ -496,12 +500,13 @@ impl Ne2000 {
                 Port::new(ne2000.base_address + 0x05),
                 Port::new(ne2000.base_address + 0x06),
             ];
+            // iterate through the ports to get the mac address
             for (i, port) in par_ports.iter_mut().enumerate() {
-                //mac[i] = port.read();
                 mac[i] = port.read();
             }
 
-            // Print buffer contents
+            // Print buffer contents (just for debugging)
+            // TODO: remove probably at the end
             for (i, byte) in mac.iter().enumerate() {
                 info!("buffer[{:02}] = 0x{:02X}", i, byte);
             }
@@ -527,7 +532,8 @@ impl Ne2000 {
             );
 
             // located on Page 1
-            /* 9) ii) Initialize Multicast Address Register: MAR0-MAR7 with 0xFF */
+            // Initialize Multicast Address Register: MAR0-MAR7 with 0xFF
+            // TODO: add reference handbook
             ne2000.registers.mar0.write(0xFF);
             ne2000.registers.mar1.write(0xFF);
             ne2000.registers.mar2.write(0xFF);
@@ -537,26 +543,19 @@ impl Ne2000 {
             ne2000.registers.mar6.write(0xFF);
             ne2000.registers.mar7.write(0xFF);
 
-            /* P.156 http://www.bitsavers.org/components/national/_dataBooks/1988_National_Data_Communications_Local_Area_Networks_UARTs_Handbook.pdf#page=156
-            Accessed: 2024-03-29
-            */
+            // P.156 http://www.bitsavers.org/components/national/_dataBooks/1988_National_Data_Communications_Local_Area_Networks_UARTs_Handbook.pdf#page=156
             CURRENT_NEXT_PAGE_POINTER = RECEIVE_START_PAGE + 1;
 
-            /* 9) iii) Initialize Current Pointer: CURR */
+            // Initialize Current Pointer: CURR
             ne2000.registers.curr.write(CURRENT_NEXT_PAGE_POINTER);
 
-            /* 10) Start NIC */
+            // 10) Start NIC
             ne2000
                 .registers
                 .command_port
                 .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
-            //ne2000.registers.command_port.write(0x22);
-            /*info!(
-                "CR REAd after init: {}",
-                ne2000.registers.command_port.read()
-            );*/
 
-            /* 11) Initialize TCR and RCR */
+            //Initialize TCR and RCR
             ne2000.registers.tcr_port.write(0);
             ne2000.registers.rcr_port.write(
                 (ReceiveConfigurationRegister::RCR_AR
@@ -564,11 +563,6 @@ impl Ne2000 {
                     | ReceiveConfigurationRegister::RCR_AM)
                     .bits(),
             );
-
-            //Set up Remote DMA to read from address 0x0000
-            // RSAR0,1 : points to the start of the block of data to be transfered
-            //info!("rb0: {}", rbcr0.read());
-            //info!("rb1: {}", rbcr1.read());
 
             //Issue Remote Read command
             // Command Port is 8 Bits and has the following structure
@@ -587,18 +581,6 @@ impl Ne2000 {
             //command_port.write(0x20);
             //let cr: u8 = unsafe { command_port.read() };
 
-            /*unsafe {
-                let mac = [
-                    self.registers.par_0.read(),
-                    self.registers.par_1.read(),
-                    self.registers.par_2.read(),
-                    self.registers.par_3.read(),
-                    self.registers.par_4.read(),
-                    self.registers.par_5.read(),
-                ];
-
-                info!("MAC ADRESS INIT: {}", EthernetAddress::from_bytes(&mac));
-            }*/
             info!("\x1b[1;31mFinished Initialization");
             // print an ascii banner to the log screen
             info!(include_str!("banner.txt"), ne2000.read_mac(), base_address);
@@ -621,20 +603,16 @@ impl Ne2000 {
     pub fn send_packet(&mut self, packet: &[u8]) {
         let packet_length = packet.len() as u16;
 
-        // check, if the nic is ready for transmit
         unsafe {
-            //info!("status cr {}", self.registers.command_port.read());
-            //let transmit_status = !(self.registers.command_port.read() & CR::TXP.bits());
-            //while transmit_status != 0 {
-            //    info!("{transmit_status}");
-            //}
-
+            // check, if the nic is ready for transmit
             while CR::from_bits_retain(self.registers.command_port.read()).contains(CR::TXP) {
                 scheduler().sleep(1);
                 info!("Transmit bit still set!");
             }
 
-            //dummy_read (see thiel bachelor thesis)
+            //dummy_read
+            //TODO: (see thiel bachelor thesis), add reference from handbook
+
             info!("Start Dummy Read");
 
             // switch to page 0, enable nic, stop dma
@@ -642,22 +620,22 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
 
-            // 1) Save CRDA bit
+            // Save CRDA bit
             let old_crda: u16 = self.registers.crda0_p0.read() as u16
                 | ((self.registers.crda1_p0.read() as u16) << 8);
 
-            // 2.1 ) Set RBCR > 0
+            // Set RBCR > 0
             self.registers.rbcr0.write(0x01);
             self.registers.rbcr1.write(0x00);
-            // 2.2) Set RSAR to unused address
+            // Set RSAR to unused address
             self.registers.rsar0.write(TRANSMIT_START_PAGE);
             self.registers.rsar1.write(0);
-            // 3) Issue Dummy Remote READ Command
+            // Issue Dummy Remote READ Command
             self.registers
                 .command_port
                 .write((CR::STA | CR::REMOTE_READ | CR::PAGE_0).bits());
 
-            // 4) Mandatory Delay between Dummy Read and Write to ensure dummy read was successful
+            // Mandatory Delay between Dummy Read and Write to ensure dummy read was successful
             // Wait until crda value has changed
             while old_crda
                 == self.registers.crda0_p0.read() as u16
@@ -671,46 +649,44 @@ impl Ne2000 {
             // end dummy read
 
             info!("Load packet size and enable remote write");
-            // 1) Load RBCR with packet size
+            // Load RBCR with packet size
             let low = (packet_length & 0xFF) as u8;
             let high = (packet_length >> 8) as u8;
             self.registers.rbcr0.write(low);
             self.registers.rbcr1.write(high);
-            // 2) Clear RDC Interrupt
+            // Clear RDC Interrupt
             self.registers
                 .isr_port
                 .lock()
                 .write(InterruptStatusRegister::ISR_RDC.bits());
-            // 3) Load RSAR with 0 (low bits) and Page Number (high bits)
+            // Load RSAR with 0 (low bits) and Page Number (high bits)
             self.registers.rsar0.write(0);
             self.registers.rsar1.write(TRANSMIT_START_PAGE);
-            // 4) Set COMMAND to remote write
+            // Set COMMAND to remote write
             self.registers
                 .command_port
                 .write((CR::STA | CR::REMOTE_WRITE | CR::PAGE_0).bits());
 
-            // 5) Write packet to remote DMA
+            // Write packet to remote DMA
             let data_port = &mut self.registers.data_port;
 
             for &data in packet {
                 data_port.write(data);
             }
 
-            // 6) Poll ISR until remote DMA Bit is set
+            // Poll ISR until remote DMA Bit is set
             while (self.registers.read_isr() & InterruptStatusRegister::ISR_RDC.bits()) == 0 {
                 scheduler().sleep(1);
                 info!("polling")
             }
 
-            // 7) Clear ISR RDC Interrupt
+            // Clear ISR RDC Interrupt
             self.registers
                 .isr_port
                 .lock()
                 .write(InterruptStatusRegister::ISR_RDC.bits());
 
             // Set TBCR Bits before Transmit and TPSR Bit
-            //
-
             self.registers.tbcr0_p0.write(low);
             self.registers.tbcr1_p0.write(high);
             self.registers.tpsr.write(TRANSMIT_START_PAGE);
@@ -756,6 +732,8 @@ impl Ne2000 {
                 // build the PacketHeader struct from the buffer ring
                 // the nic always stores a packet header at the beginning of the first
                 // buffer page which is used to store the received package
+                // the nic itself attaches the a 4 Byte header to each packet
+                // TODO: add reference
                 let packet_header = PacketHeader {
                     receive_status: self.registers.data_port.read() as u8,
                     next_packet: self.registers.data_port.read() as u8,
@@ -784,6 +762,7 @@ impl Ne2000 {
                 // check received packet
 
                 // rust doesn't treat integers as boolean in an if clause, so a comparison has to be made
+                // TODO: What does 1 mean for receive_status ?
                 if (packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits()) != 0
                     && packet_header.length as u32 <= MAXIMUM_ETHERNET_PACKET_SIZE as u32
                 {
@@ -842,8 +821,9 @@ impl Ne2000 {
         }
     }
 
-    // read the mac address and return it as array
-    //pub fn read_mac(&mut self) -> [u8; 6] {
+    // read the mac address and return it
+    // the mac is needed for checking if received packets
+    // are addressed to the nic
     pub fn read_mac(&self) -> EthernetAddress {
         let mut mac2 = [0u8; 6];
         let mut par_registers = self.par_registers.id.lock();
@@ -863,13 +843,9 @@ impl Ne2000 {
             mac2[4] = par_registers.4.read();
             mac2[5] = par_registers.5.read();
 
-            //self.registers
-            //    .command_port
-            //    .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
             registers
                 .command_port
                 .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
-            //info!("CR REAd after init: {}", registers.command_port.read());
 
             // check if on correct Page (on Page 1 are the PARs Registers for the MAC Adress)
 
@@ -885,14 +861,15 @@ impl Ne2000 {
                 _ => unreachable!(),
             }*/
         }
-        let address3 = EthernetAddress::from_bytes(&mac2);
-        //info!("fn read_mac: ({})", address3);
-        //mac2
-        address3
+        // convert the data in the array to type EthernetAddress
+        let mac_address = EthernetAddress::from_bytes(&mac2);
+        // return the actual MAC Address
+        mac_address
     }
 
     // gets called, if the buffer ring is full
     // this is analogous to the nic datasheet
+    // TODO: add reference
     pub fn handle_overflow_interrupt(&mut self) {
         unsafe {
             // 1. save the value of the TXP Bit in CR
@@ -902,7 +879,8 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STOP | CR::PAGE_0).bits());
 
-            // 3. wait for at least 1.6 ms
+            // 3. wait for at least 1.6 ms according to the documentation
+            // TODO: add reference
             scheduler().sleep(1600);
             // 4. Clear RBCR0 and RBCR1
             self.registers.rbcr0.write(0);
@@ -928,7 +906,7 @@ impl Ne2000 {
                 }
             }
 
-            // 6. Place the nic in loopback mode
+            // 6. Place the nic in loopback mode 0
             self.registers
                 .tcr_port
                 .write(TransmitConfigurationRegister::TCR_LB0.bits());
@@ -956,6 +934,7 @@ impl Ne2000 {
         let mut ovw = self.interrupts.ovw.lock();
         *ovw = false;
     }
+
     // assign driver to interrupt handler
     pub fn assign(device: Arc<Ne2000>) {
         let interrupt = device.interrupt;
