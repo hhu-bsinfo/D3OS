@@ -1,9 +1,6 @@
-use core::cell::RefCell;
-
 use alloc::{
     boxed::Box,
     format,
-    rc::Rc,
     string::{String, ToString},
     vec::Vec,
 };
@@ -20,6 +17,7 @@ use crate::{
     },
     context::{
         alias_context::AliasContext,
+        context::ContextProvider,
         executable_context::{ExecutableContext, Io, Job},
         theme_context::ThemeContext,
         working_directory_context::WorkingDirectoryContext,
@@ -32,7 +30,7 @@ use crate::{
 };
 
 pub struct ExecutorService {
-    executable_provider: Rc<RefCell<ExecutableContext>>,
+    executable_provider: ContextProvider<ExecutableContext>,
 
     built_ins: Vec<Box<dyn BuiltIn>>,
 }
@@ -45,10 +43,10 @@ impl EventHandler for ExecutorService {
 
 impl ExecutorService {
     pub fn new(
-        executable_provider: Rc<RefCell<ExecutableContext>>,
-        alias_provider: &Rc<RefCell<AliasContext>>,
-        theme_provider: &Rc<RefCell<ThemeContext>>,
-        wd_provider: &Rc<RefCell<WorkingDirectoryContext>>,
+        executable_provider: ContextProvider<ExecutableContext>,
+        alias_provider: &ContextProvider<AliasContext>,
+        theme_provider: &ContextProvider<ThemeContext>,
+        wd_provider: &ContextProvider<WorkingDirectoryContext>,
     ) -> Self {
         let mut built_ins: Vec<Box<dyn BuiltIn>> = Vec::new();
         built_ins.push(Box::new(AliasBuiltIn::new(alias_provider.clone())));

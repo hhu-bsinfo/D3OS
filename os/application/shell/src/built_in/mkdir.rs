@@ -1,13 +1,13 @@
-use core::cell::RefCell;
-
-use alloc::rc::Rc;
 use naming::mkdir;
 use terminal::println;
 
-use crate::{built_in::built_in::BuiltIn, context::working_directory_context::WorkingDirectoryContext};
+use crate::{
+    built_in::built_in::BuiltIn,
+    context::{context::ContextProvider, working_directory_context::WorkingDirectoryContext},
+};
 
 pub struct MkdirBuiltIn {
-    wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
+    wd_provider: ContextProvider<WorkingDirectoryContext>,
 }
 
 impl BuiltIn for MkdirBuiltIn {
@@ -30,7 +30,7 @@ impl BuiltIn for MkdirBuiltIn {
 }
 
 impl MkdirBuiltIn {
-    pub fn new(wd_provider: Rc<RefCell<WorkingDirectoryContext>>) -> Self {
+    pub fn new(wd_provider: ContextProvider<WorkingDirectoryContext>) -> Self {
         Self { wd_provider }
     }
 

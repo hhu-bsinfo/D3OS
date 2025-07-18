@@ -1,12 +1,13 @@
-use core::cell::RefCell;
-
-use alloc::{rc::Rc, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 use terminal::println;
 
-use crate::{built_in::built_in::BuiltIn, context::theme_context::ThemeContext};
+use crate::{
+    built_in::built_in::BuiltIn,
+    context::{context::ContextProvider, theme_context::ThemeContext},
+};
 
 pub struct ThemeBuiltIn {
-    theme_provider: Rc<RefCell<ThemeContext>>,
+    theme_provider: ContextProvider<ThemeContext>,
 }
 
 impl BuiltIn for ThemeBuiltIn {
@@ -35,7 +36,7 @@ impl BuiltIn for ThemeBuiltIn {
 }
 
 impl ThemeBuiltIn {
-    pub fn new(theme_provider: Rc<RefCell<ThemeContext>>) -> Self {
+    pub fn new(theme_provider: ContextProvider<ThemeContext>) -> Self {
         Self { theme_provider }
     }
 

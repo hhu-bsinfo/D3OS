@@ -8,9 +8,7 @@ mod event;
 mod service;
 mod token;
 
-use core::cell::RefCell;
-
-use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 use logger::info;
 use runtime::env::Args;
 #[allow(unused_imports)]
@@ -22,9 +20,9 @@ use terminal::{println, read::read_mixed};
 
 use crate::{
     context::{
-        alias_context::AliasContext, executable_context::ExecutableContext, line_context::LineContext,
-        suggestion_context::SuggestionContext, theme_context::ThemeContext, tokens_context::TokensContext,
-        working_directory_context::WorkingDirectoryContext,
+        alias_context::AliasContext, context::ContextProvider, executable_context::ExecutableContext,
+        line_context::LineContext, suggestion_context::SuggestionContext, theme_context::ThemeContext,
+        tokens_context::TokensContext, working_directory_context::WorkingDirectoryContext,
     },
     event::{
         event::Event,
@@ -58,7 +56,6 @@ impl Config {
 
 struct Shell {
     services: Vec<Box<dyn EventHandler>>,
-    theme_provider: Rc<RefCell<ThemeContext>>,
     event_bus: EventBus,
 }
 
@@ -66,13 +63,13 @@ impl Shell {
     pub fn new(cfg: Config) -> Self {
         let event_bus = EventBus::new();
 
-        let line_provider = Rc::new(RefCell::new(LineContext::new()));
-        let suggestion_provider = Rc::new(RefCell::new(SuggestionContext::new()));
-        let tokens_provider = Rc::new(RefCell::new(TokensContext::new()));
-        let executable_provider = Rc::new(RefCell::new(ExecutableContext::new()));
-        let alias_provider = Rc::new(RefCell::new(AliasContext::new()));
-        let theme_provider = Rc::new(RefCell::new(ThemeContext::new()));
-        let wd_provider = Rc::new(RefCell::new(WorkingDirectoryContext::new()));
+        let line_provider = ContextProvider::new(LineContext::new());
+        let suggestion_provider = ContextProvider::new(SuggestionContext::new());
+        let tokens_provider = ContextProvider::new(TokensContext::new());
+        let executable_provider = ContextProvider::new(ExecutableContext::new());
+        let alias_provider = ContextProvider::new(AliasContext::new());
+        let theme_provider = ContextProvider::new(ThemeContext::new());
+        let wd_provider = ContextProvider::new(WorkingDirectoryContext::new());
 
         let mut services: Vec<Box<dyn EventHandler>> = Vec::new();
         services.push(Box::new(CommandLineService::new(line_provider.clone())));
@@ -110,11 +107,7 @@ impl Shell {
             &wd_provider,
         )));
 
-        Self {
-            event_bus,
-            services,
-            theme_provider,
-        }
+        Self { event_bus, services }
     }
 
     fn await_input_event(&mut self) -> Event {

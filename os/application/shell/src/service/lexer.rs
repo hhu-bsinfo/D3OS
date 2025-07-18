@@ -1,12 +1,9 @@
-use core::{cell::RefCell, char};
-
-use alloc::{
-    rc::Rc,
-    string::{String, ToString},
-};
+use alloc::string::{String, ToString};
 
 use crate::{
-    context::{alias_context::AliasContext, line_context::LineContext, tokens_context::TokensContext},
+    context::{
+        alias_context::AliasContext, context::ContextProvider, line_context::LineContext, tokens_context::TokensContext,
+    },
     event::{
         event::Event,
         event_bus::EventBus,
@@ -16,9 +13,9 @@ use crate::{
 };
 
 pub struct LexerService {
-    line_provider: Rc<RefCell<LineContext>>,
-    tokens_provider: Rc<RefCell<TokensContext>>,
-    alias_provider: Rc<RefCell<AliasContext>>,
+    line_provider: ContextProvider<LineContext>,
+    tokens_provider: ContextProvider<TokensContext>,
+    alias_provider: ContextProvider<AliasContext>,
 }
 
 impl EventHandler for LexerService {
@@ -42,9 +39,9 @@ impl EventHandler for LexerService {
 
 impl LexerService {
     pub const fn new(
-        line_provider: Rc<RefCell<LineContext>>,
-        tokens_provider: Rc<RefCell<TokensContext>>,
-        alias_provider: Rc<RefCell<AliasContext>>,
+        line_provider: ContextProvider<LineContext>,
+        tokens_provider: ContextProvider<TokensContext>,
+        alias_provider: ContextProvider<AliasContext>,
     ) -> Self {
         Self {
             line_provider,

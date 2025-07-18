@@ -5,12 +5,12 @@ use alloc::{
 
 use crate::event::event_handler::Error;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct AliasContext {
     entries: Vec<AliasEntry>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AliasEntry {
     pub(crate) key: String,
     pub(crate) value: String,

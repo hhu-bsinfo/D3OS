@@ -1,10 +1,9 @@
-use core::cell::RefCell;
-
-use alloc::{rc::Rc, string::ToString};
+use alloc::string::ToString;
 use logger::info;
 
 use crate::{
     context::{
+        context::ContextProvider,
         executable_context::{ExecutableContext, Io, JobBuilder, JobResult},
         tokens_context::TokensContext,
         working_directory_context::WorkingDirectoryContext,
@@ -25,10 +24,11 @@ enum IoType {
 }
 
 pub struct ParserService {
+    tokens_provider: ContextProvider<TokensContext>,
+    executable_provider: ContextProvider<ExecutableContext>,
+    wd_provider: ContextProvider<WorkingDirectoryContext>,
+
     current_io_type: Option<IoType>,
-    tokens_provider: Rc<RefCell<TokensContext>>,
-    executable_provider: Rc<RefCell<ExecutableContext>>,
-    wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
 }
 
 impl EventHandler for ParserService {
@@ -44,9 +44,9 @@ impl EventHandler for ParserService {
 
 impl ParserService {
     pub const fn new(
-        tokens_provider: Rc<RefCell<TokensContext>>,
-        executable_provider: Rc<RefCell<ExecutableContext>>,
-        wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
+        tokens_provider: ContextProvider<TokensContext>,
+        executable_provider: ContextProvider<ExecutableContext>,
+        wd_provider: ContextProvider<WorkingDirectoryContext>,
     ) -> Self {
         Self {
             tokens_provider,

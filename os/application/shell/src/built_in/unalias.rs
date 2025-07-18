@@ -1,12 +1,12 @@
-use core::cell::RefCell;
-
-use alloc::rc::Rc;
 use terminal::println;
 
-use crate::{built_in::built_in::BuiltIn, context::alias_context::AliasContext};
+use crate::{
+    built_in::built_in::BuiltIn,
+    context::{alias_context::AliasContext, context::ContextProvider},
+};
 
 pub struct UnaliasBuiltIn {
-    alias_provider: Rc<RefCell<AliasContext>>,
+    alias_provider: ContextProvider<AliasContext>,
 }
 
 impl BuiltIn for UnaliasBuiltIn {
@@ -36,7 +36,7 @@ impl BuiltIn for UnaliasBuiltIn {
 }
 
 impl UnaliasBuiltIn {
-    pub fn new(alias_provider: Rc<RefCell<AliasContext>>) -> Self {
+    pub fn new(alias_provider: ContextProvider<AliasContext>) -> Self {
         Self { alias_provider }
     }
 

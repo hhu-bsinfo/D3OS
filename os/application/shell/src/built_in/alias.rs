@@ -1,15 +1,13 @@
-use core::cell::RefCell;
-
-use alloc::{
-    rc::Rc,
-    string::{String, ToString},
-};
+use alloc::string::{String, ToString};
 use terminal::println;
 
-use crate::{built_in::built_in::BuiltIn, context::alias_context::AliasContext};
+use crate::{
+    built_in::built_in::BuiltIn,
+    context::{alias_context::AliasContext, context::ContextProvider},
+};
 
 pub struct AliasBuiltIn {
-    alias_provider: Rc<RefCell<AliasContext>>,
+    alias_provider: ContextProvider<AliasContext>,
 }
 
 impl BuiltIn for AliasBuiltIn {
@@ -27,7 +25,7 @@ impl BuiltIn for AliasBuiltIn {
 }
 
 impl AliasBuiltIn {
-    pub fn new(alias_provider: Rc<RefCell<AliasContext>>) -> Self {
+    pub fn new(alias_provider: ContextProvider<AliasContext>) -> Self {
         Self { alias_provider }
     }
 

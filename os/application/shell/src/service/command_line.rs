@@ -1,10 +1,7 @@
-use core::cell::RefCell;
-
-use alloc::rc::Rc;
 use terminal::{DecodedKey, KeyCode};
 
 use crate::{
-    context::line_context::LineContext,
+    context::{context::ContextProvider, line_context::LineContext},
     event::{
         event::Event,
         event_bus::EventBus,
@@ -15,7 +12,7 @@ use crate::{
 const MAX_LINE_LEN: usize = 256;
 
 pub struct CommandLineService {
-    line_provider: Rc<RefCell<LineContext>>,
+    line_provider: ContextProvider<LineContext>,
 }
 
 impl EventHandler for CommandLineService {
@@ -47,7 +44,7 @@ impl EventHandler for CommandLineService {
 }
 
 impl CommandLineService {
-    pub const fn new(line_provider: Rc<RefCell<LineContext>>) -> Self {
+    pub const fn new(line_provider: ContextProvider<LineContext>) -> Self {
         Self { line_provider }
     }
 

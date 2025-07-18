@@ -1,10 +1,8 @@
-use core::cell::RefCell;
-
-use alloc::{collections::vec_deque::VecDeque, rc::Rc, string::String};
+use alloc::{collections::vec_deque::VecDeque, string::String};
 use terminal::{DecodedKey, KeyCode};
 
 use crate::{
-    context::line_context::LineContext,
+    context::{context::ContextProvider, line_context::LineContext},
     event::{
         event::Event,
         event_bus::EventBus,
@@ -15,7 +13,7 @@ use crate::{
 const MAX_HISTORY_LEN: usize = 10;
 
 pub struct HistoryService {
-    line_provider: Rc<RefCell<LineContext>>,
+    line_provider: ContextProvider<LineContext>,
 
     history: VecDeque<String>,
     history_position: isize,
@@ -43,7 +41,7 @@ impl EventHandler for HistoryService {
 }
 
 impl HistoryService {
-    pub fn new(line_provider: Rc<RefCell<LineContext>>) -> Self {
+    pub fn new(line_provider: ContextProvider<LineContext>) -> Self {
         Self {
             line_provider,
             history: VecDeque::new(),

@@ -1,12 +1,12 @@
-use core::cell::RefCell;
-
-use alloc::rc::Rc;
 use terminal::println;
 
-use crate::{built_in::built_in::BuiltIn, context::working_directory_context::WorkingDirectoryContext};
+use crate::{
+    built_in::built_in::BuiltIn,
+    context::{context::ContextProvider, working_directory_context::WorkingDirectoryContext},
+};
 
 pub struct CdBuiltIn {
-    wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
+    wd_provider: ContextProvider<WorkingDirectoryContext>,
 }
 
 impl BuiltIn for CdBuiltIn {
@@ -30,7 +30,7 @@ impl BuiltIn for CdBuiltIn {
 }
 
 impl CdBuiltIn {
-    pub fn new(wd_provider: Rc<RefCell<WorkingDirectoryContext>>) -> Self {
+    pub fn new(wd_provider: ContextProvider<WorkingDirectoryContext>) -> Self {
         Self { wd_provider }
     }
 

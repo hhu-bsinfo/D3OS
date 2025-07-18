@@ -1,7 +1,4 @@
-use core::cell::RefCell;
-
 use alloc::{
-    rc::Rc,
     string::{String, ToString},
     vec::Vec,
 };
@@ -9,7 +6,10 @@ use globals::application::{APPLICATION_REGISTRY, Application};
 use terminal::DecodedKey;
 
 use crate::{
-    context::{line_context::LineContext, suggestion_context::SuggestionContext, tokens_context::TokensContext},
+    context::{
+        context::ContextProvider, line_context::LineContext, suggestion_context::SuggestionContext,
+        tokens_context::TokensContext,
+    },
     event::{
         event::Event,
         event_bus::EventBus,
@@ -20,9 +20,9 @@ use crate::{
 
 #[derive(Debug)]
 pub struct AutoCompletionService {
-    line_provider: Rc<RefCell<LineContext>>,
-    tokens_provider: Rc<RefCell<TokensContext>>,
-    suggestion_provider: Rc<RefCell<SuggestionContext>>,
+    line_provider: ContextProvider<LineContext>,
+    tokens_provider: ContextProvider<TokensContext>,
+    suggestion_provider: ContextProvider<SuggestionContext>,
 
     applications: &'static [Application],
     current_index: usize,
@@ -85,9 +85,9 @@ impl EventHandler for AutoCompletionService {
 
 impl AutoCompletionService {
     pub fn new(
-        line_provider: Rc<RefCell<LineContext>>,
-        tokens_provider: Rc<RefCell<TokensContext>>,
-        suggestion_provider: Rc<RefCell<SuggestionContext>>,
+        line_provider: ContextProvider<LineContext>,
+        tokens_provider: ContextProvider<TokensContext>,
+        suggestion_provider: ContextProvider<SuggestionContext>,
     ) -> Self {
         Self {
             line_provider,

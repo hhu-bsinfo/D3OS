@@ -1,16 +1,13 @@
-use core::cell::RefCell;
-
 use alloc::{
     format,
-    rc::Rc,
     string::{String, ToString},
 };
 use terminal::print;
 
 use crate::{
     context::{
-        line_context::LineContext, suggestion_context::SuggestionContext, theme_context::ThemeContext,
-        tokens_context::TokensContext, working_directory_context::WorkingDirectoryContext,
+        context::ContextProvider, line_context::LineContext, suggestion_context::SuggestionContext,
+        theme_context::ThemeContext, tokens_context::TokensContext, working_directory_context::WorkingDirectoryContext,
     },
     event::{
         event::Event,
@@ -23,11 +20,11 @@ use crate::{
 const INDICATOR: char = '>';
 
 pub struct WriterService {
-    line_provider: Rc<RefCell<LineContext>>,
-    tokens_provider: Rc<RefCell<TokensContext>>,
-    suggestion_provider: Rc<RefCell<SuggestionContext>>,
-    theme_provider: Rc<RefCell<ThemeContext>>,
-    wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
+    line_provider: ContextProvider<LineContext>,
+    tokens_provider: ContextProvider<TokensContext>,
+    suggestion_provider: ContextProvider<SuggestionContext>,
+    theme_provider: ContextProvider<ThemeContext>,
+    wd_provider: ContextProvider<WorkingDirectoryContext>,
 
     terminal_cursor_pos: usize,
 }
@@ -53,11 +50,11 @@ impl EventHandler for WriterService {
 
 impl WriterService {
     pub const fn new(
-        line_provider: Rc<RefCell<LineContext>>,
-        tokens_provider: Rc<RefCell<TokensContext>>,
-        suggestion_provider: Rc<RefCell<SuggestionContext>>,
-        theme_provider: Rc<RefCell<ThemeContext>>,
-        wd_provider: Rc<RefCell<WorkingDirectoryContext>>,
+        line_provider: ContextProvider<LineContext>,
+        tokens_provider: ContextProvider<TokensContext>,
+        suggestion_provider: ContextProvider<SuggestionContext>,
+        theme_provider: ContextProvider<ThemeContext>,
+        wd_provider: ContextProvider<WorkingDirectoryContext>,
     ) -> Self {
         Self {
             line_provider,

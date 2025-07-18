@@ -1,6 +1,6 @@
 use globals::theme::{THEME_REGISTRY, Theme};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ThemeContext {
     current: &'static Theme,
 }
