@@ -84,10 +84,10 @@ pub fn init() {
             },
             "NE2000",
         ));
-        scheduler().ready(Thread::new_kernel_thread(
+        /*scheduler().ready(Thread::new_kernel_thread(
             ne2000_interrupt_thread,
             "NE2000 Interrupts",
-        ));
+        ));*/
     }
 }
 fn ne2000_interrupt_thread() {
@@ -130,13 +130,11 @@ pub fn open_socket(protocol: SocketType) -> SocketHandle {
     let sockets = SOCKETS.get().expect("Socket set not initialized!");
 
     let rx_buffer = udp::PacketBuffer::new(
+        // packetgröße auf 10 erhöhen
         vec![udp::PacketMetadata::EMPTY, udp::PacketMetadata::EMPTY],
         vec![0; 65535],
     );
-    let tx_buffer = udp::PacketBuffer::new(
-        vec![udp::PacketMetadata::EMPTY, udp::PacketMetadata::EMPTY],
-        vec![0; 65535],
-    );
+    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; 1000], vec![0; 65535]);
 
     let socket = match protocol {
         SocketType::Udp => udp::Socket::new(rx_buffer, tx_buffer),
@@ -170,7 +168,7 @@ pub fn send_datagram(
 }
 
 // disabled for the rtl8139.rs
-/*fn poll_sockets() {
+fn poll_sockets() {
     let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
     let mut interfaces = INTERFACES.write();
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
@@ -183,7 +181,7 @@ pub fn send_datagram(
     for interface in interfaces.iter_mut() {
         interface.poll(time, device, &mut sockets);
     }
-}*/
+}
 
 // poll for ne2k
 

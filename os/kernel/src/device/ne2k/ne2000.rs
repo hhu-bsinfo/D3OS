@@ -985,8 +985,18 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .isr_port
                     .lock()
                     .write(InterruptStatusRegister::ISR_PRX.bits());
+                let device_ref: &Ne2000 = &self.device; // This is a shared reference
+                // Use unsafe to get a mutable reference to the inner `Ne2000` object
+                let device_mut = unsafe {
+                    // Convert from a shared reference to a mutable raw pointer
+                    ptr::from_ref(device_ref)
+                        .cast_mut() // Cast to a mutable pointer
+                        .as_mut() // Convert the raw pointer back to a mutable reference
+                        .unwrap() // Unwrap to ensure it’s valid
+                };
+                device_mut.receive_packet();
             };
-            self.device.rcv.store(true, Ordering::Relaxed);
+            //self.device.rcv.store(true, Ordering::Relaxed);
 
             // lock rcv Variable
             // dereference the MutexGuard to access the value

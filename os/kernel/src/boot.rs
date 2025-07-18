@@ -285,9 +285,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         network::add_interface(interface);
     }*/
 
-    // TODO: set up network interface for Ne2000
-    // TODO: add ne2000() function
-
     if let Some(ne2000) = ne2000()
         && qemu_cfg::is_available()
     {
@@ -335,11 +332,25 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     }
 
     // send a test datagram (suggested by Michael Schöttner on 27.06.2025)
-    let datagram = b"Hello from D3OS!";
+    //let datagram = b"Hello from D3OS!\n";
+    // for testing: change tx_buffer size in method open_socket in network/mod.rs ,
+    // to send more packets
     let socket = network::open_socket(network::SocketType::Udp);
     network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-    for _ in 0..1 {
-        network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, datagram)
+    for i in 0..1000 {
+        let base = b"Hello from D3OS!";
+        //make a Vec with enough capacity
+        //base + one space + up to 3 digits
+        let mut datagram = Vec::with_capacity(base.len() + 1 + 3);
+
+        //copy in the static message
+        datagram.extend_from_slice(base);
+
+        // add the counter
+        datagram.extend_from_slice(format!(" {}\n", i).as_bytes());
+        datagram.push(b'\n');
+        // send the datagram
+        network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, &datagram)
             .expect("Failed to send UDP datagram");
     }
     //network::close_socket(socket);

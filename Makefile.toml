@@ -56,10 +56,10 @@ args = [
     "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
 
     # Network configuration
-    #    "-nic",
-    #    "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
-    #    "-object",
-    #    "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+    #"-nic",
+    #"model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
+    #"-object",
+    #"filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
     ## Add NE2000 (Author: Johann Spenrath, Last Modified : 06.06.2025)
     ## creates a emulated ne2000 compatible nic on the slirp stack 
     ## forward udp port 1798 from host to guest
