@@ -1,0 +1,22 @@
+[package]
+name = "nettest"
+version = "0.1.0"
+edition = "2024"
+authors = ["Johann Spenrath<johann.spenrath@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/nettest.rs"
+
+[dependencies]
+smoltcp = { version = "0.12.0", default-features = false, features = [
+    "alloc",
+    "log",
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-udp",
+] }
+# Local dependencies
+terminal = { path = "../../library/terminal" }
+runtime = { path = "../../library/runtime" }
+naming = { path = "../../library/naming" }
