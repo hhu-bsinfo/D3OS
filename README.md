@@ -16,27 +16,39 @@
 
 ## Requirements
 
-For building D3OS, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/):
+For building D3OS, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
 ```bash
-rustup toolchain install nightly
+apt install rustup build-essential nasm dosfstools wget qemu-system-x86
+```
+
+This has been tested on Ubuntu 24.04.
+
+For macOS, the same can be achieved with:
+```bash
+xcode-select --install
+brew install rustup dosfstools nasm x86_64-elf-gcc gnu-tar wget qemu
+brew link --force rustup
+```
+
+This has been tested on macOS 14.
+
+Furthermore, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/):
+```bash
 rustup override set nightly
+rustup component add rust-src
 ```
 
-The toolchain `nightly-2025-05-05` is confirmed to work. If you are having problems with new versions, try:
+The toolchain `nightly-2025-06-25` is confirmed to work. If you are having problems with new versions, try:
 ```bash
-rustup toolchain install nightly-2025-05-05
-rustup override set nightly-2025-05-05
+rustup override set nightly-2025-06-25
+rustup component add rust-src
 ```
 
-To run the build commands _cargo-make_ and _cargo-licenses_ are required. Install it with:
+To run the build, the commands _cargo-make_ and _cargo-license_ are required. Install them with:
 ```bash
 cargo install --no-default-features cargo-make cargo-license
 ```
 
-Furthermore, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
-```bash
-apt install build-essential nasm dosfstools wget qemu-system-x86_64
-```
 
 ## Build and Run
 
