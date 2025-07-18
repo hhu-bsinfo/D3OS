@@ -260,100 +260,112 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize network stack
     network::init();
 
-    // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
-    /*if let Some(rtl8139) = rtl8139()
-        && qemu_cfg::is_available()
-    {
-        let time = timer.systime_ms();
-        let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
-        conf.random_seed = time as u64;
+    // set flag for enabling/disabling network cards at boot
+    let enable_rtl8139 = false;
+    let enable_ne2k = true;
 
-        // The smoltcp interface struct wants a mutable reference to the device. However, the RTL8139 driver is designed to work with shared references.
-        // Since smoltcp does not actually store the mutable reference anywhere, we can safely cast the shared reference to a mutable one.
-        // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device, since it does not modify the device itself)
-        let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-        let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
-        interface.update_ip_addrs(|ips| {
-            ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
-                .expect("Failed to add IP address");
-        });
-        interface
-            .routes_mut()
-            .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
-            .expect("Failed to add default route");
+    if enable_rtl8139 {
+        // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
+        if let Some(rtl8139) = rtl8139()
+            && qemu_cfg::is_available()
+        {
+            let time = timer.systime_ms();
+            let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
+            conf.random_seed = time as u64;
 
-        network::add_interface(interface);
-    }*/
+            // The smoltcp interface struct wants a mutable reference to the device. However, the RTL8139 driver is designed to work with shared references.
+            // Since smoltcp does not actually store the mutable reference anywhere, we can safely cast the shared reference to a mutable one.
+            // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device, since it does not modify the device itself)
+            let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
+            let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
+            interface.update_ip_addrs(|ips| {
+                ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
+                    .expect("Failed to add IP address");
+            });
+            interface
+                .routes_mut()
+                .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
+                .expect("Failed to add default route");
 
-    if let Some(ne2000) = ne2000()
-        && qemu_cfg::is_available()
-    {
-        // get current time in milliseconds
-        let time = timer.systime_ms();
-        // read mac address of NIC and add it as parameter to the Iface::Config
-        // Config :: Configuration structure used for creating a network device
-        // HardwareAddress : set the hardware address, which the interface will use
-        // conf.random_seed = time => in the documentation is the following:
-        //It is strongly recommended that the random seed is different on each boot, to avoid problems with TCP port/sequence collisions.
-        //The seed doesn’t have to be cryptographically secure.
-        // https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Config.html
-        info!(
-            "MAC Address in boot.rs, added to iface config: {}",
-            ne2000.read_mac()
-        );
-        let mut conf = iface::Config::new(HardwareAddress::from(ne2000.read_mac()));
+            network::add_interface(interface);
+        }
+    }
 
-        conf.random_seed = time as u64;
-        let device_ne2k = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
-        // create the network interface
-        // added mutex on 09.07.2025, because of interrupt handler,
-        // device.lock returns MutexGuard
-        // &mut * dereferences Guard into &mut Ne2000, which is needed by Interface
-        let mut interface = Interface::new(conf, device_ne2k, Instant::from_millis(time as i64));
+    if enable_ne2k {
+        if let Some(ne2000) = ne2000()
+            && qemu_cfg::is_available()
+        {
+            // get current time in milliseconds
+            let time = timer.systime_ms();
+            // read mac address of NIC and add it as parameter to the Iface::Config
+            // Config :: Configuration structure used for creating a network device
+            // HardwareAddress : set the hardware address, which the interface will use
+            // conf.random_seed = time => in the documentation is the following:
+            //It is strongly recommended that the random seed is different on each boot, to avoid problems with TCP port/sequence collisions.
+            //The seed doesn’t have to be cryptographically secure.
+            // https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Config.html
+            info!(
+                "MAC Address in boot.rs, added to iface config: {}",
+                ne2000.read_mac()
+            );
+            let mut conf = iface::Config::new(HardwareAddress::from(ne2000.read_mac()));
 
-        // update the ip addresses of the interface
-        // IpCidr : A specification of a CIDR block, containing an address and a variable-length subnet masking prefix length.
-        // ips = a Vector of Ip addresses
-        // pushes a new ip address to the vector list
-        // Ipv4Address::new : IP address + subnet prefix (10.0.2.16/24).
+            conf.random_seed = time as u64;
+            let device_ne2k = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
+            // create the network interface
+            // added mutex on 09.07.2025, because of interrupt handler,
+            // device.lock returns MutexGuard
+            // &mut * dereferences Guard into &mut Ne2000, which is needed by Interface
+            let mut interface =
+                Interface::new(conf, device_ne2k, Instant::from_millis(time as i64));
 
-        interface.update_ip_addrs(|ips| {
-            ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
-                .expect("Failed to add IP address (Ne2000)");
-        });
-        // define gateway (ipv4 route)
-        interface
-            .routes_mut()
-            .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
-            .expect("Failed to add default route (Ne2000)");
+            // update the ip addresses of the interface
+            // IpCidr : A specification of a CIDR block, containing an address and a variable-length subnet masking prefix length.
+            // ips = a Vector of Ip addresses
+            // pushes a new ip address to the vector list
+            // Ipv4Address::new : IP address + subnet prefix (10.0.2.16/24).
 
-        // add the interface to the INTERFACES Vectors defined in network/mod.rs
-        network::add_interface(interface);
+            interface.update_ip_addrs(|ips| {
+                ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
+                    .expect("Failed to add IP address (Ne2000)");
+            });
+            // define gateway (ipv4 route)
+            interface
+                .routes_mut()
+                .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
+                .expect("Failed to add default route (Ne2000)");
+
+            // add the interface to the INTERFACES Vectors defined in network/mod.rs
+            network::add_interface(interface);
+        }
     }
 
     // send a test datagram (suggested by Michael Schöttner on 27.06.2025)
     //let datagram = b"Hello from D3OS!\n";
     // for testing: change tx_buffer size in method open_socket in network/mod.rs ,
     // to send more packets
-    let socket = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-    for i in 0..1000 {
-        let base = b"Hello from D3OS!";
-        //make a Vec with enough capacity
-        //base + one space + up to 3 digits
-        let mut datagram = Vec::with_capacity(base.len() + 1 + 3);
+    let send_packets = false;
+    if send_packets {
+        let socket = network::open_socket(network::SocketType::Udp);
+        network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
+        for i in 0..1000 {
+            let base = b"Hello from D3OS!";
+            //make a Vec with enough capacity
+            //base + one space + up to 3 digits
+            let mut datagram = Vec::with_capacity(base.len() + 1 + 3);
 
-        //copy in the static message
-        datagram.extend_from_slice(base);
+            //copy in the static message
+            datagram.extend_from_slice(base);
 
-        // add the counter
-        datagram.extend_from_slice(format!(" {}\n", i).as_bytes());
-        datagram.push(b'\n');
-        // send the datagram
-        network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, &datagram)
-            .expect("Failed to send UDP datagram");
+            // add the counter
+            datagram.extend_from_slice(format!(" {}\n", i).as_bytes());
+            datagram.push(b'\n');
+            // send the datagram
+            network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, &datagram)
+                .expect("Failed to send UDP datagram");
+        }
+        //network::close_socket(socket);
     }
-    //network::close_socket(socket);
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
