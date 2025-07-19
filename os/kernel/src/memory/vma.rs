@@ -1,30 +1,10 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: virtual memory management                                       ║
+   ║ Module: virtual memory area                                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Functions related to a virtual memory management of a process address   ║
-   ║ space. This includes managing virtual memory areas, allocating frames   ║
-   ║ for full or partial vmas, as well as creating page mappings.            ║
-   ║                                                                         ║
-   ║ Public functions:                                                       ║
-   ║   - alloc_vma                 allocate a page range in an address space ║
-   ║   - alloc_pfr_for_vma         allocate pf range for full vma            ║
-   ║   - alloc_pfr_for_partial_vma alloc pf range for a subrange of a vma    ║
-   ║   - map_pfr_for_vma           map pf range for full vma                 ║
-   ║   - map_pfr_for_partial_vma   map pf range for subrange of a vma        ║
-   ║   - map_partial_vma           map a sub page range of a vma by          ║
-   ║                               allocating frames as needed               ║
-   ║                                                                         ║
-   ║   - map_pfr_identity          map the given pf range - identity mapped  ║
-   ║                                                                         ║
-   ║   - clone_address_space       used for process creation                 ║
-   ║   - create_kernel_address_space   used for process creation             ║
-   ║   - iter_vmas                 Iterate over all VMAs                     ║
-   ║   - dump                      dump all VMAs of an address space         ║
-   ║   - page_table_address        get root page table address               ║
-   ║   - set_flags                 set page table flags                      ║
+   ║ Functions related to a virtual memory area.                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland and Michael Schoettner                           ║
-   ║         Univ. Duesseldorf, 26.06.2025                                   ║
+   ║         Univ. Duesseldorf, 18.07.2025                                   ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -170,6 +150,16 @@ impl VirtualMemoryArea {
         }
         flags
     }
+
+    /// Helper function to check if two virtual address spaces are equivalent.
+    pub fn is_equivalent_to(&self, other: &Self) -> bool {
+        self.start() == other.start() &&
+        self.end() == other.end() &&
+        self.typ == other.typ &&
+        self.space == other.space &&
+        self.tag == other.tag
+    }
+
 }
 
 impl fmt::Debug for VirtualMemoryArea {

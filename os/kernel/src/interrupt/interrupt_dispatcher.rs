@@ -1,18 +1,18 @@
 use crate::interrupt::interrupt_handler::InterruptHandler;
+use crate::memory::MemorySpace;
 use crate::memory::vma::VmaType;
+use crate::{apic, idt, interrupt_dispatcher, scheduler};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr;
+use log::info;
 use spin::Mutex;
 use x86_64::registers::control::Cr2;
 use x86_64::set_general_handler;
 use x86_64::structures::idt::InterruptStackFrame;
-use x86_64::structures::paging::{Page, PageTableFlags};
 use x86_64::structures::paging::page::PageRange;
-use crate::{apic, idt, interrupt_dispatcher, scheduler};
-use crate::memory::MemorySpace;
-use log::info;
+use x86_64::structures::paging::{Page, PageTableFlags};
 
 #[repr(u8)]
 #[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
@@ -80,70 +80,30 @@ impl TryFrom<u8> for InterruptVector {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            value if value == InterruptVector::DivisionByZero as u8 => {
-                Ok(InterruptVector::DivisionByZero)
-            }
+            value if value == InterruptVector::DivisionByZero as u8 => Ok(InterruptVector::DivisionByZero),
             value if value == InterruptVector::Debug as u8 => Ok(InterruptVector::Debug),
-            value if value == InterruptVector::NonMaskableInterrupt as u8 => {
-                Ok(InterruptVector::NonMaskableInterrupt)
-            }
+            value if value == InterruptVector::NonMaskableInterrupt as u8 => Ok(InterruptVector::NonMaskableInterrupt),
             value if value == InterruptVector::Breakpoint as u8 => Ok(InterruptVector::Breakpoint),
             value if value == InterruptVector::Overflow as u8 => Ok(InterruptVector::Overflow),
-            value if value == InterruptVector::BoundRangeExceeded as u8 => {
-                Ok(InterruptVector::BoundRangeExceeded)
-            }
-            value if value == InterruptVector::InvalidOpcode as u8 => {
-                Ok(InterruptVector::InvalidOpcode)
-            }
-            value if value == InterruptVector::DeviceNotAvailable as u8 => {
-                Ok(InterruptVector::DeviceNotAvailable)
-            }
-            value if value == InterruptVector::DoubleFault as u8 => {
-                Ok(InterruptVector::DoubleFault)
-            }
-            value if value == InterruptVector::CoprocessorSegmentOverrun as u8 => {
-                Ok(InterruptVector::CoprocessorSegmentOverrun)
-            }
-            value if value == InterruptVector::InvalidTaskStateSegment as u8 => {
-                Ok(InterruptVector::InvalidTaskStateSegment)
-            }
-            value if value == InterruptVector::SegmentNotPresent as u8 => {
-                Ok(InterruptVector::SegmentNotPresent)
-            }
-            value if value == InterruptVector::StackSegmentFault as u8 => {
-                Ok(InterruptVector::StackSegmentFault)
-            }
-            value if value == InterruptVector::GeneralProtectionFault as u8 => {
-                Ok(InterruptVector::GeneralProtectionFault)
-            }
+            value if value == InterruptVector::BoundRangeExceeded as u8 => Ok(InterruptVector::BoundRangeExceeded),
+            value if value == InterruptVector::InvalidOpcode as u8 => Ok(InterruptVector::InvalidOpcode),
+            value if value == InterruptVector::DeviceNotAvailable as u8 => Ok(InterruptVector::DeviceNotAvailable),
+            value if value == InterruptVector::DoubleFault as u8 => Ok(InterruptVector::DoubleFault),
+            value if value == InterruptVector::CoprocessorSegmentOverrun as u8 => Ok(InterruptVector::CoprocessorSegmentOverrun),
+            value if value == InterruptVector::InvalidTaskStateSegment as u8 => Ok(InterruptVector::InvalidTaskStateSegment),
+            value if value == InterruptVector::SegmentNotPresent as u8 => Ok(InterruptVector::SegmentNotPresent),
+            value if value == InterruptVector::StackSegmentFault as u8 => Ok(InterruptVector::StackSegmentFault),
+            value if value == InterruptVector::GeneralProtectionFault as u8 => Ok(InterruptVector::GeneralProtectionFault),
             value if value == InterruptVector::PageFault as u8 => Ok(InterruptVector::PageFault),
-            value if value == InterruptVector::X87FloatingPointException as u8 => {
-                Ok(InterruptVector::X87FloatingPointException)
-            }
-            value if value == InterruptVector::AlignmentCheck as u8 => {
-                Ok(InterruptVector::AlignmentCheck)
-            }
-            value if value == InterruptVector::MachineCheck as u8 => {
-                Ok(InterruptVector::MachineCheck)
-            }
-            value if value == InterruptVector::SimdFloatingPointException as u8 => {
-                Ok(InterruptVector::SimdFloatingPointException)
-            }
-            value if value == InterruptVector::VirtualizationException as u8 => {
-                Ok(InterruptVector::VirtualizationException)
-            }
-            value if value == InterruptVector::ControlProtectionException as u8 => {
-                Ok(InterruptVector::ControlProtectionException)
-            }
-            value if value == InterruptVector::HypervisorInjectionException as u8 => {
-                Ok(InterruptVector::HypervisorInjectionException)
-            }
-            value if value == InterruptVector::VmmCommunicationException as u8 => {
-                Ok(InterruptVector::VmmCommunicationException)
-            }
-            value if value == InterruptVector::SecurityException as u8 => {
-                Ok(InterruptVector::SecurityException)
-            }
+            value if value == InterruptVector::X87FloatingPointException as u8 => Ok(InterruptVector::X87FloatingPointException),
+            value if value == InterruptVector::AlignmentCheck as u8 => Ok(InterruptVector::AlignmentCheck),
+            value if value == InterruptVector::MachineCheck as u8 => Ok(InterruptVector::MachineCheck),
+            value if value == InterruptVector::SimdFloatingPointException as u8 => Ok(InterruptVector::SimdFloatingPointException),
+            value if value == InterruptVector::VirtualizationException as u8 => Ok(InterruptVector::VirtualizationException),
+            value if value == InterruptVector::ControlProtectionException as u8 => Ok(InterruptVector::ControlProtectionException),
+            value if value == InterruptVector::HypervisorInjectionException as u8 => Ok(InterruptVector::HypervisorInjectionException),
+            value if value == InterruptVector::VmmCommunicationException as u8 => Ok(InterruptVector::VmmCommunicationException),
+            value if value == InterruptVector::SecurityException as u8 => Ok(InterruptVector::SecurityException),
 
             value if value == InterruptVector::Pit as u8 => Ok(InterruptVector::Pit),
             value if value == InterruptVector::Keyboard as u8 => Ok(InterruptVector::Keyboard),
@@ -160,16 +120,12 @@ impl TryFrom<u8> for InterruptVector {
             value if value == InterruptVector::Mouse as u8 => Ok(InterruptVector::Mouse),
             value if value == InterruptVector::Fpu as u8 => Ok(InterruptVector::Fpu),
             value if value == InterruptVector::PrimaryAta as u8 => Ok(InterruptVector::PrimaryAta),
-            value if value == InterruptVector::SecondaryAta as u8 => {
-                Ok(InterruptVector::SecondaryAta)
-            }
+            value if value == InterruptVector::SecondaryAta as u8 => Ok(InterruptVector::SecondaryAta),
 
             value if value == InterruptVector::Cmci as u8 => Ok(InterruptVector::Cmci),
             value if value == InterruptVector::ApicTimer as u8 => Ok(InterruptVector::ApicTimer),
             value if value == InterruptVector::Thermal as u8 => Ok(InterruptVector::Thermal),
-            value if value == InterruptVector::Performance as u8 => {
-                Ok(InterruptVector::Performance)
-            }
+            value if value == InterruptVector::Performance as u8 => Ok(InterruptVector::Performance),
             value if value == InterruptVector::Lint0 as u8 => Ok(InterruptVector::Lint0),
             value if value == InterruptVector::Lint1 as u8 => Ok(InterruptVector::Lint1),
             value if value == InterruptVector::ApicError as u8 => Ok(InterruptVector::ApicError),
@@ -207,43 +163,55 @@ pub fn setup_idt() {
 }
 
 fn handle_exception(frame: InterruptStackFrame, index: u8, error: Option<u64>) {
-    panic!("CPU Exception: [{} - {:?}]\nError code: [{:?}]\n{:?}", index, InterruptVector::try_from(index).unwrap(), error, frame);
+    panic!(
+        "CPU Exception: [{} - {:?}]\nError code: [{:?}]\n{:?}",
+        index,
+        InterruptVector::try_from(index).unwrap(),
+        error,
+        frame
+    );
 }
 
 fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>) {
     let fault_addr = Cr2::read().expect("Invalid address in CR2 during page fault");
     let thread = scheduler().current_thread();
 
+    // Was the page fault caused by a user thread?
     if !thread.is_kernel_thread() {
-        // Check if page fault occurred inside a user stack
-        let fault_handled = thread.process().virtual_address_space
-            .iter_vmas()
-            .filter(|vma| vma.typ == VmaType::UserStack)
-            .find(|stack| stack.start() <= fault_addr && fault_addr < stack.end())
-            .map(|stack| {
-                // If we found a user stack, we can map the page
-                let fault_page = Page::containing_address(fault_addr);
-                thread.process().virtual_address_space.map_partial_vma(&stack, PageRange { start: fault_page, end: fault_page + 1, }, MemorySpace::User, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
-                info!("resolved page fault for user stack of tid = {}, process id  = {}", thread.id(), thread.process().id());
-                ()
-            })
-            // Check if page fault occurred inside the allocated, but not yet mapped heap.
-            .or_else(|| {
-                thread.process().virtual_address_space
-                    .iter_vmas()
-                    .filter(|vma| vma.typ == VmaType::Heap)
-                    .find(|heap| heap.start() <= fault_addr && fault_addr < heap.end())
-                    .map(|heap| {
-                        thread.process().grow_heap(&heap, fault_addr);
-                        ()
-                    })
-            });
+        let fault_page = Page::containing_address(fault_addr);
 
-        if fault_handled.is_some() {
-            return; // Page fault was handled by mapping the user stack page
+        // Check if page fault occurred inside a user stack
+        if let Some(stack) = thread
+            .process()
+            .virtual_address_space
+            .is_address_within_vma(fault_addr.as_u64(), VmaType::UserStack)
+        {
+            thread.process().virtual_address_space.map_partial_vma(
+                &stack,
+                PageRange {
+                    start: fault_page,
+                    end: fault_page + 1,
+                },
+                MemorySpace::User,
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
+            );
+            return ;
+        }
+
+
+        // Check if page fault occurred inside a user heap
+        if let Some(heap) = thread.process().virtual_address_space.is_address_within_vma(fault_addr.as_u64(), VmaType::Heap) {
+            thread.process().virtual_address_space.map_partial_vma(
+                &heap,
+                PageRange { start: fault_page, end: fault_page + 1 },
+                MemorySpace::User,
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
+            );
+            return ;
         }
     }
 
+    // Page fault not resolved, panic
     panic!("Page Fault!\nError code: [{:?}]\nAddress: [0x{:0>16x}]\n{:?}", error, fault_addr, frame);
 }
 
@@ -264,19 +232,24 @@ impl InterruptDispatcher {
     pub fn assign(&self, vector: InterruptVector, handler: Box<dyn InterruptHandler>) {
         match self.int_vectors.get(vector as usize) {
             Some(vec) => vec.lock().push(handler),
-            None => panic!("Assigning interrupt handler to illegal vector number {}!", vector as u8)
+            None => panic!("Assigning interrupt handler to illegal vector number {}!", vector as u8),
         }
     }
 
     pub fn dispatch(&self, interrupt: u8) {
-        let handler_vec_mutex = self.int_vectors.get(interrupt as usize).unwrap_or_else(|| panic!("Interrupt Dispatcher: No handler vec assigned for interrupt [{}]!", interrupt));
+        let handler_vec_mutex = self
+            .int_vectors
+            .get(interrupt as usize)
+            .unwrap_or_else(|| panic!("Interrupt Dispatcher: No handler vec assigned for interrupt [{}]!", interrupt));
         let mut handler_vec = handler_vec_mutex.try_lock();
         while handler_vec.is_none() {
             // We have to force unlock inside the interrupt handler, or else the system will hang forever.
             // While this might be unsafe, it is extremely unlikely that we destroy something here, since we only need read access to the vectors.
             // The only scenario, in which something might break, is when two or more drivers are trying to assign an interrupt handler to the same vector,
             // while an interrupt for that vector occurs.
-            unsafe { handler_vec_mutex.force_unlock(); }
+            unsafe {
+                handler_vec_mutex.force_unlock();
+            }
             handler_vec = handler_vec_mutex.try_lock();
         }
 

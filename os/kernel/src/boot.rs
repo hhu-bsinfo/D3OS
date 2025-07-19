@@ -99,7 +99,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // and initialize kernel heap, after which formatted strings may be used in logs and panics.
     info!("Initializing kernel heap");
-    let heap_region = memory::vmm::alloc_frames(INIT_HEAP_PAGES);
+    let heap_region = unsafe { memory::vmm::alloc_frames(INIT_HEAP_PAGES) };
     unsafe {
         allocator().init(&heap_region);
     }

@@ -180,7 +180,7 @@ impl TransmitDescriptor {
 
 impl ReceiveBuffer {
     pub fn new() -> Self {
-        let receive_memory = vmm::alloc_frames(BUFFER_PAGES);
+        let receive_memory = unsafe { vmm::alloc_frames(BUFFER_PAGES) };
         let receive_buffer = unsafe { Vec::from_raw_parts(receive_memory.start.start_address().as_u64() as *mut u8, BUFFER_SIZE, BUFFER_SIZE) };
 
         Self { index: 0, data: receive_buffer }
@@ -201,7 +201,7 @@ unsafe impl Allocator for PacketAllocator {
         }
 
         let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64)).expect("PacketAllocator may only be used with page frames!");
-        vmm::free_frames(PhysFrameRange { start, end: start + 1 });
+        unsafe { vmm::free_frames(PhysFrameRange { start, end: start + 1 }); }
     }
 }
 
@@ -234,7 +234,8 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
         }
 
         // Allocate physical memory for the packet (DMA only works with physical addresses)
-        let phys_buffer = vmm::alloc_frames(1);
+        let phys_buffer = unsafe { vmm::alloc_frames(1) };
+
         let phys_start_addr = phys_buffer.start.start_address();
         let pages = PageRange {
             start: Page::from_start_address(VirtAddr::new(phys_start_addr.as_u64())).unwrap(),
@@ -342,7 +343,7 @@ impl InterruptHandler for Rtl8139InterruptHandler {
             let mut queue = self.device.send_queue.0.lock();
             let mut buffer = queue.try_dequeue();
             while buffer.is_ok() {
-                vmm::free_frames(buffer.unwrap());
+                unsafe { vmm::free_frames(buffer.unwrap()); }
                 buffer = queue.try_dequeue();
             }
         }
@@ -376,7 +377,7 @@ impl Rtl8139 {
         let kernel_process = process_manager().read().kernel_process().unwrap();
         let recv_buffers = mpmc::bounded::scq::queue(RECV_QUEUE_CAP);
         for _ in 0..RECV_QUEUE_CAP {
-            let phys_frame = vmm::alloc_frames(1);
+            let phys_frame = unsafe { vmm::alloc_frames(1) };
             let pages = PageRange {
                 start: Page::from_start_address(VirtAddr::new(phys_frame.start.start_address().as_u64())).unwrap(),
                 end: Page::from_start_address(VirtAddr::new(phys_frame.end.start_address().as_u64())).unwrap()

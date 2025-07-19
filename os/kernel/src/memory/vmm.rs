@@ -12,9 +12,11 @@
    ║                               a vma and create a identity mapping       ║
    ║   - user_alloc_map_full       create vma for pages, allocate and map it ║
    ║                               in user space.                            ║
+   ║   - user_alloc_map_partial    create vma for pages, allocate and map    ║
+   ║                               given range in user space.                ║
    ║                                                                         ║
    ║ Public functions:                                                       ║
-   ║   - alloc_vma                 allocate a page range in an address space ║
+   ║   - alloc_vma                 alloc. a page range in user / kernel space║
    ║   - alloc_pfr_for_vma         allocate pf range for full vma            ║
    ║   - alloc_pfr_for_partial_vma alloc pf range for a subrange of a vma    ║
    ║   - map_pfr_for_vma           map pf range for full vma                 ║
@@ -48,8 +50,8 @@
 ///     3. map_partial_vma
 ///
 use alloc::sync::Arc;
-use alloc::vec::Vec;
-use core::ops::Deref;
+use alloc::collections::BTreeMap;
+use core::ops::Range;
 use log::info;
 use spin::RwLock;
 
@@ -94,13 +96,13 @@ fn last_usable_virtual_address() -> u64 {
 
 /// Wrapper function
 /// Allocate `frame_count` contiguous page frames.
-pub fn alloc_frames(frame_count: usize) -> PhysFrameRange {
+pub unsafe fn alloc_frames(frame_count: usize) -> PhysFrameRange {
     frames::alloc(frame_count)
 }
 
 /// Wrapper function
 /// Free a contiguous range of page `frames`.
-pub fn free_frames(frames: PhysFrameRange) {
+pub unsafe fn free_frames(frames: PhysFrameRange) {
     unsafe {
         frames::free(frames);
     }
@@ -111,37 +113,13 @@ pub fn frame_allocator_locked() -> bool {
     frames::allocator_locked()
 }
 
-pub struct VmaIterator {
-    vmas: Vec<Arc<VirtualMemoryArea>>,
-    index: usize,
-}
-
-impl VmaIterator {
-    pub fn new(vmas: Vec<Arc<VirtualMemoryArea>>) -> Self {
-        Self { vmas, index: 0 }
-    }
-}
-
-impl Iterator for VmaIterator {
-    type Item = Arc<VirtualMemoryArea>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.vmas.len() {
-            let vma = Arc::clone(&self.vmas[self.index]);
-            self.index += 1;
-            Some(vma)
-        } else {
-            None
-        }
-    }
-}
 
 /// All data related to a virtual address space of a process.
 pub struct VirtualAddressSpace {
-    virtual_memory_areas: RwLock<Vec<Arc<VirtualMemoryArea>>>,
+    virtual_memory_areas: RwLock<BTreeMap<VirtAddr, Arc<VirtualMemoryArea>>>, // sorted by start address of vma
     page_tables: Arc<Paging>,
     first_usable_user_addr: VirtAddr, // fixed, the first usable user address
-    last_usable_user_addr: VirtAddr, // fixed , the last usable user address
+    last_usable_user_addr: VirtAddr,  // fixed , the last usable user address
 }
 
 impl VirtualAddressSpace {
@@ -157,7 +135,7 @@ impl VirtualAddressSpace {
 
         Self {
             page_tables,
-            virtual_memory_areas: RwLock::new(Vec::new()),
+            virtual_memory_areas: RwLock::new(BTreeMap::new()),
             first_usable_user_addr,
             last_usable_user_addr,
         }
@@ -250,18 +228,18 @@ impl VirtualAddressSpace {
     /// No mappings are created in the page tables. \
     /// Returns the new [`VirtualMemoryArea`] if successful, otherwise `None`.
     fn alloc_at(&self, first_page: Page, num_pages: u64, vma_space: MemorySpace, vma_type: VmaType, vma_tag_str: &str) -> Option<Arc<VirtualMemoryArea>> {
-        let start_addr = first_page.start_address();
+        let new_vma_start_addr: VirtAddr = first_page.start_address();
 
         let end_page = first_page + num_pages;
-        let end_addr = end_page.start_address(); // still safe, since end is exclusive
+        let new_vma_end_addr = end_page.start_address(); // still safe, since end is exclusive
 
         // Bounds check against usable user address range
         if vma_space == MemorySpace::User {
-            if start_addr < self.first_usable_user_addr || end_addr > self.last_usable_user_addr {
+            if new_vma_start_addr < self.first_usable_user_addr || new_vma_end_addr > self.last_usable_user_addr {
                 return None;
             }
         // Bounds check against usable kernel address range
-        } else if end_addr > self.last_usable_user_addr {
+        } else if new_vma_end_addr > self.last_usable_user_addr {
             return None;
         }
 
@@ -272,76 +250,81 @@ impl VirtualAddressSpace {
         };
         let new_vma = Arc::new(VirtualMemoryArea::new_with_tag(vma_space, vma_range, vma_type, vma_tag_str));
 
-        // Check for overlap with existing VMAs
+        // Check for overlap with previous VMA
         let mut vmas = self.virtual_memory_areas.write();
-        vmas.sort_by(|a, b| a.range.start.cmp(&b.range.start));
-        for vma in vmas.iter() {
-            // Check for overlap with existing VMAs
-            if vma.overlaps_with(&new_vma) {
+        if let Some((_, prev)) = vmas.range(..=new_vma_start_addr).next_back() {
+            // If the previous VMA ends after the new VMA starts, there is an overlap
+            if prev.end() > new_vma_start_addr {
                 return None;
             }
         }
 
         // No overlap, add new VMA
-        vmas.push(Arc::clone(&new_vma));
+        vmas.insert(new_vma_start_addr, new_vma.clone());
         Some(new_vma)
     }
 
-    /// Allocates a virtual memory region for `num_pages` pages (starting from any free page) \
+    /// Allocates a virtual memory region for `num_pages` pages for the given `space`, `typ` and `tag` in the address space `self`. \
+    /// The start address for the search depends on the `space`: \
+    /// - For `MemorySpace::User`, it starts from `first_usable_user_addr` \
+    /// - For `MemorySpace::Kernel`, it starts from `0` up to `first_usable_user_addr - 1`\
+    ///     /// first_usable_user_addr
+    ///  (starting from any free page) \
     /// for the given `space`, `typ` and `tag` in the address space `self`. \
     /// No mappings are created in the page tables. \
     /// Returns the new [`VirtualMemoryArea`] if successful, otherwise `None`.
     fn alloc(&self, num_pages: u64, vma_space: MemorySpace, vma_type: VmaType, vma_tag: &str) -> Option<Arc<VirtualMemoryArea>> {
+        // Determine the address range based on the memory space
+        let search_range: Range<VirtAddr> = if vma_space == MemorySpace::User {
+            self.first_usable_user_addr..self.last_usable_user_addr
+        } else {
+            VirtAddr::new(0)..self.first_usable_user_addr
+        };
 
-        info!("*** VMA alloc");
+        let size: u64 = num_pages * PAGE_SIZE as u64;
 
-        let mut vmas = self.virtual_memory_areas.write();
-        vmas.sort_by(|a, b| a.range.start.cmp(&b.range.start));
+        // Search a gap of `num_pages` pages in the given address space
+        let areas = self.virtual_memory_areas.read();
+        let mut current = search_range.start;
+        for (_, vma) in areas.range(search_range.clone()) {
 
-        let requested_region_size = num_pages * PAGE_SIZE as u64;
+            // Check for gap between `current` and next VMA
+            if current + size <= vma.start() && vma.start() <= search_range.end {
 
-        // Start searching from first usable user address
-        let mut current_addr = self.first_usable_user_addr;
-        for vma in vmas.iter() {
-            let gap_start = current_addr;
-            let gap_end = vma.range.start.start_address();
+                drop(areas); // Release read lock before writing
 
-            if gap_end > gap_start {
-                let gap_size = gap_end.as_u64() - gap_start.as_u64();
-
-                if gap_size >= requested_region_size {
-                    let candidate_page = Page::containing_address(gap_start);
-                    drop(vmas); // release lock before recursive call
-                    return self.alloc_at(candidate_page, num_pages, vma_space, vma_type, vma_tag);
-                }
+                let candidate_page = Page::containing_address(current);
+                return self.alloc_at(candidate_page, num_pages, vma_space, vma_type, vma_tag);
             }
 
-            // Move to end of current VMA
-            current_addr = vma.range.end.start_address();
+            current = vma.end();
+            if current > search_range.end {
+                break;
+            }
         }
 
-        // Try allocating after last VMA
-        let last_addr = current_addr;
-        let available = self.last_usable_user_addr.as_u64().saturating_sub(last_addr.as_u64());
+        drop(areas); // Release read lock before writing
 
-        if available >= requested_region_size {
-            let candidate_page = Page::containing_address(last_addr);
+        // No gap found, check if there is space after the last VMA?
+        if current + size <= search_range.end {
+            let candidate_page = Page::containing_address(current);
             return self.alloc_at(candidate_page, num_pages, vma_space, vma_type, vma_tag);
         }
 
-        None // No space found
-    }
-
-    /// Iterate over all virtual memory areas in this address space.
-    pub fn iter_vmas(&self) -> VmaIterator {
-        let vmas = self.virtual_memory_areas.read().clone();
-        VmaIterator::new(vmas)
+        // No space found
+        None
     }
 
     /// Map the sub `page_range` of the given `vma` by allocating frames as needed.
     pub fn map_partial_vma(&self, vma: &VirtualMemoryArea, page_range: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let areas = self.virtual_memory_areas.read();
-        areas.iter().find(|area| (**area).deref() == vma).expect("tried to map a non-existent VMA!");
+
+        let found_vma = areas.get(&vma.start()).expect("tried to map a non-existent VMA!");
+
+        if !vma.is_equivalent_to(found_vma) {
+            panic!("Tried to map pages in a not existing VMA");
+        }
+
         assert!(page_range.start.start_address() >= vma.start());
         assert!(page_range.end.start_address() <= vma.end());
         self.page_tables.map(page_range, space, flags);
@@ -428,13 +411,9 @@ impl VirtualAddressSpace {
 
     /// Tries to allocate a virtual memory region for `num_pages` pages for `MemorySpace::User`, `typ`, and `tag` in the address space `self`. \
     /// If `start_page` is `Some` the allocator tries to allocate the vma from the given page otherwise it will allocate from any free page. \
-    /// No frames are allocated and no mappings are created in the page tables. \
+    /// Frames are allocated for *all* pages in the vma including all mappings in the page tables. \
     /// Returns the new [`VirtualMemoryArea`] if successful, otherwise `None`.
     pub fn user_alloc_map_full(&self, start_page: Option<Page>, num_pages: u64, vma_type: VmaType, vma_tag: &str) -> Option<Arc<VirtualMemoryArea>> {
-        info!(
-            "user_alloc_map_full: start_page: {:?}, num_pages: {}, vma_type: {:?}, vma_tag: {}",
-            start_page, num_pages, vma_type, vma_tag
-        );
         let vma = self.alloc_vma(start_page, num_pages, MemorySpace::User, vma_type, vma_tag);
         if vma.is_none() {
             return None;
@@ -443,6 +422,50 @@ impl VirtualAddressSpace {
 
         self.page_tables.map(
             vma.range,
+            MemorySpace::User,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
+        );
+
+        Some(vma)
+    }
+
+    /// Tries to allocate a virtual memory region for `num_pages` pages for `MemorySpace::User`, `typ`, and `tag` in the address space `self`. \
+    /// If `start_page` is `Some` the allocator tries to allocate the vma from the given page otherwise it will allocate from any free page. \
+    /// Frames are allocated for the * pages in the vma including all mappings in the page tables. \
+    /// Returns the new [`VirtualMemoryArea`] if successful, otherwise `None`.
+    pub fn user_alloc_map_partial(
+        &self, start_page: Option<Page>, num_pages: u64, vma_type: VmaType, vma_tag: &str, alloc_num_pages: u64, alloc_downwards: bool,
+    ) -> Option<Arc<VirtualMemoryArea>> {
+        // Alloc vma
+        let vma = self.alloc_vma(start_page, num_pages, MemorySpace::User, vma_type, vma_tag);
+        if vma.is_none() {
+            return None;
+        }
+        let vma = vma.unwrap();
+
+        // Calc page range to be physically allocated
+        let alloc_page_range;
+        if alloc_downwards {
+            // Allocate frames downwards
+            let start_page = vma.range.end - alloc_num_pages;
+            let end_page = vma.range.end;
+            alloc_page_range = PageRange {
+                start: start_page,
+                end: end_page,
+            };
+        } else {
+            // Allocate frames upwards
+            let start_page = vma.range.start;
+            let end_page = vma.range.start + alloc_num_pages;
+            alloc_page_range = PageRange {
+                start: start_page,
+                end: end_page,
+            };
+        }
+
+        // Do mapping which allocates frames
+        self.page_tables.map(
+            alloc_page_range,
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
         );
@@ -505,12 +528,29 @@ impl VirtualAddressSpace {
             }
         }
     }
+
+    /// Check if the given `address` is within a VMA of the given type `vma_type` in this address space.
+    /// Helper function using in interrupt_dispatcher.rs to check if a page fault address is within a stack or heap VMA.
+    pub fn is_address_within_vma(&self, address: u64, vma_type: VmaType) -> Option<Arc<VirtualMemoryArea>> {
+        let areas = self.virtual_memory_areas.read();
+        let vaddr = VirtAddr::new(address); // or however you construct a VirtAddr from u64
+
+
+        // Find the closest VMA with start <= address
+        if let Some((_, vma)) = areas.range(..=vaddr).next_back() {
+            if vaddr < vma.end() && vma.typ == vma_type {
+                return Some(Arc::clone(vma));
+            }
+        }
+        None
+    }
+
 }
 
 impl Drop for VirtualAddressSpace {
     fn drop(&mut self) {
         for vma in self.virtual_memory_areas.read().iter() {
-            self.page_tables.unmap(vma.range(), true);
+            self.page_tables.unmap(vma.1.range, true);
         }
     }
 }

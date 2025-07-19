@@ -935,11 +935,11 @@ impl IdeChannel {
         let prd_size = pages * 8;
         let prd_pages = prd_size / PAGE_SIZE + if (prd_size % PAGE_SIZE) == 0 { 0 } else { 1 };
 
-        let prd_frames = memory::vmm::alloc_frames(prd_pages);
+        let prd_frames =  unsafe { memory::vmm::alloc_frames(prd_pages) };
         let prd = unsafe { slice::from_raw_parts_mut(prd_frames.start.start_address().as_u64() as *mut PrdEntry, pages) };
 
         // Allocate memory for the DMA transfer
-        let dma_frames = memory::vmm::alloc_frames(pages);
+        let dma_frames = unsafe { memory::vmm::alloc_frames(pages) };
         let dma_buffer = unsafe { slice::from_raw_parts_mut(dma_frames.start.start_address().as_u64() as *mut u8, buffer.len()) };
 
         // Copy data to the DMA buffer if we are writing
@@ -983,8 +983,10 @@ impl IdeChannel {
                 mode, info.drive, self.index
             );
 
-            memory::vmm::free_frames(dma_frames);
-            memory::vmm::free_frames(prd_frames);
+            unsafe {
+                memory::vmm::free_frames(dma_frames);
+                memory::vmm::free_frames(prd_frames);
+            }
             return 0;
         }
 
@@ -1033,8 +1035,11 @@ impl IdeChannel {
         }
 
         // Free allocated page frames
-        memory::vmm::free_frames(dma_frames);
-        memory::vmm::free_frames(prd_frames);
+        unsafe {
+            memory::vmm::free_frames(dma_frames);
+            memory::vmm::free_frames(prd_frames);
+        }
+
 
         count
     }
