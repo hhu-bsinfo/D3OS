@@ -37,18 +37,19 @@ const DEFAULT_INTERVAL: u32 = 10;
 // =============================================================================
 // Server Mode
 // =============================================================================
-/*pub fn server(socket :udp::Socket) -> u32 {
+/*pub fn server(socket: udp::Socket) -> u32 {
     let local_net_address = Ipv4Address;
 
-    if socket.getLocalAddress{
+    if socket.getLocalAddress {
         println("nettest-rs: Failed to query socket address!");
         return -1;
-
     }
 
     println("nettest: sever listening on {} ", local_net_address);
     println("Send 'exit' to leave.");
+}*/
 
+/*
     // Wait for client to initiate connection, return if exit code is != 0
     while (true) {
         auto receivedDatagram = Util::Network::Udp::UdpDatagram();

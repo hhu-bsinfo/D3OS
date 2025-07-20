@@ -297,19 +297,21 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         {
             // get current time in milliseconds
             let time = timer.systime_ms();
-            // read mac address of NIC and add it as parameter to the Iface::Config
-            // Config :: Configuration structure used for creating a network device
-            // HardwareAddress : set the hardware address, which the interface will use
-            // conf.random_seed = time => in the documentation is the following:
-            //It is strongly recommended that the random seed is different on each boot, to avoid problems with TCP port/sequence collisions.
-            //The seed doesn’t have to be cryptographically secure.
-            // https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Config.html
+            // for debugging
+            // TODO: remove
             info!(
                 "MAC Address in boot.rs, added to iface config: {}",
                 ne2000.read_mac()
             );
+            // read mac address of NIC and add it as parameter to the Iface::Config
+            // Config :: Configuration structure used for creating a network device
+            // HardwareAddress : set the hardware address, which the interface will use
             let mut conf = iface::Config::new(HardwareAddress::from(ne2000.read_mac()));
 
+            // conf.random_seed = time => in the documentation is the following:
+            //It is strongly recommended that the random seed is different on each boot, to avoid problems with TCP port/sequence collisions.
+            //The seed doesn’t have to be cryptographically secure.
+            // https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Config.html
             conf.random_seed = time as u64;
             let device_ne2k = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
             // create the network interface
@@ -330,6 +332,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
                     .expect("Failed to add IP address (Ne2000)");
             });
             // define gateway (ipv4 route)
+            // the nic does an arp request to find this
             interface
                 .routes_mut()
                 .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
@@ -344,11 +347,15 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     //let datagram = b"Hello from D3OS!\n";
     // for testing: change tx_buffer size in method open_socket in network/mod.rs ,
     // to send more packets
-    let send_packets = false;
+    let number_of_packets = 10;
+    let send_packets = true;
     if send_packets {
         let socket = network::open_socket(network::SocketType::Udp);
         network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
-        for i in 0..1000 {
+        for i in 0..number_of_packets {
+            //UDP “send” calls take a buffer of raw bytes, not a UTF-8 string.
+            //"Hello from D3OS!" is an &str (UTF-8 text), not a &[u8] byte slice"Hello from D3OS!" is an &str (UTF-8 text), not a &[u8] byte slice
+            //  prefixing with b:creates a byte string literal—i.e. a &[u8]
             let base = b"Hello from D3OS!";
             //make a Vec with enough capacity
             //base + one space + up to 3 digits

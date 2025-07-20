@@ -128,11 +128,11 @@ args = [
     ## Add NE2000 (Author: Johann Spenrath, Last Modified : 16.06.2025)
     "-nic",
     "model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798",
+    "-object",
+    "filter-dump,id=filter1,netdev=ne2k,file=ne2k.dump",
     #"-netdev",
     #"tap,id=mynet0,ifname=tap0,script=no,downscript=no",
     #"model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798,mac=40:54:00:12:34:56",
-    "-object",
-    "filter-dump,id=filter0,netdev=ne2k,file=ne2k.dump",
 
     # Audio configuration (Using pulse audio for Linux)
     "-audiodev",

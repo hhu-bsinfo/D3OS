@@ -14,7 +14,6 @@
 // DEPENDENCIES:
 // =============================================================================
 use bitflags::bitflags;
-
 // =============================================================================
 bitflags! {
     pub struct PageRegisters : u8 {
@@ -86,9 +85,9 @@ bitflags! {
 bitflags! {
     pub struct CR :u8 {
         const STP = 0x01; /// STOP
-        const STA = 0x02; /** START */
-        const TXP = 0x04; /** Transmit Packet */
-        const RD_0 = 0x08; /** Remote DMA Command 0 */
+        const STA = 0x02; // START
+        const TXP = 0x04; // Transmit Packet */
+        const RD_0 = 0x08; // Remote DMA Command 0 */
         const RD_1 = 0x10; /** Remote DMA Command 1 */
         const RD_2 = 0x20; /** Remote DMA Command 2*/
         const PS_0 = 0x40; /** Page Select PS0 */
@@ -122,6 +121,7 @@ bitflags! {
 
 bitflags! {
 
+    // enable / disable interrupts
     pub struct InterruptMaskRegister : u8 {
         const IMR_PRXE = 0x01;
         const IMR_PTXE = 0x02;
@@ -135,7 +135,6 @@ bitflags! {
 
 //Data Configuration Register as defined in DP8390D
 //P.22 https://datasheetspdf.com/pdf-file/549771/NationalSemiconductor/DP8390D/1
-// Accessed: 2024-03-29
 bitflags! {
     pub struct DataConfigurationRegister : u8 {
         const DCR_WTS = 0x01;

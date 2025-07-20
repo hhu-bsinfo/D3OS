@@ -65,9 +65,44 @@ const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
     BUFFER_SIZE / PAGE_SIZE + 1
 };
 
+// =============================================================================
+// ==== STRUCTS
+// ======|> pub struct Ne2000TxToken<'a>
+// ======|> pub struct Ne2000RxToken<'a>
+// ======|> pub struct ReceiveBuffer
+// ======|> pub struct PacketAllocator
+// =============================================================================
+
 pub struct Ne2000TxToken<'a> {
     device: &'a mut Ne2000,
 }
+// Receive Token for the driver, points to the
+// ne2000 struct,
+// tokens are types that allow to receive/send a single packet,
+// receive and transmit construct the tokens only
+// real sending, tranmitting is done by the consume
+pub struct Ne2000RxToken<'a> {
+    buffer: Vec<u8, PacketAllocator>,
+    device: &'a Ne2000,
+}
+
+pub struct ReceiveBuffer {
+    index: usize,
+    data: Vec<u8>,
+}
+
+// allocate blocks of data
+// Ne2000 uses buffer ring,
+// packets can be overwritten by new incoming packets once
+// the buffer is full
+// driver allocates memory in RAM to copy the packet there
+// and free the buffer on NE2000
+#[derive(Default)]
+pub struct PacketAllocator;
+
+// =============================================================================
+// ==== IMPLEMENTATIONS
+// =============================================================================
 
 // implementation is orientated on the rtl8139.rs module
 // generate new transmission token
@@ -152,15 +187,6 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
     }
 }
 
-// allocate blocks of data
-// Ne2000 uses buffer ring,
-// packets can be overwritten by new incoming packets once
-// the buffer is full
-// driver allocates memory in RAM to copy the packet there
-// and free the buffer on NE2000
-#[derive(Default)]
-pub struct PacketAllocator;
-
 unsafe impl Allocator for PacketAllocator {
     // from rtl8139.rs
     // allocates a block of memory
@@ -193,11 +219,6 @@ unsafe impl Allocator for PacketAllocator {
     }
 }
 
-pub struct ReceiveBuffer {
-    index: usize,
-    data: Vec<u8>,
-}
-
 impl ReceiveBuffer {
     pub fn new() -> Self {
         // allocate memory for buffer
@@ -217,16 +238,6 @@ impl ReceiveBuffer {
             data: receive_buffer,
         }
     }
-}
-
-// Receive Token for the driver, points to the
-// ne2000 struct,
-// tokens are types that allow to receive/send a single packet,
-// receive and transmit construct the tokens only
-// real sending, tranmitting is done by the consume
-pub struct Ne2000RxToken<'a> {
-    buffer: Vec<u8, PacketAllocator>,
-    device: &'a Ne2000,
 }
 
 impl<'a> Ne2000RxToken<'a> {

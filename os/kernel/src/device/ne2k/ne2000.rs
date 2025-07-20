@@ -3,24 +3,9 @@
 // AUTHOR      : Johann Spenrath
 // DESCRIPTION : Main file for the NE2000 driver
 // =============================================================================
-//
-//
-//
 // TODO:
 //
 // NOTES:
-//
-// =============================================================================
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
 //
 // =============================================================================
 // DEPENDENCIES:
@@ -32,9 +17,10 @@ use crate::process::thread::Thread;
 use crate::{apic, device, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use acpi::platform::interrupt;
 use core::mem;
-use core::ops::BitOr;
+// for calling the methods outside the interrupt handler
 use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use core::{ptr, slice};
+// print to terminal
 use log::info;
 // for allocator impl
 use alloc::boxed::Box;
@@ -44,7 +30,6 @@ use core::ptr::NonNull;
 use spin::{Mutex, RwLock};
 // let smoltcp handle the packet
 // TODO: check network/mod.rs for the handling of the packet
-// probably an interrupt handler has to be assigned, check this
 
 // lock free algorithms and datastructes
 // queues: different queue implementations
@@ -72,17 +57,12 @@ use super::register_flags::{
     CR, DataConfigurationRegister, InterruptMaskRegister, InterruptStatusRegister,
     ReceiveConfigurationRegister, TransmitConfigurationRegister,
 };
-
+// smoltcp configuration
 use super::network_stack::*;
 
 // =============================================================================
-
-// Atomically store a pointer to Ne2000 when initializing.
-// and load the pointer inside the interrupt-handling thread.
-// This ensures no partial reads or writes happen.
-// It's safe to use across threads because atomic pointer operations are guaranteed
-// to be lock-free
-static NE2000_PTR: AtomicPtr<Ne2000> = AtomicPtr::new(core::ptr::null_mut());
+// ==== CONSTANTS
+// =============================================================================
 
 const RECV_QUEUE_CAP: usize = 16;
 
@@ -103,6 +83,10 @@ static RECEIVE_START_PAGE: u8 = 0x46;
 //P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
 static RECEIVE_STOP_PAGE: u8 = 0x80;
 
+// =============================================================================
+// ==== STRUCTS
+// =============================================================================
+
 pub struct ParRegisters {
     id: Mutex<(
         PortReadOnly<u8>,
@@ -112,21 +96,6 @@ pub struct ParRegisters {
         PortReadOnly<u8>,
         PortReadOnly<u8>,
     )>,
-}
-
-impl ParRegisters {
-    pub fn new(base_address: u16) -> Self {
-        Self {
-            id: Mutex::new((
-                PortReadOnly::new(base_address + 0x01),
-                PortReadOnly::new(base_address + 0x02),
-                PortReadOnly::new(base_address + 0x03),
-                PortReadOnly::new(base_address + 0x04),
-                PortReadOnly::new(base_address + 0x05),
-                PortReadOnly::new(base_address + 0x06),
-            )),
-        }
-    }
 }
 
 pub struct Registers {
@@ -168,6 +137,74 @@ pub struct Registers {
     tpsr: Port<u8>,
     tbcr0_p0: Port<u8>,
     tbcr1_p0: Port<u8>,
+}
+
+// The Structure of the PacketHeader is definied in the datasheet
+// Header is 4 KB
+// TODO: add reference
+// receive status : holds the content of the Receive Status Register
+// next_packet : Pointer, which holds the next ringbuffer address
+// length : length of the received data
+#[repr(C)]
+struct PacketHeader {
+    receive_status: u8,
+    next_packet: u8,
+    length: u16,
+}
+
+pub struct Interrupts {
+    ovw: Mutex<bool>,
+    rcv: Mutex<bool>,
+}
+
+// the interrupt handler holds a shared reference to the Ne2000 device
+pub struct Ne2000InterruptHandler {
+    device: Arc<Ne2000>,
+}
+
+pub struct Ne2000 {
+    base_address: u16,
+    pub registers: Registers,
+    par_registers: ParRegisters,
+    // physical memory ranges, that need transmitting
+    // in TxToken consume the outgoing packet gets loaded into the buffer
+    pub send_queue: (
+        Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>,
+        mpsc::jiffy::Sender<PhysFrameRange>,
+    ),
+    receive_buffer: Mutex<ReceiveBuffer>,
+    // pre-allocated, empty Vec<u8> buffers which get filled with incoming packets
+    pub receive_buffers_empty: (
+        mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
+        // Sender send data to a set of Receivers
+        mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
+    ),
+    // contain the actual data which is received
+    pub receive_messages: (
+        mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
+        mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
+    ),
+    interrupt: InterruptVector,
+    interrupts: Interrupts,
+    pub(crate) rcv: AtomicBool,
+}
+
+// =============================================================================
+// ==== IMPLEMENTATIONS
+// =============================================================================
+impl ParRegisters {
+    pub fn new(base_address: u16) -> Self {
+        Self {
+            id: Mutex::new((
+                PortReadOnly::new(base_address + 0x01),
+                PortReadOnly::new(base_address + 0x02),
+                PortReadOnly::new(base_address + 0x03),
+                PortReadOnly::new(base_address + 0x04),
+                PortReadOnly::new(base_address + 0x05),
+                PortReadOnly::new(base_address + 0x06),
+            )),
+        }
+    }
 }
 
 impl Registers {
@@ -230,25 +267,6 @@ impl Registers {
 // 0x80 - 0x46 = 0x58 = 58 pages
 // total buffer size = 58 * 256 Bytes  = 14.KiB
 
-// The Structure of the PacketHeader is definied in the datasheet
-// Header is 4 KB
-// TODO: add reference
-// receive status : holds the content of the Receive Status Register
-// next_packet : Pointer, which holds the next ringbuffer address
-// length : length of the received data
-
-#[repr(C)]
-struct PacketHeader {
-    receive_status: u8,
-    next_packet: u8,
-    length: u16,
-}
-
-pub struct Interrupts {
-    ovw: Mutex<bool>,
-    rcv: Mutex<bool>,
-}
-
 // par_registers : store the MAC ADDRESS
 // send_queue: needed for packet transmission process in smoltcp
 // TODO: implement receive queue, see rtl8139
@@ -264,32 +282,10 @@ pub struct Interrupts {
 //    tx.send(10).unwrap();
 //});
 //assert_eq!(rx.recv().unwrap(), 10);
-pub struct Ne2000 {
-    base_address: u16,
-    pub registers: Registers,
-    par_registers: ParRegisters,
-    // physical memory ranges, that need transmitting
-    // in TxToken consume the outgoing packet gets loaded into the buffer
-    pub send_queue: (
-        Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>,
-        mpsc::jiffy::Sender<PhysFrameRange>,
-    ),
-    receive_buffer: Mutex<ReceiveBuffer>,
-    // pre-allocated, empty Vec<u8> buffers which get filled with incoming packets
-    pub receive_buffers_empty: (
-        mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
-        // Sender send data to a set of Receivers
-        mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
-    ),
-    // contain the actual data which is received
-    pub receive_messages: (
-        mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
-        mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
-    ),
-    interrupt: InterruptVector,
-    interrupts: Interrupts,
-    pub(crate) rcv: AtomicBool,
-}
+
+// =============================================================================
+// ==== IMPLEMENTATIONS
+// =============================================================================
 
 impl Ne2000 {
     pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
@@ -586,9 +582,6 @@ impl Ne2000 {
             info!(include_str!("banner.txt"), ne2000.read_mac(), base_address);
             scheduler().sleep(1000);
         }
-        // set the static once
-        let ptr = &mut ne2000 as *mut Ne2000;
-        NE2000_PTR.store(ptr, Ordering::SeqCst);
 
         /*scheduler().ready(Thread::new_kernel_thread(
             Ne2000::ne2000_interrupt_thread,
@@ -821,9 +814,13 @@ impl Ne2000 {
         }
     }
 
+    // =============================================================================
+    // ==== FUNCTION read_mac
+    // =============================================================================
     // read the mac address and return it
     // the mac is needed for checking if received packets
     // are addressed to the nic
+    // =============================================================================
     pub fn read_mac(&self) -> EthernetAddress {
         let mut mac2 = [0u8; 6];
         let mut par_registers = self.par_registers.id.lock();
@@ -867,10 +864,14 @@ impl Ne2000 {
         mac_address
     }
 
+    // =============================================================================
+    // ==== FUNCTION handle_overflow
+    // =============================================================================
     // gets called, if the buffer ring is full
     // this is analogous to the nic datasheet
     // TODO: add reference
-    pub fn handle_overflow_interrupt(&mut self) {
+    // =============================================================================
+    pub fn handle_overflow(&mut self) {
         unsafe {
             // 1. save the value of the TXP Bit in CR
             let txp_bit = self.registers.command_port.read() & CR::TXP.bits();
@@ -943,11 +944,6 @@ impl Ne2000 {
     }
 }
 
-// the interrupt handler holds a shared reference to the Ne2000 device
-pub struct Ne2000InterruptHandler {
-    device: Arc<Ne2000>,
-}
-
 // implement the InterruptHandler
 // creates a new Instance of Ne2000InterruptHandler
 impl Ne2000InterruptHandler {
@@ -971,13 +967,11 @@ impl InterruptHandler for Ne2000InterruptHandler {
 
         // Read interrupt status register (Each bit corresponds to an interrupt type or error)
         let status_reg = self.device.registers.read_isr();
-        info!("Hello from trigger");
         let status = InterruptStatusRegister::from_bits_retain(status_reg);
 
         // Check interrupt flags
         // Packet Reception Flag set (PRX) ? (Packet received?)
         if status.contains(InterruptStatusRegister::ISR_PRX) {
-            info!("Packet received");
             // reset prx bit in isr
             unsafe {
                 self.device
@@ -1005,7 +999,6 @@ impl InterruptHandler for Ne2000InterruptHandler {
 
         // check for Packet Transmission Interrupt
         if status.contains(InterruptStatusRegister::ISR_PTX) {
-            info!("Packet transmission");
             //self.device.interrupts.ovw = true;
             // reset ptx bit in isr
             unsafe {
@@ -1036,24 +1029,9 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .unwrap() // Unwrap to ensure it’s valid
             };
             // call the method
-            device_mut.handle_overflow_interrupt();
+            device_mut.handle_overflow();
             let mut ovw = self.device.interrupts.ovw.lock();
             *ovw = true;
         }
-    }
-}
-
-// Tests, not working because of std remove at the end
-#[cfg(test)]
-mod tests {
-    use super::CR;
-
-    #[test]
-    fn test_command_register_bits() {
-        // STA | TXP | PAGE_0
-        let expected: u8 = 0b00000110; // STA = 0x02, TXP = 0x04
-        let combined = CR::STA | CR::TXP | CR::PAGE_0;
-
-        assert_eq!(combined.bits(), expected, "Combined CR bits are incorrect");
     }
 }
