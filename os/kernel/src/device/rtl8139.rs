@@ -182,8 +182,13 @@ impl TransmitDescriptor {
 
 impl ReceiveBuffer {
     pub fn new() -> Self {
-        let receive_memory = unsafe { vmm::alloc_frames(BUFFER_PAGES) };
-        let receive_buffer = unsafe { Vec::from_raw_parts(receive_memory.start.start_address().as_u64() as *mut u8, BUFFER_SIZE, BUFFER_SIZE) };
+        let kernel_process = process_manager().read().kernel_process().unwrap();
+        let virt_buffer = kernel_process.virtual_address_space.kernel_alloc_map_identity(BUFFER_PAGES as u64, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, vma::VmaType::KernelBuffer, "rtl8139_rcv_buffer");
+
+        // Convert virtual address to physical address
+        let phys_buffer = vmm::pfr_from_pr_identity(virt_buffer);
+        let receive_memory = phys_buffer.start.start_address();
+        let receive_buffer = unsafe { Vec::from_raw_parts(receive_memory.as_u64() as *mut u8, BUFFER_SIZE, BUFFER_SIZE) };
 
         Self { index: 0, data: receive_buffer }
     }
@@ -237,7 +242,7 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
 
         // Allocate physical memory for the packet (DMA only works with physical addresses)
         let kernel_process = process_manager().read().kernel_process().unwrap();
-        let virt_buffer = kernel_process.virtual_address_space.kernel_alloc_map_identity(1, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, vma::VmaType::DMAframes, "rtl8139_dma_mem");
+        let virt_buffer = kernel_process.virtual_address_space.kernel_alloc_map_identity(1, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, vma::VmaType::KernelBuffer, "rtl8139_dma_mem");
 
         // Convert virtual address to physical address
         let phys_buffer = vmm::pfr_from_pr_identity(virt_buffer);

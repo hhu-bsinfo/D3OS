@@ -23,7 +23,7 @@ pub enum VmaType {
     DeviceMemory,
     UserStack,
     KernelStack,
-    DMAframes,
+    KernelBuffer,
     Anonymous,
 }
 

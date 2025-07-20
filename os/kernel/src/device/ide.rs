@@ -943,7 +943,7 @@ impl IdeChannel {
 
         // Allocate physical memory for the prds 
         let kernel_process = process_manager().read().kernel_process().unwrap();
-        let virt_buffer = kernel_process.virtual_address_space.kernel_alloc_map_identity(prd_pages as u64, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, vma::VmaType::DMAframes, "ide_dma_prd");
+        let virt_buffer = kernel_process.virtual_address_space.kernel_alloc_map_identity(prd_pages as u64, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, vma::VmaType::KernelBuffer, "ide_dma_prd");
 
         // Convert virtual address to physical address
         let prd_frames = vmm::pfr_from_pr_identity(virt_buffer);
@@ -951,7 +951,7 @@ impl IdeChannel {
 
         
         // Allocate memory for the DMA transfer
-        let virt_buffer = kernel_process.virtual_address_space.kernel_alloc_map_identity(pages as u64, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, vma::VmaType::DMAframes, "ide_dma_buff");
+        let virt_buffer = kernel_process.virtual_address_space.kernel_alloc_map_identity(pages as u64, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, vma::VmaType::KernelBuffer, "ide_dma_buff");
 
         // Convert virtual address to physical address
         let dma_frames = vmm::pfr_from_pr_identity(virt_buffer);
