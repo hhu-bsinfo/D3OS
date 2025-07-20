@@ -116,7 +116,7 @@ impl fmt::Debug for VirtualMemoryArea {
 
         write!(
             f,
-            "   VMA: Space: {:?}, Type: {:?}, [0x{:x}; 0x{:x}], #pages: {}, tag: {:?}",
+            "VMA: Space: {:?}, Type: {:?}, [0x{:x}; 0x{:x}], #pages: {}, tag: {:?}",
             self.space,
             self.typ,
             self.range.start.start_address().as_u64(),

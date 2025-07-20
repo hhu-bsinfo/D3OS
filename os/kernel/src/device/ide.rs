@@ -22,7 +22,7 @@ use x86_64::structures::paging::PageTableFlags;
 
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::memory::{vmm, vma, PAGE_SIZE};
+use crate::memory::{vmm, PAGE_SIZE};
 use crate::storage::block::BlockDevice;
 use crate::storage::{add_block_device, block};
 use crate::{apic, interrupt_dispatcher, memory, pci_bus, scheduler, timer, process_manager};
@@ -939,22 +939,12 @@ impl IdeChannel {
         // Each page corresponds to an 8-byte entry in the PRD
         let prd_size = pages * 8;
         let prd_pages = prd_size / PAGE_SIZE + if (prd_size % PAGE_SIZE) == 0 { 0 } else { 1 };
-
-
-        // Allocate physical memory for the prds 
-        let kernel_process = process_manager().read().kernel_process().unwrap();
-        let virt_buffer = kernel_process.virtual_address_space.kernel_alloc_map_identity(prd_pages as u64, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, vma::VmaType::KernelBuffer, "ide_dma_prd");
-
-        // Convert virtual address to physical address
-        let prd_frames = vmm::pfr_from_pr_identity(virt_buffer);
+        let prd_frames = unsafe { vmm::alloc_frames(prd_pages) };
         let prd = unsafe { slice::from_raw_parts_mut(prd_frames.start.start_address().as_u64() as *mut PrdEntry, pages) };
 
-        
-        // Allocate memory for the DMA transfer
-        let virt_buffer = kernel_process.virtual_address_space.kernel_alloc_map_identity(pages as u64, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, vma::VmaType::KernelBuffer, "ide_dma_buff");
 
-        // Convert virtual address to physical address
-        let dma_frames = vmm::pfr_from_pr_identity(virt_buffer);
+        // Allocate memory for the DMA transfer
+        let dma_frames = unsafe { vmm::alloc_frames(pages) };
         let dma_buffer = unsafe { slice::from_raw_parts_mut(dma_frames.start.start_address().as_u64() as *mut u8, buffer.len()) };
 
         // Copy data to the DMA buffer if we are writing
