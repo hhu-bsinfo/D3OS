@@ -1,8 +1,7 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: stack                                                           ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Memory for a stack (user or kernel). The stack will be accessed within  ║
-   ║ the kernel through a Vec and thus a Allocator is required.              ║
+   ║ Stack allocator for stacks and alloc functions.                         ║
    ║                                                                         ║
    ║ Public functions:                                                       ║
    ║   - alloc_kernel_stack      alloc frames for a kernel stack             ║

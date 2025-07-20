@@ -5,7 +5,7 @@
    ║ space. This includes managing virtual memory areas, allocating frames   ║
    ║ for full or partial vmas, as well as creating page mappings.            ║
    ║                                                                         ║
-   ║ Public convenience functions:                                           ║
+   ║ Convenience functions related to virtual address space:                 ║
    ║   - kernel_map_devm_identity  map physical device memory in kernel space║
    ║                               (identity mapped) and allocate a vma      ║
    ║   - kernel_alloc_map_identity allocate page frames in kernel space and  ║
@@ -15,7 +15,7 @@
    ║   - user_alloc_map_partial    create vma for pages, allocate and map    ║
    ║                               given range in user space.                ║
    ║                                                                         ║
-   ║ Public functions:                                                       ║
+   ║ Functions for allocating virtual & physical memory and paging mappings  ║
    ║   - alloc_vma                 alloc. a page range in user / kernel space║
    ║   - alloc_pfr_for_vma         allocate pf range for full vma            ║
    ║   - alloc_pfr_for_partial_vma alloc pf range for a subrange of a vma    ║
@@ -26,31 +26,20 @@
    ║                                                                         ║
    ║   - clone_address_space       used for process creation                 ║
    ║   - create_kernel_address_space   used for process creation             ║
-   ║   - iter_vmas                 Iterate over all VMAs                     ║
    ║   - dump                      dump all VMAs of an address space         ║
    ║   - page_table_address        get root page table address               ║
    ║   - set_flags                 set page table flags                      ║
+   ║   - is_address_within_vma     check if address is within any vma        ║
+   ║   - copy_to_addr_space        copy data to a given address space        ║
+   ║   - get_phys                  get physical address of a page            ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland and Michael Schoettner                           ║
-   ║         Univ. Duesseldorf, 26.05.2025                                   ║
+   ║         Univ. Duesseldorf, 20.07.2025                                   ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-///
-/// This module provides functions to manage virtual memory areas (VMAs) in
-/// a process address space. Below is a description of steps for typical
-/// memory allocations.
-///
-///  Map device memory:
-///     => map_devmem_identity
-///  
-/// User stack:
-///     1. alloc_vma
-///     2. alloc_pfr_for_partial_vma
-///     3. map_partial_vma
-///
-use alloc::sync::Arc;
 use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
 use core::ops::Range;
 use log::info;
 use spin::RwLock;
@@ -113,13 +102,12 @@ pub fn frame_allocator_locked() -> bool {
     frames::allocator_locked()
 }
 
-
 /// All data related to a virtual address space of a process.
 pub struct VirtualAddressSpace {
     virtual_memory_areas: RwLock<BTreeMap<VirtAddr, Arc<VirtualMemoryArea>>>, // sorted by start address of vma
-    page_tables: Arc<Paging>,
-    first_usable_user_addr: VirtAddr, // fixed, the first usable user address
-    last_usable_user_addr: VirtAddr,  // fixed , the last usable user address
+    page_tables: Arc<Paging>, // page tables of this address space
+    first_usable_user_addr: VirtAddr, // first usable user address (fixed constant)
+    last_usable_user_addr: VirtAddr,  // last usable user address (fixed by cpu model)
 }
 
 impl VirtualAddressSpace {
@@ -287,10 +275,8 @@ impl VirtualAddressSpace {
         let areas = self.virtual_memory_areas.read();
         let mut current = search_range.start;
         for (_, vma) in areas.range(search_range.clone()) {
-
             // Check for gap between `current` and next VMA
             if current + size <= vma.start() && vma.start() <= search_range.end {
-
                 drop(areas); // Release read lock before writing
 
                 let candidate_page = Page::containing_address(current);
@@ -535,7 +521,6 @@ impl VirtualAddressSpace {
         let areas = self.virtual_memory_areas.read();
         let vaddr = VirtAddr::new(address); // or however you construct a VirtAddr from u64
 
-
         // Find the closest VMA with start <= address
         if let Some((_, vma)) = areas.range(..=vaddr).next_back() {
             if vaddr < vma.end() && vma.typ == vma_type {
@@ -544,7 +529,6 @@ impl VirtualAddressSpace {
         }
         None
     }
-
 }
 
 impl Drop for VirtualAddressSpace {
