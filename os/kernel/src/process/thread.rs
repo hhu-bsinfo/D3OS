@@ -194,9 +194,6 @@ impl Thread {
             entry,
         };
 
-        let start = stack_vma.start().as_u64();
-        info!("Created user stack for thread at 0x{:x}", start);
-        
         thread.prepare_kernel_stack();
         Arc::new(thread)
     }
@@ -294,10 +291,6 @@ impl Thread {
         let stack_addr = stacks.kernel_stack.as_ptr() as u64;
         let capacity = stacks.kernel_stack.capacity();
 
-        /*        info!(
-            "Preparing kernel stack for thread {} with capacity {}",
-            self.id, capacity
-        );*/
         // init stack with 0s
         for _ in 0..stacks.kernel_stack.capacity() {
             stacks.kernel_stack.push(0);

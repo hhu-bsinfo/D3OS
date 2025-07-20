@@ -77,6 +77,8 @@ pub fn create_kernel_address_space() -> Arc<Paging> {
     Arc::new(address_space)
 }
 
+
+
 /// Return the last useable virtual address in canonical form
 fn last_usable_virtual_address() -> u64 {
     let virtual_bits = cpu().linear_address_bits();
@@ -115,11 +117,6 @@ impl VirtualAddressSpace {
     pub fn new(page_tables: Arc<Paging>) -> Self {
         let first_usable_user_addr = VirtAddr::new(crate::consts::USER_SPACE_START as u64);
         let last_usable_user_addr: VirtAddr = VirtAddr::new(last_usable_virtual_address());
-        info!(
-            "VirtualAddressSpace: first usable user address: 0x{:x}, last usable user address: 0x{:x}",
-            first_usable_user_addr.as_u64(),
-            last_usable_user_addr.as_u64()
-        );
 
         Self {
             page_tables,
