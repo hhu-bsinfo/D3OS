@@ -122,6 +122,7 @@ bitflags! {
 bitflags! {
 
     // enable / disable interrupts
+    // TODO: add comments
     pub struct InterruptMaskRegister : u8 {
         const IMR_PRXE = 0x01;
         const IMR_PTXE = 0x02;
@@ -135,6 +136,7 @@ bitflags! {
 
 //Data Configuration Register as defined in DP8390D
 //P.22 https://datasheetspdf.com/pdf-file/549771/NationalSemiconductor/DP8390D/1
+// TODO: add comments
 bitflags! {
     pub struct DataConfigurationRegister : u8 {
         const DCR_WTS = 0x01;
