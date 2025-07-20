@@ -32,6 +32,7 @@
    ║   - is_address_within_vma     check if address is within any vma        ║
    ║   - copy_to_addr_space        copy data to a given address space        ║
    ║   - get_phys                  get physical address of a page            ║
+   ║   - pfr_from_pr_identity      get pfr range from page range identity    ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland and Michael Schoettner                           ║
    ║         Univ. Duesseldorf, 20.07.2025                                   ║
@@ -46,6 +47,7 @@ use spin::RwLock;
 
 use x86_64::PhysAddr;
 use x86_64::VirtAddr;
+use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags};
@@ -77,8 +79,6 @@ pub fn create_kernel_address_space() -> Arc<Paging> {
     Arc::new(address_space)
 }
 
-
-
 /// Return the last useable virtual address in canonical form
 fn last_usable_virtual_address() -> u64 {
     let virtual_bits = cpu().linear_address_bits();
@@ -104,12 +104,25 @@ pub fn frame_allocator_locked() -> bool {
     frames::allocator_locked()
 }
 
+/// Convert a [`PageRange`] to a [`PhysFrameRange`] assuming the pages are identity mapped.
+pub fn pfr_from_pr_identity(pr: PageRange) -> PhysFrameRange {
+    let virt_start_addr = pr.start.start_address().as_u64();
+    let virt_end_addr = pr.end.start_address().as_u64();
+
+    let start_frame = PhysFrame::from_start_address(PhysAddr::new(virt_start_addr)).expect("pr.start is not page aligned");
+    let end_frame = PhysFrame::from_start_address(PhysAddr::new(virt_end_addr)).expect("pr.end is not page aligned");
+    PhysFrameRange {
+        start: start_frame,
+        end: end_frame,
+    }
+}
+
 /// All data related to a virtual address space of a process.
 pub struct VirtualAddressSpace {
     virtual_memory_areas: RwLock<BTreeMap<VirtAddr, Arc<VirtualMemoryArea>>>, // sorted by start address of vma
-    page_tables: Arc<Paging>, // page tables of this address space
-    first_usable_user_addr: VirtAddr, // first usable user address (fixed constant)
-    last_usable_user_addr: VirtAddr,  // last usable user address (fixed by cpu model)
+    page_tables: Arc<Paging>,                                                 // page tables of this address space
+    first_usable_user_addr: VirtAddr,                                         // first usable user address (fixed constant)
+    last_usable_user_addr: VirtAddr,                                          // last usable user address (fixed by cpu model)
 }
 
 impl VirtualAddressSpace {

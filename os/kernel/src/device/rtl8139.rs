@@ -20,10 +20,12 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::{PhysAddr, VirtAddr};
+ 
 use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::memory::{vmm, PAGE_SIZE};
+use crate::memory::{vmm, vma, PAGE_SIZE};
+
 
 const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
 const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 { BUFFER_SIZE / PAGE_SIZE } else { BUFFER_SIZE / PAGE_SIZE + 1 };
@@ -234,18 +236,13 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
         }
 
         // Allocate physical memory for the packet (DMA only works with physical addresses)
-        let phys_buffer = unsafe { vmm::alloc_frames(1) };
-
-        let phys_start_addr = phys_buffer.start.start_address();
-        let pages = PageRange {
-            start: Page::from_start_address(VirtAddr::new(phys_start_addr.as_u64())).unwrap(),
-            end: Page::from_start_address(VirtAddr::new(phys_buffer.end.start_address().as_u64())).unwrap()
-        };
-
-        // Disable caching for allocated buffer
         let kernel_process = process_manager().read().kernel_process().unwrap();
-        kernel_process.virtual_address_space.set_flags(pages, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+        let virt_buffer = kernel_process.virtual_address_space.kernel_alloc_map_identity(1, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, vma::VmaType::DMAframes, "rtl8139_dma_mem");
 
+        // Convert virtual address to physical address
+        let phys_buffer = vmm::pfr_from_pr_identity(virt_buffer);
+        let phys_start_addr = phys_buffer.start.start_address();
+ 
         // Queue physical memory for deallocation after transmission
         self.device.send_queue.1.enqueue(phys_buffer).expect("Failed to enqueue physical buffer!");
 

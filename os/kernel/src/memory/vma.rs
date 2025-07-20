@@ -23,10 +23,11 @@ pub enum VmaType {
     DeviceMemory,
     UserStack,
     KernelStack,
+    DMAframes,
     Anonymous,
 }
 
-pub const TAG_SIZE: usize = 8; // Define a constant for tag size in bytes
+pub const TAG_SIZE: usize = 16; // Define a constant for tag size in bytes
 
 #[derive(Copy, Clone, PartialEq)]
 pub struct VirtualMemoryArea {
