@@ -114,16 +114,18 @@ pub struct Registers {
     tcr_port: Port<u8>,
     rcr_port: Port<u8>,
     tpsr_port: Port<u8>,
+    // buffer configuration
     pstart_port: Port<u8>,
     pstop_port: Port<u8>,
     bnry_port: Port<u8>,
+    current_port: Port<u8>,
+    // physical address registers
     par_0: Port<u8>,
     par_1: Port<u8>,
     par_2: Port<u8>,
     par_3: Port<u8>,
     par_4: Port<u8>,
     par_5: Port<u8>,
-    curr: Port<u8>,
     mar0: Port<u8>,
     mar1: Port<u8>,
     mar2: Port<u8>,
@@ -134,7 +136,6 @@ pub struct Registers {
     mar7: Port<u8>,
     crda0_p0: Port<u8>,
     crda1_p0: Port<u8>,
-    tpsr: Port<u8>,
     tbcr0_p0: Port<u8>,
     tbcr1_p0: Port<u8>,
 }
@@ -239,7 +240,7 @@ impl Registers {
             par_3: Port::new(base_address + 0x04),
             par_4: Port::new(base_address + 0x05),
             par_5: Port::new(base_address + 0x06),
-            curr: Port::new(base_address + 0x07),
+            current_port: Port::new(base_address + 0x07),
             mar0: Port::new(base_address + 0x08),
             mar1: Port::new(base_address + 0x09),
             mar2: Port::new(base_address + 0x0A),
@@ -250,7 +251,6 @@ impl Registers {
             mar7: Port::new(base_address + 0x0F),
             crda0_p0: Port::new(base_address + 0x08),
             crda1_p0: Port::new(base_address + 0x09),
-            tpsr: Port::new(base_address + 0x04),
             tbcr0_p0: Port::new(base_address + 0x05),
             tbcr1_p0: Port::new(base_address + 0x06),
         }
@@ -543,7 +543,10 @@ impl Ne2000 {
             CURRENT_NEXT_PAGE_POINTER = RECEIVE_START_PAGE + 1;
 
             // Initialize Current Pointer: CURR
-            ne2000.registers.curr.write(CURRENT_NEXT_PAGE_POINTER);
+            ne2000
+                .registers
+                .current_port
+                .write(CURRENT_NEXT_PAGE_POINTER);
 
             // 10) Start NIC
             ne2000
@@ -591,7 +594,15 @@ impl Ne2000 {
         ne2000
     }
 
+    // =============================================================================
+    // ==== FUNCTION send_packet
+    // =============================================================================
     // TODO: check how to build a correct data packet in the documentation
+    // - the function is called by the consume function of TxToken and gets a datagram
+    // as param.
+    // - the function sets the internal registers of the nic for writing the packet
+    //   to the local buffer of the nic
+    // =============================================================================
 
     pub fn send_packet(&mut self, packet: &[u8]) {
         let packet_length = packet.len() as u16;
@@ -673,7 +684,7 @@ impl Ne2000 {
                 info!("polling")
             }
 
-            // Clear ISR RDC Interrupt
+            // Clear ISR and RDC Interrupt
             self.registers
                 .isr_port
                 .lock()
@@ -682,7 +693,7 @@ impl Ne2000 {
             // Set TBCR Bits before Transmit and TPSR Bit
             self.registers.tbcr0_p0.write(low);
             self.registers.tbcr1_p0.write(high);
-            self.registers.tpsr.write(TRANSMIT_START_PAGE);
+            self.registers.tpsr_port.write(TRANSMIT_START_PAGE);
 
             // Set TXP Bit to send packet
             self.registers
@@ -693,6 +704,11 @@ impl Ne2000 {
         }
     }
 
+    // =============================================================================
+    // ==== FUNCTION receive_packet
+    // =============================================================================
+    // if a packet is received by the nic, process it
+    // =============================================================================
     pub fn receive_packet(&mut self) {
         unsafe {
             // Read current register to prepare for the next packet
@@ -702,7 +718,7 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STA | CR::STOP_DMA | CR::PAGE_1).bits());
 
-            let current = self.registers.curr.read();
+            let current = self.registers.current_port.read();
             self.registers
                 .command_port
                 .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());

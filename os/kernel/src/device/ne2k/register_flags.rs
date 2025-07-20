@@ -84,14 +84,14 @@ bitflags! {
 // Command Register
 bitflags! {
     pub struct CR :u8 {
-        const STP = 0x01; /// STOP
+        const STP = 0x01; // STOP
         const STA = 0x02; // START
-        const TXP = 0x04; // Transmit Packet */
-        const RD_0 = 0x08; // Remote DMA Command 0 */
-        const RD_1 = 0x10; /** Remote DMA Command 1 */
-        const RD_2 = 0x20; /** Remote DMA Command 2*/
-        const PS_0 = 0x40; /** Page Select PS0 */
-        const PS_1 = 0x80; /** Page Select PS1 */
+        const TXP = 0x04; // Transmit Packet
+        const RD_0 = 0x08; // Remote DMA Command 0
+        const RD_1 = 0x10; // Remote DMA Command 1
+        const RD_2 = 0x20; // Remote DMA Command 2
+        const PS_0 = 0x40; // Page Select PS0 */
+        const PS_1 = 0x80; // Page Select PS1 */
         /** Page Selection Commands */
         const PAGE_0 = 0x00;
         const PAGE_1 = 0x40;
@@ -101,7 +101,7 @@ bitflags! {
         const REMOTE_WRITE = 0x10;
         const SEND_PACKET = 0x08 | 0x10;
         const STOP_DMA = 0x20;
-        const STOP = 0x01 | 0x08;
+        const STOP = 0x01 | 0x20;
     }
 }
 
