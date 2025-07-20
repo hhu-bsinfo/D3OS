@@ -18,7 +18,7 @@ use crate::{
     context::{
         alias_context::AliasContext,
         context::ContextProvider,
-        executable_context::{ExecutableContext, Io, Job},
+        executable_context::{Executable, ExecutableContext, IoTarget},
         theme_context::ThemeContext,
         working_directory_context::WorkingDirectoryContext,
     },
@@ -70,22 +70,25 @@ impl ExecutorService {
     }
 
     fn execute(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
-        let jobs = { self.executable_provider.borrow().get_jobs().clone() };
-        warn!("{:#?}", jobs);
-        // Check if jobs contain unsupported operations
-        for job in &jobs {
-            if job.input != Io::Std || job.output != Io::Std || job.background_execution {
-                return Err(self.handle_unsupported_error(&jobs));
+        let executables = { self.executable_provider.borrow().get_executables().clone() };
+        warn!("{:#?}", executables);
+        // Check if executables contain unsupported operations
+        for executable in &executables {
+            if executable.input != IoTarget::Std
+                || executable.output != IoTarget::Std
+                || executable.background_execution
+            {
+                return Err(self.handle_unsupported_error(&executables));
             }
         }
 
-        let mut exit_codes = Vec::with_capacity(jobs.len());
-        for job in jobs {
-            if Self::should_stop_on_dependency(&job, &exit_codes) {
+        let mut exit_codes = Vec::with_capacity(executables.len());
+        for executable in executables {
+            if Self::should_stop_on_dependency(&executable, &exit_codes) {
                 break;
             }
 
-            let exit_code = self.execute_job(&job);
+            let exit_code = self.execute_executable(&executable);
             exit_codes.push(exit_code);
         }
 
@@ -93,15 +96,15 @@ impl ExecutorService {
         Ok(Response::Ok)
     }
 
-    fn execute_job(&mut self, job: &Job) -> isize {
-        let args: Vec<&str> = job.arguments.iter().map(String::as_str).collect();
+    fn execute_executable(&mut self, executable: &Executable) -> isize {
+        let args: Vec<&str> = executable.arguments.iter().map(String::as_str).collect();
 
-        if let Ok(built_in_exit_code) = self.execute_build_in(&job.command, &args) {
+        if let Ok(built_in_exit_code) = self.execute_build_in(&executable.command, &args) {
             return built_in_exit_code;
         }
 
-        let Some(thread) = thread::start_application(&job.command, args) else {
-            println!("Command not found: {}", &job.command);
+        let Some(thread) = thread::start_application(&executable.command, args) else {
+            println!("Command not found: {}", &executable.command);
             return -1;
         };
         // Extern applications don't yet provide a exit code => We assume success
@@ -117,35 +120,35 @@ impl ExecutorService {
             .ok_or(())
     }
 
-    fn handle_unsupported_error(&self, jobs: &Vec<Job>) -> Error {
+    fn handle_unsupported_error(&self, executables: &Vec<Executable>) -> Error {
         let message = "Pipes, Redirections and background executions are not jet supported by D3OS".to_string();
         let mut hint = "Assume the following execution:\n".to_string();
 
-        for job in jobs {
-            let input = match &job.input {
-                Io::Std => "StdIn",
-                Io::Job(id) => &format!("previous command ({})", jobs[*id].command),
-                Io::FileTruncate(file) => &format!("File ({})", file),
-                Io::FileAppend(file) => &format!("Append file ({})", file),
+        for executable in executables {
+            let input = match &executable.input {
+                IoTarget::Std => "StdIn",
+                IoTarget::Job(id) => &format!("previous command ({})", executables[*id].command),
+                IoTarget::FileTruncate(file) => &format!("File ({})", file),
+                IoTarget::FileAppend(file) => &format!("Append file ({})", file),
             };
-            let output = match &job.output {
-                Io::Std => "StdOut",
-                Io::Job(id) => &format!("next command ({})", jobs[*id].command),
-                Io::FileTruncate(file) => &format!("File ({})", file),
-                Io::FileAppend(file) => &format!("Append file ({})", file),
+            let output = match &executable.output {
+                IoTarget::Std => "StdOut",
+                IoTarget::Job(id) => &format!("next command ({})", executables[*id].command),
+                IoTarget::FileTruncate(file) => &format!("File ({})", file),
+                IoTarget::FileAppend(file) => &format!("Append file ({})", file),
             };
 
             hint.push_str(&format!(
                 "Execute: {}, with arguments: {:?}\n\tInput from: {}\n\tOutput to: {}\n\tBackground execution: {:?}\n",
-                job.command, job.arguments, input, output, job.background_execution
+                executable.command, executable.arguments, input, output, executable.background_execution
             ));
         }
 
         Error::new_mid_execution(message, Some(hint))
     }
 
-    fn should_stop_on_dependency(job: &Job, exit_codes: &[isize]) -> bool {
-        if let Some((idx, res)) = &job.requires_job {
+    fn should_stop_on_dependency(executable: &Executable, exit_codes: &[isize]) -> bool {
+        if let Some((idx, res)) = &executable.requires_executable {
             if let Some(&prev_code) = exit_codes.get(*idx) {
                 return (res.is_success() && prev_code < 0) || (res.is_error() && prev_code >= 0);
             }

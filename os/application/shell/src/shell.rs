@@ -174,3 +174,5 @@ pub fn main() {
     let mut shell = Shell::new(cfg);
     shell.run()
 }
+
+// TODO IMPROVEMENT: Clamp cursor pos to 0..len in LineContext, also update when removing chars and pos > len

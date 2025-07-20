@@ -4,7 +4,7 @@ use logger::info;
 use crate::{
     context::{
         context::ContextProvider,
-        executable_context::{ExecutableContext, Io, JobBuilder, JobResult},
+        executable_context::{ExecutableBuilder, ExecutableContext, IoTarget, JobResult},
         tokens_context::TokensContext,
         working_directory_context::WorkingDirectoryContext,
     },
@@ -63,8 +63,8 @@ impl ParserService {
 
         // warn!("{:#?}", tokens);
 
-        let mut job_builder = JobBuilder::new();
-        job_builder.id(executable_clx.len());
+        let mut executable_builder = ExecutableBuilder::new();
+        executable_builder.id(executable_clx.len());
         self.current_io_type = None;
 
         if let Some(last) = tokens.last() {
@@ -77,51 +77,61 @@ impl ParserService {
 
         for token in tokens {
             if !token.clx().cmd_pos_in_segment.is_some() {
-                let Ok(job) = job_builder.build() else {
+                let Ok(executable) = executable_builder.build() else {
                     continue;
                 };
-                executable_clx.add_job(job);
-                job_builder = JobBuilder::new();
-                job_builder.id(executable_clx.len());
+                executable_clx.add_executable(executable);
+                executable_builder = ExecutableBuilder::new();
+                executable_builder.id(executable_clx.len());
             }
 
             match token.kind() {
                 TokenKind::Command => {
-                    job_builder.command(token.to_string());
+                    executable_builder.command(token.to_string());
                 }
 
                 TokenKind::Argument => {
-                    job_builder.add_argument(token.to_string());
+                    executable_builder.add_argument(token.to_string());
                 }
 
                 TokenKind::Background => {
-                    for job in &mut executable_clx.jobs {
-                        job.background_execution = true
+                    for executable in &mut executable_clx.executables {
+                        executable.background_execution = true
                     }
-                    job_builder.run_in_background(true);
+                    executable_builder.run_in_background(true);
                 }
 
                 TokenKind::And => {
-                    let Some(last_job) = executable_clx.last_job() else {
-                        return Err(Error::new("And condition requires a preceding job".to_string(), None));
+                    let Some(last_executable) = executable_clx.last_executable() else {
+                        return Err(Error::new(
+                            "And condition requires a preceding executable".to_string(),
+                            None,
+                        ));
                     };
-                    job_builder.requires_job(last_job.id, JobResult::Success);
+                    executable_builder.requires_executable(last_executable.id, JobResult::Success);
                 }
 
                 TokenKind::Or => {
-                    let Some(last_job) = executable_clx.last_job() else {
-                        return Err(Error::new("Or condition requires a preceding job".to_string(), None));
+                    let Some(last_executable) = executable_clx.last_executable() else {
+                        return Err(Error::new(
+                            "Or condition requires a preceding executable".to_string(),
+                            None,
+                        ));
                     };
-                    job_builder.requires_job(last_job.id, JobResult::Error);
+                    executable_builder.requires_executable(last_executable.id, JobResult::Error);
                 }
 
                 TokenKind::Pipe => {
-                    let Some(last_job) = executable_clx.last_job_mut() else {
-                        return Err(Error::new("Pipe requires a preceding job".to_string(), None));
+                    let Some(last_executable) = executable_clx.last_mut_executable() else {
+                        return Err(Error::new("Pipe requires a preceding executable".to_string(), None));
                     };
 
-                    last_job.output = Io::Job(job_builder.peek_id().expect("Next job id should be set by now"));
-                    job_builder.use_input(Io::Job(last_job.id));
+                    last_executable.output = IoTarget::Job(
+                        executable_builder
+                            .peek_id()
+                            .expect("Next executable id should be set by now"),
+                    );
+                    executable_builder.use_input(IoTarget::Job(last_executable.id));
                 }
 
                 TokenKind::File => {
@@ -135,10 +145,10 @@ impl ParserService {
                     let wd_clx = self.wd_provider.borrow();
                     let abs_path = wd_clx.resolve(&token.to_string());
                     match current_io_type {
-                        IoType::InAppend => job_builder.use_input(Io::FileAppend(abs_path)),
-                        IoType::InTruncate => job_builder.use_input(Io::FileTruncate(abs_path)),
-                        IoType::OutAppend => job_builder.use_output(Io::FileAppend(abs_path)),
-                        IoType::OutTruncate => job_builder.use_output(Io::FileTruncate(abs_path)),
+                        IoType::InAppend => executable_builder.use_input(IoTarget::FileAppend(abs_path)),
+                        IoType::InTruncate => executable_builder.use_input(IoTarget::FileTruncate(abs_path)),
+                        IoType::OutAppend => executable_builder.use_output(IoTarget::FileAppend(abs_path)),
+                        IoType::OutTruncate => executable_builder.use_output(IoTarget::FileTruncate(abs_path)),
                     };
                     self.current_io_type = None;
                 }
@@ -152,8 +162,8 @@ impl ParserService {
             }
         }
 
-        match job_builder.build() {
-            Ok(job) => executable_clx.add_job(job),
+        match executable_builder.build() {
+            Ok(executable) => executable_clx.add_executable(executable),
             Err(_) => (),
         };
 
