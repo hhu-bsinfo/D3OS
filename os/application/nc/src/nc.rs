@@ -1,8 +1,9 @@
 #![no_std]
 extern crate alloc;
 
-use core::net::{IpAddr, Ipv4Addr, SocketAddr};
+use core::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 
+use alloc::string::String;
 use network::UdpSocket;
 #[allow(unused_imports)]
 use runtime::*;
@@ -10,37 +11,101 @@ use terminal::{print, println, read::read};
 
 // TODO: also support TCP
 
+enum Protocol {
+    Udp, Tcp,
+}
+
+enum Mode {
+    Listen,
+    Connect,
+}
+
 #[unsafe(no_mangle)]
 fn main() {
-    let mut args = env::args();
+    let mut args = env::args().peekable();
     // the first argument is the program name, ignore it
     args.next();
-    // the next arguments should be host and port
-    if let Some(host) = args.next() && let Some(port_str) = args.next() {
-        // TODO: also support host names
-        let remote_ip: IpAddr = host.parse().expect("failed to parse IP address");
-        let remote_port: u16 = port_str.parse().expect("failed to parse port");
-        let remote_addr = SocketAddr::new(remote_ip, remote_port);
-        // TODO: this can be any port
-        let local_port = remote_port;
-        let local_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), local_port);
-        let socket = UdpSocket::bind(local_addr).expect("failed to open socket");
-        let mut buf = [0u8; 1024];
-        loop {
-            let key = read();
-            if let Some(key) = key {
-                let string = key.encode_utf8(&mut buf);
-                socket.send_to(string.as_bytes(), remote_addr)
-                    .expect("failed to send char");
+
+    let mut mode = Mode::Connect;
+    let mut protocol = Protocol::Tcp;
+
+    // check the next arguments for flags
+    loop {
+        match args.peek().map(String::as_str) {
+            Some("-h") | Some("--help") => {
+                println!("Usage:
+    nc [-u] [-l] host port
+
+Examples:
+    nc 1.2.3.4 5678
+        open a TCP connection to 1.2.3.4:5678
+    nc -u -l 0.0.0.0 1234
+        bind to 0.0.0.0:1234, UDP");
+                return;
             }
-            let (len, _) = socket.recv_from(&mut buf)
-                .expect("failed to receive char");
-            if len > 0 {
-                let text = str::from_utf8(&buf[0..len]).expect("failed to parse received string");
-                print!("{text}");
-            }
+            Some("-l") => {
+                mode = Mode::Listen;
+                args.next();
+            },
+            Some("-u") => {
+                protocol = Protocol::Udp;
+                args.next();
+            },
+            // now, we're finally past the options
+            Some(_) => break,
+            None => {
+                println!("Usage: nc [-u] [-l] host port");
+                return;
+            },
         }
-    } else {
-        println!("Usage: nc <host> <port>");
     }
+
+    // the next arguments should be host and port
+    // for listen, this is the address and port to bind to
+    // for connect, this is the remote host to connect to
+    let addr = if let Some(host) = args.next() && let Some(port_str) = args.next() {
+        // TODO: also support host names
+        let ip: IpAddr = host.parse().expect("failed to parse IP address");
+        let port: u16 = port_str.parse().expect("failed to parse port");
+        SocketAddr::new(ip, port)
+    } else {
+        println!("Usage: nc [-u] [-l] host port");
+        return;
+    };
+
+    let socket = match mode {
+        Mode::Listen => match protocol {
+            Protocol::Udp => UdpSocket::bind(addr).expect("failed to open socket"),
+            Protocol::Tcp => todo!(),
+        },
+        Mode::Connect => match protocol {
+            Protocol::Udp => {
+                // TODO: randomize this, but probably in the kernel?
+                let local_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 1797));
+                UdpSocket::bind(local_addr).expect("failed to open socket")
+            },
+            Protocol::Tcp => todo!(),
+        },
+    };
+
+    // loop: send and receive
+    let mut buf = [0u8; 1024];
+    loop {
+        let key = read();
+        if let Some(key) = key {
+            let string = key.encode_utf8(&mut buf);
+            match protocol {
+                Protocol::Udp => socket.send_to(string.as_bytes(), addr)
+                   .expect("failed to send char"),
+                Protocol::Tcp => todo!(),
+            };
+        }
+        let (len, _) = socket.recv_from(&mut buf)
+            .expect("failed to receive char");
+        if len > 0 {
+            let text = str::from_utf8(&buf[0..len]).expect("failed to parse received string");
+            print!("{text}");
+        }
+    }
+
 }
