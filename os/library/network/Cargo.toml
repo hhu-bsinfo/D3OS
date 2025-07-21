@@ -1,0 +1,8 @@
+[package]
+edition = "2024"
+name = "network"
+version = "0.1.0"
+authors = ["Niklas Sombert <niklas.sombert@uni-duesseldorf.de"]
+
+[dependencies]
+syscall = { path = "../syscall" }

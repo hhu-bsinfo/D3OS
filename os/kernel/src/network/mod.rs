@@ -5,9 +5,9 @@ use core::ops::Deref;
 use core::ptr;
 use log::info;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
-use smoltcp::socket::udp;
+use smoltcp::socket::udp::{self, UdpMetadata};
 use smoltcp::time::Instant;
-use smoltcp::wire::Ipv4Address;
+use smoltcp::wire::IpAddress;
 use spin::{Once, RwLock};
 use crate::device::rtl8139::Rtl8139;
 use crate::{pci_bus, scheduler, timer};
@@ -18,6 +18,9 @@ static RTL8139: Once<Arc<Rtl8139>> = Once::new();
 static INTERFACES: RwLock<Vec<Interface>> = RwLock::new(Vec::new());
 static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
 
+#[derive(Debug)]
+#[repr(u8)]
+#[non_exhaustive]
 pub enum SocketType {
     Udp
 }
@@ -56,7 +59,7 @@ pub fn add_interface(interface: Interface) {
     INTERFACES.write().push(interface);
 }
 
-pub fn open_socket(protocol: SocketType) -> SocketHandle {
+pub fn open_socket(protocol: SocketType) -> Option<SocketHandle> {
     let sockets = SOCKETS.get().expect("Socket set not initialized!");
 
     let rx_buffer = udp::PacketBuffer::new(
@@ -70,9 +73,10 @@ pub fn open_socket(protocol: SocketType) -> SocketHandle {
 
     let socket = match protocol {
         SocketType::Udp => udp::Socket::new(rx_buffer, tx_buffer),
+        _ => return None,
     };
 
-    sockets.write().add(socket)
+    Some(sockets.write().add(socket))
 }
 
 pub fn close_socket(handle: SocketHandle) {
@@ -87,11 +91,18 @@ pub fn bind_udp(handle: SocketHandle, port: u16) -> Result<(), udp::BindError> {
     socket.bind(port)
 }
 
-pub fn send_datagram(handle: SocketHandle, destination: Ipv4Address, port: u16, data: &[u8]) -> Result<(), udp::SendError> {
+pub fn send_datagram(handle: SocketHandle, destination: IpAddress, port: u16, data: &[u8]) -> Result<(), udp::SendError> {
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
     let socket = sockets.get_mut::<udp::Socket>(handle);
 
     socket.send_slice(data, (destination, port))
+}
+
+pub fn receive_datagram(handle: SocketHandle, data: &mut [u8]) -> Result<(usize, UdpMetadata), udp::RecvError> {
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let socket = sockets.get_mut::<udp::Socket>(handle);
+
+    socket.recv_slice(data)
 }
 
 fn poll_sockets() {
