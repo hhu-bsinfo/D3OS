@@ -235,9 +235,8 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
 
        // Allocate physical memory for the packet (DMA only works with physical addresses)
         let phys_buffer = unsafe { vmm::alloc_frames(1) };
-        let phys_start_addr = phys_buffer.start.start_address();
         let pages = PageRange {
-            start: Page::from_start_address(VirtAddr::new(phys_start_addr.as_u64())).unwrap(),
+            start: Page::from_start_address(VirtAddr::new(phys_buffer.start.start_address().as_u64())).unwrap(),
             end: Page::from_start_address(VirtAddr::new(phys_buffer.end.start_address().as_u64())).unwrap()
         };
 
@@ -263,7 +262,7 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
 
         // Send packet by writing physical address and packet length to transmit registers
         unsafe {
-            descriptor.address.write(phys_start_addr.as_u64() as u32);
+            descriptor.address.write(phys_buffer.start.start_address().as_u64() as u32);
             descriptor.status.write(buffer.len() as u32);
         }
 

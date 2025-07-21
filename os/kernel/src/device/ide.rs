@@ -19,6 +19,9 @@ use pci_types::{CommandRegister, ConfigRegionAccess, EndpointHeader};
 use spin::{Mutex, RwLock};
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 use x86_64::structures::paging::PageTableFlags;
+use x86_64::VirtAddr;
+use x86_64::structures::paging::page::{PageRange, Page};
+
 
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
@@ -942,11 +945,27 @@ impl IdeChannel {
         let prd_frames = unsafe { vmm::alloc_frames(prd_pages) };
         let prd = unsafe { slice::from_raw_parts_mut(prd_frames.start.start_address().as_u64() as *mut PrdEntry, pages) };
 
+        // Disable caching for allocated prd frames
+        let prd_pages = PageRange {
+            start: Page::from_start_address(VirtAddr::new(prd_frames.start.start_address().as_u64())).unwrap(),
+            end: Page::from_start_address(VirtAddr::new(prd_frames.end.start_address().as_u64())).unwrap()
+        };
+        let kernel_process = process_manager().read().kernel_process().unwrap();
+        kernel_process.virtual_address_space.set_flags(prd_pages, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+
 
         // Allocate memory for the DMA transfer
         let dma_frames = unsafe { vmm::alloc_frames(pages) };
         let dma_buffer = unsafe { slice::from_raw_parts_mut(dma_frames.start.start_address().as_u64() as *mut u8, buffer.len()) };
 
+        // Disable caching for allocated dma buffer
+        let dma_pages = PageRange {
+            start: Page::from_start_address(VirtAddr::new(dma_frames.start.start_address().as_u64())).unwrap(),
+            end: Page::from_start_address(VirtAddr::new(dma_frames.end.start_address().as_u64())).unwrap()
+        };
+        kernel_process.virtual_address_space.set_flags(dma_pages, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+
+        
         // Copy data to the DMA buffer if we are writing
         if mode == TransferMode::Write {
             dma_buffer.copy_from_slice(buffer);
