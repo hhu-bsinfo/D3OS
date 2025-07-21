@@ -46,7 +46,7 @@ use smoltcp::wire::EthernetAddress;
 // for writing to the registers
 use alloc::str;
 use alloc::string::String;
-use x86_64::VirtAddr;
+use x86_64::{registers, VirtAddr};
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
@@ -869,6 +869,7 @@ impl Ne2000 {
 
             // switch to page 1 to access PAR 0..5
             //self.registers.command_port.write(0x40);
+            // stop the nic 
             let mut registers = Registers::new(self.base_address);
             registers.command_port.write(0x40);
 
@@ -879,6 +880,7 @@ impl Ne2000 {
             mac2[4] = par_registers.4.read();
             mac2[5] = par_registers.5.read();
 
+            // start nic 
             registers
                 .command_port
                 .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
@@ -1001,6 +1003,16 @@ impl InterruptHandler for Ne2000InterruptHandler {
             panic!("Interrupt status register is locked during interrupt!");
         }
 
+        // go to page 0 , disable remote dma
+        let mut reg = Registers::new(self.device.base_address);
+        unsafe {
+            reg.command_port.write((CR::STOP_DMA | CR::PAGE_0).bits());
+        }
+        // ideas : check trigger method in ne2000.cpp
+        // rewrite overwrite and receive method, replace self with reg mentioned above 
+        // try to understand apic and interrupt handler, dispatcher in d3os 
+        // do the same for the cpp implementation 
+
         // clear Interrupt Mask Register
         self.device.registers.write_imr(0);
 
@@ -1020,13 +1032,13 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .write(InterruptStatusRegister::ISR_PRX.bits());
                 let device_ref: &Ne2000 = &self.device; // This is a shared reference
                 // Use unsafe to get a mutable reference to the inner `Ne2000` object
-                let device_mut = unsafe {
+                let device_mut = 
                     // Convert from a shared reference to a mutable raw pointer
                     ptr::from_ref(device_ref)
                         .cast_mut() // Cast to a mutable pointer
                         .as_mut() // Convert the raw pointer back to a mutable reference
-                        .unwrap() // Unwrap to ensure it’s valid
-                };
+                        .unwrap(); // Unwrap to ensure it’s valid
+                
                 device_mut.receive_packet();
             };
             //self.device.rcv.store(true, Ordering::Relaxed);

@@ -347,7 +347,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     //let datagram = b"Hello from D3OS!\n";
     // for testing: change tx_buffer size in method open_socket in network/mod.rs ,
     // to send more packets
-    let number_of_packets = 10;
+    let number_of_packets = 1;
     let send_packets = true;
     if send_packets {
         let socket = network::open_socket(network::SocketType::Udp);
