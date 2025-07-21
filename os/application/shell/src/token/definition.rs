@@ -237,7 +237,7 @@ pub const PIPE_TOKEN_DEFINITION: TokenDefinition = TokenDefinition {
     ],
 };
 
-pub const REDIRECT_IN_TRUNCATE_TOKEN_DEFINITION: TokenDefinition = TokenDefinition {
+pub const REDIRECT_IN_FILE_TOKEN_DEFINITION: TokenDefinition = TokenDefinition {
     first_token_fn: |_content| FirstTokenDTO {
         cmd_pos_in_segment: None,
         require_segment: false,
@@ -267,40 +267,6 @@ pub const REDIRECT_IN_TRUNCATE_TOKEN_DEFINITION: TokenDefinition = TokenDefiniti
         TokenRule {
             condition: |prev| prev.clx().is_end_of_line,
             reason: "Expected end of line but got <",
-        },
-    ],
-};
-
-pub const REDIRECT_IN_APPEND_TOKEN_DEFINITION: TokenDefinition = TokenDefinition {
-    first_token_fn: |_content| FirstTokenDTO {
-        cmd_pos_in_segment: None,
-        require_segment: false,
-        require_file: true,
-        in_quote: None,
-        is_end_of_line: false,
-        error_reason: Some(
-            "If you want to redirect some input, try moving << after a command (Example: cmd1 << file)\nIf you want << as normal char, try wrapping it in parentheses (Example: echo 'No << redirection')",
-        ),
-    },
-    next_token_fn: |_prev, _content| NextTokenDTO {
-        cmd_pos_in_segment: None,
-        require_segment: None,
-        require_file: Some(true),
-        in_quote: None,
-        is_end_of_line: None,
-    },
-    error_rules: &[
-        TokenRule {
-            condition: |prev| prev.clx().cmd_pos_in_segment.is_none(),
-            reason: "If you want to redirect some input, try moving << after a command (Example: cmd1 << file)\nIf you want << as normal char, try wrapping it in parentheses (Example: echo 'No << redirection')",
-        },
-        TokenRule {
-            condition: |prev| prev.clx().require_file,
-            reason: "Expected file but got <<",
-        },
-        TokenRule {
-            condition: |prev| prev.clx().is_end_of_line,
-            reason: "Expected end of line but got <<",
         },
     ],
 };

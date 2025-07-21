@@ -17,8 +17,7 @@ use crate::{
 
 #[derive(Debug)]
 enum IoType {
-    InAppend,
-    InTruncate,
+    InFile,
     OutAppend,
     OutTruncate,
 }
@@ -145,16 +144,14 @@ impl ParserService {
                     let wd_clx = self.wd_provider.borrow();
                     let abs_path = wd_clx.resolve(&token.to_string());
                     match current_io_type {
-                        IoType::InAppend => executable_builder.use_input(IoTarget::FileAppend(abs_path)),
-                        IoType::InTruncate => executable_builder.use_input(IoTarget::FileTruncate(abs_path)),
+                        IoType::InFile => executable_builder.use_input(IoTarget::FileTruncate(abs_path)),
                         IoType::OutAppend => executable_builder.use_output(IoTarget::FileAppend(abs_path)),
                         IoType::OutTruncate => executable_builder.use_output(IoTarget::FileTruncate(abs_path)),
                     };
                     self.current_io_type = None;
                 }
 
-                TokenKind::RedirectInAppend => self.current_io_type = Some(IoType::InAppend),
-                TokenKind::RedirectInTruncate => self.current_io_type = Some(IoType::InTruncate),
+                TokenKind::RedirectInFile => self.current_io_type = Some(IoType::InFile),
                 TokenKind::RedirectOutAppend => self.current_io_type = Some(IoType::OutAppend),
                 TokenKind::RedirectOutTruncate => self.current_io_type = Some(IoType::OutTruncate),
 

@@ -12,8 +12,7 @@ pub enum TokenKind {
     QuoteStart,
     QuoteEnd,
     // Redirection
-    RedirectInTruncate,
-    RedirectInAppend,
+    RedirectInFile,
     RedirectOutTruncate,
     RedirectOutAppend,
     // Logical Operator

@@ -148,7 +148,7 @@ impl LexerService {
             '|' => Self::add_pipe_or_logical_or(line_clx, tokens_clx, ch),
             // Redirection
             '>' => Self::add_redirect_out_append_or_truncate(line_clx, tokens_clx, ch),
-            '<' => Self::add_redirect_in_append_or_truncate(line_clx, tokens_clx, ch),
+            '<' => Self::add_redirect_in_file(tokens_clx, ch),
             // Quotes
             '\"' | '\'' => Self::add_quote(tokens_clx, ch),
             // Other
@@ -165,7 +165,6 @@ impl LexerService {
         let (kind, content) = match *last_token.kind() {
             TokenKind::And => (TokenKind::Background, "&".to_string()),
             TokenKind::Or => (TokenKind::Pipe, "|".to_string()),
-            TokenKind::RedirectInAppend => (TokenKind::RedirectInTruncate, "<".to_string()),
             TokenKind::RedirectOutAppend => (TokenKind::RedirectOutTruncate, ">".to_string()),
             _ => {
                 if tokens_clx.pop_from_last_token().is_err() {
@@ -191,16 +190,8 @@ impl LexerService {
         tokens_clx.push_token(TokenKind::RedirectOutTruncate, ch.to_string());
     }
 
-    fn add_redirect_in_append_or_truncate(line_clx: &mut LineContext, tokens_clx: &mut TokensContext, ch: char) {
-        if let Some(last) = tokens_clx.last() {
-            if *last.kind() == TokenKind::RedirectInTruncate {
-                tokens_clx.replace_last_token(TokenKind::RedirectInAppend, "<<".to_string());
-                line_clx.mark_dirty_at(tokens_clx.last().unwrap().clx().line_pos);
-                return;
-            }
-        }
-
-        tokens_clx.push_token(TokenKind::RedirectInTruncate, ch.to_string());
+    fn add_redirect_in_file(tokens_clx: &mut TokensContext, ch: char) {
+        tokens_clx.push_token(TokenKind::RedirectInFile, ch.to_string());
     }
 
     fn add_background_or_logical_and(line_clx: &mut LineContext, tokens_clx: &mut TokensContext, ch: char) {

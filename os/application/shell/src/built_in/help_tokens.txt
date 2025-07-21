@@ -2,8 +2,7 @@ Special tokens:
   '    Single‑quotes
   "    Double‑quotes
   |    Pipe: send output of left command into right
-  <    Redirect input (truncate)
-  <<   Redirect input (append)
+  <    Redirect input from file
   >    Redirect output (truncate)
   >>   Redirect output (append)
   &    Run command in background
