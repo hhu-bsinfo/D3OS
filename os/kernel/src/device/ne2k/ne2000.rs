@@ -7,9 +7,9 @@
 //
 // NOTES:
 // ideas : check trigger method in ne2000.cpp
-// rewrite overwrite and receive method, replace self with reg mentioned above 
-// try to understand apic and interrupt handler, dispatcher in d3os 
-// do the same for the cpp implementation 
+// rewrite overwrite and receive method, replace self with reg mentioned above
+// try to understand apic and interrupt handler, dispatcher in d3os
+// do the same for the cpp implementation
 //
 // =============================================================================
 // DEPENDENCIES:
@@ -93,7 +93,6 @@ static RECEIVE_STOP_PAGE: u8 = 0x80;
 // ==== STRUCTS
 // =============================================================================
 
-
 //Physical Address Registers, for Reading the MAC Address
 // TODO: add reference
 pub struct ParRegisters {
@@ -164,15 +163,15 @@ struct PacketHeader {
     length: u16,
 }
 
-// TODO: move method calls in trigger to new and set the variables if the 
+// TODO: move method calls in trigger to new and set the variables if the
 //       given Interrupt occurs
 pub struct Interrupts {
-    ovw: Mutex<bool>,
-    rcv: Mutex<bool>,
+    ovw: AtomicBool,
+    rcv: AtomicBool,
 }
 
 // the interrupt handler holds a shared reference to the Ne2000 device
-// defined in 
+// defined in
 // TODO: add reference
 pub struct Ne2000InterruptHandler {
     device: Arc<Ne2000>,
@@ -203,7 +202,6 @@ pub struct Ne2000 {
     ),
     interrupt: InterruptVector,
     interrupts: Interrupts,
-    pub(crate) rcv: AtomicBool,
 }
 
 // =============================================================================
@@ -301,11 +299,10 @@ impl Registers {
 //assert_eq!(rx.recv().unwrap(), 10);
 
 impl Ne2000 {
-
     // =============================================================================
     // ==== FUNCTION new
     // =============================================================================
-    // construct new instance of the ne2000 struct and 
+    // construct new instance of the ne2000 struct and
     // initialize the card and its registers for transmit and receive
     // =============================================================================
 
@@ -367,8 +364,8 @@ impl Ne2000 {
         }
 
         let interrupts = Interrupts {
-            ovw: Mutex::new(false),
-            rcv: Mutex::new(false),
+            ovw: AtomicBool::new(false),
+            rcv: AtomicBool::new(false),
         };
 
         // construct the ne2000 and return it at the end of the
@@ -383,7 +380,6 @@ impl Ne2000 {
             receive_messages: mpmc::bounded::scq::queue(RECV_QUEUE_CAP),
             interrupt,
             interrupts,
-            rcv: AtomicBool::new(false),
         };
 
         info!("\x1b[1;31mPowering on device");
@@ -604,14 +600,19 @@ impl Ne2000 {
             // print an ascii banner to the log screen
             info!(include_str!("banner.txt"), ne2000.read_mac(), base_address);
             scheduler().sleep(1000);
+
+            /*scheduler().ready(Thread::new_kernel_thread(
+                loop {
+                    if ne2000.interrupts.rcv.load(Ordering::Relaxed) {
+                        ne2000.receive_packet();
+                        ne2000.interrupts.rcv.store(false, Ordering::Relaxed);
+                    }
+                },
+                "Ne2k IRQ",
+            ));*/
+
+            ne2000
         }
-
-        /*scheduler().ready(Thread::new_kernel_thread(
-            Ne2000::ne2000_interrupt_thread,
-            "NE2000 Interrupts",
-        ));*/
-
-        ne2000
     }
 
     // =============================================================================
@@ -891,7 +892,7 @@ impl Ne2000 {
 
             // switch to page 1 to access PAR 0..5
             //self.registers.command_port.write(0x40);
-            // stop the nic 
+            // stop the nic
             let mut registers = Registers::new(self.base_address);
             registers.command_port.write(0x40);
 
@@ -902,7 +903,7 @@ impl Ne2000 {
             mac2[4] = par_registers.4.read();
             mac2[5] = par_registers.5.read();
 
-            // start nic 
+            // start nic
             registers
                 .command_port
                 .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
@@ -995,8 +996,6 @@ impl Ne2000 {
                     .write((CR::STA | CR::TXP | CR::STOP_DMA | CR::PAGE_0).bits());
             }
         }
-        let mut ovw = self.interrupts.ovw.lock();
-        *ovw = false;
     }
 
     // assign driver to interrupt handler
@@ -1030,13 +1029,8 @@ impl InterruptHandler for Ne2000InterruptHandler {
             panic!("Interrupt status register is locked during interrupt!");
         }
 
-        // go to page 0 , disable remote dma
-        let mut reg = Registers::new(self.device.base_address);
-        unsafe {
-            reg.command_port.write((CR::STOP_DMA | CR::PAGE_0).bits());
-        }
-
         // clear Interrupt Mask Register
+        // disables interrupts
         self.device.registers.write_imr(0);
 
         // Read interrupt status register (Each bit corresponds to an interrupt type or error)
@@ -1055,20 +1049,16 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .write(InterruptStatusRegister::ISR_PRX.bits());
                 let device_ref: &Ne2000 = &self.device; // This is a shared reference
                 // Use unsafe to get a mutable reference to the inner `Ne2000` object
-                let device_mut = 
+                let device_mut =
                     // Convert from a shared reference to a mutable raw pointer
                     ptr::from_ref(device_ref)
                         .cast_mut() // Cast to a mutable pointer
                         .as_mut() // Convert the raw pointer back to a mutable reference
                         .unwrap(); // Unwrap to ensure it’s valid
-                
+
                 device_mut.receive_packet();
             };
-            //self.device.rcv.store(true, Ordering::Relaxed);
-
-            // lock rcv Variable
-            // dereference the MutexGuard to access the value
-            // call the packet received method
+            self.device.interrupts.rcv.store(true, Ordering::Relaxed);
         }
 
         // check for Packet Transmission Interrupt
@@ -1104,12 +1094,18 @@ impl InterruptHandler for Ne2000InterruptHandler {
             };
             // call the method
             device_mut.handle_overflow();
-            let mut ovw = self.device.interrupts.ovw.lock();
-            *ovw = true;
+            //let ovw =  self.device.interrupts.ovw;
+            //ovw.store(true, Ordering::Relaxed)
         }
 
+        // re-enable Interrupts (22.07.2025)
         unsafe {
-        self.device.registers.imr_port.lock().write((InterruptMaskRegister::IMR_PRXE | InterruptMaskRegister::IMR_PTXE | InterruptMaskRegister::IMR_OVWE).bits());
+            self.device.registers.imr_port.lock().write(
+                (InterruptMaskRegister::IMR_PRXE
+                    | InterruptMaskRegister::IMR_PTXE
+                    | InterruptMaskRegister::IMR_OVWE)
+                    .bits(),
+            );
         }
     }
 }

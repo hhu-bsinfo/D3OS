@@ -91,23 +91,7 @@ pub fn init() {
                 },
                 "NE2000",
             ));
-            /*scheduler().ready(Thread::new_kernel_thread(
-                ne2000_interrupt_thread,
-                "NE2000 Interrupts",
-            ));*/
         }
-    }
-}
-fn ne2000_interrupt_thread() {
-    loop {
-        let ne2000 = unsafe { &mut *NE2000_PTR.load(Ordering::SeqCst) };
-        if ne2000.rcv.load(Ordering::Relaxed) {
-            ne2000.receive_packet();
-            ne2000.rcv.store(false, Ordering::Relaxed);
-        }
-        //if *ne2000.interrupts.ovw.lock() {
-        //    ne2000.handle_overflow_interrupt();
-        //}
     }
 }
 
