@@ -16,7 +16,7 @@
 
 
 use core::cmp::min;
-use core::ptr;
+use core::{ptr, fmt};
 use spin::{RwLock, RwLockReadGuard};
 use x86_64::structures::paging::{PageTable, PageTableFlags, PageTableIndex, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
@@ -27,6 +27,21 @@ use x86_64::structures::paging::Size4KiB;
 use log::debug;
 
 use crate::memory::{MemorySpace, PAGE_SIZE, frames};
+
+macro_rules! check_identity_start_address {
+    ($identity_start_address: ident, $entry_address: expr) => {
+        if let Some(value) = $identity_start_address {
+            // We had an identity mapping before
+            debug!("Identity mapping for addresses 0x{:x} - 0x{:x}, {:?} - {:?}",
+                    value,
+                    $entry_address + 4095,
+                    PageTableEntryAddress::new(value, 1),
+                    PageTableEntryAddress::new($entry_address, 1)
+            );
+            $identity_start_address = None
+        }
+    }
+}
 
 /// Helper function to convert a u64 address to a PhysFrame.
 pub fn page_from_u64(addr: u64) -> Result<Page<Size4KiB>, x86_64::structures::paging::page::AddressNotAligned> {
@@ -175,10 +190,10 @@ impl Paging {
     }
     
     fn dump_table(table: &PageTable, base_address: usize, level: usize) {
+        //debug!("Dumping {:?}", PageTableAddress::new(base_address, level));
         if level > 1 {
             for (index, entry) in table.iter().enumerate() {
                 if !entry.is_unused() {
-                    debug!("Dumping page table {} on level {}", index, level);
                     let next_level = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
                     let new_base_address = base_address + (index << (12 + (level - 1) * 9));
                     Paging::dump_table(next_level, new_base_address, level - 1);
@@ -186,22 +201,28 @@ impl Paging {
             }
         } else {
             let mut identity_start_address: Option<usize> = None;
+            let mut entry_address = base_address;
+            
             for (index, entry) in table.iter().enumerate() {
-                let entry_address = base_address + (index << 12);
-                if entry_address == entry.addr().as_u64() as usize {
-                    // This entry is an identity mapping
-                    if identity_start_address.is_none() {
-                        // This entry is the start of an identity mapping
-                        identity_start_address = Some(entry_address);
+                entry_address = base_address + (index << 12);
+                
+                if !entry.is_unused() {
+                    if entry_address == entry.addr().as_u64() as usize {
+                        // This entry is an identity mapping
+                        if identity_start_address.is_none() {
+                            // This entry is the start of an identity mapping
+                            identity_start_address = Some(entry_address);
+                        }
+                    } else {
+                        check_identity_start_address!(identity_start_address, entry_address);
+                        debug!("0x{:x} -> 0x{:x}", entry_address, entry.addr());
                     }
                 } else {
-                    if let Some(value) = identity_start_address {
-                        // We had an identity mapping before
-                        debug!("Identity mapping from 0x{:x} to 0x{:x}", value, entry_address - 4096);
-                    }
-                    debug!("0x{:x} -> 0x{:x}", entry_address, entry.addr());
+                    check_identity_start_address!(identity_start_address, entry_address);
                 }
             }
+            
+            check_identity_start_address!(identity_start_address, entry_address);
         }
     }
 
@@ -470,5 +491,33 @@ impl Paging {
         }
 
         true
+    }
+}
+
+pub struct PageTableEntryAddress {
+    address: usize,
+    level: usize
+}
+
+impl PageTableEntryAddress {
+    pub fn new(address: usize, level: usize) -> Self {
+        Self { address, level }
+    }
+    
+    pub fn get_pml_part(&self, level: usize) -> usize {
+        let shift_bit_count = 12 + ((level - 1) * 9);
+        let mask = ((1 << 9) - 1) << shift_bit_count; // PML entries are 9 bit wide
+        return (self.address & mask) >> shift_bit_count;
+    }
+}
+
+impl fmt::Debug for PageTableEntryAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PageTableEntry ");
+        for level in (self.level..5).rev() {
+            write!(f, "{}", self.get_pml_part(level));
+            if level != 1 { write!(f, "."); }
+        }
+        Ok(())
     }
 }
