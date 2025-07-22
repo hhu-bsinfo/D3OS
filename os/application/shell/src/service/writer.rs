@@ -17,7 +17,7 @@ use crate::{
     token::token::{Token, TokenKind, TokenStatus},
 };
 
-const INDICATOR: char = '>';
+const PROMPT: char = '>';
 
 pub struct WriterService {
     line_provider: ContextProvider<LineContext>,
@@ -32,7 +32,7 @@ pub struct WriterService {
 impl EventHandler for WriterService {
     fn on_prepare_next_line(&mut self, _event_bus: &mut EventBus) -> Result<Response, Error> {
         self.terminal_cursor_pos = 0;
-        self.write_indicator()
+        self.write_prompt()
     }
 
     fn on_submit(&mut self, _event_bus: &mut EventBus) -> Result<Response, Error> {
@@ -66,10 +66,10 @@ impl WriterService {
         }
     }
 
-    fn write_indicator(&mut self) -> Result<Response, Error> {
-        let indicator = self.indicator();
-        print!("{}{}\x1b[0m", self.indicator_color(&TokenStatus::Valid), indicator);
-        self.terminal_cursor_pos += indicator.len();
+    fn write_prompt(&mut self) -> Result<Response, Error> {
+        let prompt = self.prompt();
+        print!("{}{}\x1b[0m", self.prompt_color(&TokenStatus::Valid), prompt);
+        self.terminal_cursor_pos += prompt.len();
         Ok(Response::Ok)
     }
 
@@ -81,7 +81,7 @@ impl WriterService {
     fn write_at_dirty(&mut self) -> Result<Response, Error> {
         print!(
             "{}{}{}{}{}{}",
-            self.dirty_status_indicator(),
+            self.dirty_status_prompt(),
             self.cursor_to_dirty_line(),
             Self::clear_right_of_cursor(),
             self.dirty_tokens(),
@@ -112,7 +112,7 @@ impl WriterService {
         Ok(Response::Ok)
     }
 
-    fn dirty_status_indicator(&mut self) -> String {
+    fn dirty_status_prompt(&mut self) -> String {
         let tokens_clx = self.tokens_provider.borrow();
         if !tokens_clx.is_status_dirty() {
             return String::new();
@@ -121,8 +121,8 @@ impl WriterService {
             "{}{}{}{}\x1b[0m{}",
             Self::save_cursor_pos(),
             Self::cursor_to_start(),
-            self.indicator_color(&tokens_clx.status()),
-            self.indicator(),
+            self.prompt_color(&tokens_clx.status()),
+            self.prompt(),
             Self::restore_cursor_pos(),
         )
     }
@@ -133,7 +133,7 @@ impl WriterService {
     }
 
     fn cursor_to_dirty_line(&mut self) -> String {
-        let offset = self.indicator().len() + self.line_provider.borrow().get_dirty_index();
+        let offset = self.prompt().len() + self.line_provider.borrow().get_dirty_index();
         let step = self.terminal_cursor_pos as isize - offset as isize;
         self.move_cursor_by(step)
     }
@@ -148,7 +148,7 @@ impl WriterService {
                 false => {
                     self.terminal_cursor_pos as isize
                         - line_clx.get_cursor_pos() as isize
-                        - self.indicator().len() as isize
+                        - self.prompt().len() as isize
                 }
             }
         };
@@ -191,17 +191,17 @@ impl WriterService {
         format!("{}{}\x1b[0m", theme.suggestion, line)
     }
 
-    fn indicator(&self) -> String {
+    fn prompt(&self) -> String {
         let wd_clx = self.wd_provider.borrow();
-        format!("{}{} ", wd_clx.pwd(), INDICATOR)
+        format!("{}{} ", wd_clx.pwd(), PROMPT)
     }
 
-    fn indicator_color(&self, status: &TokenStatus) -> &'static str {
+    fn prompt_color(&self, status: &TokenStatus) -> &'static str {
         let theme = self.theme_provider.borrow().get_current();
         match *status {
-            TokenStatus::Valid => theme.indicator,
-            TokenStatus::Incomplete(_) => theme.indicator_warning,
-            TokenStatus::Error(_) => theme.indicator_error,
+            TokenStatus::Valid => theme.prompt,
+            TokenStatus::Incomplete(_) => theme.prompt_warning,
+            TokenStatus::Error(_) => theme.prompt_error,
         }
     }
 
@@ -229,7 +229,7 @@ impl WriterService {
     }
 
     fn total_line_len(&self) -> usize {
-        self.indicator().len() + self.line_provider.borrow().len() + self.suggestion_provider.borrow().len()
+        self.prompt().len() + self.line_provider.borrow().len() + self.suggestion_provider.borrow().len()
     }
 
     fn clear_right_of_cursor() -> &'static str {

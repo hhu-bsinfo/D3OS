@@ -8,9 +8,9 @@ pub struct ThemeRegistry {
 pub struct Theme {
     pub id: &'static str,
     // Status
-    pub indicator: &'static str,
-    pub indicator_warning: &'static str,
-    pub indicator_error: &'static str,
+    pub prompt: &'static str,
+    pub prompt_warning: &'static str,
+    pub prompt_error: &'static str,
     pub error_msg: &'static str,
     pub error_hint: &'static str,
     // quotes
@@ -53,9 +53,9 @@ const D3OS_GREEN: &'static str = "\x1b[38;2;140;177;16m";
 pub const DEBUG_THEME: Theme = Theme {
     id: "debug",
     // Status
-    indicator: DEFAULT,
-    indicator_warning: YELLOW,
-    indicator_error: RED,
+    prompt: DEFAULT,
+    prompt_warning: YELLOW,
+    prompt_error: RED,
     error_msg: RED,
     error_hint: MUTED_RED,
     // quotes
@@ -83,9 +83,9 @@ pub const DEBUG_THEME: Theme = Theme {
 pub const D3OS_THEME: Theme = Theme {
     id: "d3os",
     // Status
-    indicator: DEFAULT,
-    indicator_warning: YELLOW,
-    indicator_error: RED,
+    prompt: DEFAULT,
+    prompt_warning: YELLOW,
+    prompt_error: RED,
     error_msg: RED,
     error_hint: MUTED_RED,
     // quotes
@@ -113,9 +113,9 @@ pub const D3OS_THEME: Theme = Theme {
 pub const PLAIN_THEME: Theme = Theme {
     id: "plain",
     // Status
-    indicator: DEFAULT,
-    indicator_warning: YELLOW,
-    indicator_error: RED,
+    prompt: DEFAULT,
+    prompt_warning: YELLOW,
+    prompt_error: RED,
     error_msg: RED,
     error_hint: MUTED_RED,
     // quotes
