@@ -135,3 +135,5 @@ impl Token {
         self.is_ambiguous() || self.kind == TokenKind::Blank
     }
 }
+
+// TODO Replace token instead of growing

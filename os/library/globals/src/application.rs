@@ -73,7 +73,7 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
     },
     Application {
         namespace: "theme",
-        single_value: &["d3os", "boring", "debug"],
+        single_value: &["d3os", "plain", "debug"],
         key_value_pair: &[],
     },
     Application {

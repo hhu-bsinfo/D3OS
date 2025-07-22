@@ -110,8 +110,8 @@ pub const D3OS_THEME: Theme = Theme {
     suggestion: GRAY,
 };
 
-pub const BORING_THEME: Theme = Theme {
-    id: "boring",
+pub const PLAIN_THEME: Theme = Theme {
+    id: "plain",
     // Status
     indicator: DEFAULT,
     indicator_warning: YELLOW,
@@ -142,5 +142,5 @@ pub const BORING_THEME: Theme = Theme {
 
 pub const THEME_REGISTRY: ThemeRegistry = ThemeRegistry {
     default: &D3OS_THEME,
-    themes: &[D3OS_THEME, BORING_THEME, DEBUG_THEME],
+    themes: &[D3OS_THEME, PLAIN_THEME, DEBUG_THEME],
 };

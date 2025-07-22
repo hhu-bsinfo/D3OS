@@ -14,7 +14,7 @@ Built‑In Commands (2 of 2):
 
   theme NAME
       Set shell theme to NAME.
-      Available: d3os, boring, debug.
+      Available: d3os, plain, debug.
       Example: theme debug
 
 Type “help controls” to see navigation keys.

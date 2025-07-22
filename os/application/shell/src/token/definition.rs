@@ -472,3 +472,5 @@ pub const BACKGROUND_TOKEN_DEFINITION: TokenDefinition = TokenDefinition {
         },
     ],
 };
+
+// TODO BuilderPattern for DTO creation
