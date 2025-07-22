@@ -120,7 +120,7 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
     },
     Application {
         namespace: "keytest",
-        single_value: &["cooked", "mixed", "raw"],
+        single_value: &["canonical", "fluid", "raw"],
         key_value_pair: &[],
     },
     Application {

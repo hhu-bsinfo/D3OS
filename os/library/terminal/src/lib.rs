@@ -16,8 +16,8 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 pub enum TerminalInputState {
     #[num_enum(default)]
     Idle = 0,
-    InputReaderAwaitsCooked = 1,
-    InputReaderAwaitsMixed = 2,
+    InputReaderAwaitsCanonical = 1,
+    InputReaderAwaitsFluid = 2,
     InputReaderAwaitsRaw = 3,
 }
 
@@ -25,8 +25,8 @@ pub enum TerminalInputState {
 #[repr(usize)]
 pub enum TerminalMode {
     #[num_enum(default)]
-    Cooked = 0,
-    Mixed = 1,
+    Canonical = 0,
+    Fluid = 1,
     Raw = 2,
 }
 

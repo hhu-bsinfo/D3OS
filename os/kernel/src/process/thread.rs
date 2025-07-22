@@ -69,15 +69,12 @@ pub struct Thread {
     id: usize,
     stacks: Mutex<Stacks>,
     process: Arc<Process>, // reference to my process
-    entry: fn(), // user thread: =0;                 kernel thread: address of entry function
-    user_rip: VirtAddr, // user thread: elf-entry function; kernel thread: =0
+    entry: fn(),           // user thread: =0;                 kernel thread: address of entry function
+    user_rip: VirtAddr,    // user thread: elf-entry function; kernel thread: =0
 }
 
 impl Stacks {
-    const fn new(
-        kernel_stack: Vec<u64, StackAllocator>,
-        user_stack: Vec<u64, StackAllocator>,
-    ) -> Self {
+    const fn new(kernel_stack: Vec<u64, StackAllocator>, user_stack: Vec<u64, StackAllocator>) -> Self {
         Self {
             kernel_stack,
             user_stack,
@@ -106,7 +103,8 @@ impl Thread {
                     start: Page::from_start_address(VirtAddr::new(kernel_stack.as_ptr() as u64)).unwrap(),
                     end: Page::from_start_address(VirtAddr::new(
                         kernel_stack.as_ptr() as u64 + kernel_stack.capacity() as u64 * 8,
-                    )).unwrap(),
+                    ))
+                    .unwrap(),
                 },
                 tag_str,
             );
@@ -167,11 +165,9 @@ impl Thread {
                     frames,
                     pages,
                     MemorySpace::User,
-                    PageTableFlags::PRESENT
-                        | PageTableFlags::WRITABLE
-                        | PageTableFlags::USER_ACCESSIBLE,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
                     VmaType::Code,
-                    name
+                    name,
                 );
             });
 
@@ -182,11 +178,9 @@ impl Thread {
         );
 
         // create user stack for the application
-        let user_stack_end = Page::from_start_address(VirtAddr::new(
-            (MAIN_USER_STACK_START + MAX_USER_STACK_SIZE) as u64,
-        ))
-        .unwrap();
-    
+        let user_stack_end =
+            Page::from_start_address(VirtAddr::new((MAIN_USER_STACK_START + MAX_USER_STACK_SIZE) as u64)).unwrap();
+
         let user_stack_pages = PageRange {
             start: user_stack_end - 1,
             end: user_stack_end,
@@ -207,15 +201,14 @@ impl Thread {
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
             VmaType::UserStack,
-            ""
+            "",
         );
 
         info!("Created user stack for thread: {:x?}", user_stack_pages);
 
         // create environment for the application
         let args_size = args.iter().map(|arg| arg.len()).sum::<usize>();
-        let env_virt_start =
-            Page::from_start_address(VirtAddr::new(USER_SPACE_ENV_START as u64)).unwrap();
+        let env_virt_start = Page::from_start_address(VirtAddr::new(USER_SPACE_ENV_START as u64)).unwrap();
         let env_size = args_size;
         let env_page_count = if env_size > 0 && env_size % PAGE_SIZE == 0 {
             env_size / PAGE_SIZE
@@ -235,7 +228,7 @@ impl Thread {
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
             VmaType::Environment,
-            ""
+            "",
         );
 
         // create argc and argv in the user space environment
@@ -265,8 +258,7 @@ impl Thread {
                 target.copy_from(arg.as_bytes().as_ptr(), arg.len());
                 target.add(arg.len()).write(0); // null-terminate the string for C compatibility
 
-                argv.add(i + 1)
-                    .write((args_begin_virt + offset as u64).as_ptr());
+                argv.add(i + 1).write((args_begin_virt + offset as u64).as_ptr());
                 offset += arg.len() + 1;
             }
         }
@@ -288,11 +280,7 @@ impl Thread {
     /// `parent` is the process the thread belongs to. \
     /// `kickoff_addr` address of the first function to be called before the thread `entry` function is executed. \
     /// This indirection ensures that the thread calls exit when it is done, see `library::concurrent::thread`.
-    pub fn new_user_thread(
-        parent: Arc<Process>,
-        kickoff_addr: VirtAddr,
-        entry: fn(),
-    ) -> Rc<Thread> {
+    pub fn new_user_thread(parent: Arc<Process>, kickoff_addr: VirtAddr, entry: fn()) -> Rc<Thread> {
         // alloc memory for kernel stack
         let kernel_stack = Vec::<u64, StackAllocator>::with_capacity_in(
             (KERNEL_STACK_PAGES * PAGE_SIZE) / 8,
@@ -306,10 +294,8 @@ impl Thread {
             .expect("Trying to create a user thread, before the main thread has been created!");
 
         // from there allocate new user stack
-        let user_stack_end = Page::<Size4KiB>::from_start_address(
-            highest_stack_vma.end() + MAX_USER_STACK_SIZE as u64,
-        )
-        .unwrap();
+        let user_stack_end =
+            Page::<Size4KiB>::from_start_address(highest_stack_vma.end() + MAX_USER_STACK_SIZE as u64).unwrap();
         let user_stack_pages = PageRange {
             start: user_stack_end - 1,
             end: user_stack_end,
@@ -333,7 +319,7 @@ impl Thread {
             MemorySpace::User,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
             VmaType::UserStack,
-            ""
+            "",
         );
 
         // add the VMA entry for the new user stack
@@ -411,7 +397,7 @@ impl Thread {
 
         // Grow stack area -> Allocate one page right below the stack
         self.process
-             .virtual_address_space
+            .virtual_address_space
             .find_vmas(VmaType::UserStack)
             .iter()
             .find(|vma| vma.start().as_u64() == stacks.user_stack.as_ptr() as u64)
@@ -525,8 +511,7 @@ impl Thread {
 
             stacks.kernel_stack[capacity - 5] = SegmentSelector::new(4, Ring3).0 as u64; // cs = user code segment
             stacks.kernel_stack[capacity - 4] = 0x202; // rflags (Interrupts enabled)
-            stacks.kernel_stack[capacity - 3] =
-                user_stack_addr + (stacks.user_stack.capacity() - 1) as u64 * 8; // rsp for user stack
+            stacks.kernel_stack[capacity - 3] = user_stack_addr + (stacks.user_stack.capacity() - 1) as u64 * 8; // rsp for user stack
             stacks.kernel_stack[capacity - 2] = SegmentSelector::new(3, Ring3).0 as u64; // ss = user data segment
 
             stacks.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
@@ -583,12 +568,7 @@ unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: fn()) {
 /// Low-level thread switching function
 #[naked]
 #[allow(unsafe_op_in_unsafe_fn)]
-unsafe extern "C" fn thread_switch(
-    current_rsp0: *mut u64,
-    next_rsp0: u64,
-    next_rsp0_end: u64,
-    next_cr3: u64,
-) {
+unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_rsp0_end: u64, next_cr3: u64) {
     naked_asm!(
     // Save registers of current thread
     "pushf",

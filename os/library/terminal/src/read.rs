@@ -26,7 +26,7 @@ pub fn read() -> String {
         &[
             buffer.as_mut_ptr() as usize,
             buffer.len(),
-            TerminalMode::Cooked as usize,
+            TerminalMode::Canonical as usize,
         ],
     )
     .expect("Unable to read input");
@@ -40,16 +40,12 @@ pub fn read() -> String {
 /// No echo
 /// No blocking
 /// Returns Option of DecodedKey (RawKey or Unicode)
-pub fn read_mixed() -> Option<DecodedKey> {
+pub fn read_fluid() -> Option<DecodedKey> {
     let mut buffer: [u8; 2] = [0; 2];
 
     let written_bytes = syscall(
         SystemCall::TerminalReadInput,
-        &[
-            buffer.as_mut_ptr() as usize,
-            buffer.len(),
-            TerminalMode::Mixed as usize,
-        ],
+        &[buffer.as_mut_ptr() as usize, buffer.len(), TerminalMode::Fluid as usize],
     )
     .expect("Unable to read input");
 
@@ -81,11 +77,7 @@ pub fn read_raw() -> Option<u8> {
 
     syscall(
         SystemCall::TerminalReadInput,
-        &[
-            buffer.as_mut_ptr() as usize,
-            buffer.len(),
-            TerminalMode::Raw as usize,
-        ],
+        &[buffer.as_mut_ptr() as usize, buffer.len(), TerminalMode::Raw as usize],
     )
     .expect("Unable to read input");
 

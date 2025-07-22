@@ -16,7 +16,7 @@ use runtime::*;
 use service::{
     command_line::CommandLineService, executor::ExecutorService, history::HistoryService, writer::WriterService,
 };
-use terminal::{println, read::read_mixed};
+use terminal::{println, read::read_fluid};
 
 use crate::{
     context::{
@@ -112,7 +112,7 @@ impl Shell {
 
     fn await_input_event(&mut self) -> Event {
         loop {
-            let Some(key) = read_mixed() else {
+            let Some(key) = read_fluid() else {
                 continue;
             };
             return Event::KeyPressed(key);
@@ -179,5 +179,4 @@ pub fn main() {
 
 // TODO IMPROVEMENT: Clamp cursor pos to 0..len in LineContext, also update when removing chars and pos > len
 // TODO IMPROVEMENT: Define service dependencies within Service itself.
-// TODO IMPROVEMENT: Rename cooked mode to canonical mode
 // TODO IMPROVEMENT: Show help hint on startup
