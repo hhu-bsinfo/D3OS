@@ -60,7 +60,9 @@ args = [
     #"model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
     #"-object",
     #"filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
-    ## Add NE2000 (Author: Johann Spenrath, Last Modified : 06.06.2025)
+    # =============================================================================
+    ## Add NE2000 (Author: Johann Spenrath, Last Modified : 16.06.2025)
+    # =============================================================================
     ## creates a emulated ne2000 compatible nic on the slirp stack 
     ## forward udp port 1798 from host to guest
     ## all traffic gets dumped into ne2k.dump, in pcap format
@@ -121,17 +123,17 @@ args = [
     "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
 
     # Network configuration
-    #"-nic",
-    #"model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
-    #"-object",
-    #"filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+    "-nic",
+    "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
+    "-object",
+    "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
     # =============================================================================
     ## Add NE2000 (Author: Johann Spenrath, Last Modified : 16.06.2025)
     # =============================================================================
-    "-nic",
-    "model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798",
-    "-object",
-    "filter-dump,id=filter1,netdev=ne2k,file=ne2k.dump",
+    # "-nic",
+    # "model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798",
+    # "-object",
+    # "filter-dump,id=filter1,netdev=ne2k,file=ne2k.dump",
     #"-netdev",
     #"tap,id=mynet0,ifname=tap0,script=no,downscript=no",
     #"model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798,mac=40:54:00:12:34:56",

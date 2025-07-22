@@ -74,6 +74,8 @@ const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
 // ======|> pub struct PacketAllocator
 // =============================================================================
 
+// closure that, when run,
+// writes whatever bytes are sent onto the link
 pub struct Ne2000TxToken<'a> {
     device: &'a mut Ne2000,
 }
@@ -259,6 +261,7 @@ impl<'a> phy::RxToken for Ne2000RxToken<'a> {
             .try_enqueue(self.buffer)
             .expect("Failed to enqueue used receive buffer!");
         info!("consume");
+        info!("consume");
 
         result
     }
@@ -275,6 +278,11 @@ impl phy::Device for Ne2000 {
         Self: 'a;
 
     // called by smoltcp, when polling for new packets in network/mod.rs in poll_ne2k
+    // From https://docs.rs/smoltcp/latest/smoltcp/phy/trait.Device.html
+    // The additional transmit token makes it possible to generate a reply packet
+    // based on the contents of the received packet. For example, this makes it
+    // possible to handle arbitrarily large ICMP echo (“ping”) requests,
+    // where the all received bytes need to be sent back, without heap allocation.
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let device = unsafe { ptr::from_ref(self).as_ref()? };
         //info!("==> receive() requested by smoltcp!");
