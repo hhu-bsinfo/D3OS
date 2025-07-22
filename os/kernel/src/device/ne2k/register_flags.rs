@@ -1,6 +1,6 @@
 // =============================================================================
 // FILE        : register_flags.rs
-// AUTHOR      : Johann Spenrath
+// AUTHOR      : Johann Spenrath <johann.spenrath@hhu.de>
 // DESCRIPTION : defines the registers of the NE2000 and their corresponding bits,
 //               which control the Ne2000's functionalities
 //               use these Constants for setting the correct bits in a register

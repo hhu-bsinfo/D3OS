@@ -14,12 +14,10 @@
 // =============================================================================
 // DEPENDENCIES:
 // =============================================================================
-use crate::device::ne2k::register_flags::ReceiveStatusRegister;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{PAGE_SIZE, frames};
 use crate::process::thread::Thread;
 use crate::{apic, device, interrupt_dispatcher, pci_bus, process_manager, scheduler};
-use acpi::platform::interrupt;
 use core::mem;
 // for calling the methods outside the interrupt handler
 use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
@@ -28,12 +26,10 @@ use core::{ptr, slice};
 use log::info;
 // for allocator impl
 use alloc::boxed::Box;
-// for allocator impl
+// import interrupt functionalities
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use core::ptr::NonNull;
 use spin::{Mutex, RwLock};
-// let smoltcp handle the packet
-// TODO: check network/mod.rs for the handling of the packet
 
 // lock free algorithms and datastructes
 // queues: different queue implementations
@@ -45,21 +41,23 @@ use pci_types::EndpointHeader;
 // smoltcp provides a full network stack for creating packets, sending, receiving etc.
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+
+// for converting the mac address to type EthernetAddress
 use smoltcp::wire::EthernetAddress;
 
-// for writing to the registers
 use alloc::str;
-use alloc::string::String;
-use x86_64::{registers, VirtAddr};
+use x86_64::VirtAddr;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
+use x86_64::structures::paging::{Page, PageTableFlags};
 
+// for writing to the registers
 // super looks in a relative path for other modules
+// load the bitflags for the register into the module
 use super::register_flags::{
     CR, DataConfigurationRegister, InterruptMaskRegister, InterruptStatusRegister,
-    ReceiveConfigurationRegister, TransmitConfigurationRegister,
+    ReceiveConfigurationRegister, ReceiveStatusRegister, TransmitConfigurationRegister,
 };
 // smoltcp configuration
 use super::network_stack::*;
@@ -71,8 +69,12 @@ use super::network_stack::*;
 const RECV_QUEUE_CAP: usize = 16;
 
 const DISPLAY_RED: &'static str = "\x1b[1;31m";
+
+// Define the range of a size for an ethernet packet
 static MINIMUM_ETHERNET_PACKET_SIZE: u8 = 64;
 static MAXIMUM_ETHERNET_PACKET_SIZE: u32 = 1522;
+
+// this variable points to the next packet to be read
 static mut CURRENT_NEXT_PAGE_POINTER: u8 = 0;
 
 // Buffer Start Page for the transmitted pages
@@ -91,6 +93,9 @@ static RECEIVE_STOP_PAGE: u8 = 0x80;
 // ==== STRUCTS
 // =============================================================================
 
+
+//Physical Address Registers, for Reading the MAC Address
+// TODO: add reference
 pub struct ParRegisters {
     id: Mutex<(
         PortReadOnly<u8>,
@@ -102,6 +107,8 @@ pub struct ParRegisters {
     )>,
 }
 
+// define read + write ports for the registers of the ne2k
+// TODO: add reference
 pub struct Registers {
     reset_port: Port<u8>,
     command_port: Port<u8>,
@@ -157,16 +164,21 @@ struct PacketHeader {
     length: u16,
 }
 
+// TODO: move method calls in trigger to new and set the variables if the 
+//       given Interrupt occurs
 pub struct Interrupts {
     ovw: Mutex<bool>,
     rcv: Mutex<bool>,
 }
 
 // the interrupt handler holds a shared reference to the Ne2000 device
+// defined in 
+// TODO: add reference
 pub struct Ne2000InterruptHandler {
     device: Arc<Ne2000>,
 }
 
+// Struct for the Ne2000 driver
 pub struct Ne2000 {
     base_address: u16,
     pub registers: Registers,
@@ -288,20 +300,14 @@ impl Registers {
 //});
 //assert_eq!(rx.recv().unwrap(), 10);
 
-// =============================================================================
-// ==== IMPLEMENTATIONS
-// =============================================================================
-
 impl Ne2000 {
 
     // =============================================================================
     // ==== FUNCTION new
     // =============================================================================
     // construct new instance of the ne2000 struct and 
-    // initialize the card for transmit and receive
+    // initialize the card and its registers for transmit and receive
     // =============================================================================
-
-
 
     pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
         info!("Configuring PCI registers");
@@ -832,7 +838,9 @@ impl Ne2000 {
                     //self.registers.data_port.read() as u8;
                     for i in 0..packet_header.length {
                         // slice indices must be of type usize
-                        packet[i as usize] = self.registers.data_port.read();
+                        let a = self.registers.data_port.read();
+                        packet[i as usize] = a;
+                        info!("0x:{:02X}", a);
                     }
                     // enqueue the packet in the receive_messages queue, this queue gets processed by
                     // receive in smoltcp

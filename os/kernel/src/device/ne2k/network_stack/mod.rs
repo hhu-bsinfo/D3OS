@@ -3,6 +3,7 @@
 // AUTHOR      : Johann Spenrath
 // DESCRIPTION : file includes the network stack for the NE2000 driver
 //               which is provided by the smoltcp crate
+//               and implementations for Packet allocation and deallocation
 // =============================================================================
 //
 // TODO:
@@ -260,8 +261,6 @@ impl<'a> phy::RxToken for Ne2000RxToken<'a> {
         info!("consume");
 
         result
-        // Return empty slice
-        //f(&[])
     }
 }
 
