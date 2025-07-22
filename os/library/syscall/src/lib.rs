@@ -44,6 +44,8 @@ pub enum SystemCall {
     Cd,
     SockOpen,
     SockBind,
+    SockAccept,
+    SockConnect,
     SockSend,
     SockReceive,
     SockClose,
