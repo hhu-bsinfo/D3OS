@@ -4,12 +4,10 @@ extern crate alloc;
 use core::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use alloc::string::String;
-use network::UdpSocket;
+use network::{TcpListener, TcpStream, UdpSocket};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::{print, println, read::read};
-
-// TODO: also support TCP
 
 enum Protocol {
     Udp, Tcp,
@@ -18,6 +16,11 @@ enum Protocol {
 enum Mode {
     Listen,
     Connect,
+}
+
+enum Socket {
+    Udp(UdpSocket),
+    Tcp(TcpStream),
 }
 
 #[unsafe(no_mangle)]
@@ -75,16 +78,21 @@ Examples:
 
     let socket = match mode {
         Mode::Listen => match protocol {
-            Protocol::Udp => UdpSocket::bind(addr).expect("failed to open socket"),
-            Protocol::Tcp => todo!(),
+            Protocol::Udp => Socket::Udp(UdpSocket::bind(addr).expect("failed to open socket")),
+            Protocol::Tcp => Socket::Tcp(
+                TcpListener::bind(addr)
+                    .expect("failed to open socket")
+                    .accept()
+                    .expect("failed to accept connection")
+                ),
         },
         Mode::Connect => match protocol {
             Protocol::Udp => {
                 // TODO: randomize this, but probably in the kernel?
                 let local_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 1797));
-                UdpSocket::bind(local_addr).expect("failed to open socket")
+                Socket::Udp(UdpSocket::bind(local_addr).expect("failed to open socket"))
             },
-            Protocol::Tcp => todo!(),
+            Protocol::Tcp => Socket::Tcp(TcpStream::connect(addr).expect("failed to open socket")),
         },
     };
 
@@ -94,14 +102,19 @@ Examples:
         let key = read();
         if let Some(key) = key {
             let string = key.encode_utf8(&mut buf);
-            match protocol {
-                Protocol::Udp => socket.send_to(string.as_bytes(), addr)
-                   .expect("failed to send char"),
-                Protocol::Tcp => todo!(),
+            match socket {
+                Socket::Udp(ref sock) => sock.send_to(string.as_bytes(), addr)
+                    .expect("failed to send char"),
+                Socket::Tcp(ref sock) => sock.write(string.as_bytes())
+                    .expect("failed to send char"),
             };
         }
-        let (len, _) = socket.recv_from(&mut buf)
-            .expect("failed to receive char");
+        let len = match socket {
+            Socket::Udp(ref sock) => sock.recv_from(&mut buf)
+                .expect("failed to receive char").0,
+            Socket::Tcp(ref sock) => sock.read(&mut buf)
+                .expect("failed to receive char"),
+        };
         if len > 0 {
             let text = str::from_utf8(&buf[0..len]).expect("failed to parse received string");
             print!("{text}");
