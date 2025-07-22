@@ -30,54 +30,49 @@ pub enum SocketType {
 
 pub fn init() {
     SOCKETS.call_once(|| RwLock::new(SocketSet::new(Vec::new())));
+    /*
+    let devices = pci_bus().search_by_ids(0x10ec, 0x8139);
+    if devices.len() > 0 {
+        RTL8139.call_once(|| {
+            info!("Found Realtek RTL8139 network controller");
+            let rtl8139 = Arc::new(Rtl8139::new(devices[0]));
+            info!("RTL8139 MAC address: [{}]", rtl8139.read_mac_address());
 
-    let enable_rtl8139 = true;
-    let enable_ne2k = false;
-
-    if enable_rtl8139 {
-        let devices = pci_bus().search_by_ids(0x10ec, 0x8139);
-        if devices.len() > 0 {
-            RTL8139.call_once(|| {
-                info!("Found Realtek RTL8139 network controller");
-                let rtl8139 = Arc::new(Rtl8139::new(devices[0]));
-                info!("RTL8139 MAC address: [{}]", rtl8139.read_mac_address());
-
-                Rtl8139::plugin(Arc::clone(&rtl8139));
-                rtl8139
-            });
-        }
-
-        if RTL8139.get().is_some() {
-            scheduler().ready(Thread::new_kernel_thread(
-                || loop {
-                    poll_sockets();
-                },
-                "RTL8139",
-            ));
-        }
+            Rtl8139::plugin(Arc::clone(&rtl8139));
+            rtl8139
+        });
     }
+
+    if RTL8139.get().is_some() {
+        scheduler().ready(Thread::new_kernel_thread(
+            || loop {
+                poll_sockets();
+            },
+            "RTL8139",
+        ));
+    }
+    */
 
     // Register the Ne2000 card here
     // wrap into Arc for shared ownership
     // Scans PCI bus for Ne2000 cards or similar by looking at the device id and vendor id.
     // TODO: add reference for vendor and device id here
-    if enable_ne2k {
-        let devices2 = pci_bus().search_by_ids(0x10ec, 0x8029);
-        if devices2.len() > 0 {
-            NE2000.call_once(|| {
-                info!("\x1b[1;31mFound Realtek 8029 network controller");
-                //let ne2k = Arc::new(Ne2000::new(devices2[0]));
-                let device = Ne2000::new(devices2[0]);
-                let ne2k = Arc::new(device);
 
-                //read the mac address
-                info!("\x1b[1;31mNe2000 MAC address: [{}]", ne2k.read_mac());
-                //enable interrupt handler
-                Ne2000::assign(Arc::clone(&ne2k));
-                info!("assigned Interrupt handler");
-                ne2k
-            });
-        }
+    let devices2 = pci_bus().search_by_ids(0x10ec, 0x8029);
+    if devices2.len() > 0 {
+        NE2000.call_once(|| {
+            info!("\x1b[1;31mFound Realtek 8029 network controller");
+            //let ne2k = Arc::new(Ne2000::new(devices2[0]));
+            let device = Ne2000::new(devices2[0]);
+            let ne2k = Arc::new(device);
+
+            //read the mac address
+            info!("\x1b[1;31mNe2000 MAC address: [{}]", ne2k.read_mac());
+            //enable interrupt handler
+            Ne2000::assign(Arc::clone(&ne2k));
+            info!("assigned Interrupt handler");
+            ne2k
+        });
     }
 
     // if NE2000 is initialized, start a new thread,

@@ -261,8 +261,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     network::init();
 
     // set flag for enabling/disabling network cards at boot
-    let enable_rtl8139 = true;
-    let enable_ne2k = false;
+    let enable_rtl8139 = false;
+    let enable_ne2k = true;
 
     if enable_rtl8139 {
         // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
