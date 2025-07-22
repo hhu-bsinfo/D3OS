@@ -180,7 +180,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         };
         let result = f(buffer);
 
-        // Send packet by writing physical address and packet length to transmit registers
+        // Send packet by
         self.device.send_packet(buffer);
 
         result

@@ -1,11 +1,15 @@
 // =============================================================================
 // FILE        : ne2000.rs
-// AUTHOR      : Johann Spenrath
+// AUTHOR      : Johann Spenrath <johann.spenrath@hhu.de>
 // DESCRIPTION : Main file for the NE2000 driver
 // =============================================================================
 // TODO:
 //
 // NOTES:
+// ideas : check trigger method in ne2000.cpp
+// rewrite overwrite and receive method, replace self with reg mentioned above 
+// try to understand apic and interrupt handler, dispatcher in d3os 
+// do the same for the cpp implementation 
 //
 // =============================================================================
 // DEPENDENCIES:
@@ -289,6 +293,16 @@ impl Registers {
 // =============================================================================
 
 impl Ne2000 {
+
+    // =============================================================================
+    // ==== FUNCTION new
+    // =============================================================================
+    // construct new instance of the ne2000 struct and 
+    // initialize the card for transmit and receive
+    // =============================================================================
+
+
+
     pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
         info!("Configuring PCI registers");
         //Self { base_address }
@@ -993,8 +1007,13 @@ impl Ne2000InterruptHandler {
     }
 }
 
+// =============================================================================
+// ==== FUNCTION trigger
+// =============================================================================
 // gets called, if the nic receives or transmits a package
-// or if an Buffer Overflow occurs
+// or if an Buffer Overwrite occurs
+// TODO: add reference
+// =============================================================================
 impl InterruptHandler for Ne2000InterruptHandler {
     fn trigger(&self) {
         // a mutex is required for IMR and ISR, because these registers are also used by the
@@ -1008,10 +1027,6 @@ impl InterruptHandler for Ne2000InterruptHandler {
         unsafe {
             reg.command_port.write((CR::STOP_DMA | CR::PAGE_0).bits());
         }
-        // ideas : check trigger method in ne2000.cpp
-        // rewrite overwrite and receive method, replace self with reg mentioned above 
-        // try to understand apic and interrupt handler, dispatcher in d3os 
-        // do the same for the cpp implementation 
 
         // clear Interrupt Mask Register
         self.device.registers.write_imr(0);
@@ -1083,6 +1098,10 @@ impl InterruptHandler for Ne2000InterruptHandler {
             device_mut.handle_overflow();
             let mut ovw = self.device.interrupts.ovw.lock();
             *ovw = true;
+        }
+
+        unsafe {
+        self.device.registers.imr_port.lock().write((InterruptMaskRegister::IMR_PRXE | InterruptMaskRegister::IMR_PTXE | InterruptMaskRegister::IMR_OVWE).bits());
         }
     }
 }
