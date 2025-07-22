@@ -17,13 +17,14 @@
 
 use core::cmp::min;
 use core::ptr;
-use spin::RwLock;
+use spin::{RwLock, RwLockReadGuard};
 use x86_64::structures::paging::{PageTable, PageTableFlags, PageTableIndex, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::{PageRange,Page};
 use x86_64::structures::paging::Size4KiB;
+use log::debug;
 
 use crate::memory::{MemorySpace, PAGE_SIZE, frames};
 
@@ -161,6 +162,47 @@ impl Paging {
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
         Paging::set_flags_in_table(root_table, pages, flags, depth);
+    }
+    
+    pub fn dump(&self) {
+        // TODO: A read lock should be enough, maybe we can do without unsafe?
+        let root_table_guard = self.root_table.write();
+        let root_table = unsafe { root_table_guard.as_mut().unwrap() };
+        
+        debug!("Dumping page tables");
+        
+        Paging::dump_table(root_table, 0, 4);
+    }
+    
+    fn dump_table(table: &PageTable, base_address: usize, level: usize) {
+        if level > 1 {
+            for (index, entry) in table.iter().enumerate() {
+                if !entry.is_unused() {
+                    debug!("Dumping page table {} on level {}", index, level);
+                    let next_level = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
+                    let new_base_address = base_address + (index << (12 + (level - 1) * 9));
+                    Paging::dump_table(next_level, new_base_address, level - 1);
+                }
+            }
+        } else {
+            let mut identity_start_address: Option<usize> = None;
+            for (index, entry) in table.iter().enumerate() {
+                let entry_address = base_address + (index << 12);
+                if entry_address == entry.addr().as_u64() as usize {
+                    // This entry is an identity mapping
+                    if identity_start_address.is_none() {
+                        // This entry is the start of an identity mapping
+                        identity_start_address = Some(entry_address);
+                    }
+                } else {
+                    if let Some(value) = identity_start_address {
+                        // We had an identity mapping before
+                        debug!("Identity mapping from 0x{:x} to 0x{:x}", value, entry_address - 4096);
+                    }
+                    debug!("0x{:x} -> 0x{:x}", entry_address, entry.addr());
+                }
+            }
+        }
     }
 
 
