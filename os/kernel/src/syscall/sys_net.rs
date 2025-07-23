@@ -1,10 +1,10 @@
 use core::str::FromStr;
 
 use log::{info, warn};
-use smoltcp::{iface::SocketHandle, socket::{udp, tcp}, wire::IpAddress};
+use smoltcp::{iface::SocketHandle, socket::{icmp, tcp, udp}, wire::IpAddress};
 use syscall::return_vals::Errno;
 
-use crate::{network::{accept_tcp, bind_tcp, bind_udp, close_socket, connect_tcp, open_tcp, open_udp, receive_datagram, receive_tcp, send_datagram, send_tcp, SocketType}, syscall::sys_naming::ptr_to_string};
+use crate::{network::{accept_tcp, bind_icmp, bind_tcp, bind_udp, close_socket, connect_tcp, open_icmp, open_tcp, open_udp, receive_datagram, receive_icmp, receive_tcp, send_datagram, send_icmp, send_tcp, SocketType}, syscall::sys_naming::ptr_to_string};
 
 /// This module contains all network-related system calls.
 
@@ -18,6 +18,7 @@ pub fn sys_sock_open(protocol: SocketType) -> isize {
     let handle = match protocol {
         SocketType::Udp => open_udp(),
         SocketType::Tcp => open_tcp(),
+        SocketType::Icmp => open_icmp(),
         _ => return Errno::ENOTSUP.into(),
     };
     // handle.0 is private, sadly, so just hope this works
@@ -44,6 +45,14 @@ pub fn sys_sock_bind(handle: SocketHandle, protocol: SocketType, port: u16) -> i
             // port is zero
             Err(tcp::ListenError::Unaddressable) => Errno::EINVAL.into(),
         },
+        // port is actually the ident here
+        SocketType::Icmp => match bind_icmp(handle, port) {
+            Ok(()) => 0,
+            // socket has already been opened
+            Err(icmp::BindError::InvalidState) => Errno::EEXIST.into(),
+            // ident is missing
+            Err(icmp::BindError::Unaddressable) => Errno::EINVAL.into(),
+        }
         _ => Errno::ENOTSUP.into(),
     }
 }
@@ -111,6 +120,19 @@ pub unsafe fn sys_sock_send(
             // socket can't send (yet)
             Err(tcp::SendError::InvalidState) => Errno::EINVAL.into(),
         },
+        SocketType::Icmp => {
+            if let Ok(addr_str) = unsafe { ptr_to_string(addr_ptr) } && let Ok(addr) = IpAddress::from_str(&addr_str) {
+                match send_icmp(handle, addr, data) {
+                    Ok(()) => 0,
+                    // ip address missing
+                    Err(icmp::SendError::Unaddressable) => Errno::EINVAL.into(),
+                    // TODO: drop? return 0?
+                    Err(icmp::SendError::BufferFull) => Errno::EBUSY.into(),
+                }
+            } else {
+                Errno::EINVAL.into()
+            }
+        }
         _ => Errno::ENOTSUP.into(),
     }
 }
@@ -143,7 +165,18 @@ pub unsafe fn sys_sock_receive(
             },
             // the remote host closed the connection
             Err(tcp::RecvError::Finished) => Errno::ECONNRESET.into(),
-        }
+        },
+        SocketType::Icmp => match receive_icmp(handle, data) {
+            // TODO: also pass the address
+            Ok((len, address)) => len.try_into().unwrap(),
+            // discard truncated packet
+            Err(icmp::RecvError::Truncated) => {
+                warn!("discarding truncated incoming packet");
+                0
+            },
+            // if we got no data, that is okay
+            Err(icmp::RecvError::Exhausted) => 0,
+        },
         _ => Errno::ENOTSUP.into(),
     }
 }

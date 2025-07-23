@@ -5,7 +5,7 @@ use core::ops::Deref;
 use core::ptr;
 use log::info;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
-use smoltcp::socket::{tcp, udp};
+use smoltcp::socket::{icmp, tcp, udp};
 use smoltcp::time::Instant;
 use smoltcp::wire::IpAddress;
 use spin::{Once, RwLock};
@@ -22,7 +22,7 @@ static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
 #[repr(u8)]
 #[non_exhaustive]
 pub enum SocketType {
-    Udp, Tcp,
+    Udp, Tcp, Icmp,
 }
 
 pub fn init() {
@@ -82,6 +82,21 @@ pub fn open_tcp() -> SocketHandle {
     sockets.write().add(tcp::Socket::new(rx_buffer, tx_buffer))
 }
 
+pub fn open_icmp() -> SocketHandle {
+    let sockets = SOCKETS.get().expect("Socket set not initialized!");
+    
+    let rx_buffer = icmp::PacketBuffer::new(
+        vec![icmp::PacketMetadata::EMPTY, icmp::PacketMetadata::EMPTY],
+        vec![0; 65535],
+    );
+    let tx_buffer = icmp::PacketBuffer::new(
+        vec![icmp::PacketMetadata::EMPTY, icmp::PacketMetadata::EMPTY],
+        vec![0; 65535],
+    );
+
+    sockets.write().add(icmp::Socket::new(rx_buffer, tx_buffer))
+}
+
 pub fn close_socket(handle: SocketHandle) {
     let sockets = SOCKETS.get().expect("Socket set not initialized!");
     sockets.write().remove(handle);
@@ -99,6 +114,13 @@ pub fn bind_tcp(handle: SocketHandle, port: u16) -> Result<(), tcp::ListenError>
     let socket = sockets.get_mut::<tcp::Socket>(handle);
 
     socket.listen(port)
+}
+
+pub fn bind_icmp(handle: SocketHandle, ident: u16) -> Result<(), icmp::BindError> {
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let socket = sockets.get_mut::<icmp::Socket>(handle);
+
+    socket.bind(icmp::Endpoint::Ident(ident))
 }
 
 pub fn accept_tcp(handle: SocketHandle) -> Result<u16, tcp::ConnectError> {
@@ -151,6 +173,13 @@ pub fn send_tcp(handle: SocketHandle, data: &[u8]) -> Result<usize, tcp::SendErr
     socket.send_slice(data)
 }
 
+pub fn send_icmp(handle: SocketHandle, destination: IpAddress, data: &[u8]) -> Result<(), icmp::SendError> {
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let socket = sockets.get_mut::<icmp::Socket>(handle);
+
+    socket.send_slice(data, destination)
+}
+
 pub fn receive_datagram(handle: SocketHandle, data: &mut [u8]) -> Result<(usize, udp::UdpMetadata), udp::RecvError> {
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
     let socket = sockets.get_mut::<udp::Socket>(handle);
@@ -161,6 +190,13 @@ pub fn receive_datagram(handle: SocketHandle, data: &mut [u8]) -> Result<(usize,
 pub fn receive_tcp(handle: SocketHandle, data: &mut [u8]) -> Result<usize, tcp::RecvError> {
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
     let socket = sockets.get_mut::<tcp::Socket>(handle);
+
+    socket.recv_slice(data)
+}
+
+pub fn receive_icmp(handle: SocketHandle, data: &mut [u8]) -> Result<(usize, IpAddress), icmp::RecvError> {
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let socket = sockets.get_mut::<icmp::Socket>(handle);
 
     socket.recv_slice(data)
 }
