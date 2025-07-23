@@ -120,13 +120,17 @@ pub fn add_interface(interface: Interface) {
 
 pub fn open_socket(protocol: SocketType) -> SocketHandle {
     let sockets = SOCKETS.get().expect("Socket set not initialized!");
+    // changed transmit and receive buffer size to tx_size and rx_size
+    let tx_size = 1000;
+    let rx_size = 1000;
 
     let rx_buffer = udp::PacketBuffer::new(
         // packetgröße auf 10 erhöhen
-        vec![udp::PacketMetadata::EMPTY, udp::PacketMetadata::EMPTY],
+        vec![udp::PacketMetadata::EMPTY; rx_size],
         vec![0; 65535],
     );
-    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; 1000], vec![0; 65535]);
+    let tx_buffer =
+        udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 65535]);
 
     let socket = match protocol {
         SocketType::Udp => udp::Socket::new(rx_buffer, tx_buffer),

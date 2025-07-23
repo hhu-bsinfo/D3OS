@@ -350,8 +350,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     let number_of_packets = 1;
     let send_packets = true;
     if send_packets {
-        let socket = network::open_socket(network::SocketType::Udp);
-        network::bind_udp(socket, 12345).expect("Failed to bind UDP socket");
+        let t_socket = network::open_socket(network::SocketType::Udp);
+        network::bind_udp(t_socket, 12345).expect("Failed to bind UDP socket");
         for i in 0..number_of_packets {
             //UDP “send” calls take a buffer of raw bytes, not a UTF-8 string.
             //"Hello from D3OS!" is an &str (UTF-8 text), not a &[u8] byte slice"Hello from D3OS!" is an &str (UTF-8 text), not a &[u8] byte slice
@@ -368,7 +368,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             datagram.extend_from_slice(format!(" {}\n", i).as_bytes());
             datagram.push(b'\n');
             // send the datagram
-            network::send_datagram(socket, Ipv4Address::new(10, 0, 2, 2), 12345, &datagram)
+            network::send_datagram(t_socket, Ipv4Address::new(10, 0, 2, 2), 12345, &datagram)
                 .expect("Failed to send UDP datagram");
         }
         //network::close_socket(socket);
