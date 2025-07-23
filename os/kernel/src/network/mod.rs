@@ -190,6 +190,13 @@ fn poll_ne2000() {
         .expect("[poll_ne2000] : Ne2000 not initialized.");
     let dev_ne2k = unsafe { ptr::from_ref(ne.deref()).cast_mut().as_mut().unwrap() };
 
+    // acquire read lock
+    /*let interfaces = INTERFACES.read();
+    for (i, iface) in interfaces.iter().enumerate() {
+        let s = iface.to_string();
+        info!("{:?} {}", s, i);
+    }*/
+
     // initialize Interfaces and sockets
     let mut interfaces = INTERFACES.write();
     let mut sockets = SOCKETS.get().expect("Socket set not initialized").write();

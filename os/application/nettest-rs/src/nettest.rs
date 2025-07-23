@@ -25,6 +25,8 @@ use smoltcp::socket::udp;
 use smoltcp::time::Instant;
 use smoltcp::wire::Ipv4Address;
 use terminal::{print, println};
+// get local address
+use core::net::SocketAddr;
 
 // Define the Port of the Client
 const DEFAULT_BIND_PORT: u32 = 1797;
@@ -37,8 +39,8 @@ const DEFAULT_INTERVAL: u32 = 10;
 // =============================================================================
 // Server Mode
 // =============================================================================
-/*pub fn server(socket: udp::Socket) -> u32 {
-    let local_net_address = Ipv4Address;
+pub fn server(socket: &Ud) -> u32 {
+    let local_net_address = match socket
 
     if socket.getLocalAddress {
         println("nettest-rs: Failed to query socket address!");
@@ -47,7 +49,7 @@ const DEFAULT_INTERVAL: u32 = 10;
 
     println("nettest: sever listening on {} ", local_net_address);
     println("Send 'exit' to leave.");
-}*/
+}
 
 /*
     // Wait for client to initiate connection, return if exit code is != 0
