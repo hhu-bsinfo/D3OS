@@ -18,14 +18,17 @@ use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{PAGE_SIZE, frames};
 use crate::process::thread::Thread;
 use crate::{apic, device, interrupt_dispatcher, pci_bus, process_manager, scheduler};
-use core::mem;
+use core::{mem, result};
 // for calling the methods outside the interrupt handler
+use alloc::string::ToString;
 use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use core::{ptr, slice};
 // print to terminal
 use log::info;
 // for allocator impl
 use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
 // import interrupt functionalities
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use core::ptr::NonNull;
@@ -839,10 +842,17 @@ impl Ne2000 {
                     //self.registers.data_port.read() as u8;
                     for i in 0..packet_header.length {
                         // slice indices must be of type usize
-                        let a = self.registers.data_port.read();
-                        packet[i as usize] = a;
-                        info!("0x:{:02X}", a);
+                        packet[i as usize] = self.registers.data_port.read();
                     }
+                    let s: String = packet.iter().map(|&b| b as char).collect();
+                    //let hex_dump = packet
+                    //    .iter()
+                    //    .map(|b| format!("{:02x}", b))
+                    //    .collect::<Vec<_>>()
+                    //    .join("");
+                    //info!("{}", hex_dump);
+                    info!("{}", s);
+
                     // enqueue the packet in the receive_messages queue, this queue gets processed by
                     // receive in smoltcp
                     self.receive_messages

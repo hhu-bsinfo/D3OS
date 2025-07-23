@@ -50,13 +50,13 @@ case "$MODE" in
     # SEND
     if [[ "$COUNT" -le 0 ]]; then
         while true; do
-            printf '%s' "$PAYLOAD" | nc -u -w1 "$HOST" "$PORT"
+            printf '%s' "$PAYLOAD" | nc -u -w0 "$HOST" "$PORT"
             printf "%s : %d \n" "$PAYLOAD" "$COUNT"
             sleep "$INTERVAL"
         done
     else
         for ((i=1; i<=COUNT; i++)); do
-            printf '%s' "$PAYLOAD" | nc -u -w1 "$HOST" "$PORT"
+            printf '%s' "$PAYLOAD" | nc -u -w0 "$HOST" "$PORT"
             printf "%s : %d \n" "$PAYLOAD" $i
             sleep "$INTERVAL"
         done

@@ -22,7 +22,6 @@ static NE2000: Once<Arc<Ne2000>> = Once::new();
 
 static INTERFACES: RwLock<Vec<Interface>> = RwLock::new(Vec::new());
 static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
-static NE2000_PTR: AtomicPtr<Ne2000> = AtomicPtr::new(core::ptr::null_mut());
 
 pub enum SocketType {
     Udp,
