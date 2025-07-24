@@ -28,21 +28,6 @@ use log::debug;
 
 use crate::memory::{MemorySpace, PAGE_SIZE, frames};
 
-macro_rules! check_identity_start_address {
-    ($identity_start_address: ident, $entry_address: expr) => {
-        if let Some(value) = $identity_start_address {
-            // We had an identity mapping before
-            debug!("Identity mapping for addresses 0x{:x} - 0x{:x}, {:?} - {:?}",
-                    value,
-                    $entry_address + 4095,
-                    PageTableEntryAddress::new(value, 1),
-                    PageTableEntryAddress::new($entry_address, 1)
-            );
-            $identity_start_address = None
-        }
-    }
-}
-
 /// Helper function to convert a u64 address to a PhysFrame.
 pub fn page_from_u64(addr: u64) -> Result<Page<Size4KiB>, x86_64::structures::paging::page::AddressNotAligned> {
     Page::from_start_address(VirtAddr::new(addr))
@@ -200,7 +185,7 @@ impl Paging {
                 }
             }
         } else {
-            let mut identity_start_address: Option<usize> = None;
+            let mut area: PageTableArea = PageTableArea::new(None, 0);
             let mut entry_address = base_address;
             
             for (index, entry) in table.iter().enumerate() {
@@ -209,20 +194,21 @@ impl Paging {
                 if !entry.is_unused() {
                     if entry_address == entry.addr().as_u64() as usize {
                         // This entry is an identity mapping
-                        if identity_start_address.is_none() {
+                        if area.areaType.is_none() {
                             // This entry is the start of an identity mapping
-                            identity_start_address = Some(entry_address);
+                            area.areaType = Some(PageTableAreaType::Identity);
+                            area.start_address = entry_address;
                         }
                     } else {
-                        check_identity_start_address!(identity_start_address, entry_address);
+                        area.check(entry_address);
                         debug!("0x{:x} -> 0x{:x}", entry_address, entry.addr());
                     }
                 } else {
-                    check_identity_start_address!(identity_start_address, entry_address);
+                    area.check(entry_address);
                 }
             }
             
-            check_identity_start_address!(identity_start_address, entry_address);
+            area.check(entry_address);
         }
     }
 
@@ -519,5 +505,35 @@ impl fmt::Debug for PageTableEntryAddress {
             if level != 1 { write!(f, "."); }
         }
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+enum PageTableAreaType {
+    Empty,
+    Identity,
+}
+
+struct PageTableArea {
+    areaType: Option<PageTableAreaType>,
+    start_address: usize
+}
+
+impl PageTableArea {
+    pub fn new(areaType: Option<PageTableAreaType>, start_address: usize) -> Self {
+        PageTableArea { areaType, start_address }
+    }
+    
+    pub fn check(&mut self, current_address: usize) {
+        if let Some(value) = &self.areaType {
+            debug!("{:?} mapping for addresses 0x{:x} - 0x{:x}, {:?} - {:?}",
+                    value,
+                    self.start_address,
+                    current_address + 4095,
+                    PageTableEntryAddress::new(self.start_address, 1),
+                    PageTableEntryAddress::new(current_address, 1)
+            );
+            self.areaType = None
+        }
     }
 }
