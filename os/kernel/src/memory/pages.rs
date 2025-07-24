@@ -194,11 +194,7 @@ impl Paging {
                 if !entry.is_unused() {
                     if entry_address == entry.addr().as_u64() as usize {
                         // This entry is an identity mapping
-                        if area.areaType.is_none() {
-                            // This entry is the start of an identity mapping
-                            area.areaType = Some(PageTableAreaType::Identity);
-                            area.start_address = entry_address;
-                        }
+                        area.check_and_set(PageTableAreaType::Identity, entry_address);
                     } else {
                         area.check(entry_address);
                         debug!("0x{:x} -> 0x{:x}", entry_address, entry.addr());
@@ -508,24 +504,24 @@ impl fmt::Debug for PageTableEntryAddress {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum PageTableAreaType {
     Empty,
     Identity,
 }
 
 struct PageTableArea {
-    areaType: Option<PageTableAreaType>,
+    area_type: Option<PageTableAreaType>,
     start_address: usize
 }
 
 impl PageTableArea {
-    pub fn new(areaType: Option<PageTableAreaType>, start_address: usize) -> Self {
-        PageTableArea { areaType, start_address }
+    pub fn new(area_type: Option<PageTableAreaType>, start_address: usize) -> Self {
+        PageTableArea { area_type, start_address }
     }
     
     pub fn check(&mut self, current_address: usize) {
-        if let Some(value) = &self.areaType {
+        if let Some(value) = &self.area_type {
             debug!("{:?} mapping for addresses 0x{:x} - 0x{:x}, {:?} - {:?}",
                     value,
                     self.start_address,
@@ -533,7 +529,22 @@ impl PageTableArea {
                     PageTableEntryAddress::new(self.start_address, 1),
                     PageTableEntryAddress::new(current_address, 1)
             );
-            self.areaType = None
+            self.area_type = None
+        }
+    }
+    
+    pub fn check_and_set(&mut self, current_area_type: PageTableAreaType, current_address: usize) {
+        if let Some(value) = &self.area_type {
+            if *value != current_area_type {
+                // We have a different area type now, so print the old one and store a new start address
+                self.check(current_address);
+                
+                self.area_type = Some(current_area_type);
+                self.start_address = current_address;
+            }
+        } else {
+            self.area_type = Some(current_area_type);
+            self.start_address = current_address;
         }
     }
 }
