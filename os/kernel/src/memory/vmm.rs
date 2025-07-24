@@ -42,7 +42,7 @@
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use core::ops::Range;
-use log::info;
+use log::{warn, info, debug, trace};
 use spin::RwLock;
 
 use x86_64::PhysAddr;
