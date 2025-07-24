@@ -24,7 +24,7 @@ use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::{PageRange,Page};
 use x86_64::structures::paging::Size4KiB;
-use log::debug;
+use log::{info, debug, trace};
 
 use crate::memory::{MemorySpace, PAGE_SIZE, frames};
 
@@ -175,13 +175,16 @@ impl Paging {
     }
     
     fn dump_table(table: &PageTable, base_address: usize, level: usize) {
-        //debug!("Dumping {:?}", PageTableAddress::new(base_address, level));
+        debug!("Dumping {:?}", PageTableEntryAddress::new(base_address, level));
         if level > 1 {
             for (index, entry) in table.iter().enumerate() {
+                let new_base_address = base_address + (index << (12 + (level - 1) * 9));
+                
                 if !entry.is_unused() {
                     let next_level = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
-                    let new_base_address = base_address + (index << (12 + (level - 1) * 9));
                     Paging::dump_table(next_level, new_base_address, level - 1);
+                } else {
+                    trace!("Page table entry {:?} empty, skipping.", PageTableEntryAddress::new(new_base_address, level));
                 }
             }
         } else {
@@ -522,7 +525,7 @@ impl PageTableArea {
     
     pub fn check(&mut self, current_address: usize) {
         if let Some(value) = &self.area_type {
-            debug!("{:?} mapping for addresses 0x{:x} - 0x{:x}, {:?} - {:?}",
+            info!("{:?} mapping for addresses 0x{:x} - 0x{:x}, {:?} - {:?}",
                     value,
                     self.start_address,
                     current_address + 4095,
