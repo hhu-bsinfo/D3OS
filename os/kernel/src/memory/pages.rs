@@ -470,6 +470,9 @@ impl Paging {
     }
 }
 
+// Data structures for printing and dumping page tables
+
+/// A struct for storing the address of a page table entry, allowing to pretty-print the position of this page table entry in the page table tree (e.g. 1.2.5.2 = 2nd entry in the fifth level-three page of the second level-two page of the first level-one page)
 pub struct PageTableEntryAddress {
     address: usize,
     level: usize
@@ -498,17 +501,20 @@ impl fmt::Debug for PageTableEntryAddress {
     }
 }
 
+/// Enum to store whether an area of continuous page table entries is either empty or a linear mapping with a given offset
 #[derive(Debug, PartialEq)]
 enum PageTableAreaType {
     Empty,
     Offset(u64),
 }
 
+/// Struct to store the type and the start of an area of continuous page table entries of the same type
 struct PageTableArea {
     area_type: Option<PageTableAreaType>,
     start_address: usize
 }
 
+/// Functions to actually dump the page table by printing the size and start and end addresses of continous page table areas whenever the area type changes (e.g. an identity mapping ends and the following page table entries are empty)
 impl PageTableArea {
     pub fn new(area_type: Option<PageTableAreaType>, start_address: usize) -> Self {
         PageTableArea { area_type, start_address }
