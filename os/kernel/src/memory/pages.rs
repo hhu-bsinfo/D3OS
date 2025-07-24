@@ -192,13 +192,7 @@ impl Paging {
                 entry_address = base_address + (index << 12);
                 
                 if !entry.is_unused() {
-                    if entry_address == entry.addr().as_u64() as usize {
-                        // This entry is an identity mapping
-                        area.check_and_set(PageTableAreaType::Identity, entry_address);
-                    } else {
-                        area.check(entry_address);
-                        debug!("0x{:x} -> 0x{:x}", entry_address, entry.addr());
-                    }
+                    area.check_and_set(PageTableAreaType::Offset(entry_address as u64 - entry.addr().as_u64()), entry_address);
                 } else {
                     area.check_and_set(PageTableAreaType::Empty, entry_address);
                 }
@@ -507,7 +501,7 @@ impl fmt::Debug for PageTableEntryAddress {
 #[derive(Debug, PartialEq)]
 enum PageTableAreaType {
     Empty,
-    Identity,
+    Offset(u64),
 }
 
 struct PageTableArea {
