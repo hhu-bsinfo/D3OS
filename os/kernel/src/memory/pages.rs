@@ -200,7 +200,7 @@ impl Paging {
                         debug!("0x{:x} -> 0x{:x}", entry_address, entry.addr());
                     }
                 } else {
-                    area.check(entry_address);
+                    area.check_and_set(PageTableAreaType::Empty, entry_address);
                 }
             }
             
