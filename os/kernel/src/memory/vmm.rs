@@ -182,6 +182,7 @@ impl VirtualAddressSpace {
         let num_frames = frame_range.end - frame_range.start;
         let num_pages = vma.range.end - vma.range.start;
         if num_frames != num_pages {
+            warn!("Can't map {} frames into VMA with {} pages!", num_frames, num_pages);
             return Err(-1);
         }
 
