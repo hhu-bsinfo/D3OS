@@ -168,40 +168,35 @@ impl Paging {
         // TODO: A read lock should be enough, maybe we can do without unsafe?
         let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
+        let mut area: PageTableArea = PageTableArea::new(None, 0);
         
         debug!("Dumping page tables");
         
-        Paging::dump_table(root_table, 0, 4);
+        Paging::dump_table(root_table, 0, 4, &mut area);
     }
     
-    fn dump_table(table: &PageTable, base_address: usize, level: usize) {
-        debug!("Dumping {:?}", PageTableEntryAddress::new(base_address, level));
-        if level > 1 {
-            for (index, entry) in table.iter().enumerate() {
-                let new_base_address = base_address + (index << (12 + (level - 1) * 9));
-                
-                if !entry.is_unused() {
+    fn dump_table(table: &PageTable, base_address: usize, level: usize, area: &mut PageTableArea) {
+        let mut entry_address = base_address;
+
+        for (index, entry) in table.iter().enumerate() {
+            entry_address = base_address + (index << (12 + (level - 1) * 9));
+            
+            if !entry.is_unused() {
+                if level > 1 {
                     let next_level = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
-                    Paging::dump_table(next_level, new_base_address, level - 1);
+                    Paging::dump_table(next_level, entry_address, level - 1, area);
                 } else {
-                    trace!("Page table entry {:?} empty, skipping.", PageTableEntryAddress::new(new_base_address, level));
-                }
-            }
-        } else {
-            let mut area: PageTableArea = PageTableArea::new(None, 0);
-            let mut entry_address = base_address;
-            
-            for (index, entry) in table.iter().enumerate() {
-                entry_address = base_address + (index << 12);
-                
-                if !entry.is_unused() {
                     area.check_and_set(PageTableAreaType::Offset(entry_address as u64 - entry.addr().as_u64()), entry_address);
-                } else {
-                    area.check_and_set(PageTableAreaType::Empty, entry_address);
                 }
+            } else {
+                area.check_and_set(PageTableAreaType::Empty, entry_address);
             }
-            
-            area.check(entry_address);
+        }
+        
+        // If we are at the end of the top level page directory, we need to print the last detected area
+        if level == 4 {
+            let end_address = entry_address + 1 << (12 + level * 9);
+            area.check(end_address);
         }
     }
 
@@ -528,9 +523,9 @@ impl PageTableArea {
             info!("{:?} mapping for addresses 0x{:x} - 0x{:x}, {:?} - {:?}",
                     value,
                     self.start_address,
-                    current_address + 4095,
+                    current_address - 1,
                     PageTableEntryAddress::new(self.start_address, 1),
-                    PageTableEntryAddress::new(current_address, 1)
+                    PageTableEntryAddress::new(current_address - 1, 1)
             );
             self.area_type = None
         }
