@@ -10,14 +10,12 @@
 
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
-use crate::device::qemu_cfg;
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
 use crate::memory::pages::page_table_index;
 use crate::memory::vma::VmaType;
 use crate::memory::{PAGE_SIZE, nvmem};
-use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
@@ -36,11 +34,6 @@ use core::ops::Deref;
 use core::ptr;
 use log::{LevelFilter, debug, info, warn};
 use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
-use smoltcp::iface;
-use smoltcp::iface::Interface;
-use smoltcp::time::Instant;
-use smoltcp::wire::IpAddress::Ipv4;
-use smoltcp::wire::{HardwareAddress, IpCidr, Ipv4Address};
 use uefi::data_types::Handle;
 use uefi::mem::memory_map::MemoryMap;
 use uefi::runtime::Time;
@@ -226,31 +219,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize network stack
     network::init();
-
-    // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
-    if let Some(rtl8139) = rtl8139()
-        && qemu_cfg::is_available()
-    {
-        let time = timer.systime_ms();
-        let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
-        conf.random_seed = time as u64;
-
-        // The Ssoltcp interface struct wants a mutable reference to the device. However, the RTL8139 driver is designed to work with shared references.
-        // Since smoltcp does not actually store the mutable reference anywhere, we can safely cast the shared reference to a mutable one.
-        // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device, since it does not modify the device itself)
-        let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-        let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
-        interface.update_ip_addrs(|ips| {
-            ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
-                .expect("Failed to add IP address");
-        });
-        interface
-            .routes_mut()
-            .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
-            .expect("Failed to add default route");
-
-        network::add_interface(interface);
-    }
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
