@@ -7,7 +7,7 @@ use log::info;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
 use smoltcp::socket::{icmp, tcp, udp};
 use smoltcp::time::Instant;
-use smoltcp::wire::IpAddress;
+use smoltcp::wire::{IpAddress, IpCidr};
 use spin::{Once, RwLock};
 use crate::device::rtl8139::Rtl8139;
 use crate::{pci_bus, scheduler, timer};
@@ -57,6 +57,16 @@ pub fn rtl8139() -> Option<Arc<Rtl8139>> {
 
 pub fn add_interface(interface: Interface) {
     INTERFACES.write().push(interface);
+}
+
+pub fn get_ip_addresses() -> Vec<IpAddress> {
+    INTERFACES
+        .read()
+        .iter()
+        .map(Interface::ip_addrs)
+        .flatten()
+        .map(IpCidr::address)
+        .collect()
 }
 
 pub fn open_udp() -> SocketHandle {

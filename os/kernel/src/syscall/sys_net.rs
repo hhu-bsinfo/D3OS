@@ -1,10 +1,11 @@
 use core::str::FromStr;
 
+use alloc::string::ToString;
 use log::{info, warn};
 use smoltcp::{iface::SocketHandle, socket::{icmp, tcp, udp}, wire::IpAddress};
 use syscall::return_vals::Errno;
 
-use crate::{network::{accept_tcp, bind_icmp, bind_tcp, bind_udp, close_socket, connect_tcp, open_icmp, open_tcp, open_udp, receive_datagram, receive_icmp, receive_tcp, send_datagram, send_icmp, send_tcp, SocketType}, syscall::sys_naming::ptr_to_string};
+use crate::{network::{accept_tcp, bind_icmp, bind_tcp, bind_udp, close_socket, connect_tcp, get_ip_addresses, open_icmp, open_tcp, open_udp, receive_datagram, receive_icmp, receive_tcp, send_datagram, send_icmp, send_tcp, SocketType}, syscall::sys_naming::ptr_to_string};
 
 /// This module contains all network-related system calls.
 
@@ -184,5 +185,18 @@ pub unsafe fn sys_sock_receive(
 pub fn sys_sock_close(handle: SocketHandle) -> isize {
     info!("closing {handle} socket");
     close_socket(handle);
+    0
+}
+
+/// return a \0 seperated list of ip addresses
+pub fn sys_get_ip_adresses(ptr: *mut u8, len: usize) -> isize {
+    let target = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
+    let mut idx = 0;
+    for ip in get_ip_addresses() {
+        let text = ip.to_string();
+        target[idx..idx+text.len()].copy_from_slice(text.as_bytes());
+        target[idx+text.len()] = 0;
+        idx += text.len() + 1;
+    }
     0
 }

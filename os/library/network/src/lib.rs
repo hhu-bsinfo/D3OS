@@ -5,7 +5,7 @@ extern crate alloc;
 
 use core::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 
-use alloc::{ffi::CString, string::ToString};
+use alloc::{ffi::CString, string::ToString, vec::Vec};
 use syscall::{return_vals::Errno, syscall, SystemCall};
 
 pub struct UdpSocket {
@@ -273,4 +273,27 @@ pub enum NetworkError {
     DeviceBusy,
     InvalidAddress,
     Unknown(Errno),
+}
+
+/// Get all IP addresses of this host.
+pub fn get_ip_addresses() -> Vec<IpAddr> {
+    // how large could this be?
+    let mut buf = [0u8; 4096];
+    // this can't fail, unless the buffer is not big enough
+    syscall(SystemCall::GetIpAddresses, &[buf.as_mut_ptr() as usize, buf.len()])
+        .unwrap();
+    // now, we have a \0-seperated list of IP addresses
+    buf
+        // split them at \0
+        .split( |v| v == &0)
+        // ignore the empty ones at the end
+        .filter(|v| !v.is_empty())
+        // parse them as strings
+        .map(str::from_utf8)
+        .map(Result::unwrap)
+        // parse them as IP addresses
+        .map(str::parse)
+        .map(Result::unwrap)
+        // return
+        .collect()
 }
