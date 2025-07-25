@@ -5,11 +5,10 @@ use core::ops::Deref;
 use core::ptr;
 use log::info;
 use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
-use smoltcp::socket::{icmp, tcp, udp};
+use smoltcp::socket::{dhcpv4, icmp, tcp, udp, Socket};
 use smoltcp::time::Instant;
-use smoltcp::wire::{HardwareAddress, IpAddress, Ipv4Address, IpCidr};
+use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr};
 use spin::{Once, RwLock};
-use crate::device::qemu_cfg;
 use crate::device::rtl8139::Rtl8139;
 use crate::{pci_bus, scheduler, timer};
 use crate::process::thread::Thread;
@@ -46,39 +45,28 @@ pub fn init() {
             loop { poll_sockets(); }
         }
         scheduler().ready(Thread::new_kernel_thread(poll, "RTL8139"));
+        
+        // Set up network interface
+        let time = timer().systime_ms();
+        let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
+        conf.random_seed = time as u64;
 
-        // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
-        if qemu_cfg::is_available() {
-            let time = timer().systime_ms();
-            let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
-            conf.random_seed = time as u64;
+        // The Smoltcp interface struct wants a mutable reference to the device.
+        // However, the RTL8139 driver is designed to work with shared references.
+        // Since smoltcp does not actually store the mutable reference anywhere,
+        // we can safely cast the shared reference to a mutable one.
+        // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
+        // since it does not modify the device itself.)
+        let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
+        add_interface(Interface::new(conf, device, Instant::from_millis(time as i64)));
 
-            // The Smoltcp interface struct wants a mutable reference to the device.
-            // However, the RTL8139 driver is designed to work with shared references.
-            // Since smoltcp does not actually store the mutable reference anywhere,
-            // we can safely cast the shared reference to a mutable one.
-            // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
-            // since it does not modify the device itself.)
-            let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-            let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
-            interface.update_ip_addrs(|ips| {
-                ips.push(IpCidr::new(IpAddress::Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
-                    .expect("Failed to add IP address");
-            });
-            interface
-                .routes_mut()
-                .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
-                .expect("Failed to add default route");
-
-            add_interface(interface);
-        }
-    }
-}
-
-fn rtl8139() -> Option<Arc<Rtl8139>> {
-    match RTL8139.get() {
-        Some(rtl8139) => Some(Arc::clone(rtl8139)),
-        None => None
+        // request an IP address via DHCP
+        let dhcp_socket = dhcpv4::Socket::new();
+        SOCKETS
+            .get()
+            .expect("Socket set not initialized!")
+            .write()
+            .add(dhcp_socket);
     }
 }
 
@@ -248,7 +236,44 @@ fn poll_sockets() {
     // to work with a shared reference. We can safely cast the shared reference to a mutable.
     let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
 
+    // DHCP handling is based on https://github.com/smoltcp-rs/smoltcp/blob/main/examples/dhcp_client.rs
     for interface in interfaces.iter_mut() {
         interface.poll(time, device, &mut sockets);
+        for (_handle, socket) in sockets.iter_mut() {
+            if let Socket::Dhcpv4(dhcp) = socket {
+                if let Some(event) = dhcp.poll() {
+                    match event {
+                        dhcpv4::Event::Deconfigured => {
+                            info!("lost DHCP lease");
+                            interface.update_ip_addrs(|addrs| addrs.clear());
+                            interface.routes_mut().remove_default_ipv4_route();
+                        },
+                        dhcpv4::Event::Configured(config) => {
+                            info!("acquired DHCP lease:");
+                            info!("IP address: {}", config.address);
+                            interface.update_ip_addrs(|addrs| {
+                                addrs.clear();
+                                addrs.push(IpCidr::Ipv4(config.address)).unwrap();
+                            });
+
+                            if let Some(router) = config.router {
+                                info!("default gateway: {}", router);
+                                interface
+                                    .routes_mut()
+                                    .add_default_ipv4_route(router)
+                                    .unwrap();
+                            } else {
+                                info!("no default gateway");
+                                interface
+                                    .routes_mut()
+                                    .remove_default_ipv4_route();
+                            }
+                            // TODO: make use of this
+                            info!("DNS servers: {:?}", config.dns_servers);
+                        },
+                    }
+                }
+            }
+        }
     }
 }
