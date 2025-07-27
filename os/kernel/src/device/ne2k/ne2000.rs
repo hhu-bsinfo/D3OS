@@ -946,6 +946,7 @@ impl Ne2000 {
     // TODO: add reference
     // =============================================================================
     pub fn handle_overflow(&mut self) {
+        info!("overflow");
         unsafe {
             // 1. save the value of the TXP Bit in CR
             let txp_bit = self.registers.command_port.read() & CR::TXP.bits();
@@ -1092,20 +1093,23 @@ impl InterruptHandler for Ne2000InterruptHandler {
         }
         // check for an buffer overflow
         if status.contains(InterruptStatusRegister::ISR_OVW) {
-            // `self.device` is of type `Arc<Ne2000>`, which is the shared reference
-            let device_ref: &Ne2000 = &self.device; // This is a shared reference
-            // Use unsafe to get a mutable reference to the inner `Ne2000` object
-            let device_mut = unsafe {
-                // Convert from a shared reference to a mutable raw pointer
-                ptr::from_ref(device_ref)
-                    .cast_mut() // Cast to a mutable pointer
-                    .as_mut() // Convert the raw pointer back to a mutable reference
-                    .unwrap() // Unwrap to ensure it’s valid
-            };
             // call the method
-            device_mut.handle_overflow();
             //let ovw =  self.device.interrupts.ovw;
             //ovw.store(true, Ordering::Relaxed)
+            // `self.device` is of type `Arc<Ne2000>`, which is the shared reference
+            // Use unsafe to get a mutable reference to the inner `Ne2000` object
+            unsafe {
+                let device_ref: &Ne2000 = &self.device; // This is a shared reference
+                
+                let device_mut = 
+                // Convert from a shared reference to a mutable raw pointer
+                    ptr::from_ref(device_ref)
+                        .cast_mut() // Cast to a mutable pointer
+                        .as_mut() // Convert the raw pointer back to a mutable reference
+                        .unwrap(); // Unwrap to ensure it’s valid
+                device_mut.handle_overflow();
+            }
+            
         }
 
         // re-enable Interrupts (22.07.2025)

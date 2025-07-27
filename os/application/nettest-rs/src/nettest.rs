@@ -39,7 +39,7 @@ const DEFAULT_INTERVAL: u32 = 10;
 // =============================================================================
 // Server Mode
 // =============================================================================
-pub fn server(socket: &Ud) -> u32 {
+/*pub fn server(socket: &Ud) -> u32 {
     let local_net_address = match socket
 
     if socket.getLocalAddress {
@@ -49,7 +49,7 @@ pub fn server(socket: &Ud) -> u32 {
 
     println("nettest: sever listening on {} ", local_net_address);
     println("Send 'exit' to leave.");
-}
+}*/
 
 /*
     // Wait for client to initiate connection, return if exit code is != 0
