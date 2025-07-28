@@ -15,7 +15,7 @@ impl BuiltIn for AliasBuiltIn {
         "alias"
     }
 
-    fn run(&mut self, args: &[&str]) -> isize {
+    fn run(&mut self, args: &[&str]) -> usize {
         if args.is_empty() {
             return self.list_aliases();
         }
@@ -29,7 +29,7 @@ impl AliasBuiltIn {
         Self { alias_provider }
     }
 
-    fn list_aliases(&self) -> isize {
+    fn list_aliases(&self) -> usize {
         let alias_clx = self.alias_provider.borrow();
         let entries = alias_clx.get_all();
         if entries.is_empty() {
@@ -43,23 +43,23 @@ impl AliasBuiltIn {
         0
     }
 
-    fn set_alias(&self, args: &[&str]) -> isize {
+    fn set_alias(&self, args: &[&str]) -> usize {
         let raw = args.join(" ");
         let mut split = raw.splitn(2, "=");
         let key = split.next().unwrap_or("");
         let Ok(value) = split.next().ok_or_else(|| Self::print_usage()) else {
             Self::print_usage();
-            return -1;
+            return 1;
         };
         let Ok(stripped_value) = Self::strip_quotes(value) else {
             Self::print_usage();
-            return -1;
+            return 1;
         };
 
         let mut alias_clx = self.alias_provider.borrow_mut();
         if let Err(error) = alias_clx.set(key, &stripped_value) {
             println!("{}", error.message);
-            return -1;
+            return 1;
         };
 
         0

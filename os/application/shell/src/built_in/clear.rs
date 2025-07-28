@@ -9,7 +9,7 @@ impl BuiltIn for ClearBuiltIn {
         "clear"
     }
 
-    fn run(&mut self, _args: &[&str]) -> isize {
+    fn run(&mut self, _args: &[&str]) -> usize {
         print!("\x1b[2J\x1b[H");
         0
     }

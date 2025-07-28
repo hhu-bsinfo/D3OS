@@ -14,12 +14,12 @@ impl BuiltIn for PwdBuiltIn {
         "pwd"
     }
 
-    fn run(&mut self, args: &[&str]) -> isize {
+    fn run(&mut self, args: &[&str]) -> usize {
         let wd_clx = self.wd_provider.borrow();
 
         if !args.is_empty() {
             Self::print_usage();
-            return -1;
+            return 1;
         }
 
         println!("{}", wd_clx.pwd());

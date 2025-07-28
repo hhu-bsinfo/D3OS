@@ -9,7 +9,7 @@ impl BuiltIn for DebugSuccessBuiltIn {
         "debug_success"
     }
 
-    fn run(&mut self, _args: &[&str]) -> isize {
+    fn run(&mut self, _args: &[&str]) -> usize {
         println!("Debug: Returning exit code 0");
         0
     }

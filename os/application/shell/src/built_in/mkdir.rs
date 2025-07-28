@@ -15,15 +15,15 @@ impl BuiltIn for MkdirBuiltIn {
         "mkdir"
     }
 
-    fn run(&mut self, args: &[&str]) -> isize {
+    fn run(&mut self, args: &[&str]) -> usize {
         let wd_clx = self.wd_provider.borrow();
         let Some(path) = args.get(0) else {
             Self::print_usage();
-            return -1;
+            return 1;
         };
         if mkdir(&wd_clx.resolve(path)).is_err() {
             Self::print_usage();
-            return -1;
+            return 1;
         }
         0
     }

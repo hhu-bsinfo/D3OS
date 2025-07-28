@@ -9,7 +9,7 @@ impl BuiltIn for EchoBuiltIn {
         "echo"
     }
 
-    fn run(&mut self, args: &[&str]) -> isize {
+    fn run(&mut self, args: &[&str]) -> usize {
         println!("{}", args.join(" "));
         0
     }

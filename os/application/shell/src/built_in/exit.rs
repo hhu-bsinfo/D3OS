@@ -9,7 +9,7 @@ impl BuiltIn for ExitBuiltIn {
         "exit"
     }
 
-    fn run(&mut self, _args: &[&str]) -> isize {
+    fn run(&mut self, _args: &[&str]) -> usize {
         process::exit();
         0
     }

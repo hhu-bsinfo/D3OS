@@ -14,15 +14,15 @@ impl BuiltIn for CdBuiltIn {
         "cd"
     }
 
-    fn run(&mut self, args: &[&str]) -> isize {
+    fn run(&mut self, args: &[&str]) -> usize {
         let mut wd_clx = self.wd_provider.borrow_mut();
         let Some(dir) = args.get(0) else {
             Self::print_usage();
-            return -1;
+            return 1;
         };
         if let Err(error) = wd_clx.cd(dir) {
             println!("{}", error.message);
-            return -1;
+            return 1;
         }
 
         0

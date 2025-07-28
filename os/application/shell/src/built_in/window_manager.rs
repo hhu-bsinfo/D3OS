@@ -9,9 +9,9 @@ impl BuiltIn for WindowManagerBuiltIn {
         "window_manager"
     }
 
-    fn run(&mut self, _args: &[&str]) -> isize {
+    fn run(&mut self, _args: &[&str]) -> usize {
         println!("Press F1 to start window manager");
-        -1
+        1
     }
 }
 

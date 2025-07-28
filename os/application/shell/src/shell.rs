@@ -178,5 +178,4 @@ pub fn main() {
 // TODO FEAT: Add ls alias
 
 // TODO IMPROVEMENT: Clamp cursor pos to 0..len in LineContext, also update when removing chars and pos > len
-// TODO IMPROVEMENT: Define service dependencies within Service itself.
 // TODO IMPROVEMENT: Show help hint on startup

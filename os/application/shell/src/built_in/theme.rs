@@ -15,20 +15,21 @@ impl BuiltIn for ThemeBuiltIn {
         "theme"
     }
 
-    fn run(&mut self, args: &[&str]) -> isize {
+    fn run(&mut self, args: &[&str]) -> usize {
         if args.is_empty() {
-            return self.list_all_themes();
+            self.list_all_themes();
+            return 0;
         }
         if args.len() != 1 {
             Self::print_usage();
-            return -1;
+            return 1;
         }
 
         let name = args.get(0).unwrap();
         if self.theme_provider.borrow_mut().set_current(name).is_err() {
             println!("Invalid argument: {} does not exist", name);
             self.list_all_themes();
-            return -1;
+            return 1;
         }
 
         0
@@ -40,7 +41,7 @@ impl ThemeBuiltIn {
         Self { theme_provider }
     }
 
-    fn list_all_themes(&self) -> isize {
+    fn list_all_themes(&self) {
         let theme = self.theme_provider.borrow();
         let theme_names = Self::map_themes_to_str(&theme);
         if theme_names.is_empty() {
@@ -48,7 +49,6 @@ impl ThemeBuiltIn {
         } else {
             println!("Themes available: {}", theme_names);
         }
-        0
     }
 
     fn print_usage() {

@@ -5,7 +5,6 @@ use alloc::{
     vec::Vec,
 };
 use concurrent::thread;
-use logger::warn;
 use terminal::println;
 
 use crate::{
@@ -71,8 +70,10 @@ impl ExecutorService {
 
     fn execute(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         let executables = { self.executable_provider.borrow().get_executables().clone() };
-        warn!("{:#?}", executables);
+
+        // WORKAROUND ////////////////////////////////////////
         // Check if executables contain unsupported operations
+        // Remove this once these features are supported
         for executable in &executables {
             if executable.input != IoTarget::Std
                 || executable.output != IoTarget::Std
@@ -81,6 +82,7 @@ impl ExecutorService {
                 return Err(self.handle_unsupported_error(&executables));
             }
         }
+        //////////////////////////////////////////////////////
 
         let mut exit_codes = Vec::with_capacity(executables.len());
         for executable in executables {
@@ -96,23 +98,27 @@ impl ExecutorService {
         Ok(Response::Ok)
     }
 
-    fn execute_executable(&mut self, executable: &Executable) -> isize {
+    fn execute_executable(&mut self, executable: &Executable) -> usize {
         let args: Vec<&str> = executable.arguments.iter().map(String::as_str).collect();
 
-        if let Ok(built_in_exit_code) = self.execute_build_in(&executable.command, &args) {
+        if let Ok(built_in_exit_code) = self.execute_built_in(&executable.command, &args) {
             return built_in_exit_code;
         }
 
         let Some(thread) = thread::start_application(&executable.command, args) else {
             println!("Command not found: {}", &executable.command);
-            return -1;
+            return 1;
         };
+
+        // WORKAROUND ///////////////////////////////////////////////////////////
         // Extern applications don't yet provide a exit code => We assume success
+        // Replace this with real exit code once supported
         thread.join();
         0
+        /////////////////////////////////////////////////////////////////////////
     }
 
-    fn execute_build_in(&mut self, cmd: &str, args: &[&str]) -> Result<isize, ()> {
+    fn execute_built_in(&mut self, cmd: &str, args: &[&str]) -> Result<usize, ()> {
         self.built_ins
             .iter_mut()
             .find(|built_in| built_in.namespace() == cmd)
@@ -120,6 +126,8 @@ impl ExecutorService {
             .ok_or(())
     }
 
+    /// Check if executables contain unsupported operations
+    /// Remove this function, once these features are supported
     fn handle_unsupported_error(&self, executables: &Vec<Executable>) -> Error {
         let message = "Pipes, redirections and background executions are not jet supported by D3OS".to_string();
         let mut hint = "Assume the following execution:\n".to_string();
@@ -147,10 +155,10 @@ impl ExecutorService {
         Error::new_mid_execution(message, Some(hint))
     }
 
-    fn should_stop_on_dependency(executable: &Executable, exit_codes: &[isize]) -> bool {
+    fn should_stop_on_dependency(executable: &Executable, exit_codes: &[usize]) -> bool {
         if let Some((idx, res)) = &executable.requires_executable {
             if let Some(&prev_code) = exit_codes.get(*idx) {
-                return (res.is_success() && prev_code < 0) || (res.is_error() && prev_code >= 0);
+                return (res.is_success() && prev_code > 0) || (res.is_error() && prev_code == 0);
             }
         }
         false

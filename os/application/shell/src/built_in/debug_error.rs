@@ -9,9 +9,9 @@ impl BuiltIn for DebugErrorBuiltIn {
         "debug_error"
     }
 
-    fn run(&mut self, _args: &[&str]) -> isize {
-        println!("Debug: Returning exit code -1");
-        -1
+    fn run(&mut self, _args: &[&str]) -> usize {
+        println!("Debug: Returning exit code 1");
+        1
     }
 }
 

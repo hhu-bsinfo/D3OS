@@ -9,14 +9,14 @@ impl BuiltIn for HelpBuiltIn {
         "help"
     }
 
-    fn run(&mut self, args: &[&str]) -> isize {
+    fn run(&mut self, args: &[&str]) -> usize {
         if args.is_empty() {
             println!("{}", include_str!("help.txt"));
             return 0;
         }
         if args.len() > 1 {
             Self::print_usage();
-            return -1;
+            return 1;
         }
         match *args.get(0).unwrap() {
             "tokens" => println!("{}", include_str!("help_tokens.txt")),
@@ -25,7 +25,7 @@ impl BuiltIn for HelpBuiltIn {
             "built-in-2" => println!("{}", include_str!("help_built_in_2.txt")),
             _ => {
                 Self::print_usage();
-                return -1;
+                return 1;
             }
         }
 

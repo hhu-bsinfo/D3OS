@@ -14,10 +14,10 @@ impl BuiltIn for UnaliasBuiltIn {
         "unalias"
     }
 
-    fn run(&mut self, args: &[&str]) -> isize {
+    fn run(&mut self, args: &[&str]) -> usize {
         if args.len() != 1 {
             Self::print_usage();
-            return -1;
+            return 1;
         }
 
         let key = args.get(0).unwrap();
@@ -29,7 +29,7 @@ impl BuiltIn for UnaliasBuiltIn {
             Err(_) => {
                 println!("Alias not found. Did you wrap the key in quotes?");
                 Self::print_usage();
-                -1
+                1
             }
         }
     }
