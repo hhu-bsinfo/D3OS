@@ -16,14 +16,15 @@
 
 
 use core::cmp::min;
-use core::ptr;
-use spin::RwLock;
+use core::{ptr, fmt};
+use spin::{RwLock, RwLockReadGuard};
 use x86_64::structures::paging::{PageTable, PageTableFlags, PageTableIndex, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::{PageRange,Page};
 use x86_64::structures::paging::Size4KiB;
+use log::{info, debug, trace};
 
 use crate::memory::{MemorySpace, PAGE_SIZE, frames};
 
@@ -161,6 +162,42 @@ impl Paging {
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
         Paging::set_flags_in_table(root_table, pages, flags, depth);
+    }
+    
+    pub fn dump(&self) {
+        // TODO: A read lock should be enough, maybe we can do without unsafe?
+        let root_table_guard = self.root_table.write();
+        let root_table = unsafe { root_table_guard.as_mut().unwrap() };
+        let mut area: PageTableArea = PageTableArea::new(None, 0);
+        
+        debug!("Dumping page tables");
+        
+        Paging::dump_table(root_table, 0, 4, &mut area);
+    }
+    
+    fn dump_table(table: &PageTable, base_address: usize, level: usize, area: &mut PageTableArea) {
+        let mut entry_address = base_address;
+
+        for (index, entry) in table.iter().enumerate() {
+            entry_address = base_address + (index << (12 + (level - 1) * 9));
+            
+            if !entry.is_unused() {
+                if level > 1 {
+                    let next_level = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
+                    Paging::dump_table(next_level, entry_address, level - 1, area);
+                } else {
+                    area.check_and_set(PageTableAreaType::Offset(entry_address as u64 - entry.addr().as_u64()), entry_address);
+                }
+            } else {
+                area.check_and_set(PageTableAreaType::Empty, entry_address);
+            }
+        }
+        
+        // If we are at the end of the top level page directory, we need to print the last detected area
+        if level == 4 {
+            let end_address = entry_address + 1 << (12 + level * 9);
+            area.check(end_address);
+        }
     }
 
 
@@ -428,5 +465,84 @@ impl Paging {
         }
 
         true
+    }
+}
+
+// Data structures for printing and dumping page tables
+
+/// A struct for storing the address of a page table entry, allowing to pretty-print the position of this page table entry in the page table tree (e.g. 1.2.5.2 = 2nd entry in the fifth level-three page of the second level-two page of the first level-one page)
+pub struct PageTableEntryAddress {
+    address: usize,
+    level: usize
+}
+
+impl PageTableEntryAddress {
+    pub fn new(address: usize, level: usize) -> Self {
+        Self { address, level }
+    }
+    
+    pub fn get_pml_part(&self, level: usize) -> usize {
+        let shift_bit_count = 12 + ((level - 1) * 9);
+        let mask = ((1 << 9) - 1) << shift_bit_count; // PML entries are 9 bit wide
+        return (self.address & mask) >> shift_bit_count;
+    }
+}
+
+impl fmt::Debug for PageTableEntryAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PageTableEntry ");
+        for level in (self.level..5).rev() {
+            write!(f, "{}", self.get_pml_part(level));
+            if level != 1 { write!(f, "."); }
+        }
+        Ok(())
+    }
+}
+
+/// Enum to store whether an area of continuous page table entries is either empty or a linear mapping with a given offset
+#[derive(Debug, PartialEq)]
+enum PageTableAreaType {
+    Empty,
+    Offset(u64),
+}
+
+/// Struct to store the type and the start of an area of continuous page table entries of the same type
+struct PageTableArea {
+    area_type: Option<PageTableAreaType>,
+    start_address: usize
+}
+
+/// Functions to actually dump the page table by printing the size and start and end addresses of continous page table areas whenever the area type changes (e.g. an identity mapping ends and the following page table entries are empty)
+impl PageTableArea {
+    pub fn new(area_type: Option<PageTableAreaType>, start_address: usize) -> Self {
+        PageTableArea { area_type, start_address }
+    }
+    
+    pub fn check(&mut self, current_address: usize) {
+        if let Some(value) = &self.area_type {
+            info!("{:?} mapping for addresses 0x{:x} - 0x{:x}, {:?} - {:?}",
+                    value,
+                    self.start_address,
+                    current_address - 1,
+                    PageTableEntryAddress::new(self.start_address, 1),
+                    PageTableEntryAddress::new(current_address - 1, 1)
+            );
+            self.area_type = None
+        }
+    }
+    
+    pub fn check_and_set(&mut self, current_area_type: PageTableAreaType, current_address: usize) {
+        if let Some(value) = &self.area_type {
+            if *value != current_area_type {
+                // We have a different area type now, so print the old one and store a new start address
+                self.check(current_address);
+                
+                self.area_type = Some(current_area_type);
+                self.start_address = current_address;
+            }
+        } else {
+            self.area_type = Some(current_area_type);
+            self.start_address = current_address;
+        }
     }
 }
