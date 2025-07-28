@@ -38,27 +38,24 @@ impl InputObserver {
 impl Worker for InputObserver {
     fn run(&mut self) {
         let raw = self.terminal.read_byte() as u8;
-        let decoded = self.decoder.decode(raw);
-
-        let decoded = match self.intercept(decoded) {
-            Some(key) => key,
-            None => {
-                return;
-            }
+        let Some(decoded_key) = self.decoder.decode(raw) else {
+            return;
+        };
+        let Some(decoded_key) = self.try_intercept_reserved_key(decoded_key) else {
+            return;
         };
 
-        let state = TerminalInputState::from(syscall(SystemCall::TerminalCheckInputState, &[]).unwrap() as usize);
+        let raw_state = syscall(SystemCall::TerminalCheckInputState, &[]).expect("Unable to check input state");
+        let state = TerminalInputState::from(raw_state);
 
         let (buffer, mode) = match state {
-            TerminalInputState::InputReaderAwaitsCanonical => (self.buffer_canonical(decoded), TerminalMode::Canonical),
-            TerminalInputState::InputReaderAwaitsFluid => (self.buffer_fluid(decoded), TerminalMode::Fluid),
-            TerminalInputState::InputReaderAwaitsRaw => (self.buffer_raw(raw), TerminalMode::Raw),
+            TerminalInputState::Canonical => (self.buffer_canonical(decoded_key), TerminalMode::Canonical),
+            TerminalInputState::Fluid => (self.buffer_fluid(decoded_key), TerminalMode::Fluid),
+            TerminalInputState::Raw => (self.buffer_raw(raw), TerminalMode::Raw),
             TerminalInputState::Idle => return,
         };
-
-        let buffer = match buffer {
-            Some(buffer) => buffer,
-            None => return,
+        let Some(buffer) = buffer else {
+            return;
         };
 
         syscall(
@@ -69,12 +66,8 @@ impl Worker for InputObserver {
 }
 
 impl InputObserver {
-    fn intercept(&self, key: Option<DecodedKey>) -> Option<DecodedKey> {
-        if key.is_none() {
-            return None;
-        }
-
-        match key.unwrap() {
+    fn try_intercept_reserved_key(&self, key: DecodedKey) -> Option<DecodedKey> {
+        match key {
             DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => {
                 self.event_handler.borrow_mut().trigger(Event::EnterGuiMode);
                 return None;
@@ -83,17 +76,18 @@ impl InputObserver {
         }
     }
 
-    fn buffer_raw(&mut self, raw: u8) -> Option<Vec<u8>> {
+    fn buffer_raw(&self, raw: u8) -> Option<Vec<u8>> {
         Some([raw].to_vec())
     }
 
-    fn buffer_fluid(&mut self, key: DecodedKey) -> Option<Vec<u8>> {
+    fn buffer_fluid(&self, key: DecodedKey) -> Option<Vec<u8>> {
         match key {
             DecodedKey::Unicode(key) => Some([DecodedKeyType::Unicode as u8, key as u8].to_vec()),
             DecodedKey::RawKey(key) => Some([DecodedKeyType::RawKey as u8, key as u8].to_vec()),
         }
     }
 
+    // TODO add command line editing
     fn buffer_canonical(&mut self, key: DecodedKey) -> Option<Vec<u8>> {
         let ch = match key {
             DecodedKey::Unicode(ch) => ch,

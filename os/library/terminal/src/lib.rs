@@ -16,9 +16,9 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 pub enum TerminalInputState {
     #[num_enum(default)]
     Idle = 0,
-    InputReaderAwaitsCanonical = 1,
-    InputReaderAwaitsFluid = 2,
-    InputReaderAwaitsRaw = 3,
+    Canonical = 1,
+    Fluid = 2,
+    Raw = 3,
 }
 
 #[derive(Debug, PartialEq, IntoPrimitive, FromPrimitive, Clone, Copy)]

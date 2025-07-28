@@ -88,8 +88,8 @@ pub fn sys_terminal_check_input_state() -> isize {
     }
 
     match tty_input.mode() {
-        TerminalMode::Canonical => TerminalInputState::InputReaderAwaitsCanonical as isize,
-        TerminalMode::Fluid => TerminalInputState::InputReaderAwaitsFluid as isize,
-        TerminalMode::Raw => TerminalInputState::InputReaderAwaitsRaw as isize,
+        TerminalMode::Canonical => TerminalInputState::Canonical as isize,
+        TerminalMode::Fluid => TerminalInputState::Fluid as isize,
+        TerminalMode::Raw => TerminalInputState::Raw as isize,
     }
 }

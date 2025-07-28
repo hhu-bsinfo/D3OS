@@ -55,7 +55,7 @@ impl TerminalEmulator {
     }
 
     pub fn init(&mut self) {
-        self.terminal.write_str(&create_banner_string()); // TODO move into terminal to be able to redraw after clearing screen
+        self.terminal.write_str(&create_banner_string());
         self.operator.create();
     }
 
@@ -64,7 +64,7 @@ impl TerminalEmulator {
         display.lfb.direct_lfb().draw_loader();
         thread::start_application("window_manager", vec![]).unwrap().join(); // Wait for window manager to exit, then continue
         display.lfb.direct_lfb().draw_loader();
-        sleep(500); // Solves an issue where sometimes workspaces from window manager are still visible when toggling quickly between text and gui
+        sleep(500); // Solves an issue where sometimes workspaces from the window manager are still visible when toggling quickly between text and gui
         display.lfb.flush();
     }
 
