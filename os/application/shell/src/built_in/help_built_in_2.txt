@@ -4,6 +4,10 @@ Built‑In Commands (2 of 2):
       Exit the shell.
       Example: exit
 
+  ls [DIRECTORY]  
+      List contents of DIRECTORY or current directory if none is provided.  
+      Example: ls ./myDir
+
   mkdir DIR
       Create directory named DIR.
       Example: mkdir ./myDir

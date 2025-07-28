@@ -22,10 +22,10 @@ impl WorkingDirectoryContext {
     }
 
     pub fn resolve(&self, path: &str) -> String {
-        let mut components = if path.starts_with('.') {
-            self.components.clone()
-        } else {
+        let mut components = if path.starts_with('/') {
             Vec::new()
+        } else {
+            self.components.clone()
         };
 
         for part in path.split('/') {
