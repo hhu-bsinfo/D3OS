@@ -8,6 +8,13 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 use spin::Mutex;
 use terminal::TerminalMode;
 
+/// TTY-Input device (Workaround for missing pipes).
+/// Buffers input from the terminal when an application is reading.
+/// Depending on the chosen TerminalMode, the application will block until terminal has written some input.
+///
+/// NOTE: Just a Workaround. Parallel reads where not considered and might cause problems.
+///
+/// Author: Sebastian Keller
 #[derive(Debug)]
 pub struct TtyInput {
     buffer: Mutex<VecDeque<u8>>,
@@ -15,6 +22,16 @@ pub struct TtyInput {
     mode: AtomicUsize,
 }
 
+/// TTY-Output device (Workaround for missing pipes).
+/// Buffers output from from applications.
+/// Applications don't block and can continue after writing.
+/// The terminal collects the data from the buffer if present.
+///
+/// NOTE: Just a Workaround. Parallel writes where not considered and might cause problems.
+/// NOTE: The application will write faster then the terminal can collect.
+///       Writing a extreme amount of data will cause an out-of-memory error.
+///
+/// Author: Sebastian Keller
 #[derive(Debug)]
 pub struct TtyOutput {
     buffer: Mutex<VecDeque<u8>>,
@@ -34,13 +51,12 @@ impl TtyInput {
         TtyInput {
             buffer: Mutex::new(VecDeque::new()),
             state: AtomicUsize::new(TtyInputState::Idle as usize),
-            mode: AtomicUsize::new(TerminalMode::Cooked as usize),
+            mode: AtomicUsize::new(TerminalMode::Canonical as usize),
         }
     }
 
     pub fn read(&self, buffer: &mut [u8], mode: TerminalMode) -> usize {
-        self.state
-            .store(TtyInputState::Waiting as usize, Ordering::SeqCst);
+        self.state.store(TtyInputState::Waiting as usize, Ordering::SeqCst);
         self.mode.store(mode.into(), Ordering::SeqCst);
 
         while self.state.load(Ordering::SeqCst) != (TtyInputState::Ready as usize) {
@@ -57,8 +73,7 @@ impl TtyInput {
             count += 1;
         }
 
-        self.state
-            .store(TtyInputState::Idle as usize, Ordering::SeqCst);
+        self.state.store(TtyInputState::Idle as usize, Ordering::SeqCst);
 
         count
     }
@@ -78,8 +93,7 @@ impl TtyInput {
             count += 1;
         }
 
-        self.state
-            .store(TtyInputState::Ready as usize, Ordering::SeqCst);
+        self.state.store(TtyInputState::Ready as usize, Ordering::SeqCst);
 
         count
     }

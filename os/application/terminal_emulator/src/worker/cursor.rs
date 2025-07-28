@@ -45,15 +45,14 @@ impl Worker for Cursor {
 
         let mut display = self.terminal.display.lock();
         let cursor = self.terminal.cursor.lock();
-        let character =
-            display.char_buffer[(cursor.pos.1 * display.size.0 + cursor.pos.0) as usize];
+        let character = display.char_buffer[(cursor.pos.1 * display.size.0 + cursor.pos.0) as usize];
 
-        let draw_character = match self.visible {
-            true => match character.value {
-                '\0' => ' ',
-                value => value,
-            },
-            false => CURSOR,
+        let draw_character = if !self.visible {
+            CURSOR
+        } else if character.value == '\0' {
+            ' '
+        } else {
+            character.value
         };
 
         display.lfb.direct_lfb().draw_char(

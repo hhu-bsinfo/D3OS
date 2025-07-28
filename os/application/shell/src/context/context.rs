@@ -1,36 +1,24 @@
-use crate::{
-    context::{
-        executable_context::ExecutableContext, indicator_context::IndicatorContext, line_context::LineContext,
-        suggestion_context::SuggestionContext, tokens_context::TokensContext,
-    },
-    event::event_bus::EventBus,
-};
+use core::cell::{Ref, RefCell, RefMut};
+
+use alloc::rc::Rc;
 
 #[derive(Debug, Clone)]
-pub struct Context {
-    pub(crate) line: LineContext,
-    pub(crate) indicator: IndicatorContext,
-    pub(crate) suggestion: SuggestionContext,
-    pub(crate) tokens: TokensContext,
-    pub(crate) executable: ExecutableContext,
-
-    pub(crate) events: EventBus,
+pub struct ContextProvider<T> {
+    clx: Rc<RefCell<T>>,
 }
 
-impl Context {
-    pub fn new() -> Self {
+impl<T> ContextProvider<T> {
+    pub fn new(clx: T) -> Self {
         Self {
-            line: LineContext::new(),
-            indicator: IndicatorContext::new(),
-            suggestion: SuggestionContext::new(),
-            tokens: TokensContext::new(),
-            executable: ExecutableContext::new(),
-            events: EventBus::new(),
+            clx: Rc::new(RefCell::new(clx)),
         }
     }
 
-    /// Returns total line len including prefix and suffix
-    pub fn total_line_len(&self) -> usize {
-        self.indicator.len() + self.line.len() + self.suggestion.len()
+    pub fn borrow(&self) -> Ref<'_, T> {
+        self.clx.borrow()
+    }
+
+    pub fn borrow_mut(&self) -> RefMut<'_, T> {
+        self.clx.borrow_mut()
     }
 }

@@ -24,14 +24,13 @@ impl LfbInfo {
     }
 }
 
+/// Maps the physical framebuffer to User-Space
+/// 
+/// Author: Sebastian Keller
 pub fn get_lfb_info() -> LfbInfo {
     let mut info = LfbInfo::new();
-
-    syscall(
-        syscall::SystemCall::MapFramebuffer,
-        &[&mut info as *mut _ as usize],
-    ).expect("Unable to map framebuffer to userspace");
-
+    syscall(syscall::SystemCall::MapFramebuffer, &[&mut info as *mut _ as usize])
+        .expect("Unable to map framebuffer to User-Space");
     info
 }
 

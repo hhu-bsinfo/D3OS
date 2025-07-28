@@ -1,0 +1,15 @@
+Special tokens:
+  '    Single‑quotes
+  "    Double‑quotes
+  |    Pipe: send output of left command into right
+  <    Redirect input from file
+  >    Redirect output
+  >>   Redirect output (append)
+  &    Run in background
+  ||   Logical OR: run next if first fails
+  &&   Logical AND: run next if first succeeds
+  ;    Command separator
+
+Type `help controls` to see navigation keys.
+Type `help tokens`   to see special symbols.
+Type `help built‑in‑1` or `help built‑in‑2` for built‑ins.

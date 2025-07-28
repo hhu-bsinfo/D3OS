@@ -49,16 +49,15 @@ pub enum BuildInfo {
 
 static BUFFER_LEN: usize = 64;
 
+/// Get build information from boot.
+///
+/// Author: Sebastian Keller
 pub fn build_info(info_type: BuildInfo) -> String {
     let mut buffer: [u8; BUFFER_LEN] = [0; BUFFER_LEN];
 
     let written_len = syscall(
         SystemCall::MapSystemInfo,
-        &[
-            buffer.as_mut_ptr() as usize,
-            buffer.len(),
-            info_type as usize,
-        ],
+        &[buffer.as_mut_ptr() as usize, buffer.len(), info_type as usize],
     )
     .expect("Unable to map build info");
 

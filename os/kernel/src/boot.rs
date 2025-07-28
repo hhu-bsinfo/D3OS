@@ -362,7 +362,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         "cleanup",
     ));
 
-    //Initialize tty
+    //Initialize tty buffer (Workaround for missing pipes)
     init_tty();
 
     if BOOT_TO_GUI {

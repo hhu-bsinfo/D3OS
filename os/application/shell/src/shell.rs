@@ -2,60 +2,137 @@
 
 extern crate alloc;
 
-mod build_in;
+mod built_in;
 mod context;
 mod event;
-mod modules;
-mod sub_modules;
+mod service;
+mod token;
 
-use core::cell::RefCell;
-
-use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
-use logger::info;
-use modules::{command_line::CommandLine, executor::Executor, history::History, writer::Writer};
+use alloc::{boxed::Box, vec::Vec};
+use runtime::env::Args;
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{print, println, read::read_mixed};
+use service::{
+    command_line::CommandLineService, executor::ExecutorService, history::HistoryService, writer::WriterService,
+};
+use terminal::{println, read::read_fluid};
 
 use crate::{
-    context::context::Context,
+    context::{
+        alias_context::AliasContext, context::ContextProvider, executable_context::ExecutableContext,
+        line_context::LineContext, suggestion_context::SuggestionContext, theme_context::ThemeContext,
+        tokens_context::TokensContext, working_directory_context::WorkingDirectoryContext,
+    },
     event::{
         event::Event,
+        event_bus::EventBus,
         event_handler::{Error, EventHandler},
     },
-    modules::{auto_completion::AutoCompletion, parser::parser::Parser},
-    sub_modules::{alias::Alias, theme_provider::ThemeProvider},
+    service::{auto_completion::AutoCompletionService, lexer::LexerService, parser::ParserService},
 };
 
+/// The shell environment is configured here.
+/// It can be used to process arguments or overwrite defaults.
+///
+/// Author: Sebastian Keller
+#[derive(Debug, Default)]
+struct Config {
+    no_history: bool,
+    no_auto_completion: bool,
+}
+
+impl Config {
+    fn from_args(mut args: Args) -> Result<Self, ()> {
+        let mut cfg = Self::default();
+
+        let _skip_application_name = args.next();
+        for arg in args {
+            match arg.as_str() {
+                "--no-history" => cfg.no_history = true,
+                "--no-auto-completion" => cfg.no_auto_completion = true,
+                _ => return Err(()),
+            }
+        }
+        Ok(cfg)
+    }
+}
+
+/// The shell is composed of an event bus and services.
+///
+/// Services are currently created and disabled in the constructor.
+/// They can currently not change during runtime.
+/// Keep in mind that the order in which the services are registered matters.
+/// For example: The AutoCompletionService must be registered after the LexerService to be able to access up to date tokens.
+///
+/// When there is no event left, the shell will trigger an Event::ProcessCompleted event, which will cause the WriterService to write current changes.
+/// After that the shell will block until receiving new user input.
+/// The user input will trigger an Event::KeyPressed event and gets the services running again.
+/// If an service for some reason returns an error, then a Event::ProcessFailed event is triggered and the error is written to the terminal.
+/// After that the shell will start again from a fresh state.
+///
+/// Built-ins exist within the ExecutorService.
+/// All services and built-ins get a ContextProvider per constructor for each Context reference they need.
+///
+/// Author: Sebastian Keller
 struct Shell {
-    clx: Context,
-    modules: Vec<Box<dyn EventHandler>>,
-    theme_provider: Rc<RefCell<ThemeProvider>>,
+    services: Vec<Box<dyn EventHandler>>,
+    event_bus: EventBus,
 }
 
 impl Shell {
-    pub fn new() -> Self {
-        let alias = Rc::new(RefCell::new(Alias::new()));
-        let theme_provider = Rc::new(RefCell::new(ThemeProvider::new()));
-        let mut modules: Vec<Box<dyn EventHandler>> = Vec::new();
+    pub fn new(cfg: Config) -> Self {
+        let event_bus = EventBus::new();
 
-        modules.push(Box::new(CommandLine::new()));
-        modules.push(Box::new(History::new()));
-        modules.push(Box::new(Parser::new(alias.clone())));
-        modules.push(Box::new(AutoCompletion::new()));
-        modules.push(Box::new(Writer::new(theme_provider.clone())));
-        modules.push(Box::new(Executor::new(alias.clone(), theme_provider.clone())));
+        let line_provider = ContextProvider::new(LineContext::new());
+        let suggestion_provider = ContextProvider::new(SuggestionContext::new());
+        let tokens_provider = ContextProvider::new(TokensContext::new());
+        let executable_provider = ContextProvider::new(ExecutableContext::new());
+        let alias_provider = ContextProvider::new(AliasContext::new());
+        let theme_provider = ContextProvider::new(ThemeContext::new());
+        let wd_provider = ContextProvider::new(WorkingDirectoryContext::new());
 
-        Self {
-            clx: Context::new(),
-            modules,
-            theme_provider,
+        let mut services: Vec<Box<dyn EventHandler>> = Vec::new();
+        services.push(Box::new(CommandLineService::new(line_provider.clone())));
+        if !cfg.no_history {
+            services.push(Box::new(HistoryService::new(line_provider.clone())));
         }
+        services.push(Box::new(LexerService::new(
+            line_provider.clone(),
+            tokens_provider.clone(),
+            alias_provider.clone(),
+        )));
+        if !cfg.no_auto_completion {
+            services.push(Box::new(AutoCompletionService::new(
+                line_provider.clone(),
+                tokens_provider.clone(),
+                suggestion_provider.clone(),
+            )));
+        }
+        services.push(Box::new(WriterService::new(
+            line_provider.clone(),
+            tokens_provider.clone(),
+            suggestion_provider.clone(),
+            theme_provider.clone(),
+            wd_provider.clone(),
+        )));
+        services.push(Box::new(ParserService::new(
+            tokens_provider.clone(),
+            executable_provider.clone(),
+            wd_provider.clone(),
+        )));
+        services.push(Box::new(ExecutorService::new(
+            executable_provider.clone(),
+            &alias_provider,
+            &theme_provider,
+            &wd_provider,
+        )));
+
+        Self { event_bus, services }
     }
 
     fn await_input_event(&mut self) -> Event {
         loop {
-            let Some(key) = read_mixed() else {
+            let Some(key) = read_fluid() else {
                 continue;
             };
             return Event::KeyPressed(key);
@@ -63,90 +140,60 @@ impl Shell {
     }
 
     pub fn run(&mut self) {
-        self.clx.events.trigger(Event::PrepareNewLine);
+        self.event_bus.trigger(Event::PrepareNewLine);
 
         loop {
-            while let Some(event) = self.clx.events.process() {
-                let Err(error) = self.handle_event(&event) else {
+            while let Some(event) = self.event_bus.process() {
+                let Err(error) = self.handle_event(event) else {
                     continue;
                 };
-                self.handle_error(error);
+                self.event_bus.clear();
+                self.event_bus.trigger(Event::ProcessFailed(error));
             }
 
-            self.handle_event(&Event::ProcessCompleted);
+            self.handle_event(Event::ProcessCompleted);
 
             let input_event = self.await_input_event();
-            self.handle_event(&input_event);
+            self.handle_event(input_event);
         }
     }
 
-    fn handle_error(&mut self, error: Error) {
-        let theme = self.theme_provider.borrow().get_current();
-        let line_break = if error.start_inline { "" } else { "\n" };
-        println!(
-            "{}{}{}\x1b[0m\n{}{}\x1b[0m",
-            line_break,
-            theme.error_msg,
-            error.message,
-            theme.error_hint,
-            error.hint.unwrap_or(String::new()),
-        );
-        self.clx.events.trigger(Event::PrepareNewLine);
-    }
-
-    fn handle_event(&mut self, event: &Event) -> Result<(), Error> {
-        info!("Events in queue: {:?}", self.clx.events);
-        info!("Processing event: {:?}", event);
-        for event_handler in &mut self.modules {
+    fn handle_event(&mut self, event: Event) -> Result<(), Error> {
+        // info!("Events in queue: {:?}", self.event_bus);
+        // info!("Processing event: {:?}", event);
+        for event_handler in &mut self.services {
             let result = match event {
-                Event::KeyPressed(key) => event_handler.on_key_pressed(&mut self.clx, *key),
-                Event::CursorMoved(step) => event_handler.on_cursor_moved(&mut self.clx, *step),
-                Event::HistoryRestored => event_handler.on_history_restored(&mut self.clx),
-                Event::LineWritten => event_handler.on_line_written(&mut self.clx),
-                Event::TokensWritten => event_handler.on_tokens_written(&mut self.clx),
-                Event::PrepareNewLine => event_handler.on_prepare_next_line(&mut self.clx),
-                Event::Submit => event_handler.on_submit(&mut self.clx),
-                Event::ProcessCompleted => event_handler.on_process_completed(&mut self.clx),
+                Event::KeyPressed(key) => event_handler.on_key_pressed(&mut self.event_bus, key),
+                Event::CursorMoved(step) => event_handler.on_cursor_moved(&mut self.event_bus, step),
+                Event::HistoryRestored => event_handler.on_history_restored(&mut self.event_bus),
+                Event::LineWritten => event_handler.on_line_written(&mut self.event_bus),
+                Event::TokensWritten => event_handler.on_tokens_written(&mut self.event_bus),
+                Event::PrepareNewLine => event_handler.on_prepare_next_line(&mut self.event_bus),
+                Event::Submit => event_handler.on_submit(&mut self.event_bus),
+                Event::ProcessCompleted => event_handler.on_process_completed(&mut self.event_bus),
+                Event::ProcessFailed(ref error) => event_handler.on_process_failed(&mut self.event_bus, error),
             };
 
             if result.is_err() {
                 return Err(result.unwrap_err());
             }
         }
-        info!("-------------------------------------------");
+        // info!("-------------------------------------------");
         Ok(())
     }
 }
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mut shell = Shell::new();
+    let args = env::args();
+    let Ok(cfg) = Config::from_args(args) else {
+        println!("Usage: shell [--no-history] [--no-auto-completion]");
+        return;
+    };
+
+    println!("Welcome to \x1b[38;2;0;106;179mD\x1b[0m\x1b[38;2;140;177;16m3\x1b[0m\x1b[38;2;0;106;179mOS\x1b[0m!");
+    println!("Type `help` if you're feeling lost.\n");
+
+    let mut shell = Shell::new(cfg);
     shell.run()
 }
-
-// TODO FEAT: Add BuildIn to switch themes
-// TODO FEAT: Add working directories!!!
-// TODO FEAT: Add help BuildIn
-// TODO FEAT: Show && and || executions with build ins (assume extern applications to always succeed)
-// TODO FEAT: Add application params to disable optional modules
-// TODO FEAT: Pos1 => Cursor to start
-// TODO FEAT: End => Cursor to end
-// TODO FEAT: ESCAPE => Unfocus suggestion
-
-// TODO IMPROVEMENT: Rework Token creation with less repetition (Assign rules to different kinds??? EolRule, reqCmdRule, ...)
-// TODO IMPROVEMENT: Token should accept string in constructor (multi char token are no longer a special case)
-// TODO IMPROVEMENT: Limit line len
-// TODO IMPROVEMENT: Limit history len
-// TODO IMPROVEMENT: Limit alias len
-// TODO IMPROVEMENT: ????Move Context into SubModules???? after that rename SubModule to Context
-// TODO IMPROVEMENT: Block window_manager execution (show error message how to open window_manager correctly)
-// TODO IMPROVEMENT: Move ArgumentKind management into AutoCompletion, remove it from Tokens
-// TODO IMPROVEMENT: Restore Lexer, Parser Separation
-// TODO IMPROVEMENT: Move mkdir from builtin into application
-
-// TODO FIX: ArgumentKind not updating in terminal
-// TODO FIX: Only generic arg suggestion after first generic arg is selected
-// TODO FIX: alias and unalias always shows usage error (Problem: builtin accepts only one argument, but alias key="value" has two [key=, "value"])
-// TODO FIX: Writer not updating when command history clears line (latest)
-// TODO FIX: Show error when line is incomplete (EXCLUDE ArgumentKind)
-// TODO FIX: If line is empty but auto completion has focus, pressing backspace doesn't restore terminal cursor position

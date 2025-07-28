@@ -315,8 +315,8 @@ pub fn serial_port() -> Option<Arc<SerialPort>> {
     }
 }
 
-/// TTY
-/// TODO#9 tty docs
+/// TTY-IO-Buffer (Workaround for missing pipes)
+/// Used to buffer IO streams between applications and Terminal
 ///
 /// Author: Sebastian Keller
 static TTY_INPUT: Once<Arc<TtyInput>> = Once::new();
@@ -411,6 +411,10 @@ pub fn buffered_lfb() -> &'static Mutex<BufferedLFB> {
         .expect("Trying to access buffered LFB before initialization!")
 }
 
+/// Framebuffer information
+/// Remembered from boot, to be able to map to User-Space
+/// 
+/// Author: Sebastian Keller
 static LFB_INFO: Once<LfbInfo> = Once::new();
 
 pub fn init_lfb_info(address: u64, pitch: u32, width: u32, height: u32, bpp: u8) {
@@ -429,7 +433,10 @@ pub fn lfb_info() -> &'static LfbInfo {
         .expect("Trying to access lfb info before initialization")
 }
 
-/// Remember boot info
+/// System information
+/// Remembered from boot, to be able to expose to User-Space
+/// 
+/// Author: Sebastian Keller
 pub struct BootInfo {
     pub bootloader_name: String,
 }

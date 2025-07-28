@@ -6,6 +6,8 @@ use crate::terminal::lfb_terminal::LFBTerminal;
 
 use super::worker::Worker;
 
+const BUFFER_SIZE: usize = 128;
+
 pub struct OutputObserver {
     terminal: Rc<LFBTerminal>,
 }
@@ -18,7 +20,7 @@ impl OutputObserver {
 
 impl Worker for OutputObserver {
     fn run(&mut self) {
-        let mut buffer = vec![0u8; 128];
+        let mut buffer = vec![0u8; BUFFER_SIZE];
 
         let read_bytes = syscall(
             SystemCall::TerminalReadOutput,

@@ -5,6 +5,10 @@ use log::{Level, error, log};
 use logger::LogLevel;
 use syscall::return_vals::Errno;
 
+/// SystemCall implementation for SystemCall::Log.
+/// Receives logging data from User-Space and forwards it to the kernel logger.
+///
+/// Author: Sebastian Keller
 pub fn sys_log(address: *const u8, length: usize, level: usize) -> isize {
     if address.is_null() {
         error!("Unable to read userspace log");

@@ -21,4 +21,8 @@ impl EventBus {
     pub fn process(&mut self) -> Option<Event> {
         self.events.pop_front()
     }
+
+    pub fn clear(&mut self) {
+        self.events.clear();
+    }
 }

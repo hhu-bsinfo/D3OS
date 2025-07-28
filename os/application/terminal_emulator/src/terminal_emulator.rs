@@ -29,6 +29,15 @@ use worker::output_observer::OutputObserver;
 use worker::status_bar::StatusBar;
 use worker::worker::Worker;
 
+/// This application emulates the terminal.
+/// The kernel lfb_terminal device has been migrated here and is mostly unchanged.
+///
+/// Special operations like IO, Cursor or status bar are managed in individual worker objects.
+/// IO-Operations are handled by Input- and OutputObserver.
+///
+/// The terminal is running single threaded but has been structured to support multi threading in future if needed.
+///
+/// Author: Sebastian Keller
 pub struct TerminalEmulator {
     terminal: Rc<LFBTerminal>,
     event_handler: Rc<RefCell<EventHandler>>,
@@ -55,7 +64,7 @@ impl TerminalEmulator {
     }
 
     pub fn init(&mut self) {
-        self.terminal.write_str(&create_banner_string()); // TODO move into terminal to be able to redraw after clearing screen
+        self.terminal.write_str(&create_banner_string());
         self.operator.create();
     }
 
@@ -64,7 +73,7 @@ impl TerminalEmulator {
         display.lfb.direct_lfb().draw_loader();
         thread::start_application("window_manager", vec![]).unwrap().join(); // Wait for window manager to exit, then continue
         display.lfb.direct_lfb().draw_loader();
-        sleep(500); // Solves an issue where sometimes workspaces from window manager are still visible when toggling quickly between text and gui
+        sleep(500); // Solves an issue where sometimes workspaces from the window manager are still visible when toggling quickly between text and gui
         display.lfb.flush();
     }
 
@@ -105,5 +114,3 @@ pub fn main() {
     emulator.init();
     emulator.run()
 }
-
-// TODO#9 BUG: terminal won't print just parentheses (Example ['''''''] => [], [''''''] => [], ["'"'"'"] => [], but [a'b'c"d"e] => [a'b'c"d"e])

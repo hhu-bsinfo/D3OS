@@ -1,7 +1,7 @@
 use alloc::string::String;
 use terminal::DecodedKey;
 
-use crate::context::context::Context;
+use crate::event::event_bus::EventBus;
 
 #[derive(Debug, PartialEq)]
 pub enum Response {
@@ -14,7 +14,7 @@ pub enum Response {
 pub struct Error {
     pub(crate) message: String,
     pub(crate) hint: Option<String>,
-    pub(crate) start_inline: bool,
+    pub(crate) is_in_execution: bool,
 }
 
 impl Error {
@@ -22,50 +22,54 @@ impl Error {
         Self {
             message,
             hint,
-            start_inline: false,
+            is_in_execution: false,
         }
     }
 
-    pub fn new_inline(message: String, hint: Option<String>) -> Self {
+    pub fn new_mid_execution(message: String, hint: Option<String>) -> Self {
         Self {
             message,
             hint,
-            start_inline: true,
+            is_in_execution: true,
         }
     }
 }
 
 #[allow(unused_variables)]
 pub trait EventHandler {
-    fn on_key_pressed(&mut self, clx: &mut Context, key: DecodedKey) -> Result<Response, Error> {
+    fn on_key_pressed(&mut self, event_bus: &mut EventBus, key: DecodedKey) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_prepare_next_line(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_prepare_next_line(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_cursor_moved(&mut self, clx: &mut Context, step: isize) -> Result<Response, Error> {
+    fn on_cursor_moved(&mut self, event_bus: &mut EventBus, step: isize) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_history_restored(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_history_restored(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_line_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_line_written(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_tokens_written(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_tokens_written(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_process_completed(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_process_completed(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 
-    fn on_submit(&mut self, clx: &mut Context) -> Result<Response, Error> {
+    fn on_process_failed(&mut self, event_bus: &mut EventBus, error: &Error) -> Result<Response, Error> {
+        Ok(Response::Ignore)
+    }
+
+    fn on_submit(&mut self, event_bus: &mut EventBus) -> Result<Response, Error> {
         Ok(Response::Ignore)
     }
 }

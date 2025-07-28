@@ -8,7 +8,7 @@
 */
 use core::slice::from_raw_parts;
 use core::slice::from_raw_parts_mut;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::AtomicBool;
 use log::error;
 use syscall::return_vals::Errno;
 use terminal::{TerminalInputState, TerminalMode};
@@ -18,8 +18,8 @@ use crate::{tty_input, tty_output};
 
 static KILL_OPERATOR_FLAG: AtomicBool = AtomicBool::new(false);
 
-/// For applications
-/// TODO#8 Do proper docs
+/// SystemCall implementation for SystemCall::TerminalWriteOutput.
+/// Used by applications to write output in the terminal.
 ///
 /// Author: Sebastian Keller
 pub fn sys_terminal_write_output(address: *const u8, length: usize) -> isize {
@@ -32,8 +32,8 @@ pub fn sys_terminal_write_output(address: *const u8, length: usize) -> isize {
     tty_output().write(bytes) as isize
 }
 
-/// For Terminal
-/// TODO#8 Do proper docs
+/// SystemCall implementation for SystemCall::TerminalReadOutput.
+/// Used by terminal to read output from applications.
 ///
 /// Author: Sebastian Keller
 pub fn sys_terminal_read_output(address: *mut u8, length: usize) -> isize {
@@ -46,8 +46,8 @@ pub fn sys_terminal_read_output(address: *mut u8, length: usize) -> isize {
     tty_output().read(buffer) as isize
 }
 
-/// For Terminal
-/// TODO#8 Do proper docs
+/// SystemCall implementation for SystemCall::TerminalWriteInput.
+/// Used by terminal to write input for applications.
 ///
 /// Author: Sebastian Keller
 pub fn sys_terminal_write_input(address: *mut u8, length: usize, mode: usize) -> isize {
@@ -61,8 +61,8 @@ pub fn sys_terminal_write_input(address: *mut u8, length: usize, mode: usize) ->
     tty_input().write(bytes, mode) as isize
 }
 
-/// For Application
-/// TODO#8 Do proper docs
+/// SystemCall implementation for SystemCall::TerminalReadInput.
+/// Used by applications to read input from the terminal.
 ///
 /// Author: Sebastian Keller
 pub fn sys_terminal_read_input(address: *mut u8, length: usize, mode: usize) -> isize {
@@ -76,8 +76,8 @@ pub fn sys_terminal_read_input(address: *mut u8, length: usize, mode: usize) -> 
     tty_input().read(buffer, mode) as isize
 }
 
-/// For Terminal
-/// TODO#8 Do proper docs
+/// SystemCall implementation for SystemCall::TerminalCheckInputState.
+/// Used by terminal to check if an applications is waiting for input.
 ///
 /// Author: Sebastian Keller
 pub fn sys_terminal_check_input_state() -> isize {
@@ -88,8 +88,8 @@ pub fn sys_terminal_check_input_state() -> isize {
     }
 
     match tty_input.mode() {
-        TerminalMode::Cooked => TerminalInputState::InputReaderAwaitsCooked as isize,
-        TerminalMode::Mixed => TerminalInputState::InputReaderAwaitsMixed as isize,
-        TerminalMode::Raw => TerminalInputState::InputReaderAwaitsRaw as isize,
+        TerminalMode::Canonical => TerminalInputState::Canonical as isize,
+        TerminalMode::Fluid => TerminalInputState::Fluid as isize,
+        TerminalMode::Raw => TerminalInputState::Raw as isize,
     }
 }

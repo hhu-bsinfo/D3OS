@@ -2,50 +2,60 @@ use alloc::{string::String, vec::Vec};
 use logger::warn;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Io {
+pub enum IoTarget {
     Std,
     Job(usize),
     FileTruncate(String),
     FileAppend(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum JobResult {
     Success,
     Error,
 }
 
+impl JobResult {
+    pub fn is_success(&self) -> bool {
+        *self == JobResult::Success
+    }
+
+    pub fn is_error(&self) -> bool {
+        *self == JobResult::Error
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct Job {
+pub struct Executable {
     pub id: usize,
     pub command: String,
     pub arguments: Vec<String>,
-    pub input: Io,
-    pub output: Io,
+    pub input: IoTarget,
+    pub output: IoTarget,
     pub background_execution: bool,
-    pub requires_job: Option<(usize, JobResult)>,
+    pub requires_executable: Option<(usize, JobResult)>,
 }
 
-pub struct JobBuilder {
+pub struct ExecutableBuilder {
     id: Option<usize>,
     command: Option<String>,
     arguments: Vec<String>,
-    input: Io,
-    output: Io,
+    input: IoTarget,
+    output: IoTarget,
     background_execution: bool,
-    requires_job: Option<(usize, JobResult)>,
+    requires_executable: Option<(usize, JobResult)>,
 }
 
-impl JobBuilder {
+impl ExecutableBuilder {
     pub fn new() -> Self {
         Self {
             id: None,
             command: None,
             arguments: Vec::new(),
-            input: Io::Std,
-            output: Io::Std,
+            input: IoTarget::Std,
+            output: IoTarget::Std,
             background_execution: false,
-            requires_job: None,
+            requires_executable: None,
         }
     }
 
@@ -64,12 +74,12 @@ impl JobBuilder {
         self
     }
 
-    pub fn use_input(&mut self, input: Io) -> &mut Self {
+    pub fn use_input(&mut self, input: IoTarget) -> &mut Self {
         self.input = input;
         self
     }
 
-    pub fn use_output(&mut self, output: Io) -> &mut Self {
+    pub fn use_output(&mut self, output: IoTarget) -> &mut Self {
         warn!("builder: id:{:?} {:?}", self.id, output);
         self.output = output;
         self
@@ -80,8 +90,8 @@ impl JobBuilder {
         self
     }
 
-    pub fn requires_job(&mut self, id: usize, result: JobResult) -> &mut Self {
-        self.requires_job = Some((id, result));
+    pub fn requires_executable(&mut self, id: usize, result: JobResult) -> &mut Self {
+        self.requires_executable = Some((id, result));
         self
     }
 
@@ -93,28 +103,28 @@ impl JobBuilder {
         self.command.as_deref()
     }
 
-    pub fn build(&self) -> Result<Job, &'static str> {
+    pub fn build(&self) -> Result<Executable, &'static str> {
         if self.id.is_none() {
             return Err("Id is required");
         }
         if self.command.is_none() {
             return Err("Command is required");
         }
-        Ok(Job {
+        Ok(Executable {
             id: self.id.unwrap(),
             command: self.command.as_ref().unwrap().clone(),
             arguments: self.arguments.clone(),
             input: self.input.clone(),
             output: self.output.clone(),
             background_execution: self.background_execution,
-            requires_job: self.requires_job.clone(),
+            requires_executable: self.requires_executable.clone(),
         })
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ExecutableContext {
-    pub jobs: Vec<Job>,
+    pub executables: Vec<Executable>,
 }
 
 impl ExecutableContext {
@@ -126,27 +136,27 @@ impl ExecutableContext {
         *self = ExecutableContext::default()
     }
 
-    pub fn get_jobs(&self) -> &Vec<Job> {
-        &self.jobs
+    pub fn get_executables(&self) -> &Vec<Executable> {
+        &self.executables
     }
 
     pub fn is_empty(&self) -> bool {
-        self.jobs.is_empty()
+        self.executables.is_empty()
     }
 
     pub fn len(&self) -> usize {
-        self.jobs.len()
+        self.executables.len()
     }
 
-    pub fn add_job(&mut self, job: Job) {
-        self.jobs.push(job);
+    pub fn add_executable(&mut self, executable: Executable) {
+        self.executables.push(executable);
     }
 
-    pub fn last_job(&self) -> Option<&Job> {
-        self.jobs.last()
+    pub fn last_executable(&self) -> Option<&Executable> {
+        self.executables.last()
     }
 
-    pub fn last_job_mut(&mut self) -> Option<&mut Job> {
-        self.jobs.last_mut()
+    pub fn last_mut_executable(&mut self) -> Option<&mut Executable> {
+        self.executables.last_mut()
     }
 }

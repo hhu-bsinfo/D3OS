@@ -20,8 +20,12 @@ macro_rules! print {
 
 #[macro_export]
 macro_rules! println {
-    ($fmt:expr) => (print!(concat!($fmt, "\n")));
-    ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
+    ($fmt:expr) => ({
+        $crate::write::print(format_args!(concat!($fmt, "\n")));
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        $crate::write::print(format_args!(concat!($fmt, "\n"), $($arg)*));
+    });
 }
 
 static WRITER: Mutex<Writer> = Mutex::new(Writer::new());

@@ -16,17 +16,17 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 pub enum TerminalInputState {
     #[num_enum(default)]
     Idle = 0,
-    InputReaderAwaitsCooked = 1,
-    InputReaderAwaitsMixed = 2,
-    InputReaderAwaitsRaw = 3,
+    Canonical = 1,
+    Fluid = 2,
+    Raw = 3,
 }
 
 #[derive(Debug, PartialEq, IntoPrimitive, FromPrimitive, Clone, Copy)]
 #[repr(usize)]
 pub enum TerminalMode {
     #[num_enum(default)]
-    Cooked = 0,
-    Mixed = 1,
+    Canonical = 0,
+    Fluid = 1,
     Raw = 2,
 }
 

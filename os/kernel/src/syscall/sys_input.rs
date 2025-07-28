@@ -10,7 +10,8 @@ pub fn sys_read_mouse() -> usize {
     }
 }
 
-/// TODO#9 docs
+/// SystemCall implementation for SystemCall::KeyboardRead.
+/// Reads from keyboard with given mode (Raw or Decoded).
 ///
 /// Author: Sebastian Keller
 pub fn sys_read_keyboard(option: ReadKeyboardOption) -> isize {
@@ -19,6 +20,5 @@ pub fn sys_read_keyboard(option: ReadKeyboardOption) -> isize {
     match option {
         ReadKeyboardOption::Raw => keyboard.read_byte() as isize,
         ReadKeyboardOption::Decode => keyboard.decoded_read_byte() as isize,
-        ReadKeyboardOption::TryDecode => keyboard.decoded_try_read_byte().unwrap_or(0) as isize,
     }
 }

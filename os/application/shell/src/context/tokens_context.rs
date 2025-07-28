@@ -1,6 +1,9 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
-use crate::modules::parser::token::{Token, TokenStatus};
+use crate::token::{
+    factory::TokenFactory,
+    token::{Token, TokenKind, TokenStatus},
+};
 
 #[derive(Debug, Clone)]
 pub struct TokensContext {
@@ -29,10 +32,6 @@ impl TokensContext {
         self.tokens.last()
     }
 
-    pub fn last_mut(&mut self) -> Option<&mut Token> {
-        self.tokens.last_mut()
-    }
-
     pub fn slice_at_line_index(&self, index: usize) -> &[Token] {
         let start_at = self
             .tokens
@@ -43,7 +42,13 @@ impl TokensContext {
         &self.tokens[start_at..]
     }
 
-    pub fn push(&mut self, token: Token) {
+    pub fn push_token(&mut self, kind: TokenKind, content: String) {
+        let token = if let Some(last_token) = self.tokens.last() {
+            TokenFactory::create_next(last_token, kind, content)
+        } else {
+            TokenFactory::create_first(kind, content)
+        };
+
         self.is_status_dirty |= if let Some(last) = self.tokens.last() {
             last.status() != token.status()
         } else {
@@ -53,7 +58,26 @@ impl TokensContext {
         self.tokens.push(token);
     }
 
-    pub fn pop(&mut self) -> Option<Token> {
+    pub fn replace_last_token(&mut self, kind: TokenKind, content: String) {
+        self.tokens.pop();
+        self.push_token(kind, content);
+    }
+
+    pub fn push_to_last_token(&mut self, ch: char) -> Result<(), ()> {
+        let Some(last_token) = self.tokens.last_mut() else {
+            return Err(());
+        };
+        last_token.push(ch)
+    }
+
+    pub fn pop_from_last_token(&mut self) -> Result<char, ()> {
+        let Some(last_token) = self.tokens.last_mut() else {
+            return Err(());
+        };
+        last_token.pop()
+    }
+
+    pub fn pop_token(&mut self) -> Option<Token> {
         let token = self.tokens.pop();
 
         self.is_status_dirty |= if let Some(last) = self.tokens.last() {
@@ -66,10 +90,7 @@ impl TokensContext {
     }
 
     pub fn status(&self) -> &TokenStatus {
-        if self.tokens.is_empty() {
-            return &TokenStatus::Valid;
-        }
-        self.tokens.last().unwrap().status()
+        self.tokens.last().map(|t| t.status()).unwrap_or(&TokenStatus::Valid)
     }
 
     pub fn mark_status_clean(&mut self) {
@@ -85,27 +106,23 @@ impl TokensContext {
             Some(token) => token,
             None => return None,
         };
-        let last_command_pos = match last_token.clx().cmd_pos {
+        let last_command_pos = match last_token.clx().cmd_pos_in_segment {
             Some(pos) => pos,
             None => return None,
         };
         Some(&self.tokens[last_command_pos])
     }
 
-    pub fn find_last_short_flag(&self) -> Option<&Token> {
-        let last_token = match self.tokens.last() {
-            Some(token) => token,
-            None => return None,
-        };
-        let last_command_pos = match last_token.clx().short_flag_pos {
-            Some(pos) => pos,
-            None => return None,
-        };
-        Some(&self.tokens[last_command_pos])
-    }
-
-    pub fn len(&self) -> usize {
-        self.tokens.len()
+    pub fn find_last_argument_in_segment(&self) -> Option<&Token> {
+        for token in self.tokens.iter().rev() {
+            if token.clx().cmd_pos_in_segment.is_none() {
+                return None;
+            }
+            if *token.kind() == TokenKind::Argument {
+                return Some(token);
+            }
+        }
+        None
     }
 
     pub fn total_len(&self) -> usize {

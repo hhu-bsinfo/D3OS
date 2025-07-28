@@ -1,5 +1,7 @@
 use terminal::DecodedKey;
 
+use crate::event::event_handler::Error;
+
 #[derive(Debug, Clone)]
 pub enum Event {
     KeyPressed(DecodedKey),
@@ -10,4 +12,5 @@ pub enum Event {
     TokensWritten,
     Submit,
     ProcessCompleted,
+    ProcessFailed(Error),
 }
