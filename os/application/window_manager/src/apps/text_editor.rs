@@ -120,12 +120,10 @@ impl Runnable for TextEditor {
                         &Rc::clone(&canvas_clone),
                         Message::CommandMessage(messages::CommandMessage::Undo),
                     );
-                    edit_canvas_clone
-                        .write()
-                        .as_ref()
-                        .unwrap()
-                        .write()
-                        .mark_dirty();
+                    match edit_canvas_clone.write().as_ref() {
+                        Some(c) => c.write().mark_dirty(),
+                        None => (),
+                    }
                 })),
                 styling: None,
             },
@@ -151,12 +149,10 @@ impl Runnable for TextEditor {
                         &Rc::clone(&canvas_clone),
                         Message::CommandMessage(messages::CommandMessage::Redo),
                     );
-                    edit_canvas_clone
-                        .write()
-                        .as_ref()
-                        .unwrap()
-                        .write()
-                        .mark_dirty();
+                    match edit_canvas_clone.write().as_ref() {
+                        Some(c) => c.write().mark_dirty(),
+                        None => (),
+                    }
                 })),
                 styling: None,
             },
@@ -181,12 +177,10 @@ impl Runnable for TextEditor {
                         &Rc::clone(&canvas_clone),
                         Message::CommandMessage(messages::CommandMessage::Markdown),
                     );
-                    edit_canvas_clone
-                        .write()
-                        .as_ref()
-                        .unwrap()
-                        .write()
-                        .mark_dirty();
+                    match edit_canvas_clone.write().as_ref() {
+                        Some(c) => c.write().mark_dirty(),
+                        None => (),
+                    }
                 })),
                 styling: None,
             },
@@ -212,12 +206,10 @@ impl Runnable for TextEditor {
                         &Rc::clone(&canvas_clone),
                         Message::CommandMessage(messages::CommandMessage::CLike),
                     );
-                    edit_canvas_clone
-                        .write()
-                        .as_ref()
-                        .unwrap()
-                        .write()
-                        .mark_dirty();
+                    match edit_canvas_clone.write().as_ref() {
+                        Some(c) => c.write().mark_dirty(),
+                        None => (),
+                    }
                 })),
                 styling: None,
             },
@@ -240,23 +232,21 @@ impl Runnable for TextEditor {
                 on_click: Some(Box::new(move || {
                     {
                         let mut models = model_clone.write();
-                        let prev = models.prev();
-                        if prev.is_some() {
-                            current_file_clone
-                                .set(prev.unwrap().path().unwrap_or(String::from("scratch")));
-                        }
+                        let prev = match models.prev() {
+                            Some(p) => p,
+                            None => return,
+                        };
+                        current_file_clone.set(prev.path().unwrap_or(String::from("scratch")));
                     }
                     apply_message(
                         &model_clone,
                         &Rc::clone(&canvas_clone),
                         Message::CommandMessage(messages::CommandMessage::None),
                     );
-                    edit_canvas_clone
-                        .write()
-                        .as_ref()
-                        .unwrap()
-                        .write()
-                        .mark_dirty();
+                    match edit_canvas_clone.write().as_ref() {
+                        Some(c) => c.write().mark_dirty(),
+                        None => (),
+                    }
                 })),
                 styling: None,
             },
@@ -279,30 +269,28 @@ impl Runnable for TextEditor {
                 on_click: Some(Box::new(move || {
                     {
                         let mut models = model_clone.write();
-                        let next = models.next();
-                        if next.is_some() {
-                            current_file_clone
-                                .set(next.unwrap().path().unwrap_or(String::from("scratch")));
-                        }
+                        let next = match models.next() {
+                            Some(n) => n,
+                            None => return,
+                        };
+                        current_file_clone.set(next.path().unwrap_or(String::from("scratch")));
                     }
                     apply_message(
                         &model_clone,
                         &Rc::clone(&canvas_clone),
                         Message::CommandMessage(messages::CommandMessage::None),
                     );
-                    edit_canvas_clone
-                        .write()
-                        .as_ref()
-                        .unwrap()
-                        .write()
-                        .mark_dirty();
+                    match edit_canvas_clone.write().as_ref() {
+                        Some(c) => c.write().mark_dirty(),
+                        None => (),
+                    }
                 })),
                 styling: None,
             },
         );
 
-        *edit_canvas.write() = Some(
-            api.execute(
+        *edit_canvas.write() = api
+            .execute(
                 handle,
                 Some(_parent_container.clone()),
                 Command::CreateCanvas {
@@ -319,7 +307,6 @@ impl Runnable for TextEditor {
                     scaling_mode: ScalingMode::None,
                 },
             )
-            .unwrap(),
-        );
+            .ok();
     }
 }
