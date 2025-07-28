@@ -9,6 +9,9 @@ use terminal::{
     read::{read, read_fluid, read_raw},
 };
 
+/// This application can be used to test the new terminal modes.
+///
+/// Author: Sebastian Keller
 #[unsafe(no_mangle)]
 pub fn main() {
     let mut args = env::args();

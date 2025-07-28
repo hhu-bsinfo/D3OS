@@ -2,10 +2,12 @@ use syscall::{SystemCall, syscall};
 
 pub enum ReadKeyboardOption {
     Raw,
-    TryDecode,
     Decode,
 }
 
+/// Read raw byte from keyboard.
+///
+/// Author: Sebastian Keller
 pub fn read_raw() -> Option<u8> {
     let option = ReadKeyboardOption::Raw as usize;
     let result = syscall(SystemCall::KeyboardRead, &[option]);

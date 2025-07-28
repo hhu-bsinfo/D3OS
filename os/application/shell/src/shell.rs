@@ -9,7 +9,6 @@ mod service;
 mod token;
 
 use alloc::{boxed::Box, vec::Vec};
-use logger::info;
 use runtime::env::Args;
 #[allow(unused_imports)]
 use runtime::*;
@@ -32,6 +31,10 @@ use crate::{
     service::{auto_completion::AutoCompletionService, lexer::LexerService, parser::ParserService},
 };
 
+/// The shell environment is configured here.
+/// It can be used to process arguments or overwrite defaults.
+///
+/// Author: Sebastian Keller
 #[derive(Debug, Default)]
 struct Config {
     no_history: bool,
@@ -54,6 +57,23 @@ impl Config {
     }
 }
 
+/// The shell is composed of an event bus and services.
+///
+/// Services are currently created and disabled in the constructor.
+/// They can currently not change during runtime.
+/// Keep in mind that the order in which the services are registered matters.
+/// For example: The AutoCompletionService must be registered after the LexerService to be able to access up to date tokens.
+///
+/// When there is no event left, the shell will trigger an Event::ProcessCompleted event, which will cause the WriterService to write current changes.
+/// After that the shell will block until receiving new user input.
+/// The user input will trigger an Event::KeyPressed event and gets the services running again.
+/// If an service for some reason returns an error, then a Event::ProcessFailed event is triggered and the error is written to the terminal.
+/// After that the shell will start again from a fresh state.
+///
+/// Built-ins exist within the ExecutorService.
+/// All services and built-ins get a ContextProvider per constructor for each Context reference they need.
+///
+/// Author: Sebastian Keller
 struct Shell {
     services: Vec<Box<dyn EventHandler>>,
     event_bus: EventBus,
@@ -139,8 +159,8 @@ impl Shell {
     }
 
     fn handle_event(&mut self, event: Event) -> Result<(), Error> {
-        info!("Events in queue: {:?}", self.event_bus);
-        info!("Processing event: {:?}", event);
+        // info!("Events in queue: {:?}", self.event_bus);
+        // info!("Processing event: {:?}", event);
         for event_handler in &mut self.services {
             let result = match event {
                 Event::KeyPressed(key) => event_handler.on_key_pressed(&mut self.event_bus, key),
@@ -158,7 +178,7 @@ impl Shell {
                 return Err(result.unwrap_err());
             }
         }
-        info!("-------------------------------------------");
+        // info!("-------------------------------------------");
         Ok(())
     }
 }

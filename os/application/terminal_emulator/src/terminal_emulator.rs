@@ -29,6 +29,15 @@ use worker::output_observer::OutputObserver;
 use worker::status_bar::StatusBar;
 use worker::worker::Worker;
 
+/// This application emulates the terminal.
+/// The kernel lfb_terminal device has been migrated here and is mostly unchanged.
+///
+/// Special operations like IO, Cursor or status bar are managed in individual worker objects.
+/// IO-Operations are handled by Input- and OutputObserver.
+///
+/// The terminal is running single threaded but has been structured to support multi threading in future if needed.
+///
+/// Author: Sebastian Keller
 pub struct TerminalEmulator {
     terminal: Rc<LFBTerminal>,
     event_handler: Rc<RefCell<EventHandler>>,

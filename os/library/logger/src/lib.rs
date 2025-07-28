@@ -17,18 +17,20 @@ pub enum LogLevel {
     Trace = 4,
 }
 
+/// Forward log to kernel logger at given level.
+///
+/// Author: Sebastian Keller
 pub fn log(message: &str, level: LogLevel) {
     syscall(
         SystemCall::Log,
-        &[
-            message.as_bytes().as_ptr() as usize,
-            message.len(),
-            level as usize,
-        ],
+        &[message.as_bytes().as_ptr() as usize, message.len(), level as usize],
     )
     .expect(&format!("Unable to log {}", message));
 }
 
+/// Forward error-log to kernel logger.
+///
+/// Author: Sebastian Keller
 #[macro_export]
 macro_rules! error {
     ($($arg:tt)*) => {{
@@ -39,6 +41,9 @@ macro_rules! error {
     }};
 }
 
+/// Forward warn-log to kernel logger.
+///
+/// Author: Sebastian Keller
 #[macro_export]
 macro_rules! warn {
     ($($arg:tt)*) => {{
@@ -49,6 +54,9 @@ macro_rules! warn {
     }};
 }
 
+/// Forward info-log to kernel logger.
+///
+/// Author: Sebastian Keller
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {{
@@ -59,6 +67,9 @@ macro_rules! info {
     }};
 }
 
+/// Forward debug-log to kernel logger.
+///
+/// Author: Sebastian Keller
 #[macro_export]
 macro_rules! debug {
     ($($arg:tt)*) => {{
@@ -69,6 +80,9 @@ macro_rules! debug {
     }};
 }
 
+/// Forward trace-log to kernel logger.
+///
+/// Author: Sebastian Keller
 #[macro_export]
 macro_rules! trace {
     ($($arg:tt)*) => {{

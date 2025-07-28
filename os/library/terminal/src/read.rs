@@ -12,12 +12,14 @@ use syscall::{SystemCall, syscall};
 
 use crate::{DecodedKeyType, TerminalMode};
 
-/// TODO proper docs
-/// Author: Sebastian Keller
+/// Read from terminal in canonical mode.
 ///
-/// Echoes written chars
-/// Blocks until '\n'
-/// Returns String
+/// The terminal will echo.
+/// The application will block until 'Enter' is pressed.
+/// Command line editing is enabled.
+/// Returns written line.
+///
+/// Author: Sebastian Keller
 pub fn read() -> String {
     let mut buffer: [u8; 128] = [0; 128];
 
@@ -34,12 +36,13 @@ pub fn read() -> String {
     String::from_utf8_lossy(&buffer[0..read_bytes]).to_string()
 }
 
-/// TODO proper docs
-/// Author: Sebastian Keller
+/// Read from terminal in fluid mode.
 ///
-/// No echo
-/// No blocking
-/// Returns Option of DecodedKey (RawKey or Unicode)
+/// The terminal will not echo.
+/// The application will not block.
+/// Returns decoded key as well as raw special keys.
+///
+/// Author: Sebastian Keller
 pub fn read_fluid() -> Option<DecodedKey> {
     let mut buffer: [u8; 2] = [0; 2];
 
@@ -66,12 +69,13 @@ pub fn read_fluid() -> Option<DecodedKey> {
     return None;
 }
 
-/// TODO proper docs
-/// Author: Sebastian Keller
+/// Read from terminal in raw mode.
 ///
-/// No echo
-/// No blocking
-/// Returns Option of raw undecoded u8
+/// The terminal will not echo.
+/// The application will not block.
+/// Returns raw undecoded key.
+///
+/// Author: Sebastian Keller
 pub fn read_raw() -> Option<u8> {
     let mut buffer: [u8; 1] = [0; 1];
 

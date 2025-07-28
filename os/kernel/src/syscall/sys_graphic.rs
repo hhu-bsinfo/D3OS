@@ -198,6 +198,10 @@ pub struct LfbInfo {
     pub bpp: u8,
 }
 
+/// SystemCall implementation for SystemCall::MapFramebuffer.
+/// Maps the physical framebuffer to User-Space, using physical mmap.
+/// 
+/// Author: Sebastian Keller
 pub fn sys_map_fb_info(fb_info_pointer: *mut LfbInfo) -> usize {
     let process = process_manager().read().current_process();
     let fb_info = lfb_info();
@@ -205,20 +209,16 @@ pub fn sys_map_fb_info(fb_info_pointer: *mut LfbInfo) -> usize {
     let phys_address = fb_info.address;
     let fb_size = (fb_info.height * fb_info.pitch) as u64;
 
-    let phys_start = PhysFrame::from_start_address(PhysAddr::new(phys_address))
-        .expect("Framebuffer address is not page aligned");
-    let phys_end = PhysFrame::from_start_address(
-        PhysAddr::new(phys_address + fb_size).align_up(PAGE_SIZE as u64),
-    )
-    .unwrap();
+    let phys_start =
+        PhysFrame::from_start_address(PhysAddr::new(phys_address)).expect("Framebuffer address is not page aligned");
+    let phys_end =
+        PhysFrame::from_start_address(PhysAddr::new(phys_address + fb_size).align_up(PAGE_SIZE as u64)).unwrap();
 
     let user_start = 0x20000000000; // TODO#? Start at 2TB offset (how to choose this value, why not automatic)
 
-    let virt_start = Page::from_start_address(VirtAddr::new(user_start))
-        .expect("User framebuffer address is not page aligned");
-    let virt_end =
-        Page::from_start_address(VirtAddr::new(user_start + fb_size).align_up(PAGE_SIZE as u64))
-            .unwrap();
+    let virt_start =
+        Page::from_start_address(VirtAddr::new(user_start)).expect("User framebuffer address is not page aligned");
+    let virt_end = Page::from_start_address(VirtAddr::new(user_start + fb_size).align_up(PAGE_SIZE as u64)).unwrap();
 
     process.virtual_address_space.map_physical(
         PhysFrameRange {
@@ -230,10 +230,7 @@ pub fn sys_map_fb_info(fb_info_pointer: *mut LfbInfo) -> usize {
             end: virt_end,
         },
         MemorySpace::User,
-        PageTableFlags::PRESENT
-            | PageTableFlags::WRITABLE
-            | PageTableFlags::USER_ACCESSIBLE
-            | PageTableFlags::NO_CACHE,
+        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE | PageTableFlags::NO_CACHE,
         memory::vmm::VmaType::Heap,
         "user_framebuffer",
     );

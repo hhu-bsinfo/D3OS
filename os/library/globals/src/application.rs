@@ -5,9 +5,11 @@ pub struct Application {
     pub key_value_pair: &'static [(&'static str, &'static [&'static str])],
 }
 
-/**
- * Register applications here, for the shell interpret them.
- */
+/// Application registry.
+/// Used by the shell to be able to provide suggestions for auto completion.
+/// Add new applications here.
+///
+/// Author: Sebastian Keller
 pub const APPLICATION_REGISTRY: &'static [Application] = &[
     //////////////////////
     // Debug
