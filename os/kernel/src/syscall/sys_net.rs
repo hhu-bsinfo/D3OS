@@ -1,7 +1,7 @@
 use core::str::FromStr;
 
 use alloc::string::ToString;
-use log::{info, warn};
+use log::{debug, info, warn};
 use smoltcp::{iface::SocketHandle, socket::{icmp, tcp, udp}, wire::IpAddress};
 use syscall::return_vals::Errno;
 
@@ -63,6 +63,7 @@ pub unsafe fn sys_sock_accept(
     protocol: SocketType,
 ) -> isize {
     if matches!(protocol, SocketType::Tcp) {
+        info!("accepting connections on {handle:?}");
         match accept_tcp(handle) {
             Ok(port) => port.try_into().unwrap(),
             Err(e) => panic!("failed to accept: {e:?}"),
@@ -80,6 +81,7 @@ pub unsafe fn sys_sock_connect(
 ) -> isize {
     if matches!(protocol, SocketType::Tcp) {
         if let Ok(addr_str) = unsafe { ptr_to_string(addr_ptr) } && let Ok(addr) = IpAddress::from_str(&addr_str) {
+            info!("connecting to {addr:?}:{port}");
             match connect_tcp(handle, addr, port) {
                 Ok(port) => port.try_into().unwrap(),
                 Err(e) => panic!("failed to accept: {e:?}"),
@@ -101,6 +103,7 @@ pub unsafe fn sys_sock_send(
     port: u16,
 ) -> isize {
     let data = unsafe { core::slice::from_raw_parts(data, len) };
+    debug!("sending {len} bytes on {handle:?}");
     #[allow(unreachable_patterns)]
     match protocol {
         SocketType::Udp => {
@@ -145,6 +148,7 @@ pub unsafe fn sys_sock_receive(
     data_len: usize,
 ) -> isize {
     let data = unsafe { core::slice::from_raw_parts_mut(data_ptr, data_len) };
+    debug!("receiving up to {data_len} bytes on {handle:?}");
     #[allow(unreachable_patterns)]
     match protocol {
         SocketType::Udp => match receive_datagram(handle, data) {
