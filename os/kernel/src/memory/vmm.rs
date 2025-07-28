@@ -42,7 +42,7 @@
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use core::ops::Range;
-use log::info;
+use log::{warn, info, debug, trace};
 use spin::RwLock;
 
 use x86_64::PhysAddr;
@@ -178,20 +178,7 @@ impl VirtualAddressSpace {
     /// Map `frame_range` for the full page range of the given `vma`. \
     /// The mapping will use the given `flags` for the page table entries.
     pub fn map_pfr_for_vma(&self, vma: &VirtualMemoryArea, frame_range: PhysFrameRange, mut flags: PageTableFlags) -> Result<(), i64> {
-        // Check if the number of frames is identical with the number of pages of the vma
-        let num_frames = frame_range.end - frame_range.start;
-        let num_pages = vma.range.end - vma.range.start;
-        if num_frames != num_pages {
-            return Err(-1);
-        }
-
-        // Check if the flags are consistent with the vma
-        flags = vma.check_and_enforce_consistency(flags);
-        flags |= PageTableFlags::PRESENT;
-
-        // Do the mapping
-        self.page_tables.map_physical(frame_range, vma.range, vma.space, flags);
-        Ok(())
+        self.map_pfr_for_partial_vma(vma, frame_range, vma.range, flags)
     }
 
     /// Map `frame_range` for the given page range which must be witin the given `vma`. \
@@ -201,8 +188,9 @@ impl VirtualAddressSpace {
     ) -> Result<(), i64> {
         // Check if the number of frames of the `frame_range` is identical with the number of pages of `page_range`
         let num_frames = frame_range.end - frame_range.start;
-        let num_pages = vma.range.end - vma.range.start;
+        let num_pages = page_range.end - page_range.start;
         if num_frames != num_pages {
+            warn!("Can't map {} frames into VMA with {} pages!", num_frames, num_pages);
             return Err(-1);
         }
 
@@ -212,6 +200,7 @@ impl VirtualAddressSpace {
 
         // Check if `page_range` is within the VMA range
         if page_range.start < vma.range.start || page_range.end > vma.range.end {
+            warn!("Can't map pages {:?} - {:?} into vma {:?} - {:?}!", page_range.start, page_range.end, vma.range.start, vma.range.end);
             return Err(-1);
         }
 
