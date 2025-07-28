@@ -5,13 +5,10 @@ Special tokens:
   <    Redirect input from file
   >    Redirect output
   >>   Redirect output (append)
-  &    Run command in background
+  &    Run in background
   ||   Logical OR: run next if first fails
   &&   Logical AND: run next if first succeeds
   ;    Command separator
-
-Examples of Pipelines & Redirections:
-  $ grep "error" < input.txt | sort >> output.log  
 
 Type `help controls` to see navigation keys.
 Type `help tokens`   to see special symbols.

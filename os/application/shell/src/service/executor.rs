@@ -130,7 +130,7 @@ impl ExecutorService {
     /// Check if executables contain unsupported operations
     /// Remove this function, once these features are supported
     fn handle_unsupported_error(&self, executables: &Vec<Executable>) -> Error {
-        let message = "Pipes, redirections and background executions are not jet supported by D3OS".to_string();
+        let message = "Pipes, redirections, and background execution are not yet supported by D3OS".to_string();
         let mut hint = "Assume the following execution:\n".to_string();
 
         for executable in executables {
