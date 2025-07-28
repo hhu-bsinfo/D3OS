@@ -32,17 +32,7 @@ brew link --force rustup
 
 This has been tested on macOS 14.
 
-Furthermore, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/):
-```bash
-rustup override set nightly
-rustup component add rust-src
-```
-
-The toolchain `nightly-2025-06-25` is confirmed to work. If you are having problems with new versions, try:
-```bash
-rustup override set nightly-2025-06-25
-rustup component add rust-src
-```
+[rustup](https://rustup.rs/) will download a _rust nightly_ toolchain on the first compile.
 
 To run the build, the commands _cargo-make_ and _cargo-license_ are required. Install them with:
 ```bash
