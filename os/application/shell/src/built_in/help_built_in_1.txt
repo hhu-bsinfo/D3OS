@@ -10,7 +10,7 @@ Built‑In Commands (1 of 2):
 
   cd [DIR]
       Change directory to DIR.
-      “./” = current, “../” = parent.
+      `./` = current, `../` = parent.
       Example: cd ../projects
 
   clear
@@ -21,6 +21,6 @@ Built‑In Commands (1 of 2):
       Print ARGS to stdout followed by newline.
       Example: echo "Hello, world!"
 
-Type “help controls” to see navigation keys.
-Type “help tokens”   to see special symbols.
-Type “help built‑in‑1” or “help built‑in‑2” for built‑ins.
+Type `help controls` to see navigation keys.
+Type `help tokens`   to see special symbols.
+Type `help built‑in‑1` or `help built‑in‑2` for built‑ins.

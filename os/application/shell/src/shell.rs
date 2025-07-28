@@ -171,11 +171,11 @@ pub fn main() {
         return;
     };
 
+    println!("Welcome to \x1b[38;2;0;106;179mD\x1b[0m\x1b[38;2;140;177;16m3\x1b[0m\x1b[38;2;0;106;179mOS\x1b[0m!");
+    println!("Type `help` if you're feeling lost \x1b[38;2;128;128;128m(we won't judge)\x1b[0m.");
+
     let mut shell = Shell::new(cfg);
     shell.run()
 }
 
 // TODO FEAT: Add ls alias
-
-// TODO IMPROVEMENT: Clamp cursor pos to 0..len in LineContext, also update when removing chars and pos > len
-// TODO IMPROVEMENT: Show help hint on startup
