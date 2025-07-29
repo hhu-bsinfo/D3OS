@@ -15,70 +15,76 @@
 // =============================================================================
 use bitflags::bitflags;
 // =============================================================================
-bitflags! {
-    pub struct PageRegisters : u8 {
-        const COMMAND     = 0x00;         // R|W COMMAND used for P0, P1, P2
-        // P0 Write Registers
-        const P0_PSTART   = 0x01;        // W Page Start Register
-        const P0_PSTOP    = 0x02;        // W Page Stop Register
-        const P0_BNRY     = 0x03;        // R|W Boundary Pointer  P0
-        const P0_TPSR     = 0x04;        // W Transmit Page Start Address
-        const P0_TBCR0    = 0x05;        // W Transmit Byte Count Register 0
-        const P0_TBCR1    = 0x06;        // W Transmit Byte Count Register 1
-        const P0_ISR      = 0x07;        // R|W Interrupt Status Register P0
-        const P0_RSAR0    = 0x08;        // W Remote Start Address Register 0
-        const P0_RSAR1    = 0x09;        // W Remote Start Address Register 1
-        const P0_RBCR0    = 0x0A;        // W Remote Byte Count Register 0
-        const P0_RBCR1    = 0x0B;        // W Remote Byte Count Register 1
-        const P0_RCR      = 0x0C;        // W Receive Configuration Register
-        const P0_TCR      = 0x0D;        // W Transmit Configuration Register
-        const P0_DCR      = 0x0E;        // W Data Configuration Register
-        const P0_IMR      = 0x0F;        // W Interrupt Mask Register
-        // P0 Read Registers
-        const P0_CLDA0    = 0x01;        // R Current Local DMA Address 0
-        const P0_CLDA1    = 0x02;        // R Current Local DMA Address 1
-        const P0_TSR      = 0x04;        // R Transmit Status Register
-        const P0_NCR      = 0x05;        // R Number of Collisions Register
-        const P0_FIFO     = 0x06;        // R FIFO */
-        const P0_CRDA0    = 0x08;        // R Current Remote DMA Address 0
-        const P0_CRDA1    = 0x09;        // R Current Remote DMA Address 1
-        const P0_RSR      = 0x0C;        // R Receive Status Register
-        const P0_CNTR0    = 0x0D;        // R Tally Counter 0 (Frame Alignment Errors)
-        const P0_CNTR1    = 0x0E;        // R Tally Counter 1 (CRC Errors)
-        const P0_CNTR2    = 0x0F;        // R Tally Counter 2 (Missed Packet Error)
-        // P1 Read and Write Registers
-        const P1_PAR0     = 0x01;        //* R|W Physical Address Register 0
-        const P1_PAR1     = 0x02;        //* R|W Physical Address Register 1
-        const P1_PAR2     = 0x03;        //* R|W Physical Address Register 2
-        const P1_PAR3     = 0x04;        //* R|W Physical Address Register 3
-        const P1_PAR4     = 0x05;        //* R|W Physical Address Register 4
-        const P1_PAR5     = 0x06;        //* R|W Physical Address Register 5
-        const P1_CURR     = 0x07;        //* R|W Current Page Register */
-        const P1_MAR0     = 0x08;        //* R|W Multicast Address Register 0
-        const P1_MAR1     = 0x09;        //* R|W Multicast Address Register 1
-        const P1_MAR2     = 0x0A;        //* R|W Multicast Address Register 2
-        const P1_MAR3     = 0x0B;        //* R|W Multicast Address Register 3
-        const P1_MAR4     = 0x0C;        //* R|W Multicast Address Register 4 */
-        const P1_MAR5     = 0x0D;        //* R|W Multicast Address Register 5 */
-        const P1_MAR6     = 0x0E;        //* R|W Multicast Address Register 6 */
-        const P1_MAR7     = 0x0F;        //* R|W Multicast Address Register 7 */
-        // P2 Registers are only for diagnostic purposes.
-        // P2 Write Registers
-        const P2_CLDA0    = 0x01;        //* W Current Local DMA Address 0 */
-        const P2_CLDA1    = 0x02;        //* W Current Local DMA Address 1 */
-        const P2_RNPP     = 0x03;        //* R|W Remote Next Packet Pointer */
-        const P2_LNPP     = 0x05;        //* R|W Local Next Packet Pointer */
-        const P2_UPPER    = 0x06;        //* R|W Address Counter (Upper) */
-        const P2_LOWER    = 0x07;        //* R|W Address Counter (Lower) */
-        // P2 Read Registers
-        const P2_PSTART   = 0x01;        //* R Page Start Register */
-        const P2_PSTOP    = 0x02;        //* R Page Stop Register */
-        const P2_TPSR     = 0x04;        //* R Transmit Page Start Address */
-        const P2_RCR      = 0x0C;        //* R Receive Configuration Register */
-        const P2_TCR      = 0x0D;        //* R Transmit Configuration Register */
-        const P2_DCR      = 0x0E;        //* R Data Configuration Register */
-        const P2_IMR      = 0x0F;        //* R Interrupt Mask Register */
-    }
+
+// =============================================================================
+// Offsets for the Page Registers
+// Usage:
+// =============================================================================
+pub mod page_registers_offsets {
+    pub const COMMAND: u16 = 0x00; // R|W COMMAND used for P0, P1, P2
+    pub const RESET: u16 = 0x1F;
+    // define offset for i/o port
+    pub const DATA: u16 = 0x10;
+    // P0 Write Registers
+    pub const P0_PSTART: u16 = 0x01; // W Page Start Register
+    pub const P0_PSTOP: u16 = 0x02; // W Page Stop Register
+    pub const P0_BNRY: u16 = 0x03; // R|W Boundary Pointer  P0
+    pub const P0_TPSR: u16 = 0x04; // W Transmit Page Start Address
+    pub const P0_TBCR0: u16 = 0x05; // W Transmit Byte Count Register 0
+    pub const P0_TBCR1: u16 = 0x06; // W Transmit Byte Count Register 1
+    pub const P0_ISR: u16 = 0x07; // R|W Interrupt Status Register P0
+    pub const P0_RSAR0: u16 = 0x08; // W Remote Start Address Register 0
+    pub const P0_RSAR1: u16 = 0x09; // W Remote Start Address Register 1
+    pub const P0_RBCR0: u16 = 0x0A; // W Remote Byte Count Register 0
+    pub const P0_RBCR1: u16 = 0x0B; // W Remote Byte Count Register 1
+    pub const P0_RCR: u16 = 0x0C; // W Receive Configuration Register
+    pub const P0_TCR: u16 = 0x0D; // W Transmit Configuration Register
+    pub const P0_DCR: u16 = 0x0E; // W Data Configuration Register
+    pub const P0_IMR: u16 = 0x0F; // W Interrupt Mask Register
+    // P0 Read Registers
+    pub const P0_CLDA0: u16 = 0x01; // R Current Local DMA Address 0
+    pub const P0_CLDA1: u16 = 0x02; // R Current Local DMA Address 1
+    pub const P0_TSR: u16 = 0x04; // R Transmit Status Register
+    pub const P0_NCR: u16 = 0x05; // R Number of Collisions Register
+    pub const P0_FIFO: u16 = 0x06; // R FIFO */
+    pub const P0_CRDA0: u16 = 0x08; // R Current Remote DMA Address 0
+    pub const P0_CRDA1: u16 = 0x09; // R Current Remote DMA Address 1
+    pub const P0_RSR: u16 = 0x0C; // R Receive Status Register
+    pub const P0_CNTR0: u16 = 0x0D; // R Tally Counter 0 (Frame Alignment Errors)
+    pub const P0_CNTR1: u16 = 0x0E; // R Tally Counter 1 (CRC Errors)
+    pub const P0_CNTR2: u16 = 0x0F; // R Tally Counter 2 (Missed Packet Error)
+    // P1 Read and Write Registers
+    pub const P1_PAR0: u16 = 0x01; // R|W Physical Address Register 0
+    pub const P1_PAR1: u16 = 0x02; // R|W Physical Address Register 1
+    pub const P1_PAR2: u16 = 0x03; // R|W Physical Address Register 2
+    pub const P1_PAR3: u16 = 0x04; // R|W Physical Address Register 3
+    pub const P1_PAR4: u16 = 0x05; // R|W Physical Address Register 4
+    pub const P1_PAR5: u16 = 0x06; // R|W Physical Address Register 5
+    pub const P1_CURR: u16 = 0x07; // R|W Current Page Register 
+    pub const P1_MAR0: u16 = 0x08; // R|W Multicast Address Register 0
+    pub const P1_MAR1: u16 = 0x09; // R|W Multicast Address Register 1
+    pub const P1_MAR2: u16 = 0x0A; // R|W Multicast Address Register 2
+    pub const P1_MAR3: u16 = 0x0B; // R|W Multicast Address Register 3
+    pub const P1_MAR4: u16 = 0x0C; // R|W Multicast Address Register 4
+    pub const P1_MAR5: u16 = 0x0D; // R|W Multicast Address Register 5
+    pub const P1_MAR6: u16 = 0x0E; // R|W Multicast Address Register 6
+    pub const P1_MAR7: u16 = 0x0F; // R|W Multicast Address Register 7 
+    // P2 Registers are only for diagnostic purposes.
+    // P2 Write Registers
+    pub const P2_CLDA0: u16 = 0x01; // W Current Local DMA Address 0 
+    pub const P2_CLDA1: u16 = 0x02; // W Current Local DMA Address 1 
+    pub const P2_RNPP: u16 = 0x03; // R|W Remote Next Packet Pointer 
+    pub const P2_LNPP: u16 = 0x05; // R|W Local Next Packet Pointer 
+    pub const P2_UPPER: u16 = 0x06; // R|W Address Counter (Upper) 
+    pub const P2_LOWER: u16 = 0x07; // R|W Address Counter (Lower) 
+    // P2 Read Registers
+    pub const P2_PSTART: u16 = 0x01; // R Page Start Register 
+    pub const P2_PSTOP: u16 = 0x02; // R Page Stop Register 
+    pub const P2_TPSR: u16 = 0x04; // R Transmit Page Start Address 
+    pub const P2_RCR: u16 = 0x0C; // R Receive Configuration Register 
+    pub const P2_TCR: u16 = 0x0D; // R Transmit Configuration Register 
+    pub const P2_DCR: u16 = 0x0E; // R Data Configuration Register 
+    pub const P2_IMR: u16 = 0x0F; // R Interrupt Mask Register 
 }
 
 // =============================================================================

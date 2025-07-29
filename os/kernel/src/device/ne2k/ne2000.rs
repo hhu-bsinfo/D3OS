@@ -55,6 +55,9 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags};
 
+
+
+use super::register_flags::page_registers_offsets::*;
 // for writing to the registers
 // super looks in a relative path for other modules
 // load the bitflags for the register into the module
@@ -122,7 +125,6 @@ pub struct Registers {
     // add Mutex (05.07.2025)
     isr_port: Mutex<Port<u8>>,
     imr_port: Mutex<Port<u8>>,
-    rst_port: Port<u8>,
     dcr_port: Port<u8>,
     tcr_port: Port<u8>,
     rcr_port: Port<u8>,
@@ -133,20 +135,8 @@ pub struct Registers {
     bnry_port: Port<u8>,
     current_port: Port<u8>,
     // physical address registers
-    par_0: Port<u8>,
-    par_1: Port<u8>,
-    par_2: Port<u8>,
-    par_3: Port<u8>,
-    par_4: Port<u8>,
-    par_5: Port<u8>,
-    mar_0: Port<u8>,
-    mar_1: Port<u8>,
-    mar_2: Port<u8>,
-    mar_3: Port<u8>,
-    mar_4: Port<u8>,
-    mar_5: Port<u8>,
-    mar_6: Port<u8>,
-    mar_7: Port<u8>,
+    par: [Port<u8>; 6],
+    mar: [Port<u8>; 8],
     crda_0_p0: Port<u8>,
     crda_1_p0: Port<u8>,
     tbcr_0_port_p0: Port<u8>,
@@ -231,48 +221,36 @@ impl Registers {
         Self {
             // Adress for reseting the device
             // TODO: add OSDEV WIKI reference
-            reset_port: Port::new(base_address + 0x1F),
+            reset_port: Port::new(base_address + RESET),
             // command Port for controlling the CR Register
             //(starting, stopping the nic, switching between pages)
-            command_port: Port::new(base_address + 0x00),
-            pstart_port: Port::new(base_address + 0x01),
-            pstop_port: Port::new(base_address + 0x02),
-            bnry_port: Port::new(base_address + 0x03),
-            tpsr_port: Port::new(base_address + 0x04),
-            tbcr_0_port_p0: Port::new(base_address + 0x05),
-            tbcr_1_port_p0: Port::new(base_address + 0x06),
-            isr_port: Mutex::new(Port::new(base_address + 0x07)),
-            rsar_0_port: Port::new(base_address + 0x08),
-            rsar_1_port: Port::new(base_address + 0x09),
-            rbcr_0_port: Port::new(base_address + 0x0A),
-            rbcr_1_port: Port::new(base_address + 0x0B),
-            rcr_port: Port::new(base_address + 0x0C),
-            tcr_port: Port::new(base_address + 0x0D),
-            dcr_port: Port::new(base_address + 0x0E),
-            imr_port: Mutex::new(Port::new(base_address + 0x0F)),
+            command_port: Port::new(base_address + COMMAND),
+            pstart_port: Port::new(base_address + P0_PSTART ),
+            pstop_port: Port::new(base_address + P0_PSTOP),
+            bnry_port: Port::new(base_address + P0_BNRY),
+            tpsr_port: Port::new(base_address + P0_TPSR),
+            tbcr_0_port_p0: Port::new(base_address + P0_TBCR0),
+            tbcr_1_port_p0: Port::new(base_address + P0_TBCR1),
+            isr_port: Mutex::new(Port::new(base_address + P0_ISR)),
+            rsar_0_port: Port::new(base_address + P0_RSAR0),
+            rsar_1_port: Port::new(base_address + P0_RSAR1),
+            rbcr_0_port: Port::new(base_address + P0_RBCR0),
+            rbcr_1_port: Port::new(base_address + P0_RBCR1),
+            rcr_port: Port::new(base_address + P0_RCR),
+            tcr_port: Port::new(base_address + P0_TCR),
+            dcr_port: Port::new(base_address + P0_DCR),
+            imr_port: Mutex::new(Port::new(base_address + P0_IMR)),
             // data port (or i/o port for reading received data)
-            data_port: Port::new(base_address + 0x10),
-            rst_port: Port::new(base_address + 0x80),
+            data_port: Port::new(base_address + DATA),
             // PAGE 1 R+W Registers
-            par_0: Port::new(base_address + 0x01),
-            par_1: Port::new(base_address + 0x02),
-            par_2: Port::new(base_address + 0x03),
-            par_3: Port::new(base_address + 0x04),
-            par_4: Port::new(base_address + 0x05),
-            par_5: Port::new(base_address + 0x06),
-            current_port: Port::new(base_address + 0x07),
-            mar_0: Port::new(base_address + 0x08),
-            mar_1: Port::new(base_address + 0x09),
-            mar_2: Port::new(base_address + 0x0A),
-            mar_3: Port::new(base_address + 0x0B),
-            mar_4: Port::new(base_address + 0x0C),
-            mar_5: Port::new(base_address + 0x0D),
-            mar_6: Port::new(base_address + 0x0E),
-            mar_7: Port::new(base_address + 0x0F),
-            crda_0_p0: Port::new(base_address + 0x08),
-            crda_1_p0: Port::new(base_address + 0x09),
+            par: core::array::from_fn(|i| Port::new(base_address + P1_PAR0 + i as u16)),
+            mar: core::array::from_fn(|i| Port::new(base_address + P1_MAR0 + i as u16)),
+            current_port: Port::new(base_address + P1_CURR),
+            crda_0_p0: Port::new(base_address + P0_CRDA0),
+            crda_1_p0: Port::new(base_address + P0_CRDA1),
         }
     }
+
 
     fn read_isr(&self) -> u8 {
         unsafe { self.isr_port.lock().read() }
@@ -533,12 +511,12 @@ impl Ne2000 {
             }
 
             // Write MAC address to PAR registers (every second byte)
-            ne2000.registers.par_0.write(mac[0]);
-            ne2000.registers.par_1.write(mac[1]);
-            ne2000.registers.par_2.write(mac[2]);
-            ne2000.registers.par_3.write(mac[3]);
-            ne2000.registers.par_4.write(mac[4]);
-            ne2000.registers.par_5.write(mac[5]);
+                ne2000.registers.par[0].write(mac[0]);
+                ne2000.registers.par[1].write(mac[1]);
+                ne2000.registers.par[2].write(mac[2]);
+                ne2000.registers.par[3].write(mac[3]);
+                ne2000.registers.par[4].write(mac[4]);
+                ne2000.registers.par[5].write(mac[5]);
 
             //TODO: just for testing remove at end
             info!(
@@ -549,14 +527,14 @@ impl Ne2000 {
             // located on Page 1
             // Initialize Multicast Address Register: MAR0-MAR7 with 0xFF
             // TODO: add reference handbook
-            ne2000.registers.mar_0.write(0xFF);
-            ne2000.registers.mar_1.write(0xFF);
-            ne2000.registers.mar_2.write(0xFF);
-            ne2000.registers.mar_3.write(0xFF);
-            ne2000.registers.mar_4.write(0xFF);
-            ne2000.registers.mar_5.write(0xFF);
-            ne2000.registers.mar_6.write(0xFF);
-            ne2000.registers.mar_7.write(0xFF);
+            ne2000.registers.mar[0].write(0xFF);
+            ne2000.registers.mar[1].write(0xFF);
+            ne2000.registers.mar[2].write(0xFF);
+            ne2000.registers.mar[3].write(0xFF);
+            ne2000.registers.mar[4].write(0xFF);
+            ne2000.registers.mar[5].write(0xFF);
+            ne2000.registers.mar[6].write(0xFF);
+            ne2000.registers.mar[7].write(0xFF);
 
             // P.156 http://www.bitsavers.org/components/national/_dataBooks/1988_National_Data_Communications_Local_Area_Networks_UARTs_Handbook.pdf#page=156
             CURRENT_NEXT_PAGE_POINTER = RECEIVE_START_PAGE + 1;
