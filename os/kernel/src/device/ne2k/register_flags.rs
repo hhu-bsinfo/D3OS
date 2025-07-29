@@ -81,7 +81,11 @@ bitflags! {
     }
 }
 
+// =============================================================================
 // Command Register
+// Usage: switch between pages, start/stop the nic, enable/disable DMA
+// Reference: p.20, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+// =============================================================================
 bitflags! {
     pub struct CR :u8 {
         const STP = 0x01; // STOP
@@ -92,21 +96,29 @@ bitflags! {
         const RD_2 = 0x20; // Remote DMA Command 2
         const PS_0 = 0x40; // Page Select PS0 */
         const PS_1 = 0x80; // Page Select PS1 */
-        /** Page Selection Commands */
+        // Page Selection Commands
         const PAGE_0 = 0x00;
         const PAGE_1 = 0x40;
         const PAGE_2 = 0x80;
-        /** Remote DMA Commands */
+        // Remote DMA Commands
         const REMOTE_READ = 0x08;
         const REMOTE_WRITE = 0x10;
         const SEND_PACKET = 0x08 | 0x10;
         const STOP_DMA = 0x20;
+        // Stop nic and dma
         const STOP = 0x01 | 0x20;
     }
 }
 
-bitflags! {
+// =============================================================================
+// InterruptStatusRegister
+// Usage: - get Status of the Interrupts which occured during operation of
+//          the card
+//        - interrupts are cleared by writing a "1" into the register
+// Reference: p.20, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+// =============================================================================
 
+bitflags! {
     pub struct InterruptStatusRegister : u8 {
         const ISR_PRX = 0x01; //packet received
         const ISR_PTX = 0x02; //packet transmitted
@@ -119,10 +131,13 @@ bitflags! {
     }
 }
 
+// =============================================================================
+// InterruptMaskRegister
+// Usage: enable / disable interrupts
+// Reference: p.21, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+// =============================================================================
 bitflags! {
 
-    // enable / disable interrupts
-    // TODO: add comments
     pub struct InterruptMaskRegister : u8 {
         const IMR_PRXE = 0x01;
         const IMR_PTXE = 0x02;
@@ -134,9 +149,11 @@ bitflags! {
     }
 }
 
-//Data Configuration Register as defined in DP8390D
-//P.22 https://datasheetspdf.com/pdf-file/549771/NationalSemiconductor/DP8390D/1
-// TODO: add comments
+// =============================================================================
+// Data Configuration Register
+// Usage: control FIFO treshholds, byte order, loopback mode
+// Reference: p.22, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+// =============================================================================
 bitflags! {
     pub struct DataConfigurationRegister : u8 {
         const DCR_WTS = 0x01;
@@ -149,8 +166,11 @@ bitflags! {
     }
 }
 
-// Transmit Configuration Register as defined in DP8390D
-//P.23 https://datasheetspdf.com/pdf-file/549771/NationalSemiconductor/DP8390D/1
+// =============================================================================
+// Transmit Configuration Register
+// Usage: control actions of the transmitter section of the nic
+// Reference: p.23, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+// =============================================================================
 bitflags! {
     pub struct TransmitConfigurationRegister : u8 {
         const TCR_CRC  = 0x01;  //Inhibit CRC
@@ -161,8 +181,12 @@ bitflags! {
     }
 }
 
-// Transmit Status Register as defined in DP8390D
-// P. 24https://datasheetspdf.com/pdf-file/549771/NationalSemiconductor/DP8390D/1
+// =============================================================================
+// Transmit Status Register
+// Usage: - get the Status of Events, which happened during transmission of a packet
+//        - cleared when next transmission is initiated
+// Reference: p.24, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+// =============================================================================
 bitflags! {
 
     pub struct TransmitStatusRegister : u8 {
@@ -176,9 +200,12 @@ bitflags! {
     }
 }
 
-// Receive Configuration Register as defined in DP8390D
-// P.25 https://datasheetspdf.com/pdf-file/549771/NationalSemiconductor/DP8390D/1
-
+// =============================================================================
+// Receive Configuration Register
+// Usage: - set, which types of packets should be accepted by the nic
+//        - define operations of the nic during reception
+// Reference: p.25, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+// =============================================================================
 bitflags! {
 
     pub struct ReceiveConfigurationRegister : u8 {
@@ -191,18 +218,23 @@ bitflags! {
     }
 }
 
-// Receive Status Register as defined in DP8390D
-// P.26 https://datasheetspdf.com/pdf-file/549771/NationalSemiconductor/DP8390D/1
+// =============================================================================
+// Receive Status Register
+// Usage: - record status of the received packet (errors, physical or multicast address)
+//        - if packet received successful -> contents of the register will be written to buffer memory
+//        - if not : write to memory at the head of the erroneous packet
+// Reference: p.26, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+// =============================================================================
 
 bitflags! {
     pub struct ReceiveStatusRegister : u8 {
-        const RSR_PRX = 0x01; //** Packet Received Intact
-        const RSR_CRC = 0x02; //** CRC Error
-        const RSR_FAE = 0x04; //** Frame Alignment Error
-        const RSR_FO  = 0x08; //** FIFO Overrun
-        const RSR_MPA = 0x10; //** Missed Packet
-        const RSR_PHY = 0x20; //** Physical/Multicast Address
-        const RSR_DIS = 0x40; //** Receiver Disabled
-        const RSR_DFR = 0x80;  //** Deferring
+        const RSR_PRX = 0x01; // Packet Received Intact
+        const RSR_CRC = 0x02; // CRC Error
+        const RSR_FAE = 0x04; // Frame Alignment Error
+        const RSR_FO  = 0x08; // FIFO Overrun
+        const RSR_MPA = 0x10; // Missed Packet
+        const RSR_PHY = 0x20; // Physical/Multicast Address
+        const RSR_DIS = 0x40; // Receiver Disabled
+        const RSR_DFR = 0x80; // Deferring
     }
 }

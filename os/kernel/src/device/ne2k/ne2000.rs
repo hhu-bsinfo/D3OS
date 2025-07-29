@@ -483,11 +483,11 @@ impl Ne2000 {
                     .bits(),
             );
 
-            // Switch to P1, disable DMA and Stop the NIC */
+            // Switch to P1, disable DMA and Stop the NIC
             ne2000
                 .registers
                 .command_port
-                .write((CR::STP | CR::STOP_DMA | CR::PAGE_1).bits());
+                .write((CR::STOP | CR::PAGE_1).bits());
 
             // TODO: remove after testing
             //let mut packet = [0u8; 40];
@@ -567,7 +567,7 @@ impl Ne2000 {
                 .current_port
                 .write(CURRENT_NEXT_PAGE_POINTER);
 
-            // 10) Start NIC
+            // 10) Start the NIC
             ne2000
                 .registers
                 .command_port
@@ -870,6 +870,8 @@ impl Ne2000 {
                         .write(CURRENT_NEXT_PAGE_POINTER - 1);
                 }
 
+
+                // update the current variable for the next packet to be read
                 self.registers
                     .command_port
                     .write((CR::STA | CR::STOP_DMA | CR::PAGE_1).bits());
@@ -878,7 +880,7 @@ impl Ne2000 {
                     .command_port
                     .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
             }
-            // clear the RDC Interrupt (Remote DMA Operation is complete)
+            // clear the RDC Interrupt in the ISR (Remote DMA Operation has been completed)
             self.registers
                 .isr_port
                 .lock()
