@@ -10,7 +10,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
-use crate::{ process_manager, scheduler};
+use crate::{ network, process_manager, scheduler};
 use crate::memory::pages::Paging;
 use crate::memory::vmm::VirtualAddressSpace;
 
@@ -70,5 +70,11 @@ impl PartialEq for Process {
 impl core::fmt::Debug for Process {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Process").field("id", &self.id).finish()
+    }
+}
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        network::close_sockets_for_process(self)
     }
 }

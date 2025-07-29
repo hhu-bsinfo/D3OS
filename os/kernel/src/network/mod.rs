@@ -300,3 +300,18 @@ fn poll_sockets() {
         }
     }
 }
+
+pub(crate) fn close_sockets_for_process(process: &mut Process) {
+    let mut lock = SOCKET_PROCESS.write();
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let handles: Vec<_> = lock
+        .iter()
+        .filter(|(_handle, proc)| ***proc == *process)
+        .map(|(handle, _proc)| handle)
+        .copied()
+        .collect();
+    for handle in handles {
+        lock.remove(&handle).unwrap();
+        sockets.remove(handle);
+    }
+}
