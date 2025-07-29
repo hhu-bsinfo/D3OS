@@ -14,21 +14,18 @@
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{PAGE_SIZE, frames};
 use crate::process::thread::Thread;
-use crate::{apic, device, interrupt_dispatcher, pci_bus, process_manager, scheduler};
-use core::{mem, result};
+use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
+use core::mem;
 // for calling the methods outside the interrupt handler
-use alloc::string::ToString;
 use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use core::{ptr, slice};
 // print to terminal
 use log::info;
 // for allocator impl
 use alloc::boxed::Box;
-use alloc::format;
 use alloc::string::String;
 // import interrupt functionalities
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use core::ptr::NonNull;
 use spin::{Mutex, RwLock};
 
 // lock free algorithms and datastructes

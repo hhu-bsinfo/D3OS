@@ -1,6 +1,6 @@
 use crate::device::rtl8139::Rtl8139;
 // add the N2000 driver
-use crate::device::ne2k::{ne2000::Ne2000, network_stack::Ne2000TxToken};
+use crate::device::ne2k::ne2000::Ne2000;
 use crate::process::thread::Thread;
 use crate::{pci_bus, scheduler, timer};
 use alloc::sync::Arc;
@@ -14,7 +14,7 @@ use smoltcp::iface::{Interface, SocketHandle, SocketSet};
 use smoltcp::socket::udp;
 use smoltcp::time::Instant;
 use smoltcp::wire::Ipv4Address;
-use spin::{Mutex, Once, RwLock};
+use spin::{Once, RwLock};
 
 static RTL8139: Once<Arc<Rtl8139>> = Once::new();
 // ensure that the driver is only initialized once
@@ -83,7 +83,7 @@ pub fn init() {
         // if NE2000 is initialized, start a new thread,
         // which calls poll_ne2000 in an infinite loop
         // the method checks for any outgoing or incoming packages in the buffers of
-        // the device or in the buffers of let ne2k = Arc::new(Mutex::new(Ne2000::new(devices2[0])));the sockets
+        // the device or in the buffers of the sockets
         if NE2000.get().is_some() {
             scheduler().ready(Thread::new_kernel_thread(
                 || loop {
