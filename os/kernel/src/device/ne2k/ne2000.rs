@@ -72,9 +72,11 @@ use super::network_stack::*;
 // ==== CONSTANTS
 // =============================================================================
 
+const DISPLAY_RED: &'static str = "\x1b[1;31m";
+
+// Capacity for the receive_queue in the ne2000 struct
 const RECV_QUEUE_CAP: usize = 16;
 
-const DISPLAY_RED: &'static str = "\x1b[1;31m";
 
 // Define the range of a size for an ethernet packet
 static MINIMUM_ETHERNET_PACKET_SIZE: u8 = 64;
@@ -100,7 +102,9 @@ static RECEIVE_STOP_PAGE: u8 = 0x80;
 // =============================================================================
 
 //Physical Address Registers, for Reading the MAC Address
-// TODO: add reference
+// Reference:
+// section "10.8 PHYSICAL ADDRESS REGISTERS (PAR0-PAR5)", 
+// https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
 pub struct ParRegisters {
     id: Mutex<(
         PortReadOnly<u8>,
@@ -113,6 +117,9 @@ pub struct ParRegisters {
 }
 
 
+// =============================================================================
+// Registers on Page0
+// =============================================================================
 pub struct Page0 {
     crda_0_p0: Port<u8>,
     crda_1_p0: Port<u8>,
@@ -132,6 +139,10 @@ pub struct Page0 {
     rbcr_0_port: Port<u8>,
     rbcr_1_port: Port<u8>,
 }
+
+// =============================================================================
+// Registers on Page1
+// =============================================================================
 pub struct Page1 {
     // physical address registers
     par: [Port<u8>; 6],
@@ -152,7 +163,8 @@ pub struct Registers {
 
 // The Structure of the PacketHeader is definied in the datasheet
 // Header is 4 KB
-// TODO: add reference
+// Reference: p.8, Section "Beginning of Reception", p.11 Section "Storage Format for Received Packets", 
+// https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
 // receive status : holds the content of the Receive Status Register
 // next_packet : Pointer, which holds the next ringbuffer address
 // length : length of the received data
@@ -263,11 +275,12 @@ impl Registers {
             // command Port for controlling the CR Register
             //(starting, stopping the nic, switching between pages)
             command_port: Port::new(base_address + COMMAND),
+            // Interrupt Status Register
             isr_port: Mutex::new(Port::new(base_address + P0_ISR)),
+            // Interrupt Mask Register
             imr_port: Mutex::new(Port::new(base_address + P0_IMR)),
             // data port (or i/o port for reading received data)
             data_port: Port::new(base_address + DATA),
-            // PAGE 1 R+W Registers
             page0: Page0::new(base_address),
             page1: Page1::new(base_address),
             
@@ -330,13 +343,19 @@ impl Ne2000 {
         // send_queue.enqueue(13) -> enque data
         // see: https://docs.rs/nolock/latest/nolock/queues/mpsc/jiffy/index.html
         let send_queue = mpsc::jiffy::queue();
-        // enable interrupts
+        // Reads the IRQ number from the PCI device, 
+        // adds the offset and converts into an InterruptVector
         let interrupt =
             InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 + 32).unwrap();
+        //reference to the kernel's main process
         let kernel_process = process_manager().read().kernel_process().unwrap();
+        // create bounded mpmc queue with RECV_QUEUE_CAP Capacity
         let recv_buffers = mpmc::bounded::scq::queue(RECV_QUEUE_CAP);
         for _ in 0..RECV_QUEUE_CAP {
+            // allocate one physical frame 
             let phys_frame = frames::alloc(1);
+            
+            //map physical frame into the kernel process address space 
             let pages = PageRange {
                 start: Page::from_start_address(VirtAddr::new(
                     phys_frame.start.start_address().as_u64(),
@@ -348,11 +367,15 @@ impl Ne2000 {
                 .unwrap(),
             };
 
+            // PRESENT: Frame is loaded into memory
+            // WRITABLE: Frame is writable
+            // NO_CACHE: disable caching
             kernel_process.virtual_address_space.set_flags(
                 pages,
                 PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
             );
 
+            // allocate buffer for physical memory
             let buffer = unsafe {
                 Vec::from_raw_parts_in(
                     phys_frame.start.start_address().as_u64() as *mut u8,
@@ -361,6 +384,7 @@ impl Ne2000 {
                     PacketAllocator::default(),
                 )
             };
+            // enqueue allocated buffer into the receive queue
             recv_buffers
                 .1
                 .try_enqueue(buffer)
@@ -390,21 +414,11 @@ impl Ne2000 {
         unsafe {
             info!("\x1b[1;31mResetting Device NE2000");
 
-            //Reset the NIC
+            // Reset the NIC
             // Clears the Registers CR, ISR, IMR, DCR, TCR (see NS32490D.pdf, p.29, 11.0 Initialization Procedure)
             // this ensures, that the Registers are cleared and no undefined behavior can happen
-
-            // From C++ Ne2000
-            /* Wait until Reset Status is 0 */
-            //while(!(baseRegister.readByte(P0_ISR) & ISR_RST)) {
-            //Util::Async::Thread::sleep(Util::Time::Timestamp::ofMilliseconds(1));
-            //}
-            // Wait for the reset to complete
-            //reset_port.write(0x00);
-
             // just doing the read operation enables the reset, a write is not necessary, but the bits dont get set correctly
-            // see spec in PDF
-            //TODO:, add comments what registers are affected and which bits are set
+            // Reference: https://wiki.osdev.org/Ne2000#Initialization_and_MAC_Address
             let reset_value = ne2000.registers.reset_port.read();
             ne2000.registers.reset_port.write(reset_value);
 
@@ -430,7 +444,7 @@ impl Ne2000 {
             // Register is used to program the NIC for 8- or 16-bit memory interface,
             // select byte ordering in 16-bit applications and
             // establish FIFO threshholds. The DCR must be initialized prior to loading the Remote Byte Count Registers.
-            // TODO: add reference
+            // Reference: p.22, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
             // Command Register at Page 0 at this point
             ne2000.registers.page0.dcr_port.write(
                 (DataConfigurationRegister::DCR_AR
@@ -466,7 +480,7 @@ impl Ne2000 {
                 .write(TransmitConfigurationRegister::TCR_LB0.bits());
 
             // initialize the NIC's buffer
-            // pstart and pstop define the size of the buffer (pstop - pstart = buffer size )
+            // pstart and pstop define the size of the receive buffer (pstop - pstart = buffer size )
             ne2000.registers.page0.tpsr_port.write(TRANSMIT_START_PAGE);
             ne2000.registers.page0.pstart_port.write(RECEIVE_START_PAGE);
             ne2000.registers.page0.bnry_port.write(RECEIVE_START_PAGE + 1);
@@ -608,7 +622,6 @@ impl Ne2000 {
     // =============================================================================
     // ==== FUNCTION send_packet
     // =============================================================================
-    // TODO: check how to build a correct data packet in the documentation
     // - the function is called by the consume function of TxToken and gets a datagram
     // as param.
     // - the function sets the internal registers of the nic for writing the packet
@@ -626,7 +639,9 @@ impl Ne2000 {
             // =============================================================================
             //dummy_read
             // =============================================================================
-            //TODO: (see thiel bachelor thesis), add reference from handbook
+            // Usage: a dummy read is performed to ensure no data corruption occurs, 
+            // when the nic first starts up 
+            // Reference: p.13, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
             // =============================================================================
 
             info!("Start Dummy Read");
@@ -668,7 +683,7 @@ impl Ne2000 {
 
             info!("Load packet size and enable remote write");
             // Load RBCR with packet size
-            let packet_length = packet.len() as u16;
+            let packet_length = packet.len() as u32;
             let low = (packet_length & 0xFF) as u8;
             let high = (packet_length >> 8) as u8;
             self.registers.page0.rbcr_0_port.write(low);
@@ -690,7 +705,6 @@ impl Ne2000 {
                 .write((CR::STA | CR::REMOTE_WRITE | CR::PAGE_0).bits());
 
             // Write packet to remote DMA
-            // TODO change data port
             let data_port = &mut self.registers.data_port;
             for &data in packet {
                 data_port.write(data);
@@ -736,6 +750,7 @@ impl Ne2000 {
 
             // Read current register to prepare for the next packet
             let mut current = self.registers.page1.current_port.read();
+
             // switch back to Page 0
             self.registers
                 .command_port
@@ -761,7 +776,8 @@ impl Ne2000 {
                 // the nic always stores a packet header at the beginning of the first
                 // buffer page which is used to store the received package
                 // the nic itself attaches the a 4 Byte header to each packet
-                // TODO: add reference
+                // Reference: p.8, Section "Beginning of Reception", 
+                // https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
                 let packet_header = PacketHeader {
                     receive_status: self.registers.data_port.read() as u8,
                     next_packet: self.registers.data_port.read() as u8,
@@ -936,26 +952,29 @@ impl Ne2000 {
     // =============================================================================
     // gets called, if the buffer ring is full
     // this is analogous to the nic datasheet
-    // TODO: add reference
+    // Reference: p.9-10, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
     // =============================================================================
     pub fn handle_overflow(&mut self) {
         info!("overflow");
         unsafe {
             // 1. save the value of the TXP Bit in CR
             let txp_bit = self.registers.command_port.read() & CR::TXP.bits();
-            // 2. Issue stop command
+
+            // 2. Issue stop command, stop NIC and DMA
             self.registers
                 .command_port
                 .write((CR::STOP | CR::PAGE_0).bits());
 
-            // 3. wait for at least 1.6 ms according to the documentation
-            // TODO: add reference
+            // 3. wait for at least 1.6 ms according to the documentation, 
+            // until transmit or receive operation has ended
             scheduler().sleep(1600);
+
             // 4. Clear RBCR0 and RBCR1
             self.registers.page0.rbcr_0_port.write(0);
             self.registers.page0.rbcr_1_port.write(0);
-            // 5. read value of TXP bit, check if there was a transmission in progress when the
-            // stop command was issued
+
+            // 5. read value of TXP bit, check if there was a 
+            // transmission in progress when the stop command was issued
             // if value = 0 -> set resend = 0
             // if value = 1 -> read ISR
             //      if PTX or TXE = 1 -> resend = 0
@@ -980,17 +999,21 @@ impl Ne2000 {
                 .page0
                 .tcr_port
                 .write(TransmitConfigurationRegister::TCR_LB0.bits());
+
             // 7. Issue start command
             self.registers
                 .command_port
                 .write((CR::STA | CR::PAGE_0).bits());
+
             // 8. remove packets in the buffer
             self.receive_packet();
+
             //9. Reset Overwrite warning (OVW)
             self.registers
                 .isr_port
                 .lock()
                 .write(InterruptStatusRegister::ISR_OVW.bits());
+
             //10. take nic out of loopback
             self.registers.page0.tcr_port.write(0);
 
@@ -1005,8 +1028,13 @@ impl Ne2000 {
 
     // assign driver to interrupt handler
     pub fn assign(device: Arc<Ne2000>) {
+        // get the interrupt field in the ne2000 struct
         let interrupt = device.interrupt;
+        //assign the interrupt handler to the given interrupt vector 
         interrupt_dispatcher().assign(interrupt, Box::new(Ne2000InterruptHandler::new(device)));
+        // allow interrupt requests and handle them by the Advanced Programmable Interrupt controller
+        // APIC distributes theses as Interrupt Messages to the local apics on the processors of the system
+        // see: https://de.wikipedia.org/wiki/Advanced_Programmable_Interrupt_Controller
         apic().allow(interrupt);
     }
 }
