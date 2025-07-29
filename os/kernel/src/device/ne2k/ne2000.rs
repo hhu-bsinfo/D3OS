@@ -95,7 +95,8 @@ static RECEIVE_START_PAGE: u8 = 0x46;
 
 //Reception Buffer Ring End
 //P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
-static RECEIVE_STOP_PAGE: u8 = 0x80;
+//static RECEIVE_STOP_PAGE: u8 = 0x80;
+static RECEIVE_STOP_PAGE: u8 = 0x50;
 
 // =============================================================================
 // ==== STRUCTS

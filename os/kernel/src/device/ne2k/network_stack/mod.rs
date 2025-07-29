@@ -50,13 +50,15 @@ use x86_64::{PhysAddr, VirtAddr};
 
 use super::ne2000::*;
 
-// from OSDEV WIKI
 // NIC uses two ring buffers for packet handling, which are made of 256 Byte Pages
-// TODO: add reference and integrate into code
+// Reference: https://wiki.osdev.org/Ne2000#Ring_Buffer
 
 const NE_PAGE_SIZE: usize = 256;
+//Packet Header Size
 const HEADER_SIZE: usize = 4;
+// max. size of one Ethernet packet
 const MAX_FRAME_SIZE: usize = 1500;
+// max. Buffer size
 const BUFFER_SIZE: usize = HEADER_SIZE + MAX_FRAME_SIZE; // = 1504
 const BUFFER_PAGES: usize = (BUFFER_SIZE + NE_PAGE_SIZE - 1) / NE_PAGE_SIZE; // = 6
 const TOTAL_BUFFER_BYTES: usize = BUFFER_PAGES * NE_PAGE_SIZE; // = 1536

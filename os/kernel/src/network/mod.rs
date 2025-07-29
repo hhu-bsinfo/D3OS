@@ -62,12 +62,12 @@ pub fn init() {
     // TODO: add reference for vendor and device id here
 
     if enable_ne2k {
-        let devices2 = pci_bus().search_by_ids(0x10ec, 0x8029);
-        if devices2.len() > 0 {
+        let device_ne2k = pci_bus().search_by_ids(0x10ec, 0x8029);
+        if device_ne2k.len() > 0 {
             NE2000.call_once(|| {
                 info!("\x1b[1;31mFound Realtek 8029 network controller");
                 //let ne2k = Arc::new(Ne2000::new(devices2[0]));
-                let device = Ne2000::new(devices2[0]);
+                let device = Ne2000::new(device_ne2k[0]);
                 let ne2k = Arc::new(device);
 
                 //read the mac address
