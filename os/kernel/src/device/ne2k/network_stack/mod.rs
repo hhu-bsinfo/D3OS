@@ -53,18 +53,32 @@ use super::ne2000::*;
 // from OSDEV WIKI
 // NIC uses two ring buffers for packet handling, which are made of 256 Byte Pages
 // TODO: add reference and integrate into code
-const NE2K_PAGES: usize = 64;
-const NE2K_PAGE_BYTES: usize = 256;
-const BUFFER_RING_BYTES: usize = NE2K_PAGES * NE2K_PAGE_BYTES;
-// => (16 KiB + 4 KiB -1)/4 KiB = 4 pages
-const FRAME_PAGES: usize = (BUFFER_RING_BYTES + PAGE_SIZE - 1) / PAGE_SIZE;
 
-const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
-const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
+const NE_PAGE_SIZE: usize = 256;
+const HEADER_SIZE: usize = 4;
+const MAX_FRAME_SIZE: usize = 1500;
+const BUFFER_SIZE: usize = HEADER_SIZE + MAX_FRAME_SIZE; // = 1504
+const BUFFER_PAGES: usize = (BUFFER_SIZE + NE_PAGE_SIZE - 1) / NE_PAGE_SIZE; // = 6
+const TOTAL_BUFFER_BYTES: usize = BUFFER_PAGES * NE_PAGE_SIZE; // = 1536
+
+// => (16 KiB + 4 KiB -1)/4 KiB = 4 pages
+//const FRAME_PAGES: usize = (BUFFER_RING_BYTES + PAGE_SIZE - 1) / PAGE_SIZE;
+
+// size of each receive buffer
+// 8 KiB = 8x1024
+// + 16 bytes for header/alignment
+// +1500 : max. Ethernet MTU payload size
+// => 9708 bytes per buffer
+// ensures each buffer can hold an ethernet frame payload + space for padding
+//const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
+// how many buffer pages are needed to cover buffer size
+// 9708 / 4096 = 2.37 -> else part -> 3 Pages
+// Page size is 4096 bytes
+/*const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
     BUFFER_SIZE / PAGE_SIZE
 } else {
     BUFFER_SIZE / PAGE_SIZE + 1
-};
+};*/
 
 // =============================================================================
 // ==== STRUCTS
@@ -303,13 +317,13 @@ impl phy::Device for Ne2000 {
     }
 
     // define what the device supports
-    //max_burst_size = only send one packet at a time
-    // medium = send packet over Ethernet
-    // max_transmission_unit = define max. size of a packet
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
-        caps.max_transmission_unit = 1514;
+        // max_transmission_unit = define max. size of a packet
+        caps.max_transmission_unit = 1536;
+        //max_burst_size = only send one packet at a time
         caps.max_burst_size = Some(1);
+        // medium = send packet over Ethernet
         caps.medium = Medium::Ethernet;
 
         caps
