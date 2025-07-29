@@ -502,32 +502,16 @@ impl Ne2000 {
             //    info!("content: 0x{:02X} ", byte);
             //}
 
-            /*
 
-            self.registers.par_0.write(mac[0]);
-            self.registers.par_1.write(mac[1]);
-            self.registers.par_2.write(mac[2]);
-            self.registers.par_3.write(mac[3]);
-            self.registers.par_4.write(mac[4]);
-            self.registers.par_5.write(mac[5]);*/
             let mut mac = [0u8; 6];
 
             // Initialize Physical Address Register: PAR0-PAR5
             //each mac address bit is written two times into the buffer
             // define the location of the data for the mac address
-            let mut par_ports: [Port<u8>; 6] = [
-                Port::new(ne2000.base_address + 0x01),
-                Port::new(ne2000.base_address + 0x02),
-                Port::new(ne2000.base_address + 0x03),
-                Port::new(ne2000.base_address + 0x04),
-                Port::new(ne2000.base_address + 0x05),
-                Port::new(ne2000.base_address + 0x06),
-            ];
             // iterate through the ports to get the mac address
-            for (i, port) in par_ports.iter_mut().enumerate() {
+            for (i, port) in ne2000.registers.page1.par.iter_mut().enumerate() {
                 mac[i] = port.read();
             }
-
             // Print buffer contents (just for debugging)
             // TODO: remove probably at the end
             for (i, byte) in mac.iter().enumerate() {
@@ -923,7 +907,7 @@ impl Ne2000 {
             mac2[5] = par_registers.5.read();
 
             // start nic
-            registers
+                registers
                 .command_port
                 .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
 
