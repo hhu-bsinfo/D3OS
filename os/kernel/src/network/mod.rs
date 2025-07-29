@@ -1,22 +1,29 @@
+use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr;
-use log::info;
+use log::{info};
 use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
 use smoltcp::socket::{dhcpv4, icmp, tcp, udp, Socket};
 use smoltcp::time::Instant;
 use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr};
 use spin::{Once, RwLock};
 use crate::device::rtl8139::Rtl8139;
-use crate::{pci_bus, scheduler, timer};
+use crate::process::process::Process;
+use crate::{pci_bus, process_manager, scheduler, timer};
 use crate::process::thread::Thread;
 
 static RTL8139: Once<Arc<Rtl8139>> = Once::new();
 
 static INTERFACES: RwLock<Vec<Interface>> = RwLock::new(Vec::new());
 static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
+/// This maps sockets to the respective process.
+/// We use this to check whether a process can access a particular socket.
+/// We can't just create a SocketSet per process because smoltcp drops all
+/// packets for non-existing sockets when polling.
+static SOCKET_PROCESS: RwLock<BTreeMap<SocketHandle, Arc<Process>>> = RwLock::new(BTreeMap::new());
 
 #[derive(Debug)]
 #[repr(u8)]
@@ -62,11 +69,35 @@ pub fn init() {
 
         // request an IP address via DHCP
         let dhcp_socket = dhcpv4::Socket::new();
-        SOCKETS
+        let dhcp_handle = SOCKETS
             .get()
             .expect("Socket set not initialized!")
             .write()
             .add(dhcp_socket);
+        SOCKET_PROCESS
+            .write()
+            .try_insert(dhcp_handle, process_manager().read().current_process())
+            .expect("failed to insert socket into socket-process map");
+    }
+}
+
+fn check_ownership(handle: SocketHandle) {
+    // TODO: these panics should probably kill the process that made the call, not the kernel
+    let lock = SOCKET_PROCESS.read();
+    let owning_process = lock
+        .get(&handle)
+        .expect("process tried accessing non-existent socket");
+    if *owning_process != process_manager().read().current_process() {
+        panic!("process tried to access socket of a different process");
+    }
+}
+
+// for lifetime-reasons this must be a macro
+macro_rules! get_socket_for_current_process {
+    ($socket:ident, $handle:ident, $type:ty) => {
+        check_ownership($handle);
+        let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+        let $socket = sockets.get_mut::<$type>($handle);
     }
 }
 
@@ -96,7 +127,12 @@ pub fn open_udp() -> SocketHandle {
         vec![0; 65535],
     );
 
-    sockets.write().add(udp::Socket::new(rx_buffer, tx_buffer))
+    let handle = sockets.write().add(udp::Socket::new(rx_buffer, tx_buffer));
+    SOCKET_PROCESS
+        .write()
+        .try_insert(handle, process_manager().read().current_process())
+        .expect("failed to insert socket into socket-process map");
+    handle
 }
 
 pub fn open_tcp() -> SocketHandle {
@@ -104,7 +140,12 @@ pub fn open_tcp() -> SocketHandle {
     let rx_buffer = tcp::SocketBuffer::new(vec![0; 65535]);
     let tx_buffer = tcp::SocketBuffer::new(vec![0; 65535]);
 
-    sockets.write().add(tcp::Socket::new(rx_buffer, tx_buffer))
+    let handle = sockets.write().add(tcp::Socket::new(rx_buffer, tx_buffer));
+    SOCKET_PROCESS
+        .write()
+        .try_insert(handle, process_manager().read().current_process())
+        .expect("failed to insert socket into socket-process map");
+    handle
 }
 
 pub fn open_icmp() -> SocketHandle {
@@ -119,32 +160,33 @@ pub fn open_icmp() -> SocketHandle {
         vec![0; 65535],
     );
 
-    sockets.write().add(icmp::Socket::new(rx_buffer, tx_buffer))
+    let handle = sockets.write().add(icmp::Socket::new(rx_buffer, tx_buffer));
+    SOCKET_PROCESS
+        .write()
+        .try_insert(handle, process_manager().read().current_process())
+        .expect("failed to insert socket into socket-process map");
+    handle
 }
 
 pub fn close_socket(handle: SocketHandle) {
     let sockets = SOCKETS.get().expect("Socket set not initialized!");
+    check_ownership(handle);
+    SOCKET_PROCESS.write().remove(&handle).unwrap();
     sockets.write().remove(handle);
 }
 
 pub fn bind_udp(handle: SocketHandle, port: u16) -> Result<(), udp::BindError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<udp::Socket>(handle);
-
+    get_socket_for_current_process!(socket, handle, udp::Socket);
     socket.bind(port)
 }
 
 pub fn bind_tcp(handle: SocketHandle, port: u16) -> Result<(), tcp::ListenError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<tcp::Socket>(handle);
-
+    get_socket_for_current_process!(socket, handle, tcp::Socket);
     socket.listen(port)
 }
 
 pub fn bind_icmp(handle: SocketHandle, ident: u16) -> Result<(), icmp::BindError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<icmp::Socket>(handle);
-
+    get_socket_for_current_process!(socket, handle, icmp::Socket);
     socket.bind(icmp::Endpoint::Ident(ident))
 }
 
@@ -154,28 +196,21 @@ pub fn accept_tcp(handle: SocketHandle) -> Result<u16, tcp::ConnectError> {
     loop {
         // this extra block is needed so that we don't block all sockets
         {
-            let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-            let socket = sockets.get_mut::<tcp::Socket>(handle);
-            
+            get_socket_for_current_process!(socket, handle, tcp::Socket);
             if socket.is_active() {
                 break;
             }
         }
         scheduler().sleep(100);
     }
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<tcp::Socket>(handle);
-    
+    get_socket_for_current_process!(socket, handle, tcp::Socket);
     // TODO: pass the remote addr
     Ok(socket.remote_endpoint().unwrap().port)
 }
 
 pub fn connect_tcp(handle: SocketHandle, host: IpAddress, port: u16) -> Result<u16, tcp::ConnectError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    get_socket_for_current_process!(socket, handle, tcp::Socket);
     let mut interfaces = INTERFACES.write();
-
-    let socket = sockets.get_mut::<tcp::Socket>(handle);
-
     let interface = interfaces.get_mut(0).ok_or(tcp::ConnectError::InvalidState)?;
     let local_port = 1797; // TODO
 
@@ -185,44 +220,32 @@ pub fn connect_tcp(handle: SocketHandle, host: IpAddress, port: u16) -> Result<u
 }
 
 pub fn send_datagram(handle: SocketHandle, destination: IpAddress, port: u16, data: &[u8]) -> Result<(), udp::SendError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<udp::Socket>(handle);
-
+    get_socket_for_current_process!(socket, handle, udp::Socket);
     socket.send_slice(data, (destination, port))
 }
 
 pub fn send_tcp(handle: SocketHandle, data: &[u8]) -> Result<usize, tcp::SendError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<tcp::Socket>(handle);
-
+    get_socket_for_current_process!(socket, handle, tcp::Socket);
     socket.send_slice(data)
 }
 
 pub fn send_icmp(handle: SocketHandle, destination: IpAddress, data: &[u8]) -> Result<(), icmp::SendError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<icmp::Socket>(handle);
-
+    get_socket_for_current_process!(socket, handle, icmp::Socket);
     socket.send_slice(data, destination)
 }
 
 pub fn receive_datagram(handle: SocketHandle, data: &mut [u8]) -> Result<(usize, udp::UdpMetadata), udp::RecvError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<udp::Socket>(handle);
-
+    get_socket_for_current_process!(socket, handle, udp::Socket);
     socket.recv_slice(data)
 }
 
 pub fn receive_tcp(handle: SocketHandle, data: &mut [u8]) -> Result<usize, tcp::RecvError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<tcp::Socket>(handle);
-
+    get_socket_for_current_process!(socket, handle, tcp::Socket);
     socket.recv_slice(data)
 }
 
 pub fn receive_icmp(handle: SocketHandle, data: &mut [u8]) -> Result<(usize, IpAddress), icmp::RecvError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<icmp::Socket>(handle);
-
+    get_socket_for_current_process!(socket, handle, icmp::Socket);
     socket.recv_slice(data)
 }
 

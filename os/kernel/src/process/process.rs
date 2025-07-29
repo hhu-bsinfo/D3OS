@@ -60,3 +60,15 @@ impl Process {
     }
 
 }
+
+impl PartialEq for Process {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl core::fmt::Debug for Process {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Process").field("id", &self.id).finish()
+    }
+}

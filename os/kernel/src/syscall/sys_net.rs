@@ -12,9 +12,6 @@ use crate::{network::{accept_tcp, bind_icmp, bind_tcp, bind_udp, close_socket, c
 pub fn sys_sock_open(protocol: SocketType) -> isize {
     info!("opening a {protocol:?} socket");
     // TODO: what happens when we get a type thats not in the enum?
-    // TODO: can we somehow bind this socket to the process,
-    // so that we know which process has opened this socket
-    // and are able to close it on process exit
     #[allow(unreachable_patterns)]
     let handle = match protocol {
         SocketType::Udp => open_udp(),
