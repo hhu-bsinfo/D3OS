@@ -6,8 +6,6 @@
 //               and implementations for Packet allocation and deallocation
 // =============================================================================
 //
-// TODO:
-//
 // NOTES:
 //
 //
@@ -153,10 +151,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         //let result = f(data);
 
         // call send method using the NE2000
-        // TODO: implement send Methode
-        //self.device.send_packet(data);
-        //info!("Don't leave me here");
-        //allocate one pyhsical frame
+        // allocate one pyhsical frame
         // the phys_buffers gets a start and end PhysFrame (Range)
         // for defining where the packet gets wri tten
         let phys_buffer = frames::alloc(1);

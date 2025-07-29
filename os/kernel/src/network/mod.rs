@@ -59,8 +59,9 @@ pub fn init() {
     // Register the Ne2000 card here
     // wrap into Arc for shared ownership
     // Scans PCI bus for Ne2000 cards or similar by looking at the device id and vendor id.
-    // TODO: add reference for vendor and device id here
-
+    // References:
+    //             - https://en.wikibooks.org/wiki/QEMU/Devices/Network -> the nic model
+    //             - https://theretroweb.com/chips/4692 -> device id and vendor id
     if enable_ne2k {
         let device_ne2k = pci_bus().search_by_ids(0x10ec, 0x8029);
         if device_ne2k.len() > 0 {

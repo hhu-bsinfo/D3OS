@@ -3,12 +3,9 @@
 // AUTHOR      : Johann Spenrath <johann.spenrath@hhu.de>
 // DESCRIPTION : Main file for the NE2000 driver
 // =============================================================================
-// TODO:
-//
 // NOTES:
-// ideas : check trigger method in ne2000.cpp
+// TODO : check trigger method in ne2000.cpp
 // rewrite overwrite and receive method, replace self with reg mentioned above
-// try to understand apic and interrupt handler, dispatcher in d3os
 // do the same for the cpp implementation
 //
 // =============================================================================
@@ -85,6 +82,8 @@ static MAXIMUM_ETHERNET_PACKET_SIZE: u32 = 1522;
 // this variable points to the next packet to be read
 static mut CURRENT_NEXT_PAGE_POINTER: u8 = 0;
 
+
+
 // Buffer Start Page for the transmitted pages
 static TRANSMIT_START_PAGE: u8 = 0x40;
 
@@ -97,6 +96,9 @@ static RECEIVE_START_PAGE: u8 = 0x46;
 //P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
 static RECEIVE_STOP_PAGE: u8 = 0x80;
 //static RECEIVE_STOP_PAGE: u8 = 0x50;
+
+// 0x80 - 0x46 = 0x58 = 58 pages
+// total buffer size = 58 * 256 Bytes  = 14.KiB
 
 // =============================================================================
 // ==== STRUCTS
@@ -151,7 +153,6 @@ pub struct Page1 {
     current_port: Port<u8>,
 }
 // define read + write ports for the registers of the ne2k
-// TODO: add reference
 pub struct Registers {
     reset_port: Port<u8>,
     command_port: Port<u8>,
@@ -268,10 +269,10 @@ impl Page0 {
 }
 impl Registers {
     pub fn new(base_address: u16) -> Self {
-        // TODO: replace hex with Register names defined in a different struct for better readibility
         Self {
             // Adress for reseting the device
-            // TODO: add OSDEV WIKI reference
+            // see: https://wiki.osdev.org/Ne2000#Ne2000_Reset, 
+            //      https://wiki.osdev.org/Ne2000#Register_Pages
             reset_port: Port::new(base_address + RESET),
             // command Port for controlling the CR Register
             //(starting, stopping the nic, switching between pages)
@@ -297,12 +298,8 @@ impl Registers {
     }
 }
 
-// 0x80 - 0x46 = 0x58 = 58 pages
-// total buffer size = 58 * 256 Bytes  = 14.KiB
 
-// par_registers : store the MAC ADDRESS
 // send_queue: needed for packet transmission process in smoltcp
-// TODO: implement receive queue, see rtl8139
 // EXAMPLE for a sender and receiver
 //#![feature(mpmc_channel)]
 //
@@ -433,6 +430,9 @@ impl Ne2000 {
 
             info!("\x1b[1;31mInitializing Registers of Device Ne2000");
 
+
+            // TODO: number the steps and add reference
+
             // Initialize CR Register
             // Switch to Page0 , stop DMA and set the NIC in Stop mode
             ne2000
@@ -473,7 +473,6 @@ impl Ne2000 {
             );
 
             // Place the NIC in Loopback Mode (Mode 0)
-            // TODO: add reference from the handbook
             ne2000
                 .registers
                 .page0
@@ -506,18 +505,7 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STOP | CR::PAGE_1).bits());
 
-            // TODO: remove after testing
-            //let mut packet = [0u8; 40];
-
-            //for byte in packet.iter_mut() {
-            //    *byte = ne2000.registers.data_port.read();
-            //}
-
-            //for byte in packet.iter_mut() {
-            //    info!("content: 0x{:02X} ", byte);
-            //}
-
-
+            // define array for saving the MAC Address
             let mut mac = [0u8; 6];
 
             // Initialize Physical Address Register: PAR0-PAR5
@@ -526,11 +514,6 @@ impl Ne2000 {
             // iterate through the ports to get the mac address
             for (i, port) in ne2000.registers.page1.par.iter_mut().enumerate() {
                 mac[i] = port.read();
-            }
-            // Print buffer contents (just for debugging)
-            // TODO: remove probably at the end
-            for (i, byte) in mac.iter().enumerate() {
-                info!("buffer[{:02}] = 0x{:02X}", i, byte);
             }
 
             // Write MAC address to PAR registers (every second byte)
@@ -541,11 +524,6 @@ impl Ne2000 {
                 ne2000.registers.page1.par[4].write(mac[4]);
                 ne2000.registers.page1.par[5].write(mac[5]);
 
-            //TODO: just for testing remove at end
-            info!(
-                "NE2000 MAC address: [{:02X}-{:02X}-{:02X}-{:02X}-{:02X}-{:02X}]",
-                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
-            );
 
             // located on Page 1
             // Initialize Multicast Address Register: MAR0-MAR7 with 0xFF
@@ -1053,7 +1031,6 @@ impl Ne2000InterruptHandler {
 // =============================================================================
 // gets called, if the nic receives or transmits a package
 // or if an Buffer Overwrite occurs
-// TODO: add reference
 // =============================================================================
 impl InterruptHandler for Ne2000InterruptHandler {
     fn trigger(&self) {

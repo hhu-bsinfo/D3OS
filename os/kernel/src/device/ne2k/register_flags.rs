@@ -5,8 +5,6 @@
 //               which control the Ne2000's functionalities
 //               use these Constants for setting the correct bits in a register
 //
-// TODO: Add comment with reference for each Register
-//
 // NOTES:
 //
 //
@@ -100,8 +98,8 @@ bitflags! {
         const RD_0 = 0x08; // Remote DMA Command 0
         const RD_1 = 0x10; // Remote DMA Command 1
         const RD_2 = 0x20; // Remote DMA Command 2
-        const PS_0 = 0x40; // Page Select PS0 */
-        const PS_1 = 0x80; // Page Select PS1 */
+        const PS_0 = 0x40; // Page Select PS0
+        const PS_1 = 0x80; // Page Select PS1
         // Page Selection Commands
         const PAGE_0 = 0x00;
         const PAGE_1 = 0x40;

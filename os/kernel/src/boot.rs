@@ -298,11 +298,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             // get current time in milliseconds
             let time = timer.systime_ms();
             // for debugging
-            // TODO: remove
-            info!(
-                "MAC Address in boot.rs, added to iface config: {}",
-                ne2000.read_mac()
-            );
             // read mac address of NIC and add it as parameter to the Iface::Config
             // Config :: Configuration structure used for creating a network device
             // HardwareAddress : set the hardware address, which the interface will use
