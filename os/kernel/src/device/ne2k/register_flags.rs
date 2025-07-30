@@ -14,10 +14,6 @@
 use bitflags::bitflags;
 // =============================================================================
 
-// =============================================================================
-// Offsets for the Page Registers
-// Usage:
-// =============================================================================
 pub mod page_registers_offsets {
     pub const COMMAND: u16 = 0x00; // R|W COMMAND used for P0, P1, P2
     pub const RESET: u16 = 0x1F;
@@ -141,7 +137,6 @@ bitflags! {
 // Reference: p.21, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
 // =============================================================================
 bitflags! {
-
     pub struct InterruptMaskRegister : u8 {
         const IMR_PRXE = 0x01;
         const IMR_PTXE = 0x02;
@@ -192,7 +187,6 @@ bitflags! {
 // Reference: p.24, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
 // =============================================================================
 bitflags! {
-
     pub struct TransmitStatusRegister : u8 {
         const TSR_PTX = 0x01; // Packet Transmit
         const TSR_COL = 0x02; // Transmit Collided
@@ -211,7 +205,6 @@ bitflags! {
 // Reference: p.25, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
 // =============================================================================
 bitflags! {
-
     pub struct ReceiveConfigurationRegister : u8 {
         const RCR_SEP = 0x01; // Save Error Packets
         const RCR_AR  = 0x02; // Accept Runt Packets
@@ -229,7 +222,6 @@ bitflags! {
 //        - if not : write to memory at the head of the erroneous packet
 // Reference: p.26, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
 // =============================================================================
-
 bitflags! {
     pub struct ReceiveStatusRegister : u8 {
         const RSR_PRX = 0x01; // Packet Received Intact

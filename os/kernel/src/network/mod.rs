@@ -63,12 +63,17 @@ pub fn init() {
     //             - https://en.wikibooks.org/wiki/QEMU/Devices/Network -> the nic model
     //             - https://theretroweb.com/chips/4692 -> device id and vendor id
     if enable_ne2k {
+        // get the EndpointHeader
+        // the endpoint header contains essential information about the device,
+        // such as the Vendor ID (VID), Device ID (DID), and other configuration parameters
         let device_ne2k = pci_bus().search_by_ids(0x10ec, 0x8029);
         if device_ne2k.len() > 0 {
+            // perform the initialization only once!
             NE2000.call_once(|| {
                 info!("\x1b[1;31mFound Realtek 8029 network controller");
-                //let ne2k = Arc::new(Ne2000::new(devices2[0]));
+                // initialize the driver
                 let device = Ne2000::new(device_ne2k[0]);
+                // wrap the instance in an Arc for sharing in a multithreaded context
                 let ne2k = Arc::new(device);
 
                 //read the mac address
@@ -76,6 +81,7 @@ pub fn init() {
                 //enable interrupt handler
                 Ne2000::assign(Arc::clone(&ne2k));
                 info!("assigned Interrupt handler");
+                // return the instance
                 ne2k
             });
         }

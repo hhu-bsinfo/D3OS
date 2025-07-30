@@ -7,7 +7,6 @@
 // TODO : check trigger method in ne2000.cpp
 // rewrite overwrite and receive method, replace self with reg mentioned above
 // do the same for the cpp implementation
-//
 // =============================================================================
 // DEPENDENCIES:
 // =============================================================================
@@ -33,7 +32,7 @@ use spin::{Mutex, RwLock};
 // mpsc : has the jiffy queue ; lock-free unbounded, for send
 // mpmpc : multiple producers, multiple consumers, for receive
 use nolock::queues::{mpmc, mpsc};
-
+// 
 use pci_types::EndpointHeader;
 // smoltcp provides a full network stack for creating packets, sending, receiving etc.
 use alloc::sync::Arc;
@@ -48,17 +47,14 @@ use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags};
-
-
-
-use super::register_flags::page_registers_offsets::*;
+// =============================================================================
+// Include files in the module ne2k
+// =============================================================================
 // for writing to the registers
 // super looks in a relative path for other modules
 // load the bitflags for the register into the module
-use super::register_flags::{
-    CR, DataConfigurationRegister, InterruptMaskRegister, InterruptStatusRegister,
-    ReceiveConfigurationRegister, ReceiveStatusRegister, TransmitConfigurationRegister,
-};
+use super::register_flags::*;
+use super::register_flags::page_registers_offsets::*;
 // smoltcp configuration
 use super::network_stack::*;
 
@@ -291,6 +287,8 @@ impl Ne2000 {
     // initialize the card and its registers for transmit and receive operations
     // =============================================================================
 
+    // endpoint header contains essential information about the device, 
+    // such as the Vendor ID (VID), Device ID (DID), and other configuration parameters
     pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
         info!("Configuring PCI registers");
         //Self { base_address }
@@ -404,11 +402,9 @@ impl Ne2000 {
                 info!("Reset in Progress");
                 scheduler().sleep(1);
             }
+
             info!("\x1b[1;31mNe2000 reset complete");
-
             info!("\x1b[1;31mInitializing Registers of Device Ne2000");
-
-
 
             //=== STEP 1 ===//
             // Initialize CR Register
@@ -599,7 +595,7 @@ impl Ne2000 {
                 .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
 
             // =============================================================================
-            //dummy_read
+            // dummy_read
             // =============================================================================
             // Usage: a dummy read is performed to ensure no data corruption occurs, 
             // when the nic first starts up 
@@ -676,7 +672,6 @@ impl Ne2000 {
             }
 
             //==== STEP 7 ====//
-
             // Poll ISR until remote DMA Bit is set
             while (self.registers.read_isr() & InterruptStatusRegister::ISR_RDC.bits()) == 0 {
                 scheduler().sleep(1);
@@ -772,7 +767,6 @@ impl Ne2000 {
                 info!("packet header next_packet: {}", packet_header.next_packet);
 
                 // check received packet
-
                 // rust doesn't treat integers as boolean in an if clause, so a comparison has to be made
                 // TODO: What does 1 mean for receive_status ?
                 if (packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits()) != 0
@@ -819,21 +813,16 @@ impl Ne2000 {
                         packet[i as usize] = self.registers.data_port.read();
                     }
                     let s: String = packet.iter().map(|&b| b as char).collect();
-                    //let hex_dump = packet
-                    //    .iter()
-                    //    .map(|b| format!("{:02x}", b))
-                    //    .collect::<Vec<_>>()
-                    //    .join("");
-                    //info!("{}", hex_dump);
                     info!("{}", s);
 
-                    // enqueue the packet in the receive_messages queue, this queue gets processed by
-                    // receive in smoltcp
+                    // enqueue the packet in the receive_messages queue, 
+                    //this queue gets processed by receive in smoltcp
                     self.receive_messages
                         .1
                         .try_enqueue(packet)
                         .expect("Error enqueuing packet");
                 }
+
                 // update pointers for the next package
                 CURRENT_NEXT_PAGE_POINTER = packet_header.next_packet;
                 if (packet_header.next_packet - 1) < RECEIVE_START_PAGE {
@@ -845,7 +834,6 @@ impl Ne2000 {
                         .write(CURRENT_NEXT_PAGE_POINTER - 1);
                 }
 
-
                 // update the current variable for the next packet to be read
                 self.registers
                     .command_port
@@ -855,6 +843,7 @@ impl Ne2000 {
                     .command_port
                     .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
             }
+
             // clear the RDC Interrupt in the ISR (Remote DMA Operation has been completed)
             self.registers
                 .isr_port
@@ -936,6 +925,7 @@ impl Ne2000 {
             if txp_bit == 0 {
                 resend = 0;
             }
+
             if txp_bit == 1 {
                 if self.registers.read_isr()
                     & (InterruptStatusRegister::ISR_PTX | InterruptStatusRegister::ISR_TXE).bits()
@@ -979,7 +969,7 @@ impl Ne2000 {
         }
     }
 
-    // assign driver to interrupt handler
+    // assign NIC to interrupt handler
     pub fn assign(device: Arc<Ne2000>) {
         // get the interrupt field in the ne2000 struct
         let interrupt = device.interrupt;
@@ -1065,6 +1055,7 @@ impl InterruptHandler for Ne2000InterruptHandler {
                 buffer = queue.try_dequeue();
             }
         }
+
         // check for an buffer overflow
         if status.contains(InterruptStatusRegister::ISR_OVW) {
             // call the method
