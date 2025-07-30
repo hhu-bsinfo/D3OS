@@ -853,36 +853,24 @@ impl Ne2000 {
             //Read 6 bytes (MAC address)
 
             // switch to page 1 to access PAR 0..5
-            //self.registers.command_port.write(0x40);
             // stop the nic
+            // disable remote dma
             let mut registers = Registers::new(self.base_address);
-            registers.command_port.write(0x40);
+            registers.command_port.write((CR::STOP | CR::PAGE_1).bits());
 
+            // save the values of the PAR Registers in mac
             for (i, guard) in self.registers.page1.par.iter().enumerate() {
                 let mut port = guard.lock();
                 mac[i] = port.read();
             }
 
-            // start nic
+            // start the nic
                 registers
                 .command_port
-                .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
+                .write((CR::STA | CR::PAGE_0).bits());
 
-            // check if on correct Page (on Page 1 are the PARs Registers for the MAC Adress)
-
-            /*let mut command_port = Port::<u8>::new(self.base_address + 0x00);
-            let cr = command_port.read();
-            let ps = (cr >> 6) & 0b11;
-
-            match ps {
-                0 => info!("Currently on Page 0"),
-                1 => info!("Currently on Page 1"),
-                2 => info!("Currently on Page 2"),
-                3 => info!("Currently on Page 3"),
-                _ => unreachable!(),
-            }*/
         }
-        // convert the data in the array to type EthernetAddress
+        // convert the data in the mac array to type EthernetAddress
         let mac_address = EthernetAddress::from_bytes(&mac);
         // return the actual MAC Address
         mac_address
