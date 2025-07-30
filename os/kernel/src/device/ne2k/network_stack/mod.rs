@@ -146,9 +146,6 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         // Allocate and fill local buffer
         // max. buffer size is 1514 (see documentation )
         // TODO: add reference in manual for this
-        //let mut buffer = [0u8; 1514];
-        //let data = &mut buffer[..len];
-        //let result = f(data);
 
         // call send method using the NE2000
         // allocate one pyhsical frame

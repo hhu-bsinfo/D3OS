@@ -288,7 +288,7 @@ impl Ne2000 {
     // ==== FUNCTION new
     // =============================================================================
     // construct new instance of the ne2000 struct and
-    // initialize the card and its registers for transmit and receive
+    // initialize the card and its registers for transmit and receive operations
     // =============================================================================
 
     pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
@@ -381,6 +381,15 @@ impl Ne2000 {
         unsafe {
             info!("\x1b[1;31mResetting Device NE2000");
 
+    // =============================================================================
+    // ==== INITIALIZATION SEQUENCE FOR THE REGISTERS 
+    // =============================================================================
+    // Registers get initialized and set as 
+    // mentioned on p.29-30, "Section Initialization Sequence"
+    // https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+    // =============================================================================
+
+            //=== STEP 0 ===//
             // Reset the NIC
             // Clears the Registers CR, ISR, IMR, DCR, TCR (see NS32490D.pdf, p.29, 11.0 Initialization Procedure)
             // this ensures, that the Registers are cleared and no undefined behavior can happen
@@ -400,8 +409,8 @@ impl Ne2000 {
             info!("\x1b[1;31mInitializing Registers of Device Ne2000");
 
 
-            // TODO: number the steps and add reference
 
+            //=== STEP 1 ===//
             // Initialize CR Register
             // Switch to Page0 , stop DMA and set the NIC in Stop mode
             ne2000
@@ -409,8 +418,8 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STOP_DMA | CR::STP | CR::PAGE_0).bits());
 
+            //=== STEP 2 ===//
             // Initialize DCR Register
-            // from the NS32490D.pdf :
             // Register is used to program the NIC for 8- or 16-bit memory interface,
             // select byte ordering in 16-bit applications and
             // establish FIFO threshholds. The DCR must be initialized prior to loading the Remote Byte Count Registers.
@@ -423,12 +432,14 @@ impl Ne2000 {
                     .bits(),
             );
 
+            //=== STEP 3 ===//
             // clear RBCR1,0
             //RBCR0,1 : indicates the length of the block in bytes
             // MAC address has length of 6 Bytes
             ne2000.registers.page0.rbcr_0_port.write(0);
             ne2000.registers.page0.rbcr_1_port.write(0);
 
+            //=== STEP 4 ===//
             // initialize RCR
             // determines operation of the NIC during reception of a packet
             // and is used to program what types of packets to
@@ -441,6 +452,7 @@ impl Ne2000 {
                     .bits(),
             );
 
+            //=== STEP 5 ===//
             // Place the NIC in Loopback Mode (Mode 0)
             ne2000
                 .registers
@@ -448,16 +460,19 @@ impl Ne2000 {
                 .tcr_port
                 .write(TransmitConfigurationRegister::TCR_LB0.bits());
 
-            // initialize the NIC's buffer
+            //=== STEP 6 ===//
+            // initialize the NIC's receive buffer
             // pstart and pstop define the size of the receive buffer (pstop - pstart = buffer size )
             ne2000.registers.page0.tpsr_port.write(TRANSMIT_START_PAGE);
             ne2000.registers.page0.pstart_port.write(RECEIVE_START_PAGE);
             ne2000.registers.page0.bnry_port.write(RECEIVE_START_PAGE + 1);
             ne2000.registers.page0.pstop_port.write(RECEIVE_STOP_PAGE);
 
+            //=== STEP 7 ===//
             //  Clear ISR
             ne2000.registers.isr_port.lock().write(0xFF);
 
+            //=== STEP 8 ===//
             // Initialize IMR
             // enables, disables interrupts
             // enable PacketReceived, PacketTransmit and Overwrite
@@ -468,6 +483,7 @@ impl Ne2000 {
                     .bits(),
             );
 
+            //=== STEP 9 ===//
             // Switch to P1, disable DMA and Stop the NIC
             ne2000
                 .registers
@@ -477,11 +493,9 @@ impl Ne2000 {
             // define array for saving the MAC Address
             let mut mac = [0u8; 6];
 
-            // Initialize Physical Address Register: PAR0-PAR5
-            //each mac address bit is written two times into the buffer
+            // i) Initialize Physical Address Register: PAR0-PAR5
             // define the location of the data for the mac address
             // iterate through the ports to get the mac address
-
             // borrow the value
             let par = &ne2000.registers.page1.par;
             for (i, guard) in par.iter().enumerate() {
@@ -496,15 +510,14 @@ impl Ne2000 {
             }
 
             // located on Page 1
-            // Initialize Multicast Address Register: MAR0-MAR7 with 0xFF
-            // TODO: add reference handbook
+            // ii) Initialize Multicast Address Register: MAR0-MAR7 with 0xFF
             for port in ne2000.registers.page1.mar.iter_mut() {
                 port.write(0xFF);
             }
-            // P.156 http://www.bitsavers.org/components/national/_dataBooks/1988_National_Data_Communications_Local_Area_Networks_UARTs_Handbook.pdf#page=156
+            // p.156 http://www.bitsavers.org/components/national/_dataBooks/1988_National_Data_Communications_Local_Area_Networks_UARTs_Handbook.pdf#page=156
             CURRENT_NEXT_PAGE_POINTER = RECEIVE_START_PAGE + 1;
 
-            // Initialize Current Pointer: CURR
+            // iii) Initialize Current Pointer: CURR
             ne2000
                 .registers
                 .page1
@@ -517,7 +530,7 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
 
-            //Initialize TCR and RCR
+            //11) Initialize TCR and RCR
             ne2000.registers.page0.tcr_port.write(0);
             ne2000.registers.page0.rcr_port.write(
                 (ReceiveConfigurationRegister::RCR_AR
@@ -579,22 +592,24 @@ impl Ne2000 {
                 info!("Transmit bit still set!");
             }
 
-            // =============================================================================
-            //dummy_read
-            // =============================================================================
-            // Usage: a dummy read is performed to ensure no data corruption occurs, 
-            // when the nic first starts up 
-            // Reference: p.13, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
-            // =============================================================================
-
-            info!("Start Dummy Read");
-
+            //==== STEP 1 ====//
             // switch to page 0, enable nic, stop dma
             self.registers
                 .command_port
                 .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
 
-            // Save CRDA bit
+            // =============================================================================
+            //dummy_read
+            // =============================================================================
+            // Usage: a dummy read is performed to ensure no data corruption occurs, 
+            // when the nic first starts up 
+            // Reference: p.13-14, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+            // =============================================================================
+
+            info!("Start Dummy Read");
+
+
+            // Save CRDA bit (Current Remote DMA Address)
             let old_crda: u16 = self.registers.page0.crda_0_p0.read() as u16
                 | ((self.registers.page0.crda_1_p0.read() as u16) << 8);
 
@@ -625,6 +640,7 @@ impl Ne2000 {
             // =============================================================================
 
             info!("Load packet size and enable remote write");
+            //==== STEP 2 ====//
             // Load RBCR with packet size
             let packet_length = packet.len() as u32;
             let low = (packet_length & 0xFF) as u8;
@@ -632,26 +648,34 @@ impl Ne2000 {
             self.registers.page0.rbcr_0_port.write(low);
             self.registers.page0.rbcr_1_port.write(high);
 
+            //==== STEP 3 ====//
+            // Remote DMA complete ? 
+            // ref: https://wiki.osdev.org/Ne2000#Sending_a_Packet
             // Clear RDC Interrupt
             self.registers
                 .isr_port
                 .lock()
                 .write(InterruptStatusRegister::ISR_RDC.bits());
 
+            //==== STEP 4 ====//
             // Load RSAR with 0 (low bits) and Page Number (high bits)
             self.registers.page0.rsar_0_port.write(0);
             self.registers.page0.rsar_1_port.write(TRANSMIT_START_PAGE);
 
+            //==== STEP 5 ====//
             // Set COMMAND to remote write
             self.registers
                 .command_port
                 .write((CR::STA | CR::REMOTE_WRITE | CR::PAGE_0).bits());
 
+            //==== STEP 6 ====//
             // Write packet to remote DMA
             let data_port = &mut self.registers.data_port;
             for &data in packet {
                 data_port.write(data);
             }
+
+            //==== STEP 7 ====//
 
             // Poll ISR until remote DMA Bit is set
             while (self.registers.read_isr() & InterruptStatusRegister::ISR_RDC.bits()) == 0 {
@@ -669,6 +693,7 @@ impl Ne2000 {
             self.registers.page0.tbcr_0_port_p0.write(low);
             self.registers.page0.tbcr_1_port_p0.write(high);
             self.registers.page0.tpsr_port.write(TRANSMIT_START_PAGE);
+
 
             // Set TXP Bit to send packet
             self.registers
@@ -850,14 +875,13 @@ impl Ne2000 {
         let mut mac = [0u8; 6];
 
         unsafe {
-            //Read 6 bytes (MAC address)
-
             // switch to page 1 to access PAR 0..5
             // stop the nic
             // disable remote dma
             let mut registers = Registers::new(self.base_address);
             registers.command_port.write((CR::STOP | CR::PAGE_1).bits());
 
+            // read 6 bytes (MAC address)
             // save the values of the PAR Registers in mac
             for (i, guard) in self.registers.page1.par.iter().enumerate() {
                 let mut port = guard.lock();
