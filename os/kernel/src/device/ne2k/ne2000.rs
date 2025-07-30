@@ -101,21 +101,6 @@ static RECEIVE_STOP_PAGE: u8 = 0x80;
 // ==== STRUCTS
 // =============================================================================
 
-//Physical Address Registers, for Reading the MAC Address
-// Reference:
-// section "10.8 PHYSICAL ADDRESS REGISTERS (PAR0-PAR5)", 
-// https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
-pub struct ParRegisters {
-    id: Mutex<(
-        PortReadOnly<u8>,
-        PortReadOnly<u8>,
-        PortReadOnly<u8>,
-        PortReadOnly<u8>,
-        PortReadOnly<u8>,
-        PortReadOnly<u8>,
-    )>,
-}
-
 
 // =============================================================================
 // Registers on Page0
@@ -144,8 +129,11 @@ pub struct Page0 {
 // Registers on Page1
 // =============================================================================
 pub struct Page1 {
-    // physical address registers
-    par: [Port<u8>; 6],
+    //Physical Address Registers, for Reading the MAC Address
+    // Reference:
+    // section "10.8 PHYSICAL ADDRESS REGISTERS (PAR0-PAR5)", 
+    // https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+    par: [Mutex<Port<u8>>; 6],
     mar: [Port<u8>; 8],
     current_port: Port<u8>,
 }
@@ -192,7 +180,6 @@ pub struct Ne2000InterruptHandler {
 pub struct Ne2000 {
     base_address: u16,
     pub registers: Registers,
-    par_registers: ParRegisters,
     // physical memory ranges, that need transmitting
     // in TxToken consume the outgoing packet gets loaded into the buffer
     pub send_queue: (
@@ -218,25 +205,11 @@ pub struct Ne2000 {
 // =============================================================================
 // ==== IMPLEMENTATIONS
 // =============================================================================
-impl ParRegisters {
-    pub fn new(base_address: u16) -> Self {
-        Self {
-            id: Mutex::new((
-                PortReadOnly::new(base_address + 0x01),
-                PortReadOnly::new(base_address + 0x02),
-                PortReadOnly::new(base_address + 0x03),
-                PortReadOnly::new(base_address + 0x04),
-                PortReadOnly::new(base_address + 0x05),
-                PortReadOnly::new(base_address + 0x06),
-            )),
-        }
-    }
-}
 
 impl Page1 {
     pub fn new(base_address: u16) -> Self {
         Self {
-        par: core::array::from_fn(|i| Port::new(base_address + P1_PAR0 + i as u16)),
+        par: core::array::from_fn(|i| Mutex::new(Port::new(base_address + P1_PAR0 + i as u16))),
         mar: core::array::from_fn(|i| Port::new(base_address + P1_MAR0 + i as u16)),
         current_port: Port::new(base_address + P1_CURR),
         }
@@ -396,7 +369,6 @@ impl Ne2000 {
         let mut ne2000 = Self {
             registers: Registers::new(base_address),
             base_address: base_address,
-            par_registers: ParRegisters::new(base_address),
             send_queue: (Mutex::new(send_queue.0), send_queue.1),
             receive_buffers_empty: recv_buffers,
             receive_buffer: Mutex::new(ReceiveBuffer::new()),
@@ -509,31 +481,26 @@ impl Ne2000 {
             //each mac address bit is written two times into the buffer
             // define the location of the data for the mac address
             // iterate through the ports to get the mac address
-            for (i, port) in ne2000.registers.page1.par.iter_mut().enumerate() {
+
+            // borrow the value
+            let par = &ne2000.registers.page1.par;
+            for (i, guard) in par.iter().enumerate() {
+                let mut port = guard.lock();
                 mac[i] = port.read();
             }
 
-            // Write MAC address to PAR registers (every second byte)
-                ne2000.registers.page1.par[0].write(mac[0]);
-                ne2000.registers.page1.par[1].write(mac[1]);
-                ne2000.registers.page1.par[2].write(mac[2]);
-                ne2000.registers.page1.par[3].write(mac[3]);
-                ne2000.registers.page1.par[4].write(mac[4]);
-                ne2000.registers.page1.par[5].write(mac[5]);
-
+            // Write MAC address to PAR registers 
+            for (i, guard) in par.iter().enumerate() {
+                let mut port = guard.lock();
+                port.write(mac[i]);
+            }
 
             // located on Page 1
             // Initialize Multicast Address Register: MAR0-MAR7 with 0xFF
             // TODO: add reference handbook
-            ne2000.registers.page1.mar[0].write(0xFF);
-            ne2000.registers.page1.mar[1].write(0xFF);
-            ne2000.registers.page1.mar[2].write(0xFF);
-            ne2000.registers.page1.mar[3].write(0xFF);
-            ne2000.registers.page1.mar[4].write(0xFF);
-            ne2000.registers.page1.mar[5].write(0xFF);
-            ne2000.registers.page1.mar[6].write(0xFF);
-            ne2000.registers.page1.mar[7].write(0xFF);
-
+            for port in ne2000.registers.page1.mar.iter_mut() {
+                port.write(0xFF);
+            }
             // P.156 http://www.bitsavers.org/components/national/_dataBooks/1988_National_Data_Communications_Local_Area_Networks_UARTs_Handbook.pdf#page=156
             CURRENT_NEXT_PAGE_POINTER = RECEIVE_START_PAGE + 1;
 
@@ -879,8 +846,8 @@ impl Ne2000 {
     // are addressed to the nic
     // =============================================================================
     pub fn read_mac(&self) -> EthernetAddress {
-        let mut mac2 = [0u8; 6];
-        let mut par_registers = self.par_registers.id.lock();
+        //define mac array for storing the values from the PAR Registers
+        let mut mac = [0u8; 6];
 
         unsafe {
             //Read 6 bytes (MAC address)
@@ -891,12 +858,10 @@ impl Ne2000 {
             let mut registers = Registers::new(self.base_address);
             registers.command_port.write(0x40);
 
-            mac2[0] = par_registers.0.read();
-            mac2[1] = par_registers.1.read();
-            mac2[2] = par_registers.2.read();
-            mac2[3] = par_registers.3.read();
-            mac2[4] = par_registers.4.read();
-            mac2[5] = par_registers.5.read();
+            for (i, guard) in self.registers.page1.par.iter().enumerate() {
+                let mut port = guard.lock();
+                mac[i] = port.read();
+            }
 
             // start nic
                 registers
@@ -918,7 +883,7 @@ impl Ne2000 {
             }*/
         }
         // convert the data in the array to type EthernetAddress
-        let mac_address = EthernetAddress::from_bytes(&mac2);
+        let mac_address = EthernetAddress::from_bytes(&mac);
         // return the actual MAC Address
         mac_address
     }
