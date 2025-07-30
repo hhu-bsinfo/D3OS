@@ -3,9 +3,9 @@
 #![no_std]
 extern crate alloc;
 
-use core::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use core::{ffi::CStr, net::{IpAddr, Ipv6Addr, SocketAddr}, str::FromStr};
 
-use alloc::{ffi::CString, string::ToString, vec::Vec};
+use alloc::{ffi::CString, format, string::ToString, vec::Vec};
 use syscall::{return_vals::Errno, syscall, SystemCall};
 
 pub struct UdpSocket {
@@ -22,8 +22,14 @@ impl UdpSocket {
                 Errno::ENOTSUP => panic!("invalid protocol"),
                 errno => NetworkError::Unknown(errno),
             })?;
-        // TODO: also pass the address
-        syscall(SystemCall::SockBind, &[handle, protocol, address.port().into()])
+        // valid addresses do not contain 0 bytes
+        let addr = CString::new(address.ip().to_string()).unwrap();
+        syscall(SystemCall::SockBind, &[
+            handle,
+            protocol,
+            addr.as_bytes_with_nul().as_ptr() as usize,
+            address.port().into(),
+        ])
             .map_err(|errno| match errno {
                 Errno::EEXIST => panic!("socket has already been openend"),
                 Errno::EINVAL => NetworkError::InvalidAddress,
@@ -52,21 +58,33 @@ impl UdpSocket {
             })
     }
     
-    pub fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr), NetworkError> {
+    pub fn recv_from(&self, data_buf: &mut [u8]) -> Result<(usize, SocketAddr), NetworkError> {
         let protocol = 0;
-        let num_bytes = syscall(SystemCall::SockReceive, &[
+        // this should be the maximum length for an IP address
+        let mut addr_buf = [0u8; 40];
+        let result = syscall(SystemCall::SockReceive, &[
             self.handle,
             protocol,
-            buf.as_ptr() as usize,
-            buf.len(),
-            // TODO: also get IP addr and port
+            data_buf.as_ptr() as usize,
+            data_buf.len(),
+            addr_buf.as_mut_ptr() as usize,
         ])
             .map_err(|errno| match errno {
                 Errno::ENOTSUP => panic!("invalid protocol"),
                 errno => NetworkError::Unknown(errno),
             })?;
-        let remote_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0));
-
+        // This just exists for UDP. TCP and ICMP get the full isize for len.
+        let num_bytes = result >> 16;
+        let remote_port = result as u16;
+        let remote_addr = if num_bytes > 0 {
+            let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
+            SocketAddr::new(
+                IpAddr::from_str(&addr_str).expect(&format!("failed to parse '{addr_str}'")),
+                remote_port,
+            )
+        } else {
+            SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0)
+        };
         Ok((num_bytes, remote_addr))
     }
 }
@@ -93,8 +111,14 @@ impl TcpListener {
                 Errno::ENOTSUP => panic!("invalid protocol"),
                 errno => NetworkError::Unknown(errno),
             })?;
-        // TODO: also pass the address
-        syscall(SystemCall::SockBind, &[handle, protocol, address.port().into()])
+        // valid addresses do not contain 0 bytes
+        let addr = CString::new(address.ip().to_string()).unwrap();
+        syscall(SystemCall::SockBind, &[
+            handle,
+            protocol,
+            addr.as_bytes_with_nul().as_ptr() as usize,
+            address.port().into(),
+        ])
             .map_err(|errno| match errno {
                 Errno::EEXIST => panic!("socket as already been opened"),
                 Errno::EINVAL => NetworkError::InvalidAddress,
@@ -105,18 +129,25 @@ impl TcpListener {
 
     pub fn accept(&self) -> Result<TcpStream, NetworkError> {
         let protocol = 1;
-        let peer_port: u16 = syscall(SystemCall::SockAccept, &[self.handle, protocol])
+        // this should be the maximum length for an IP address
+        let mut addr_buf = [0u8; 40];
+        let remote_port: u16 = syscall(SystemCall::SockAccept, &[
+            self.handle,
+            protocol,
+            addr_buf.as_mut_ptr() as usize,
+        ])
             .map_err(|errno| match errno {
                 Errno::EEXIST => panic!("socket as already been opened"),
                 Errno::EINVAL => NetworkError::InvalidAddress,
                 errno => NetworkError::Unknown(errno),
             })?
             .try_into().unwrap();
-        // TODO: also pass the remote SocketAddr
-        let peer_address = SocketAddr::V4(
-            SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), peer_port)
+        let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
+        let remote_addr = SocketAddr::new(
+            IpAddr::from_str(&addr_str).expect(&format!("failed to parse '{addr_str}'")),
+            remote_port,
         );
-        Ok(TcpStream { handle: self.handle, local_address: self.address, peer_address })
+        Ok(TcpStream { handle: self.handle, local_address: self.address, peer_address: remote_addr })
     }
 }
 
@@ -136,6 +167,8 @@ pub struct TcpStream {
 impl TcpStream {
     pub fn connect(address: SocketAddr) -> Result<Self, NetworkError> {
         let protocol = 1;
+        // this should be the maximum length for an IP address
+        let mut addr_buf = [0u8; 40];
         // valid addresses do not contain 0 bytes
         let addr = CString::new(address.ip().to_string()).unwrap();
         let handle = syscall(SystemCall::SockOpen, &[protocol])
@@ -148,6 +181,7 @@ impl TcpStream {
             protocol,
             addr.as_bytes_with_nul().as_ptr() as usize,
             address.port().into(),
+            addr_buf.as_mut_ptr() as usize,
         ])
             .map_err(|errno| match errno {
                 Errno::EEXIST => panic!("socket as already been opened"),
@@ -155,8 +189,10 @@ impl TcpStream {
                 errno => NetworkError::Unknown(errno),
             })?
             .try_into().unwrap();
-        let local_address = SocketAddr::V4(
-            SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), local_port)
+        let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
+        let local_address = SocketAddr::new(
+            IpAddr::from_str(&addr_str).expect(&format!("failed to parse '{addr_str}'")),
+            local_port,
         );
         Ok(Self { handle, local_address, peer_address: address })
     }
@@ -210,11 +246,18 @@ impl IcmpSocket {
     pub fn bind(ident: u16) -> Result<Self, NetworkError> {
         let protocol = 2;
         let handle = syscall(SystemCall::SockOpen, &[protocol])
-            .map_err(|errno| match errno {
-                Errno::ENOTSUP => panic!("invalid protocol"),
-                errno => NetworkError::Unknown(errno),
-            })?;
-        syscall(SystemCall::SockBind, &[handle, protocol, ident.into()])
+        .map_err(|errno| match errno {
+            Errno::ENOTSUP => panic!("invalid protocol"),
+            errno => NetworkError::Unknown(errno),
+        })?;
+        // ICMP doesn't bind to an IP address, but the syscall still expects one.
+        let addr = CString::new(Ipv6Addr::UNSPECIFIED.to_string()).unwrap();
+        syscall(SystemCall::SockBind, &[
+            handle,
+            protocol,
+            addr.as_bytes_with_nul().as_ptr() as usize,
+            ident.into(),
+        ])
             .map_err(|errno| match errno {
                 Errno::EEXIST => panic!("socket has already been openend"),
                 Errno::EINVAL => NetworkError::InvalidAddress,
@@ -242,20 +285,29 @@ impl IcmpSocket {
             })
     }
 
-     pub fn recv(&self, buf: &mut [u8]) -> Result<usize, NetworkError> {
+     pub fn recv(&self, buf: &mut [u8]) -> Result<(usize, IpAddr), NetworkError> {
         let protocol = 2;
+        // this should be the maximum length for an IP address
+        let mut addr_buf = [0u8; 40];
         let num_bytes = syscall(SystemCall::SockReceive, &[
             self.handle,
             protocol,
             buf.as_ptr() as usize,
             buf.len(),
+            addr_buf.as_mut_ptr() as usize,
         ])
             .map_err(|errno| match errno {
                 Errno::ENOTSUP => panic!("invalid protocol"),
                 errno => NetworkError::Unknown(errno),
             })?;
+        let address = if num_bytes > 0 {
+            let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
+            IpAddr::from_str(&addr_str).expect(&format!("failed to parse '{addr_str}'"))
+        } else {
+            IpAddr::V6(Ipv6Addr::UNSPECIFIED)
+        };
 
-        Ok(num_bytes)
+        Ok((num_bytes, address))
     }
 }
 

@@ -1,6 +1,6 @@
 use core::str::FromStr;
 
-use alloc::string::ToString;
+use alloc::{ffi::CString, string::ToString};
 use log::{debug, info, warn};
 use smoltcp::{iface::SocketHandle, socket::{icmp, tcp, udp}, wire::IpAddress};
 use syscall::return_vals::Errno;
@@ -23,46 +23,61 @@ pub fn sys_sock_open(protocol: SocketType) -> isize {
     unsafe { core::mem::transmute::<SocketHandle, usize>(handle) }.try_into().unwrap()
 }
 
-pub fn sys_sock_bind(handle: SocketHandle, protocol: SocketType, port: u16) -> isize  {
+pub fn sys_sock_bind(
+    handle: SocketHandle, protocol: SocketType, addr_ptr: *const u8, port: u16,
+) -> isize {
     // TODO: somehow check that the protocol is correct for handle?
-    // TODO: allow binding to anything other than ::
-    info!("binding {handle:?} to {port}");
-    #[allow(unreachable_patterns)]
-    match protocol {
-        SocketType::Udp => match bind_udp(handle, port) {
-            Ok(()) => 0,
-            // socket has already been opened
-            Err(udp::BindError::InvalidState) => Errno::EEXIST.into(),
-            // port is zero
-            Err(udp::BindError::Unaddressable) => Errno::EINVAL.into(),
-        },
-        SocketType::Tcp => match bind_tcp(handle, port) {
-            Ok(()) => 0,
-            // socket has already been opened
-            Err(tcp::ListenError::InvalidState) => Errno::EEXIST.into(),
-            // port is zero
-            Err(tcp::ListenError::Unaddressable) => Errno::EINVAL.into(),
-        },
-        // port is actually the ident here
-        SocketType::Icmp => match bind_icmp(handle, port) {
-            Ok(()) => 0,
-            // socket has already been opened
-            Err(icmp::BindError::InvalidState) => Errno::EEXIST.into(),
-            // ident is missing
-            Err(icmp::BindError::Unaddressable) => Errno::EINVAL.into(),
+    if let Ok(addr_str) = unsafe { ptr_to_string(addr_ptr) } && let Ok(addr) = IpAddress::from_str(&addr_str) {
+        info!("binding {handle:?} to {addr:?}:{port}");
+        #[allow(unreachable_patterns)]
+        match protocol {
+            SocketType::Udp => match bind_udp(handle, addr, port) {
+                Ok(()) => 0,
+                // socket has already been opened
+                Err(udp::BindError::InvalidState) => Errno::EEXIST.into(),
+                // port is zero
+                Err(udp::BindError::Unaddressable) => Errno::EINVAL.into(),
+            },
+            SocketType::Tcp => match bind_tcp(handle, addr, port) {
+                Ok(()) => 0,
+                // socket has already been opened
+                Err(tcp::ListenError::InvalidState) => Errno::EEXIST.into(),
+                // port is zero
+                Err(tcp::ListenError::Unaddressable) => Errno::EINVAL.into(),
+            },
+            // port is actually the ident here
+            SocketType::Icmp => match bind_icmp(handle, port) {
+                Ok(()) => 0,
+                // socket has already been opened
+                Err(icmp::BindError::InvalidState) => Errno::EEXIST.into(),
+                // ident is missing
+                Err(icmp::BindError::Unaddressable) => Errno::EINVAL.into(),
+            }
+            _ => Errno::ENOTSUP.into(),
         }
-        _ => Errno::ENOTSUP.into(),
+    } else {
+        Errno::EINVAL.into()
     }
 }
 
 pub unsafe fn sys_sock_accept(
     handle: SocketHandle,
     protocol: SocketType,
+    addr_buf: *mut u8,
 ) -> isize {
     if matches!(protocol, SocketType::Tcp) {
         info!("accepting connections on {handle:?}");
         match accept_tcp(handle) {
-            Ok(port) => port.try_into().unwrap(),
+            Ok(endpoint) => {
+                let addr_str = CString::new(
+                    endpoint.addr.to_string().as_bytes()
+                ).unwrap();
+                let addr_bytes = addr_str.as_bytes_with_nul();
+                unsafe { addr_buf.copy_from_nonoverlapping(
+                    addr_bytes.as_ptr(), addr_bytes.len(),
+                ) };
+                endpoint.port.try_into().unwrap()
+            },
             Err(e) => panic!("failed to accept: {e:?}"),
         }
     } else {
@@ -73,14 +88,24 @@ pub unsafe fn sys_sock_accept(
 pub unsafe fn sys_sock_connect(
     handle: SocketHandle,
     protocol: SocketType,
-    addr_ptr: *const u8,
+    remote_addr_ptr: *const u8,
     port: u16,
+    local_addr_ptr: *mut u8,
 ) -> isize {
     if matches!(protocol, SocketType::Tcp) {
-        if let Ok(addr_str) = unsafe { ptr_to_string(addr_ptr) } && let Ok(addr) = IpAddress::from_str(&addr_str) {
+        if let Ok(addr_str) = unsafe { ptr_to_string(remote_addr_ptr) } && let Ok(addr) = IpAddress::from_str(&addr_str) {
             info!("connecting to {addr:?}:{port}");
             match connect_tcp(handle, addr, port) {
-                Ok(port) => port.try_into().unwrap(),
+                Ok(endpoint) => {
+                    let addr_str = CString::new(
+                        endpoint.addr.to_string().as_bytes()
+                    ).unwrap();
+                    let addr_bytes = addr_str.as_bytes_with_nul();
+                    unsafe { local_addr_ptr.copy_from_nonoverlapping(
+                        addr_bytes.as_ptr(), addr_bytes.len(),
+                    ) };
+                    endpoint.port.try_into().unwrap()
+                },
                 Err(e) => panic!("failed to accept: {e:?}"),
             }
         } else {
@@ -143,6 +168,7 @@ pub unsafe fn sys_sock_receive(
     protocol: SocketType,
     data_ptr: *mut u8,
     data_len: usize,
+    addr_buf: *mut u8,
 ) -> isize {
     let data = unsafe { core::slice::from_raw_parts_mut(data_ptr, data_len) };
     debug!("receiving up to {data_len} bytes on {handle:?}");
@@ -150,7 +176,18 @@ pub unsafe fn sys_sock_receive(
     match protocol {
         SocketType::Udp => match receive_datagram(handle, data) {
             // TODO: also pass the metadata
-            Ok((len, metadata)) => len.try_into().unwrap(),
+            Ok((len, metadata)) => {
+                let addr_str = CString::new(
+                    metadata.endpoint.addr.to_string().as_bytes()
+                ).unwrap();
+                let addr_bytes = addr_str.as_bytes_with_nul();
+                unsafe { addr_buf.copy_from_nonoverlapping(
+                    addr_bytes.as_ptr(), addr_bytes.len(),
+                ) };
+                let mut val = isize::try_from(len << 16).unwrap();
+                val |= isize::try_from(metadata.endpoint.port).unwrap();
+                val
+            },
             // discard truncated packet
             Err(udp::RecvError::Truncated) => {
                 warn!("discarding truncated incoming packet");
@@ -169,8 +206,16 @@ pub unsafe fn sys_sock_receive(
             Err(tcp::RecvError::Finished) => Errno::ECONNRESET.into(),
         },
         SocketType::Icmp => match receive_icmp(handle, data) {
-            // TODO: also pass the address
-            Ok((len, address)) => len.try_into().unwrap(),
+            Ok((len, address)) => {
+                let addr_str = CString::new(
+                    address.to_string().as_bytes()
+                ).unwrap();
+                let addr_bytes = addr_str.as_bytes_with_nul();
+                unsafe { addr_buf.copy_from_nonoverlapping(
+                    addr_bytes.as_ptr(), addr_bytes.len(),
+                ) };
+                len.try_into().unwrap()
+            },
             // discard truncated packet
             Err(icmp::RecvError::Truncated) => {
                 warn!("discarding truncated incoming packet");

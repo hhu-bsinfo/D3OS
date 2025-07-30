@@ -8,7 +8,7 @@ use log::{info};
 use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
 use smoltcp::socket::{dhcpv4, icmp, tcp, udp, Socket};
 use smoltcp::time::Instant;
-use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr};
+use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr, IpEndpoint};
 use spin::{Once, RwLock};
 use crate::device::rtl8139::Rtl8139;
 use crate::process::process::Process;
@@ -175,14 +175,14 @@ pub fn close_socket(handle: SocketHandle) {
     sockets.write().remove(handle);
 }
 
-pub fn bind_udp(handle: SocketHandle, port: u16) -> Result<(), udp::BindError> {
+pub fn bind_udp(handle: SocketHandle, addr: IpAddress, port: u16) -> Result<(), udp::BindError> {
     get_socket_for_current_process!(socket, handle, udp::Socket);
-    socket.bind(port)
+    socket.bind((addr, port))
 }
 
-pub fn bind_tcp(handle: SocketHandle, port: u16) -> Result<(), tcp::ListenError> {
+pub fn bind_tcp(handle: SocketHandle, addr: IpAddress, port: u16) -> Result<(), tcp::ListenError> {
     get_socket_for_current_process!(socket, handle, tcp::Socket);
-    socket.listen(port)
+    socket.listen((addr, port))
 }
 
 pub fn bind_icmp(handle: SocketHandle, ident: u16) -> Result<(), icmp::BindError> {
@@ -190,7 +190,7 @@ pub fn bind_icmp(handle: SocketHandle, ident: u16) -> Result<(), icmp::BindError
     socket.bind(icmp::Endpoint::Ident(ident))
 }
 
-pub fn accept_tcp(handle: SocketHandle) -> Result<u16, tcp::ConnectError> {
+pub fn accept_tcp(handle: SocketHandle) -> Result<IpEndpoint, tcp::ConnectError> {
     // TODO: smoltcp knows no backlog
     // all but the first connection will fail
     loop {
@@ -204,19 +204,16 @@ pub fn accept_tcp(handle: SocketHandle) -> Result<u16, tcp::ConnectError> {
         scheduler().sleep(100);
     }
     get_socket_for_current_process!(socket, handle, tcp::Socket);
-    // TODO: pass the remote addr
-    Ok(socket.remote_endpoint().unwrap().port)
+    Ok(socket.remote_endpoint().unwrap())
 }
 
-pub fn connect_tcp(handle: SocketHandle, host: IpAddress, port: u16) -> Result<u16, tcp::ConnectError> {
-    get_socket_for_current_process!(socket, handle, tcp::Socket);
+pub fn connect_tcp(handle: SocketHandle, host: IpAddress, port: u16) -> Result<IpEndpoint, tcp::ConnectError> {    get_socket_for_current_process!(socket, handle, tcp::Socket);
     let mut interfaces = INTERFACES.write();
     let interface = interfaces.get_mut(0).ok_or(tcp::ConnectError::InvalidState)?;
     let local_port = 1797; // TODO
 
     socket.connect(interface.context(), (host, port), local_port)?;
-    // TODO: pass the local addr
-    Ok(socket.local_endpoint().unwrap().port)
+    Ok(socket.local_endpoint().unwrap())
 }
 
 pub fn send_datagram(handle: SocketHandle, destination: IpAddress, port: u16, data: &[u8]) -> Result<(), udp::SendError> {

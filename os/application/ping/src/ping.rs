@@ -68,16 +68,21 @@ Examples:
         socket.send_to(&packet_buffer, ip).expect("failed to send ping");
 
         let mut recv_buffer = [0u8; 4096];
-        while socket.recv(&mut recv_buffer).expect("failed to receive ping reply") == 0 {
+        let addr = loop {
+            let (len, addr) = socket
+                .recv(&mut recv_buffer)
+                .expect("failed to receive ping reply");
+            if len != 0 {
+                break addr;
+            }
             sleep(50);
-        }
+        };
         let response_packet = Icmpv4Packet::new_checked(&recv_buffer).expect("received packet is invalid");
         let response = Icmpv4Repr::parse(&response_packet, &ChecksumCapabilities::ignored()).expect("received packet is invalid");
         if let Icmpv4Repr::EchoReply { seq_no, data, .. } = response {
             let timestamp_ms = i64::from_ne_bytes(data[0..8].try_into().unwrap());
             let timedelta = time::date().timestamp_millis() - timestamp_ms;
-            // TODO: ip address
-            println!("{} bytes: seq={}, time={}ms", data.len(), seq_no, timedelta);
+            println!("{} bytes from {}: seq={}, time={}ms", data.len(), addr, seq_no, timedelta);
         } else {
             println!("ignoring unexpected ICMP packet")
         }
