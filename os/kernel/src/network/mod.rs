@@ -2,6 +2,7 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::net::{Ipv4Addr, Ipv6Addr};
 use core::ops::Deref;
 use core::ptr;
 use log::{info};
@@ -177,12 +178,24 @@ pub fn close_socket(handle: SocketHandle) {
 
 pub fn bind_udp(handle: SocketHandle, addr: IpAddress, port: u16) -> Result<(), udp::BindError> {
     get_socket_for_current_process!(socket, handle, udp::Socket);
-    socket.bind((addr, port))
+    match addr {
+        // binding to 0.0.0.0 or :: means listening to all requests
+        // but smoltcp doesn't understand it that way
+        IpAddress::Ipv4(Ipv4Addr::UNSPECIFIED) | IpAddress::Ipv6(Ipv6Addr::UNSPECIFIED) => socket.bind(port),
+        // else, bind to the specified address
+        _ => socket.bind((addr, port)),
+    }
 }
 
 pub fn bind_tcp(handle: SocketHandle, addr: IpAddress, port: u16) -> Result<(), tcp::ListenError> {
     get_socket_for_current_process!(socket, handle, tcp::Socket);
-    socket.listen((addr, port))
+    match addr {
+        // binding to 0.0.0.0 or :: means listening to all requests
+        // but smoltcp doesn't understand it that way
+        IpAddress::Ipv4(Ipv4Addr::UNSPECIFIED) | IpAddress::Ipv6(Ipv6Addr::UNSPECIFIED) => socket.listen(port),
+        // else, bind to the specified address
+        _ => socket.listen((addr, port)),
+    }
 }
 
 pub fn bind_icmp(handle: SocketHandle, ident: u16) -> Result<(), icmp::BindError> {
