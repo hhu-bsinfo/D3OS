@@ -1,7 +1,7 @@
 #![no_std]
 extern crate alloc;
 
-use core::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use core::net::{IpAddr, Ipv6Addr, SocketAddr};
 
 use alloc::string::String;
 use network::{TcpListener, TcpStream, UdpSocket};
@@ -88,8 +88,7 @@ Examples:
         },
         Mode::Connect => match protocol {
             Protocol::Udp => {
-                // TODO: randomize this, but probably in the kernel?
-                let local_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 1797));
+                let local_addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0);
                 Socket::Udp(UdpSocket::bind(local_addr).expect("failed to open socket"))
             },
             Protocol::Tcp => Socket::Tcp(TcpStream::connect(addr).expect("failed to open socket")),

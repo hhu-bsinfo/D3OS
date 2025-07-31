@@ -178,6 +178,7 @@ pub fn close_socket(handle: SocketHandle) {
 
 pub fn bind_udp(handle: SocketHandle, addr: IpAddress, port: u16) -> Result<(), udp::BindError> {
     get_socket_for_current_process!(socket, handle, udp::Socket);
+    let port = pick_port(port);
     match addr {
         // binding to 0.0.0.0 or :: means listening to all requests
         // but smoltcp doesn't understand it that way
@@ -189,6 +190,7 @@ pub fn bind_udp(handle: SocketHandle, addr: IpAddress, port: u16) -> Result<(), 
 
 pub fn bind_tcp(handle: SocketHandle, addr: IpAddress, port: u16) -> Result<(), tcp::ListenError> {
     get_socket_for_current_process!(socket, handle, tcp::Socket);
+    let port = pick_port(port);
     match addr {
         // binding to 0.0.0.0 or :: means listening to all requests
         // but smoltcp doesn't understand it that way
@@ -223,7 +225,7 @@ pub fn accept_tcp(handle: SocketHandle) -> Result<IpEndpoint, tcp::ConnectError>
 pub fn connect_tcp(handle: SocketHandle, host: IpAddress, port: u16) -> Result<IpEndpoint, tcp::ConnectError> {    get_socket_for_current_process!(socket, handle, tcp::Socket);
     let mut interfaces = INTERFACES.write();
     let interface = interfaces.get_mut(0).ok_or(tcp::ConnectError::InvalidState)?;
-    let local_port = 1797; // TODO
+    let local_port = pick_port(0);
 
     socket.connect(interface.context(), (host, port), local_port)?;
     Ok(socket.local_endpoint().unwrap())
@@ -323,5 +325,15 @@ pub(crate) fn close_sockets_for_process(process: &mut Process) {
     for handle in handles {
         lock.remove(&handle).unwrap();
         sockets.remove(handle);
+    }
+}
+
+/// Pick a random port if port == 0, else just use the passed port.
+fn pick_port(port: u16) -> u16 {
+    if port == 0 {
+        // TODO: make sure that this isn't used yet
+        timer().systime_ms() as u16
+    } else {
+        port
     }
 }
