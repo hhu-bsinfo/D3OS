@@ -50,7 +50,7 @@ pub fn init() {
 
     if let Some(rtl8139) = RTL8139.get() {
         extern "sysv64" fn poll() {
-            loop { poll_sockets(); }
+            loop { poll_sockets(); scheduler().sleep(50); }
         }
         scheduler().ready(Thread::new_kernel_thread(poll, "RTL8139"));
         
@@ -261,10 +261,15 @@ pub fn receive_icmp(handle: SocketHandle, data: &mut [u8]) -> Result<(usize, IpA
     socket.recv_slice(data)
 }
 
-fn poll_sockets() {
+/// Try to poll all sockets.
+/// 
+/// This returns None, if it failed to get all needed locks.
+/// This is needed, because we otherwise might get a deadlock, because an
+/// application has the lock on `sockets` while we have the lock on `interfaces`.
+fn poll_sockets() -> Option<()> {
     let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
-    let mut interfaces = INTERFACES.write();
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let mut interfaces = INTERFACES.try_write()?;
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").try_write()?;
     let time = Instant::from_millis(timer().systime_ms() as i64);
 
     // Smoltcp expects a mutable reference to the device, but the RTL8139 driver is built
@@ -311,6 +316,7 @@ fn poll_sockets() {
             }
         }
     }
+    Some(())
 }
 
 pub(crate) fn close_sockets_for_process(process: &mut Process) {
