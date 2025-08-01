@@ -12,7 +12,7 @@ use core::ops::Deref;
 use core::ptr;
 use syscall::NUM_SYSCALLS;
 use x86_64::registers::control::{Efer, EferFlags};
-use x86_64::registers::model_specific::{KernelGsBase, LStar, Star};
+use x86_64::registers::model_specific::{KernelGsBase, LStar, SFMask, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 use crate::syscall::sys_vmem::sys_map_memory;
@@ -24,7 +24,7 @@ use crate::syscall::sys_naming::*;
 
 use crate::{core_local_storage, tss};
 use log::info;
-
+use x86_64::registers::rflags::RFlags;
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -56,6 +56,7 @@ pub fn init() {
     let cs_sysret = SegmentSelector::new(4, PrivilegeLevel::Ring3);
     let ss_sysret = SegmentSelector::new(3, PrivilegeLevel::Ring3);
 
+
     if let Err(err) = Star::write(cs_sysret, ss_sysret, cs_syscall, ss_syscall) {
         panic!(
             "System Call: Failed to initialize STAR register (Error: {})",
@@ -65,6 +66,10 @@ pub fn init() {
 
     // Set rip for syscall
     LStar::write(VirtAddr::new(syscall_handler as u64));
+
+    // Make sure interrupts are disabled during system calls
+    // The CPU clears every flag that is set in the SFMask register
+    SFMask::write(RFlags::INTERRUPT_FLAG);
 
     // Initialize core local storage (accessible via 'swapgs')
     let mut core_local_storage = core_local_storage().lock();
@@ -132,10 +137,7 @@ unsafe impl Sync for SyscallTable {}
 ///    Two values in `rax`, `rdx` to reconstruct `Result`in user mode
 unsafe extern "C" fn syscall_handler() {
     naked_asm!(
-    // We are now in ring 0, but still on the user stack
-    // Disable interrupts until we have switched to kernel stack
-    "cli",
-
+    // We are now in ring 0 with disabled interrupts, but still on the user stack
     // Switch to kernel stack
     "swapgs", // Setup core local storage access via gs base
     "mov gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}], rsp", // Temporarily store user rip in core local storage
