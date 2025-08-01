@@ -55,6 +55,14 @@ args = [
     "-object",
     "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
 
+    ## tap interface
+    #"-netdev",
+    #"tap,id=tap0,ifname=tap0,script=no,downscript=no",
+    #"-device",
+    #"ne2k_pci,netdev=tap0,id=ne2k",
+    #"-object",
+    #"filter-dump,id=filter0,netdev=ne2k,file=ne2k.dump",
+
     # Network configuration
     #"-nic",
     #"model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
@@ -289,3 +297,5 @@ args = [
 
 [tasks.clean-members]
 run_task = { name = "clean", fork = true }
+command = "qemu-system-x86_64"
+dependencies = ["image", "hdd", "ovmf"]

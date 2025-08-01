@@ -69,7 +69,7 @@ case "$MODE" in
     # -w : wait and close connection after n seconds
     # -l : listen for packets on the port
     # -u : udp 
-    nc -u -w0 -l "$PORT"
+    nc -k -u -l "$PORT"
     sleep "$INTERVAL"
     ;;
 esac

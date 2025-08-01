@@ -314,9 +314,12 @@ impl phy::Device for Ne2000 {
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
         // max_transmission_unit = define max. size of a packet
+        // this is the size of one ethernet frame
+        // see: https://en.wikipedia.org/wiki/Ethernet_frame
         caps.max_transmission_unit = 1536;
         //max_burst_size = only send one packet at a time
-        caps.max_burst_size = Some(1);
+        //caps.max_burst_size = Some(1);
+        caps.max_burst_size = None;
         // medium = send packet over Ethernet
         caps.medium = Medium::Ethernet;
 

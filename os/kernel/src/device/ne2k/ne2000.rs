@@ -769,6 +769,8 @@ impl Ne2000 {
                 // check received packet
                 // rust doesn't treat integers as boolean in an if clause, so a comparison has to be made
                 // TODO: What does 1 mean for receive_status ?
+                // if status is okay and packet payload length less than the max. Ethernet frame
+                // size continue to process the packet
                 if (packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits()) != 0
                     && packet_header.length as u32 <= MAXIMUM_ETHERNET_PACKET_SIZE as u32
                 {
@@ -793,7 +795,10 @@ impl Ne2000 {
                     // fix overflow warning
                     self.registers.page0.rbcr_1_port.write((packet_length >> 8) as u8);
 
-                    // Set RSAR0 to nicHeaderLength to skip the packet header during the read operation
+                    // Remote Start Address Register: points to the 
+                    // start of the block of data to be transferred
+                    // Set RSAR0 and 1 to nic header length to skip the 
+                    // packet header during the read operation
                     self.registers
                         .page0
                         .rsar_0_port
@@ -823,8 +828,13 @@ impl Ne2000 {
                         .expect("Error enqueuing packet");
                 }
 
+                //////////////////////////////////////////
                 // update pointers for the next package
+                //////////////////////////////////////////
+                 
+                // avoids that the boundary register has values outside of the receive buffer boundaries
                 CURRENT_NEXT_PAGE_POINTER = packet_header.next_packet;
+                // check if the next packet is inside the boundaries of the receive buffer
                 if (packet_header.next_packet - 1) < RECEIVE_START_PAGE {
                     self.registers.page0.bnry_port.write(RECEIVE_STOP_PAGE - 1);
                 } else {
@@ -835,16 +845,20 @@ impl Ne2000 {
                 }
 
                 // update the current variable for the next packet to be read
+                //switch to Page 1, stop dma operations, start nic
                 self.registers
                     .command_port
                     .write((CR::STA | CR::STOP_DMA | CR::PAGE_1).bits());
+                // read new current value
                 current = self.registers.page1.current_port.read();
+                // go back to page 0
                 self.registers
                     .command_port
                     .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
             }
 
-            // clear the RDC Interrupt in the ISR (Remote DMA Operation has been completed)
+            // clear the RDC Interrupt Bit in the ISR (Remote DMA Operation has been completed)
+            // TODO check if the bit gets set
             self.registers
                 .isr_port
                 .lock()
