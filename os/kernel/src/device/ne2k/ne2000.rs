@@ -162,7 +162,7 @@ struct PacketHeader {
 //       given Interrupt occurs
 pub struct Interrupts {
     ovw: AtomicBool,
-    rcv: AtomicBool,
+    pub(crate) rcv: AtomicBool,
 }
 
 // the interrupt handler holds a shared reference to the Ne2000 device
@@ -195,7 +195,7 @@ pub struct Ne2000 {
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
     interrupt: InterruptVector,
-    interrupts: Interrupts,
+    pub(crate) interrupts: Interrupts,
 }
 
 // =============================================================================
@@ -771,6 +771,7 @@ impl Ne2000 {
                 // TODO: What does 1 mean for receive_status ?
                 // if status is okay and packet payload length less than the max. Ethernet frame
                 // size continue to process the packet
+                // else just update the pointers, discard the packet
                 if (packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits()) != 0
                     && packet_header.length as u32 <= MAXIMUM_ETHERNET_PACKET_SIZE as u32
                 {
@@ -994,6 +995,7 @@ impl Ne2000 {
         // see: https://de.wikipedia.org/wiki/Advanced_Programmable_Interrupt_Controller
         apic().allow(interrupt);
     }
+
 }
 
 // implement the InterruptHandler
@@ -1036,18 +1038,18 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .isr_port
                     .lock()
                     .write(InterruptStatusRegister::ISR_PRX.bits());
-                let device_ref: &Ne2000 = &self.device; // This is a shared reference
+                self.device.interrupts.rcv.store(true, Ordering::Relaxed);
+                //let device_ref: &Ne2000 = &self.device; // This is a shared reference
                 // Use unsafe to get a mutable reference to the inner `Ne2000` object
-                let device_mut =
+                //let device_mut =
                     // Convert from a shared reference to a mutable raw pointer
-                    ptr::from_ref(device_ref)
-                        .cast_mut() // Cast to a mutable pointer
-                        .as_mut() // Convert the raw pointer back to a mutable reference
-                        .unwrap(); // Unwrap to ensure it’s valid
+                    //ptr::from_ref(device_ref)
+                        //.cast_mut() // Cast to a mutable pointer
+                        //.as_mut() // Convert the raw pointer back to a mutable reference
+                        //.unwrap(); // Unwrap to ensure it’s valid
 
-                device_mut.receive_packet();
+                //device_mut.receive_packet();
             };
-            self.device.interrupts.rcv.store(true, Ordering::Relaxed);
         }
 
         // check for Packet Transmission Interrupt

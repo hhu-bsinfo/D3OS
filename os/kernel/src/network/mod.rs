@@ -1,6 +1,6 @@
 use crate::device::rtl8139::Rtl8139;
 // add the N2000 driver
-use crate::device::ne2k::ne2000::Ne2000;
+use crate::device::ne2k::ne2000::{self, Ne2000};
 use crate::process::thread::Thread;
 use crate::{pci_bus, scheduler, timer};
 use alloc::sync::Arc;
@@ -81,6 +81,13 @@ pub fn init() {
                 //enable interrupt handler
                 Ne2000::assign(Arc::clone(&ne2k));
                 info!("assigned Interrupt handler");
+
+                scheduler().ready(Thread::new_kernel_thread(
+                    || loop {
+                        check();
+                    },
+                    "check",
+                ));
                 // return the instance
                 ne2k
             });
@@ -117,6 +124,16 @@ pub fn ne2000() -> Option<Arc<Ne2000>> {
     match NE2000.get() {
         Some(ne2000) => Some(Arc::clone(ne2000)),
         None => None,
+    }
+}
+
+pub fn check() {
+    let ne2000 = NE2000.get().expect("NE2000 not initialized");
+    let device = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
+    // check if interrupt occured
+    if device.interrupts.rcv.load(Ordering::Relaxed) {
+        device.receive_packet();
+        device.interrupts.rcv.store(false, Ordering::Relaxed);
     }
 }
 
