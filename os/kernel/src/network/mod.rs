@@ -135,6 +135,10 @@ pub fn check() {
         device.receive_packet();
         device.interrupts.rcv.store(false, Ordering::Relaxed);
     }
+    if device.interrupts.ovw.load(Ordering::Relaxed) {
+        device.handle_overflow();
+        device.interrupts.ovw.store(false, Ordering::Relaxed);
+    }
 }
 
 pub fn add_interface(interface: Interface) {

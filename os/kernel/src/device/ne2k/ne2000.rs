@@ -32,7 +32,7 @@ use spin::{Mutex, RwLock};
 // mpsc : has the jiffy queue ; lock-free unbounded, for send
 // mpmpc : multiple producers, multiple consumers, for receive
 use nolock::queues::{mpmc, mpsc};
-// 
+//
 use pci_types::EndpointHeader;
 // smoltcp provides a full network stack for creating packets, sending, receiving etc.
 use alloc::sync::Arc;
@@ -53,8 +53,8 @@ use x86_64::structures::paging::{Page, PageTableFlags};
 // for writing to the registers
 // super looks in a relative path for other modules
 // load the bitflags for the register into the module
-use super::register_flags::*;
 use super::register_flags::page_registers_offsets::*;
+use super::register_flags::*;
 // smoltcp configuration
 use super::network_stack::*;
 
@@ -67,15 +67,12 @@ const DISPLAY_RED: &'static str = "\x1b[1;31m";
 // Capacity for the receive_queue in the ne2000 struct
 const RECV_QUEUE_CAP: usize = 16;
 
-
 // Define the range of a size for an ethernet packet
 static MINIMUM_ETHERNET_PACKET_SIZE: u8 = 64;
 static MAXIMUM_ETHERNET_PACKET_SIZE: u32 = 1522;
 
 // this variable points to the next packet to be read
 static mut CURRENT_NEXT_PAGE_POINTER: u8 = 0;
-
-
 
 // Buffer Start Page for the transmitted pages
 static TRANSMIT_START_PAGE: u8 = 0x40;
@@ -96,7 +93,6 @@ static RECEIVE_STOP_PAGE: u8 = 0x80;
 // =============================================================================
 // ==== STRUCTS
 // =============================================================================
-
 
 // =============================================================================
 // Registers on Page0
@@ -127,7 +123,7 @@ pub struct Page0 {
 pub struct Page1 {
     //Physical Address Registers, for Reading the MAC Address
     // Reference:
-    // section "10.8 PHYSICAL ADDRESS REGISTERS (PAR0-PAR5)", 
+    // section "10.8 PHYSICAL ADDRESS REGISTERS (PAR0-PAR5)",
     // https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
     par: [Mutex<Port<u8>>; 6],
     mar: [Port<u8>; 8],
@@ -146,7 +142,7 @@ pub struct Registers {
 
 // The Structure of the PacketHeader is definied in the datasheet
 // Header is 4 KB
-// Reference: p.8, Section "Beginning of Reception", p.11 Section "Storage Format for Received Packets", 
+// Reference: p.8, Section "Beginning of Reception", p.11 Section "Storage Format for Received Packets",
 // https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
 // receive status : holds the content of the Receive Status Register
 // next_packet : Pointer, which holds the next ringbuffer address
@@ -161,7 +157,7 @@ struct PacketHeader {
 // TODO: move method calls in trigger to new and set the variables if the
 //       given Interrupt occurs
 pub struct Interrupts {
-    ovw: AtomicBool,
+    pub(crate) ovw: AtomicBool,
     pub(crate) rcv: AtomicBool,
 }
 
@@ -205,17 +201,17 @@ pub struct Ne2000 {
 impl Page1 {
     pub fn new(base_address: u16) -> Self {
         Self {
-        par: core::array::from_fn(|i| Mutex::new(Port::new(base_address + P1_PAR0 + i as u16))),
-        mar: core::array::from_fn(|i| Port::new(base_address + P1_MAR0 + i as u16)),
-        current_port: Port::new(base_address + P1_CURR),
+            par: core::array::from_fn(|i| Mutex::new(Port::new(base_address + P1_PAR0 + i as u16))),
+            mar: core::array::from_fn(|i| Port::new(base_address + P1_MAR0 + i as u16)),
+            current_port: Port::new(base_address + P1_CURR),
         }
     }
 }
 
 impl Page0 {
-    pub fn new(base_address:u16) -> Self {
+    pub fn new(base_address: u16) -> Self {
         Self {
-            pstart_port: Port::new(base_address + P0_PSTART ),
+            pstart_port: Port::new(base_address + P0_PSTART),
             pstop_port: Port::new(base_address + P0_PSTOP),
             bnry_port: Port::new(base_address + P0_BNRY),
             tpsr_port: Port::new(base_address + P0_TPSR),
@@ -237,7 +233,7 @@ impl Registers {
     pub fn new(base_address: u16) -> Self {
         Self {
             // Adress for reseting the device
-            // see: https://wiki.osdev.org/Ne2000#Ne2000_Reset, 
+            // see: https://wiki.osdev.org/Ne2000#Ne2000_Reset,
             //      https://wiki.osdev.org/Ne2000#Register_Pages
             reset_port: Port::new(base_address + RESET),
             // command Port for controlling the CR Register
@@ -251,10 +247,8 @@ impl Registers {
             data_port: Port::new(base_address + DATA),
             page0: Page0::new(base_address),
             page1: Page1::new(base_address),
-            
         }
     }
-
 
     fn read_isr(&self) -> u8 {
         unsafe { self.isr_port.lock().read() }
@@ -263,7 +257,6 @@ impl Registers {
         unsafe { self.imr_port.lock().write(val) }
     }
 }
-
 
 // send_queue: needed for packet transmission process in smoltcp
 // EXAMPLE for a sender and receiver
@@ -287,7 +280,7 @@ impl Ne2000 {
     // initialize the card and its registers for transmit and receive operations
     // =============================================================================
 
-    // endpoint header contains essential information about the device, 
+    // endpoint header contains essential information about the device,
     // such as the Vendor ID (VID), Device ID (DID), and other configuration parameters
     pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
         info!("Configuring PCI registers");
@@ -309,7 +302,7 @@ impl Ne2000 {
         // send_queue.enqueue(13) -> enque data
         // see: https://docs.rs/nolock/latest/nolock/queues/mpsc/jiffy/index.html
         let send_queue = mpsc::jiffy::queue();
-        // Reads the IRQ number from the PCI device, 
+        // Reads the IRQ number from the PCI device,
         // adds the offset and converts into an InterruptVector
         let interrupt =
             InterruptVector::try_from(pci_device.interrupt(pci_config_space).1 + 32).unwrap();
@@ -318,10 +311,10 @@ impl Ne2000 {
         // create bounded mpmc queue with RECV_QUEUE_CAP Capacity
         let recv_buffers = mpmc::bounded::scq::queue(RECV_QUEUE_CAP);
         for _ in 0..RECV_QUEUE_CAP {
-            // allocate one physical frame 
+            // allocate one physical frame
             let phys_frame = frames::alloc(1);
-            
-            //map physical frame into the kernel process address space 
+
+            //map physical frame into the kernel process address space
             let pages = PageRange {
                 start: Page::from_start_address(VirtAddr::new(
                     phys_frame.start.start_address().as_u64(),
@@ -379,13 +372,13 @@ impl Ne2000 {
         unsafe {
             info!("\x1b[1;31mResetting Device NE2000");
 
-    // =============================================================================
-    // ==== INITIALIZATION SEQUENCE FOR THE REGISTERS 
-    // =============================================================================
-    // Registers get initialized and set as 
-    // mentioned on p.29-30, "Section Initialization Sequence"
-    // https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
-    // =============================================================================
+            // =============================================================================
+            // ==== INITIALIZATION SEQUENCE FOR THE REGISTERS
+            // =============================================================================
+            // Registers get initialized and set as
+            // mentioned on p.29-30, "Section Initialization Sequence"
+            // https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+            // =============================================================================
 
             //=== STEP 0 ===//
             // Reset the NIC
@@ -461,7 +454,11 @@ impl Ne2000 {
             // pstart and pstop define the size of the receive buffer (pstop - pstart = buffer size )
             ne2000.registers.page0.tpsr_port.write(TRANSMIT_START_PAGE);
             ne2000.registers.page0.pstart_port.write(RECEIVE_START_PAGE);
-            ne2000.registers.page0.bnry_port.write(RECEIVE_START_PAGE + 1);
+            ne2000
+                .registers
+                .page0
+                .bnry_port
+                .write(RECEIVE_START_PAGE + 1);
             ne2000.registers.page0.pstop_port.write(RECEIVE_STOP_PAGE);
 
             //=== STEP 7 ===//
@@ -499,7 +496,7 @@ impl Ne2000 {
                 mac[i] = port.read();
             }
 
-            // Write MAC address to PAR registers 
+            // Write MAC address to PAR registers
             for (i, guard) in par.iter().enumerate() {
                 let mut port = guard.lock();
                 port.write(mac[i]);
@@ -597,13 +594,12 @@ impl Ne2000 {
             // =============================================================================
             // dummy_read
             // =============================================================================
-            // Usage: a dummy read is performed to ensure no data corruption occurs, 
-            // when the nic first starts up 
+            // Usage: a dummy read is performed to ensure no data corruption occurs,
+            // when the nic first starts up
             // Reference: p.13-14, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
             // =============================================================================
 
             info!("Start Dummy Read");
-
 
             // Save CRDA bit (Current Remote DMA Address)
             let old_crda: u16 = self.registers.page0.crda_0_p0.read() as u16
@@ -645,7 +641,7 @@ impl Ne2000 {
             self.registers.page0.rbcr_1_port.write(high);
 
             //==== STEP 3 ====//
-            // Remote DMA complete ? 
+            // Remote DMA complete ?
             // ref: https://wiki.osdev.org/Ne2000#Sending_a_Packet
             // Clear RDC Interrupt
             self.registers
@@ -689,7 +685,6 @@ impl Ne2000 {
             self.registers.page0.tbcr_1_port_p0.write(high);
             self.registers.page0.tpsr_port.write(TRANSMIT_START_PAGE);
 
-
             // Set TXP Bit to send packet
             self.registers
                 .command_port
@@ -728,7 +723,10 @@ impl Ne2000 {
                     .write(mem::size_of::<PacketHeader>() as u8);
                 self.registers.page0.rbcr_1_port.write(0);
                 self.registers.page0.rsar_0_port.write(0);
-                self.registers.page0.rsar_1_port.write(CURRENT_NEXT_PAGE_POINTER);
+                self.registers
+                    .page0
+                    .rsar_1_port
+                    .write(CURRENT_NEXT_PAGE_POINTER);
 
                 // enable remote Read
                 self.registers
@@ -739,7 +737,7 @@ impl Ne2000 {
                 // the nic always stores a packet header at the beginning of the first
                 // buffer page which is used to store the received package
                 // the nic itself attaches the a 4 Byte header to each packet
-                // Reference: p.8, Section "Beginning of Reception", 
+                // Reference: p.8, Section "Beginning of Reception",
                 // https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
                 let packet_header = PacketHeader {
                     receive_status: self.registers.data_port.read() as u8,
@@ -794,18 +792,24 @@ impl Ne2000 {
 
                     //self.registers.rbcr1.write(packet_header.length >> 8);
                     // fix overflow warning
-                    self.registers.page0.rbcr_1_port.write((packet_length >> 8) as u8);
+                    self.registers
+                        .page0
+                        .rbcr_1_port
+                        .write((packet_length >> 8) as u8);
 
-                    // Remote Start Address Register: points to the 
+                    // Remote Start Address Register: points to the
                     // start of the block of data to be transferred
-                    // Set RSAR0 and 1 to nic header length to skip the 
+                    // Set RSAR0 and 1 to nic header length to skip the
                     // packet header during the read operation
                     self.registers
                         .page0
                         .rsar_0_port
                         .write(size_of::<PacketHeader>() as u8);
 
-                    self.registers.page0.rsar_1_port.write(CURRENT_NEXT_PAGE_POINTER);
+                    self.registers
+                        .page0
+                        .rsar_1_port
+                        .write(CURRENT_NEXT_PAGE_POINTER);
 
                     // issue remote read operation for reading the packet from the nics local buffer
                     self.registers
@@ -821,7 +825,7 @@ impl Ne2000 {
                     let s: String = packet.iter().map(|&b| b as char).collect();
                     info!("{}", s);
 
-                    // enqueue the packet in the receive_messages queue, 
+                    // enqueue the packet in the receive_messages queue,
                     //this queue gets processed by receive in smoltcp
                     self.receive_messages
                         .1
@@ -832,7 +836,7 @@ impl Ne2000 {
                 //////////////////////////////////////////
                 // update pointers for the next package
                 //////////////////////////////////////////
-                 
+
                 // avoids that the boundary register has values outside of the receive buffer boundaries
                 CURRENT_NEXT_PAGE_POINTER = packet_header.next_packet;
                 // check if the next packet is inside the boundaries of the receive buffer
@@ -893,10 +897,7 @@ impl Ne2000 {
             }
 
             // start the nic
-                registers
-                .command_port
-                .write((CR::STA | CR::PAGE_0).bits());
-
+            registers.command_port.write((CR::STA | CR::PAGE_0).bits());
         }
         // convert the data in the mac array to type EthernetAddress
         let mac_address = EthernetAddress::from_bytes(&mac);
@@ -922,7 +923,7 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STOP | CR::PAGE_0).bits());
 
-            // 3. wait for at least 1.6 ms according to the documentation, 
+            // 3. wait for at least 1.6 ms according to the documentation,
             // until transmit or receive operation has ended
             scheduler().sleep(1600);
 
@@ -930,7 +931,7 @@ impl Ne2000 {
             self.registers.page0.rbcr_0_port.write(0);
             self.registers.page0.rbcr_1_port.write(0);
 
-            // 5. read value of TXP bit, check if there was a 
+            // 5. read value of TXP bit, check if there was a
             // transmission in progress when the stop command was issued
             // if value = 0 -> set resend = 0
             // if value = 1 -> read ISR
@@ -988,14 +989,13 @@ impl Ne2000 {
     pub fn assign(device: Arc<Ne2000>) {
         // get the interrupt field in the ne2000 struct
         let interrupt = device.interrupt;
-        //assign the interrupt handler to the given interrupt vector 
+        //assign the interrupt handler to the given interrupt vector
         interrupt_dispatcher().assign(interrupt, Box::new(Ne2000InterruptHandler::new(device)));
         // allow interrupt requests and handle them by the Advanced Programmable Interrupt controller
         // APIC distributes theses as Interrupt Messages to the local apics on the processors of the system
         // see: https://de.wikipedia.org/wiki/Advanced_Programmable_Interrupt_Controller
         apic().allow(interrupt);
     }
-
 }
 
 // implement the InterruptHandler
@@ -1042,11 +1042,11 @@ impl InterruptHandler for Ne2000InterruptHandler {
                 //let device_ref: &Ne2000 = &self.device; // This is a shared reference
                 // Use unsafe to get a mutable reference to the inner `Ne2000` object
                 //let device_mut =
-                    // Convert from a shared reference to a mutable raw pointer
-                    //ptr::from_ref(device_ref)
-                        //.cast_mut() // Cast to a mutable pointer
-                        //.as_mut() // Convert the raw pointer back to a mutable reference
-                        //.unwrap(); // Unwrap to ensure it’s valid
+                // Convert from a shared reference to a mutable raw pointer
+                //ptr::from_ref(device_ref)
+                //.cast_mut() // Cast to a mutable pointer
+                //.as_mut() // Convert the raw pointer back to a mutable reference
+                //.unwrap(); // Unwrap to ensure it’s valid
 
                 //device_mut.receive_packet();
             };
@@ -1074,23 +1074,15 @@ impl InterruptHandler for Ne2000InterruptHandler {
 
         // check for an buffer overflow
         if status.contains(InterruptStatusRegister::ISR_OVW) {
-            // call the method
-            //let ovw =  self.device.interrupts.ovw;
-            //ovw.store(true, Ordering::Relaxed)
-            // `self.device` is of type `Arc<Ne2000>`, which is the shared reference
-            // Use unsafe to get a mutable reference to the inner `Ne2000` object
             unsafe {
-                let device_ref: &Ne2000 = &self.device; // This is a shared reference
-                
-                let device_mut = 
-                // Convert from a shared reference to a mutable raw pointer
-                    ptr::from_ref(device_ref)
-                        .cast_mut() // Cast to a mutable pointer
-                        .as_mut() // Convert the raw pointer back to a mutable reference
-                        .unwrap(); // Unwrap to ensure it’s valid
-                device_mut.handle_overflow();
+                self.device
+                    .registers
+                    .isr_port
+                    .lock()
+                    .write(InterruptStatusRegister::ISR_OVW.bits());
+
+                self.device.interrupts.ovw.store(true, Ordering::Relaxed);
             }
-            
         }
 
         // re-enable Interrupts (22.07.2025)
