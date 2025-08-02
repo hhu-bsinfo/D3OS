@@ -85,6 +85,7 @@ static RECEIVE_START_PAGE: u8 = 0x46;
 //Reception Buffer Ring End
 //P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
 static RECEIVE_STOP_PAGE: u8 = 0x80;
+//static RECEIVE_STOP_PAGE: u8 = 0x48;
 //static RECEIVE_STOP_PAGE: u8 = 0x50;
 
 // 0x80 - 0x46 = 0x58 = 58 pages
@@ -474,6 +475,7 @@ impl Ne2000 {
                     | InterruptMaskRegister::IMR_PTXE
                     | InterruptMaskRegister::IMR_OVWE)
                     .bits(),
+                //InterruptMaskRegister::IMR_OVWE.bits(),
             );
 
             //=== STEP 9 ===//
@@ -516,6 +518,7 @@ impl Ne2000 {
                 .page1
                 .current_port
                 .write(CURRENT_NEXT_PAGE_POINTER);
+            //.write(0x47);
 
             // 10) Start the NIC
             ne2000
@@ -551,7 +554,7 @@ impl Ne2000 {
 
             info!("\x1b[1;31mFinished Initialization");
             // print an ascii banner to the log screen
-            info!(include_str!("banner.txt"), ne2000.read_mac(), base_address);
+            info!(include_str!("banner.txt"), ne2000.get_mac(), base_address);
             scheduler().sleep(1000);
 
             /*scheduler().ready(Thread::new_kernel_thread(
@@ -878,7 +881,7 @@ impl Ne2000 {
     // the mac is needed for checking if received packets
     // are addressed to the nic
     // =============================================================================
-    pub fn read_mac(&self) -> EthernetAddress {
+    pub fn get_mac(&self) -> EthernetAddress {
         //define mac array for storing the values from the PAR Registers
         let mut mac = [0u8; 6];
 

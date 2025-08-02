@@ -301,7 +301,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             // read mac address of NIC and add it as parameter to the Iface::Config
             // Config :: Configuration structure used for creating a network device
             // HardwareAddress : set the hardware address, which the interface will use
-            let mut conf = iface::Config::new(HardwareAddress::from(ne2000.read_mac()));
+            let mut conf = iface::Config::new(HardwareAddress::from(ne2000.get_mac()));
 
             // conf.random_seed = time => in the documentation is the following:
             //It is strongly recommended that the random seed is different on each boot, to avoid problems with TCP port/sequence collisions.

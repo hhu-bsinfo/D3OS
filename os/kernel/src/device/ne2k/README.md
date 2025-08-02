@@ -4,7 +4,7 @@
 
 - [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
 - [ ] check the ne2000.cpp impl
-- [ ] rewrite the call for receive and overflow with AtomicBool values
+- [x] rewrite the call for receive and overflow with AtomicBool values
 - [ ] check overwrite method
 - [ ] rewrite of nettest application in rust
 - [ ] check boundaries for receive buffer

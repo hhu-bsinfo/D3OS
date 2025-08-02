@@ -77,11 +77,15 @@ pub fn init() {
                 let ne2k = Arc::new(device);
 
                 //read the mac address
-                info!("\x1b[1;31mNe2000 MAC address: [{}]", ne2k.read_mac());
+                info!("\x1b[1;31mNe2000 MAC address: [{}]", ne2k.get_mac());
                 //enable interrupt handler
                 Ne2000::assign(Arc::clone(&ne2k));
                 info!("assigned Interrupt handler");
 
+                // create new thread which polls for the fields rcv and ovw
+                // if the trigger method gets called by an packet received
+                // or receive buffer overwrite interrupt, the check method
+                // calls the corresponding method to handle the interrupt
                 scheduler().ready(Thread::new_kernel_thread(
                     || loop {
                         check();
@@ -131,12 +135,16 @@ pub fn check() {
     let ne2000 = NE2000.get().expect("NE2000 not initialized");
     let device = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
     // check if interrupt occured
+    // Packet received ?
     if device.interrupts.rcv.load(Ordering::Relaxed) {
         device.receive_packet();
+        // reset the AtomicBool after handling the interrupt
         device.interrupts.rcv.store(false, Ordering::Relaxed);
     }
+    // Receive Buffer Overwrite?
     if device.interrupts.ovw.load(Ordering::Relaxed) {
         device.handle_overflow();
+        // reset the AtomicBool after handling the interrupt
         device.interrupts.ovw.store(false, Ordering::Relaxed);
     }
 }
