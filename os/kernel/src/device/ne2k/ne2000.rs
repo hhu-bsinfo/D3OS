@@ -285,14 +285,14 @@ impl Ne2000 {
     // such as the Vendor ID (VID), Device ID (DID), and other configuration parameters
     pub fn new(pci_device: &RwLock<EndpointHeader>) -> Self {
         info!("Configuring PCI registers");
-        //Self { base_address }
-        //let pci_config_space = pci_bus().config_space();
         let pci_device = pci_device.write();
         let pci_config_space = pci_bus().config_space();
 
+        // Base Adress Register (BAR), holds memory addresses, offsets for ports
         let bar0 = pci_device
             .bar(0, pci_bus().config_space())
             .expect("Failed to read base address!");
+        // get the base address for setting the register offsets
         let base_address = bar0.unwrap_io() as u16;
         info!("NE2000 base address: [0x{:x}]", base_address);
 
@@ -392,7 +392,7 @@ impl Ne2000 {
 
             // bitwise and operation, checks if highest bit is set
             // if register content equals 0, reset was successful
-            while (ne2000.registers.read_isr() & 0x80) == 0 {
+            while (ne2000.registers.read_isr() & InterruptStatusRegister::ISR_RST.bits()) == 0 {
                 info!("Reset in Progress");
                 scheduler().sleep(1);
             }
@@ -431,10 +431,11 @@ impl Ne2000 {
 
             //=== STEP 4 ===//
             // initialize RCR
-            // determines operation of the NIC during reception of a packet
-            // and is used to program what types of packets to
-            // accept.
-            // RCR_AR : allow RUNT Packets (Packets < 64 Btyte)
+            // determines the operations of the NIC during reception of a packet
+            // and is used to program what types of packets to accept.
+            // RCR_AR : allow RUNT Packets (Packets < 64 Btytes)
+            // RCR_AB : allow Broadcast Packets
+            // RCR_AM : allow Multicast Packets
             ne2000.registers.page0.rcr_port.write(
                 (ReceiveConfigurationRegister::RCR_AR
                     | ReceiveConfigurationRegister::RCR_AB
@@ -488,8 +489,7 @@ impl Ne2000 {
             // define array for saving the MAC Address
             let mut mac = [0u8; 6];
 
-            // i) Initialize Physical Address Register: PAR0-PAR5
-            // define the location of the data for the mac address
+            // i) Initialize the Physical Address Registers: PAR0-PAR5
             // iterate through the ports to get the mac address
             // borrow the value
             let par = &ne2000.registers.page1.par;
@@ -512,7 +512,7 @@ impl Ne2000 {
             // p.156 http://www.bitsavers.org/components/national/_dataBooks/1988_National_Data_Communications_Local_Area_Networks_UARTs_Handbook.pdf#page=156
             CURRENT_NEXT_PAGE_POINTER = RECEIVE_START_PAGE + 1;
 
-            // iii) Initialize Current Pointer: CURR
+            // iii) Initialize Current Pointer
             ne2000
                 .registers
                 .page1
@@ -526,14 +526,8 @@ impl Ne2000 {
                 .command_port
                 .write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
 
-            //11) Initialize TCR and RCR
+            //11) Initialize TCR
             ne2000.registers.page0.tcr_port.write(0);
-            ne2000.registers.page0.rcr_port.write(
-                (ReceiveConfigurationRegister::RCR_AR
-                    | ReceiveConfigurationRegister::RCR_AB
-                    | ReceiveConfigurationRegister::RCR_AM)
-                    .bits(),
-            );
 
             //Issue Remote Read command
             // Command Port is 8 Bits and has the following structure
