@@ -5,7 +5,7 @@ extern crate alloc;
 
 use core::{ffi::CStr, net::{IpAddr, Ipv6Addr, SocketAddr}, str::FromStr};
 
-use alloc::{ffi::CString, format, string::ToString, vec::Vec};
+use alloc::{ffi::CString, format, string::ToString, vec::Vec, vec};
 use syscall::{return_vals::Errno, syscall, SystemCall};
 
 pub struct UdpSocket {
@@ -329,12 +329,36 @@ pub enum NetworkError {
 
 /// Get all IP addresses of this host.
 pub fn get_ip_addresses() -> Vec<IpAddr> {
-    // how large could this be?
     let mut buf = [0u8; 4096];
     // this can't fail, unless the buffer is not big enough
-    syscall(SystemCall::GetIpAddresses, &[buf.as_mut_ptr() as usize, buf.len()])
-        .unwrap();
-    // now, we have a \0-seperated list of IP addresses
+    syscall(SystemCall::GetIpAddresses, &[
+        buf.as_mut_ptr() as usize,
+        buf.len(),
+    ]).unwrap();
+    split_ips(&buf)
+}
+
+/// Resolve this hostname, return a list of IP addresses.
+pub fn resolve_hostname(host: &str) -> Vec<IpAddr> {
+    // this might already be an IP address
+    if let Ok(ip) = host.parse() {
+        vec![ip]
+    } else {
+        let host_c = CString::new(host).unwrap();
+        let mut buf = [0u8; 4096];
+        // this can't fail, unless the buffer is not big enough
+        syscall(SystemCall::GetIpAddresses, &[
+            buf.as_mut_ptr() as usize,
+            buf.len(),
+            host_c.as_bytes_with_nul().as_ptr() as usize,
+        ]).unwrap();
+        split_ips(&buf)
+    }
+}
+
+
+/// Split a \0-byte seperated list of IP addresses
+fn split_ips(buf: &[u8]) -> Vec<IpAddr> {
     buf
         // split them at \0
         .split( |v| v == &0)

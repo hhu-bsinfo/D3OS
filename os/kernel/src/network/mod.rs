@@ -2,14 +2,15 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
+use smoltcp::socket::dns::GetQueryResultError;
 use core::net::{Ipv4Addr, Ipv6Addr};
 use core::ops::Deref;
 use core::ptr;
-use log::{info};
+use log::{info, warn};
 use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
-use smoltcp::socket::{dhcpv4, icmp, tcp, udp, Socket};
+use smoltcp::socket::{dhcpv4, dns, icmp, tcp, udp, Socket};
 use smoltcp::time::Instant;
-use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr, IpEndpoint};
+use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint};
 use spin::{Once, RwLock};
 use crate::device::rtl8139::Rtl8139;
 use crate::process::process::Process;
@@ -25,6 +26,8 @@ static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
 /// We can't just create a SocketSet per process because smoltcp drops all
 /// packets for non-existing sockets when polling.
 static SOCKET_PROCESS: RwLock<BTreeMap<SocketHandle, Arc<Process>>> = RwLock::new(BTreeMap::new());
+static DNS_SOCKET: Once<SocketHandle> = Once::new();
+static DHCP_SOCKET: Once<SocketHandle> = Once::new();
 
 #[derive(Debug)]
 #[repr(u8)]
@@ -68,17 +71,29 @@ pub fn init() {
         let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
         add_interface(Interface::new(conf, device, Instant::from_millis(time as i64)));
 
+        let sockets = SOCKETS.get().expect("Socket set not initialized!");
+        let current_process = process_manager().read().current_process();
+        let mut process_map = SOCKET_PROCESS.write();
+        // setup DNS
+        DNS_SOCKET.call_once(|| {
+            let dns_socket = dns::Socket::new(&[], Vec::new());
+            let dns_handle = sockets.write().add(dns_socket);
+            process_map
+                .try_insert(dns_handle, current_process.clone())
+                .expect("failed to insert socket into socket-process map");
+            dns_handle
+        });
         // request an IP address via DHCP
-        let dhcp_socket = dhcpv4::Socket::new();
-        let dhcp_handle = SOCKETS
-            .get()
-            .expect("Socket set not initialized!")
-            .write()
-            .add(dhcp_socket);
-        SOCKET_PROCESS
-            .write()
-            .try_insert(dhcp_handle, process_manager().read().current_process())
-            .expect("failed to insert socket into socket-process map");
+        DHCP_SOCKET.call_once(|| {
+            let dhcp_socket = dhcpv4::Socket::new();
+            let dhcp_handle = sockets
+                .write()
+                .add(dhcp_socket);
+            process_map
+                .try_insert(dhcp_handle, current_process)
+                .expect("failed to insert socket into socket-process map");
+            dhcp_handle
+        });
     }
 }
 
@@ -106,14 +121,78 @@ fn add_interface(interface: Interface) {
     INTERFACES.write().push(interface);
 }
 
-pub fn get_ip_addresses() -> Vec<IpAddress> {
-    INTERFACES
-        .read()
-        .iter()
-        .map(Interface::ip_addrs)
-        .flatten()
-        .map(IpCidr::address)
-        .collect()
+/// Get IP addresses for a host.
+/// 
+/// If host is none, get the addresses of the current host.
+pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
+    let handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
+    if let Some(host) = host {
+        // first, start the queries
+        let mut query_handles: Vec<_> = {
+            let mut interfaces = INTERFACES.write();
+            let interface = interfaces.get_mut(0).expect("network interface is missing");
+            let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+            let socket = sockets.get_mut::<dns::Socket>(*handle);
+            [DnsQueryType::Aaaa, DnsQueryType::A, DnsQueryType::Cname]
+                .into_iter()
+                .map(|ty|
+                        socket
+                            .start_query(interface.context(), host, ty)
+                            .map_err(|e| {
+                                warn!("DNS query for {host} {ty:?} failed: {e:?}");
+                                e
+                            })
+                            .ok()
+                )
+                .flatten()
+                .collect()
+        };
+        // then, see if they've returned something
+        let mut resulting_ips = Vec::new();
+        loop {
+            {
+                let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+                let socket = sockets.get_mut::<dns::Socket>(*handle);
+                let mut remaining: Vec<_> = query_handles
+                    .drain(..)
+                    .map(|query| match socket.get_query_result(query) {
+                        // it's finished, get the results
+                        Ok(ips) => {
+                            // TODO: does a cname query really return an IP?
+                            resulting_ips.extend_from_slice(&ips);
+                            None
+                        },
+                        // if failed, log and and ignore
+                        Err(GetQueryResultError::Failed) => {
+                            warn!("DNS query for {host} failed");
+                            None
+                        },
+                        // it's still ongoing
+                        Err(GetQueryResultError::Pending) => Some(query)
+                    })
+                    .flatten()
+                    .collect();
+                if remaining.is_empty() {
+                    // we're done!
+                    break;
+                }
+                // else, check for the remaining ones
+                query_handles.clear();
+                query_handles.append(&mut remaining);
+            }
+            // release the locks and sleep
+            scheduler().sleep(50);
+        }
+        resulting_ips
+    } else {
+        INTERFACES
+            .read()
+            .iter()
+            .map(Interface::ip_addrs)
+            .flatten()
+            .map(IpCidr::address)
+            .collect()
+    }
 }
 
 pub fn open_udp() -> SocketHandle {
@@ -276,44 +355,47 @@ fn poll_sockets() -> Option<()> {
     // to work with a shared reference. We can safely cast the shared reference to a mutable.
     let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
 
+    let interface = interfaces.get_mut(0).expect("failed to get interface");
+    interface.poll(time, device, &mut sockets);
     // DHCP handling is based on https://github.com/smoltcp-rs/smoltcp/blob/main/examples/dhcp_client.rs
-    for interface in interfaces.iter_mut() {
-        interface.poll(time, device, &mut sockets);
-        for (_handle, socket) in sockets.iter_mut() {
-            if let Socket::Dhcpv4(dhcp) = socket {
-                if let Some(event) = dhcp.poll() {
-                    match event {
-                        dhcpv4::Event::Deconfigured => {
-                            info!("lost DHCP lease");
-                            interface.update_ip_addrs(|addrs| addrs.clear());
-                            interface.routes_mut().remove_default_ipv4_route();
-                        },
-                        dhcpv4::Event::Configured(config) => {
-                            info!("acquired DHCP lease:");
-                            info!("IP address: {}", config.address);
-                            interface.update_ip_addrs(|addrs| {
-                                addrs.clear();
-                                addrs.push(IpCidr::Ipv4(config.address)).unwrap();
-                            });
+    let dhcp_handle = DHCP_SOCKET.get().expect("DHCP socket does not exist yet");
+    let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(*dhcp_handle);
+    if let Some(event) = dhcp_socket.poll() {
+        match event {
+            dhcpv4::Event::Deconfigured => {
+                info!("lost DHCP lease");
+                interface.update_ip_addrs(|addrs| addrs.clear());
+                interface.routes_mut().remove_default_ipv4_route();
+            },
+            dhcpv4::Event::Configured(config) => {
+                info!("acquired DHCP lease:");
+                info!("IP address: {}", config.address);
+                interface.update_ip_addrs(|addrs| {
+                    addrs.clear();
+                    addrs.push(IpCidr::Ipv4(config.address)).unwrap();
+                });
 
-                            if let Some(router) = config.router {
-                                info!("default gateway: {}", router);
-                                interface
-                                    .routes_mut()
-                                    .add_default_ipv4_route(router)
-                                    .unwrap();
-                            } else {
-                                info!("no default gateway");
-                                interface
-                                    .routes_mut()
-                                    .remove_default_ipv4_route();
-                            }
-                            // TODO: make use of this
-                            info!("DNS servers: {:?}", config.dns_servers);
-                        },
-                    }
+                if let Some(router) = config.router {
+                    info!("default gateway: {}", router);
+                    interface
+                        .routes_mut()
+                        .add_default_ipv4_route(router)
+                        .unwrap();
+                } else {
+                    info!("no default gateway");
+                    interface
+                        .routes_mut()
+                        .remove_default_ipv4_route();
                 }
-            }
+                info!("DNS servers: {:?}", config.dns_servers);
+                let dns_servers: Vec<_> = config.dns_servers
+                    .iter()
+                    .map(|ip| IpAddress::Ipv4(*ip))
+                    .collect();
+                let dns_handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
+                let dns_socket = sockets.get_mut::<dns::Socket>(*dns_handle);
+                dns_socket.update_servers(&dns_servers);
+            },
         }
     }
     Some(())

@@ -234,11 +234,23 @@ pub fn sys_sock_close(handle: SocketHandle) -> isize {
     0
 }
 
-/// return a \0 seperated list of ip addresses
-pub fn sys_get_ip_adresses(ptr: *mut u8, len: usize) -> isize {
+/// Return a \0 seperated list of IP addresses for a given hostname.
+/// 
+/// If the hostname is missing, the addresses of the current host will be returned.
+pub fn sys_get_ip_adresses(ptr: *mut u8, len: usize, host_ptr: *const u8) -> isize {
+    let host = if host_ptr.is_null() {
+        None
+    } else {
+        match unsafe { ptr_to_string(host_ptr) } {
+            Ok(host) => Some(host),
+            Err(errno) => return errno.into(),
+        }
+    };
+    info!("resolving host {host:?}");
     let target = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
     let mut idx = 0;
-    for ip in get_ip_addresses() {
+    for ip in get_ip_addresses(host.as_deref()) {
+        info!("{host:?} has address {ip:?}");
         let text = ip.to_string();
         target[idx..idx+text.len()].copy_from_slice(text.as_bytes());
         target[idx+text.len()] = 0;
