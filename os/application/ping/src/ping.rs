@@ -8,7 +8,7 @@ use core::net::IpAddr;
 
 use alloc::{string::String, vec};
 use concurrent::thread::sleep;
-use network::IcmpSocket;
+use network::{resolve_hostname, IcmpSocket};
 #[allow(unused_imports)]
 use runtime::*;
 use smoltcp::{phy::ChecksumCapabilities, wire::{Icmpv4Packet, Icmpv4Repr}};
@@ -48,13 +48,12 @@ Examples:
     }
 
     // the next argument should be the host
-    // TODO: also support host names
-    let ip: IpAddr = if let Some(host) = args.next() {
-        host.parse().expect("failed to parse IP address")
-    } else {
+    let Some(host) = args.next() else {
         println!("Usage: ping [-c count] host");
         return;
     };
+    // just take the first IP address
+    let ip = resolve_hostname(&host).into_iter().next().unwrap();
 
     let ident = 0x1234;
     let socket = IcmpSocket::bind(ident).expect("failed to open socket");

@@ -4,7 +4,7 @@ extern crate alloc;
 use core::net::{IpAddr, Ipv6Addr, SocketAddr};
 
 use alloc::string::String;
-use network::{TcpListener, TcpStream, UdpSocket};
+use network::{resolve_hostname, TcpListener, TcpStream, UdpSocket};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::{print, println, read::read};
@@ -40,8 +40,8 @@ fn main() {
     nc [-u] [-l] host port
 
 Examples:
-    nc 1.2.3.4 5678
-        open a TCP connection to 1.2.3.4:5678
+    nc example.net 5678
+        open a TCP connection to example.net:5678
     nc -u -l 0.0.0.0 1234
         bind to 0.0.0.0:1234, UDP");
                 return;
@@ -67,8 +67,8 @@ Examples:
     // for listen, this is the address and port to bind to
     // for connect, this is the remote host to connect to
     let addr = if let Some(host) = args.next() && let Some(port_str) = args.next() {
-        // TODO: also support host names
-        let ip: IpAddr = host.parse().expect("failed to parse IP address");
+        // just take the first IP address
+        let ip = resolve_hostname(&host).into_iter().next().unwrap();
         let port: u16 = port_str.parse().expect("failed to parse port");
         SocketAddr::new(ip, port)
     } else {
