@@ -690,6 +690,7 @@ impl Ne2000 {
 
             //==== STEP 7 ====//
             // Poll ISR until remote DMA Bit is set
+            // remote dma write ends, when byte count in RBCR is 0
             while (self.registers.read_isr() & InterruptStatusRegister::ISR_RDC.bits()) == 0 {
                 scheduler().sleep(1);
                 info!("polling")
