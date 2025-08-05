@@ -312,19 +312,6 @@ impl phy::Device for Ne2000 {
         }
     }
 
-    /*
-     *    smoltcp               driver                  hardware
-     *   |   poll_ne2k()       |                        |
-     *   |-------------------->| transmit()?            |
-     *   |<--------------------| Some(TxToken)          |
-     *   |   build IP/Eth hdr  |                        |
-     *   |-------------------->| token.consume()        |
-     *   |                     |  ├─ alloc buf / DMA    |
-     *   |                     |  ├─ copy frame         |
-     *   |                     |  └─ set TXP bit        |
-     *   |                     |----------------------->|  frame on the wire
-     */
-
     // Converts &mut self to &Ne2000 safely.
     // Needed because RxToken and TxToken store a shared reference to the driver (not &mut self). See RTL8139 impl
     // Returns a TxToken, which accepts the packet contents

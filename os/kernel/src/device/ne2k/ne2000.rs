@@ -583,7 +583,21 @@ impl Ne2000 {
     // - the function is called by the consume function of TxToken and gets a datagram
     // as param.
     // - the function sets the internal registers of the nic for writing the packet
-    //   to the local buffer of the nic
+    //   from the memory of the Host to the local buffer of the nic via Remote DMA
+    /*
+     *    smoltcp               driver                          hardware
+     *   |   poll_ne2k()       |                                |
+     *   |-------------------->| transmit()?                    |
+     *   |<--------------------| Some(TxToken)                  |
+     *   |   build IP/Eth hdr  |                                |
+     *   |-------------------->| token.consume()                |
+     *   |                     |  ├─ alloc buf / DMA            |
+     *   |                     |  ├─ copy frame                 |
+     *   |                     |  ├─ call self.send_packet()    |
+     *   |                     |  └─-- set registers,           |
+     *   |                     |       enable remote write      |
+     *   |                     |------------------------------> |  frame on the wire
+     */
     // =============================================================================
 
     pub fn send_packet(&mut self, packet: &[u8]) {
@@ -711,6 +725,39 @@ impl Ne2000 {
     // if a packet is received by the nic, process it
     // a remote read operation is executed, which transfers the payload of the
     // packet, which is stored on the local buffer of the nic to the host system
+    //    hardware           NE2000 driver                RX queue               smoltcp
+    // ───────────┬─────────────────┬──────────────────────┬────────────────────────┬──────────
+    //            │                 │                      │                        │
+    //Ethernet    │                 │                      │                        │
+    //frame ----▶ │  (IRQ)          │                      │                        │
+    //            │                 │                      │                        │
+    //            │                 │   receive_packet(): reads │                   │
+    //            │                 │   packet & copies    │                        │
+    //            │                 │   into host buffer   │                        │
+    //            │                 └────────────┬─────────┘                        │
+    //            │                              │  enqueue(buffer B)               │
+    //            │                              │───────────────────────────────▶  │
+    //            │                              │                                  │
+    //            │                              │                                  │
+    //            │                              │               poll()/receive()   │
+    //            │                              │◀──────────────────────────────────│
+    //            │   Device::receive():         │                                  │
+    //            │   try_dequeue()              │                                  │
+    //            │────────────────────────────▶ │  Ok(buffer B)                    │
+    //            │                              │◀──────────────────────────────────│
+    //            │   wrap in Ne2000RxToken      │                                  │
+    //            │   + fresh Ne2000TxToken      │                                  │
+    //            │───────────────────────────────────────────────────────────────▶ │
+    //            │   return Some((Rx,Tx))       │                                  │
+    //            │                              │                                  │
+    //            │                              │        process frame             │
+    //            │                              │◀──────────────────────────────────│
+    //            │                              │                                  │
+    //            │   RxToken consume():         │                                  │
+    //            │   return_buffer(buffer B)    │                                  │
+    //            │────────────────────────────▶ │  enqueue(empty buf)              │
+    //            │                              │                                  │
+    //
     // =============================================================================
     pub fn receive_packet(&mut self) {
         unsafe {
