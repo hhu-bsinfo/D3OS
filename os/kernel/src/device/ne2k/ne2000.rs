@@ -566,17 +566,14 @@ impl Ne2000 {
             info!(include_str!("banner.txt"), ne2000.get_mac(), base_address);
             scheduler().sleep(1000);
 
-            /*scheduler().ready(Thread::new_kernel_thread(
-                loop {
-                    if ne2000.interrupts.rcv.load(Ordering::Relaxed) {
-                        ne2000.receive_packet();
-                        ne2000.interrupts.rcv.store(false, Ordering::Relaxed);
-                    }
-                },
-                "Ne2k IRQ",
-            ));*/
-
             ne2000
+        }
+    }
+
+    pub fn ready2transmit(&mut self) -> bool {
+        unsafe {
+            let status = CR::from_bits_retain(self.registers.command_port.read()).contains(CR::TXP);
+            return status;
         }
     }
 
@@ -610,7 +607,7 @@ impl Ne2000 {
             // Reference: p.13-14, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
             // =============================================================================
 
-            info!("Start Dummy Read");
+            //info!("Start Dummy Read");
 
             // Save CRDA bit (Current Remote DMA Address)
             let old_crda: u16 = self.registers.page0.crda_0_p0.read() as u16
@@ -635,13 +632,13 @@ impl Ne2000 {
             {
                 scheduler().sleep(1);
             }
-            info!("Finished Dummy Read");
+            //info!("Finished Dummy Read");
 
             // =============================================================================
             // end dummy read
             // =============================================================================
 
-            info!("Load packet size and enable remote write");
+            //info!("Load packet size and enable remote write");
             //==== STEP 2 ====//
             // Load RBCR with packet size
             let packet_length = packet.len() as u32;
@@ -671,7 +668,7 @@ impl Ne2000 {
                 .write((CR::STA | CR::REMOTE_WRITE | CR::PAGE_0).bits());
 
             //==== STEP 6 ====//
-            // Write packet to remote DMA
+            // Write packet to remote DMA (host writes data to the local buffer memory)
             let data_port = &mut self.registers.data_port;
             for &data in packet {
                 data_port.write(data);
@@ -712,6 +709,8 @@ impl Ne2000 {
     // ==== FUNCTION receive_packet
     // =============================================================================
     // if a packet is received by the nic, process it
+    // a remote read operation is executed, which transfers the payload of the
+    // packet, which is stored on the local buffer of the nic to the host system
     // =============================================================================
     pub fn receive_packet(&mut self) {
         unsafe {
@@ -769,21 +768,24 @@ impl Ne2000 {
                         // Subtract the size of the packet header
                         let length_without_header = length_u16 - size_of::<PacketHeader>() as u16;
 
-                        // Return the length as u8
+                        // Return the length as u16
                         length_without_header as u16
                     },
                 };
 
                 info!("packet header rcr : {}", packet_header.receive_status);
-                info!("packet header length : {}", packet_header.length);
-                info!("packet header next_packet: {}", packet_header.next_packet);
+                //info!("packet header length : {}", packet_header.length);
+                //info!("packet header next_packet: {}", packet_header.next_packet);
 
                 // check received packet
                 // rust doesn't treat integers as boolean in an if clause, so a comparison has to be made
-                // TODO: What does 1 mean for receive_status ?
+                // from the RSR Register:
+                // first bit set -> packet has been received successfully, (RSR_PRX)
+                // second bit set -> packet has errors, is not complete
+                // fifth bit -> Multicast Packet
+                // RSR_PRX set : Received Packet is intact
                 // if status is okay and packet payload length less than the max. Ethernet frame
                 // size continue to process the packet
-                // RSR_PRX set : Received Packet is intact
                 // else just update the pointers, discard the packet
                 let rsr_reg = self.registers.page0.rsr_port.read();
                 info!("{}", rsr_reg);

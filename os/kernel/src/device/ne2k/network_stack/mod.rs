@@ -150,7 +150,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         // call send method using the NE2000
         // allocate one pyhsical frame
         // the phys_buffers gets a start and end PhysFrame (Range)
-        // for defining where the packet gets wri tten
+        // for defining where the packet gets written
         let phys_buffer = frames::alloc(1);
         let phys_start_addr = phys_buffer.start.start_address();
         // map to kernel space
@@ -191,7 +191,9 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         };
         let result = f(buffer);
 
-        // Send packet by
+        // Send packet
+        // function sets the register, writes the packet per remote dma from the host to the local
+        // buffer memory of the nic and triggers a send operation
         self.device.send_packet(buffer);
 
         result
@@ -293,14 +295,35 @@ impl phy::Device for Ne2000 {
         let device = unsafe { ptr::from_ref(self).as_ref()? };
         //dequeue an empty buffer from receive_messages, which gets assigned
         // to the Ne2000RxToken for loading the packet payload
+        // 0 is the receiver of the queue
+        // if a packet is enqueued, it returns Ok(rec_buf)
+        // and tries to pop it off the receive_messages queue
+        // Ne2000RxToken – gives smoltcp read-only access to the just-received Ethernet frame.
+        // new(recv_buf, device) ties the buffer together
+        // with a reference to the NIC so that, when smoltcp
+        // finishes with the frame, the token can safely return the buffer to the driver.
         match self.receive_messages.0.try_dequeue() {
             Ok(recv_buf) => Some((
                 Ne2000RxToken::new(recv_buf, device),
                 Ne2000TxToken::new(self),
             )),
+            // no packet has been received and is waiting in the queue
             Err(_) => None,
         }
     }
+
+    /*
+     *    smoltcp               driver                  hardware
+     *   |   poll_ne2k()       |                        |
+     *   |-------------------->| transmit()?            |
+     *   |<--------------------| Some(TxToken)          |
+     *   |   build IP/Eth hdr  |                        |
+     *   |-------------------->| token.consume()        |
+     *   |                     |  ├─ alloc buf / DMA    |
+     *   |                     |  ├─ copy frame         |
+     *   |                     |  └─ set TXP bit        |
+     *   |                     |----------------------->|  frame on the wire
+     */
 
     // Converts &mut self to &Ne2000 safely.
     // Needed because RxToken and TxToken store a shared reference to the driver (not &mut self). See RTL8139 impl
@@ -308,6 +331,11 @@ impl phy::Device for Ne2000 {
     fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
         //let device = unsafe { ptr::from_ref(self).as_ref()? };
         //info!("==> transmit() requested by smoltcp!");
+        //if self.ready2transmit() {
+        //    Some(Ne2000TxToken::new(self))
+        //} else {
+        //    None
+        //}
         Some(Ne2000TxToken::new(self))
     }
 
