@@ -291,7 +291,8 @@ impl phy::Device for Ne2000 {
     // where the all received bytes need to be sent back, without heap allocation.
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let device = unsafe { ptr::from_ref(self).as_ref()? };
-        //info!("==> receive() requested by smoltcp!");
+        //dequeue an empty buffer from receive_messages, which gets assigned
+        // to the Ne2000RxToken for loading the packet payload
         match self.receive_messages.0.try_dequeue() {
             Ok(recv_buf) => Some((
                 Ne2000RxToken::new(recv_buf, device),

@@ -136,16 +136,16 @@ pub fn check() {
     let device = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
     // check if interrupt occured
     // Packet received ?
-    if device.interrupts.rcv.load(Ordering::Relaxed) {
+    if device.CheckInterrupts.prx.load(Ordering::Relaxed) {
         device.receive_packet();
         // reset the AtomicBool after handling the interrupt
-        device.interrupts.rcv.store(false, Ordering::Relaxed);
+        device.CheckInterrupts.prx.store(false, Ordering::Relaxed);
     }
     // Receive Buffer Overwrite?
-    if device.interrupts.ovw.load(Ordering::Relaxed) {
+    if device.CheckInterrupts.ovw.load(Ordering::Relaxed) {
         device.handle_overflow();
         // reset the AtomicBool after handling the interrupt
-        device.interrupts.ovw.store(false, Ordering::Relaxed);
+        device.CheckInterrupts.ovw.store(false, Ordering::Relaxed);
     }
 }
 

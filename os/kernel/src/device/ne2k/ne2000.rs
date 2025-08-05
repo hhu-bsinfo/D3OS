@@ -12,12 +12,10 @@
 // =============================================================================
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{PAGE_SIZE, frames};
-use crate::process::thread::Thread;
 use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use core::mem;
 // for calling the methods outside the interrupt handler
-use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
-use core::{ptr, slice};
+use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 // print to terminal
 use log::info;
 // for allocator impl
@@ -62,34 +60,43 @@ use super::network_stack::*;
 // ==== CONSTANTS
 // =============================================================================
 
+// use const here because the values don't need to be mutable
+// during program execution
 const DISPLAY_RED: &'static str = "\x1b[1;31m";
 
 // Capacity for the receive_queue in the ne2000 struct
 const RECV_QUEUE_CAP: usize = 16;
 
-// Define the range of a size for an ethernet packet
-static MINIMUM_ETHERNET_PACKET_SIZE: u8 = 64;
-static MAXIMUM_ETHERNET_PACKET_SIZE: u32 = 1522;
-
-// this variable points to the next packet to be read
-static mut CURRENT_NEXT_PAGE_POINTER: u8 = 0;
-
 // Buffer Start Page for the transmitted pages
-static TRANSMIT_START_PAGE: u8 = 0x40;
+const TRANSMIT_START_PAGE: u8 = 0x40;
+
+// Define the range of a size for an ethernet packet
+const MINIMUM_ETHERNET_PACKET_SIZE: u8 = 64;
+const MAXIMUM_ETHERNET_PACKET_SIZE: u32 = 1522;
 
 // Reception Buffer Ring Start Page
 // http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
 // Page 4 PSTART
-static RECEIVE_START_PAGE: u8 = 0x46;
+const RECEIVE_START_PAGE: u8 = 0x46;
 
 //Reception Buffer Ring End
 //P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
-static RECEIVE_STOP_PAGE: u8 = 0x80;
+const RECEIVE_STOP_PAGE: u8 = 0x80;
 //static RECEIVE_STOP_PAGE: u8 = 0x48;
 //static RECEIVE_STOP_PAGE: u8 = 0x50;
 
 // 0x80 - 0x46 = 0x58 = 58 pages
 // total buffer size = 58 * 256 Bytes  = 14.KiB
+
+// use static here, because the variable gets changed
+// during the program and a mutable value is needed
+
+// this variable points to the next packet to be read
+//static mut CURRENT_NEXT_PAGE_POINTER: u8 = 0;
+static CURRENT_NEXT_PAGE_POINTER: AtomicU8 = AtomicU8::new(0);
+static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+static mut COUNTER: u8 = 0;
 
 // =============================================================================
 // ==== STRUCTS
@@ -116,6 +123,8 @@ pub struct Page0 {
     rsar_1_port: Port<u8>,
     rbcr_0_port: Port<u8>,
     rbcr_1_port: Port<u8>,
+    // receive status register
+    rsr_port: Port<u8>,
 }
 
 // =============================================================================
@@ -155,11 +164,14 @@ struct PacketHeader {
     length: u16,
 }
 
-// TODO: move method calls in trigger to new and set the variables if the
-//       given Interrupt occurs
-pub struct Interrupts {
+// define Atomics which are used for the trigger function
+// each time one of the interrupts occurs (PRX or OVW), set
+// AtomicBool to 'true', which triggers the check() function
+// in network/mod.rs and executes the appropriate function for
+// the interrupt
+pub struct CheckInterrupts {
     pub(crate) ovw: AtomicBool,
-    pub(crate) rcv: AtomicBool,
+    pub(crate) prx: AtomicBool,
 }
 
 // the interrupt handler holds a shared reference to the Ne2000 device
@@ -186,13 +198,14 @@ pub struct Ne2000 {
         // Sender send data to a set of Receivers
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
-    // contain the actual data which is received
+    // contains the actual data which is received
+    // scq: Scalable-Circular-Queue implementation
     pub receive_messages: (
         mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
     interrupt: InterruptVector,
-    pub(crate) interrupts: Interrupts,
+    pub(crate) CheckInterrupts: CheckInterrupts,
 }
 
 // =============================================================================
@@ -227,6 +240,7 @@ impl Page0 {
             dcr_port: Port::new(base_address + P0_DCR),
             crda_0_p0: Port::new(base_address + P0_CRDA0),
             crda_1_p0: Port::new(base_address + P0_CRDA1),
+            rsr_port: Port::new(base_address + P0_RSR),
         }
     }
 }
@@ -351,9 +365,9 @@ impl Ne2000 {
                 .expect("Failed to enqueue receive buffer!");
         }
 
-        let interrupts = Interrupts {
+        let check_interrupts = CheckInterrupts {
             ovw: AtomicBool::new(false),
-            rcv: AtomicBool::new(false),
+            prx: AtomicBool::new(false),
         };
 
         // construct the ne2000 and return it at the end of the
@@ -366,7 +380,7 @@ impl Ne2000 {
             receive_buffer: Mutex::new(ReceiveBuffer::new()),
             receive_messages: mpmc::bounded::scq::queue(RECV_QUEUE_CAP),
             interrupt,
-            interrupts,
+            CheckInterrupts: check_interrupts,
         };
 
         info!("\x1b[1;31mPowering on device");
@@ -510,14 +524,15 @@ impl Ne2000 {
                 port.write(0xFF);
             }
             // p.156 http://www.bitsavers.org/components/national/_dataBooks/1988_National_Data_Communications_Local_Area_Networks_UARTs_Handbook.pdf#page=156
-            CURRENT_NEXT_PAGE_POINTER = RECEIVE_START_PAGE + 1;
+            //CURRENT_NEXT_PAGE_POINTER = RECEIVE_START_PAGE + 1;
+            CURRENT_NEXT_PAGE_POINTER.store(RECEIVE_START_PAGE + 1, Ordering::Relaxed);
 
             // iii) Initialize Current Pointer
             ne2000
                 .registers
                 .page1
                 .current_port
-                .write(CURRENT_NEXT_PAGE_POINTER);
+                .write(CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed));
             //.write(0x47);
 
             // 10) Start the NIC
@@ -579,7 +594,6 @@ impl Ne2000 {
             // check, if the nic is ready for transmit
             while CR::from_bits_retain(self.registers.command_port.read()).contains(CR::TXP) {
                 scheduler().sleep(1);
-                info!("Transmit bit still set!");
             }
 
             //==== STEP 1 ====//
@@ -620,7 +634,6 @@ impl Ne2000 {
                     | ((self.registers.page0.crda_1_p0.read() as u16) << 8)
             {
                 scheduler().sleep(1);
-                info!("not equal")
             }
             info!("Finished Dummy Read");
 
@@ -678,11 +691,15 @@ impl Ne2000 {
                 .write(InterruptStatusRegister::ISR_RDC.bits());
 
             // Set TBCR Bits before Transmit and TPSR Bit
+            // TBCR0,1 : registers indicate the length of the packet
+            // to be transmitted in bytes
+            // TPSR: Transmit Page Start Register,
+            // points to the assembled packet to be transmitted
             self.registers.page0.tbcr_0_port_p0.write(low);
             self.registers.page0.tbcr_1_port_p0.write(high);
             self.registers.page0.tpsr_port.write(TRANSMIT_START_PAGE);
 
-            // Set TXP Bit to send packet
+            // disable remote read, start nic, set TXP Bit in CR to send packet
             self.registers
                 .command_port
                 .write((CR::STA | CR::TXP | CR::STOP_DMA | CR::PAGE_0).bits());
@@ -712,7 +729,7 @@ impl Ne2000 {
                 .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
 
             // as long as packets are there to be processed, loop
-            while current != CURRENT_NEXT_PAGE_POINTER {
+            while current != CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed) {
                 // write size of header
                 self.registers
                     .page0
@@ -723,7 +740,7 @@ impl Ne2000 {
                 self.registers
                     .page0
                     .rsar_1_port
-                    .write(CURRENT_NEXT_PAGE_POINTER);
+                    .write(CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed));
 
                 // enable remote Read
                 self.registers
@@ -766,10 +783,20 @@ impl Ne2000 {
                 // TODO: What does 1 mean for receive_status ?
                 // if status is okay and packet payload length less than the max. Ethernet frame
                 // size continue to process the packet
+                // RSR_PRX set : Received Packet is intact
                 // else just update the pointers, discard the packet
-                if (packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits()) != 0
+                let rsr_reg = self.registers.page0.rsr_port.read();
+                info!("{}", rsr_reg);
+                let status =
+                    ReceiveStatusRegister::from_bits_retain(ReceiveStatusRegister::RSR_PRX.bits());
+                //check if PRX bit is set in the header status
+                if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() != 0
+                    //&& status.contains(ReceiveStatusRegister::RSR_PRX)
                     && packet_header.length as u32 <= MAXIMUM_ETHERNET_PACKET_SIZE as u32
                 {
+                    let old_thread_count = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
+                    info!("{}", old_thread_count + 1);
+
                     // get an empty packet from the receive_buffers_empty queue for
                     // saving the data
                     // 0 is the Receiver
@@ -806,7 +833,7 @@ impl Ne2000 {
                     self.registers
                         .page0
                         .rsar_1_port
-                        .write(CURRENT_NEXT_PAGE_POINTER);
+                        .write(CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed));
 
                     // issue remote read operation for reading the packet from the nics local buffer
                     self.registers
@@ -835,7 +862,7 @@ impl Ne2000 {
                 //////////////////////////////////////////
 
                 // avoids that the boundary register has values outside of the receive buffer boundaries
-                CURRENT_NEXT_PAGE_POINTER = packet_header.next_packet;
+                CURRENT_NEXT_PAGE_POINTER.store(packet_header.next_packet, Ordering::Relaxed);
                 // check if the next packet is inside the boundaries of the receive buffer
                 if (packet_header.next_packet - 1) < RECEIVE_START_PAGE {
                     self.registers.page0.bnry_port.write(RECEIVE_STOP_PAGE - 1);
@@ -843,7 +870,7 @@ impl Ne2000 {
                     self.registers
                         .page0
                         .bnry_port
-                        .write(CURRENT_NEXT_PAGE_POINTER - 1);
+                        .write(CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed) - 1);
                 }
 
                 // update the current variable for the next packet to be read
@@ -1035,7 +1062,10 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .isr_port
                     .lock()
                     .write(InterruptStatusRegister::ISR_PRX.bits());
-                self.device.interrupts.rcv.store(true, Ordering::Relaxed);
+                self.device
+                    .CheckInterrupts
+                    .prx
+                    .store(true, Ordering::Relaxed);
                 //let device_ref: &Ne2000 = &self.device; // This is a shared reference
                 // Use unsafe to get a mutable reference to the inner `Ne2000` object
                 //let device_mut =
@@ -1078,7 +1108,10 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .lock()
                     .write(InterruptStatusRegister::ISR_OVW.bits());
 
-                self.device.interrupts.ovw.store(true, Ordering::Relaxed);
+                self.device
+                    .CheckInterrupts
+                    .ovw
+                    .store(true, Ordering::Relaxed);
             }
         }
 

@@ -343,7 +343,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // for testing: change tx_buffer size in method open_socket in network/mod.rs ,
     // to send more packets
     let number_of_packets = 1;
-    let send_packets = true;
+    let send_packets = false;
     if send_packets {
         let t_socket = network::open_socket(network::SocketType::Udp);
         network::bind_udp(t_socket, 12345).expect("Failed to bind UDP socket");

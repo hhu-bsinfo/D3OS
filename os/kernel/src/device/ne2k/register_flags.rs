@@ -210,7 +210,7 @@ bitflags! {
         const RCR_AR  = 0x02; // Accept Runt Packets
         const RCR_AB  = 0x04; // Accept Broadcast
         const RCR_AM  = 0x08; // Accept Multicast
-        const RCR_PRO = 0x10; // Promiscuous Physical
+        const RCR_PRO = 0x10; // Promiscuous Physical, if set all packets will be accepeted regardless of what is saved in the address part
         const RCR_MON = 0x20; // Monitor Mode
     }
 }
