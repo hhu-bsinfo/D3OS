@@ -1,0 +1,18 @@
+[package]
+name = "ping"
+version = "0.1.0"
+edition = "2024"
+authors = ["Niklas Sombert <niklas.sombert@uni-duesseldorf.de"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/ping.rs"
+
+[dependencies]
+smoltcp = { version = "0.12", default-features = false, features = ["proto-ipv4"] }
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+concurrent = { path = "../../library/concurrent" }
+time = { path = "../../library/time" }
+network = { path = "../../library/network" }
+terminal = { path = "../../library/terminal" }

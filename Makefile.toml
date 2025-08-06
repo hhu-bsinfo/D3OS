@@ -44,7 +44,7 @@ args = [
     "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
 
     # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
+    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797,hostfwd=tcp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
     # Audio configuration (Using pulse audio for Linux)
@@ -78,7 +78,7 @@ args = [
     "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
 
     # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
+    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797,hostfwd=tcp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
     # Audio configuration (Using pulse audio for Linux)
@@ -121,7 +121,7 @@ condition = { files_not_exist = [ "${INITRD_DIRECTORY}" ] }
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
 command = "${TAR}"
-args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "about", "hello", "helloc", "shell", "uptime", "date", "ntest", "heaptest", "threadtest", "ls" ]
+args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "about", "hello", "helloc", "shell", "uptime", "date", "ntest", "heaptest", "threadtest", "ls", "nc", "ping", "ip" ]
 dependencies = [ "link-members" ]
 condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
 

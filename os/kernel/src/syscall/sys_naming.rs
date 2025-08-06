@@ -61,7 +61,7 @@ pub unsafe extern "sysv64" fn sys_touch(path: *const u8) -> isize {
 }
 
 /// Convert a raw pointer resulting from a CString to a UTF-8 String
-unsafe fn ptr_to_string(ptr: *const u8) -> Result<String, Errno> {
+pub(super) unsafe fn ptr_to_string(ptr: *const u8) -> Result<String, Errno> {
     if ptr.is_null() {
         return Err(Errno::EBADSTR);
     }

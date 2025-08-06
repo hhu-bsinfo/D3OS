@@ -14,6 +14,7 @@
 #![feature(abi_x86_interrupt)]
 #![feature(ptr_metadata)]
 #![feature(let_chains)]
+#![feature(map_try_insert)]
 #![allow(internal_features)]
 #![no_std]
 
