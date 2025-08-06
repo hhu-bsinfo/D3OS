@@ -197,7 +197,7 @@ pub fn init_initrd(module: &ModuleTag) {
             .unwrap(),
         };
         unsafe {
-            memory::frames::reserve(initrd_frames);
+            memory::frames::boot_reserve(initrd_frames);
         }
 
         let initrd_bytes = unsafe {

@@ -1,20 +1,19 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: physical                                                        ║
+   ║ Module: frames                                                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Page frame allocator.                                                   ║
    ║   - alloc              allooc a range of frames                         ║
    ║   - allocator_locked   check if allocator is locked                     ║
    ║   - dump               get a dump of the current free list              ║
    ║   - free               free a range of frames                           ║
-   ║   - insert             insert free frame region detected during boot    ║
    ║   - phys_limit         get the highest phys. addr. managed by the alloc.║
-   ║   - reserve            permanently reserve a range of frames            ║
+   ║   - boot_avail         insert free frame region detected during boot    ║
+   ║   - boot_reserve       reserve a range of frames during boot            ║
    ║   - frame_from_u64     convert a u64 address to a PhysFrame             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 24.5.2025                    ║
+   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 22.7.2025                    ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use crate::memory::PAGE_SIZE;
 use alloc::format;
 use alloc::string::String;
 use core::cell::Cell;
@@ -26,6 +25,10 @@ use spin::once::Once;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{PhysFrame, Size4KiB};
+
+use crate::memory::PAGE_SIZE;
+use crate::memory::dram;
+
 
 static PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> =
     Mutex::new(PageFrameListAllocator::new());
@@ -46,7 +49,9 @@ pub(super) fn frame_from_u64(
 }
 
 /// Insert an available memory `region` obtained during the boot process.
-pub unsafe fn insert(mut region: PhysFrameRange) {
+pub unsafe fn boot_avail(mut region: PhysFrameRange) {
+    dram::dram_available(region);
+
     PHYS_LIMIT.call_once(|| {
         Mutex::new(Cell::new(
             PhysFrame::from_start_address(PhysAddr::zero()).unwrap(),
@@ -74,6 +79,19 @@ pub unsafe fn insert(mut region: PhysFrameRange) {
     }
 }
 
+/// Permanently reserve a range of page `frames` during boot time
+pub unsafe fn boot_reserve(frames: PhysFrameRange) {
+    dram::dram_reserved(frames); 
+    unsafe {
+        PAGE_FRAME_ALLOCATOR.lock().reserve_block(frames);
+    }
+}
+
+/// Get the highest physical address, managed by PAGE_FRAME_ALLOCATOR.
+pub fn phys_limit() -> PhysFrame {
+    return PHYS_LIMIT.get().unwrap().lock().get();
+}
+
 /// Allocate `frame_count` contiguous page frames.
 pub(super) fn alloc(frame_count: usize) -> PhysFrameRange {
     PAGE_FRAME_ALLOCATOR.lock().alloc_block(frame_count)
@@ -85,18 +103,6 @@ pub(super) unsafe fn free(frames: PhysFrameRange) {
     unsafe {
         PAGE_FRAME_ALLOCATOR.lock().free_block(frames);
     }
-}
-
-/// Permanently reserve a range of page `frames`.
-pub unsafe fn reserve(frames: PhysFrameRange) {
-    unsafe {
-        PAGE_FRAME_ALLOCATOR.lock().reserve_block(frames);
-    }
-}
-
-/// Get the highest physical address, managed by PAGE_FRAME_ALLOCATOR.
-pub fn phys_limit() -> PhysFrame {
-    return PHYS_LIMIT.get().unwrap().lock().get();
 }
 
 /// Get a dump of the current free list.

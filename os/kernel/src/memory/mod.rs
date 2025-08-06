@@ -4,6 +4,8 @@ pub mod pages;
 pub mod frames;
 
 pub mod nvmem;
+pub mod dram;
+
 
 pub mod heap;
 pub mod stack;

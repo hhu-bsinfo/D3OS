@@ -16,7 +16,7 @@ use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
 use crate::memory::pages::page_table_index;
 use crate::memory::vma::VmaType;
-use crate::memory::{PAGE_SIZE, nvmem};
+use crate::memory::{PAGE_SIZE, nvmem, dram};
 use crate::network::rtl8139;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
@@ -94,7 +94,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // The bootloader marks the kernel image region as available, so we need to reserve it manually
     let kernel_image_region = kernel_image_region();
     unsafe {
-        memory::frames::reserve(kernel_image_region);
+        memory::frames::boot_reserve(kernel_image_region);
     }
 
     // and initialize kernel heap, after which formatted strings may be used in logs and panics.
@@ -103,6 +103,18 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     unsafe {
         allocator().init(&heap_region);
     }
+    debug!("Old page frame allocator:\n{}", memory::frames::dump());
+
+    // Allocate frames for the kernel heap using the new way
+    let res = dram::dram_alloc(INIT_HEAP_PAGES as u64).expect("Failed to allocate kernel heap frames!");
+    dram::dump();
+
+
+    /* 
+
+        Hier geht es weiter, der Frame Allocator muss initialisiert werden
+
+    */
     
     // Initialize CPU information
     init_cpu_info();
@@ -118,6 +130,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     if let Some(serial) = serial_port() {
         logger().register(serial);
     }
+
+    info!("kernel image region: [Start: {:#x}, End: {:#x}]", kernel_image_region.start.start_address().as_u64(), kernel_image_region.end.start_address().as_u64());
 
     // Map the framebuffer, needed for text output of the terminal
     let fb_info = multiboot
@@ -437,7 +451,7 @@ fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag) {
         .iter()
         .filter(|area| area.typ() == MemoryAreaType::Available)
         .for_each(|area| unsafe {
-            memory::frames::insert(PhysFrameRange {
+            memory::frames::boot_avail(PhysFrameRange {
                 start: PhysFrame::from_start_address(PhysAddr::new(area.start_address()).align_up(PAGE_SIZE as u64)).unwrap(),
                 end: PhysFrame::from_start_address(PhysAddr::new(area.end_address()).align_down(PAGE_SIZE as u64)).unwrap(),
             });
@@ -468,7 +482,7 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
             }
 
             unsafe {
-                memory::frames::insert(frames);
+                memory::frames::boot_avail(frames);
             }
         });
 }
@@ -495,7 +509,7 @@ fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
             }
 
             unsafe {
-                memory::frames::insert(frames);
+                memory::frames::boot_avail(frames);
             }
         });
 }
