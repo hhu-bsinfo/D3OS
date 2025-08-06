@@ -64,7 +64,7 @@ use super::network_stack::*;
 // during program execution
 const DISPLAY_RED: &'static str = "\x1b[1;31m";
 
-// Capacity for the receive_queue in the ne2000 struct
+// Capacity for the receive_buffers_empty queue in the ne2000 struct
 const RECV_QUEUE_CAP: usize = 128;
 
 // Buffer Start Page for the transmitted pages
@@ -766,6 +766,8 @@ impl Ne2000 {
     // =============================================================================
     pub fn receive_packet(&mut self) {
         unsafe {
+            //==== Step 1 ===================================================================//
+            // Read the CURR Register and save the value in the variable current
             // switch to page 1 to read curr register
             self.registers
                 .command_port
@@ -778,7 +780,10 @@ impl Ne2000 {
             self.registers
                 .command_port
                 .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
+            //===============================================================================//
 
+            //==== Step 2 ===================================================================//
+            // set rbcr and rsar registers for read operation,
             // as long as packets are there to be processed, loop
             while current != CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed) {
                 // write size of header
@@ -787,6 +792,8 @@ impl Ne2000 {
                     .rbcr_0_port
                     .write(mem::size_of::<PacketHeader>() as u8);
                 self.registers.page0.rbcr_1_port.write(0);
+
+                // set rsar to address of the next page
                 self.registers.page0.rsar_0_port.write(0);
                 self.registers
                     .page0
@@ -825,10 +832,11 @@ impl Ne2000 {
                     },
                 };
 
-                info!("packet header rcr : {}", packet_header.receive_status);
+                //info!("packet header rcr : {}", packet_header.receive_status);
                 //info!("packet header length : {}", packet_header.length);
                 //info!("packet header next_packet: {}", packet_header.next_packet);
 
+                //==== Step 3 ===================================================================//
                 // check received packet
                 // rust doesn't treat integers as boolean in an if clause, so a comparison has to be made
                 // from the RSR Register:
@@ -844,8 +852,9 @@ impl Ne2000 {
                 let status =
                     ReceiveStatusRegister::from_bits_retain(ReceiveStatusRegister::RSR_PRX.bits());
                 //check if PRX bit is set in the header status
-                if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() != 0
-                    //&& status.contains(ReceiveStatusRegister::RSR_PRX)
+                if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() == 1 
+                //status.contains(ReceiveStatusRegister::RSR_PRX)
+                //packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() != 0
                     // check max ethernet size , see 
                     // https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
                     // p. 3, Section "Data Field"
@@ -899,6 +908,7 @@ impl Ne2000 {
                         .rsar_1_port
                         .write(CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed));
 
+                    //==== Step 4 ===================================================================//
                     // issue remote read operation for reading the packet from the nics local buffer
                     self.registers
                         .command_port
@@ -910,8 +920,8 @@ impl Ne2000 {
                         // slice indices must be of type usize
                         packet[i as usize] = self.registers.data_port.read();
                     }
-                    let s: String = packet.iter().map(|&b| b as char).collect();
-                    info!("{}", s);
+                    //let s: String = packet.iter().map(|&b| b as char).collect();
+                    //info!("{}", s);
 
                     // enqueue the packet in the receive_messages queue,
                     //this queue gets processed by receive in smoltcp
@@ -921,6 +931,7 @@ impl Ne2000 {
                         .expect("Error enqueuing packet");
                 }
 
+                //==== Step 5 ===================================================================//
                 //////////////////////////////////////////
                 // update pointers for the next package
                 //////////////////////////////////////////
@@ -958,6 +969,7 @@ impl Ne2000 {
                     .write((CR::STA | CR::STOP_DMA | CR::PAGE_0).bits());
             }
 
+            //==== Step 6 ===================================================================//
             // clear the RDC Interrupt Bit in the ISR (Remote DMA Operation has been completed)
             // TODO check if the bit gets set
             self.registers
@@ -1008,6 +1020,7 @@ impl Ne2000 {
     // this is analogous to the nic datasheet
     // Reference: p.9-10, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
     // =============================================================================
+    // TODO: change 1. to Step 1
     pub fn handle_overflow(&mut self) {
         info!("overflow");
         unsafe {
