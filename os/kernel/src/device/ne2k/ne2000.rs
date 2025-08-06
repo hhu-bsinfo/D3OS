@@ -185,14 +185,21 @@ pub struct Ne2000InterruptHandler {
 pub struct Ne2000 {
     base_address: u16,
     pub registers: Registers,
-    // physical memory ranges, that need transmitting
+    // physical memory pages, that need transmitting
     // in TxToken consume the outgoing packet gets loaded into the buffer
+    // multiple producers can add items to the
+    // queue concurrently, and a single consumer ( = receiver) processes them,
+    // with the guarantee that no thread will be blocked during enqueue or dequeue operations
+    // FIFO queue implementation
     pub send_queue: (
+        // single receiver
         Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>,
+        // one of the senders
         mpsc::jiffy::Sender<PhysFrameRange>,
     ),
-    receive_buffer: Mutex<ReceiveBuffer>,
     // pre-allocated, empty Vec<u8> buffers which get filled with incoming packets
+    // recv_buffers_empty – pool of empty page-buffers that will be refilled after
+    // the stack finishes with a packet, avoiding fresh allocations under interrupt load.
     pub receive_buffers_empty: (
         mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
         // Sender send data to a set of Receivers
@@ -205,7 +212,7 @@ pub struct Ne2000 {
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
     interrupt: InterruptVector,
-    pub(crate) CheckInterrupts: CheckInterrupts,
+    pub(crate) check_interrupts: CheckInterrupts,
 }
 
 // =============================================================================
@@ -273,7 +280,6 @@ impl Registers {
     }
 }
 
-// send_queue: needed for packet transmission process in smoltcp
 // EXAMPLE for a sender and receiver
 //#![feature(mpmc_channel)]
 //
@@ -309,9 +315,6 @@ impl Ne2000 {
         // get the base address for setting the register offsets
         let base_address = bar0.unwrap_io() as u16;
         info!("NE2000 base address: [0x{:x}]", base_address);
-
-        // mpsc (multiple-producer, single-consumer)
-        // FIFO queue implementation
 
         // queue creates a new empty queue and returns (Receiver, Sender)
         // send_queue.enqueue(13) -> enque data
@@ -358,7 +361,7 @@ impl Ne2000 {
                     PacketAllocator::default(),
                 )
             };
-            // enqueue allocated buffer into the receive queue
+            // enqueue allocated buffer into the recv_buffers queue
             recv_buffers
                 .1
                 .try_enqueue(buffer)
@@ -375,12 +378,12 @@ impl Ne2000 {
         let mut ne2000 = Self {
             registers: Registers::new(base_address),
             base_address: base_address,
+            // wrap Sender and Receiver in a Mutex
             send_queue: (Mutex::new(send_queue.0), send_queue.1),
-            receive_buffers_empty: recv_buffers,
-            receive_buffer: Mutex::new(ReceiveBuffer::new()),
+            receive_buffers_empty: recv_buffers, // save freshly allocated buffers with size of RECV_QUEUE_CAP in the struct
             receive_messages: mpmc::bounded::scq::queue(RECV_QUEUE_CAP),
             interrupt,
-            CheckInterrupts: check_interrupts,
+            check_interrupts: check_interrupts,
         };
 
         info!("\x1b[1;31mPowering on device");
@@ -842,6 +845,9 @@ impl Ne2000 {
                 //check if PRX bit is set in the header status
                 if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() != 0
                     //&& status.contains(ReceiveStatusRegister::RSR_PRX)
+                    // check max ethernet size , see 
+                    // https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+                    // p. 3, Section "Data Field"
                     && packet_header.length as u32 <= MAXIMUM_ETHERNET_PACKET_SIZE as u32
                 {
                     let old_thread_count = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -911,24 +917,32 @@ impl Ne2000 {
                 // update pointers for the next package
                 //////////////////////////////////////////
 
-                // avoids that the boundary register has values outside of the receive buffer boundaries
+                // Avoid buffer overflow (case where BNRY = CURR), ring full
+                // updates the pointer to the next packet, which has to be processed
                 CURRENT_NEXT_PAGE_POINTER.store(packet_header.next_packet, Ordering::Relaxed);
-                // check if the next packet is inside the boundaries of the receive buffer
+                // wrap around case : next_packet == pstart, make sure bnry points to a page inside the receive buffer
+                // PSTOP -1 : last valid page
                 if (packet_header.next_packet - 1) < RECEIVE_START_PAGE {
                     self.registers.page0.bnry_port.write(RECEIVE_STOP_PAGE - 1);
                 } else {
+                    // update the Boundary Pointer, points to the first packet in the ring not yet read by
+                    // indicates that the previous packet has been read
+                    // the host
+                    // normal case: update bndy to point to one page behind the packet the nic will fill next
+                    // tells the nic that the pages which have just been processed are free
                     self.registers
                         .page0
                         .bnry_port
                         .write(CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed) - 1);
                 }
 
-                // update the current variable for the next packet to be read
+                // update the current variable for the next page to be written to
                 //switch to Page 1, stop dma operations, start nic
                 self.registers
                     .command_port
                     .write((CR::STA | CR::STOP_DMA | CR::PAGE_1).bits());
                 // read new current value
+                // points to the first buffer used to store store a packet
                 current = self.registers.page1.current_port.read();
                 // go back to page 0
                 self.registers
@@ -1113,19 +1127,9 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .lock()
                     .write(InterruptStatusRegister::ISR_PRX.bits());
                 self.device
-                    .CheckInterrupts
+                    .check_interrupts
                     .prx
                     .store(true, Ordering::Relaxed);
-                //let device_ref: &Ne2000 = &self.device; // This is a shared reference
-                // Use unsafe to get a mutable reference to the inner `Ne2000` object
-                //let device_mut =
-                // Convert from a shared reference to a mutable raw pointer
-                //ptr::from_ref(device_ref)
-                //.cast_mut() // Cast to a mutable pointer
-                //.as_mut() // Convert the raw pointer back to a mutable reference
-                //.unwrap(); // Unwrap to ensure it’s valid
-
-                //device_mut.receive_packet();
             };
         }
 
@@ -1141,15 +1145,19 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .write(InterruptStatusRegister::ISR_PTX.bits());
             }
             // free the allocated memory after sending the packet
+            // 0 : Receiver, manages the dequeuing and freeing of the buffers
+            // 1 : Senders, write to the queue new packets
             let mut queue = self.device.send_queue.0.lock();
+            // dequeue the first element from the queue
             let mut buffer = queue.try_dequeue();
+            // free all Frames which are allocated in the buffer
             while buffer.is_ok() {
                 unsafe { frames::free(buffer.unwrap()) };
                 buffer = queue.try_dequeue();
             }
         }
 
-        // check for an buffer overflow
+        // check for a buffer overflow
         if status.contains(InterruptStatusRegister::ISR_OVW) {
             unsafe {
                 self.device
@@ -1159,7 +1167,7 @@ impl InterruptHandler for Ne2000InterruptHandler {
                     .write(InterruptStatusRegister::ISR_OVW.bits());
 
                 self.device
-                    .CheckInterrupts
+                    .check_interrupts
                     .ovw
                     .store(true, Ordering::Relaxed);
             }

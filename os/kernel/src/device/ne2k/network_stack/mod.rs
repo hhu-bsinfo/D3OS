@@ -51,6 +51,7 @@ use super::ne2000::*;
 // NIC uses two ring buffers for packet handling, which are made of 256 Byte Pages
 // Reference: https://wiki.osdev.org/Ne2000#Ring_Buffer
 
+// one page in the ne2000 receive buffer is 256 byte
 const NE_PAGE_SIZE: usize = 256;
 //Packet Header Size
 const HEADER_SIZE: usize = 4;
@@ -58,7 +59,9 @@ const HEADER_SIZE: usize = 4;
 const MAX_FRAME_SIZE: usize = 1500;
 // max. Buffer size
 const BUFFER_SIZE: usize = HEADER_SIZE + MAX_FRAME_SIZE; // = 1504
+// calculate how many Pages in the NIC are needed to store a Packet with a MTU
 const BUFFER_PAGES: usize = (BUFFER_SIZE + NE_PAGE_SIZE - 1) / NE_PAGE_SIZE; // = 6
+// size of the actual buffer
 const TOTAL_BUFFER_BYTES: usize = BUFFER_PAGES * NE_PAGE_SIZE; // = 1536
 
 // => (16 KiB + 4 KiB -1)/4 KiB = 4 pages
@@ -162,6 +165,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
 
         // set kernel page tables to writable, no_caching for DMA,
         // ensure buffer is present in memory
+        //map it writable & uncached for DMA
         let kernel_process = process_manager().read().kernel_process().unwrap();
         kernel_process.virtual_address_space.set_flags(
             pages,
@@ -189,6 +193,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         let buffer = unsafe {
             slice::from_raw_parts_mut(phys_buffer.start.start_address().as_u64() as *mut u8, len)
         };
+        // closure builds the ethernet frame
         let result = f(buffer);
 
         // Send packet
@@ -232,27 +237,6 @@ unsafe impl Allocator for PacketAllocator {
     }
 }
 
-impl ReceiveBuffer {
-    pub fn new() -> Self {
-        // allocate memory for buffer
-        let receive_memory = frames::alloc(BUFFER_PAGES);
-        // define pointer where the buffer starts in memory
-        //, buffer length and capacity, save in vec and safe
-        let receive_buffer = unsafe {
-            Vec::from_raw_parts(
-                receive_memory.start.start_address().as_u64() as *mut u8,
-                BUFFER_SIZE,
-                BUFFER_SIZE,
-            )
-        };
-
-        Self {
-            index: 0,
-            data: receive_buffer,
-        }
-    }
-}
-
 impl<'a> Ne2000RxToken<'a> {
     pub fn new(buffer: Vec<u8, PacketAllocator>, device: &'a Ne2000) -> Self {
         Self { buffer, device }
@@ -264,13 +248,19 @@ impl<'a> phy::RxToken for Ne2000RxToken<'a> {
     where
         F: FnOnce(&[u8]) -> R,
     {
+        // buffer contains payload, which has been written to by the
+        // receive_packages function
+        // get the result by applying the closure to the buffer
         let result = f(&mut self.buffer);
+        // enqueue the used allocated buffer to the receive_buffers_empty
+        // queue, to use it again during packet reception
         self.device
             .receive_buffers_empty
             .1
             .try_enqueue(self.buffer)
             .expect("Failed to enqueue used receive buffer!");
 
+        //return the result (the received data)
         result
     }
 }
@@ -332,7 +322,7 @@ impl phy::Device for Ne2000 {
         // max_transmission_unit = define max. size of a packet
         // this is the size of one ethernet frame
         // see: https://en.wikipedia.org/wiki/Ethernet_frame
-        caps.max_transmission_unit = 1536;
+        caps.max_transmission_unit = TOTAL_BUFFER_BYTES;
         //max_burst_size = only send one packet at a time
         //caps.max_burst_size = Some(1);
         caps.max_burst_size = None;
