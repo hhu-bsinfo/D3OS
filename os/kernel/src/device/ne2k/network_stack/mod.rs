@@ -87,8 +87,8 @@ const TOTAL_BUFFER_BYTES: usize = BUFFER_PAGES * NE_PAGE_SIZE; // = 1536
 // ==== STRUCTS
 // ======|> pub struct Ne2000TxToken<'a>
 // ======|> pub struct Ne2000RxToken<'a>
-// ======|> pub struct ReceiveBuffer
 // ======|> pub struct PacketAllocator
+// ======|> pub struct PacketAllocator;
 // =============================================================================
 
 // closure that, when run,
@@ -207,6 +207,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
 
 unsafe impl Allocator for PacketAllocator {
     // from rtl8139.rs
+    // used for allocating memory for the RxToken Buffer
     // allocates a block of memory
     // returns NonNull, which meets the size and alignment of layout, remains
     // valid as long as it is currently allocated

@@ -65,7 +65,7 @@ use super::network_stack::*;
 const DISPLAY_RED: &'static str = "\x1b[1;31m";
 
 // Capacity for the receive_queue in the ne2000 struct
-const RECV_QUEUE_CAP: usize = 16;
+const RECV_QUEUE_CAP: usize = 128;
 
 // Buffer Start Page for the transmitted pages
 const TRANSMIT_START_PAGE: u8 = 0x40;
@@ -219,16 +219,6 @@ pub struct Ne2000 {
 // ==== IMPLEMENTATIONS
 // =============================================================================
 
-impl Page1 {
-    pub fn new(base_address: u16) -> Self {
-        Self {
-            par: core::array::from_fn(|i| Mutex::new(Port::new(base_address + P1_PAR0 + i as u16))),
-            mar: core::array::from_fn(|i| Port::new(base_address + P1_MAR0 + i as u16)),
-            current_port: Port::new(base_address + P1_CURR),
-        }
-    }
-}
-
 impl Page0 {
     pub fn new(base_address: u16) -> Self {
         Self {
@@ -251,6 +241,17 @@ impl Page0 {
         }
     }
 }
+
+impl Page1 {
+    pub fn new(base_address: u16) -> Self {
+        Self {
+            par: core::array::from_fn(|i| Mutex::new(Port::new(base_address + P1_PAR0 + i as u16))),
+            mar: core::array::from_fn(|i| Port::new(base_address + P1_MAR0 + i as u16)),
+            current_port: Port::new(base_address + P1_CURR),
+        }
+    }
+}
+
 impl Registers {
     pub fn new(base_address: u16) -> Self {
         Self {
@@ -865,12 +866,19 @@ impl Ne2000 {
                     let packet_length: u16 = packet_header.length as u16;
 
                     // Write packet length into RBCR
+                    // size of the length field in the PacketHeader is u16
+                    // rbcr0 + rbcr1 = 16 Byte
+                    // split in low and high order bytes
+                    // 16 Bit value 0 - 65 535
+                    // if counter reaches 0 -> set RDC bit in ISR
+                    // mask off the lower 8 bits of packet_length and store them in RBCR0.
                     self.registers
                         .page0
                         .rbcr_0_port
                         .write((packet_length & 0xFF) as u8);
 
                     //self.registers.rbcr1.write(packet_header.length >> 8);
+                    // shift 8 bits to the right, only the high byte remains
                     // fix overflow warning
                     self.registers
                         .page0
@@ -879,7 +887,7 @@ impl Ne2000 {
 
                     // Remote Start Address Register: points to the
                     // start of the block of data to be transferred
-                    // Set RSAR0 and 1 to nic header length to skip the
+                    // load nic header length into the registers to skip the
                     // packet header during the read operation
                     self.registers
                         .page0

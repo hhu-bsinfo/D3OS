@@ -56,8 +56,8 @@ case "$MODE" in
         done
     else
         for ((i=1; i<=COUNT; i++)); do
-            #printf '%s' "$PAYLOAD" | nc -u -w0 "$HOST" "$PORT"
-            head -c 1400 /dev/zero | nc -u -w0 "$HOST" "$PORT"
+            printf '%s' "$PAYLOAD" | nc -u -w0 "$HOST" "$PORT"
+            #head -c 1400 /dev/zero | nc -u -w0 "$HOST" "$PORT"
             printf "%s : %d \n" "$PAYLOAD" $i
             sleep "$INTERVAL"
         done
