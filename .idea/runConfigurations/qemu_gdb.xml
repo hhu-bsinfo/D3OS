@@ -1,0 +1,5 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="qemu-gdb" type="RsRemoteRunConfiguration" debuggerKind="GDB" remoteCommand="localhost:1234" symbolFile="$PROJECT_DIR$/loader/kernel.elf" sysroot="">
+    <method v="2" />
+  </configuration>
+</component>
