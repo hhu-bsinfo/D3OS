@@ -253,7 +253,7 @@ impl InterruptDispatcher {
             handler_vec = handler_vec_mutex.try_lock();
         }
 
-        if handler_vec.iter().is_empty() {
+        if handler_vec.as_ref().unwrap().is_empty() {
             panic!("Interrupt Dispatcher: No handler registered for interrupt [{}]!", interrupt);
         }
 
