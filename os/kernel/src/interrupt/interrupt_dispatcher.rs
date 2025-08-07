@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr;
-use log::info;
+use log::{info, trace};
 use spin::Mutex;
 use x86_64::registers::control::Cr2;
 use x86_64::set_general_handler;
@@ -237,6 +237,10 @@ impl InterruptDispatcher {
     }
 
     pub fn dispatch(&self, interrupt: u8) {
+        // if we log the timer interrupt, it just spams the log and nothing else happens
+        if interrupt != 32 {
+            trace!("handling interrupt {interrupt}");
+        }
         let handler_vec_mutex = self
             .int_vectors
             .get(interrupt as usize)

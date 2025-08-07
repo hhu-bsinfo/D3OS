@@ -230,8 +230,7 @@ pub fn allocator() -> &'static KernelAllocator {
 static LOGGER: Once<Logger> = Once::new();
 
 pub fn logger() -> &'static Logger {
-    LOGGER.call_once(Logger::new);
-    LOGGER.get().unwrap()
+    LOGGER.call_once(Logger::new)
 }
 
 /// Process Manager.

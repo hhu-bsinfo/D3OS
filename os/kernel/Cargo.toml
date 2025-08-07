@@ -26,6 +26,7 @@ pc-keyboard = "0.8.0"
 anstyle-parse = "0.2.6"
 chrono = { version = "0.4.40", default-features = false, features = ["alloc"] }
 nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
+thingbuf = { version = "0.1", default-features = false, features = ["alloc"] }
 acpi = "5.2.0"
 x2apic = "0.5.0"
 raw-cpuid = "11.2.0"
