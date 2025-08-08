@@ -38,6 +38,7 @@ use ::log::{Level, Log, Record, error, info};
 use acpi::AcpiTables;
 use alloc::sync::Arc;
 use core::fmt::Arguments;
+use core::hint::spin_loop;
 use core::panic::PanicInfo;
 use multiboot2::ModuleTag;
 use spin::{Mutex, Once, RwLock};
@@ -72,21 +73,31 @@ pub mod built_info {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if terminal_initialized() {
-        println!("Panic: {}", info);
-    } else {
-        let args = [info.message().as_str().unwrap_or("(no message provided)")];
-        let record = Record::builder()
-            .level(Level::Error)
-            .file(info.location().map(|l| l.file()))
-            .line(info.location().map(|l| l.line()))
-            .args(Arguments::new_const(&args))
-            .build();
+    // write the panic directly out to the serial port
+    // this needs no allocations, no locks and should always work
+    error!("Panic:");
+    let args = [info.message().as_str().unwrap_or("(no message provided)")];
+    let record = Record::builder()
+        .level(Level::Error)
+        .file(info.location().map(|l| l.file()))
+        .line(info.location().map(|l| l.line()))
+        .args(Arguments::new_const(&args))
+        .build();
 
-        logger().log(&record);
+    logger().log(&record);
+
+    // if we do have an allocator already, try to use it to print more information
+    // this might fail, but we got the basic information out already
+    if allocator().is_initialized() {
+        error!("{info}");
+        if terminal_initialized() {
+            println!("Panic: {}", info);
+        }
     }
 
-    loop {}
+    loop {
+        spin_loop();
+    }
 }
 
 /*
