@@ -120,6 +120,20 @@ pub enum BaudRate {
 }
 
 bitflags! {
+    struct LineControl: u8 {
+        /// set Data Bits to 3, so 8 bits per char (instead of 5)
+        const DATA = 0b11;
+        /// 1.5 or 2 stop bits (instead of 1)
+        const STOP = 1 << 2;
+        /// add a 0 as parity (instead of none)
+        const PARITY = 0b111000;
+        const BREAK_ENABLE = 1 << 6;
+        /// access the baud rate divisor
+        const DIVISOR_LATCH_ACCESS = 1 << 7;
+    }
+}
+
+bitflags! {
     struct LineStatus: u8 {
         const DATA_READY = 0x01;
         const OVERRUNG_ERROR = 0x02;
@@ -179,7 +193,8 @@ impl Transceiver {
             let line_control_backup = line_control.read(); // Backup line control register
 
             interrupt_control.write(0x00); // Disable all interrupts
-            line_control.write(0x80); // Enable DLAB, so that the divisor can be set
+            // Enable DLAB, so that the divisor can be set
+            line_control.write(LineControl::DIVISOR_LATCH_ACCESS.bits());
 
             data.write((speed as u16 & 0x00ff) as u8); // Divisor low byte
             interrupt_control.write(((speed as u16 & 0xff00) >> 8) as u8); // Divisor high byte
@@ -192,6 +207,11 @@ impl Transceiver {
     fn interrupts(&self, enabled: bool) {
         let mut interrupt_control = self.interrupt_control.lock();
         unsafe { interrupt_control.write(if enabled { 0x01 } else { 0x00 }) };
+    }
+
+    fn line_control(&self, value: LineControl) {
+        let mut line_control = self.line_control.lock();
+        unsafe { line_control.write(value.bits()) };
     }
 
     fn line_status(&self) -> LineStatus {
@@ -311,6 +331,9 @@ impl SerialPort {
         let transceiver = Transceiver::new(port);
         transceiver.interrupts(false);
         transceiver.speed(speed);
+        // the default: 8 bits, no parity, one stop bit
+        transceiver.line_control(LineControl::DATA);
+        // TODO: set FIFO and modem control
 
         Self {
             port,
@@ -324,6 +347,9 @@ impl SerialPort {
         let transceiver = Transceiver::new(port);
         transceiver.interrupts(false);
         transceiver.speed(BaudRate::Baud115200);
+        // the default: 8 bits, no parity, one stop bit
+        transceiver.line_control(LineControl::DATA);
+        // TODO: set FIFO and modem control
 
         Self {
             port,
