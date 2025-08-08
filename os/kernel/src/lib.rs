@@ -37,6 +37,7 @@ use crate::syscall::syscall_dispatcher::CoreLocalStorage;
 use ::log::{Level, Log, Record, error, info};
 use acpi::AcpiTables;
 use alloc::sync::Arc;
+use x86_64::instructions::interrupts;
 use core::fmt::Arguments;
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
@@ -73,6 +74,9 @@ pub mod built_info {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+    // make sure we never exit
+    interrupts::disable();
+    
     // write the panic directly out to the serial port
     // this needs no allocations, no locks and should always work
     error!("Panic:");
