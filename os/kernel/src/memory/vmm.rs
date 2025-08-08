@@ -35,7 +35,7 @@
    ║   - pfr_from_pr_identity      get pfr range from page range identity    ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland and Michael Schoettner                           ║
-   ║         Univ. Duesseldorf, 20.07.2025                                   ║
+   ║         Univ. Duesseldorf, 7.8.2025                                     ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -347,7 +347,7 @@ impl VirtualAddressSpace {
     pub fn kernel_map_devm_identity(&self, start_phys_addr: u64, end_phys_addr: u64, flags: PageTableFlags, typ: VmaType, tag: &str) -> Page {
         assert!(end_phys_addr > start_phys_addr, "'end_phys_addr' must be larger than 'start_phys_addr'");
 
-        // Calc page frame range (nneded for mapping))
+        // Calc page frame range (needed for mapping))
         let start_page_frame = frames::frame_from_u64(start_phys_addr).expect("start_phys_addr is not page aligned");
         let end_page_frame = frames::frame_from_u64(Self::align_up(end_phys_addr)).expect("end_phys_addr is not page aligned");
         let pfr = PhysFrameRange {
@@ -365,6 +365,11 @@ impl VirtualAddressSpace {
         let vma = self
             .alloc_vma(Some(start_page_addr), pr.len() as u64, MemorySpace::Kernel, typ, tag)
             .expect("alloc_vma failed");
+
+        // Remove frames from allocator, so frames are not allocated again
+        if let Err(e) = frames::remove_dev_mem(start_phys_addr, pfr.len() as usize) {
+            panic!("Failed to remove device memory frames: {}", e);
+        }
 
         // Now we do the mapping
         self.map_pfr_for_vma(&vma, pfr, flags).expect("map_pfr_for_vma failed in map_devmem_identity");

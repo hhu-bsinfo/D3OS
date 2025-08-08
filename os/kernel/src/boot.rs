@@ -19,8 +19,7 @@ use crate::memory::{PAGE_SIZE, nvmem, dram};
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd,
-    keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss,
+    acpi_tables, allocator, apic, built_info, consts, gdt, get_initrd_frames, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss
 };
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
@@ -56,8 +55,6 @@ unsafe extern "C" {
     static ___KERNEL_DATA_END__: (); // end address of OS image
 }
 
-const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS
-
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \
 ///   and `multiboot2_addr` is the address of multiboot2 info records
@@ -92,22 +89,42 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // and initialize kernel heap, after which formatted strings may be used in logs and panics.
     info!("Initializing kernel heap");
-    let heap_region = unsafe { memory::vmm::alloc_frames(INIT_HEAP_PAGES) };
+    let heap_region = unsafe { memory::vmm::alloc_frames(consts::KERNEL_HEAP_PAGES) };
     unsafe {
         allocator().init(&heap_region);
     }
-    debug!("Old page frame allocator:\n{}", memory::frames::dump());
+    info!("kernel image region: [Start: {:#x}, End: {:#x}]", 
+        kernel_image_region.start.start_address().as_u64(), 
+        kernel_image_region.end.start_address().as_u64()
+    );
 
     // Allocate frames for the kernel heap using the new way
-    let res = dram::dram_alloc(INIT_HEAP_PAGES as u64).expect("Failed to allocate kernel heap frames!");
+    let res = dram::dram_alloc(consts::KERNEL_HEAP_PAGES as u64).expect("Failed to allocate kernel heap frames!");
     dram::dump();
+    debug!("Old page frame allocator:\n{}", memory::frames::dump());
 
 
-    /* 
 
-        Hier geht es weiter, der Frame Allocator muss initialisiert werden
+    // Reserve frames for initrd
+    let initrd_tag = multiboot
+        .module_tags()
+        .find(|module| module.cmdline().is_ok_and(|name| name == "initrd"))
+        .expect("Initrd not found!");
+    let initrd_region = get_initrd_frames(initrd_tag);
+    unsafe {
+        memory::frames::boot_reserve(initrd_region);
+    }
+    info!(
+        "Initrd region: [Start: {:#x}, End: {:#x}]",
+        initrd_region.start.start_address().as_u64(),
+        initrd_region.end.start_address().as_u64()
+    );
 
-    */
+    // Merge reserved and free regions
+    dram::finalize_free_regions();
+    dram::dump();
+    debug!("Old page frame allocator:\n{}", memory::frames::dump());
+
     
     // Initialize CPU information
     init_cpu_info();
@@ -124,8 +141,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         logger().register(serial);
     }
 
-    info!("kernel image region: [Start: {:#x}, End: {:#x}]", kernel_image_region.start.start_address().as_u64(), kernel_image_region.end.start_address().as_u64());
-
     // Map the framebuffer, needed for text output of the terminal
     let fb_info = multiboot
         .framebuffer_tag()
@@ -141,6 +156,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         VmaType::DeviceMemory,
         "framebuffer",
     );
+    info!(
+        "framebuffer region: [Start: {:#x}, End: {:#x}]",
+        fb_start_phys_addr,
+        fb_end_phys_addr,
+        );
 
     // Initialize terminal kernel thread and enable terminal logging
     init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
@@ -269,10 +289,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     naming::api::init();
 
     // Load initial ramdisk
-    let initrd_tag = multiboot
-        .module_tags()
-        .find(|module| module.cmdline().is_ok_and(|name| name == "initrd"))
-        .expect("Initrd not found!");
     init_initrd(initrd_tag);
 
     // Create and register the cleanup thread in the scheduler

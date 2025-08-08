@@ -11,11 +11,12 @@
    ║   - boot_reserve       reserve a range of frames during boot            ║
    ║   - frame_from_u64     convert a u64 address to a PhysFrame             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 22.7.2025                    ║
+   ║ Author: Fabian Ruhland and Michael Schoettner                           ║
+   ║         Univ. Duesseldorf, 7.8.2025                                     ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use alloc::format;
-use alloc::string::String;
+use alloc::string::{String,ToString};
 use core::cell::Cell;
 use core::fmt::{Debug, Formatter};
 use core::ptr;
@@ -26,12 +27,14 @@ use x86_64::PhysAddr;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{PhysFrame, Size4KiB};
 
+
 use crate::memory::PAGE_SIZE;
 use crate::memory::dram;
 
 
 static PAGE_FRAME_ALLOCATOR: Mutex<PageFrameListAllocator> =
     Mutex::new(PageFrameListAllocator::new());
+    
 static PHYS_LIMIT: Once<Mutex<Cell<PhysFrame>>> = Once::new();
 
 /// Check if the page frame allocator is currently locked.
@@ -95,6 +98,20 @@ pub fn phys_limit() -> PhysFrame {
 /// Allocate `frame_count` contiguous page frames.
 pub(super) fn alloc(frame_count: usize) -> PhysFrameRange {
     PAGE_FRAME_ALLOCATOR.lock().alloc_block(frame_count)
+}
+
+/// Remove `frame_count` contiguous page frames, starting at given address `addr`.
+/// This function is used for removing device memory from the frame allocator
+pub(super) fn remove_dev_mem(addr: u64, frame_count: usize) -> Result<Option<PhysFrameRange>, String> {
+    if phys_limit().start_address().as_u64() < addr {
+        return Ok(None);
+    }
+    match PAGE_FRAME_ALLOCATOR.lock().alloc_block_at(addr, frame_count) {
+        Some(frames) => {
+            Ok(Some(frames))
+        }
+        None => Err("frames already used".to_string()),
+    }
 }
 
 /// Free a contiguous range of page `frames`.
@@ -242,6 +259,27 @@ impl PageFrameListAllocator {
         None
     }
 
+    /// Search a block with `frame_count` contiguous page frames at the given address `addr`.
+    fn find_free_block_at(&mut self, addr: u64, frame_count: usize) -> Option<&'static mut PageFrameNode> {
+        let mut current = &mut self.head;
+        while let Some(ref mut block) = current.next {
+            if block.frame_count >= frame_count && 
+               block.start().start_address().as_u64() < addr && 
+               block.end().start_address().as_u64() >= addr + (PAGE_SIZE as u64) * (frame_count as u64) {
+                let next = block.next.take();
+                let ret = Some(current.next.take().unwrap());
+                current.next = next;
+
+                return ret;
+            } else {
+                // Block to small -> Continue with next block
+                current = current.next.as_mut().unwrap();
+            }
+        }
+        None
+    }
+
+
     /// Allocate a block with `frame_count` contiguous page frames.
     fn alloc_block(&mut self, frame_count: usize) -> PhysFrameRange {
 //              info!("frames: alloc_block:{} frames!", frame_count);
@@ -266,6 +304,47 @@ impl PageFrameListAllocator {
                 };
 //                info!("   returning block: [0x{:x} - 0x{:x}], Frame count: [{}]", ret_block.start.start_address().as_u64(), ret_block.end.start_address().as_u64(), ret_block.end - ret_block.start);
                 ret_block
+                //                return PhysFrameRange { start: block.start(), end: remaining.start };
+            }
+            None => {
+                info!(
+                    "alloc_block: No free block found for {frame_count} frames!",
+                );
+                panic!("PageFrameAllocator: Out of memory!")
+            }
+        }
+    }
+
+    /// Allocate a block with `frame_count` contiguous page frames at the given address `addr`.
+    fn alloc_block_at(&mut self, addr: u64, frame_count: usize) -> Option<PhysFrameRange> {
+        info!("***frames: alloc_block at addr = 0x{:x}, {} #frames!", addr, frame_count);
+
+        match self.find_free_block_at(addr, frame_count) {
+            Some(block) => {
+                info!("   found free block: [0x{:x} - 0x{:x}], Frame count: [{}]", 
+                      block.start().start_address().as_u64(), 
+                      block.end().start_address().as_u64(), 
+                      block.frame_count);
+
+                      let remaining = PhysFrameRange {
+                    start: block.start() + frame_count as u64,
+                    end: block.end(),
+                };
+//                info!("   found free block: [0x{:x} - 0x{:x}], Frame count: [{}]", block.start().start_address().as_u64(), block.end().start_address().as_u64(), block.frame_count);
+                if (remaining.end - remaining.start) > 0 {
+                    //   info!("   remaining frames: [{}]", remaining.end - remaining.start);
+                    unsafe {
+                        self.insert(remaining);
+                    }
+                }
+//                info!("   remaining block: [0x{:x} - 0x{:x}], Frame count: [{}]", remaining.start.start_address().as_u64(), remaining.end.start_address().as_u64(), remaining.end - remaining.start);
+
+                let ret_block = PhysFrameRange {
+                    start: block.start(),
+                    end: remaining.start,
+                };
+//                info!("   returning block: [0x{:x} - 0x{:x}], Frame count: [{}]", ret_block.start.start_address().as_u64(), ret_block.end.start_address().as_u64(), ret_block.end - ret_block.start);
+                Some(ret_block)
                 //                return PhysFrameRange { start: block.start(), end: remaining.start };
             }
             None => {

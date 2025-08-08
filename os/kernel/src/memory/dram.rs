@@ -23,7 +23,8 @@ use x86_64::structures::paging::{frame::PhysFrameRange, PhysFrame};
 use crate::memory::PAGE_SIZE;
 
 
-static DRAM_LIMIT: AtomicU64 = AtomicU64::new(0);
+static DRAM_LIMIT: AtomicU64 = AtomicU64::new(0);     // Highest physical address of the DRAM
+static DRAM_FINALIZED: AtomicU64 = AtomicU64::new(0); // Flag to indicate if the DRAM regions have been finalized
 
 /// Get the highest physical dram address 
 pub fn dram_limit() -> PhysFrame {
@@ -46,6 +47,10 @@ static NEXT_FREE_RESERVED_FRAME_INDEX: AtomicUsize = AtomicUsize::new(0);
 /// Allocate a free frame region from free frame region array. This only used to allocate the kernel heap during booting. \
 /// This is necessary because the page frame allocator needs a heap for its initialization to store its metadata.
 pub fn dram_alloc(num_frames: u64) -> Option<PhysFrameRange> {
+
+    if DRAM_FINALIZED.load(Ordering::SeqCst) != 0 {
+        panic!("DRAM regions have already been finalized, cannot allocate frames");
+    }
 
     let mut free_regions = FREE_FRAME_REGIONS.lock();
 
@@ -79,6 +84,11 @@ pub fn dram_alloc(num_frames: u64) -> Option<PhysFrameRange> {
 
 /// Insert a free frame region (retrieved from EFI) into the free frame region array
 pub fn dram_available(new_region: PhysFrameRange) {
+
+    if DRAM_FINALIZED.load(Ordering::SeqCst) != 0 {
+        panic!("DRAM regions have already been finalized, cannot insert available frames");
+    }
+
     let mut new_region_start = new_region.start.start_address().as_u64();
     let new_region_end = new_region.end.start_address().as_u64();
 
@@ -128,7 +138,7 @@ pub fn dram_available(new_region: PhysFrameRange) {
 
     // Add the merged region
     if new_index + 2 > MAX_REGIONS {
-        panic!("Too many regions");
+        panic!("Too many free regions");
     }
     new_regions[new_index] = merged_start;
     new_regions[new_index + 1] = merged_end;
@@ -142,6 +152,93 @@ pub fn dram_available(new_region: PhysFrameRange) {
 
 /// Insert a reserved frame region (retrieved from EFI) into the reserved frame region array
 pub fn dram_reserved(reserve_region: PhysFrameRange) {
+
+    if DRAM_FINALIZED.load(Ordering::SeqCst) != 0 {
+        panic!("DRAM regions have already been finalized, cannot insert reserved frames");
+    }
+
+    let mut reserve_region_start = reserve_region.start.start_address().as_u64();
+    let reserve_region_end = reserve_region.end.start_address().as_u64();
+
+    if reserve_region_start % PAGE_SIZE as u64 != 0 || reserve_region_end % PAGE_SIZE as u64 != 0 {
+        panic!("Region not aligned to PAGE_SIZE");
+    }
+    if reserve_region_start >= reserve_region_end {
+        panic!("Region free_start >= free_end");
+    }
+
+    // Update the physical limit if this region extends beyond the current limit
+    let current_limit = DRAM_LIMIT.load(Ordering::SeqCst);
+    if reserve_region_end > current_limit {
+        DRAM_LIMIT.store(reserve_region_end, Ordering::SeqCst);
+    }
+
+    // Store the region in the reserved frame regions array
+    let mut merged_start = reserve_region_start;
+    let mut merged_end = reserve_region_end;
+
+    let mut new_regions = [0u64; MAX_REGIONS];
+    let mut new_index = 0;
+
+    // Merge overlapping/adjacent regions into merged_start/end
+    let mut reserved_regions = RESERVED_FRAME_REGIONS.lock();
+    let current_len = NEXT_FREE_RESERVED_FRAME_INDEX.load(Ordering::SeqCst);
+    for i in (0..current_len).step_by(2) {
+        let existing_start = reserved_regions[i];
+        let existing_end = reserved_regions[i + 1];
+
+        // Overlapping or adjacent
+        if !(merged_end < existing_start || merged_start > existing_end) {
+            merged_start = merged_start.min(existing_start);
+            merged_end = merged_end.max(existing_end);
+        } else {
+            // Keep this region
+            new_regions[new_index] = existing_start;
+            new_regions[new_index + 1] = existing_end;
+            new_index += 2;
+        }
+    }
+
+    // Add the merged region
+    if new_index + 2 > MAX_REGIONS {
+        panic!("Too many reerved regions");
+    }
+    new_regions[new_index] = merged_start;
+    new_regions[new_index + 1] = merged_end;
+    new_index += 2;
+
+    // Copy back
+    reserved_regions[..new_index].copy_from_slice(&new_regions[..new_index]);
+    NEXT_FREE_RESERVED_FRAME_INDEX.store(new_index, Ordering::SeqCst);
+}
+
+
+/// Merge all reserved frame regions into the free frame regions.
+pub fn finalize_free_regions() {
+    let reserved_regions = RESERVED_FRAME_REGIONS.lock();
+    let current_len = NEXT_FREE_RESERVED_FRAME_INDEX.load(Ordering::SeqCst);
+
+    for i in (0..current_len).step_by(2) {
+        let reserve_start = reserved_regions[i];
+        let reserve_end = reserved_regions[i + 1];
+
+        if reserve_start == 0 && reserve_end == 0 {
+            continue; // Skip empty regions
+        }
+
+        let reserve_region = PhysFrameRange {
+            start: PhysFrame::from_start_address(PhysAddr::new(reserve_start)).expect("Invalid start address"),
+            end: PhysFrame::from_start_address(PhysAddr::new(reserve_end)).expect("Invalid end address"),
+        };
+
+        merge_reserved_region(reserve_region);
+    }
+
+    DRAM_FINALIZED.store(1, Ordering::SeqCst);
+}
+
+/// Merge a reserved frame region into the free frame regions.
+fn merge_reserved_region(reserve_region: PhysFrameRange) {
     let reserve_start = reserve_region.start.start_address().as_u64();
     let reserve_end = reserve_region.end.start_address().as_u64();
 
@@ -197,7 +294,6 @@ pub fn dram_reserved(reserve_region: PhysFrameRange) {
 
 
 
-
 // Dump the free frame regions to the log
 pub fn dump() {
     info!("Free frame regions:");
@@ -212,4 +308,5 @@ pub fn dump() {
         let num_frames = (regions[i + 1] - regions[i]) / PAGE_SIZE as u64;
         info!("Block: [Start: ]{:#x} - {:#x}], Frame count: [{:?}]", regions[i], regions[i+1], num_frames);
     }
+    info!("DRAM limit: {:#x}", DRAM_LIMIT.load(Ordering::SeqCst));
 }
