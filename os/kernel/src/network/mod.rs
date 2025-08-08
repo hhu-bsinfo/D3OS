@@ -1,14 +1,14 @@
 use crate::device::rtl8139::Rtl8139;
 // add the N2000 driver
-use crate::device::ne2k::ne2000::{self, Ne2000};
-use crate::process::thread::Thread;
+use crate::device::ne2k::ne2000::Ne2000;
+use crate::process::thread::{self, Thread};
 use crate::{pci_bus, scheduler, timer};
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr;
-use core::sync::atomic::{AtomicPtr, Ordering};
+use core::sync::atomic::Ordering;
 use log::info;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
 use smoltcp::socket::udp;
@@ -105,6 +105,12 @@ pub fn init() {
             scheduler().ready(Thread::new_kernel_thread(
                 || loop {
                     poll_ne2000();
+                    // add this because if not, the send test is slowed down
+                    // avoid CPU starvation and keep polling regular
+                    // prevents CPU hogging by the poll thread.
+                    // allows other tasks (like your sender or interrupt handlers) to run.
+                    // forms a cooperative multitasking environment for fair scheduling.
+                    scheduler().sleep(1);
                 },
                 "NE2000",
             ));
@@ -131,6 +137,26 @@ pub fn ne2000() -> Option<Arc<Ne2000>> {
     }
 }
 
+pub fn recv_datagram(
+    handle: SocketHandle,
+    buf: &mut [u8],
+) -> Result<Option<(usize, Ipv4Address, u16)>, udp::RecvError> {
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let socket = sockets.get_mut::<udp::Socket>(handle);
+
+    match socket.recv_slice(buf) {
+        Ok((len, meta)) => {
+            // meta: UdpMetadata { endpoint: IpEndpoint { addr: Option<IpAddress>, port: u16 }, ... }
+            let src_ip = match meta.endpoint.addr {
+                smoltcp::wire::IpAddress::Ipv4(v4) => v4,
+            };
+            Ok(Some((len, src_ip, meta.endpoint.port)))
+        }
+        Err(udp::RecvError::Exhausted) => Ok(None), // nothing queued
+        Err(e) => Err(e),
+    }
+}
+
 pub fn check() {
     let ne2000 = NE2000.get().expect("NE2000 not initialized");
     let device = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
@@ -148,7 +174,6 @@ pub fn check() {
         device.check_interrupts.ovw.store(false, Ordering::Relaxed);
     }
 }
-
 pub fn add_interface(interface: Interface) {
     INTERFACES.write().push(interface);
 }
@@ -156,16 +181,24 @@ pub fn add_interface(interface: Interface) {
 pub fn open_socket(protocol: SocketType) -> SocketHandle {
     let sockets = SOCKETS.get().expect("Socket set not initialized!");
     // changed transmit and receive buffer size to tx_size and rx_size
-    let tx_size = 1000;
-    let rx_size = 1000;
+    ////// IMPORTANT//////
+    ///// Metadata storage limits the maximum number of packets in the buffer
+    ///// and payload storage limits the maximum total size of packets.
+    // https://docs.rs/smoltcp/latest/smoltcp/storage/struct.PacketBuffer.html
+    // Problem:  enqueue faster than poll() can transmit,
+    // hit whichever limit comes first and get BufferFull
+    let tx_size = 1324;
+    let rx_size = 2;
 
     let rx_buffer = udp::PacketBuffer::new(
         // packetgröße auf 10 erhöhen
         vec![udp::PacketMetadata::EMPTY; rx_size],
-        vec![0; 65535],
+        vec![0; 64 * 1024],
     );
-    let tx_buffer =
-        udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 65535]);
+    let tx_buffer = udp::PacketBuffer::new(
+        vec![udp::PacketMetadata::EMPTY; tx_size],
+        vec![0; 64 * 2650],
+    );
 
     let socket = match protocol {
         SocketType::Udp => udp::Socket::new(rx_buffer, tx_buffer),
@@ -195,6 +228,8 @@ pub fn send_datagram(
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
     let socket = sockets.get_mut::<udp::Socket>(handle);
 
+    // packets don't hit the wire when calling send_slice, poll() transmits them
+    // if poll is to slow, socket tx and rx buffer limit will be reached
     socket.send_slice(data, (destination, port))
 }
 
@@ -245,6 +280,12 @@ fn poll_ne2000() {
         // check if smoltcp processes something
         // poll calls the receive and transmit methods of the device impl in networks_stack/mod.rs
         // checking if any packets have been send or received
+        //let timestamp = Instant::now();
         iface.poll(now, dev_ne2k, &mut sockets);
+
+        // 09.08.2025
+        // https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Interface.html#method.poll_delay
+        //let delay = iface.poll_delay(timestamp, &sockets).unwrap_or_default();
+        //scheduler().sleep(delay);
     }
 }

@@ -20,7 +20,6 @@ use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use log::info;
 // for allocator impl
 use alloc::boxed::Box;
-use alloc::string::String;
 // import interrupt functionalities
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use spin::{Mutex, RwLock};
@@ -783,7 +782,7 @@ impl Ne2000 {
             //===============================================================================//
 
             //==== Step 2 ===================================================================//
-            // set rbcr and rsar registers for read operation,
+           // set rbcr and rsar registers for read operation of the header,
             // as long as packets are there to be processed, loop
             while current != CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed) {
                 // write size of header
@@ -824,11 +823,13 @@ impl Ne2000 {
                         // Combine the two bytes to form the full length (in u16)
                         let length_u16 = (high_byte << 8) | low_byte;
 
+                        // FIX: don't subtract header size , during reception of a lot of packets, it leads to an overflow
                         // Subtract the size of the packet header
-                        let length_without_header = length_u16 - size_of::<PacketHeader>() as u16;
+                        //let length_without_header = length_u16 - size_of::<PacketHeader>() as u16;
 
                         // Return the length as u16
-                        length_without_header as u16
+                        //length_without_header as u16
+                        length_u16
                     },
                 };
 
@@ -852,7 +853,8 @@ impl Ne2000 {
                 let status =
                     ReceiveStatusRegister::from_bits_retain(ReceiveStatusRegister::RSR_PRX.bits());
                 //check if PRX bit is set in the header status
-                if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() == 1 
+                //if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() == 1 
+                if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() != 0 
                 //status.contains(ReceiveStatusRegister::RSR_PRX)
                 //packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() != 0
                     // check max ethernet size , see 
@@ -941,7 +943,9 @@ impl Ne2000 {
                 CURRENT_NEXT_PAGE_POINTER.store(packet_header.next_packet, Ordering::Relaxed);
                 // wrap around case : next_packet == pstart, make sure bnry points to a page inside the receive buffer
                 // PSTOP -1 : last valid page
-                if (packet_header.next_packet - 1) < RECEIVE_START_PAGE {
+                // FIX Overflow when subtracting
+                let prev_page = packet_header.next_packet.wrapping_sub(1);
+                if (prev_page) < RECEIVE_START_PAGE {
                     self.registers.page0.bnry_port.write(RECEIVE_STOP_PAGE - 1);
                 } else {
                     // update the Boundary Pointer, points to the first packet in the ring not yet read by
@@ -1180,6 +1184,7 @@ impl InterruptHandler for Ne2000InterruptHandler {
 
         // check for a buffer overflow
         if status.contains(InterruptStatusRegister::ISR_OVW) {
+            info!("overflow trigger");
             unsafe {
                 self.device
                     .registers

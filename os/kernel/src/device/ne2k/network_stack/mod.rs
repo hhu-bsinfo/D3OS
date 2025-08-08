@@ -106,11 +106,6 @@ pub struct Ne2000RxToken<'a> {
     device: &'a Ne2000,
 }
 
-pub struct ReceiveBuffer {
-    index: usize,
-    data: Vec<u8>,
-}
-
 // allocate blocks of data
 // Ne2000 uses buffer ring,
 // packets can be overwritten by new incoming packets once
