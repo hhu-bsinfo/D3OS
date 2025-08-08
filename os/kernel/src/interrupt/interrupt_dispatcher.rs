@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr;
-use log::{info, trace};
+use log::{error, info, trace};
 use spin::Mutex;
 use x86_64::registers::control::Cr2;
 use x86_64::set_general_handler;
@@ -258,7 +258,7 @@ impl InterruptDispatcher {
         }
 
         if handler_vec.as_ref().unwrap().is_empty() {
-            panic!("Interrupt Dispatcher: No handler registered for interrupt [{}]!", interrupt);
+            error!("Interrupt Dispatcher: No handler registered for interrupt [{}]!", interrupt);
         }
 
         for handler in handler_vec.unwrap().iter_mut() {
