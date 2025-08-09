@@ -53,7 +53,7 @@ pub(super) fn frame_from_u64(
 
 /// Insert an available memory `region` obtained during the boot process.
 pub unsafe fn boot_avail(mut region: PhysFrameRange) {
-    dram::dram_available(region);
+    dram::available(region);
 
     PHYS_LIMIT.call_once(|| {
         Mutex::new(Cell::new(
@@ -84,7 +84,7 @@ pub unsafe fn boot_avail(mut region: PhysFrameRange) {
 
 /// Permanently reserve a range of page `frames` during boot time
 pub unsafe fn boot_reserve(frames: PhysFrameRange) {
-    dram::dram_reserved(frames); 
+    dram::reserved(frames); 
     unsafe {
         PAGE_FRAME_ALLOCATOR.lock().reserve_block(frames);
     }

@@ -6,10 +6,11 @@
    ║ heap and page frame allocator are setup this module is no longer used.  ║ 
    ║                                                                         ║
    ║ Public functions:                                                       ║
-   ║   - dram_limit         highest dram address on this system              ║
-   ║   - dram_available     insert free frame region                         ║
-   ║   - dram_reserved      remove a reserved frame range from available     ║
-   ║   - dram_alloc         alloc a range of frames from avail. during boot  ║
+   ║   - limit         highest dram address on this system                   ║
+   ║   - available     insert free frame region                              ║
+   ║   - reserved      remove a reserved frame range from available          ║
+   ║   - alloc         alloc a range of frames from avail. during boot       ║
+   ║   - finalize      merge all reserved r. into free regions               ║ 
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Michael Schoettner, Univ. Duesseldorf, 24.7.2025                ║
    ╚═════════════════════════════════════════════════════════════════════════╝
@@ -27,7 +28,7 @@ static DRAM_LIMIT: AtomicU64 = AtomicU64::new(0);     // Highest physical addres
 static DRAM_FINALIZED: AtomicU64 = AtomicU64::new(0); // Flag to indicate if the DRAM regions have been finalized
 
 /// Get the highest physical dram address 
-pub fn dram_limit() -> PhysFrame {
+pub fn limit() -> PhysFrame {
     let current_limit = DRAM_LIMIT.load(Ordering::SeqCst);
     PhysFrame::from_start_address(PhysAddr::new(current_limit))
         .expect("Physical DRAM limit is not aligned to page size")   
@@ -46,7 +47,7 @@ static NEXT_FREE_RESERVED_FRAME_INDEX: AtomicUsize = AtomicUsize::new(0);
 
 /// Allocate a free frame region from free frame region array. This only used to allocate the kernel heap during booting. \
 /// This is necessary because the page frame allocator needs a heap for its initialization to store its metadata.
-pub fn dram_alloc(num_frames: u64) -> Option<PhysFrameRange> {
+pub fn alloc(num_frames: u64) -> Option<PhysFrameRange> {
 
     if DRAM_FINALIZED.load(Ordering::SeqCst) != 0 {
         panic!("DRAM regions have already been finalized, cannot allocate frames");
@@ -83,7 +84,7 @@ pub fn dram_alloc(num_frames: u64) -> Option<PhysFrameRange> {
 
 
 /// Insert a free frame region (retrieved from EFI) into the free frame region array
-pub fn dram_available(new_region: PhysFrameRange) {
+pub fn available(new_region: PhysFrameRange) {
 
     if DRAM_FINALIZED.load(Ordering::SeqCst) != 0 {
         panic!("DRAM regions have already been finalized, cannot insert available frames");
@@ -151,7 +152,7 @@ pub fn dram_available(new_region: PhysFrameRange) {
 
 
 /// Insert a reserved frame region (retrieved from EFI) into the reserved frame region array
-pub fn dram_reserved(reserve_region: PhysFrameRange) {
+pub fn reserved(reserve_region: PhysFrameRange) {
 
     if DRAM_FINALIZED.load(Ordering::SeqCst) != 0 {
         panic!("DRAM regions have already been finalized, cannot insert reserved frames");
@@ -214,7 +215,9 @@ pub fn dram_reserved(reserve_region: PhysFrameRange) {
 
 
 /// Merge all reserved frame regions into the free frame regions.
-pub fn finalize_free_regions() {
+/// Note: After this function is called only `dram_limit` and `dram_dump` can be called.
+/// Calling any other function will panic.
+pub fn finalize() {
     let reserved_regions = RESERVED_FRAME_REGIONS.lock();
     let current_len = NEXT_FREE_RESERVED_FRAME_INDEX.load(Ordering::SeqCst);
 
@@ -290,11 +293,7 @@ fn merge_reserved_region(reserve_region: PhysFrameRange) {
     NEXT_FREE_FRAME_INDEX.store(new_index, Ordering::SeqCst);
 }
 
-
-
-
-
-// Dump the free frame regions to the log
+/// Dump the free frame regions to the log
 pub fn dump() {
     info!("Free frame regions:");
     let regions = FREE_FRAME_REGIONS.lock();

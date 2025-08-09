@@ -99,10 +99,13 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     );
 
     // Allocate frames for the kernel heap using the new way
-    let res = dram::dram_alloc(consts::KERNEL_HEAP_PAGES as u64).expect("Failed to allocate kernel heap frames!");
+    let res = dram::alloc(consts::KERNEL_HEAP_PAGES as u64).expect("Failed to allocate kernel heap frames!");
     dram::dump();
     debug!("Old page frame allocator:\n{}", memory::frames::dump());
 
+    /*
+        Hier den neuen Frame-Allocator aktivieren + Device Memory separat verwalten
+     */
 
 
     // Reserve frames for initrd
@@ -121,7 +124,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     );
 
     // Merge reserved and free regions
-    dram::finalize_free_regions();
+    dram::finalize();
     dram::dump();
     debug!("Old page frame allocator:\n{}", memory::frames::dump());
 
