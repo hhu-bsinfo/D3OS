@@ -82,7 +82,7 @@ impl PS2 {
     }
 
     pub fn init_controller(&self) -> Result<(), ControllerError> {
-        info!("Initializing controller");
+        info!("   Initializing controller");
         let mut controller = self.controller.lock();
 
         // Disable ports
@@ -99,7 +99,7 @@ impl PS2 {
 
         // Perform self test on controller
         controller.test_controller()?;
-        info!("Self test result is OK");
+        info!("   Self test result is OK");
 
         // Check if the controller has reset itself during the self test and if so, write the configuration byte again
         if controller.read_config()? != config {
@@ -110,42 +110,42 @@ impl PS2 {
         let test_result = controller.test_keyboard();
         if test_result.is_ok() {
             // Enable keyboard
-            info!("First port detected");
+            info!("   First port detected");
             controller.enable_keyboard()?;
             config.set(ControllerConfigFlags::DISABLE_KEYBOARD, false);
             config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT, true);
             controller.write_config(config)?;
-            info!("First port enabled");
+            info!("   First port enabled");
         }
 
         test_result
     }
 
     pub fn init_keyboard(&mut self) -> Result<(), KeyboardError> {
-        info!("Initializing keyboard");
+        info!("   Initializing keyboard");
         let mut controller = self.controller.lock();
 
         // Perform self test on keyboard
         controller.keyboard().reset_and_self_test()?;
-        info!("Keyboard has been reset and self test result is OK");
+        info!("   Keyboard has been reset and self test result is OK");
 
         // Enable keyboard translation if needed
         controller.keyboard().disable_scanning()?;
         let kb_type = controller.keyboard().get_keyboard_type()?;
-        info!("Detected keyboard type [{kb_type:?}]");
+        info!("   Detected keyboard type [{kb_type:?}]");
 
         match kb_type {
             KeyboardType::ATWithTranslation | KeyboardType::MF2WithTranslation | KeyboardType::ThinkPadWithTranslation => {
-                info!("Enabling keyboard translation");
+                info!("   Enabling keyboard translation");
                 let mut config = controller.read_config()?;
                 config.set(ControllerConfigFlags::ENABLE_TRANSLATE, true);
                 controller.write_config(config)?;
             }
-            _ => info!("Keyboard does not need translation"),
+            _ => info!("   Keyboard does not need translation"),
         }
 
         // Setup keyboard
-        info!("Enabling keyboard");
+        info!("   Enabling keyboard");
         controller.keyboard().set_defaults()?;
         controller.keyboard().set_scancode_set(1)?;
         controller.keyboard().set_typematic_rate_and_delay(0)?;

@@ -12,9 +12,10 @@ use core::ops::Deref;
 use core::ptr;
 use syscall::NUM_SYSCALLS;
 use x86_64::registers::control::{Efer, EferFlags};
-use x86_64::registers::model_specific::{KernelGsBase, LStar, Star};
+use x86_64::registers::model_specific::{KernelGsBase, LStar, SFMask, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
+use crate::syscall::sys_net::{sys_get_ip_adresses, sys_sock_accept, sys_sock_bind, sys_sock_close, sys_sock_connect, sys_sock_open, sys_sock_receive, sys_sock_send};
 use crate::syscall::sys_vmem::sys_map_memory;
 use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, };
 use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
@@ -23,6 +24,8 @@ use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write};
 use crate::syscall::sys_naming::*;
 
 use crate::{core_local_storage, tss};
+use log::info;
+use x86_64::registers::rflags::RFlags;
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -43,6 +46,8 @@ impl CoreLocalStorage {
 }
 
 pub fn init() {
+    info!("Initializing system calls");
+
     // Enable system call extensions
     unsafe { Efer::update(|flags| flags.set(EferFlags::SYSTEM_CALL_EXTENSIONS, true)) }
 
@@ -51,6 +56,7 @@ pub fn init() {
     let ss_syscall = SegmentSelector::new(2, PrivilegeLevel::Ring0);
     let cs_sysret = SegmentSelector::new(4, PrivilegeLevel::Ring3);
     let ss_sysret = SegmentSelector::new(3, PrivilegeLevel::Ring3);
+
 
     if let Err(err) = Star::write(cs_sysret, ss_sysret, cs_syscall, ss_syscall) {
         panic!(
@@ -61,6 +67,10 @@ pub fn init() {
 
     // Set rip for syscall
     LStar::write(VirtAddr::new(syscall_handler as u64));
+
+    // Make sure interrupts are disabled during system calls
+    // The CPU clears every flag that is set in the SFMask register
+    SFMask::write(RFlags::INTERRUPT_FLAG);
 
     // Initialize core local storage (accessible via 'swapgs')
     let mut core_local_storage = core_local_storage().lock();
@@ -107,7 +117,15 @@ impl SyscallTable {
                 sys_touch as *const _,
                 sys_readdir as *const _,
                 sys_cwd as *const _,
-                sys_cd as *const _,                
+                sys_cd as *const _,
+                sys_sock_open as *const _,
+                sys_sock_bind as *const _,
+                sys_sock_accept as *const _,
+                sys_sock_connect as *const _,
+                sys_sock_send as *const _,
+                sys_sock_receive as *const _,
+                sys_sock_close as *const _,
+                sys_get_ip_adresses as *const _,
             ],
         }
     }
@@ -128,10 +146,7 @@ unsafe impl Sync for SyscallTable {}
 ///    Two values in `rax`, `rdx` to reconstruct `Result`in user mode
 unsafe extern "C" fn syscall_handler() {
     naked_asm!(
-    // We are now in ring 0, but still on the user stack
-    // Disable interrupts until we have switched to kernel stack
-    "cli",
-
+    // We are now in ring 0 with disabled interrupts, but still on the user stack
     // Switch to kernel stack
     "swapgs", // Setup core local storage access via gs base
     "mov gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}], rsp", // Temporarily store user rip in core local storage

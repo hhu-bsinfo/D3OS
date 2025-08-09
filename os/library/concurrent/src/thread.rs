@@ -28,7 +28,8 @@ impl Thread {
     }
 }
 
-fn kickoff_user_thread(entry: fn()) {
+extern "sysv64" fn kickoff_user_thread(entry: extern "sysv64" fn()) {
+    // entry has no parameters, so we don't really need to ensure the calling convention
     entry();
     exit();
 }

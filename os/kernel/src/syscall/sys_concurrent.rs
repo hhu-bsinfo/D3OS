@@ -16,17 +16,16 @@ use crate::{initrd, process_manager, scheduler};
 use crate::process::thread::Thread;
 
 
-pub fn sys_process_id() -> isize {
+pub extern "sysv64" fn sys_process_id() -> isize {
     process_manager().read().current_process().id() as isize
 }
 
-pub fn sys_process_exit() -> isize {
+pub extern "sysv64" fn sys_process_exit() -> ! {
     scheduler().current_thread().process().exit();
     scheduler().exit();
-    0
 }
 
-pub fn sys_thread_create(kickoff_addr: u64, entry: fn()) -> isize {
+pub extern "sysv64" fn sys_thread_create(kickoff_addr: u64, entry: extern "sysv64" fn()) -> isize {
     let thread = Thread::new_user_thread(process_manager().read().current_process(), VirtAddr::new(kickoff_addr), entry);
     let id = thread.id();
 
@@ -34,31 +33,32 @@ pub fn sys_thread_create(kickoff_addr: u64, entry: fn()) -> isize {
     id as isize
 }
 
-pub fn sys_thread_id() -> isize {
+pub extern "sysv64" fn sys_thread_id() -> isize {
     scheduler().current_thread().id() as isize
 }
 
-pub fn sys_thread_switch() -> isize {
+pub extern "sysv64" fn sys_thread_switch() -> isize {
     scheduler().switch_thread_no_interrupt();
     0
 }
 
-pub fn sys_thread_sleep(ms: usize) -> isize {
+pub extern "sysv64" fn sys_thread_sleep(ms: usize) -> isize {
     scheduler().sleep(ms);
     0
 }
 
-pub fn sys_thread_join(id: usize) -> isize {
+pub extern "sysv64" fn sys_thread_join(id: usize) -> isize {
     scheduler().join(id);
     0
 }
 
-pub fn sys_thread_exit() -> isize {
+pub extern "sysv64" fn sys_thread_exit() -> ! {
     scheduler().exit();
-    0
 }
 
-pub unsafe fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize, args: *const Vec<&str>) -> isize {
+pub unsafe extern "sysv64" fn sys_process_execute_binary(
+    name_buffer: *const u8, name_length: usize, args: *const Vec<&str>,
+) -> isize {
     let app_name = from_utf8(unsafe { slice_from_raw_parts(name_buffer, name_length).as_ref().unwrap() }).unwrap();
     match initrd().entries().find(|entry| entry.filename().as_str().unwrap() == app_name) {
         Some(app) => {

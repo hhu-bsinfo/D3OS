@@ -3,14 +3,18 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Functions related to process management.                                ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 02.03.2025                   ║
+   ║ Author: Fabian Ruhland, Univ. Duesseldorf, 20.07.2025                   ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use log::info;
+use x86_64::structures::paging::frame::PhysFrameRange;
+use x86_64::structures::paging::Page;
+use x86_64::VirtAddr;
 
-use crate::memory::vmm;
+use crate::memory::{vmm, MemorySpace};
+use crate::memory::vma::VmaType;
 use crate::process::process::Process;
 use crate::scheduler;
 
@@ -29,33 +33,65 @@ impl ProcessManager {
 
     /// Create a new process
     pub fn create_process(&mut self) -> Arc<Process> {
-        let paging = match self.kernel_process() {
-            Some(kernel_process) => {
-                // Create user address space
-                vmm::clone_address_space(&(kernel_process.virtual_address_space))
-            }
-            None => vmm::create_kernel_address_space(),
-        };
-
+        let kernel_process = self.kernel_process().expect("No kernel process found!");
+        let paging = vmm::clone_address_space(&(kernel_process.virtual_address_space));
         let process = Arc::new(Process::new(paging));
         self.active_processes.push(Arc::clone(&process));
-
-        info!("Process [{}]: created", process.id());
-
         process
     }
 
-    pub fn active_process_ids(&self) -> Vec<usize> {
-        self.active_processes
-            .iter()
-            .map(|process| process.id())
-            .collect()
+    /// Create the kernel process
+    pub fn create_kernel_process(&mut self, kernel_image_region: PhysFrameRange, heap_region: PhysFrameRange) -> Arc<Process> {
+        let kernel_process = self.kernel_process();
+        if kernel_process.is_some() {
+            panic!("Kernel process already exists!");
+        }
+
+        let paging = vmm::create_kernel_address_space();
+        let kernel_process = Arc::new(Process::new(paging));
+        self.active_processes.push(Arc::clone(&kernel_process));
+
+        // TODO: adjust this when removing 1:1 mapping
+        kernel_process
+            .virtual_address_space
+            .alloc_vma(
+                Some(Page::from_start_address(VirtAddr::new(heap_region.start.start_address().as_u64())).unwrap()),
+                heap_region.len(),
+                MemorySpace::Kernel,
+                VmaType::Heap,
+                "heap",
+            )
+            .expect("failed to create VMA for kernel heap");
+
+        // TODO: stack is part of BSS, which is part of code
+        kernel_process
+            .virtual_address_space
+            .alloc_vma(
+                Some(Page::from_start_address(VirtAddr::new(kernel_image_region.start.start_address().as_u64())).unwrap()),
+                kernel_image_region.len(),
+                MemorySpace::Kernel,
+                VmaType::Code,
+                "code",
+            )
+            .expect("failed to create VMA for kernel code");
+        kernel_process.dump();
+
+        info!("Kernel process [{}]: created", kernel_process.id());
+
+        kernel_process
     }
 
+    /// Return the ids of all active processes
+    pub fn active_process_ids(&self) -> Vec<usize> {
+        self.active_processes.iter().map(|process| process.id()).collect()
+    }
+
+    /// Get reference to kernel process
     pub fn kernel_process(&self) -> Option<Arc<Process>> {
         self.active_processes.first().map(Arc::clone)
     }
 
+    /// Get reference to current process
     pub fn current_process(&self) -> Arc<Process> {
         if self.active_processes.len() > 1 {
             scheduler().current_thread().process()
@@ -64,6 +100,7 @@ impl ProcessManager {
         }
     }
 
+    /// Exit a process by its id
     pub fn exit(&mut self, process_id: usize) {
         let index = self
             .active_processes
@@ -78,6 +115,7 @@ impl ProcessManager {
         self.exited_processes.push(process);
     }
 
+    /// Kill a process by its id
     pub fn kill(&mut self, process_id: usize) {
         let index = self
             .active_processes
@@ -94,10 +132,12 @@ impl ProcessManager {
         self.exited_processes.push(process);
     }
 
+    /// 
     pub fn drop_exited_process(&mut self) {
         self.exited_processes.clear();
     }
 
+    /// Dump all active processes
     pub fn dump(&self) {
         info!("=== Active Processes Dump ===");
         if self.active_processes.is_empty() {
@@ -111,5 +151,4 @@ impl ProcessManager {
         }
         info!("=============================");
     }
-
 }

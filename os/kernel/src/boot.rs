@@ -10,22 +10,16 @@
 
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
-use crate::device::qemu_cfg;
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
-use crate::memory::frames;
 use crate::memory::nvmem::Nfit;
-use crate::memory::pages;
 use crate::memory::pages::page_table_index;
 use crate::memory::vma::VmaType;
-use crate::memory::{MemorySpace, PAGE_SIZE, nvmem};
-use crate::network::rtl8139;
+use crate::memory::{PAGE_SIZE, nvmem, dram};
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
 use crate::{
-    acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_cpu_info,
-    init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory,
-    network, process_manager, scheduler, serial_port, terminal, timer, tss,
+    acpi_tables, allocator, apic, built_info, consts, gdt, get_initrd_frames, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss
 };
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
@@ -38,15 +32,7 @@ use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
 use log::{LevelFilter, debug, info, warn};
-use multiboot2::{
-    BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag,
-    TagHeader,
-};
-use smoltcp::iface;
-use smoltcp::iface::Interface;
-use smoltcp::time::Instant;
-use smoltcp::wire::IpAddress::Ipv4;
-use smoltcp::wire::{HardwareAddress, IpCidr, Ipv4Address};
+use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
 use uefi::data_types::Handle;
 use uefi::mem::memory_map::MemoryMap;
 use uefi::runtime::Time;
@@ -65,11 +51,9 @@ use x86_64::{PhysAddr, VirtAddr};
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
-    static ___KERNEL_DATA_START__: u64; // start address of OS image
-    static ___KERNEL_DATA_END__: u64; // end address of OS image
+    static ___KERNEL_DATA_START__: (); // start address of OS image
+    static ___KERNEL_DATA_END__: (); // end address of OS image
 }
-
-const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS
 
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \
@@ -98,30 +82,60 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     init_gdt();
 
     // The bootloader marks the kernel image region as available, so we need to reserve it manually
+    let kernel_image_region = kernel_image_region();
     unsafe {
-        memory::frames::reserve(kernel_image_region());
+        memory::frames::boot_reserve(kernel_image_region);
     }
 
     // and initialize kernel heap, after which formatted strings may be used in logs and panics.
     info!("Initializing kernel heap");
-    let heap_region = memory::frames::alloc(INIT_HEAP_PAGES);
+    let heap_region = unsafe { memory::vmm::alloc_frames(consts::KERNEL_HEAP_PAGES) };
     unsafe {
         allocator().init(&heap_region);
     }
-    debug!(
-        "Kernel heap is initialized [0x{:x} - 0x{:x}]",
-        heap_region.start.start_address().as_u64(),
-        heap_region.end.start_address().as_u64()
+    info!("kernel image region: [Start: {:#x}, End: {:#x}]", 
+        kernel_image_region.start.start_address().as_u64(), 
+        kernel_image_region.end.start_address().as_u64()
     );
-    debug!("Page frame allocator:\n{}", memory::frames::dump());
+
+    // Allocate frames for the kernel heap using the new way
+    let res = dram::alloc(consts::KERNEL_HEAP_PAGES as u64).expect("Failed to allocate kernel heap frames!");
+    dram::dump();
+    debug!("Old page frame allocator:\n{}", memory::frames::dump());
+
+    /*
+        Hier den neuen Frame-Allocator aktivieren + Device Memory separat verwalten
+     */
 
 
+    // Reserve frames for initrd
+    let initrd_tag = multiboot
+        .module_tags()
+        .find(|module| module.cmdline().is_ok_and(|name| name == "initrd"))
+        .expect("Initrd not found!");
+    let initrd_region = get_initrd_frames(initrd_tag);
+    unsafe {
+        memory::frames::boot_reserve(initrd_region);
+    }
+    info!(
+        "Initrd region: [Start: {:#x}, End: {:#x}]",
+        initrd_region.start.start_address().as_u64(),
+        initrd_region.end.start_address().as_u64()
+    );
+
+    // Merge reserved and free regions
+    dram::finalize();
+    dram::dump();
+    debug!("Old page frame allocator:\n{}", memory::frames::dump());
+
+    
     // Initialize CPU information
     init_cpu_info();
 
     // Create kernel process (and initialize virtual memory management)
     info!("Create kernel process and initialize paging");
-    let kernel_process = process_manager().write().create_process();
+    let kernel_process = process_manager().write().create_kernel_process(kernel_image_region, heap_region);
+    kernel_process.virtual_address_space.page_tables().dump();
     kernel_process.virtual_address_space.load_address_space();
 
     // Initialize serial port and enable serial logging
@@ -138,64 +152,25 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     let fb_start_phys_addr = fb_info.address();
     let fb_end_phys_addr = fb_start_phys_addr + (fb_info.height() * fb_info.pitch()) as u64;
 
-    // Start PhysFrame for the Framebuffer
-    let fb_start_page_frame = frames::frame_from_u64(fb_start_phys_addr)
-        .expect("Framebuffer start address is not page aligned");
-
-    // End PhysFrame for the Framebuffer
-    let fb_end_page_frame = frames::frame_from_u64(fb_end_phys_addr)
-        .expect("Framebuffer end address is not page aligned");
-
-    let fb_frame_range = PhysFrameRange {
-        start: fb_start_page_frame,
-        end: fb_end_page_frame,
-    };
-
-    // Start Page for the Framebuffer
-    let fb_start_page = pages::page_from_u64(fb_start_phys_addr)
-        .expect("Framebuffer start address is not page aligned");
-
-    // Allocate virtual memory area for the Framebuffer and add it to the kernel process
-    let vma = kernel_process
-        .virtual_address_space
-        .alloc_vma(
-            Some(fb_start_page),
-            fb_frame_range.len(),
-            MemorySpace::Kernel,
-            VmaType::DeviceMemory,
-            "framebuffer",
-        )
-        .expect("alloc_vma failed");
-
-    // Map linear framebuffer in the kernel process address space
-    kernel_process
-        .virtual_address_space
-        .map_pfr_for_vma(
-            &vma,
-            fb_frame_range,
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
-        )
-        .expect("map_pfr_for_vma failed for LAPIC");
+    kernel_process.virtual_address_space.kernel_map_devm_identity(
+        fb_start_phys_addr,
+        fb_end_phys_addr,
+        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
+        VmaType::DeviceMemory,
+        "framebuffer",
+    );
+    info!(
+        "framebuffer region: [Start: {:#x}, End: {:#x}]",
+        fb_start_phys_addr,
+        fb_end_phys_addr,
+        );
 
     // Initialize terminal kernel thread and enable terminal logging
-    init_terminal(
-        fb_info.address() as *mut u8,
-        fb_info.pitch(),
-        fb_info.width(),
-        fb_info.height(),
-        fb_info.bpp(),
-    );
-    // Terminal output uses locks => hangs up when used for debugging
-    // MS logger().register(terminal());
+    init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
     // Dumping basic infos
     info!("Welcome to D3OS!");
-    let version = format!(
-        "v{} ({} - O{})",
-        built_info::PKG_VERSION,
-        built_info::PROFILE,
-        built_info::OPT_LEVEL
-    );
+    let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
     let git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("Unknown");
     let build_date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
@@ -213,11 +188,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         None => "Unknown",
     };
     info!("OS Version: [{version}]");
-    info!(
-        "Git Version: [{} - {}]",
-        built_info::GIT_HEAD_REF.unwrap_or("Unknown"),
-        git_commit
-    );
+    info!("Git Version: [{} - {}]", built_info::GIT_HEAD_REF.unwrap_or("Unknown"), git_commit);
     info!("Build Date: [{build_date}]");
     info!("Compiler: [{}]", built_info::RUSTC_VERSION);
     info!("Bootloader: [{bootloader_name}]");
@@ -233,12 +204,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     };
     init_acpi_tables(rsdp_addr);
 
-    // Initialize interrupts
-    info!("Initializing IDT");
     interrupt_dispatcher::setup_idt();
-    info!("Initializing system calls");
+
     syscall_dispatcher::init();
-    info!("Initializing APIC");
+
     init_apic();
 
     // Initialize timer
@@ -269,7 +238,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     );
 
     // Initialize keyboard
-    info!("Initializing PS/2 devices");
     if let Some(keyboard) = keyboard() {
         Keyboard::plugin(keyboard);
     }
@@ -288,31 +256,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize network stack
     network::init();
-
-    // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
-    if let Some(rtl8139) = rtl8139()
-        && qemu_cfg::is_available()
-    {
-        let time = timer.systime_ms();
-        let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
-        conf.random_seed = time as u64;
-
-        // The Ssoltcp interface struct wants a mutable reference to the device. However, the RTL8139 driver is designed to work with shared references.
-        // Since smoltcp does not actually store the mutable reference anywhere, we can safely cast the shared reference to a mutable one.
-        // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device, since it does not modify the device itself)
-        let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-        let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
-        interface.update_ip_addrs(|ips| {
-            ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
-                .expect("Failed to add IP address");
-        });
-        interface
-            .routes_mut()
-            .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
-            .expect("Failed to add default route");
-
-        network::add_interface(interface);
-    }
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
@@ -349,23 +292,17 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     naming::api::init();
 
     // Load initial ramdisk
-    let initrd_tag = multiboot
-        .module_tags()
-        .find(|module| module.cmdline().is_ok_and(|name| name == "initrd"))
-        .expect("Initrd not found!");
     init_initrd(initrd_tag);
 
     // Create and register the cleanup thread in the scheduler
     // (If the last thread of a process terminates, it cannot delete its own address space)
-    scheduler().ready(Thread::new_kernel_thread(
-        || {
-            loop {
-                scheduler().sleep(100);
-                process_manager().write().drop_exited_process();
-            }
-        },
-        "cleanup",
-    ));
+    extern "sysv64" fn cleanup() {
+        loop {
+            scheduler().sleep(100);
+            process_manager().write().drop_exited_process();
+        }
+    }
+    scheduler().ready(Thread::new_kernel_thread(cleanup, "cleanup"));
 
     // Create and register the 'shell' thread (from app image in ramdisk) in the scheduler
     scheduler().ready(Thread::load_application(
@@ -388,11 +325,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         git_ref.rsplit("/").next().unwrap_or(git_ref),
         git_commit,
         build_date,
-        built_info::RUSTC_VERSION
-            .split_once("(")
-            .unwrap_or((built_info::RUSTC_VERSION, ""))
-            .0
-            .trim(),
+        built_info::RUSTC_VERSION.split_once("(").unwrap_or((built_info::RUSTC_VERSION, "")).0.trim(),
         bootloader_name
     );
 
@@ -402,7 +335,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Start APIC timer & scheduler
     info!("Starting scheduler");
     apic().start_timer(10);
-     
+
     scheduler().start();
 }
 
@@ -448,14 +381,8 @@ fn kernel_image_region() -> PhysFrameRange {
     let end: PhysFrame;
 
     unsafe {
-        start = PhysFrame::from_start_address(PhysAddr::new(
-            ptr::from_ref(&___KERNEL_DATA_START__) as u64,
-        ))
-        .expect("Kernel code is not page aligned");
-        end = PhysFrame::from_start_address(
-            PhysAddr::new(ptr::from_ref(&___KERNEL_DATA_END__) as u64).align_up(PAGE_SIZE as u64),
-        )
-        .unwrap();
+        start = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(&___KERNEL_DATA_START__) as u64)).expect("Kernel code is not page aligned");
+        end = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(&___KERNEL_DATA_END__) as u64).align_up(PAGE_SIZE as u64)).unwrap();
     }
 
     PhysFrameRange { start, end }
@@ -464,28 +391,19 @@ fn kernel_image_region() -> PhysFrameRange {
 /// Identifies usable memory and initialize physical memory management \
 /// and returns `BootInformation` by searching the memory maps, provided by bootloader of EFI. \
 ///   `multiboot2_addr` is the address of multiboot2 info records
-fn multiboot2_search_memory_map(
-    multiboot2_addr: *const BootInformationHeader,
-) -> BootInformation<'static> {
-    let multiboot = unsafe {
-        BootInformation::load(multiboot2_addr).expect("Failed to get Multiboot2 information")
-    };
+fn multiboot2_search_memory_map(multiboot2_addr: *const BootInformationHeader) -> BootInformation<'static> {
+    let multiboot = unsafe { BootInformation::load(multiboot2_addr).expect("Failed to get Multiboot2 information") };
 
     // Search memory map, provided by bootloader of EFI, for usable memory and initialize physical memory management
     if multiboot.efi_bs_not_exited_tag().is_some() {
         // EFI boot services have not been exited, and we obtain access to the memory map and EFI runtime services by exiting them manually
         info!("EFI boot services have not been exited yet");
-        let image_tag = multiboot
-            .efi_ih64_tag()
-            .expect("EFI image handle not available!");
-        let sdt_tag = multiboot
-            .efi_sdt64_tag()
-            .expect("EFI system table not available!");
+        let image_tag = multiboot.efi_ih64_tag().expect("EFI image handle not available!");
+        let sdt_tag = multiboot.efi_sdt64_tag().expect("EFI system table not available!");
         let memory_map;
 
         unsafe {
-            let image_handle = Handle::from_ptr(image_tag.image_handle() as *mut c_void)
-                .expect("Failed to create EFI image handle struct from pointer!");
+            let image_handle = Handle::from_ptr(image_tag.image_handle() as *mut c_void).expect("Failed to create EFI image handle struct from pointer!");
             uefi::table::set_system_table(sdt_tag.sdt_address() as *const SystemTable);
             uefi::boot::set_image_handle(image_handle);
 
@@ -520,15 +438,9 @@ fn scan_multiboot2_memory_map(memory_map: &MemoryMapTag) {
         .iter()
         .filter(|area| area.typ() == MemoryAreaType::Available)
         .for_each(|area| unsafe {
-            memory::frames::insert(PhysFrameRange {
-                start: PhysFrame::from_start_address(
-                    PhysAddr::new(area.start_address()).align_up(PAGE_SIZE as u64),
-                )
-                .unwrap(),
-                end: PhysFrame::from_start_address(
-                    PhysAddr::new(area.end_address()).align_down(PAGE_SIZE as u64),
-                )
-                .unwrap(),
+            memory::frames::boot_avail(PhysFrameRange {
+                start: PhysFrame::from_start_address(PhysAddr::new(area.start_address()).align_up(PAGE_SIZE as u64)).unwrap(),
+                end: PhysFrame::from_start_address(PhysAddr::new(area.end_address()).align_down(PAGE_SIZE as u64)).unwrap(),
             });
         });
 }
@@ -548,10 +460,7 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
                 || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0
         }) // .0 necessary because of different version dependencies to uefi-crate
         .for_each(|area| {
-            let start = PhysFrame::from_start_address(
-                PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64),
-            )
-            .unwrap();
+            let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
             let frames = PhysFrame::range(start, start + area.page_count);
 
             // Non-conventional memory may be write-protected, and we need to unprotect it first
@@ -560,7 +469,7 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
             }
 
             unsafe {
-                memory::frames::insert(frames);
+                memory::frames::boot_avail(frames);
             }
         });
 }
@@ -578,10 +487,7 @@ fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
                 || area.ty == MemoryType::BOOT_SERVICES_DATA
         })
         .for_each(|area| {
-            let start = PhysFrame::from_start_address(
-                PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64),
-            )
-            .unwrap();
+            let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
             let frames = PhysFrame::range(start, start + area.page_count);
 
             // Non-conventional memory may be write-protected, and we need to unprotect it first
@@ -590,7 +496,7 @@ fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
             }
 
             unsafe {
-                memory::frames::insert(frames);
+                memory::frames::boot_avail(frames);
             }
         });
 }
@@ -598,11 +504,7 @@ fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
 fn unprotect_frames(frames: PhysFrameRange) {
     unsafe { Cr0::update(|flags| flags.remove(Cr0Flags::WRITE_PROTECT)) };
 
-    let root_level = if Cr4::read().contains(Cr4Flags::L5_PAGING) {
-        5
-    } else {
-        4
-    };
+    let root_level = if Cr4::read().contains(Cr4Flags::L5_PAGING) { 5 } else { 4 };
     for frame in frames {
         unprotect_frame(frame, root_level);
     }
@@ -612,11 +514,7 @@ fn unprotect_frames(frames: PhysFrameRange) {
 
 fn unprotect_frame(frame: PhysFrame, root_level: usize) {
     let addr = VirtAddr::new(frame.start_address().as_u64());
-    let mut page_table = unsafe {
-        (Cr3::read().0.start_address().as_u64() as *mut PageTable)
-            .as_mut()
-            .unwrap()
-    };
+    let mut page_table = unsafe { (Cr3::read().0.start_address().as_u64() as *mut PageTable).as_mut().unwrap() };
 
     let mut level = root_level;
     loop {

@@ -9,11 +9,9 @@
 */
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]
-#![feature(exact_size_is_empty)]
 #![feature(fmt_internals)]
 #![feature(abi_x86_interrupt)]
-#![feature(ptr_metadata)]
-#![feature(let_chains)]
+#![feature(map_try_insert)]
 #![allow(internal_features)]
 #![no_std]
 
@@ -36,7 +34,7 @@ use crate::process::process_manager::ProcessManager;
 use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher::CoreLocalStorage;
-use ::log::{Level, Log, Record, error};
+use ::log::{Level, Log, Record, error, info};
 use acpi::AcpiTables;
 use alloc::sync::Arc;
 use core::fmt::Arguments;
@@ -50,6 +48,7 @@ use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::tss::TaskStateSegment;
+use x86_64::structures::paging::Size4KiB;
 
 extern crate alloc;
 
@@ -186,9 +185,20 @@ pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
 /// 'boot.rs' initializes this struct by calling 'init_initrd()' after obtaining the corresponding multiboot2 tag.
 static INIT_RAMDISK: Once<TarArchiveRef> = Once::new();
 
+pub fn get_initrd_frames(module: &ModuleTag) -> PhysFrameRange {
+    PhysFrameRange {
+        start: PhysFrame::from_start_address(PhysAddr::new(module.start_address() as u64))
+            .expect("Initial ramdisk is not page aligned"),
+        end: PhysFrame::from_start_address(
+            PhysAddr::new(module.end_address() as u64).align_up(PAGE_SIZE as u64),
+        )
+        .unwrap(),
+    }
+}
+
 pub fn init_initrd(module: &ModuleTag) {
     INIT_RAMDISK.call_once(|| {
-        let initrd_frames = PhysFrameRange {
+        let initrd_frame: PhysFrameRange<Size4KiB> = PhysFrameRange {
             start: PhysFrame::from_start_address(PhysAddr::new(module.start_address() as u64))
                 .expect("Initial ramdisk is not page aligned"),
             end: PhysFrame::from_start_address(
@@ -196,10 +206,10 @@ pub fn init_initrd(module: &ModuleTag) {
             )
             .unwrap(),
         };
-        unsafe {
-            memory::frames::reserve(initrd_frames);
+/*        unsafe {
+            memory::frames::boot_reserve(initrd_frames);
         }
-
+*/
         let initrd_bytes = unsafe {
             core::slice::from_raw_parts(
                 module.start_address() as *const u8,
@@ -232,8 +242,7 @@ pub fn allocator() -> &'static KernelAllocator {
 static LOGGER: Once<Logger> = Once::new();
 
 pub fn logger() -> &'static Logger {
-    LOGGER.call_once(Logger::new);
-    LOGGER.get().unwrap()
+    LOGGER.call_once(Logger::new)
 }
 
 /// Process Manager.
@@ -347,13 +356,11 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
     lfb_terminal.clear();
     TERMINAL.call_once(|| lfb_terminal);
 
-    scheduler().ready(Thread::new_kernel_thread(
-        || {
-            let mut cursor_thread = CursorThread::new(terminal());
-            cursor_thread.run();
-        },
-        "cursor",
-    ));
+    extern "sysv64" fn cursor() {
+        let mut cursor_thread = CursorThread::new(terminal());
+        cursor_thread.run();
+    }
+    scheduler().ready(Thread::new_kernel_thread(cursor, "cursor"));
 }
 
 pub fn terminal_initialized() -> bool {
@@ -373,6 +380,7 @@ static PS2: Once<Arc<PS2>> = Once::new();
 
 pub fn keyboard() -> Option<Arc<Keyboard>> {
     PS2.call_once(|| {
+        info!("Initializing PS/2 devices");
         let mut ps2 = PS2::new();
         match ps2.init_controller() {
             Ok(_) => match ps2.init_keyboard() {

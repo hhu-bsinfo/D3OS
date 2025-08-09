@@ -1,0 +1,15 @@
+[package]
+name = "ip"
+version = "0.1.0"
+edition = "2024"
+authors = ["Niklas Sombert <niklas.sombert@uni-duesseldorf.de"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/ip.rs"
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+network = { path = "../../library/network" }
+terminal = { path = "../../library/terminal" }

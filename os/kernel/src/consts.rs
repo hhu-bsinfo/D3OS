@@ -13,3 +13,5 @@ pub const MAX_USER_STACK_SIZE: usize = 0x40000000;  // 1 GiB
 pub const MAIN_USER_STACK_START: usize = USER_SPACE_ENV_START + 0x40000000;  // 1 GiB
 pub const KERNEL_STACK_PAGES: usize = 64;
 pub const STACK_ENTRY_SIZE: usize = 8;  
+
+pub const KERNEL_HEAP_PAGES: usize = 0x400; // number of heap pages for the kernel heap

@@ -26,6 +26,7 @@ pc-keyboard = "0.8.0"
 anstyle-parse = "0.2.6"
 chrono = { version = "0.4.40", default-features = false, features = ["alloc"] }
 nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
+thingbuf = { version = "0.1", default-features = false, features = ["alloc"] }
 acpi = "5.2.0"
 x2apic = "0.5.0"
 raw-cpuid = "11.2.0"
@@ -37,7 +38,7 @@ goblin = { version = "0.9.3", default-features = false, features = ["elf32", "el
 tar-no-std = "0.3.3"
 pci_types = "0.10.0"
 bitflags = "2.9.0"
-smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "log", "medium-ethernet", "proto-ipv4", "socket-udp"] }
+smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "log", "proto-ipv6", "socket-dhcpv4", "socket-udp", "socket-tcp", "socket-icmp", "socket-dns", "dns-max-result-count-4", "dns-max-server-count-4"] }
 mbrs = { version = "0.3.1", default-features = false, features = ["no-std"] }
 num_enum = { version = "0.7.3", default-features = false }
 

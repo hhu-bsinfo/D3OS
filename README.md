@@ -16,27 +16,29 @@
 
 ## Requirements
 
-For building D3OS, a _rust nightly_ toolchain is needed. To install _rust_ use [rustup](https://rustup.rs/):
+For building D3OS, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
 ```bash
-rustup toolchain install nightly
-rustup override set nightly
+apt install rustup build-essential nasm dosfstools wget qemu-system-x86
 ```
 
-The toolchain `nightly-2025-05-05` is confirmed to work. If you are having problems with new versions, try:
+This has been tested on Ubuntu 24.04.
+
+For macOS, the same can be achieved with:
 ```bash
-rustup toolchain install nightly-2025-05-05
-rustup override set nightly-2025-05-05
+xcode-select --install
+brew install rustup dosfstools nasm x86_64-elf-gcc gnu-tar wget qemu
+brew link --force rustup
 ```
 
-To run the build commands _cargo-make_ and _cargo-licenses_ are required. Install it with:
+This has been tested on macOS 14.
+
+[rustup](https://rustup.rs/) will download a _rust nightly_ toolchain on the first compile.
+
+To run the build, the commands _cargo-make_ and _cargo-license_ are required. Install them with:
 ```bash
 cargo install --no-default-features cargo-make cargo-license
 ```
 
-Furthermore, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
-```bash
-apt install build-essential nasm dosfstools wget qemu-system-x86_64
-```
 
 ## Build and Run
 
@@ -90,4 +92,10 @@ Use following command (in the D3OS directory) to create a bootable media for the
 ### Using balenaEtcher
 Write the file `d3os.img` using [balenaEtcher](https://etcher.balena.io) to your USB stick.
 
+## Passing an existing PCI device to the VM
 
+To use a real device with QEMU, change the Makefile so that it uses `${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/qemu-pci.sh` instead of `qemu-system-x86_64`.
+Also take a look at that script and fill in the constants at the top.
+
+If you want to run D3OS on a different device, build with `cargo make --no-workspace image` and copy over `qemu-pci.sh`, `RELEASEX64_OVMF.fd` and `d3os.img`.
+Run it with `./qemu-pci.sh -bios RELEASEX64_OVMF.fd -hda d3os.img`.

@@ -1,7 +1,5 @@
 [EXTERN ___BSS_START__]
 [EXTERN ___BSS_END__]
-[EXTERN ___KERNEL_DATA_START__]
-[EXTERN ___KERNEL_DATA_END__]
 [EXTERN start]
 
 ; Kernel constants
