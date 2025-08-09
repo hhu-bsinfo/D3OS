@@ -243,11 +243,12 @@ impl<'s> TextBuffer<'s> {
         // delete in middle
         } else {
             let length = piece_descr.length;
+            let buffer = piece_descr.buffer;
             piece_descr.length = piece_descr_offset;
             self.piece_table.insert(
                 piece_table_index + 1,
                 PieceDescr::new(
-                    BufferDescr::File,
+                    buffer,
                     self.piece_table[piece_table_index].offset + piece_descr_offset + 1,
                     length - piece_descr_offset - 1,
                 ),
@@ -273,7 +274,11 @@ impl<'s> TextBuffer<'s> {
         Self {
             file_buffer,
             add_buffer: String::new(),
-            piece_table: vec![PieceDescr::new(BufferDescr::File, 0, file_buffer.chars().count())],
+            piece_table: vec![PieceDescr::new(
+                BufferDescr::File,
+                0,
+                file_buffer.chars().count(),
+            )],
             lenght: file_buffer.chars().count(),
             pos: 0,
             history: Vec::new(),
@@ -450,6 +455,43 @@ mod tests {
         );
         assert_eq!(String::from("abde"), generate_string(&buffer));
     }
+
+    #[test]
+    fn single_delete_from_add_buffer_middle() {
+        let file_buffer = "d";
+        let mut buffer = TextBuffer::from_str(file_buffer);
+        assert_eq!(String::from("d"), generate_string(&buffer));
+        let res = buffer.insert(0, 'a');
+        assert!(res.is_ok());
+        let res = buffer.insert(1, 'b');
+        assert!(res.is_ok());
+        let res = buffer.insert(2, 'c');
+        assert!(res.is_ok());
+        let res = buffer.delete(1);
+        assert!(res.is_ok());
+        assert_eq!(
+            buffer.piece_table,
+            vec![
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 0,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::Add,
+                    offset: 2,
+                    length: 1
+                },
+                PieceDescr {
+                    buffer: BufferDescr::File,
+                    offset: 0,
+                    length: 1
+                }
+            ]
+        );
+        assert_eq!(String::from("acd"), generate_string(&buffer));
+    }
+
     #[test]
     fn muliple_deletion1() {
         let file_buffer = "abcdef";
@@ -738,7 +780,7 @@ mod tests {
                 }
             ]
         );
-        assert_eq!(buffer.get_char(0).unwrap(),  'ü');
+        assert_eq!(buffer.get_char(0).unwrap(), 'ü');
         assert_eq!(buffer.get_char(1).unwrap(), 'ä');
     }
 
