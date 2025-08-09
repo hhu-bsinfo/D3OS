@@ -296,6 +296,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         if let Some(ne2000) = ne2000()
             && qemu_cfg::is_available()
         {
+            info!("Setting up Interface for the NE2000");
             // get current time in milliseconds
             let time = timer.systime_ms();
             // for debugging
@@ -370,11 +371,16 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         //network::close_socket(socket);
         scheduler().sleep(10);
     }*/
-    // spawn the RX thread
-    scheduler().ready(Thread::new_kernel_thread(|| udp_recv_test(), "udp-rx"));
 
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    // spawn the RX thread
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    scheduler().ready(Thread::new_kernel_thread(|| udp_recv_test(), "udp_rx"));
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
     // spawn the TX thread
-    scheduler().ready(Thread::new_kernel_thread(|| udp_send_test(5), "udp-tx"));
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    scheduler().ready(Thread::new_kernel_thread(|| udp_send_test(2000), "udp_tx"));
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();

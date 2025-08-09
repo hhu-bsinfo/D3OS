@@ -1,7 +1,7 @@
 [package]
+edition = "2024"
 name = "nettest"
 version = "0.1.0"
-edition = "2024"
 authors = ["Johann Spenrath<johann.spenrath@hhu.de>"]
 
 [lib]
@@ -20,3 +20,4 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
 terminal = { path = "../../library/terminal" }
 runtime = { path = "../../library/runtime" }
 naming = { path = "../../library/naming" }
+concurrent = { path = "../../library/concurrent" }

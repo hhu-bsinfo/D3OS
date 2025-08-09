@@ -18,6 +18,7 @@ extern crate alloc;
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use concurrent::{process, thread};
 #[allow(unused_imports)]
 use runtime::*;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
@@ -28,13 +29,23 @@ use terminal::{print, println};
 // get local address
 use core::net::SocketAddr;
 
-// Define the Port of the Client
-const DEFAULT_BIND_PORT: u32 = 1797;
-// Define the Port of the Server
-const DEFAULT_REMOTE_PORT: u32 = 1856;
-const DEFAULT_PACKET_SIZE: u32 = 1024;
-// Define the time interval, in which packets are sent
-const DEFAULT_INTERVAL: u32 = 10;
+#[unsafe(no_mangle)]
+pub fn main() {
+    let process = process::current().unwrap();
+    let thread = thread::current().unwrap();
+
+    println!(
+        "Hello from Thread [{}] in Process [{}]!\n",
+        thread.id(),
+        process.id()
+    );
+
+    println!("Arguments:");
+    let args = env::args();
+    for arg in args {
+        println!("  {}", arg);
+    }
+}
 
 // =============================================================================
 // Server Mode
@@ -98,8 +109,3 @@ const DEFAULT_INTERVAL: u32 = 10;
         }
     }
 }*/
-
-#[unsafe(no_mangle)]
-pub fn main() {
-    println!("nettest-rs");
-}

@@ -104,7 +104,7 @@ pub fn init() {
         if NE2000.get().is_some() {
             scheduler().ready(Thread::new_kernel_thread(
                 || loop {
-                    poll_ne2000();
+                    poll_sockets();
                     // add this because if not, the send test is slowed down
                     // avoid CPU starvation and keep polling regular
                     // prevents CPU hogging by the poll thread.
@@ -188,7 +188,7 @@ pub fn open_socket(protocol: SocketType) -> SocketHandle {
     // Problem:  enqueue faster than poll() can transmit,
     // hit whichever limit comes first and get BufferFull
     let tx_size = 1324;
-    let rx_size = 2;
+    let rx_size = 1;
 
     let rx_buffer = udp::PacketBuffer::new(
         // packetgröße auf 10 erhöhen
@@ -235,17 +235,30 @@ pub fn send_datagram(
 
 // disabled for the rtl8139.rs
 fn poll_sockets() {
-    let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
-    let mut interfaces = INTERFACES.write();
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let time = Instant::from_millis(timer().systime_ms() as i64);
-
-    // Smoltcp expects a mutable reference to the device, but the RTL8139 driver is built
-    // to work with a shared reference. We can safely cast the shared reference to a mutable.
-    let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-
-    for interface in interfaces.iter_mut() {
-        interface.poll(time, device, &mut sockets);
+    //let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
+    if let Some(rtl8139) = RTL8139.get() {
+        // Use `rtl`
+        let mut interfaces = INTERFACES.write();
+        let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+        let time = Instant::from_millis(timer().systime_ms() as i64);
+        // Smoltcp expects a mutable reference to the device, but the RTL8139 driver is built
+        // to work with a shared reference. We can safely cast the shared reference to a mutable.
+        let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
+        for interface in interfaces.iter_mut() {
+            interface.poll(time, device, &mut sockets);
+        }
+    } else if let Some(ne2k) = NE2000.get() {
+        let mut interfaces = INTERFACES.write();
+        let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+        let time = Instant::from_millis(timer().systime_ms() as i64);
+        //use ne2k
+        let device = unsafe { ptr::from_ref(ne2k.deref()).cast_mut().as_mut().unwrap() };
+        for interface in interfaces.iter_mut() {
+            interface.poll(time, device, &mut sockets);
+        }
+    }
+    {
+        // Handle `None`
     }
 }
 
@@ -261,19 +274,11 @@ fn poll_ne2000() {
         .expect("[poll_ne2000] : Ne2000 not initialized.");
     let dev_ne2k = unsafe { ptr::from_ref(ne.deref()).cast_mut().as_mut().unwrap() };
 
-    // acquire read lock
-    /*let interfaces = INTERFACES.read();
-    for (i, iface) in interfaces.iter().enumerate() {
-        let s = iface.to_string();
-        info!("{:?} {}", s, i);
-    }*/
-
     // initialize Interfaces and sockets
     let mut interfaces = INTERFACES.write();
     let mut sockets = SOCKETS.get().expect("Socket set not initialized").write();
 
     // start interface
-    //let mut counter: u8 = 0;
     // iterate through every interface and call the poll method
     for iface in interfaces.iter_mut() {
         //info!("Polling, Iteration: {}", counter);
@@ -282,10 +287,42 @@ fn poll_ne2000() {
         // checking if any packets have been send or received
         //let timestamp = Instant::now();
         iface.poll(now, dev_ne2k, &mut sockets);
+        //iface.poll_egress(now, dev_ne2k, &mut sockets);
+        //iface.poll_ingress_single(now, dev_ne2k, &mut sockets);
 
         // 09.08.2025
         // https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Interface.html#method.poll_delay
         //let delay = iface.poll_delay(timestamp, &sockets).unwrap_or_default();
         //scheduler().sleep(delay);
     }
+
+    // Tune this cap if bursts are heavy:
+    /*const MAX_INGRESS_PER_TICK: usize = 8;
+
+    for iface in interfaces.iter_mut() {
+        // 1) Always flush all outbound packets (bounded work by design)
+        let _ = iface.poll_egress(now, dev_ne2k, &mut sockets);
+
+        // 2) Then handle at most N ingress packets this tick
+        for _ in 0..MAX_INGRESS_PER_TICK {
+            match iface.poll_ingress_single(now, dev_ne2k, &mut sockets) {
+                //This contains information on whether a packet was processed or not,
+                //and whether it might’ve affected socket states.
+                smoltcp::iface::PollIngressSingleResult::PacketProcessed { .. } => {
+                    // Optionally interleave another egress flush so replies go out promptly
+                    let _ = iface.poll_egress(now, dev_ne2k, &mut sockets);
+                }
+                smoltcp::iface::PollIngressSingleResult::None => break,
+                smoltcp::iface::PollIngressSingleResult::SocketStateChanged => {
+                    let _ = iface.poll_ingress_single(now, dev_ne2k, &mut sockets);
+                }
+            }
+        }
+
+        // 3) Pace the loop (optional but recommended)
+        if let Some(delay) = iface.poll_delay(now, &sockets) {
+            // sleep/yield according to your scheduler
+            //scheduler().sleep(delay);
+        }
+    }*/
 }
