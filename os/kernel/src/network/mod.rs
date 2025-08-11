@@ -1,7 +1,7 @@
 use crate::device::rtl8139::Rtl8139;
 // add the N2000 driver
 use crate::device::ne2k::ne2000::Ne2000;
-use crate::process::thread::{self, Thread};
+use crate::process::thread::Thread;
 use crate::{pci_bus, scheduler, timer};
 use alloc::sync::Arc;
 use alloc::vec;
@@ -234,7 +234,7 @@ pub fn send_datagram(
 }
 
 // disabled for the rtl8139.rs
-fn poll_sockets() {
+pub fn poll_sockets() {
     //let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
     if let Some(rtl8139) = RTL8139.get() {
         // Use `rtl`

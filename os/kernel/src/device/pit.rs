@@ -1,11 +1,11 @@
-use alloc::boxed::Box;
-use alloc::sync::Arc;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
+use crate::{apic, interrupt_dispatcher};
+use alloc::boxed::Box;
+use alloc::sync::Arc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortWriteOnly};
-use crate::{apic, interrupt_dispatcher};
 
 pub const BASE_FREQUENCY: usize = 1193182;
 const NANOSECONDS_PER_TICK: usize = 1000000000 / BASE_FREQUENCY;
@@ -15,7 +15,7 @@ const NANOSECONDS_PER_TICK: usize = 1000000000 / BASE_FREQUENCY;
 #[repr(u8)]
 enum BcdBinaryMode {
     Binary = 0x00,
-    Bcd = 0x01
+    Bcd = 0x01,
 }
 
 #[derive(Copy, Clone)]
@@ -37,17 +37,17 @@ enum AccessMode {
     LatchCount = 0x00,
     LowByteOnly = 0x01,
     HighByteOnly = 0x02,
-    LowByteHighByte = 0x03
+    LowByteHighByte = 0x03,
 }
 
 #[derive(Copy, Clone)]
 #[allow(dead_code)]
 #[repr(u8)]
-enum Channel  {
+enum Channel {
     Channel0 = 0x00,
     Channel1 = 0x01,
     Channel2 = 0x02,
-    ReadBack = 0x03
+    ReadBack = 0x03,
 }
 
 pub struct Timer {
@@ -58,14 +58,14 @@ pub struct Timer {
 
 struct Registers {
     ctrl_port: PortWriteOnly<u8>,
-    data_port: Port<u8>
+    data_port: Port<u8>,
 }
 
 struct Command {
     bcd_binary_mode: BcdBinaryMode,
     operating_mode: OperatingMode,
     access_mode: AccessMode,
-    channel: Channel
+    channel: Channel,
 }
 
 struct TimerInterruptHandler {
@@ -78,15 +78,15 @@ impl Command {
             bcd_binary_mode: BcdBinaryMode::Binary,
             operating_mode,
             access_mode,
-            channel: Channel::Channel0
+            channel: Channel::Channel0,
         }
     }
 
     pub fn as_u8(&self) -> u8 {
-        (self.bcd_binary_mode as u8) << 0 |
-        (self.operating_mode as u8) << 1 |
-        (self.access_mode as u8) << 4 |
-        (self.channel as u8) << 6
+        (self.bcd_binary_mode as u8) << 0
+            | (self.operating_mode as u8) << 1
+            | (self.access_mode as u8) << 4
+            | (self.channel as u8) << 6
     }
 }
 
@@ -106,7 +106,7 @@ impl Registers {
     pub const fn new() -> Self {
         Self {
             ctrl_port: PortWriteOnly::new(0x43),
-            data_port: Port::new(0x40)
+            data_port: Port::new(0x40),
         }
     }
 }
@@ -116,7 +116,7 @@ impl Timer {
         let mut timer = Self {
             registers: Mutex::new(Registers::new()),
             interval_ns: 0,
-            systime_ns: AtomicUsize::new(0)
+            systime_ns: AtomicUsize::new(0),
         };
 
         timer.interrupt_rate(1);
@@ -144,7 +144,10 @@ impl Timer {
     fn read_timer(&self) -> u16 {
         let mut registers = self.registers.lock();
         let mut timer: u16 = 0;
-        let command = Command::new(OperatingMode::InterruptOnTerminalCount, AccessMode::LatchCount);
+        let command = Command::new(
+            OperatingMode::InterruptOnTerminalCount,
+            AccessMode::LatchCount,
+        );
 
         unsafe {
             registers.ctrl_port.write(command.as_u8()); // Latch counter value
@@ -156,7 +159,10 @@ impl Timer {
     }
 
     pub fn plugin(timer: Arc<Timer>) {
-        interrupt_dispatcher().assign(InterruptVector::Pit, Box::new(TimerInterruptHandler::new(timer)));
+        interrupt_dispatcher().assign(
+            InterruptVector::Pit,
+            Box::new(TimerInterruptHandler::new(timer)),
+        );
         apic().allow(InterruptVector::Pit);
     }
 
@@ -185,6 +191,12 @@ impl Timer {
     }
 
     fn inc_systime(&self) {
-        self.systime_ns.fetch_add(self.interval_ns, Ordering::Relaxed);
+        self.systime_ns
+            .fetch_add(self.interval_ns, Ordering::Relaxed);
+    }
+
+    // add now for getting the current time
+    pub fn now_ns(&self) -> usize {
+        self.systime_ns.load(Ordering::Relaxed)
     }
 }

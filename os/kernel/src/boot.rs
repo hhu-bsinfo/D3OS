@@ -7,6 +7,7 @@
    ║ Author: Fabian Ruhland, HHU                                             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+use crate::device::ne2k::benchmark;
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
 use crate::device::qemu_cfg;
@@ -42,7 +43,6 @@ use multiboot2::{
 };
 use smoltcp::iface;
 use smoltcp::iface::Interface;
-use smoltcp::socket::udp::SendError;
 use smoltcp::time::Instant;
 use smoltcp::wire::IpAddress::Ipv4;
 use smoltcp::wire::{HardwareAddress, IpCidr, Ipv4Address};
@@ -372,15 +372,27 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         scheduler().sleep(10);
     }*/
 
+    //benchmark::send_traffic(20, 1024);
     //////////////////////////////////////////////////////////////////////////////////////////////
     // spawn the RX thread
     //////////////////////////////////////////////////////////////////////////////////////////////
-    scheduler().ready(Thread::new_kernel_thread(|| udp_recv_test(), "udp_rx"));
+    /*scheduler().ready(Thread::new_kernel_thread(
+        || benchmark::udp_recv_test(),
+        "udp_rx",
+    ));*/
 
     //////////////////////////////////////////////////////////////////////////////////////////////
     // spawn the TX thread
     //////////////////////////////////////////////////////////////////////////////////////////////
-    scheduler().ready(Thread::new_kernel_thread(|| udp_send_test(2000), "udp_tx"));
+    /*scheduler().ready(Thread::new_kernel_thread(
+        || benchmark::udp_send_test(1000),
+        "udp_tx",
+    ));*/
+
+    //scheduler().ready(Thread::new_kernel_thread(
+    //    || benchmark::send_traffic(20, 64),
+    //    "udp_tx",
+    //));
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
@@ -699,64 +711,5 @@ fn unprotect_frame(frame: PhysFrame, root_level: usize) {
 
         page_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
         level -= 1;
-    }
-}
-///////////////////////////////////////////////////////////////
-// receiver: bind and print everything arriving on 12345
-///////////////////////////////////////////////////////////////
-pub fn udp_recv_test() {
-    let port = 12344;
-    let sock = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(sock, port).expect("bind failed");
-    // create buffer for printing contents
-    let mut buf = [0u8; 1500];
-
-    loop {
-        match network::recv_datagram(sock, &mut buf) {
-            Ok(Some((len, src_ip, src_port))) => {
-                let msg = core::str::from_utf8(&buf[..len]).unwrap_or("<non-utf8>");
-                info!("[RX] {}:{} -> {}", src_ip, src_port, msg.trim_end());
-            }
-            // nothing this tick, background poller will deliver when ready
-            Ok(None) => {}
-            Err(e) => {
-                info!("(UDP Receive Test) receive error: {:?}", e);
-            }
-        }
-        // keep it cooperative; poll thread is already running
-        scheduler().sleep(1);
-    }
-}
-
-///////////////////////////////////////////////////////////////
-// sender: fire N packets to 10.0.2.2:12345 and handle backpressure
-///////////////////////////////////////////////////////////////
-// old test worked until the TX ring filled, then it paniced the kernel because call .expect("Failed to send UDP datagram").
-// new version doesn’t crash because it handles backpressure (BufferFull) by polling/yielding and retrying instead of panicking.
-pub fn udp_send_test(n: usize) {
-    let port = 12345;
-    let sock = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(sock, port).expect("socket bind failed");
-
-    let dst_ip = Ipv4Address::new(10, 0, 2, 2);
-    let dst_port = 12345;
-    let datagram: &[u8] = b"Hello from D3OS!\n";
-
-    for _ in 0..n {
-        // retry until queued; the poll thread will drain TX between retries
-        loop {
-            // catch error buffer full by giving the poll method more time
-            match network::send_datagram(sock, dst_ip, dst_port, datagram) {
-                Ok(()) => break,
-                Err(SendError::BufferFull) => {
-                    // give the poll method time to flush and to finish ARP, then retry
-                    scheduler().sleep(1);
-                }
-                Err(e) => panic!("(UDP Send Test) send failed: {e:?}"),
-            }
-            network::send_datagram(sock, dst_ip, dst_port, datagram);
-        }
-        // light pacing so the CPU doesn't get hoged
-        scheduler().sleep(10);
     }
 }

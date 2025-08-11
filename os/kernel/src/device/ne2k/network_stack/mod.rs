@@ -325,6 +325,7 @@ impl phy::Device for Ne2000 {
         // medium = send packet over Ethernet
         caps.medium = Medium::Ethernet;
 
+        // return capabilities
         caps
     }
 }

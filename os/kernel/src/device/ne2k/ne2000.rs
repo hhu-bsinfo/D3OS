@@ -630,10 +630,13 @@ impl Ne2000 {
 
             //info!("Load packet size and enable remote write");
             //==== STEP 2 ====//
-            // Load RBCR with packet size
+            // Load RBCR with packet length
             let packet_length = packet.len() as u32;
+            // get the lower 8 Bit of the length
             let low = (packet_length & 0xFF) as u8;
+            // get the higher 8 Bit of the length
             let high = (packet_length >> 8) as u8;
+
             self.registers.page0.rbcr_0_port.write(low);
             self.registers.page0.rbcr_1_port.write(high);
 
@@ -648,17 +651,18 @@ impl Ne2000 {
 
             //==== STEP 4 ====//
             // Load RSAR with 0 (low bits) and Page Number (high bits)
+            // tell the nic, on which page it should start to write the packet
             self.registers.page0.rsar_0_port.write(0);
             self.registers.page0.rsar_1_port.write(TRANSMIT_START_PAGE);
 
             //==== STEP 5 ====//
-            // Set COMMAND to remote write
+            // Set Bits in COMMAND Register to remote write
             self.registers
                 .command_port
                 .write((CR::STA | CR::REMOTE_WRITE | CR::PAGE_0).bits());
 
             //==== STEP 6 ====//
-            // Write packet to remote DMA (host writes data to the local buffer memory)
+            // Write packet to remote DMA (host writes data to the local buffer memory of the nic)
             let data_port = &mut self.registers.data_port;
             for &data in packet {
                 data_port.write(data);
@@ -688,6 +692,8 @@ impl Ne2000 {
             self.registers.page0.tpsr_port.write(TRANSMIT_START_PAGE);
 
             // disable remote read, start nic, set TXP Bit in CR to send packet
+            // during transmission the nic writes data into the fifo
+            // transmit serializer reads the data from the fifo and transmits it
             self.registers
                 .command_port
                 .write((CR::STA | CR::TXP | CR::STOP_DMA | CR::PAGE_0).bits());
@@ -823,10 +829,10 @@ impl Ne2000 {
                 // size continue to process the packet
                 // else just update the pointers, discard the packet
                 //===============================================================================//
-                let rsr_reg = self.registers.page0.rsr_port.read();
-                info!("{}", rsr_reg);
-                let status =
-                    ReceiveStatusRegister::from_bits_retain(ReceiveStatusRegister::RSR_PRX.bits());
+                //let rsr_reg = self.registers.page0.rsr_port.read();
+                //info!("{}", rsr_reg);
+                //let status =
+                //ReceiveStatusRegister::from_bits_retain(ReceiveStatusRegister::RSR_PRX.bits());
                 //check if PRX bit is set in the header status
                 //if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() == 1
                 //status.contains(ReceiveStatusRegister::RSR_PRX)
