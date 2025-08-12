@@ -116,26 +116,19 @@ impl Scheduler {
     /// 
     pub fn ready(&self, thread: Arc<Thread>) {
         let id = thread.id();
-        let mut join_map;
-        let mut state;
 
         // If we get the lock on 'self.state' but not on 'self.join_map' the system hangs.
         // The scheduler is not able to switch threads anymore, because of 'self.state' is locked,
         // and we will never be able to get the lock on 'self.join_map'.
         // To solve this, we need to release the lock on 'self.state' in case we do not get
         // the lock on 'self.join_map' and let the scheduler switch threads until we get both locks.
-        loop {
-            let state_mutex = self.get_ready_state();
-            let join_map_option = self.join_map.try_lock();
-
-            if join_map_option.is_some() {
-                state = state_mutex;
-                join_map = join_map_option.unwrap();
-                break;
-            } else {
-                self.switch_thread_no_interrupt();
+        let (mut state, mut join_map) = loop {
+            let state = self.get_ready_state();
+            if let Some(join_map) = self.join_map.try_lock() {
+                break (state, join_map);
             }
-        }
+            self.switch_thread_no_interrupt();
+        };
 
         state.ready_queue.push_front(thread);
         join_map.insert(id, Vec::new());

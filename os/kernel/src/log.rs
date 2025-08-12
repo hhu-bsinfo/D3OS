@@ -154,8 +154,8 @@ impl Logger {
             const BUFFER_SIZE: usize = 32;
             let buf = ThingBuf::with_recycle(BUFFER_SIZE, recycle);
             // pre-allocate the strings
-            while let Ok(_) = buf.push_ref() {}
-            while let Some(_) = buf.pop_ref() {}
+            while buf.push_ref().is_ok() {}
+            while buf.pop_ref().is_some() {}
             buf
         });
         self.streams.lock().push(stream);

@@ -178,12 +178,9 @@ impl InputStream for LFBTerminal {
 
                 if let Ok(Some(event)) = decoder.add_byte(scancode as u8) {
                     if let Some(key) = decoder.process_keyevent(event) {
-                        match key {
-                            DecodedKey::Unicode(c) => {
-                                read_byte = c;
-                                break;
-                            }
-                            _ => {}
+                        if let DecodedKey::Unicode(c) = key {
+                            read_byte = c;
+                            break;
                         }
                     }
                 }
@@ -608,8 +605,8 @@ impl LFBTerminal {
             0x41 => {
                 // Move cursor up
                 let param = iter.next();
-                if param.is_some() {
-                    let y_move = param.unwrap()[0];
+                if let Some(p) = param {
+                    let y_move = p[0];
                     let row = cursor.pos.1 - if y_move == 0 { 1 } else { y_move };
                     LFBTerminal::position(display, cursor, color, (cursor.pos.0, if row > 0 { row } else { 0 }));
                 }
@@ -617,8 +614,8 @@ impl LFBTerminal {
             0x42 => {
                 // Move cursor down
                 let param = iter.next();
-                if param.is_some() {
-                    let y_move = param.unwrap()[0];
+                if let Some(p) = param {
+                    let y_move = p[0];
                     let row = cursor.pos.1 + if y_move == 0 { 1 } else { y_move };
                     LFBTerminal::position(display, cursor, color, (cursor.pos.0, if row < display.size.1 { row } else { display.size.1 - 1 }));
                 };
@@ -626,8 +623,8 @@ impl LFBTerminal {
             0x43 => {
                 // Move cursor right
                 let param = iter.next();
-                if param.is_some() {
-                    let x_move = param.unwrap()[0];
+                if let Some(p) = param {
+                    let x_move = p[0];
                     let column = cursor.pos.0 + if x_move == 0 { 1 } else { x_move };
                     LFBTerminal::position(display, cursor, color, (if column < display.size.0 { column } else { display.size.0 - 1 }, cursor.pos.1));
                 };
@@ -635,8 +632,8 @@ impl LFBTerminal {
             0x44 => {
                 // Move cursor left
                 let param = iter.next();
-                if param.is_some() {
-                    let x_move = param.unwrap()[0];
+                if let Some(p) = param {
+                    let x_move = p[0];
                     let column = cursor.pos.0 - if x_move == 0 { 1 } else { x_move };
                     LFBTerminal::position(display, cursor, color, (if column > 0 { column } else { 0 }, cursor.pos.1));
                 };
@@ -644,23 +641,23 @@ impl LFBTerminal {
             0x45 => {
                 // Move cursor to start of next line
                 let param = iter.next();
-                if param.is_some() {
-                    let row = cursor.pos.1 + param.unwrap()[0] + 1;
+                if let Some(p) = param {
+                    let row = cursor.pos.1 + p[0] + 1;
                     LFBTerminal::position(display, cursor, color, (0, if row < display.size.1 { row } else { display.size.1 - 1 }));
                 };
             }
             0x46 => {
                 // Move cursor to start of previous line
                 let param = iter.next();
-                if param.is_some() {
-                    let row = cursor.pos.1 - param.unwrap()[0] - 1;LFBTerminal::position(display, cursor, color, (0, if row > 0 { row } else { 0 }));
+                if let Some(p) = param {
+                    let row = cursor.pos.1 - p[0] - 1;LFBTerminal::position(display, cursor, color, (0, if row > 0 { row } else { 0 }));
                 };
             }
             0x47 => {
                 // Move cursor to column
                 let param = iter.next();
-                if param.is_some() {
-                    let column = param.unwrap()[0];
+                if let Some(p) = param {
+                    let column = p[0];
                     LFBTerminal::position(display, cursor, color, (if column < display.size.0 { column } else { display.size.0 - 1 }, cursor.pos.1));
                 }
             }
@@ -669,9 +666,9 @@ impl LFBTerminal {
                 let param1 = iter.next();
                 let param2 = iter.next();
 
-                if param1.is_some() && param2.is_some() {
-                    let column = param1.unwrap()[0];
-                    let row = param2.unwrap()[0];
+                if let Some(p1) = param1 && let Some(p2) = param2 {
+                    let column = p1[0];
+                    let row = p2[0];
 
                     LFBTerminal::position(display, cursor, color, (if column > display.size.0 { display.size.0 - 1 } else { column }, if row > display.size.1 { display.size.1 - 1 } else { row }));
                 } else {

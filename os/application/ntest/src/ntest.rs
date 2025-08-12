@@ -37,8 +37,7 @@ pub fn main() {
     let mut rbuff: [u8; 512] = [0; 512];
     let res = naming::read(fd, &mut rbuff);
     println!("read result = {:?}", res);
-    if res.is_ok() {
-        let len = res.unwrap();
+    if let Ok(len) = res {
         for (i, byte) in rbuff.iter().enumerate() {
             if i >= len {
                 break;

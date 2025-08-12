@@ -404,11 +404,7 @@ impl VirtualAddressSpace {
     /// Frames are allocated for *all* pages in the vma including all mappings in the page tables. \
     /// Returns the new [`VirtualMemoryArea`] if successful, otherwise `None`.
     pub fn user_alloc_map_full(&self, start_page: Option<Page>, num_pages: u64, vma_type: VmaType, vma_tag: &str) -> Option<Arc<VirtualMemoryArea>> {
-        let vma = self.alloc_vma(start_page, num_pages, MemorySpace::User, vma_type, vma_tag);
-        if vma.is_none() {
-            return None;
-        }
-        let vma = vma.unwrap();
+        let vma = self.alloc_vma(start_page, num_pages, MemorySpace::User, vma_type, vma_tag)?;
 
         self.page_tables.map(
             vma.range,
@@ -427,11 +423,7 @@ impl VirtualAddressSpace {
         &self, start_page: Option<Page>, num_pages: u64, vma_type: VmaType, vma_tag: &str, alloc_num_pages: u64, alloc_downwards: bool,
     ) -> Option<Arc<VirtualMemoryArea>> {
         // Alloc vma
-        let vma = self.alloc_vma(start_page, num_pages, MemorySpace::User, vma_type, vma_tag);
-        if vma.is_none() {
-            return None;
-        }
-        let vma = vma.unwrap();
+        let vma = self.alloc_vma(start_page, num_pages, MemorySpace::User, vma_type, vma_tag)?;
 
         // Calc page range to be physically allocated
         let alloc_page_range;
