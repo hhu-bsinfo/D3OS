@@ -490,10 +490,10 @@ impl PageTableEntryAddress {
 
 impl fmt::Debug for PageTableEntryAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "PageTableEntry ");
+        write!(f, "PageTableEntry ").unwrap();
         for level in (self.level..5).rev() {
-            write!(f, "{}", self.get_pml_part(level));
-            if level != 1 { write!(f, "."); }
+            write!(f, "{}", self.get_pml_part(level)).unwrap();
+            if level != 1 { write!(f, ".").unwrap(); }
         }
         Ok(())
     }

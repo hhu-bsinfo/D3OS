@@ -61,13 +61,14 @@ impl log::Log for Logger {
                 let fraction = systime % 1000;
                 // this doesn't allocate outside of the string
                 // TODO: somehow make sure that the string doesn't grow
+                // this shouldn't fail, because the string is pre-allocated
                 write!(
                     *slot,
                     "{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}]{} {}\n",
                     ansi::FOREGROUND_CYAN, seconds, fraction, ansi_color(level),
                     level_token(level),ansi::FOREGROUND_MAGENTA, file, line,
                     ansi::FOREGROUND_DEFAULT, record.args()
-                );
+                ).unwrap();
             }
             // if it's full, silently drop the message
             // there will be a warning on the next write
