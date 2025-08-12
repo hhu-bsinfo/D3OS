@@ -1,4 +1,4 @@
-#include "../../../library/libc/src/runtime.h"
+#include "runtime.h"
 
 int main(int argc, char *argv[]) {
     terminal_write("Hello from C!\n\n");
