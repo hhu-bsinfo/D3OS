@@ -972,8 +972,8 @@ impl IdeChannel {
         }
 
         // Fill PRD
-        for i in 0..(pages - 1) {
-            prd[i] = PrdEntry {
+        for (i, item) in prd.iter_mut().enumerate().take(pages - 1) {
+            *item = PrdEntry {
                 base_address: (dma_frames.start.start_address().as_u64() as usize + i * PAGE_SIZE) as u32,
                 byte_count: PAGE_SIZE as u16,
                 flags: PrdFlags::empty(),

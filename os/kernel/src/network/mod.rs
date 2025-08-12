@@ -135,7 +135,7 @@ pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
             let socket = sockets.get_mut::<dns::Socket>(*handle);
             [DnsQueryType::Aaaa, DnsQueryType::A, DnsQueryType::Cname]
                 .into_iter()
-                .map(|ty|
+                .filter_map(|ty|
                         socket
                             .start_query(interface.context(), host, ty)
                             .map_err(|e| {
@@ -144,7 +144,6 @@ pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
                             })
                             .ok()
                 )
-                .flatten()
                 .collect()
         };
         // then, see if they've returned something
@@ -155,22 +154,21 @@ pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
                 let socket = sockets.get_mut::<dns::Socket>(*handle);
                 let mut remaining: Vec<_> = query_handles
                     .drain(..)
-                    .map(|query| match socket.get_query_result(query) {
+                    .filter(|query| match socket.get_query_result(*query) {
                         // it's finished, get the results
                         Ok(ips) => {
                             // TODO: does a cname query really return an IP?
                             resulting_ips.extend_from_slice(&ips);
-                            None
+                            false
                         },
                         // if failed, log and and ignore
                         Err(GetQueryResultError::Failed) => {
                             warn!("DNS query for {host} failed");
-                            None
+                            false
                         },
                         // it's still ongoing
-                        Err(GetQueryResultError::Pending) => Some(query)
+                        Err(GetQueryResultError::Pending) => true,
                     })
-                    .flatten()
                     .collect();
                 if remaining.is_empty() {
                     // we're done!
@@ -188,8 +186,7 @@ pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
         INTERFACES
             .read()
             .iter()
-            .map(Interface::ip_addrs)
-            .flatten()
+            .flat_map(Interface::ip_addrs)
             .map(IpCidr::address)
             .collect()
     }

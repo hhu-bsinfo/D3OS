@@ -15,9 +15,7 @@ fn second_thread() {
     println!("Hello from 2nd thread [{}] in process [{}]!", thread.id(), process.id());
     {
         let mut arr = [0; 1200];
-        for i in 0..arr.len() {
-            arr[i] = 1;
-         }
+        arr.fill(1);
          println!("2nd thread [{}] accessing array {}", thread.id(), arr[600]);
     }
 }
