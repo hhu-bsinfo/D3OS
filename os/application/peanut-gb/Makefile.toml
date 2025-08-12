@@ -1,18 +1,19 @@
 [config]
 skip_core_tasks = true
 skip_git_env_info = true
-skip_rust_env_info = true
 skip_crate_env_info = true
 
 [env.development]
 CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_application.json"
 BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/d3os_application/debug"
 CARGO_BUILD_OPTION = "--lib"
+CC_OPT_LEVEL = "0"
 
 [env.production]
 CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_application.json"
 BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/d3os_application/release"
 CARGO_BUILD_OPTION = "--release"
+CC_OPT_LEVEL = "3"
 
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
@@ -20,8 +21,10 @@ RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
 SOURCE_DIRECTORY = "${CARGO_MAKE_WORKING_DIRECTORY}/src"
 LIBRARY_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library"
 LINKER_FILE = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/application/link.ld"
-RUST_OBJECT = "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}.a"
+RUST_OBJECT = "${BUILD_DIRECTORY}/libpeanut_gb.a"
+C_OBJECT = "${BUILD_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}.o"
 APPLICATION = "${INITRD_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}"
+CC = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gcc", mapping = { "macos" = "x86_64-elf-gcc" } }
 
 # Build tasks
 
@@ -34,16 +37,32 @@ args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compil
 condition = { files_modified = { input = [
     "${CARGO_MAKE_WORKING_DIRECTORY}/Cargo.toml", "${SOURCE_DIRECTORY}/**/*.rs",
     "${LIBRARY_DIRECTORY}/runtime/Cargo.toml", "${LIBRARY_DIRECTORY}/runtime/src/**/*.rs",
-    "${LIBRARY_DIRECTORY}/terminal/Cargo.toml", "${LIBRARY_DIRECTORY}/terminal/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/libc/Cargo.toml", "${LIBRARY_DIRECTORY}/libc/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/time/Cargo.toml", "${LIBRARY_DIRECTORY}/time/src/**/*.rs",
     "${LIBRARY_DIRECTORY}/concurrent/Cargo.toml", "${LIBRARY_DIRECTORY}/concurrent/src/**/*.rs",
-    "${LIBRARY_DIRECTORY}/syscall/Cargo.toml", "${LIBRARY_DIRECTORY}/syscall/src/**/*.rs" ], output = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*" ] } }
-dependencies = [ "licenses" ]
+    "${LIBRARY_DIRECTORY}/terminal/Cargo.toml", "${LIBRARY_DIRECTORY}/terminal/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/graphic/Cargo.toml", "${LIBRARY_DIRECTORY}/graphic/src/**/*.rs" ], output = [ "${RUST_OBJECT}" ] } }
+
+[tasks.compile-c]
+command = "${CC}"
+args = [
+    # Compiler flags
+    "-c", "-nostdlib", "-ffreestanding", "-fno-stack-protector", "-fpic", "-Wall", "-Wextra", "-Werror", "-O${CC_OPT_LEVEL}",
+
+    # Output file
+    "-o", "${C_OBJECT}",
+
+    # Source files
+    "${SOURCE_DIRECTORY}/peanut-gb.c" ]
+condition = { files_modified = { input = [
+    "${CARGO_MAKE_WORKING_DIRECTORY}/Cargo.toml", "${SOURCE_DIRECTORY}/**/*.h", "${SOURCE_DIRECTORY}/**/*.c",
+    "${LIBRARY_DIRECTORY}/libc/Cargo.toml", "${LIBRARY_DIRECTORY}/libc/src/**/*.h", ], output = [ "${C_OBJECT}" ] } }
 
 [tasks.link]
 command = "${LINKER}"
-args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${APPLICATION}", "${RUST_OBJECT}" ]
-dependencies = [ "compile" ]
-condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*", "${LINKER_FILE}" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd/${CARGO_MAKE_PROJECT_NAME}" ] } }
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${APPLICATION}", "${C_OBJECT}", "${RUST_OBJECT}" ]
+dependencies = [ "compile", "compile-c" ]
+condition = { files_modified = { input = [ "${C_OBJECT}", "${RUST_OBJECT}", "${LINKER_FILE}" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd/${CARGO_MAKE_PROJECT_NAME}" ] } }
 
 [tasks.check]
 command = "cargo"
@@ -52,11 +71,6 @@ args = [ "check", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compil
 [tasks.clippy]
 command = "cargo"
 args = [ "clippy", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
-
-[tasks.licenses]
-script = '''
-cargo license --manifest-path ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/Cargo.toml --all-features --json > "${SOURCE_DIRECTORY}/rust-dependencies.json"
-'''
 
 # Cleanup tasks
 

@@ -16,11 +16,11 @@ use x86_64::registers::model_specific::{KernelGsBase, LStar, SFMask, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 use crate::syscall::sys_net::{sys_get_ip_adresses, sys_sock_accept, sys_sock_bind, sys_sock_close, sys_sock_connect, sys_sock_open, sys_sock_receive, sys_sock_send};
-use crate::syscall::sys_vmem::sys_map_memory;
+use crate::syscall::sys_vmem::{sys_map_frame_buffer, sys_map_memory};
 use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, };
 use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
     sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch};
-use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write};
+use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_read_nb, sys_terminal_write};
 use crate::syscall::sys_naming::*;
 
 use crate::{core_local_storage, tss};
@@ -94,8 +94,10 @@ impl SyscallTable {
         SyscallTable {
             handle: [
                 sys_terminal_read as *const _,
+                sys_terminal_read_nb as *const _,
                 sys_terminal_write as *const _,
                 sys_map_memory as *const _,
+                sys_map_frame_buffer as *const _,
                 sys_process_execute_binary as *const _,
                 sys_process_id as *const _,
                 sys_process_exit as *const _,

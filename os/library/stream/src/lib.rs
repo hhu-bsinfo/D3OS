@@ -6,6 +6,7 @@ use core::ops::Deref;
 
 pub trait InputStream {
     fn read_byte(&self) -> i16;
+    fn read_byte_nb(&self) -> Option<i16>;
 }
 
 pub trait OutputStream: Send + Sync {

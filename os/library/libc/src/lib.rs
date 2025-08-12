@@ -6,7 +6,11 @@
    ║ Author: Fabian Ruhland, 31.8.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+
 #![no_std]
+#![feature(c_size_t)]
+
+mod stdlib;
 
 use stream::strlen;
 use syscall::{syscall, SystemCall};

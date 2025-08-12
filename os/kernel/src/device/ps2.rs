@@ -42,11 +42,18 @@ impl Keyboard {
 impl InputStream for Keyboard {
     fn read_byte(&self) -> i16 {
         loop {
-            match self.buffer.0.try_dequeue() {
-                Ok(code) => return code as i16,
-                Err(DequeueError::Closed) => return -1,
-                Err(_) => {}
+            match self.read_byte_nb() {
+                Some(code) => return code,
+                None => {}
             }
+        }
+    }
+
+    fn read_byte_nb(&self) -> Option<i16> {
+        match self.buffer.0.try_dequeue() {
+            Ok(code) => Some(code as i16),
+            Err(DequeueError::Closed) => Some(-1),
+            Err(_) => None,
         }
     }
 }

@@ -166,31 +166,38 @@ impl OutputStream for LFBTerminal {
 
 impl InputStream for LFBTerminal {
     fn read_byte(&self) -> i16 {
-        if let Some(keyboard) = keyboard() {
-            let read_byte;
+        loop {
+            match self.read_byte_nb() {
+                Some(value) => return value,
+                None => {}
+            }
+        }
+    }
 
-            loop {
-                let mut decoder = self.decoder.lock();
-                let scancode = keyboard.read_byte();
+    fn read_byte_nb(&self) -> Option<i16> {
+        if let Some(keyboard) = keyboard() {
+            let mut decoder = self.decoder.lock();
+            if let Some(scancode) = keyboard.read_byte_nb() {
                 if scancode == -1 {
-                    panic!("Keyboard stream closed!");
+                    return Some(-1);
                 }
+
 
                 if let Ok(Some(event)) = decoder.add_byte(scancode as u8) {
                     if let Some(key) = decoder.process_keyevent(event) {
-                        if let DecodedKey::Unicode(c) = key {
-                            read_byte = c;
-                            break;
+                        match key {
+                            DecodedKey::Unicode(c) => {
+                                self.write_byte(c as u8);
+                                return Some(c as i16);
+                            }
+                            _ => {}
                         }
                     }
                 }
             }
-
-            self.write_byte(read_byte as u8);
-            return read_byte as i16;
         }
-        
-        -1
+
+        None
     }
 }
 

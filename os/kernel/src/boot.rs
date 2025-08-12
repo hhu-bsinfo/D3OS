@@ -17,7 +17,7 @@ use crate::memory::pages::page_table_index;
 use crate::memory::vma::VmaType;
 use crate::memory::{PAGE_SIZE, nvmem, dram};
 use crate::process::thread::Thread;
-use crate::syscall::syscall_dispatcher;
+use crate::syscall::{sys_vmem, syscall_dispatcher};
 use crate::{
     acpi_tables, allocator, apic, built_info, consts, gdt, get_initrd_frames, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss
 };
@@ -151,6 +151,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         .expect("Unknown framebuffer type!");
     let fb_start_phys_addr = fb_info.address();
     let fb_end_phys_addr = fb_start_phys_addr + (fb_info.height() * fb_info.pitch()) as u64;
+    
+    sys_vmem::init_fb_info(&fb_info);
 
     kernel_process.virtual_address_space.kernel_map_devm_identity(
         fb_start_phys_addr,

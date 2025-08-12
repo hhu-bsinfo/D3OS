@@ -1,0 +1,23 @@
+[package]
+edition = "2024"
+name = "peanut-gb"
+version = "1.3.0"
+authors = ["Mahyar Koshkouei (deltabeard), Fabian Ruhland <ruhland@hhu.de>"]
+description = "A very fast and portable Game Boy (DMG) emulator single header library written in C99. Original implementation by Mahyar Koshkouei (deltabeard), ported to D3OS by Fabian Ruhland."
+license = "MIT"
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/peanut-gb.rs"
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+libc = { path = "../../library/libc" }
+time = { path = "../../library/time" }
+concurrent = { path = "../../library/concurrent" }
+graphic = { path = "../../library/graphic" }
+terminal = { path = "../../library/terminal" }
+
+# External dependencies
+spin = "0.10.0"

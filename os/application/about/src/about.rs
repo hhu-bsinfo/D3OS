@@ -29,8 +29,17 @@ struct Dependency {
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let dependencies_file = include_str!("dependencies.json");
-    let dependencies: Vec<Dependency> = serde_json::from_str(dependencies_file).unwrap();
+    let rust_dep_file = include_str!("rust-dependencies.json");
+    let other_dep_file = include_str!("other-dependencies.json");
+
+    let mut dependencies: Vec<Dependency> = serde_json::from_str(rust_dep_file).unwrap();
+    let other_dependencies: Vec<Dependency> = serde_json::from_str(other_dep_file).unwrap();
+
+    for dep in other_dependencies {
+        dependencies.push(dep);
+    }
+
+    dependencies.sort_by(|a, b| a.name.cmp(&b.name));
 
     let git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("Unknown");

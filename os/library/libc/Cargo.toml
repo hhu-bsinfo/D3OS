@@ -2,12 +2,8 @@
 edition = "2024"
 name = "libc"
 version = "0.1.0"
-authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+authors = ["Fabian Ruhland <ruhland@hhu.de>", "Gökhan Cöpcü <goeki40@gmail.com>"]
 
 [dependencies]
-# Local dependencies
-runtime = { path = "../runtime" }
-terminal = { path = "../terminal" }
 syscall = { path = "../syscall" }
-concurrent = { path = "../concurrent" }
 stream = { path = "../stream" }

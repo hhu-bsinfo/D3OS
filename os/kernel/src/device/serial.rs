@@ -289,15 +289,22 @@ impl OutputStream for SerialPort {
 impl InputStream for SerialPort {
     fn read_byte(&self) -> i16 {
         loop {
-            if let Some(buffer) = &self.buffer {
-                match buffer.0.try_dequeue() {
-                    Ok(byte) => return byte as i16,
-                    Err(DequeueError::Closed) => return -1,
-                    Err(_) => {}
-                }
-            } else {
-                panic!("Serial: Trying to read before initialization!");
+            match self.read_byte_nb() {
+                Some(value) => return value,
+                None => {}
             }
+        }
+    }
+
+    fn read_byte_nb(&self) -> Option<i16> {
+        if let Some(buffer) = &self.buffer {
+            match buffer.0.try_dequeue() {
+                Ok(byte) => Some(byte as i16),
+                Err(DequeueError::Closed) => Some(-1),
+                Err(_) => None
+            }
+        } else {
+            panic!("Serial: Trying to read before initialization!");
         }
     }
 }

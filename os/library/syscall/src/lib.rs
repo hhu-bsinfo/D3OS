@@ -18,8 +18,10 @@ use return_vals::{SyscallResult, convert_ret_code_to_syscall_result};
 #[allow(dead_code)]
 pub enum SystemCall {
     TerminalRead = 0,
+    TerminalReadNonBlocking,
     TerminalWrite,
     MapMemory,
+    MapFrameBuffer,
     ProcessExecuteBinary,
     ProcessId,
     ProcessExit,
@@ -81,18 +83,19 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
 
     unsafe {
         asm!(
-            "syscall", 
-            inlateout("rax") call as i64 => ret_code, 
-            in("rdi") a0, 
-            in("rsi") a1, 
+            "syscall",
+            inlateout("rax") call as i64 => ret_code,
+            in("rdi") a0,
+            in("rsi") a1,
             in("rdx") a2,
-            in("r10") a3, 
-            in("r8") a4, 
-            in("r9") a5, 
-            lateout("rcx") _, 
-            lateout("r11") _, 
+            in("r10") a3,
+            in("r8") a4,
+            in("r9") a5,
+            lateout("rcx") _,
+            lateout("r11") _,
             clobber_abi("system"));
     }
 
     convert_ret_code_to_syscall_result(ret_code)
 }
+

@@ -16,6 +16,7 @@ members = [
     "os/application/nc",
     "os/application/ping",
     "os/application/ip",
+    "os/application/peanut-gb"
 ]
 
 # [profile.release]
