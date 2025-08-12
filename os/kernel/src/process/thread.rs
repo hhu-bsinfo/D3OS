@@ -387,7 +387,7 @@ impl Thread {
                         src_ptr,
                         &new_process.virtual_address_space,
                         vma.range.start,
-                        header.p_filesz as u64,
+                        header.p_filesz,
                         true,
                     );
                 }

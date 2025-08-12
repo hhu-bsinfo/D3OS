@@ -79,7 +79,7 @@ impl UdpSocket {
         let remote_addr = if num_bytes > 0 {
             let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
             SocketAddr::new(
-                IpAddr::from_str(&addr_str).expect(&format!("failed to parse '{addr_str}'")),
+                IpAddr::from_str(addr_str).expect(&format!("failed to parse '{addr_str}'")),
                 remote_port,
             )
         } else {
@@ -144,7 +144,7 @@ impl TcpListener {
             .try_into().unwrap();
         let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
         let remote_addr = SocketAddr::new(
-            IpAddr::from_str(&addr_str).expect(&format!("failed to parse '{addr_str}'")),
+            IpAddr::from_str(addr_str).expect(&format!("failed to parse '{addr_str}'")),
             remote_port,
         );
         Ok(TcpStream { handle: self.handle, local_address: self.address, peer_address: remote_addr })
@@ -191,7 +191,7 @@ impl TcpStream {
             .try_into().unwrap();
         let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
         let local_address = SocketAddr::new(
-            IpAddr::from_str(&addr_str).expect(&format!("failed to parse '{addr_str}'")),
+            IpAddr::from_str(addr_str).expect(&format!("failed to parse '{addr_str}'")),
             local_port,
         );
         Ok(Self { handle, local_address, peer_address: address })
@@ -302,7 +302,7 @@ impl IcmpSocket {
             })?;
         let address = if num_bytes > 0 {
             let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
-            IpAddr::from_str(&addr_str).expect(&format!("failed to parse '{addr_str}'"))
+            IpAddr::from_str(addr_str).expect(&format!("failed to parse '{addr_str}'"))
         } else {
             IpAddr::V6(Ipv6Addr::UNSPECIFIED)
         };
