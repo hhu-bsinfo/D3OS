@@ -8,7 +8,7 @@ use core::ops::Deref;
 use core::ptr;
 use log::{info, warn};
 use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
-use smoltcp::socket::{dhcpv4, dns, icmp, tcp, udp, Socket};
+use smoltcp::socket::{dhcpv4, dns, icmp, tcp, udp};
 use smoltcp::time::Instant;
 use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint};
 use spin::{Once, RwLock};
