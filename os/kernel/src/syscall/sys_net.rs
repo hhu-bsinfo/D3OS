@@ -23,7 +23,7 @@ pub fn sys_sock_open(protocol: SocketType) -> isize {
     unsafe { core::mem::transmute::<SocketHandle, usize>(handle) }.try_into().unwrap()
 }
 
-pub fn sys_sock_bind(
+pub unsafe fn sys_sock_bind(
     handle: SocketHandle, protocol: SocketType, addr_ptr: *const u8, port: u16,
 ) -> isize {
     // TODO: somehow check that the protocol is correct for handle?
@@ -237,7 +237,7 @@ pub fn sys_sock_close(handle: SocketHandle) -> isize {
 /// Return a \0 seperated list of IP addresses for a given hostname.
 /// 
 /// If the hostname is missing, the addresses of the current host will be returned.
-pub fn sys_get_ip_adresses(ptr: *mut u8, len: usize, host_ptr: *const u8) -> isize {
+pub unsafe fn sys_get_ip_adresses(ptr: *mut u8, len: usize, host_ptr: *const u8) -> isize {
     let host = if host_ptr.is_null() {
         None
     } else {
