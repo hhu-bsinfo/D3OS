@@ -83,7 +83,7 @@ impl Command {
     }
 
     pub fn as_u8(&self) -> u8 {
-        (self.bcd_binary_mode as u8) << 0 |
+        (self.bcd_binary_mode as u8) |
         (self.operating_mode as u8) << 1 |
         (self.access_mode as u8) << 4 |
         (self.channel as u8) << 6
@@ -148,7 +148,7 @@ impl Timer {
 
         unsafe {
             registers.ctrl_port.write(command.as_u8()); // Latch counter value
-            timer |= (registers.data_port.read() as u16) << 0; // Low byte
+            timer |= registers.data_port.read() as u16; // Low byte
             timer |= (registers.data_port.read() as u16) << 8; // High byte
         }
 

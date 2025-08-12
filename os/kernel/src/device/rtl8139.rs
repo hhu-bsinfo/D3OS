@@ -141,7 +141,7 @@ impl Registers {
     fn new(base_address: u16) -> Self {
         Self {
             id: Mutex::new((
-                PortReadOnly::new(base_address + 0x00),
+                PortReadOnly::new(base_address),
                 PortReadOnly::new(base_address + 0x01),
                 PortReadOnly::new(base_address + 0x02),
                 PortReadOnly::new(base_address + 0x03),

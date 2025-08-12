@@ -214,7 +214,7 @@ struct CommandRegisters {
 
 impl CommandRegisters {
     fn new(base_address: u16) -> Self {
-        let data = Port::new(base_address + 0x00);
+        let data = Port::new(base_address);
         let error = PortReadOnly::new(base_address + 0x01);
         let sector_count = Port::new(base_address + 0x02);
         let sector_number = Port::new(base_address + 0x03);
@@ -252,7 +252,7 @@ struct DmaRegisters {
 
 impl DmaRegisters {
     fn new(base_address: u16) -> Self {
-        let command = Port::new(base_address + 0x00);
+        let command = Port::new(base_address);
         let status = Port::new(base_address + 0x02);
         let address = Port::new(base_address + 0x04);
 
