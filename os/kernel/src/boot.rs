@@ -51,8 +51,8 @@ use x86_64::{PhysAddr, VirtAddr};
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
-    static ___KERNEL_DATA_START__: (); // start address of OS image
-    static ___KERNEL_DATA_END__: (); // end address of OS image
+    static ___KERNEL_DATA_START__: c_void; // start address of OS image
+    static ___KERNEL_DATA_END__: c_void; // end address of OS image
 }
 
 /// First Rust function called from assembly code `boot.asm` \
