@@ -258,7 +258,7 @@ impl InterruptDispatcher {
         }
 
         if handler_vec.as_ref().unwrap().is_empty() {
-            error!("Interrupt Dispatcher: No handler registered for interrupt [{}]!", interrupt);
+            error!("Interrupt Dispatcher: No handler registered for interrupt [{interrupt}]!");
         }
 
         for handler in handler_vec.unwrap().iter_mut() {

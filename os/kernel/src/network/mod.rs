@@ -376,7 +376,7 @@ fn poll_sockets() -> Option<()> {
                 });
 
                 if let Some(router) = config.router {
-                    info!("default gateway: {}", router);
+                    info!("default gateway: {router}");
                     interface
                         .routes_mut()
                         .add_default_ipv4_route(router)

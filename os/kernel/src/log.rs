@@ -62,9 +62,9 @@ impl log::Log for Logger {
                 // this doesn't allocate outside of the string
                 // TODO: somehow make sure that the string doesn't grow
                 // this shouldn't fail, because the string is pre-allocated
-                write!(
+                writeln!(
                     *slot,
-                    "{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}]{} {}\n",
+                    "{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}]{} {}",
                     ansi::FOREGROUND_CYAN, seconds, fraction, ansi_color(level),
                     level_token(level),ansi::FOREGROUND_MAGENTA, file, line,
                     ansi::FOREGROUND_DEFAULT, record.args()
