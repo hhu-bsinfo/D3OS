@@ -356,7 +356,7 @@ impl Scheduler {
     }
 
     /// Description: Helper function returning `ReadyState` of scheduler in a MutexGuard
-    fn get_ready_state(&self) -> MutexGuard<ReadyState> {
+    fn get_ready_state(&self) -> MutexGuard<'_, ReadyState> {
         let state;
 
         // We need to make sure, that both the kernel memory manager and the ready queue are currently not locked.
@@ -376,7 +376,7 @@ impl Scheduler {
     }
 
     /// Description: Helper function returning `ReadyState` and `Map` of scheduler, each in a MutexGuard
-    fn get_ready_state_and_join_map(&self) -> (MutexGuard<ReadyState>, MutexGuard<Map<usize, Vec<Arc<Thread>>>>) {
+    fn get_ready_state_and_join_map(&self) -> (MutexGuard<'_, ReadyState>, MutexGuard<'_, Map<usize, Vec<Arc<Thread>>>>) {
         loop {
             let ready_state = self.get_ready_state();
             if let Some(join_map) = self.join_map.try_lock() {
