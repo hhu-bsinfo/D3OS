@@ -10,11 +10,13 @@ use libc::*;
 use alloc::vec::Vec;
 use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
+use chrono::{Datelike, Timelike};
 use spin::{Once, RwLock};
 use concurrent::thread;
-use ::time::systime;
+use ::time::{date, systime};
 use graphic::{color, map_framebuffer, FramebufferInfo};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, LFB};
+use libc::time::time::tm;
 use terminal::{print, println};
 
 unsafe extern "C" {
@@ -62,6 +64,12 @@ unsafe extern "C" {
     /// Get the name of the ROM currently loaded in the PeanutGB emulator.
     /// The name is returned as a C string (null-terminated).
     fn gb_get_rom_name(gb: *mut c_void, title_str: *const c_char) -> *const c_char;
+
+    /// Set the real-time clock (RTC) of the PeanutGB emulator.
+    /// This function enables the RTC functionality in the emulator for games that use it.
+    /// It needs to be called once before running the emulator.
+    /// Afterward, the emulator updates the RTC automatically.
+    fn gb_set_rtc(gb: *mut c_void, rtc: *const tm) -> c_int;
 }
 
 /// Bitmask for the joypad buttons. See `gb_get_joypad_ptr` for more details.
@@ -229,6 +237,24 @@ pub fn main() {
         println!("Loaded ROM: {}", rom_name);
         println!("ROM size: {}", ROM.len());
         println!("RAM size: {}", ram_size);
+    }
+
+    // Initialize the real-time clock (RTC) if needed.
+    unsafe {
+        let date = date();
+        let tm = tm {
+            tm_sec: date.time().second() as c_int,
+            tm_min: date.time().minute() as c_int,
+            tm_hour: date.time().hour() as c_int,
+            tm_mday: date.date_naive().day() as c_int,
+            tm_mon: date.date_naive().month0() as c_int,
+            tm_year: date.year() as c_int,
+            tm_wday: date.weekday() as c_int,
+            tm_yday: date.ordinal0() as c_int,
+            tm_isdst: -1
+        };
+
+        gb_set_rtc(gb_ptr, ptr::from_ref(&tm));
     }
 
     // Initialize the framebuffer

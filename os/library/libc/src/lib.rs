@@ -10,7 +10,8 @@
 #![no_std]
 #![feature(c_size_t)]
 
-mod stdlib;
+pub mod stdlib;
+pub mod time;
 
 use stream::strlen;
 use syscall::{syscall, SystemCall};
