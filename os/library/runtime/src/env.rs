@@ -1,7 +1,10 @@
 use alloc::string::{String, ToString};
-use core::ffi::CStr;
+use core::ffi::{c_char, CStr};
 use core::ptr::slice_from_raw_parts;
-use stream::strlen;
+
+unsafe extern "C" {
+    fn strlen(str: *const c_char) -> usize;
+}
 
 // Duplicated from 'kernel/src/consts.rs'
 const USER_SPACE_START: usize = 0x10000000000;
@@ -45,7 +48,7 @@ impl Iterator for Args {
             }
 
             let arg = *ARGV_PTR.add(self.index);
-            let len = strlen(arg);
+            let len = strlen(arg as *const c_char);
             self.index += 1;
 
             CStr::from_bytes_with_nul(slice_from_raw_parts(arg, len + 1).as_ref()?)

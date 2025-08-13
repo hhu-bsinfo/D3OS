@@ -5,5 +5,5 @@ version = "0.1.0"
 authors = ["Fabian Ruhland <ruhland@hhu.de>", "Gökhan Cöpcü <goeki40@gmail.com>"]
 
 [dependencies]
+# Local dependencies
 syscall = { path = "../syscall" }
-stream = { path = "../stream" }

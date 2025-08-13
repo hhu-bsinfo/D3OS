@@ -303,7 +303,7 @@ pub fn main() {
         // For each character read, we emulate a button press.
         // This will make most games unplayable and will be updated
         // once D3OS offers a proper input API.
-        *gb_joypad = 0xff; // Reset joypad state
+        *gb_joypad = 0xff;
 
         // Calculate the elapsed time since the start of the frame
         let elapsed = systime() - time;
