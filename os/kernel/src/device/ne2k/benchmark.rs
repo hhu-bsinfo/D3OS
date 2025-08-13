@@ -1,3 +1,12 @@
+// =============================================================================
+// FILE        : benchmark.rs
+// AUTHOR      : Johann Spenrath <johann.spenrath@hhu.de>
+// DESCRIPTION : functions for sending and receiving packets and printing stats
+// =============================================================================
+// NOTES:
+// =============================================================================
+// DEPENDENCIES:
+// =============================================================================
 use crate::scheduler;
 use crate::{network, timer};
 use alloc::vec;
