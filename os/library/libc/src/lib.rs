@@ -8,7 +8,6 @@
 */
 
 #![no_std]
-#![feature(rustc_private)]
 #![feature(c_size_t)]
 #![allow(dead_code)]
 
