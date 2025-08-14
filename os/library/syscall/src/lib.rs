@@ -8,11 +8,9 @@
 */
 #![no_std]
 
-pub mod return_vals;
+use crate::return_vals::SyscallResult;
 
-use core::arch::asm;
-use return_vals::{SyscallResult, convert_ret_code_to_syscall_result};
-use crate::return_vals::Errno;
+pub mod return_vals;
 
 /// Enum with all known system calls
 #[repr(usize)]
@@ -70,6 +68,9 @@ pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
 ///    error, codes defined in consts.rs
 #[cfg(target_arch = "x86_64")]
 pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
+    use core::arch::asm;
+    use return_vals::convert_ret_code_to_syscall_result;
+
     let ret_code: isize;
 
     if args.len() > 6 {
@@ -101,7 +102,10 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
     convert_ret_code_to_syscall_result(ret_code)
 }
 
+/// Only needed to run tests on non-x86_64 architectures (e.g. Apple Silicon).
 #[cfg(not(target_arch = "x86_64"))]
 pub fn syscall(_call: SystemCall, _args: &[usize]) -> SyscallResult {
+    use crate::return_vals::Errno;
+
     Err(Errno::ENOTSUP)
 }
