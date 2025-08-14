@@ -17,6 +17,7 @@ use ::time::{date, systime};
 use graphic::{color, map_framebuffer, FramebufferInfo};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, LFB};
 use libc::time::time::tm;
+use naming::shared_types::OpenOptions;
 use terminal::{print, println};
 
 unsafe extern "C" {
@@ -123,6 +124,9 @@ const GB_SCREEN_RES: (u32, u32) = (160, 144);
 /// The Game Boy screen is rendered using this scale factor.
 const SCALE: u32 = 2;
 
+/// The maximum size a Game Boy rom can have.
+const MAX_ROM_SIZE: usize = 1048576; // 1 MiB
+
 /// The color palette used for rendering.
 /// The Game Boy supports 4 shades of gray, represented as 32-bit ARGB colors in this array.
 static PALETTE: &[u32] = &[
@@ -133,7 +137,7 @@ static PALETTE: &[u32] = &[
 ];
 
 /// The ROM file to be played by emulator.
-static ROM: &[u8] = include_bytes!("../roms/2048.gb");
+static ROM: RwLock<Vec<u8>> = RwLock::new(Vec::new());
 
 /// The save RAM for the current game.
 /// It is initialized to the size returned by `gb_get_save_size`.
@@ -148,7 +152,8 @@ static SCREEN_OFFSET: Once<(u32, u32)> = Once::new();
 /// Read a byte from the ROM file at the offset specified by `addr`.
 /// This is a callback function for the PeanutGB emulator.
 pub unsafe extern "C" fn gb_rom_read(_gb: *mut c_void, addr: u32) -> u8 {
-    ROM[addr as usize]
+    let rom = ROM.read();
+    rom[addr as usize]
 }
 
 /// Read a byte from the save RAM at the offset specified by `addr`.
@@ -197,8 +202,24 @@ pub unsafe extern "C" fn lcd_draw_line(_gb: *mut c_void, pixels: *const u8, line
     }
 }
 
+fn read_rom(path: &str) {
+    let file = naming::open(&path, OpenOptions::READONLY).expect("Failed to open ROM file");
+
+    let mut rom = ROM.write();
+    for _ in 0..MAX_ROM_SIZE { // 1 MiB
+        rom.push(0)
+    }
+
+    naming::read(file, rom.as_mut_slice()).expect("Failed to read ROM file");
+}
+
 #[unsafe(no_mangle)]
 pub fn main() {
+    // Read the rom file into the `ROM` buffer.
+    let mut args = env::args();
+    let path = args.nth(1).expect("Usage: peanut-gb <rom_path>");
+    read_rom(path.as_str());
+
     // Allocate memory for the `gb_s` structure
     let gb_size = unsafe { gb_size() } as usize;
     let mut gb = Vec::<u8>::with_capacity(gb_size);
@@ -235,7 +256,7 @@ pub fn main() {
         }
 
         println!("Loaded ROM: {}", rom_name);
-        println!("ROM size: {}", ROM.len());
+        println!("ROM size: {}", ROM.read().len());
         println!("RAM size: {}", ram_size);
     }
 

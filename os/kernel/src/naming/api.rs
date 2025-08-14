@@ -51,7 +51,7 @@ pub fn init() {
 
 /// Open/create a named object referenced by `path` using the given `flags`. \
 /// Returns `Ok(object_handle)` or `Err`.
-pub fn open(path: &String, flags: OpenOptions) -> Result<usize, Errno> {
+pub fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
     open_objects::open(path, flags).or_else(|e| {
         if flags.contains(OpenOptions::CREATE) {
             touch(path).and_then(|_| open_objects::open(path, flags))

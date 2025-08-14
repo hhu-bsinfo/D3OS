@@ -7,7 +7,7 @@
    ║ Author: Michael Schoettner, Univ. Duesseldorf, 30.12.2024               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use alloc::string::String;
+
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -41,7 +41,7 @@ pub(super) fn open_object_table_init() {
     OPEN_OBJECTS.call_once(|| Arc::new(Mutex::new(OpenObjectTable::new())));
 }
 
-pub(super) fn open(path: &String, flags: OpenOptions) -> Result<usize, Errno> {
+pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
     // try to open the named object for the given path
     let result = lookup::lookup_named_object(path);
     if result.is_err() {
@@ -111,7 +111,7 @@ pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno
                     SeekOrigin::Current => opened_object.pos.load(Ordering::SeqCst) + offset,
                 };
                 opened_object.pos.store(new_pos, Ordering::SeqCst);
-                Ok(0) // Success
+                Ok(new_pos) // Success
             })
         })
 }

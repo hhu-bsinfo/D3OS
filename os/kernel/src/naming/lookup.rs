@@ -24,7 +24,7 @@ pub(super) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errn
 
 /// Resolves absolute `path` into a named object. \
 /// Returns `Ok(NamedObject)` or `Err`
-pub(super) fn lookup_named_object(path: &String) -> Result<NamedObject, Errno> {
+pub(super) fn lookup_named_object(path: &str) -> Result<NamedObject, Errno> {
     let mut found_named_object;
 
     if check_absolute_path(path) {

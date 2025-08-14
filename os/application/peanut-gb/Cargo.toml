@@ -21,6 +21,7 @@ time = { path = "../../library/time" }
 concurrent = { path = "../../library/concurrent" }
 graphic = { path = "../../library/graphic" }
 terminal = { path = "../../library/terminal" }
+naming = { path = "../../library/naming" }
 
 # External dependencies
 spin = "0.10.0"

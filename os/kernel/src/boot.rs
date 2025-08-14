@@ -48,6 +48,7 @@ use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{PageTable, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
+use ::naming::shared_types::OpenOptions;
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
@@ -292,6 +293,14 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Init naming service
     naming::api::init();
+
+    naming::api::mkdir("/usr").expect("Failed to create /usr");
+    naming::api::mkdir("/usr/roms").expect("Failed to create /usr/roms");
+    let rom = naming::api::open(
+        "/usr/roms/2048.gb", OpenOptions::CREATE | OpenOptions::READWRITE
+    ).expect("Failed to create /usr/roms/2048.gb");
+    naming::api::write(rom, include_bytes!("../../../vfs/usr/roms/2048.gb"))
+        .expect("Failed to write to /usr/roms/2048.gb");
 
     // Load initial ramdisk
     init_initrd(initrd_tag);
