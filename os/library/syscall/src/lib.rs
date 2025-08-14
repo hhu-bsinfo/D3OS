@@ -12,6 +12,7 @@ pub mod return_vals;
 
 use core::arch::asm;
 use return_vals::{SyscallResult, convert_ret_code_to_syscall_result};
+use crate::return_vals::Errno;
 
 /// Enum with all known system calls
 #[repr(usize)]
@@ -67,6 +68,7 @@ pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
 /// Return: Result \
 ///    success >= 0 \
 ///    error, codes defined in consts.rs
+#[cfg(target_arch = "x86_64")]
 pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
     let ret_code: isize;
 
@@ -99,3 +101,7 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
     convert_ret_code_to_syscall_result(ret_code)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
+pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
+    Err(Errno::ENOTSUP)
+}

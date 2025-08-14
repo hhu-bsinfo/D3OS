@@ -81,3 +81,9 @@ jobs:
         with:
           command: make
           args: --no-workspace image
+
+      - name: Test
+        uses: clechasseur/rs-cargo@v2
+        with:
+          command: make
+          args: --no-workspace test
