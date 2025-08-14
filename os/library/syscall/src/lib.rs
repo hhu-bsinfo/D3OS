@@ -102,6 +102,6 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
 }
 
 #[cfg(not(target_arch = "x86_64"))]
-pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
+pub fn syscall(_call: SystemCall, _args: &[usize]) -> SyscallResult {
     Err(Errno::ENOTSUP)
 }
