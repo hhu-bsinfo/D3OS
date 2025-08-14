@@ -63,6 +63,7 @@ pub fn udp_send_test(n: usize) {
             match network::send_datagram(sock, dst_ip, dst_port, datagram) {
                 Ok(()) => break,
                 Err(SendError::BufferFull) => {
+                    info!("Buffer full");
                     // give the poll method time to flush and to finish ARP, then retry
                     scheduler().sleep(1);
                 }

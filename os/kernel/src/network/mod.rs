@@ -187,18 +187,15 @@ pub fn open_socket(protocol: SocketType) -> SocketHandle {
     // https://docs.rs/smoltcp/latest/smoltcp/storage/struct.PacketBuffer.html
     // Problem:  enqueue faster than poll() can transmit,
     // hit whichever limit comes first and get BufferFull
-    let tx_size = 1324;
+    let tx_size = 2000;
     let rx_size = 1;
 
     let rx_buffer = udp::PacketBuffer::new(
-        // packetgröße auf 10 erhöhen
         vec![udp::PacketMetadata::EMPTY; rx_size],
         vec![0; 64 * 1024],
     );
-    let tx_buffer = udp::PacketBuffer::new(
-        vec![udp::PacketMetadata::EMPTY; tx_size],
-        vec![0; 64 * 2650],
-    );
+    let tx_buffer =
+        udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 65500]);
 
     let socket = match protocol {
         SocketType::Udp => udp::Socket::new(rx_buffer, tx_buffer),

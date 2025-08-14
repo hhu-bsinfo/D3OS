@@ -934,10 +934,13 @@ impl Ne2000 {
                     // the host
                     // normal case: update bndy to point to one page behind the packet the nic will fill next
                     // tells the nic that the pages which have just been processed are free
-                    self.registers
-                        .page0
-                        .bnry_port
-                        .write(CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed) - 1);
+                    let cur_value = CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed);
+                    let bnry = if cur_value == RECEIVE_START_PAGE {
+                        RECEIVE_STOP_PAGE - 1
+                    } else {
+                        cur_value - 1 // safe: next > RECEIVE_START_PAGE
+                    };
+                    self.registers.page0.bnry_port.write(bnry);
                 }
 
                 // update the current variable for the next page to be written to
@@ -1018,8 +1021,38 @@ impl Ne2000 {
     // gets called, if the buffer ring is full
     // this is analogous to the nic datasheet
     // Reference: p.9-10, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+    /*
+     *       CPU                  NE2000 Driver                             NIC Hardware
+     *   |                         |                                         |
+     *   |   OVW Interrupt         |                                         |
+     *   |-----------------------> | handle_overflow()                        |
+     *   |                         |                                         |
+     *   |                         |  Step 1: read CR.TXP                    |
+     *   |                         |                                         |
+     *   |                         |  Step 2: CR = STOP | PAGE_0             |
+     *   |                         |------------------------------>          | Stop DMA + NIC
+     *   |                         |                                         |
+     *   |                         |  Step 3: wait 1.6ms                     |
+     *   |                         |  Step 4: RBCR0 = 0, RBCR1 = 0           |
+     *   |                         |                                         |
+     *   |                         |  Step 5: check resend logic             |
+     *   |                         |   └─ if TXP == 1 and !PTX/TXE → resend  |
+     *   |                         |                                         |
+     *   |                         |  Step 6: set loopback mode              |
+     *   |                         |  Step 7: CR = START                     |
+     *   |                         |------------------------------>          | Resume in loopback
+     *   |                         |                                         |
+     *   |                         |  Step 8: call receive_packet()          |
+     *   |                         |  Step 9: clear ISR.OVW                  |
+     *   |                         |  Step 10: clear loopback (TCR = 0)      |
+     *   |                         |                                         |
+     *   |                         |  Step 11: if resend == 1:               |
+     *   |                         |   └─ CR = STA | TXP | STOP_DMA          |
+     *   |                         |------------------------------>          | Reissue transmit
+     *   |                         |                                         |
+     *   |                         |  return from ISR                        |
+     */
     // =============================================================================
-    // TODO: change 1. to Step 1
     pub fn handle_overflow(&mut self) {
         info!("overflow");
         unsafe {
