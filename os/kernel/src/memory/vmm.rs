@@ -530,7 +530,9 @@ impl VirtualAddressSpace {
 impl Drop for VirtualAddressSpace {
     fn drop(&mut self) {
         for vma in self.virtual_memory_areas.read().iter() {
-            self.page_tables.unmap(vma.1.range, true);
+            if vma.1.typ != VmaType::DeviceMemory {
+                self.page_tables.unmap(vma.1.range, true);
+            }
         }
     }
 }
