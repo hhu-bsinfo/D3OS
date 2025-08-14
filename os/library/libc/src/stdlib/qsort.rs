@@ -8,26 +8,28 @@
  */
 
 use core::ffi::{c_int, c_size_t, c_void};
+use core::ptr;
 use core::slice::from_raw_parts_mut;
 use core::ptr::addr_of;
 
 type Comparator = unsafe extern "C" fn(*const c_void, *const c_void) -> c_int;
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qsort(base: *const c_void, num_element: c_size_t, size: c_size_t, comp: Comparator) {
-    // Check for correct size of array or elements
-    assert!(size > 0, "qsort: Element size must be greater than zero");
+pub unsafe extern "C" fn qsort(base: *const c_void, count: c_size_t, size: c_size_t, comp: Comparator) {
+    if base == ptr::null() || count == 0 || size == 0 {
+        return;
+    }
 
     unsafe {
-        let base = from_raw_parts_mut(base as *mut u8, num_element * size);
-        bubble_sort(base, num_element, size, comp);
+        let base = from_raw_parts_mut(base as *mut u8, count * size);
+        bubble_sort(base, count, size, comp);
     }
 }
-fn bubble_sort(base: &mut [u8], num_element: c_size_t, size: c_size_t, comp: Comparator) -> () {
+fn bubble_sort(base: &mut [u8], count: c_size_t, size: c_size_t, comp: Comparator) -> () {
     assert!(size > 0, "bubble_sort: Element size must be greater than zero");
-    assert_eq!(base.len(), num_element * size, "bubble_sort: Base length must match num_element * size");
+    assert_eq!(base.len(), count * size, "bubble_sort: Base length must match (count * size)");
 
-    if num_element == 0 {
+    if count == 0 {
         return;
     }
 
@@ -35,7 +37,7 @@ fn bubble_sort(base: &mut [u8], num_element: c_size_t, size: c_size_t, comp: Com
     while swapped {
         swapped = false;
 
-        for i in 0..num_element - 1 {
+        for i in 0..count - 1 {
             let current = addr_of!(base[i * size]) as *const c_void;
             let next = addr_of!(base[(i + 1) * size]) as *const c_void;
 
@@ -56,35 +58,34 @@ fn swap(base: &mut [u8], first_element: c_size_t, second_element: c_size_t, size
 #[cfg(test)]
 mod tests {
     use core::ffi::c_char;
-    use core::ptr;
     use crate::stdlib::{comp_char, comp_int, comp_struct, TestStruct};
     use super::*;
 
-    #[test_case]
+    #[test]
     fn test_qsort_int() {
         let array = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1] as [c_int; 10];
-        let num_element = array.len() as c_size_t;
+        let count = array.len() as c_size_t;
         let size = size_of::<c_int>() as c_size_t;
 
         unsafe {
-            qsort(array.as_ptr() as *const c_void, num_element, size, comp_int);
+            qsort(array.as_ptr() as *const c_void, count, size, comp_int);
             assert_eq!(array, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
         }
     }
 
-    #[test_case]
+    #[test]
     fn test_qsort_empty_array() {
         let array = [] as [c_int; 0];
-        let num_element = array.len() as c_size_t;
+        let count = array.len() as c_size_t;
         let size = size_of::<c_int>() as c_size_t;
 
         unsafe {
-            qsort(array.as_ptr() as *const c_void, num_element, size, comp_int);
+            qsort(array.as_ptr() as *const c_void, count, size, comp_int);
             assert_eq!(array, []);
         }
     }
 
-    #[test_case]
+    #[test]
     fn test_qsort_with_chars() {
         let array = [
             'j' as c_char,
@@ -112,16 +113,16 @@ mod tests {
             'j' as c_char
         ];
 
-        let num_element = array.len() as c_size_t;
+        let count = array.len() as c_size_t;
         let size = size_of::<c_char>() as c_size_t;
 
         unsafe {
-            qsort(array.as_ptr() as *const c_void, num_element, size, comp_char);
+            qsort(array.as_ptr() as *const c_void, count, size, comp_char);
             assert_eq!(array, expected);
         }
     }
 
-    #[test_case]
+    #[test]
     fn test_qsort_with_structs() {
         let array = [
             TestStruct { value: 3, test_char: 'c' as c_char },
@@ -135,20 +136,23 @@ mod tests {
             TestStruct { value: 3, test_char: 'c' as c_char }
         ];
 
-        let num_element = array.len() as c_size_t;
+        let count = array.len() as c_size_t;
         let size = size_of::<TestStruct>() as c_size_t;
 
         unsafe {
-            qsort(array.as_ptr() as *const c_void, num_element, size, comp_struct);
+            qsort(array.as_ptr() as *const c_void, count, size, comp_struct);
             assert_eq!(array, expected);
         }
     }
-
-    #[test_case]
-    #[should_panic]
+    #[test]
     fn test_qsort_null_pointer() {
         unsafe {
-            qsort(ptr::null(), 0, 0, comp_int);
+            let array = ptr::null();
+            let count = 0 as c_size_t;
+            let size = size_of::<c_int>() as c_size_t;
+
+            qsort(array, count, size, comp_int);
+            assert_eq!(array, ptr::null());
         }
     }
 }

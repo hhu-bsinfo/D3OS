@@ -4,6 +4,11 @@ name = "concurrent"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
 
+[lib]
+test = false
+doctest = false
+bench = false
+
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }

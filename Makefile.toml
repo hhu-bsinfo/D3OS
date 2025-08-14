@@ -101,6 +101,10 @@ args = [ "-ex", "break start", "-ex", "target remote 127.0.0.1:1234", "-ex", "co
 command = "wget"
 args = [ "-N", "${OVMF_URL}" ]
 
+[tasks.test]
+command = "cargo"
+args = [ "test" ]
+
 # Build tasks
 
 [tasks.link-members]

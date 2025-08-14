@@ -56,7 +56,7 @@ mod tests {
     use core::ffi::{c_char, c_int, c_void};
     use super::*;
 
-    #[test_case]
+    #[test]
     fn test_memcpy_char_array() {
         let src1 = ['a' as c_char, 'b' as c_char, 'c' as c_char];
         let src2 = ['d' as c_char, 'e' as c_char, 'f' as c_char];
@@ -71,7 +71,7 @@ mod tests {
         }
     }
 
-    #[test_case]
+    #[test]
     fn test_memcpy_struct_array() {
         #[repr(C)]
         #[derive(Debug, PartialEq)]
@@ -97,7 +97,7 @@ mod tests {
 
     }
 
-    #[test_case]
+    #[test]
     fn test_memcpy_with_null_byte() {
         let src = [1, 2, 3] as [c_int; 3];
         let mut dst:[c_int; 3] = [0, 0, 0];
@@ -109,7 +109,7 @@ mod tests {
 
     }
 
-    #[test_case]
+    #[test]
     fn test_memset_char_array() {
         let mut dst = ['0' as c_char, '0' as c_char, '0' as c_char];
         let expected = ['a' as c_char, 'a' as c_char, 'a' as c_char];
@@ -120,7 +120,7 @@ mod tests {
         }
     }
 
-    #[test_case]
+    #[test]
     fn test_memset_int_array_1() {
         let mut dst = [0, 0, 0] as [c_int; 3];
         let expected = [0x01010101, 0x01010101, 0x01010101] as [c_int; 3];
@@ -132,7 +132,7 @@ mod tests {
         }
     }
 
-    #[test_case]
+    #[test]
     fn test_memset_int_array_2() {
         let mut dst = [1, 2, 3] as [c_int; 3];
         let expected = [-1, -1, -1] as [c_int; 3];
@@ -145,7 +145,7 @@ mod tests {
         }
     }
 
-    #[test_case]
+    #[test]
     fn test_memcpy_int_array() {
         let src1 = [1, 2, 3] as [c_int; 3];
         let src2 = [4, 5, 6] as [c_int; 3];

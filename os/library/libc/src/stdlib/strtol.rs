@@ -30,9 +30,9 @@ pub unsafe extern "C" fn strtol(str: *const c_char, endptr: *mut *mut c_char, ba
 
     unsafe {
         let num_str = CStr::from_ptr(str)
-            // Convert C string to Rust string
+            // Convert C string to Rust string (default to "" if conversion fails)
             .to_str()
-            .expect("strtol: Invalid string")
+            .unwrap_or("")
             // Remove leading whitespace characters
             .trim_start()
             // Remove invalid trailing characters
@@ -46,8 +46,8 @@ pub unsafe extern "C" fn strtol(str: *const c_char, endptr: *mut *mut c_char, ba
             *endptr = end.add(num_str.len())
         }
 
-        c_long::from_str_radix(num_str, base as u32)
-            .expect("strtol: Failed to parse string as integer")
+        // Parse the number, defaulting to 0 if parsing fails
+        c_long::from_str_radix(num_str, base as u32).unwrap_or(0)
     }
 }
 
@@ -63,7 +63,7 @@ mod tests {
             assert_eq!(result, 123);
 
             let result = atoi(CString::new("-123").unwrap().as_c_str().as_ptr());
-            assert_eq!(result, -1234);
+            assert_eq!(result, -123);
 
             let result = atoi(CString::new("+14124").unwrap().as_c_str().as_ptr());
             assert_eq!(result, 14124);
@@ -94,33 +94,34 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_atoi_empty() {
         unsafe {
-            let _result = atoi(CString::new("").unwrap().as_c_str().as_ptr());
+            let result = atoi(CString::new("").unwrap().as_c_str().as_ptr());
+            assert_eq!(result, 0);
         }
     }
 
     #[test]
-    #[should_panic]
     fn test_atoi_negative_wrong_format() {
         unsafe {
-            let _result = atoi(CString::new("--123").unwrap().as_c_str().as_ptr());
+            let result = atoi(CString::new("--123").unwrap().as_c_str().as_ptr());
+            assert_eq!(result, 0);
         }
     }
 
     #[test]
-    #[should_panic]
     fn test_text() {
         unsafe {
-            let _result = atoi(CString::new("Hello!").unwrap().as_c_str().as_ptr());
+            let result = atoi(CString::new("Hello!").unwrap().as_c_str().as_ptr());
+            assert_eq!(result, 0);
         }
     }
 
     #[test]
     fn test_overflow() {
         unsafe {
-            let _result = atoi(CString::new("-2147483648").unwrap().as_c_str().as_ptr());
+            let result = atoi(CString::new("-2147483648").unwrap().as_c_str().as_ptr());
+            assert_eq!(result, -2147483648);
         }
     }
 }

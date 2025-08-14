@@ -18,7 +18,7 @@ pub extern "C" fn abs(i: c_int) -> c_int {
 mod tests {
     use super::*;
 
-    #[test_case]
+    #[test]
     fn test_abs() {
         assert_eq!(abs(-1), 1);
         assert_eq!(abs(1), 1);

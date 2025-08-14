@@ -16,7 +16,9 @@ type Comparator = unsafe extern "C" fn(*const c_void, *const c_void) -> c_int;
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn bsearch(key: *const c_void, base: *const c_void, count: c_size_t, size: c_size_t, comp: Comparator) -> *const c_void {
-    assert!(size > 0, "bsearch: Element size must be greater than zero");
+    if base == ptr::null() || count == 0 || size == 0 {
+        return ptr::null();
+    }
 
     let mut left = 0;
     let mut right = count - 1;
@@ -47,7 +49,7 @@ mod tests {
     use core::ffi::c_char;
     use crate::stdlib::{comp_char, comp_int};
 
-    #[test_case]
+    #[test]
     fn test_bsearch() {
         let arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as [c_int; 10];
         let key = 4 as c_int;
@@ -64,7 +66,7 @@ mod tests {
             assert_eq!(*(result as *const c_int), key);
         }
     }
-    #[test_case]
+    #[test]
     fn test_bsearch_char() {
         let arr = [
             'a' as c_char,
@@ -93,7 +95,7 @@ mod tests {
         }
     }
 
-    #[test_case]
+    #[test]
     fn test_bsearch_notfound() {
         let arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as [c_int; 10];
         let key = 11 as c_int;

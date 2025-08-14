@@ -4,6 +4,11 @@ name = "libc"
 version = "0.1.0"
 authors = ["Fabian Ruhland <ruhland@hhu.de>", "Gökhan Cöpcü <goeki40@gmail.com>"]
 
+[lib]
+test = true
+doctest = false
+bench = false
+
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }

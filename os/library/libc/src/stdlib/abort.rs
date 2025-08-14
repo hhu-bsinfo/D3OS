@@ -7,6 +7,9 @@
  * The original source code can be found here: https://git.hhu.de/bsinfo/thesis/ba-gocoe100
  */
 
+// The test environment calls abort() when a non-unwinding panic occurs.
+// In this case, we do not want this to be called, but the environment's own abort() function.
+#[cfg(not(test))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn abort() -> ! {
     panic!("libc abort called!");

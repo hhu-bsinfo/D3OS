@@ -7,6 +7,9 @@ authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhl
 [lib]
 crate-type = ["staticlib"]
 path = "src/ls.rs"
+test = false
+doctest = false
+bench = false
 
 [dependencies]
 # Local dependencies
