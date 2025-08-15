@@ -234,7 +234,7 @@ pub fn main() {
     unsafe {
         let init_result = gb_init(gb_ptr, gb_rom_read, gb_cart_ram_read, gb_cart_ram_write, gb_error, ptr::null());
         if init_result != 0 {
-            panic!("Failed to initialize PeanutGB!");
+            panic!("Failed to initialize PeanutGB");
         }
 
         gb_init_lcd(gb_ptr, lcd_draw_line as *const c_void);

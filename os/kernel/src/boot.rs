@@ -18,9 +18,7 @@ use crate::memory::vma::VmaType;
 use crate::memory::{PAGE_SIZE, nvmem, dram};
 use crate::process::thread::Thread;
 use crate::syscall::{sys_vmem, syscall_dispatcher};
-use crate::{
-    acpi_tables, allocator, apic, built_info, consts, gdt, get_initrd_frames, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss
-};
+use crate::{acpi_tables, allocator, apic, built_info, consts, create_vfs_files, gdt, get_initrd_frames, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss};
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
 use alloc::string::ToString;
@@ -48,25 +46,11 @@ use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{PageTable, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
-use ::naming::shared_types::OpenOptions;
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
     static ___KERNEL_DATA_START__: c_void; // start address of OS image
     static ___KERNEL_DATA_END__: c_void; // end address of OS image
-}
-
-macro_rules! mk_vfs_dir {
-    ($path:expr) => {
-        naming::api::mkdir($path).expect(concat!("Failed to create ", $path));
-    };
-}
-
-macro_rules! create_vfs_file {
-    ($path:expr) => {
-            let rom = naming::api::open($path, OpenOptions::CREATE | OpenOptions::READWRITE).expect(concat!("Failed to create ", $path));
-            naming::api::write(rom, include_bytes!(concat!("../../../vfs", $path))).expect(concat!("Failed to write to ", $path));
-    };
 }
 
 /// First Rust function called from assembly code `boot.asm` \
@@ -307,9 +291,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Init naming service
     naming::api::init();
 
-    mk_vfs_dir!("/usr");
-    mk_vfs_dir!("/usr/roms");
-    create_vfs_file!("/usr/roms/2048.gb");
+    create_vfs_files();
 
     // Load initial ramdisk
     init_initrd(initrd_tag);

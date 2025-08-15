@@ -68,9 +68,12 @@ pub mod storage;
 pub mod syscall;
 
 pub mod built_info {
-    // The file has been placed there by the build script.
+    // The file has been placed there by the build script
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
+
+// The file has been placed there by the build script
+include!(concat!(env!("OUT_DIR"), "/vfs.rs"));
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
