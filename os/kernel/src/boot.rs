@@ -69,7 +69,9 @@ unsafe extern "C" {
     static ___KERNEL_DATA_END__: u64; // end address of OS image
 }
 
-const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS
+// update 15.08.2025: increase heap page size (as suggested by M. Schoettner)
+//const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS (old value)
+const INIT_HEAP_PAGES: usize = 0x4000; // number of heap pages for booting the OS
 
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \
@@ -384,10 +386,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     //////////////////////////////////////////////////////////////////////////////////////////////
     // spawn the TX thread
     //////////////////////////////////////////////////////////////////////////////////////////////
-    /*scheduler().ready(Thread::new_kernel_thread(
+    scheduler().ready(Thread::new_kernel_thread(
         || benchmark::udp_send_test(2000),
         "udp_tx",
-    ));*/
+    ));
 
     //scheduler().ready(Thread::new_kernel_thread(
     //    || benchmark::send_traffic(20, 64),

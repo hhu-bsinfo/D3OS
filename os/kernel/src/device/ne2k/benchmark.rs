@@ -69,14 +69,14 @@ pub fn udp_send_test(n: usize) {
                 }
                 Err(e) => panic!("(UDP Send Test) send failed: {e:?}"),
             }
-            network::send_datagram(sock, dst_ip, dst_port, datagram);
+            //network::send_datagram(sock, dst_ip, dst_port, datagram);
         }
         // light pacing so the CPU doesn't get hoged
         //scheduler().sleep(10);
     }
 }
 
-pub fn send_traffic(timing_interval: u16, packet_length: u16) {
+/*pub fn send_traffic(timing_interval: u16, packet_length: u16) {
     // create the packet
     // in rust indices like vec indexing or slicing have to be of type usize,
     // because usize matches the platform's pointer width and ensures safe, efficient indexing
@@ -149,3 +149,4 @@ pub fn send_traffic(timing_interval: u16, packet_length: u16) {
     );
     info!("------------------------------------------------------");
 }
+*/

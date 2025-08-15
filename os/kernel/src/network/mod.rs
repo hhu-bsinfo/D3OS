@@ -49,7 +49,7 @@ pub fn init() {
         if RTL8139.get().is_some() {
             scheduler().ready(Thread::new_kernel_thread(
                 || loop {
-                    poll_sockets();
+                    //poll_sockets();
                 },
                 "RTL8139",
             ));
@@ -110,10 +110,16 @@ pub fn init() {
                     // prevents CPU hogging by the poll thread.
                     // allows other tasks (like your sender or interrupt handlers) to run.
                     // forms a cooperative multitasking environment for fair scheduling.
-                    scheduler().sleep(1);
+                    //scheduler().sleep(1);
                 },
-                "NE2000",
+                "NE2000_rx",
             ));
+            /*scheduler().ready(Thread::new_kernel_thread(
+                || loop {
+                    poll_ne2000_tx();
+                },
+                "NE2000_tx",
+            ));*/
         }
     }
 }
@@ -163,15 +169,15 @@ pub fn check() {
     // check if interrupt occured
     // Packet received ?
     if device.check_interrupts.prx.load(Ordering::Relaxed) {
+        device.check_interrupts.prx.store(false, Ordering::Relaxed);
         device.receive_packet();
         // reset the AtomicBool after handling the interrupt
-        device.check_interrupts.prx.store(false, Ordering::Relaxed);
     }
     // Receive Buffer Overwrite?
     if device.check_interrupts.ovw.load(Ordering::Relaxed) {
-        device.handle_overflow();
         // reset the AtomicBool after handling the interrupt
         device.check_interrupts.ovw.store(false, Ordering::Relaxed);
+        device.handle_overflow();
     }
 }
 pub fn add_interface(interface: Interface) {
@@ -183,19 +189,21 @@ pub fn open_socket(protocol: SocketType) -> SocketHandle {
     // changed transmit and receive buffer size to tx_size and rx_size
     ////// IMPORTANT//////
     ///// Metadata storage limits the maximum number of packets in the buffer
+    /// Limits how many packets can be queued, regardless of size
     ///// and payload storage limits the maximum total size of packets.
+    /// Limits total bytes across all packets, ensuring memory bounds are respected
     // https://docs.rs/smoltcp/latest/smoltcp/storage/struct.PacketBuffer.html
     // Problem:  enqueue faster than poll() can transmit,
     // hit whichever limit comes first and get BufferFull
-    let tx_size = 2000;
-    let rx_size = 1;
+    let rx_size = 1000;
+    let rx_buffer =
+        udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 100000]);
 
-    let rx_buffer = udp::PacketBuffer::new(
-        vec![udp::PacketMetadata::EMPTY; rx_size],
-        vec![0; 64 * 1024],
+    let tx_size = 1999;
+    let tx_buffer = udp::PacketBuffer::new(
+        vec![udp::PacketMetadata::EMPTY; tx_size],
+        vec![0; 60 * tx_size],
     );
-    let tx_buffer =
-        udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 65500]);
 
     let socket = match protocol {
         SocketType::Udp => udp::Socket::new(rx_buffer, tx_buffer),
@@ -231,7 +239,7 @@ pub fn send_datagram(
 }
 
 // disabled for the rtl8139.rs
-pub fn poll_sockets() {
+/*pub fn poll_sockets() {
     //let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
     if let Some(rtl8139) = RTL8139.get() {
         // Use `rtl`
@@ -257,11 +265,11 @@ pub fn poll_sockets() {
     {
         // Handle `None`
     }
-}
+}*/
 
 // poll for ne2k
 
-fn poll_ne2000() {
+fn poll_ne2000_tx() {
     // interface is connection between smoltcp crate and driver
     // interfaces stores a Vector off all added Network Interfaces
     // Cast Arc<Ne2000> to &mut Ne2000 for poll:
@@ -283,8 +291,8 @@ fn poll_ne2000() {
         // poll calls the receive and transmit methods of the device impl in networks_stack/mod.rs
         // checking if any packets have been send or received
         //let timestamp = Instant::now();
-        iface.poll(now, dev_ne2k, &mut sockets);
-        //iface.poll_egress(now, dev_ne2k, &mut sockets);
+        //iface.poll(now, dev_ne2k, &mut sockets);
+        iface.poll_egress(now, dev_ne2k, &mut sockets);
         //iface.poll_ingress_single(now, dev_ne2k, &mut sockets);
 
         // 09.08.2025
@@ -292,9 +300,53 @@ fn poll_ne2000() {
         //let delay = iface.poll_delay(timestamp, &sockets).unwrap_or_default();
         //scheduler().sleep(delay);
     }
+}
 
+fn poll_ne2000_rx() {
+    // interface is connection between smoltcp crate and driver
+    // interfaces stores a Vector off all added Network Interfaces
+    // Cast Arc<Ne2000> to &mut Ne2000 for poll:
+    let now = Instant::from_millis(timer().systime_ms() as i64);
+    let ne = NE2000
+        .get()
+        .expect("[poll_ne2000] : Ne2000 not initialized.");
+    let dev_ne2k = unsafe { ptr::from_ref(ne.deref()).cast_mut().as_mut().unwrap() };
+
+    // initialize Interfaces and sockets
+    let mut interfaces = INTERFACES.write();
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized").write();
+
+    // start interface
+    // iterate through every interface and call the poll method
+    for iface in interfaces.iter_mut() {
+        //info!("Polling, Iteration: {}", counter);
+        // check if smoltcp processes something
+        // poll calls the receive and transmit methods of the device impl in networks_stack/mod.rs
+        // checking if any packets have been send or received
+        //let timestamp = Instant::now();
+        //iface.poll(now, dev_ne2k, &mut sockets);
+        //iface.poll_egress(now, dev_ne2k, &mut sockets);
+        iface.poll_ingress_single(now, dev_ne2k, &mut sockets);
+
+        // 09.08.2025
+        // https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Interface.html#method.poll_delay
+        //let delay = iface.poll_delay(timestamp, &sockets).unwrap_or_default();
+        //scheduler().sleep(delay);
+    }
+}
+
+fn poll_sockets() {
     // Tune this cap if bursts are heavy:
-    /*const MAX_INGRESS_PER_TICK: usize = 8;
+    const MAX_INGRESS_PER_TICK: usize = 8;
+    let now = Instant::from_millis(timer().systime_ms() as i64);
+    let ne = NE2000
+        .get()
+        .expect("[poll_ne2000] : Ne2000 not initialized.");
+    let dev_ne2k = unsafe { ptr::from_ref(ne.deref()).cast_mut().as_mut().unwrap() };
+
+    // initialize Interfaces and sockets
+    let mut interfaces = INTERFACES.write();
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized").write();
 
     for iface in interfaces.iter_mut() {
         // 1) Always flush all outbound packets (bounded work by design)
@@ -321,5 +373,5 @@ fn poll_ne2000() {
             // sleep/yield according to your scheduler
             //scheduler().sleep(delay);
         }
-    }*/
+    }
 }

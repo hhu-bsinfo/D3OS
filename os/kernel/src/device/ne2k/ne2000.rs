@@ -64,7 +64,7 @@ use super::network_stack::*;
 const DISPLAY_RED: &'static str = "\x1b[1;31m";
 
 // Capacity for the receive_buffers_empty queue in the ne2000 struct
-const RECV_QUEUE_CAP: usize = 128;
+const RECV_QUEUE_CAP: usize = 256;
 
 // Buffer Start Page for the transmitted pages
 const TRANSMIT_START_PAGE: u8 = 0x40;
@@ -140,7 +140,10 @@ pub struct Page1 {
 pub struct Registers {
     reset_port: Port<u8>,
     command_port: Port<u8>,
+    // data port for bytewise transfer
     data_port: Port<u8>,
+    // data port for wordwise transfer
+    data_port_u16: Port<u16>,
     isr_port: Mutex<Port<u8>>,
     imr_port: Mutex<Port<u8>>,
     page0: Page0,
@@ -265,6 +268,7 @@ impl Registers {
             imr_port: Mutex::new(Port::new(base_address + P0_IMR)),
             // data port (or i/o port for reading received data)
             data_port: Port::new(base_address + DATA),
+            data_port_u16: Port::new(base_address + DATA),
             page0: Page0::new(base_address),
             page1: Page1::new(base_address),
         }
@@ -667,6 +671,19 @@ impl Ne2000 {
             for &data in packet {
                 data_port.write(data);
             }
+
+            /*let data_port_u16 = &mut self.registers.data_port_u16;
+            // Write data in 16-bit words
+            for chunk in packet.chunks_exact(2) {
+                let word = u16::from_le_bytes([chunk[0], chunk[1]]);
+                data_port_u16.write(word);
+            }
+            // Handle leftover byte if packet length is odd
+            if let Some(&last_byte) = packet.chunks_exact(2).remainder().first() {
+                // use bytewise dataport
+                let mut byte_port = self.registers.data_port;
+                byte_port.write(last_byte);
+            }*/
 
             //==== STEP 7 ====//
             // Poll ISR until remote DMA Bit is set
@@ -1203,8 +1220,16 @@ impl InterruptHandler for Ne2000InterruptHandler {
 
         // Packet Reception Flag set (PRX) ? (Packet received?)
         if status.contains(InterruptStatusRegister::ISR_PRX) {
+            // Note on the order :
+            // First ack then process
+            // Problem: When processing takes time, new packets (and therefore new interrupts) may appear.
+            // Since the interrupt flag isn't cleared until after processing, the hardware may not raise
+            // another interrupt for these new arrivals—leaving them unhandled until much later (or lost entirely).
             // reset prx bit in isr
+            // this bug existed in the linux driver implementation
+            // see : https://www.os2museum.com/wp/was-the-ne2000-really-that-bad/?utm_source=chatgpt.com
             unsafe {
+                // acknowledge the interrupt
                 self.device
                     .registers
                     .isr_port
@@ -1223,6 +1248,7 @@ impl InterruptHandler for Ne2000InterruptHandler {
         if status.contains(InterruptStatusRegister::ISR_PTX) {
             // reset ptx bit in isr
             unsafe {
+                // acknowledge the interrupt
                 self.device
                     .registers
                     .isr_port

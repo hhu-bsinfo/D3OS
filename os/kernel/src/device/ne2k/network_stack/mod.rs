@@ -64,6 +64,15 @@ const BUFFER_PAGES: usize = (BUFFER_SIZE + NE_PAGE_SIZE - 1) / NE_PAGE_SIZE; // 
 // size of the actual buffer
 const TOTAL_BUFFER_BYTES: usize = BUFFER_PAGES * NE_PAGE_SIZE; // = 1536
 
+/*const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
+const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
+    BUFFER_SIZE / PAGE_SIZE
+} else {
+    BUFFER_SIZE / PAGE_SIZE + 1
+};
+const RECV_QUEUE_CAP: usize = 16;
+*/
+
 // => (16 KiB + 4 KiB -1)/4 KiB = 4 pages
 //const FRAME_PAGES: usize = (BUFFER_RING_BYTES + PAGE_SIZE - 1) / PAGE_SIZE;
 
@@ -320,7 +329,7 @@ impl phy::Device for Ne2000 {
         // see: https://en.wikipedia.org/wiki/Ethernet_frame
         caps.max_transmission_unit = TOTAL_BUFFER_BYTES;
         //max_burst_size = only send one packet at a time
-        //caps.max_burst_size = Some(1);
+        //caps.max_burst_size = Some(100);
         caps.max_burst_size = None;
         // medium = send packet over Ethernet
         caps.medium = Medium::Ethernet;

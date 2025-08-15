@@ -57,17 +57,18 @@ seconds_passed = int(time.time())
 #print("\n\n 2. Server received: ", data.decode('utf-8'), "\n\n")
 while True:
     # extract data payload and address from where the packet was sent
-    try:
-        data, address = socket_handle.recvfrom(buffer_size) 
-    #if data:  # If we got a packet
-    except OSError as e:
-        print(f"nettest: Failed to receive echo request! ({e})")
-        break
+    #try:
+    data, address = socket_handle.recvfrom(buffer_size) 
+    if data:
+        packets_received += 1
+        # If we got a packet
+    #except OSError as e:
+    #    print(f"nettest: Failed to receive echo request! ({e})")
+    #    break
     
     if packets_received == 2000:
         break
     
-    packets_received += 1
     bytes_received_in_interval = bytes_received_in_interval + len(data)
     bytes_received_total += len(data)
 
