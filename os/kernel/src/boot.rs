@@ -56,6 +56,19 @@ unsafe extern "C" {
     static ___KERNEL_DATA_END__: c_void; // end address of OS image
 }
 
+macro_rules! mk_vfs_dir {
+    ($path:expr) => {
+        naming::api::mkdir($path).expect(concat!("Failed to create ", $path));
+    };
+}
+
+macro_rules! create_vfs_file {
+    ($path:expr) => {
+            let rom = naming::api::open($path, OpenOptions::CREATE | OpenOptions::READWRITE).expect(concat!("Failed to create ", $path));
+            naming::api::write(rom, include_bytes!(concat!("../../../vfs", $path))).expect(concat!("Failed to write to ", $path));
+    };
+}
+
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \
 ///   and `multiboot2_addr` is the address of multiboot2 info records
@@ -294,13 +307,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Init naming service
     naming::api::init();
 
-    naming::api::mkdir("/usr").expect("Failed to create /usr");
-    naming::api::mkdir("/usr/roms").expect("Failed to create /usr/roms");
-    let rom = naming::api::open(
-        "/usr/roms/2048.gb", OpenOptions::CREATE | OpenOptions::READWRITE
-    ).expect("Failed to create /usr/roms/2048.gb");
-    naming::api::write(rom, include_bytes!("../../../vfs/usr/roms/2048.gb"))
-        .expect("Failed to write to /usr/roms/2048.gb");
+    mk_vfs_dir!("/usr");
+    mk_vfs_dir!("/usr/roms");
+    create_vfs_file!("/usr/roms/2048.gb");
 
     // Load initial ramdisk
     init_initrd(initrd_tag);

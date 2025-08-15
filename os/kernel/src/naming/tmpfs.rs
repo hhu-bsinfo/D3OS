@@ -151,24 +151,24 @@ impl fmt::Debug for Dir {
 
 struct File {
     data: RwLock<Vec<u8>>,
-    stat: Stat,
+    stat: RwLock<Stat>
 }
 
 impl File {
     pub fn new() -> File {
         File {
             data: RwLock::new(Vec::new()),
-            stat: Stat {
+            stat: RwLock::new(Stat {
                 mode: Mode::new(0),
                 ..Stat::zeroed()
-            },
+            })
         }
     }
 }
 
 impl FileObject for File {
     fn stat(&self) -> Result<Stat, Errno> {
-        Ok(self.stat)
+        Ok(*self.stat.read())
     }
 
     fn read(&self, buf: &mut [u8], offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
@@ -190,7 +190,10 @@ impl FileObject for File {
         let mut data = self.data.write();
 
         if offset + buf.len() > data.len() {
-            data.resize(offset + buf.len(), 0);
+            let mut stat = self.stat.write();
+            stat.size = offset + buf.len();
+
+            data.resize(stat.size, 0);
         }
 
         data[offset..offset + buf.len()].clone_from_slice(buf);

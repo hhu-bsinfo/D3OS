@@ -17,7 +17,7 @@ use ::time::{date, systime};
 use graphic::{color, map_framebuffer, FramebufferInfo};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, LFB};
 use libc::time::time::tm;
-use naming::shared_types::OpenOptions;
+use naming::shared_types::{OpenOptions, SeekOrigin};
 use terminal::{print, println};
 
 unsafe extern "C" {
@@ -124,9 +124,6 @@ const GB_SCREEN_RES: (u32, u32) = (160, 144);
 /// The Game Boy screen is rendered using this scale factor.
 const SCALE: u32 = 2;
 
-/// The maximum size a Game Boy rom can have.
-const MAX_ROM_SIZE: usize = 1048576; // 1 MiB
-
 /// The color palette used for rendering.
 /// The Game Boy supports 4 shades of gray, represented as 32-bit ARGB colors in this array.
 static PALETTE: &[u32] = &[
@@ -202,11 +199,14 @@ pub unsafe extern "C" fn lcd_draw_line(_gb: *mut c_void, pixels: *const u8, line
     }
 }
 
+/// Read the ROM file from the specified path and load it into the `ROM` buffer.
 fn read_rom(path: &str) {
     let file = naming::open(&path, OpenOptions::READONLY).expect("Failed to open ROM file");
+    let file_size = naming::seek(file, 0, SeekOrigin::End).expect("Failed to get ROM file size");
+    naming::seek(file, 0, SeekOrigin::Start).expect("Failed to get ROM file offset");
 
     let mut rom = ROM.write();
-    for _ in 0..MAX_ROM_SIZE { // 1 MiB
+    for _ in 0..file_size {
         rom.push(0)
     }
 
