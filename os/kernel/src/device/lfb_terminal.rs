@@ -143,24 +143,21 @@ unsafe impl Sync for LFBTerminal {}
 
 impl OutputStream for LFBTerminal {
     fn write_byte(&self, b: u8) {
-        let parser = self.parser.lock().clone();
+        let parser = self.parser.lock();
         // advance() passes a mutable terminal reference to methods in 'Perform' trait,
         // but for LFBTerminal, none of these methods actually need a mutable reference,
         // so it is safe to just construct a mutable reference here.
         unsafe { parser.borrow_mut().advance(ptr::from_ref(self).cast_mut().as_mut().unwrap(), b); }
-        self.parser.lock().swap(&parser);
     }
 
     fn write_str(&self, string: &str) {
-        let parser = self.parser.lock().clone();
+        let parser = self.parser.lock();
         for b in string.bytes() {
             // advance() passes a mutable terminal reference to methods in 'Perform' trait,
             // but for LFBTerminal, none of these methods actually need a mutable reference,
             // so it is safe to just construct a mutable reference here.
             unsafe { parser.borrow_mut().advance(ptr::from_ref(self).cast_mut().as_mut().unwrap(), b); }
         }
-
-        self.parser.lock().swap(&parser);
     }
 }
 
