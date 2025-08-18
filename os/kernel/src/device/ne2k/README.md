@@ -1,12 +1,13 @@
+# NE2000 Network Card Driver for D3OS
+
 +-+-+-+-+-+-+
 |N|e|2|0|0|0|
 +-+-+-+-+-+-+
 
-# NE2000 Network Card Driver for D3OS
-
 ## TODO:
 
 - [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
+- [ ] reread fifo breq underrun, overrun
 - [ ] check the ne2000.cpp impl
 - [x] rewrite the call for receive and overflow with AtomicBool values
 - [ ] check overwrite method

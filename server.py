@@ -13,6 +13,14 @@ from datetime import datetime, timedelta
 import time
 
 
+
+def kb_bar(kb, scale=200):  # 200 KB per block (tweak)
+    blocks = int(max(1, kb) / scale)
+    return "█" * min(blocks, 60)  # cap width
+
+
+
+
 packet_count = 0
 #buffer size 
 buffer_size = 4096000
@@ -73,8 +81,11 @@ while True:
     bytes_received_total += len(data)
 
     while seconds_passed < int(time.time()):
+        kb = bytes_received_in_interval / 1000
         # One or more whole seconds have elapsed; print for each missed second.
-        print(f"{interval_counter}-{interval_counter + 1}:    {bytes_received_in_interval / 1000:.0f} KB/s", flush=True)
+        #print(f"{interval_counter}-{interval_counter + 1}:    {bytes_received_in_interval / 1000:.0f} KB/s", flush=True)
+        print(f"{interval_counter:>3}-{interval_counter + 1:<3}: "
+        f"{kb:>7.0f} KB/s  {kb_bar(kb)}", flush=True)
         interval_counter += 1
         # Reset interval bytes *after* reporting
         bytes_received_in_interval = 0
@@ -105,7 +116,6 @@ print(f"duration : {duration_s}")
 print(f"Average throughput:     {avg_kbps:.1f} KB/s")
 #print(f"Packet #{packet_count} from {address}: {data.decode(errors='ignore')}")
 print(f"------------------------------------------------------------------------")
-
 
 
 

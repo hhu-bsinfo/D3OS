@@ -7,11 +7,6 @@
 // =============================================================================
 //
 // NOTES:
-//
-//
-// =============================================================================
-//
-//
 // =============================================================================
 //& borrowing the Struct Ne2000
 
@@ -94,33 +89,40 @@ const RECV_QUEUE_CAP: usize = 16;
 
 // =============================================================================
 // ==== STRUCTS
-// ======|> pub struct Ne2000TxToken<'a>
-// ======|> pub struct Ne2000RxToken<'a>
-// ======|> pub struct PacketAllocator
-// ======|> pub struct PacketAllocator;
 // =============================================================================
 
-// closure that, when run,
-// writes whatever bytes are sent onto the link
-pub struct Ne2000TxToken<'a> {
+// =============================================================================
+// RxToken and TxToken
+// - tokens are types that allow to receive/send a single packet,
+// =============================================================================
+
+// =============================================================================
+// Transmit Token for the driver
+// - device: points to the ne2000 struct,
+// =============================================================================
+pub struct Ne2kTxToken<'a> {
     device: &'a mut Ne2000,
 }
-// Receive Token for the driver, points to the
-// ne2000 struct,
-// tokens are types that allow to receive/send a single packet,
-// receive and transmit construct the tokens only
-// real sending, tranmitting is done by the consume
-pub struct Ne2000RxToken<'a> {
+// =============================================================================
+// Receive Token for the driver
+// =============================================================================
+// - device: points to the ne2000 struct,
+// - buffer: contains the payload of the received packet
+// =============================================================================
+pub struct Ne2kRxToken<'a> {
     buffer: Vec<u8, PacketAllocator>,
     device: &'a Ne2000,
 }
 
+// =============================================================================
+// PacketAllocator
+// =============================================================================
 // allocate blocks of data
 // Ne2000 uses buffer ring,
-// packets can be overwritten by new incoming packets once
-// the buffer is full
-// driver allocates memory in RAM to copy the packet there
-// and free the buffer on NE2000
+// packets can be overwritten by new incoming packets once the buffer is full
+// driver allocates memory in RAM to copy the packet there and frees the buffer on NE2000
+// =============================================================================
+
 #[derive(Default)]
 pub struct PacketAllocator;
 
@@ -128,20 +130,29 @@ pub struct PacketAllocator;
 // ==== IMPLEMENTATIONS
 // =============================================================================
 
+// =============================================================================
+// TxToken impl
+// =============================================================================
 // implementation is orientated on the rtl8139.rs module
-// generate new transmission token
-// a token to send a single network packet
+// generate new transmission token, a token to send a single network packet
 // see: https://docs.rs/smoltcp/latest/smoltcp/phy/trait.TxToken.html
+// =============================================================================
 
-impl<'a> Ne2000TxToken<'a> {
+impl<'a> Ne2kTxToken<'a> {
     pub fn new(device: &'a mut Ne2000) -> Self {
         Self { device }
     }
 }
 
+// =============================================================================
+// phy::TxToken impl
+// =============================================================================
+//
 // implementation is orientated on the rtl8139.rs module
 // len: size of packet
-impl<'a> phy::TxToken for Ne2000TxToken<'a> {
+// consume function()
+// =============================================================================
+impl<'a> phy::TxToken for Ne2kTxToken<'a> {
     // consumes the token to send a single network packet
     // constructs buffer (size len) -> calls passed closure f
     // in the closure a valid network packet should be constructed
@@ -198,6 +209,7 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
             slice::from_raw_parts_mut(phys_buffer.start.start_address().as_u64() as *mut u8, len)
         };
         // closure builds the ethernet frame
+        // closure that, when run, writes whatever bytes are sent onto the link
         let result = f(buffer);
 
         // Send packet
@@ -208,6 +220,13 @@ impl<'a> phy::TxToken for Ne2000TxToken<'a> {
         result
     }
 }
+
+// =============================================================================
+// PacketAllocator impl
+// =============================================================================
+// allocate memory for the buffer of the receive token
+// and functions for deallocation
+// =============================================================================
 
 unsafe impl Allocator for PacketAllocator {
     // from rtl8139.rs
@@ -242,13 +261,21 @@ unsafe impl Allocator for PacketAllocator {
     }
 }
 
-impl<'a> Ne2000RxToken<'a> {
+impl<'a> Ne2kRxToken<'a> {
     pub fn new(buffer: Vec<u8, PacketAllocator>, device: &'a Ne2000) -> Self {
         Self { buffer, device }
     }
 }
 
-impl<'a> phy::RxToken for Ne2000RxToken<'a> {
+// =============================================================================
+// phy::RxToken impl
+// =============================================================================
+// usage:
+// - implement the consume() function for the receive token
+// - returns the payload of the received packet, stored in buffer
+// - used buffer gets enqueued for storing new packets
+// =============================================================================
+impl<'a> phy::RxToken for Ne2kRxToken<'a> {
     fn consume<R, F>(mut self, f: F) -> R
     where
         F: FnOnce(&[u8]) -> R,
@@ -270,26 +297,41 @@ impl<'a> phy::RxToken for Ne2000RxToken<'a> {
     }
 }
 
+// =============================================================================
+// Device impl
+// =============================================================================
+// An interface for sending and receiving raw network frames
+//
+// called, when polling for new packets in network/mod.rs
+// From https://docs.rs/smoltcp/latest/smoltcp/phy/trait.Device.html
+// uses tokens, which are types that allow to receive/transmit a single packet
+// receive() and transmit() construct the tokens only, real sending, tranmitting
+// is done by the consume() functions of the Tokens
+// =============================================================================
 impl phy::Device for Ne2000 {
     type RxToken<'a>
-        = Ne2000RxToken<'a>
+        = Ne2kRxToken<'a>
     where
         Self: 'a;
     type TxToken<'a>
-        = Ne2000TxToken<'a>
+        = Ne2kTxToken<'a>
     where
         Self: 'a;
 
-    // called by smoltcp, when polling for new packets in network/mod.rs in poll_ne2k
-    // From https://docs.rs/smoltcp/latest/smoltcp/phy/trait.Device.html
+    // =============================================================================
+    // receive function
+    // =============================================================================
+    // creates a new RxToken and calls it's consume() function
+    //
     // The additional transmit token makes it possible to generate a reply packet
     // based on the contents of the received packet. For example, this makes it
     // possible to handle arbitrarily large ICMP echo (“ping”) requests,
     // where the all received bytes need to be sent back, without heap allocation.
+    // =============================================================================
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let device = unsafe { ptr::from_ref(self).as_ref()? };
         //dequeue an empty buffer from receive_messages, which gets assigned
-        // to the Ne2000RxToken for loading the packet payload
+        // to the Ne2000RxToken for getting the packet payload
         // 0 is the receiver of the queue
         // if a packet is enqueued, it returns Ok(rec_buf)
         // and tries to pop it off the receive_messages queue
@@ -298,30 +340,32 @@ impl phy::Device for Ne2000 {
         // with a reference to the NIC so that, when smoltcp
         // finishes with the frame, the token can safely return the buffer to the driver.
         match self.receive_messages.0.try_dequeue() {
-            Ok(recv_buf) => Some((
-                Ne2000RxToken::new(recv_buf, device),
-                Ne2000TxToken::new(self),
-            )),
+            Ok(recv_buf) => Some((Ne2kRxToken::new(recv_buf, device), Ne2kTxToken::new(self))),
             // no packet has been received and is waiting in the queue
             Err(_) => None,
         }
     }
 
-    // Converts &mut self to &Ne2000 safely.
-    // Needed because RxToken and TxToken store a shared reference to the driver (not &mut self). See RTL8139 impl
+    // =============================================================================
+    // transmit function
+    // =============================================================================
+    // creates a new TxToken and calls it's consume function
     // Returns a TxToken, which accepts the packet contents
+    // Converts &mut self to &Ne2000 safely.
+    // Needed because RxToken and TxToken store a shared reference to the driver
+    // (not &mut self). See RTL8139 impl
+    // =============================================================================
     fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
         //let device = unsafe { ptr::from_ref(self).as_ref()? };
-        //info!("==> transmit() requested by smoltcp!");
-        //if self.ready2transmit() {
-        //    Some(Ne2000TxToken::new(self))
-        //} else {
-        //    None
-        //}
-        Some(Ne2000TxToken::new(self))
+        Some(Ne2kTxToken::new(self))
     }
 
+    // =============================================================================
+    // device capabilities function
+    // =============================================================================
+    //
     // define what the device supports
+    // =============================================================================
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
         // max_transmission_unit = define max. size of a packet
@@ -330,8 +374,11 @@ impl phy::Device for Ne2000 {
         caps.max_transmission_unit = TOTAL_BUFFER_BYTES;
         //max_burst_size = only send one packet at a time
         //caps.max_burst_size = Some(100);
+        // None = no limit on the number of packets send
+        // Note: changing this value does not increase the speed of the Ne2000
+        // card (in qemu)
         caps.max_burst_size = None;
-        // medium = send packet over Ethernet
+        // medium = send the packet over Ethernet
         caps.medium = Medium::Ethernet;
 
         // return capabilities
