@@ -48,7 +48,6 @@ pub fn alloc_kernel_stack(process: &Arc<Process>, pid: usize, tid: usize, tag_st
             StackAllocator::new(
                 pid,
                 tid,
-                true,
                 start_page.start.start_address().as_u64() as usize,
                 start_page.end.start_address().as_u64() as usize,
             ),
@@ -68,7 +67,7 @@ pub fn alloc_user_stack(pid: usize, tid: usize, start_addr: usize, size_in_bytes
             start_addr as *mut u64,
             size_in_bytes / 8,
             size_in_bytes / 8,
-            StackAllocator::new(pid, tid, false, start_addr, start_addr + size_in_bytes),
+            StackAllocator::new(pid, tid, start_addr, start_addr + size_in_bytes),
         )
     }
 }
@@ -76,18 +75,16 @@ pub fn alloc_user_stack(pid: usize, tid: usize, start_addr: usize, size_in_bytes
 pub struct StackAllocator {
     pid: usize, // process id the stack belongs to
     tid: usize, // thread id the stack belongs to
-    kernel: bool,
     start_addr: AtomicUsize, // start address of the first page used for the stack
     end_addr: AtomicUsize,   // end address of the last page used for the stack
 }
 
 impl StackAllocator {
-    pub fn new(pid: usize, tid: usize, kernel: bool, start_addr: usize, end_addr: usize) -> Self {
+    pub fn new(pid: usize, tid: usize, start_addr: usize, end_addr: usize) -> Self {
         // Ensure that start_addr and end_addr are page-aligned
         StackAllocator {
             pid,
             tid,
-            kernel,
             start_addr: AtomicUsize::new(start_addr),
             end_addr: AtomicUsize::new(end_addr),
         }

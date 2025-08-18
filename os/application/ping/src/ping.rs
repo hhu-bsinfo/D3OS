@@ -4,8 +4,6 @@
 #![no_std]
 extern crate alloc;
 
-use core::net::IpAddr;
-
 use alloc::{string::String, vec};
 use concurrent::thread::sleep;
 use network::{resolve_hostname, IcmpSocket};

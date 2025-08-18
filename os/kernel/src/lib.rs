@@ -51,7 +51,6 @@ use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::tss::TaskStateSegment;
-use x86_64::structures::paging::Size4KiB;
 
 extern crate alloc;
 
@@ -214,24 +213,13 @@ pub fn get_initrd_frames(module: &ModuleTag) -> PhysFrameRange {
 
 pub fn init_initrd(module: &ModuleTag) {
     INIT_RAMDISK.call_once(|| {
-        let initrd_frame: PhysFrameRange<Size4KiB> = PhysFrameRange {
-            start: PhysFrame::from_start_address(PhysAddr::new(module.start_address() as u64))
-                .expect("Initial ramdisk is not page aligned"),
-            end: PhysFrame::from_start_address(
-                PhysAddr::new(module.end_address() as u64).align_up(PAGE_SIZE as u64),
-            )
-            .unwrap(),
-        };
-/*        unsafe {
-            memory::frames::boot_reserve(initrd_frames);
-        }
-*/
         let initrd_bytes = unsafe {
             core::slice::from_raw_parts(
                 module.start_address() as *const u8,
                 (module.end_address() - module.start_address()) as usize,
             )
         };
+
         TarArchiveRef::new(initrd_bytes)
             .expect("Failed to create TarArchiveRef from Multiboot2 module")
     });

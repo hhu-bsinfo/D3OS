@@ -127,7 +127,7 @@ cwd = "${INITRD_DIRECTORY}"
 command = "${TAR}"
 args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "bin/", "usr/" ]
 dependencies = [ "link-members" ]
-condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
+condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/**/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
 
 [tasks.create-hdd-fill-img]
 cwd = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}"

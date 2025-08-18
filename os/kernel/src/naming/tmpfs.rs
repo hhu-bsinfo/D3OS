@@ -268,7 +268,7 @@ impl FileObject for StaticFile {
         Ok(self.stat)
     }
 
-    fn read(&self, buf: &mut [u8], offset: usize, options: OpenOptions) -> Result<usize, Errno> {
+    fn read(&self, buf: &mut [u8], offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
         if offset > self.data.len() {
             return Ok(0);
         }

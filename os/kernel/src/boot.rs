@@ -97,7 +97,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     );
 
     // Allocate frames for the kernel heap using the new way
-    let res = dram::alloc(consts::KERNEL_HEAP_PAGES as u64).expect("Failed to allocate kernel heap frames!");
+    dram::alloc(consts::KERNEL_HEAP_PAGES as u64).expect("Failed to allocate kernel heap frames!");
     dram::dump();
     debug!("Old page frame allocator:\n{}", memory::frames::dump());
 

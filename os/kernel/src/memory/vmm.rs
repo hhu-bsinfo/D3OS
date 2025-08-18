@@ -177,7 +177,7 @@ impl VirtualAddressSpace {
 
     /// Map `frame_range` for the full page range of the given `vma`. \
     /// The mapping will use the given `flags` for the page table entries.
-    pub fn map_pfr_for_vma(&self, vma: &VirtualMemoryArea, frame_range: PhysFrameRange, mut flags: PageTableFlags) -> Result<(), i64> {
+    pub fn map_pfr_for_vma(&self, vma: &VirtualMemoryArea, frame_range: PhysFrameRange, flags: PageTableFlags) -> Result<(), i64> {
         self.map_pfr_for_partial_vma(vma, frame_range, vma.range, flags)
     }
 

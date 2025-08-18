@@ -46,6 +46,7 @@ pub trait DirectoryObject: Debug + Send + Sync {
     fn lookup(&self, name: &str) -> Result<NamedObject, Errno>;
     fn create_file(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno>;
     fn create_dir(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno>;
+    #[allow(dead_code)]
     fn stat(&self) -> Result<Stat, Errno>;
     fn readdir(&self, index: usize) -> Result<Option<DirEntry>, Errno>;
 }
@@ -75,6 +76,7 @@ impl NamedObject {
     }
 
     /// Returns `true` if it's a file.
+    #[allow(dead_code)]
     pub fn is_file(&self) -> bool {
         matches!(self, NamedObject::FileObject(_))
     }

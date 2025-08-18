@@ -158,7 +158,7 @@ pub fn reserved(reserve_region: PhysFrameRange) {
         panic!("DRAM regions have already been finalized, cannot insert reserved frames");
     }
 
-    let mut reserve_region_start = reserve_region.start.start_address().as_u64();
+    let reserve_region_start = reserve_region.start.start_address().as_u64();
     let reserve_region_end = reserve_region.end.start_address().as_u64();
 
     if reserve_region_start % PAGE_SIZE as u64 != 0 || reserve_region_end % PAGE_SIZE as u64 != 0 {
@@ -302,7 +302,7 @@ pub fn dump() {
         info!("Block: [Start: ]{:#x} - {:#x}], Frame count: [{:?}]", regions[i], regions[i+1], num_frames);
     }
     info!("Reserved frame regions:");
-    let mut regions = RESERVED_FRAME_REGIONS.lock();
+    let regions = RESERVED_FRAME_REGIONS.lock();
     for i in (0..NEXT_FREE_RESERVED_FRAME_INDEX.load(Ordering::SeqCst)).step_by(2) {
         let num_frames = (regions[i + 1] - regions[i]) / PAGE_SIZE as u64;
         info!("Block: [Start: ]{:#x} - {:#x}], Frame count: [{:?}]", regions[i], regions[i+1], num_frames);
