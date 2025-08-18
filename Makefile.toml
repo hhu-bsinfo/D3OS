@@ -119,13 +119,13 @@ run_task = { name = "clippy", fork = true }
 
 [tasks.create-initrd-directory]
 command = "mkdir"
-args = [ "-p", "${INITRD_DIRECTORY}" ]
-condition = { files_not_exist = [ "${INITRD_DIRECTORY}" ] }
+args = [ "-p", "${INITRD_DIRECTORY}", "${INITRD_DIRECTORY}/bin" ]
+condition = { files_not_exist = [ "${INITRD_DIRECTORY}/bin" ] }
 
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
 command = "${TAR}"
-args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "about", "hello", "helloc", "shell", "uptime", "date", "ntest", "heaptest", "threadtest", "ls", "nc", "ping", "ip", "peanut-gb" ]
+args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "bin/", "usr/" ]
 dependencies = [ "link-members" ]
 condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
 
@@ -185,7 +185,7 @@ args = [ "-rf",
     "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img",
     "${BOOTLOADER_DIRECTORY}/kernel.elf",
     "${BOOTLOADER_DIRECTORY}/initrd.tar",
-    "${INITRD_DIRECTORY}",
+    "${INITRD_DIRECTORY}/bin",
     "RELEASEX64_OVMF.fd",
     "towbootctl" ]
 

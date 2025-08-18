@@ -23,7 +23,7 @@ LIBRARY_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library"
 LINKER_FILE = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/application/link.ld"
 RUST_OBJECT = "${BUILD_DIRECTORY}/libpeanut_gb.a"
 C_OBJECT = "${BUILD_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}.o"
-APPLICATION = "${INITRD_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}"
+APPLICATION = "${INITRD_DIRECTORY}/bin/${CARGO_MAKE_PROJECT_NAME}"
 CC = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gcc", mapping = { "macos" = "x86_64-elf-gcc" } }
 
 # Build tasks
@@ -64,7 +64,7 @@ condition = { files_modified = { input = [
 command = "${LINKER}"
 args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${APPLICATION}", "${C_OBJECT}", "${RUST_OBJECT}" ]
 dependencies = [ "compile", "compile-c" ]
-condition = { files_modified = { input = [ "${C_OBJECT}", "${RUST_OBJECT}", "${LINKER_FILE}" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd/${CARGO_MAKE_PROJECT_NAME}" ] } }
+condition = { files_modified = { input = [ "${C_OBJECT}", "${RUST_OBJECT}", "${LINKER_FILE}" ], output = [ "${APPLICATION}" ] } }
 
 [tasks.check]
 command = "cargo"

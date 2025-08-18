@@ -87,12 +87,12 @@ enum JoypadButton {
 }
 
 /// Error codes used in `gb_error`.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum GbError {
-    GbUnknownError = 0,
-    GbInvalidOpcode = 1,
-    GbInvalidRead = 2,
-    GbInvalidWrite = 3,
+    UnknownError = 0,
+    InvalidOpcode = 1,
+    InvalidRead = 2,
+    InvalidWrite = 3,
 }
 
 impl TryFrom<c_int> for GbError {
@@ -100,10 +100,33 @@ impl TryFrom<c_int> for GbError {
 
     fn try_from(value: c_int) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(GbError::GbUnknownError),
-            1 => Ok(GbError::GbInvalidOpcode),
-            2 => Ok(GbError::GbInvalidRead),
-            3 => Ok(GbError::GbInvalidWrite),
+            0 => Ok(GbError::UnknownError),
+            1 => Ok(GbError::InvalidOpcode),
+            2 => Ok(GbError::InvalidRead),
+            3 => Ok(GbError::InvalidWrite),
+            _ => Err(())
+        }
+    }
+}
+
+/// Error codes used in `gb_init`.
+#[derive(Debug, PartialEq)]
+enum GbInitError {
+    NoError = 0,
+    CartridgeUnsupported,
+    InvalidChecksum,
+    UnknownError = 0xff
+}
+
+impl TryFrom<c_int> for GbInitError {
+    type Error = ();
+
+    fn try_from(value: c_int) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(GbInitError::NoError),
+            1 => Ok(GbInitError::CartridgeUnsupported),
+            2 => Ok(GbInitError::InvalidChecksum),
+            3 => Ok(GbInitError::UnknownError),
             _ => Err(())
         }
     }
@@ -170,7 +193,7 @@ pub unsafe extern "C" fn gb_cart_ram_write(_gb: *mut c_void, addr: u32, val: u8)
 /// Handle emulation errors.
 /// This is a callback function for the PeanutGB emulator.
 pub unsafe extern "C" fn gb_error(_gb: *mut c_void, error: c_int, addr: u16) {
-    let error = GbError::try_from(error).unwrap_or(GbError::GbUnknownError);
+    let error = GbError::try_from(error).unwrap_or(GbError::UnknownError);
     panic!("PeanutGB error [{:?}] at address [0x{:0>4x}]!", error, addr);
 }
 
@@ -233,8 +256,9 @@ pub fn main() {
     // Initialize the PeanutGB emulator and get a pointer to the joypad state
     unsafe {
         let init_result = gb_init(gb_ptr, gb_rom_read, gb_cart_ram_read, gb_cart_ram_write, gb_error, ptr::null());
-        if init_result != 0 {
-            panic!("Failed to initialize PeanutGB");
+        let init_result = GbInitError::try_from(init_result).unwrap_or(GbInitError::UnknownError);
+        if init_result != GbInitError::NoError {
+            panic!("Failed to initialize PeanutGB (Error: {:?})", init_result);
         }
 
         gb_init_lcd(gb_ptr, lcd_draw_line as *const c_void);

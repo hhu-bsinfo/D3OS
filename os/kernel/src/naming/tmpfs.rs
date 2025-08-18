@@ -33,11 +33,12 @@ impl TmpFs {
     pub fn create_static_file(&self, path: &str, buffer: &'static [u8]) -> Result<NamedObject, Errno> {
         let mut dir = self.root_dir.as_ref();
 
-        let split = path.rsplit_once("/").unwrap();
-        let name = split.1;
-        let split = split.0.split("/").filter(|s| !s.is_empty());
+        let (path, filename) = match path.rsplit_once("/") {
+            None => ("", path),
+            Some((path, name)) => (path, name),
+        };
 
-        for component in split {
+        for component in path.split("/").filter(|s| !s.is_empty()) {
             let name = component.to_string();
             let new_dir = match dir.lookup(component) {
                 Ok(new_dir) => new_dir,
@@ -48,7 +49,7 @@ impl TmpFs {
             dir = unsafe { (ptr::from_ref(new_dir.as_dir()?.as_ref()) as *const Dir).as_ref().unwrap() };
         }
 
-        dir.create_static_file(name, buffer)
+        dir.create_static_file(filename, buffer)
     }
 }
 

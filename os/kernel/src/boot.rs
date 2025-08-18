@@ -288,13 +288,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         }
     }
 
-    // Init naming service
-    naming::api::init();
-
-    // create_vfs_files();
-
     // Load initial ramdisk
     init_initrd(initrd_tag);
+
+    // Init naming service
+    naming::api::init();
 
     // Create and register the cleanup thread in the scheduler
     // (If the last thread of a process terminates, it cannot delete its own address space)
@@ -310,7 +308,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     scheduler().ready(Thread::load_application(
         initrd()
             .entries()
-            .find(|entry| entry.filename().as_str().unwrap() == "shell")
+            .find(|entry| entry.filename().as_str().unwrap() == "bin/shell")
             .expect("Shell application not available!")
             .data(),
         "shell",

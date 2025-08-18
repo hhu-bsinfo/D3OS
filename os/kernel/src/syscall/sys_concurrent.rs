@@ -6,6 +6,7 @@
    ║ Author: Fabian Ruhland, 30.8.2024, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+use alloc::format;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
 use core::ptr::slice_from_raw_parts;
@@ -56,11 +57,11 @@ pub extern "sysv64" fn sys_thread_exit() -> ! {
     scheduler().exit();
 }
 
-pub unsafe extern "sysv64" fn sys_process_execute_binary(
-    name_buffer: *const u8, name_length: usize, args: *const Vec<&str>,
-) -> isize {
+pub unsafe extern "sysv64" fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize, args: *const Vec<&str>) -> isize {
     let app_name = from_utf8(unsafe { slice_from_raw_parts(name_buffer, name_length).as_ref().unwrap() }).unwrap();
-    match initrd().entries().find(|entry| entry.filename().as_str().unwrap() == app_name) {
+    let path = format!("bin/{}", app_name);
+
+    match initrd().entries().find(|entry| entry.filename().as_str().unwrap() == path) {
         Some(app) => {
             let thread = Thread::load_application(app.data(), app_name, unsafe { args.as_ref().unwrap() });
             scheduler().ready(Arc::clone(&thread));

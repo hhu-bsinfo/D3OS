@@ -17,7 +17,7 @@
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use log::info;
+use log::{info, warn};
 use spin::{Mutex, Once};
 
 use super::traits::FileSystem;
@@ -28,16 +28,7 @@ use super::tmpfs;
 
 use naming::shared_types::{OpenOptions, RawDirent, SeekOrigin};
 use syscall::return_vals::Errno;
-
-macro_rules! create_vfs_file {
-    ($tmpfs:expr, $path:expr) => {
-        let bytes = include_bytes!(concat!(concat!(env!("PWD"), "/vfs"), $path));
-        $tmpfs.create_static_file($path, bytes).expect(concat!("Failed to create static file ", $path));
-    };
-}
-
-// The file has been placed there by the build script
-include!(concat!(env!("OUT_DIR"), "/vfs.rs"));
+use crate::initrd;
 
 // root of naming service
 pub(super) static ROOT: Once<Arc<dyn FileSystem>> = Once::new();
@@ -51,7 +42,12 @@ pub fn init() {
     ROOT.call_once(|| {
         let tmpfs = tmpfs::TmpFs::new();
 
-        create_all_vfs_files!(tmpfs);
+        for entry in initrd().entries() {
+            let res = tmpfs.create_static_file(entry.filename().as_str().unwrap(), entry.data());
+            if res.is_err() {
+                warn!("Failed to create static file in tmpfs: {}", entry.filename().as_str().unwrap());
+            }
+        }
 
         Arc::new(tmpfs)
     });
