@@ -28,6 +28,7 @@ pub enum Errno {
     EBUSY      = -12, // Device busy
     ENOTSUP    = -13, // Operation not supported
     ECONNRESET = -14, // Connection reset by peer
+    ERDONLY    = -15, // Read-only file system
 }
 
 

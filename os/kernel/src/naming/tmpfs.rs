@@ -10,9 +10,9 @@ use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use spin::rwlock::RwLock;
-use core::fmt;
+use core::{fmt, ptr};
+use core::fmt::{Debug, Formatter};
 use core::result::Result;
-
 use super::stat::Mode;
 use super::stat::Stat;
 use super::traits::{DirectoryObject, FileObject, FileSystem, NamedObject};
@@ -28,6 +28,27 @@ impl TmpFs {
         TmpFs {
             root_dir: Arc::new(Dir::new()),
         }
+    }
+
+    pub fn create_static_file(&self, path: &str, buffer: &'static [u8]) -> Result<NamedObject, Errno> {
+        let mut dir = self.root_dir.as_ref();
+
+        let split = path.rsplit_once("/").unwrap();
+        let name = split.1;
+        let split = split.0.split("/").filter(|s| !s.is_empty());
+
+        for component in split {
+            let name = component.to_string();
+            let new_dir = match dir.lookup(component) {
+                Ok(new_dir) => new_dir,
+                Err(Errno::ENOENT) => dir.create_dir(name.as_str(), Mode::new(0)).expect("Failed to create directory"),
+                Err(_) => panic!("Failed to lookup or create directory: {}", component),
+            };
+
+            dir = unsafe { (ptr::from_ref(new_dir.as_dir()?.as_ref()) as *const Dir).as_ref().unwrap() };
+        }
+
+        dir.create_static_file(name, buffer)
     }
 }
 
@@ -58,6 +79,22 @@ impl Dir {
                 ..Stat::zeroed()
             },
         }))
+    }
+
+    pub fn create_static_file(&self, name: &str, buffer: &'static [u8]) -> Result<NamedObject, Errno> {
+        let mut dir_lock = self.0.write();
+
+        // Check if the file already exists in the directory
+        if dir_lock.files.iter().any(|(file_name, _)| file_name == name) {
+            return Err(Errno::EEXIST); // Return an error if the file exists
+        }
+
+        // Create a new file and add it to the directory
+        let inode = Arc::new(StaticFile::new(buffer));
+        dir_lock.files.push((name.to_string(), TmpFsINode::File(inode.clone())));
+
+        // Return the created file as a NamedObject
+        Ok((inode as Arc<dyn FileObject>).into())
     }
 }
 
@@ -182,6 +219,7 @@ impl FileObject for File {
         } else {
             buf.len()
         };
+
         buf[0..len].clone_from_slice(&data[offset..offset + len]);
         Ok(len)
     }
@@ -201,8 +239,56 @@ impl FileObject for File {
     }
 }
 
-impl fmt::Debug for File {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for File {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("TmpFsFile").finish()
+    }
+}
+
+struct StaticFile {
+    data: &'static [u8],
+    stat: Stat
+}
+
+impl StaticFile {
+    pub fn new(data: &'static [u8]) -> StaticFile {
+        StaticFile {
+            data,
+            stat: Stat {
+                size: data.len(),
+                ..Stat::zeroed()
+            },
+        }
+    }
+}
+
+impl FileObject for StaticFile {
+    fn stat(&self) -> Result<Stat, Errno> {
+        Ok(self.stat)
+    }
+
+    fn read(&self, buf: &mut [u8], offset: usize, options: OpenOptions) -> Result<usize, Errno> {
+        if offset > self.data.len() {
+            return Ok(0);
+        }
+
+        let len = if self.data.len() - offset < buf.len() {
+            self.data.len() - offset
+        } else {
+            buf.len()
+        };
+
+        buf[0..len].clone_from_slice(&self.data[offset..offset + len]);
+        Ok(len)
+    }
+
+    fn write(&self, _buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
+        Err(Errno::ERDONLY)
+    }
+}
+
+impl Debug for StaticFile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TmpFsStaticFile").finish()
     }
 }

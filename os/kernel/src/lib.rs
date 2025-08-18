@@ -12,6 +12,7 @@
 #![feature(fmt_internals)]
 #![feature(abi_x86_interrupt)]
 #![feature(map_try_insert)]
+#![feature(str_split_remainder)]
 #![allow(internal_features)]
 #![no_std]
 
@@ -71,9 +72,6 @@ pub mod built_info {
     // The file has been placed there by the build script
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
-
-// The file has been placed there by the build script
-include!(concat!(env!("OUT_DIR"), "/vfs.rs"));
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {

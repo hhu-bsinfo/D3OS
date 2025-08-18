@@ -29,17 +29,30 @@ use super::tmpfs;
 use naming::shared_types::{OpenOptions, RawDirent, SeekOrigin};
 use syscall::return_vals::Errno;
 
+macro_rules! create_vfs_file {
+    ($tmpfs:expr, $path:expr) => {
+        let bytes = include_bytes!(concat!(concat!(env!("PWD"), "/vfs"), $path));
+        $tmpfs.create_static_file($path, bytes).expect(concat!("Failed to create static file ", $path));
+    };
+}
+
+// The file has been placed there by the build script
+include!(concat!(env!("OUT_DIR"), "/vfs.rs"));
+
 // root of naming service
 pub(super) static ROOT: Once<Arc<dyn FileSystem>> = Once::new();
 
 // current working directory
 static CWD: Mutex<String> = Mutex::new(String::new());
 
-/// Initilize the naming service (must be called once before using it).
+/// Initialize the naming service (must be called once before using it).
 pub fn init() {
     // Initialize ROOT with TmpFs
     ROOT.call_once(|| {
         let tmpfs = tmpfs::TmpFs::new();
+
+        create_all_vfs_files!(tmpfs);
+
         Arc::new(tmpfs)
     });
     open_objects::open_object_table_init();
