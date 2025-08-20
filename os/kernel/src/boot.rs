@@ -7,6 +7,9 @@
    ║ Author: Fabian Ruhland, HHU                                             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+//=================================================================
+// add benchmark functions
+//=================================================================
 use crate::device::ne2k::benchmark;
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
@@ -17,7 +20,9 @@ use crate::memory::nvmem::Nfit;
 use crate::memory::pages::page_table_index;
 use crate::memory::{MemorySpace, PAGE_SIZE, nvmem};
 use crate::network::rtl8139;
+//=================================================================
 // add ne2000 function for retrieving a shared reference of the nic
+//=================================================================
 use crate::network::ne2000;
 use crate::process::thread::Thread;
 use crate::syscall::syscall_dispatcher;
@@ -69,8 +74,10 @@ unsafe extern "C" {
     static ___KERNEL_DATA_END__: u64; // end address of OS image
 }
 
+//===============================================================================================
 // update 15.08.2025: increase heap page size (as suggested by M. Schoettner)
 //const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS (old value)
+//===============================================================================================
 const INIT_HEAP_PAGES: usize = 0x4000; // number of heap pages for booting the OS
 
 /// First Rust function called from assembly code `boot.asm` \
@@ -260,7 +267,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize storage devices
     storage::init();
 
+    //=================================================================
     // Initialize network stack
+    // - starts the init() function in network/mod.rs
+    // - which searches on the pci bus for available devices
+    //=================================================================
     network::init();
 
     // set flag for enabling/disabling network cards at boot
@@ -294,6 +305,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         }
     }
 
+    //=================================================================
+    // Create Network Interface for the Ne2000
+    // and add it to the INTERFACES vector
+    //=================================================================
     if enable_ne2k {
         if let Some(ne2000) = ne2000()
             && qemu_cfg::is_available()
@@ -341,60 +356,29 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             network::add_interface(interface);
         }
     }
-    // send a test datagram (suggested by Michael Schöttner on 27.06.2025)
-    //let datagram = b"Hello from D3OS!\n";
-    // for testing: change tx_buffer size in method open_socket in network/mod.rs ,
-    // to send more packets
-    /*let send_packets = true;
-    //if send_packets {
-    let number_of_packets = 5000;
 
-    let t_socket = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(t_socket, 12345).expect("Failed to bind UDP socket");
-    for i in 0..number_of_packets {
-        //UDP “send” calls take a buffer of raw bytes, not a UTF-8 string.
-        //"Hello from D3OS!" is an &str (UTF-8 text), not a &[u8] byte slice"Hello from D3OS!" is an &str (UTF-8 text), not a &[u8] byte slice
-        //  prefixing with b:creates a byte string literal—i.e. a &[u8]
-        let base = b"Hello from D3OS!";
-        //make a Vec with enough capacity
-        //base + one space + up to 3 digits
-        let mut datagram = Vec::with_capacity(base.len() + 1 + 3);
-
-        //copy in the static message
-        datagram.extend_from_slice(base);
-
-        // add the counter
-        datagram.extend_from_slice(format!(" {}\n", i).as_bytes());
-        datagram.push(b'\n');
-        // send the datagram
-        network::send_datagram(t_socket, Ipv4Address::new(10, 0, 2, 2), 12345, &datagram)
-            .expect("Failed to send UDP datagram");
-        //}
-        //network::close_socket(socket);
-        scheduler().sleep(10);
-    }*/
+    //=================================================================
+    // Initiate Benchmark functions
+    // - call functions for logging statistics about
+    //   sending and receiving packets
+    //=================================================================
 
     //benchmark::send_traffic(20, 1024);
-    //////////////////////////////////////////////////////////////////////////////////////////////
+    //=================================================================
     // spawn the RX thread
-    //////////////////////////////////////////////////////////////////////////////////////////////
+    //=================================================================
     /*scheduler().ready(Thread::new_kernel_thread(
         || benchmark::udp_recv_test(),
         "udp_rx",
     ));*/
 
-    //////////////////////////////////////////////////////////////////////////////////////////////
+    //=================================================================
     // spawn the TX thread
-    //////////////////////////////////////////////////////////////////////////////////////////////
+    //=================================================================
     scheduler().ready(Thread::new_kernel_thread(
         || benchmark::udp_send_test(2000),
         "udp_tx",
     ));
-
-    //scheduler().ready(Thread::new_kernel_thread(
-    //    || benchmark::send_traffic(20, 64),
-    //    "udp_tx",
-    //));
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();

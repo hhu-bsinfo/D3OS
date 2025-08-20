@@ -48,12 +48,11 @@ pub fn udp_recv_test() {
 // old test worked until the TX ring filled, then it paniced the kernel because call .expect("Failed to send UDP datagram").
 // new version doesn’t crash because it handles backpressure (BufferFull) by polling/yielding and retrying instead of panicking.
 pub fn udp_send_test(n: usize) {
-    let port = 12345;
+    let dst_port = 12345;
     let sock = network::open_socket(network::SocketType::Udp);
-    network::bind_udp(sock, port).expect("socket bind failed");
+    network::bind_udp(sock, dst_port).expect("socket bind failed");
 
     let dst_ip = Ipv4Address::new(10, 0, 2, 2);
-    let dst_port = 12345;
     let datagram: &[u8] = b"Hello from D3OS!\n";
 
     for _ in 0..n {
@@ -74,6 +73,23 @@ pub fn udp_send_test(n: usize) {
         // light pacing so the CPU doesn't get hoged
         //scheduler().sleep(10);
     }
+}
+
+pub fn client_send() {
+    // prepare the init message
+    let init_msg = b"Init";
+    info!("Init test connection");
+
+    let dst_ip = Ipv4Address::new(10, 0, 2, 2);
+    let dst_port = 12345;
+
+    let sock = network::open_socket(network::SocketType::Udp);
+    network::bind_udp(sock, dst_port).expect("socket bind failed");
+    // send init message to server
+    network::send_datagram(sock, dst_ip, dst_port, init_msg);
+
+    // wait for reply from server
+    info!("Waiting for Server reply");
 }
 
 /*pub fn send_traffic(timing_interval: u16, packet_length: u16) {

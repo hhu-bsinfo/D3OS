@@ -11,7 +11,7 @@ use core::ptr;
 use core::sync::atomic::Ordering;
 use log::info;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
-use smoltcp::socket::udp;
+use smoltcp::socket::udp::{self, UdpMetadata};
 use smoltcp::time::Instant;
 use smoltcp::wire::Ipv4Address;
 use spin::{Once, RwLock};
@@ -30,8 +30,8 @@ pub enum SocketType {
 pub fn init() {
     SOCKETS.call_once(|| RwLock::new(SocketSet::new(Vec::new())));
 
-    let enable_rtl8139 = false;
-    let enable_ne2k = true;
+    let enable_rtl8139 = true;
+    let enable_ne2k = false;
 
     if enable_rtl8139 {
         let devices = pci_bus().search_by_ids(0x10ec, 0x8139);
@@ -140,26 +140,6 @@ pub fn ne2000() -> Option<Arc<Ne2000>> {
     match NE2000.get() {
         Some(ne2000) => Some(Arc::clone(ne2000)),
         None => None,
-    }
-}
-
-pub fn recv_datagram(
-    handle: SocketHandle,
-    buf: &mut [u8],
-) -> Result<Option<(usize, Ipv4Address, u16)>, udp::RecvError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<udp::Socket>(handle);
-
-    match socket.recv_slice(buf) {
-        Ok((len, meta)) => {
-            // meta: UdpMetadata { endpoint: IpEndpoint { addr: Option<IpAddress>, port: u16 }, ... }
-            let src_ip = match meta.endpoint.addr {
-                smoltcp::wire::IpAddress::Ipv4(v4) => v4,
-            };
-            Ok(Some((len, src_ip, meta.endpoint.port)))
-        }
-        Err(udp::RecvError::Exhausted) => Ok(None), // nothing queued
-        Err(e) => Err(e),
     }
 }
 

@@ -56,66 +56,75 @@ socket_handle.bind(server_address)
 
 print("Do Ctrl+c to exit the program !!")
 
-
-
 print(f"## server is listening from {ip} on Port {port} ")
 print(f"start: {datetime.now().time()}")
-seconds_passed = int(time.time())
-#seconds_passed = int(time.time() + 1)
-#print("\n\n 2. Server received: ", data.decode('utf-8'), "\n\n")
-while True:
-    # extract data payload and address from where the packet was sent
-    #try:
-    data, address = socket_handle.recvfrom(buffer_size) 
-    if data:
-        packets_received += 1
-        # If we got a packet
-    #except OSError as e:
-    #    print(f"nettest: Failed to receive echo request! ({e})")
-    #    break
+
+
+#while True:
+#    data, address = socket_handle.recvfrom(buffer_size)
+#    if data.getData().decode().strip() == "Init":
+#        receive_traffic()
+
+
+
+
+#def receive_traffic(): 
+    #seconds_passed = int(time.time() + 1)
+    #print("\n\n 2. Server received: ", data.decode('utf-8'), "\n\n")
+    while True:
+        # extract data payload and address from where the packet was sent
+        #try:
+        data, address = socket_handle.recvfrom(buffer_size) 
+        if data:
+            seconds_passed = int(time.time())
+            packets_received += 1
+            # If we got a packet
+        #except OSError as e:
+        #    print(f"nettest: Failed to receive echo request! ({e})")
+        #    break
+        
+        if packets_received == 2000:
+            break
+        
+        bytes_received_in_interval = bytes_received_in_interval + len(data)
+        bytes_received_total += len(data)
     
-    if packets_received == 2000:
-        break
+        while seconds_passed < int(time.time()):
+            kb = bytes_received_in_interval / 1000
+            # One or more whole seconds have elapsed; print for each missed second.
+            #print(f"{interval_counter}-{interval_counter + 1}:    {bytes_received_in_interval / 1000:.0f} KB/s", flush=True)
+            print(f"{interval_counter:>3}-{interval_counter + 1:<3}: "
+            f"{kb:>7.0f} KB/s  {kb_bar(kb)}", flush=True)
+            interval_counter += 1
+            # Reset interval bytes *after* reporting
+            bytes_received_in_interval = 0
+            # Advance our "secondsPassed" marker by one second
+            seconds_passed += 1
     
-    bytes_received_in_interval = bytes_received_in_interval + len(data)
-    bytes_received_total += len(data)
-
-    while seconds_passed < int(time.time()):
-        kb = bytes_received_in_interval / 1000
-        # One or more whole seconds have elapsed; print for each missed second.
-        #print(f"{interval_counter}-{interval_counter + 1}:    {bytes_received_in_interval / 1000:.0f} KB/s", flush=True)
-        print(f"{interval_counter:>3}-{interval_counter + 1:<3}: "
-        f"{kb:>7.0f} KB/s  {kb_bar(kb)}", flush=True)
-        interval_counter += 1
-        # Reset interval bytes *after* reporting
-        bytes_received_in_interval = 0
-        # Advance our "secondsPassed" marker by one second
-        seconds_passed += 1
-
-    #if seconds_passed < int(time.time()):
-    #    print(f"{interval_counter} - {interval_counter + 1}: {bytes_received_in_interval/1000} KB/s")
-    #    interval_counter += 1
-    #    bytes_received = bytes_received + bytes_received_in_interval
-    #    bytes_received_in_interval = 0
-    #    seconds_passed += 1 
-
-bytes_received = bytes_received + bytes_received_in_interval
-duration_s = max(1, interval_counter)  # avoid division by zero
-avg_kbps = (bytes_received_total / 1000) / duration_s
-
-#print(f"{interval_counter} - {interval_counter + 1}: {bytes_received_in_interval/1000} KB/s")
-print(f"------------------------------------------------------------------------")
-print(f"Number of packets received : {packets_received}")
-print(f"Total bytes received       :   {bytes_received_total}")
-print(f"Bytes received             : {bytes_received / 1000} KB/s")
-print(f"Bytes received             : {bytes_received } B/s")
-print(f"Average Bytes received     : {(bytes_received / (interval_counter+1)) / 1000} KB/s")
-print(f"packets out of order       : {packets_out_of_order} / {packets_received}")
-print(f"duplicated packets         : {duplicated_packets}")
-print(f"duration : {duration_s}")
-print(f"Average throughput:     {avg_kbps:.1f} KB/s")
-#print(f"Packet #{packet_count} from {address}: {data.decode(errors='ignore')}")
-print(f"------------------------------------------------------------------------")
+        #if seconds_passed < int(time.time()):
+        #    print(f"{interval_counter} - {interval_counter + 1}: {bytes_received_in_interval/1000} KB/s")
+        #    interval_counter += 1
+        #    bytes_received = bytes_received + bytes_received_in_interval
+        #    bytes_received_in_interval = 0
+        #    seconds_passed += 1 
+    
+    bytes_received = bytes_received + bytes_received_in_interval
+    duration_s = max(1, interval_counter)  # avoid division by zero
+    avg_kbps = (bytes_received_total / 1000) / duration_s
+    
+    #print(f"{interval_counter} - {interval_counter + 1}: {bytes_received_in_interval/1000} KB/s")
+    print(f"------------------------------------------------------------------------")
+    print(f"Number of packets received : {packets_received}")
+    print(f"Total bytes received       :   {bytes_received_total}")
+    print(f"Bytes received             : {bytes_received / 1000} KB/s")
+    print(f"Bytes received             : {bytes_received } B/s")
+    print(f"Average Bytes received     : {(bytes_received / (interval_counter+1)) / 1000} KB/s")
+    print(f"packets out of order       : {packets_out_of_order} / {packets_received}")
+    print(f"duplicated packets         : {duplicated_packets}")
+    print(f"duration : {duration_s}")
+    print(f"Average throughput:     {avg_kbps:.1f} KB/s")
+    #print(f"Packet #{packet_count} from {address}: {data.decode(errors='ignore')}")
+    print(f"------------------------------------------------------------------------")
 
 
 
