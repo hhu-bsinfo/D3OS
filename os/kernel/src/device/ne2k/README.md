@@ -1,10 +1,12 @@
-# NE2000 Network Card Driver for D3OS
-
+```rust
 +-+-+-+-+-+-+
 |N|e|2|0|0|0|
 +-+-+-+-+-+-+
+```
 
 ## TODO:
+
+# NE2000 Network Card Driver for D3OS
 
 - [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
 - [ ] reread fifo breq underrun, overrun
@@ -80,4 +82,70 @@ Observation
 
 ## changes
 
-edited const.rs ->
+edited const.rs -> increase
+//===============================================================================================
+// update 15.08.2025: increase heap page size (as suggested by M. Schoettner)
+//const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS (old value)
+//===============================================================================================
+const INIT_HEAP_PAGES: usize = 0x4000; // number of heap pages for booting the OS
+
+## flow chart Registration of the driver
+
+```rust
+// =============================================================================
+// ==== SYSTEM BOOT & RUNTIME FLOW (NE2000 + smoltcp)
+// =============================================================================
+//
+//   boot.rs        NE2000 driver            interrupt handler         threads                 RX queue                 smoltcp (sockets)        network_stack
+// ───────────┬────────────────────────┬──────────────────────────┬──────────────────────┬───────────────────────┬──────────────────────────┬──────────────────────────────
+//            │                        │                          │                      │                      │                          │
+// INIT       │                        │                          │                      │                      │                          │
+// start ───▶ │ network::init()       │                          │                      │                      │                          │
+//            │──────────────────────▶ │ ne2000::new()           │                      │                      │                          │
+//            │                        │  - probe & reset         │                      │                      │                          │
+//            │                        │  - assign IRQ handler ───┼──────────────▶       │                      │                          │
+//            │                        │  - register dispatcher ──┼──────────────▶       │                      │                          │
+//            │                        │                          │ interrupt_handler.rs │                      │                          │
+//            │                        │                          │ interrupt_dispatcher │                      │                          │
+//            │                        │                          │                      │                      │                          │
+//            │                        │  spawn check_interrupts ─┼──────────────▶       │ check_interrupts()   │                          │
+//            │                        │  spawn poll_sockets  ────┼──────────────▶       │ poll_sockets()       │                          │
+//            │                        │                          │                      │                      │                          │
+//            │                        │                          │                      │                      │                          │ Device/RxToken/TxToken live here
+//            │                        │                          │                      │                      │                          │ network_stack/mod.rs
+//
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// RUNTIME (interrupts + polling + smoltcp interaction)
+//    hardware         NE2000 driver            interrupt handler         threads                 RX queue                 smoltcp (sockets)        network_stack
+// ───────────┬────────────────────────┬──────────────────────────┬──────────────────────┬───────────────────────┬──────────────────────────┬──────────────────────────────
+//            │                        │                          │                      │                      │                          │
+// IRQ/RX     │  Ethernet frame ─────▶ │                          │                      │                      │                          │
+// interrupt  │                        │                          │ IRQ fired ─────────▶ │                      │                          │
+//            │                        │                          │ handler → dispatcher │                      │                          │
+//            │                        │                          │     notifies/pokes ──┼──────────────▶       │ check_interrupts()       │
+//            │                        │                          │                      │                      │                          │
+// polling    │                        │ check_interrupts():      │                      │                      │                          │
+// & bits     │                        │  - read ISR/Status bits  │                      │                      │                          │
+//            │                        │  - if RX bit: receive_packets() ───────────────▶ │ enqueue(buffer B) ──┼──────────────▶            │
+//            │                        │  - if OVW bit: handle_overflow()                │                      │                          │
+//            │                        │                          │                      │                      │                          │
+// software   │                        │ trigger() on ne2000:     │                      │                      │                          │
+// events     │                        │  - set ISR bit(s) ───────┼──────────────▶       │ check_interrupts()   │                          │
+//            │                        │                          │                      │                      │                          │
+// smoltcp    │                        │                          │                      │ poll_sockets():      │                          │ Device::receive()/transmit()
+// consume    │                        │                          │                      │  - iface.poll() ─────┼──────────────▶            │ returns Some((Rx, Tx))
+//            │                        │                          │                      │                      │◀──────────────────────────┼──────────────────────────────
+//            │                        │                          │                      │                      │   Device::receive():
+//            │                        │                          │                      │                      │   try_dequeue() -> Ok(B) │ wrap into Ne2000RxToken + new Ne2000TxToken
+//            │                        │                          │                      │                      │────────────────────────▶ │ RxToken/TxToken pair to smoltcp
+//            │                        │                          │                      │                      │                          │
+// process    │                        │                          │                      │                      │   smoltcp processes frame│
+// frame      │                        │                          │                      │                      │◀──────────────────────────┼──────────────────────────────
+//            │                        │                          │                      │                      │                          │
+// recycle    │                        │                          │                      │                      │   RxToken.consume():     │
+// buffer     │                        │                          │                      │                      │   return_buffer(B)  ───▶ │ enqueue(empty buf)
+//            │                        │                          │                      │                      │                          │
+// =============================================================================
+
+```

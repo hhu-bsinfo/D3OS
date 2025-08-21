@@ -133,3 +133,42 @@ print(f"start: {datetime.now().time()}")
     #send_data = input("Type some text to send => ")
     #s.sendto(send_data.encode('utf-8'), address)
     #print("\n\n 1. Server sent : ", send_data,"\n\n")
+
+def server(socket_handle)
+
+    buffer_size = 409600
+    # Print the local address (currently hardcoded)
+    local_address = "127.0.0.1"
+    print(f"nettest: server listening on {local_address}! Send 'exit' to leave.")
+
+    while true:
+        data, address = socket_handle.recvfrom(buffer_size)
+        if data:
+            if data.strip().decode() == "Init":
+                socket_handle.sendto(data, address)
+
+                return receive_traffic(socket_handle) 
+
+
+
+def main()
+
+    # set the arguments for the server_address
+    local_address = "127.0.0.1"
+    port = 12345
+
+    server_address = (local_address, port)
+
+    # set the default timer, for how long packets should be sent
+
+    timing_interval = 20
+
+    # create socket handle
+    socket_handle = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    # Bind the socket to the port
+    socket = socket_handle.bind(server_address)
+
+    return server(socket)
+
+
