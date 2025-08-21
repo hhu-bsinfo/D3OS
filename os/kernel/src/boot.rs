@@ -7,7 +7,10 @@
    ║ Author: Fabian Ruhland & Michael Schoettner, HHU                        ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-
+//=================================================================
+// add benchmark functions
+//=================================================================
+use crate::device::ne2k::benchmark;
 use crate::device::pit::Timer;
 use crate::device::ps2::Keyboard;
 use crate::device::serial::SerialPort;
@@ -15,10 +18,17 @@ use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
 use crate::memory::pages::page_table_index;
 use crate::memory::vma::VmaType;
-use crate::memory::{PAGE_SIZE, nvmem, dram};
+use crate::memory::{PAGE_SIZE, dram, nvmem};
+//=================================================================
+// add ne2000 function for retrieving a shared reference of the nic
+//=================================================================
+use crate::network::ne2000;
 use crate::process::thread::Thread;
 use crate::syscall::{sys_vmem, syscall_dispatcher};
-use crate::{acpi_tables, allocator, apic, built_info, consts, gdt, get_initrd_frames, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss};
+use crate::{
+    acpi_tables, allocator, apic, built_info, consts, gdt, get_initrd_frames, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci,
+    init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss,
+};
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
 use alloc::string::ToString;
@@ -91,8 +101,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     unsafe {
         allocator().init(&heap_region);
     }
-    info!("kernel image region: [Start: {:#x}, End: {:#x}]", 
-        kernel_image_region.start.start_address().as_u64(), 
+    info!(
+        "kernel image region: [Start: {:#x}, End: {:#x}]",
+        kernel_image_region.start.start_address().as_u64(),
         kernel_image_region.end.start_address().as_u64()
     );
 
@@ -102,9 +113,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     debug!("Old page frame allocator:\n{}", memory::frames::dump());
 
     /*
-        Hier den neuen Frame-Allocator aktivieren + Device Memory separat verwalten
-     */
-
+       Hier den neuen Frame-Allocator aktivieren + Device Memory separat verwalten
+    */
 
     // Reserve frames for initrd
     let initrd_tag = multiboot
@@ -126,7 +136,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     dram::dump();
     debug!("Old page frame allocator:\n{}", memory::frames::dump());
 
-    
     // Initialize CPU information
     init_cpu_info();
 
@@ -149,7 +158,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         .expect("Unknown framebuffer type!");
     let fb_start_phys_addr = fb_info.address();
     let fb_end_phys_addr = fb_start_phys_addr + (fb_info.height() * fb_info.pitch()) as u64;
-    
+
     sys_vmem::init_fb_info(&fb_info);
 
     kernel_process.virtual_address_space.kernel_map_devm_identity(
@@ -159,11 +168,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         VmaType::DeviceMemory,
         "framebuffer",
     );
-    info!(
-        "framebuffer region: [Start: {:#x}, End: {:#x}]",
-        fb_start_phys_addr,
-        fb_end_phys_addr,
-        );
+    info!("framebuffer region: [Start: {:#x}, End: {:#x}]", fb_start_phys_addr, fb_end_phys_addr,);
 
     // Initialize terminal kernel thread and enable terminal logging
     init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
@@ -254,8 +259,87 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize storage devices
     storage::init();
 
+    //=================================================================
     // Initialize network stack
+    // - starts the init() function in network/mod.rs
+    // - which searches on the pci bus for available devices
+    //=================================================================
     network::init();
+
+    // set flag for enabling/disabling network cards at boot
+    /*  let enable_ne2k = true;
+
+    //=================================================================
+    // Create Network Interface for the Ne2000
+    // and add it to the INTERFACES vector
+    //=================================================================
+    if enable_ne2k {
+        if let Some(ne2000) = ne2000()
+            && qemu_cfg::is_available()
+        {
+            info!("Setting up Interface for the NE2000");
+            // get current time in milliseconds
+            let time = timer.systime_ms();
+            // for debugging
+            // read mac address of NIC and add it as parameter to the Iface::Config
+            // Config :: Configuration structure used for creating a network device
+            // HardwareAddress : set the hardware address, which the interface will use
+            let mut conf = iface::Config::new(HardwareAddress::from(ne2000.get_mac()));
+
+            // conf.random_seed = time => in the documentation is the following:
+            //It is strongly recommended that the random seed is different on each boot, to avoid problems with TCP port/sequence collisions.
+            //The seed doesn’t have to be cryptographically secure.
+            // https://docs.rs/smoltcp/latest/smoltcp/iface/struct.Config.html
+            conf.random_seed = time as u64;
+            let device_ne2k = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
+            // create the network interface
+            // added mutex on 09.07.2025, because of interrupt handler,
+            // device.lock returns MutexGuard
+            // &mut * dereferences Guard into &mut Ne2000, which is needed by Interface
+            let mut interface =
+                Interface::new(conf, device_ne2k, Instant::from_millis(time as i64));
+
+            // update the ip addresses of the interface
+            // IpCidr : A specification of a CIDR block, containing an address and a variable-length subnet masking prefix length.
+            // ips = a Vector of Ip addresses
+            // pushes a new ip address to the vector list
+            // Ipv4Address::new : IP address + subnet prefix (10.0.2.16/24).
+
+            interface.update_ip_addrs(|ips| {
+                ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
+                    .expect("Failed to add IP address (Ne2000)");
+            });
+            // define gateway (ipv4 route)
+            // the nic does an arp request to find this
+            interface
+                .routes_mut()
+                .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
+                .expect("Failed to add default route (Ne2000)");
+
+            // add the interface to the INTERFACES Vectors defined in network/mod.rs
+            network::add_interface(interface);
+        }
+    }*/
+
+    //=================================================================
+    // Initiate Benchmark functions
+    // - call functions for logging statistics about
+    //   sending and receiving packets
+    //=================================================================
+
+    //benchmark::send_traffic(20, 1024);
+    //=================================================================
+    // spawn the RX thread
+    //=================================================================
+    /*scheduler().ready(Thread::new_kernel_thread(
+        || benchmark::udp_recv_test(),
+        "udp_rx",
+    ));*/
+
+    //=================================================================
+    // spawn the TX thread
+    //=================================================================
+    scheduler().ready(Thread::new_kernel_thread(|| benchmark::udp_send_test(2000), "udp_tx"));
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();

@@ -19,97 +19,177 @@ alias = "qemu"
 
 [tasks.qemu]
 command = "qemu-system-x86_64"
-dependencies = [ "image", "hdd", "ovmf" ]
+dependencies = ["image", "hdd", "ovmf"]
 args = [
     # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "256M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
-    "-boot", "d",
-    "-vga", "std",
-    "-rtc", "base=localtime",
-    "-serial", "stdio",
+    "-machine",
+    "q35,nvdimm=on,pcspk-audiodev=audio0",
+    "-m",
+    "256M,slots=2,maxmem=1G",
+    "-cpu",
+    "qemu64",
+    "-bios",
+    "RELEASEX64_OVMF.fd",
+    "-boot",
+    "d",
+    "-vga",
+    "std",
+    "-rtc",
+    "base=localtime",
+    "-serial",
+    "stdio",
 
     # Hard disk drive configuration
-    "-device", "piix3-ide,id=ide",  # IDE Controller
-    "-device", "ahci,id=ahci",      # AHCI Controller
-    "-drive", "driver=raw,if=none,id=boot,file.filename=d3os.img",  # Boot drive
-    "-drive", "driver=raw,if=none,id=hdd,file.filename=hdd.img",    # HDD drive containing root filesystem
-    "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
-    "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
+    "-device",
+    "piix3-ide,id=ide",                                  # IDE Controller
+    "-device",
+    "ahci,id=ahci",                                      # AHCI Controller
+    "-drive",
+    "driver=raw,if=none,id=boot,file.filename=d3os.img", # Boot drive
+    "-drive",
+    "driver=raw,if=none,id=hdd,file.filename=hdd.img",   # HDD drive containing root filesystem
+    "-device",
+    "ide-hd,bus=ahci.0,drive=boot",                      # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
+    "-device",
+    "ide-hd,bus=ide.0,drive=hdd",                        # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
 
     # NVDIMM configuration
-    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
-    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
+    "-device",
+    "nvdimm,memdev=mem1,id=nv1,label-size=2M",
+    "-object",
+    "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
+
+    ## tap interface
+    #"-netdev",
+    #"tap,id=tap0,ifname=tap0,script=no,downscript=no",
+    #"-device",
+    #"ne2k_pci,netdev=tap0,id=ne2k",
+    #"-object",
+    #"filter-dump,id=filter0,netdev=ne2k,file=ne2k.dump",
 
     # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797,hostfwd=tcp::1797-:1797",
-    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+    #"-nic",
+    #"model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
+    #"-object",
+    #"filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+    # =============================================================================
+    ## Add NE2000 (Author: Johann Spenrath, Last Modified : 16.06.2025)
+    # =============================================================================
+    ## creates a emulated ne2000 compatible nic on the slirp stack 
+    ## forward udp port 1798 from host to guest
+    ## all traffic gets dumped into ne2k.dump, in pcap format
+    ## can be read with wireshark
+    "-nic",
+    "model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798",
+    "-object",
+    "filter-dump,id=filter0,netdev=ne2k,file=ne2k.dump",
+    #"filter-dump,id=fd0,netdev=ne2k,file=ne2k.dump",
+    #"model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798,mac=40:54:00:12:34:56",
+    #    "-object",
 
     # Audio configuration (Using pulse audio for Linux)
-    "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
+    "-audiodev",
+    "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
 ]
 
 [tasks.debug]
 command = "qemu-system-x86_64"
-dependencies = [ "debug-signal-vscode" ]
+dependencies = ["debug-signal-vscode"]
 args = [
     # Base machine configuration
-    "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "256M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
-    "-bios", "RELEASEX64_OVMF.fd",
-    "-boot", "c",
-    "-vga", "std",
-    "-rtc", "base=localtime",
-    "-serial", "stdio",
+    "-machine",
+    "q35,nvdimm=on,pcspk-audiodev=audio0",
+    "-m",
+    "256M,slots=2,maxmem=1G",
+    "-cpu",
+    "qemu64",
+    "-bios",
+    "RELEASEX64_OVMF.fd",
+    "-boot",
+    "c",
+    "-vga",
+    "std",
+    "-rtc",
+    "base=localtime",
+    "-serial",
+    "stdio",
 
     # Hard disk drive configuration
-    "-device", "piix3-ide,id=ide",  # IDE Controller
-    "-device", "ahci,id=ahci",      # AHCI Controller
-    "-drive", "driver=raw,if=none,id=boot,file.filename=d3os.img",  # Boot drive
-    "-drive", "driver=raw,if=none,id=hdd,file.filename=hdd.img",    # HDD drive containing root filesystem
-    "-device", "ide-hd,bus=ahci.0,drive=boot",  # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
-    "-device", "ide-hd,bus=ide.0,drive=hdd",    # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
+    "-device",
+    "piix3-ide,id=ide",                                  # IDE Controller
+    "-device",
+    "ahci,id=ahci",                                      # AHCI Controller
+    "-drive",
+    "driver=raw,if=none,id=boot,file.filename=d3os.img", # Boot drive
+    "-drive",
+    "driver=raw,if=none,id=hdd,file.filename=hdd.img",   # HDD drive containing root filesystem
+    "-device",
+    "ide-hd,bus=ahci.0,drive=boot",                      # Attach boot drive to AHCI controller (boots faster than on the IDE controller)
+    "-device",
+    "ide-hd,bus=ide.0,drive=hdd",                        # Attach HDD drive to IDE controller (D3OS does not support AHCI yet)
 
     # NVDIMM configuration
-    "-device", "nvdimm,memdev=mem1,id=nv1,label-size=2M",
-    "-object", "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
+    "-device",
+    "nvdimm,memdev=mem1,id=nv1,label-size=2M",
+    "-object",
+    "memory-backend-file,id=mem1,share=on,mem-path=nvdimm0,size=16M",
 
     # Network configuration
-    "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797,hostfwd=tcp::1797-:1797",
-    "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+    # "-nic",
+    # "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
+    # "-object",
+    # "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+    # =============================================================================
+    ## Add NE2000 (Author: Johann Spenrath, Last Modified : 16.06.2025)
+    # =============================================================================
+    "-nic",
+    "model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798",
+    "-object",
+    "filter-dump,id=filter1,netdev=ne2k,file=ne2k.dump",
+    #"-netdev",
+    #"tap,id=mynet0,ifname=tap0,script=no,downscript=no",
+    #"model=ne2k_pci,id=ne2k,hostfwd=udp::1798-:1798,mac=40:54:00:12:34:56",
 
     # Audio configuration (Using pulse audio for Linux)
-    "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
+    "-audiodev",
+    "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
 
     # Debugging configuration
-    "-S", "-gdb", "tcp::1234"
+    "-S",
+    "-gdb",
+    "tcp::1234",
 ]
 
 [tasks.debug-signal-vscode]
 command = "echo"
-args = [ "Ready to debug" ]
-dependencies = [ "image", "hdd", "ovmf" ]
+args = ["Ready to debug"]
+dependencies = ["image", "hdd", "ovmf"]
 
 [tasks.gdb]
-command = "gdb" 
-args = [ "-ex", "break start", "-ex", "target remote 127.0.0.1:1234", "-ex", "continue", "loader/kernel.elf" ]
+command = "gdb"
+args = [
+    "-ex",
+    "break start",
+    "-ex",
+    "target remote 127.0.0.1:1234",
+    "-ex",
+    "continue",
+    "loader/kernel.elf",
+]
 
 [tasks.ovmf]
 command = "wget"
-args = [ "-N", "${OVMF_URL}" ]
+args = ["-N", "${OVMF_URL}"]
 
 [tasks.test]
 command = "cargo"
-args = [ "test" ]
+args = ["test"]
 
 # Build tasks
 
 [tasks.link-members]
 run_task = { name = "link", fork = true }
-dependencies = [ "create-initrd-directory" ]
+dependencies = ["create-initrd-directory"]
 
 [tasks.check-members]
 run_task = { name = "check", fork = true }
@@ -119,53 +199,81 @@ run_task = { name = "clippy", fork = true }
 
 [tasks.create-initrd-directory]
 command = "mkdir"
-args = [ "-p", "${INITRD_DIRECTORY}", "${INITRD_DIRECTORY}/bin" ]
-condition = { files_not_exist = [ "${INITRD_DIRECTORY}/bin" ] }
+args = ["-p", "${INITRD_DIRECTORY}", "${INITRD_DIRECTORY}/bin"]
+condition = { files_not_exist = ["${INITRD_DIRECTORY}/bin"] }
 
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
 command = "${TAR}"
-args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "bin/", "usr/" ]
-dependencies = [ "link-members" ]
-condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/**/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
+args = ["-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "bin/", "usr/"]
+dependencies = ["link-members"]
+condition = { files_modified = { input = [
+    "${INITRD_DIRECTORY}/**/*",
+], output = [
+    "${BOOTLOADER_DIRECTORY}/initrd.tar",
+] } }
 
 [tasks.create-hdd-fill-img]
 cwd = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}"
 command = "fallocate"
-args = [ "-l", "1M", "fill.img" ]
-condition = { files_not_exist = [ "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img" ] }
+args = ["-l", "1M", "fill.img"]
+condition = { files_not_exist = [
+    "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img",
+] }
 
 [tasks.create-hdd-fill-img.mac]
 command = "mkfile"
-args = [ "-n", "1m", "fill.img" ]
+args = ["-n", "1m", "fill.img"]
 
 [tasks.create-hdd-partition-img]
 cwd = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}"
 command = "mkfs.vfat"
-args = [ "-C", "part.img", "63488" ]
-condition = { files_not_exist = [ "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img" ] }
+args = ["-C", "part.img", "63488"]
+condition = { files_not_exist = [
+    "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img",
+] }
 
 [tasks.hdd]
 script = '''
 cat ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img ${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img > "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img"
 echo -e 'o\nn\np\n1\n2048\n131071\nt\ne\nw\n' | fdisk "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img"
 '''
-dependencies = [ "create-hdd-fill-img", "create-hdd-partition-img" ]
-condition = { files_modified = { input = [ "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img", "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img" ], output = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img" ] } }
+dependencies = ["create-hdd-fill-img", "create-hdd-partition-img"]
+condition = { files_modified = { input = [
+    "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/fill.img",
+    "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/part.img",
+], output = [
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img",
+] } }
 
 [tasks.image]
 cwd = "${BOOTLOADER_DIRECTORY}"
 command = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl"
-args = [ "image", "--target", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img", "--", "-config", "towboot.toml"]
-dependencies = [ "link-members", "initrd", "towbootctl" ]
-condition = { files_modified = { input = [ "${BOOTLOADER_DIRECTORY}/initrd.tar", "${BOOTLOADER_DIRECTORY}/kernel.elf", "${BOOTLOADER_DIRECTORY}/towboot.toml" ], output = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img" ] } }
+args = [
+    "image",
+    "--target",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img",
+    "--",
+    "-config",
+    "towboot.toml",
+]
+dependencies = ["link-members", "initrd", "towbootctl"]
+condition = { files_modified = { input = [
+    "${BOOTLOADER_DIRECTORY}/initrd.tar",
+    "${BOOTLOADER_DIRECTORY}/kernel.elf",
+    "${BOOTLOADER_DIRECTORY}/towboot.toml",
+], output = [
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img",
+] } }
 
 [tasks.towbootctl]
 script = '''
 wget -O towbootctl "${TOWBOOT_URL}-x86_64-linux"
 chmod +x towbootctl
 '''
-condition = { files_not_exist = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl" ] }
+condition = { files_not_exist = [
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl",
+] }
 
 [tasks.towbootctl.mac]
 script = '''
@@ -176,18 +284,22 @@ chmod +x towbootctl
 # Cleanup tasks
 
 [tasks.clean]
-dependencies = [ "clean-workspace", "clean-members" ]
+dependencies = ["clean-workspace", "clean-members"]
 
 [tasks.clean-workspace]
 command = "rm"
-args = [ "-rf",
+args = [
+    "-rf",
     "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img",
     "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/hdd.img",
     "${BOOTLOADER_DIRECTORY}/kernel.elf",
     "${BOOTLOADER_DIRECTORY}/initrd.tar",
     "${INITRD_DIRECTORY}/bin",
     "RELEASEX64_OVMF.fd",
-    "towbootctl" ]
+    "towbootctl",
+]
 
 [tasks.clean-members]
 run_task = { name = "clean", fork = true }
+command = "qemu-system-x86_64"
+dependencies = ["image", "hdd", "ovmf"]
