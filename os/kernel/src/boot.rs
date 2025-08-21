@@ -29,7 +29,7 @@ use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
-use log::{LevelFilter, debug, info, warn};
+use log::{trace, debug, info, warn, LevelFilter};
 use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
 use uefi::data_types::Handle;
 use uefi::mem::memory_map::MemoryMap;
@@ -84,6 +84,20 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     unsafe {
         memory::frames::boot_reserve(kernel_image_region);
     }
+    // also reserve frames for initrd
+    let initrd_tag = multiboot
+        .module_tags()
+        .find(|module| module.cmdline().is_ok_and(|name| name == "initrd"))
+        .expect("Initrd not found!");
+    let initrd_region = get_initrd_frames(initrd_tag);
+    unsafe {
+        memory::frames::boot_reserve(initrd_region);
+    }
+    // and the multiboot information
+    let multiboot_region = get_multiboot_frames(&multiboot);
+    unsafe {
+        memory::frames::boot_reserve(multiboot_region);
+    }
 
     // and initialize kernel heap, after which formatted strings may be used in logs and panics.
     info!("Initializing kernel heap");
@@ -93,8 +107,19 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     }
     info!("kernel image region: [Start: {:#x}, End: {:#x}]", 
         kernel_image_region.start.start_address().as_u64(), 
-        kernel_image_region.end.start_address().as_u64()
+        kernel_image_region.end.start_address().as_u64(),
     );
+    info!(
+        "Initrd region: [Start: {:#x}, End: {:#x}]",
+        initrd_region.start.start_address().as_u64(),
+        initrd_region.end.start_address().as_u64(),
+    );
+    info!(
+        "Multiboot region: [Start: {:#x}, End: {:#x}]",
+        multiboot_region.start.start_address().as_u64(),
+        multiboot_region.end.start_address().as_u64(),
+    );
+    trace!("{multiboot:?}");
 
     // Allocate frames for the kernel heap using the new way
     dram::alloc(consts::KERNEL_HEAP_PAGES as u64).expect("Failed to allocate kernel heap frames!");
@@ -104,22 +129,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     /*
         Hier den neuen Frame-Allocator aktivieren + Device Memory separat verwalten
      */
-
-
-    // Reserve frames for initrd
-    let initrd_tag = multiboot
-        .module_tags()
-        .find(|module| module.cmdline().is_ok_and(|name| name == "initrd"))
-        .expect("Initrd not found!");
-    let initrd_region = get_initrd_frames(initrd_tag);
-    unsafe {
-        memory::frames::boot_reserve(initrd_region);
-    }
-    info!(
-        "Initrd region: [Start: {:#x}, End: {:#x}]",
-        initrd_region.start.start_address().as_u64(),
-        initrd_region.end.start_address().as_u64()
-    );
 
     // Merge reserved and free regions
     dram::finalize();
@@ -386,6 +395,14 @@ fn kernel_image_region() -> PhysFrameRange {
     }
 
     PhysFrameRange { start, end }
+}
+
+/// Return `PhysFrameRange` for memory occupied by the multiboot info struct.
+fn get_multiboot_frames(multiboot: &BootInformation<'_>) -> PhysFrameRange {
+    PhysFrameRange {
+        start: PhysFrame::containing_address(PhysAddr::new(multiboot.start_address() as u64)),
+        end: PhysFrame::containing_address(PhysAddr::new(multiboot.end_address() as u64)),
+    }
 }
 
 /// Identifies usable memory and initialize physical memory management \
