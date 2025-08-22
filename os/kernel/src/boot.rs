@@ -15,7 +15,7 @@ use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
 use crate::memory::pages::page_table_index;
 use crate::memory::vma::VmaType;
-use crate::memory::{PAGE_SIZE, nvmem, dram};
+use crate::memory::{dram, frames_lf, nvmem, PAGE_SIZE};
 use crate::process::thread::Thread;
 use crate::syscall::{sys_vmem, syscall_dispatcher};
 use crate::{acpi_tables, allocator, apic, built_info, consts, gdt, get_initrd_frames, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss};

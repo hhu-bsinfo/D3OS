@@ -3,35 +3,33 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ This module provides functions for collecting information regarding free║
    ║ and reserved frame regions from EFI during boot time. After the kernel  ║
-   ║ heap and page frame allocator are setup this module is no longer used.  ║ 
+   ║ heap and page frame allocator are setup this module is no longer used.  ║
    ║                                                                         ║
    ║ Public functions:                                                       ║
    ║   - limit         highest dram address on this system                   ║
    ║   - available     insert free frame region                              ║
    ║   - reserved      remove a reserved frame range from available          ║
    ║   - alloc         alloc a range of frames from avail. during boot       ║
-   ║   - finalize      merge all reserved r. into free regions               ║ 
+   ║   - finalize      merge all reserved r. into free regions               ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 24.7.2025                ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 21.8.2025                ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use core::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use log::info;
 use spin::Mutex;
 use x86_64::PhysAddr;
-use x86_64::structures::paging::{frame::PhysFrameRange, PhysFrame};
+use x86_64::structures::paging::{PhysFrame, frame::PhysFrameRange};
 
 use crate::memory::PAGE_SIZE;
+use crate::memory::frames::phys_limit;
 
-
-static DRAM_LIMIT: AtomicU64 = AtomicU64::new(0);     // Highest physical address of the DRAM
+static DRAM_LIMIT: AtomicU64 = AtomicU64::new(0); // Highest physical address of the DRAM
 static DRAM_FINALIZED: AtomicU64 = AtomicU64::new(0); // Flag to indicate if the DRAM regions have been finalized
 
-/// Get the highest physical dram address 
-pub fn limit() -> PhysFrame {
-    let current_limit = DRAM_LIMIT.load(Ordering::SeqCst);
-    PhysFrame::from_start_address(PhysAddr::new(current_limit))
-        .expect("Physical DRAM limit is not aligned to page size")   
+/// Get the highest physical dram address + 1
+pub fn limit() -> u64 {
+    DRAM_LIMIT.load(Ordering::SeqCst)
 }
 
 static MAX_REGIONS: usize = 1024;
@@ -44,11 +42,9 @@ static NEXT_FREE_FRAME_INDEX: AtomicUsize = AtomicUsize::new(0);
 static RESERVED_FRAME_REGIONS: Mutex<[u64; MAX_REGIONS]> = Mutex::new([0; MAX_REGIONS]);
 static NEXT_FREE_RESERVED_FRAME_INDEX: AtomicUsize = AtomicUsize::new(0);
 
-
 /// Allocate a free frame region from free frame region array. This only used to allocate the kernel heap during booting. \
 /// This is necessary because the page frame allocator needs a heap for its initialization to store its metadata.
 pub fn alloc(num_frames: u64) -> Option<PhysFrameRange> {
-
     if DRAM_FINALIZED.load(Ordering::SeqCst) != 0 {
         panic!("DRAM regions have already been finalized, cannot allocate frames");
     }
@@ -63,7 +59,6 @@ pub fn alloc(num_frames: u64) -> Option<PhysFrameRange> {
 
         // Check if the region is large enough
         if (free_end - free_start) / PAGE_SIZE as u64 >= num_frames {
-            
             // Found a region that is large enough
             let start = PhysFrame::from_start_address(PhysAddr::new(free_start)).expect("Invalid start address");
             let end = PhysFrame::from_start_address(PhysAddr::new(free_start + num_frames * PAGE_SIZE as u64)).expect("Invalid end address");
@@ -82,10 +77,8 @@ pub fn alloc(num_frames: u64) -> Option<PhysFrameRange> {
     None
 }
 
-
 /// Insert a free frame region (retrieved from EFI) into the free frame region array
 pub fn available(new_region: PhysFrameRange) {
-
     if DRAM_FINALIZED.load(Ordering::SeqCst) != 0 {
         panic!("DRAM regions have already been finalized, cannot insert available frames");
     }
@@ -150,10 +143,8 @@ pub fn available(new_region: PhysFrameRange) {
     NEXT_FREE_FRAME_INDEX.store(new_index, Ordering::SeqCst);
 }
 
-
 /// Insert a reserved frame region (retrieved from EFI) into the reserved frame region array
 pub fn reserved(reserve_region: PhysFrameRange) {
-
     if DRAM_FINALIZED.load(Ordering::SeqCst) != 0 {
         panic!("DRAM regions have already been finalized, cannot insert reserved frames");
     }
@@ -213,34 +204,39 @@ pub fn reserved(reserve_region: PhysFrameRange) {
     NEXT_FREE_RESERVED_FRAME_INDEX.store(new_index, Ordering::SeqCst);
 }
 
-
 /// Merge all reserved frame regions into the free frame regions.
+/// After the first step the reserved frame regions are updated .
+///
 /// Note: After this function is called only `dram_limit` and `dram_dump` can be called.
 /// Calling any other function will panic.
 pub fn finalize() {
-    let reserved_regions = RESERVED_FRAME_REGIONS.lock();
-    let current_len = NEXT_FREE_RESERVED_FRAME_INDEX.load(Ordering::SeqCst);
+    {
+        let reserved_regions = RESERVED_FRAME_REGIONS.lock();
+        let current_len = NEXT_FREE_RESERVED_FRAME_INDEX.load(Ordering::SeqCst);
 
-    for i in (0..current_len).step_by(2) {
-        let reserve_start = reserved_regions[i];
-        let reserve_end = reserved_regions[i + 1];
+        for i in (0..current_len).step_by(2) {
+            let reserve_start = reserved_regions[i];
+            let reserve_end = reserved_regions[i + 1];
 
-        if reserve_start == 0 && reserve_end == 0 {
-            continue; // Skip empty regions
+            if reserve_start == 0 && reserve_end == 0 {
+                continue; // Skip empty regions
+            }
+
+            let reserve_region = PhysFrameRange {
+                start: PhysFrame::from_start_address(PhysAddr::new(reserve_start)).expect("Invalid start address"),
+                end: PhysFrame::from_start_address(PhysAddr::new(reserve_end)).expect("Invalid end address"),
+            };
+
+            merge_reserved_region(reserve_region);
         }
+    } // lock released
 
-        let reserve_region = PhysFrameRange {
-            start: PhysFrame::from_start_address(PhysAddr::new(reserve_start)).expect("Invalid start address"),
-            end: PhysFrame::from_start_address(PhysAddr::new(reserve_end)).expect("Invalid end address"),
-        };
-
-        merge_reserved_region(reserve_region);
-    }
+    update_reserved_regions(phys_limit().start_address().as_u64());
 
     DRAM_FINALIZED.store(1, Ordering::SeqCst);
 }
 
-/// Merge a reserved frame region into the free frame regions.
+/// Merge all reserved frame regions with the free frame regions.
 fn merge_reserved_region(reserve_region: PhysFrameRange) {
     let reserve_start = reserve_region.start.start_address().as_u64();
     let reserve_end = reserve_region.end.start_address().as_u64();
@@ -293,19 +289,55 @@ fn merge_reserved_region(reserve_region: PhysFrameRange) {
     NEXT_FREE_FRAME_INDEX.store(new_index, Ordering::SeqCst);
 }
 
+/// Update the reserved frame regions by inspecting all gaps in the frame regions
+fn update_reserved_regions(phys_max: u64) {
+    let free = FREE_FRAME_REGIONS.lock();
+    
+    let mut reserved = RESERVED_FRAME_REGIONS.lock();
+    let mut res_index = 0;
+
+    let mut cursor: u64 = 0;
+
+    for i in (0..NEXT_FREE_FRAME_INDEX.load(Ordering::SeqCst)).step_by(2) {
+        let free_start = free[i];
+        let free_end = free[i + 1];
+        if cursor < free_start {
+            // gap between last reserved cursor and this free region
+            if res_index < reserved.len() {
+                reserved[res_index] = cursor;
+                reserved[res_index + 1] = free_start;
+                res_index += 2;
+            }
+        }
+
+        // advance cursor to end of this free region
+        cursor = free_end;
+    }
+
+    // after last free region → possible reserved tail up to phys_max
+    if cursor < phys_max && res_index < reserved.len() {
+        reserved[res_index] = cursor;
+        reserved[res_index + 1] = phys_max;
+        res_index += 1;
+    }
+
+    NEXT_FREE_RESERVED_FRAME_INDEX.store(res_index, Ordering::SeqCst);
+}
+
 /// Dump the free frame regions to the log
 pub fn dump() {
-    info!("Free frame regions:");
+    info!("DRAM information");
+    info!("   limit: {:#x}", DRAM_LIMIT.load(Ordering::SeqCst));
+    info!("   free frame regions:");
     let regions = FREE_FRAME_REGIONS.lock();
     for i in (0..NEXT_FREE_FRAME_INDEX.load(Ordering::SeqCst)).step_by(2) {
         let num_frames = (regions[i + 1] - regions[i]) / PAGE_SIZE as u64;
-        info!("Block: [Start: ]{:#x} - {:#x}], Frame count: [{:?}]", regions[i], regions[i+1], num_frames);
+        info!("      [{:#10x} - {:#10x}], #frames: [{:?}]", regions[i], regions[i + 1], num_frames);
     }
-    info!("Reserved frame regions:");
+    info!("  reserved frame regions:");
     let regions = RESERVED_FRAME_REGIONS.lock();
     for i in (0..NEXT_FREE_RESERVED_FRAME_INDEX.load(Ordering::SeqCst)).step_by(2) {
         let num_frames = (regions[i + 1] - regions[i]) / PAGE_SIZE as u64;
-        info!("Block: [Start: ]{:#x} - {:#x}], Frame count: [{:?}]", regions[i], regions[i+1], num_frames);
+        info!("      [{:#10x} - {:#10x}], #frames: [{:?}]", regions[i], regions[i + 1], num_frames);
     }
-    info!("DRAM limit: {:#x}", DRAM_LIMIT.load(Ordering::SeqCst));
 }

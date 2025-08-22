@@ -1,7 +1,11 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: cpu                                                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Retrieve and store cpu features using cpuid.                    ║
+   ║ Retrieve and store cpu features using cpuid.                            ║
+   ║                                                                         ║
+   ║ Public functions                                                        ║
+   ║   - highest_virtual_address       Return the highest virtual address    ║
+   ║   - highest_physical_address      Return the highest physical address   ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Michael Schoettner, HHU                                         ║
    ╚═════════════════════════════════════════════════════════════════════════╝
@@ -63,5 +67,16 @@ impl Cpu {
         self.supports_1gib_pages
     }
 
+    /// Return the highest virtual address in canonical form
+    pub fn highest_virtual_address(&self) -> u64 {
+        let virtual_bits = self.linear_address_bits();
+        (1u64 << (virtual_bits - 1)) - 1
+    }
+
+    /// Return the highest physical address
+    pub fn highest_physical_address(&self) -> u64 {
+        let physical_bits = self.physical_address_bits();
+        (1u64 << self.physical_address_bits) - 1
+    }
 
 }

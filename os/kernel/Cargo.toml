@@ -44,6 +44,8 @@ bitflags = "2.9.0"
 smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "log", "proto-ipv6", "socket-dhcpv4", "socket-udp", "socket-tcp", "socket-icmp", "socket-dns", "dns-max-result-count-4", "dns-max-server-count-4"] }
 mbrs = { version = "0.3.1", default-features = false, features = ["no-std"] }
 num_enum = { version = "0.7.3", default-features = false }
+bitfield-struct = "0.10"
+llfree = { git = "https://github.com/luhsra/llfree-rs", subdir = "core", default-features = false }
 
 [build-dependencies]
 built = { version = "0.7.7", features = ["chrono", "git2"] }

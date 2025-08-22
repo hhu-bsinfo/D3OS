@@ -53,6 +53,7 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::tss::TaskStateSegment;
 
 extern crate alloc;
+extern crate llfree;
 
 #[macro_use]
 pub mod device;

@@ -2,6 +2,7 @@ pub mod vmm;
 pub mod vma;
 pub mod pages;
 pub mod frames;
+pub mod frames_lf;
 
 pub mod nvmem;
 pub mod dram;
