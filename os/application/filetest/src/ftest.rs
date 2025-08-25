@@ -7,9 +7,34 @@ use naming::shared_types::{OpenOptions, SeekOrigin};
 use runtime::*;
 use terminal::{print, println};
 
+
+/// Check if a already created file cannot be created again
+fn multiple_create() {
+    print!("   test: multiple creates - ");
+    let ret = naming::open("/test.txt", OpenOptions::CREATE | OpenOptions::READWRITE);
+    match ret {
+        Ok(fd) => {
+            let ret2 = naming::open("/test.txt", OpenOptions::CREATE | OpenOptions::READWRITE);
+            match ret2 {
+                Ok(fd) => {
+                    println!("failed");
+                }
+                Err(e) => {
+                    println!("ok");
+                }
+            }
+        }
+        Err(e) => {
+            println!("failed");
+        }
+    }
+}
+
+
+
 #[unsafe(no_mangle)]
 pub fn main() {
-    println!("naming test: start");
+    println!("naming tests");
 
     // opening file
     let res = naming::open("/file.txt", OpenOptions::READWRITE | OpenOptions::CREATE);

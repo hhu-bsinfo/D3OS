@@ -10,7 +10,7 @@
    ║   - mkdi : create a directory                                           ║
    ║   - touch  create a file                                                ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 23.2.2025                ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 25.8.2025                ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -20,15 +20,15 @@ use alloc::vec::Vec;
 use log::{info, warn};
 use spin::{Mutex, Once};
 
-use super::traits::FileSystem;
 use super::lookup;
 use super::open_objects;
 use super::stat::Mode;
 use super::tmpfs;
+use super::traits::FileSystem;
 
+use crate::initrd;
 use naming::shared_types::{OpenOptions, RawDirent, SeekOrigin};
 use syscall::return_vals::Errno;
-use crate::initrd;
 
 // root of naming service
 pub(super) static ROOT: Once<Arc<dyn FileSystem>> = Once::new();
@@ -61,8 +61,17 @@ pub fn init() {
 /// Open/create a named object referenced by `path` using the given `flags`. \
 /// Returns `Ok(object_handle)` or `Err`.
 pub fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
+    // avoid creating a file twice
+    if flags.contains(OpenOptions::CREATE) {
+        let result = lookup::lookup_named_object(path);
+        if result.is_ok() {
+            return Err(Errno::EEXIST);
+        }
+    }
+
+    // Try to open the object
     open_objects::open(path, flags).or_else(|e| {
-        if flags.contains(OpenOptions::CREATE) {
+        if flags.contains(OpenOptions::CREATE) && e != Errno::EEXIST {
             touch(path).and_then(|_| open_objects::open(path, flags))
         } else {
             Err(e)
@@ -200,7 +209,7 @@ pub fn readdir(dir_handle: usize, dentry: Option<&mut RawDirent>) -> Result<usiz
 pub fn cwd(buffer: &mut [u8]) -> Result<usize, Errno> {
     // Lock the CWD mutex to access its value
     let cwd = CWD.lock();
-    
+
     // Get the string as bytes
     let cwd_bytes = cwd.as_bytes();
 
@@ -231,7 +240,7 @@ pub fn cd(path: &String) -> Result<usize, Errno> {
             let mut cwd = CWD.lock();
             *cwd = path.clone();
             Ok(0)
-        },
+        }
         Err(_) => {
             // Handle the error here (e.g., logging or returning the error code)
             Err(Errno::ENOTDIR)

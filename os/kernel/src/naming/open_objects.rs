@@ -14,6 +14,7 @@ use alloc::vec::Vec;
 use core::result::Result;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::{Mutex, Once};
+use log::info;
 
 use super::traits::NamedObject;
 use super::lookup;
