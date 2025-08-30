@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Syscall interface in user mode.                                 ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Michael Schoettner, 30.12.2024, HHU             ║
+   ║ Author: Fabian Ruhland, Michael Schoettner, 25.8.2025, HHU              ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![no_std]
@@ -51,6 +51,7 @@ pub enum SystemCall {
     SockReceive,
     SockClose,
     GetIpAddresses,
+    Mkfifo,
     // no syscall, just marking last number, see NUM_SYSCALLS
     // insert any new system calls before this marker
     LastEntryMarker,

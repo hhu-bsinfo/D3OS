@@ -18,6 +18,8 @@ fn print_usage() {
 fn print_dir_entry(dentry: DirEntry) {
     if dentry.file_type == FileType::Directory {
         println!("d {}", dentry.name);
+    } else if dentry.file_type == FileType::NamedPipe {
+        println!("p {}", dentry.name);
     } else {
         println!("- {}", dentry.name);
     }

@@ -86,6 +86,7 @@ impl DirEntry {
     pub fn from_dirent(dirent: &RawDirent) -> Option<Self> {
         // Convert d_type to a FileType enum
         let file_type = match dirent.d_type {
+            1 => FileType::NamedPipe,
             4 => FileType::Directory,
             8 => FileType::Regular,
             10 => FileType::Link,
@@ -129,6 +130,13 @@ pub fn cwd() -> Result<String, Errno> {
 pub fn cd(path: &str) -> Result<usize, Errno> {
     match CString::new(path) {
         Ok(c_path) => syscall(SystemCall::Cd, &[c_path.as_bytes().as_ptr() as usize]),
+        Err(_) => Err(Errno::EBADSTR),
+    }
+}
+
+pub fn mkfifo(path: &str) -> Result<usize, Errno> {
+    match CString::new(path) {
+        Ok(c_path) => syscall(SystemCall::Mkfifo, &[c_path.as_bytes().as_ptr() as usize]),
         Err(_) => Err(Errno::EBADSTR),
     }
 }

@@ -7,7 +7,7 @@
    ║   - DirectoryObject: specifies all operations on a directory object     ║
    ║   - FileObject: specifies all operations on a file object               ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 30.12.2024               ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 25.8.2025                ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -40,12 +40,28 @@ pub trait FileObject: Debug + Send + Sync {
     }
 }
 
+/// Pipe object operations
+pub trait PipeObject: Debug + Send + Sync {
+    fn stat(&self) -> Result<Stat, Errno> {
+        Err(Errno::EBADF)
+    }
+
+    fn read(&self, _buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
+        Err(Errno::EBADF)
+    }
+
+    fn write(&self, _buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
+        Err(Errno::EBADF)
+    }
+}
+
 
 /// Directory object operations
 pub trait DirectoryObject: Debug + Send + Sync {
     fn lookup(&self, name: &str) -> Result<NamedObject, Errno>;
     fn create_file(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno>;
     fn create_dir(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno>;
+    fn create_pipe(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno>;
     #[allow(dead_code)]
     fn stat(&self) -> Result<Stat, Errno>;
     fn readdir(&self, index: usize) -> Result<Option<DirEntry>, Errno>;
@@ -55,6 +71,7 @@ pub trait DirectoryObject: Debug + Send + Sync {
 #[derive(Clone)]
 pub enum NamedObject {
     FileObject(Arc<dyn FileObject>),
+    PipeObject(Arc<dyn PipeObject>),
     DirectoryObject(Arc<dyn DirectoryObject>),
 }
 
@@ -67,6 +84,14 @@ impl NamedObject {
         }
     }
 
+    /// Unwraps as a pipe. If it's not, returns `Errno::EBADF`.
+    pub fn as_pipe(&self) -> Result<&Arc<dyn PipeObject>, Errno> {
+        match self {
+            NamedObject::PipeObject(pipe) => Ok(pipe),
+            _ => Err(Errno::EBADF),
+        }
+    }
+
     /// Unwraps as a directory. If it's not, returns `Errno::EBADF`.
     pub fn as_dir(&self) -> Result<&Arc<dyn DirectoryObject>, Errno> {
         match self {
@@ -74,11 +99,17 @@ impl NamedObject {
             _ => Err(Errno::EBADF),
         }
     }
-
+    
     /// Returns `true` if it's a file.
     #[allow(dead_code)]
     pub fn is_file(&self) -> bool {
         matches!(self, NamedObject::FileObject(_))
+    }
+
+    /// Returns `true` if it's a pipe.
+    #[allow(dead_code)]
+    pub fn is_pipe(&self) -> bool {
+        matches!(self, NamedObject::PipeObject(_))
     }
 
     /// Returns `true` if it's a directory.
@@ -91,6 +122,7 @@ impl fmt::Debug for NamedObject {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NamedObject::FileObject(file) => fmt::Debug::fmt(file, f),
+            NamedObject::PipeObject(pipe) => fmt::Debug::fmt(pipe, f),
             NamedObject::DirectoryObject(dir) => fmt::Debug::fmt(dir, f),
         }
     }
@@ -99,6 +131,12 @@ impl fmt::Debug for NamedObject {
 impl From<Arc<dyn FileObject>> for NamedObject {
     fn from(file: Arc<dyn FileObject>) -> Self {
         NamedObject::FileObject(file)
+    }
+}
+
+impl From<Arc<dyn PipeObject>> for NamedObject {
+    fn from(pipe: Arc<dyn PipeObject>) -> Self {
+        NamedObject::PipeObject(pipe)
     }
 }
 

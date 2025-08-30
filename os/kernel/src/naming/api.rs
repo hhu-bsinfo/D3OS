@@ -7,8 +7,9 @@
    ║   - read   read bytes from an open object                               ║
    ║   - write  write bytes into an open object                              ║
    ║   - seek   set file pointer (for files)                                 ║
-   ║   - mkdi : create a directory                                           ║
+   ║   - mkdir  create a directory                                           ║
    ║   - touch  create a file                                                ║
+   ║   - mkfifo create a named pipe                                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Michael Schoettner, Univ. Duesseldorf, 25.8.2025                ║
    ╚═════════════════════════════════════════════════════════════════════════╝
@@ -241,6 +242,40 @@ pub fn cd(path: &String) -> Result<usize, Errno> {
             *cwd = path.clone();
             Ok(0)
         }
+        Err(_) => {
+            // Handle the error here (e.g., logging or returning the error code)
+            Err(Errno::ENOTDIR)
+        }
+    }
+}
+
+/// Create a named pipe using `path`. \
+/// Returns `Ok(0)` or `Err(errno)`
+pub fn mkfifo(path: &str) -> Result<usize, Errno> {
+    // Split the path into components
+    let mut components: Vec<&str> = path.split("/").collect();
+
+    // Remove the last component (the name of the new file)
+    let new_pipe_name = components.pop();
+
+    // We need parent directory to create the new file
+    let parent_dir = if components.len() == 1 {
+        "/".to_string()
+    } else {
+        components.join("/") // Joins the remaining components
+    };
+
+    // Safely lookup the parent directory and create the new pipe
+    let result = lookup::lookup_dir(&parent_dir)
+        .and_then(|dir| {
+            new_pipe_name
+                .ok_or(Errno::EINVAL) // Handle missing file name
+                .and_then(|name| dir.create_pipe(name, Mode::new(0))) // Create the pipe
+        })
+        .map(|_| 0); // Convert the success result to 0
+
+    match result {
+        Ok(_) => Ok(0), // Successfully created the pipe
         Err(_) => {
             // Handle the error here (e.g., logging or returning the error code)
             Err(Errno::ENOTDIR)

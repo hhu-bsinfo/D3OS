@@ -4,7 +4,7 @@
    ║ Managing opened objects in a global table (OPEN_OBJECTS). And providing ║
    ║ all major functions for the naming service.                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 30.12.2024               ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 25.08.2025               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -13,14 +13,13 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::result::Result;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use spin::{Mutex, Once};
 use log::info;
+use spin::{Mutex, Once};
 
-use super::traits::NamedObject;
 use super::lookup;
+use super::traits::NamedObject;
 use naming::shared_types::{DirEntry, OpenOptions, SeekOrigin};
 use syscall::return_vals::{Errno, SyscallResult};
-
 
 /// Max. number of open objetcs
 const MAX_OPEN_OBJECTS: usize = 0x1000;
@@ -36,7 +35,6 @@ struct OpenObjectTable {
     open_handles: Vec<(usize, Option<Arc<OpenedObject>>)>,
     free_handles: Box<[usize; MAX_OPEN_OBJECTS]>,
 }
-
 
 pub(super) fn open_object_table_init() {
     OPEN_OBJECTS.call_once(|| Arc::new(Mutex::new(OpenObjectTable::new())));
@@ -60,52 +58,58 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
     // try to allocate an new handle
     get_open_object_table()
         .lock()
-        .allocate_handle(Arc::new(OpenedObject::new(
-            Arc::new(found_named_object),
-            AtomicUsize::new(0),
-            flags,
-        )))
+        .allocate_handle(Arc::new(OpenedObject::new(Arc::new(found_named_object), AtomicUsize::new(0), flags)))
 }
 
 pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
-    get_open_object_table()
-        .lock()
-        .lookup_opened_object(fh)
-        .and_then(|opened_object| {
+    get_open_object_table().lock().lookup_opened_object(fh).and_then(|opened_object| {
+        if opened_object.named_object.is_file() {
             // Make `opened_object` mutable here
-            opened_object.named_object.as_file().and_then(|file| {
+            return opened_object.named_object.as_file().and_then(|file| {
                 let pos = opened_object.pos.load(Ordering::SeqCst);
                 let bytes_written = file.write(buf, pos, opened_object.options)?;
-                opened_object
-                    .pos
-                    .store(pos + bytes_written, Ordering::SeqCst);
+                opened_object.pos.store(pos + bytes_written, Ordering::SeqCst);
                 Ok(bytes_written) // Return the bytes written
-            })
-        })
+            });
+        }
+        if opened_object.named_object.is_pipe() {
+            // Make `opened_object` mutable here
+            return opened_object.named_object.as_pipe().and_then(|pipe| {
+                let bytes_written = pipe.write(buf, 0, opened_object.options)?;
+                Ok(bytes_written) // Return the bytes written
+            });
+        }
+        Err(Errno::ENOTSUP)
+    })
 }
 
 pub(super) fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
-    get_open_object_table()
-        .lock()
-        .lookup_opened_object(fh)
-        .and_then(|opened_object| {
+    get_open_object_table().lock().lookup_opened_object(fh).and_then(|opened_object| {
+        if opened_object.named_object.is_file() {
             // Make `opened_object` mutable here
-            opened_object.named_object.as_file().and_then(|file| {
+            return opened_object.named_object.as_file().and_then(|file| {
                 let pos = opened_object.pos.load(Ordering::SeqCst);
                 let bytes_read = file.read(buf, pos, opened_object.options)?;
                 opened_object.pos.store(pos + bytes_read, Ordering::SeqCst);
                 Ok(bytes_read) // Return the bytes read
-            })
-        })
+            });
+        }
+        if opened_object.named_object.is_pipe() {
+            // Make `opened_object` mutable here
+            return opened_object.named_object.as_pipe().and_then(|pipe| {
+                let bytes_read = pipe.read(buf, 0, opened_object.options)?;
+                Ok(bytes_read) // Return the bytes written
+            });
+        }
+        Err(Errno::ENOTSUP)
+    })
 }
 
 pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno> {
-    get_open_object_table()
-        .lock()
-        .lookup_opened_object(fh)
-        .and_then(|opened_object| {
+    get_open_object_table().lock().lookup_opened_object(fh).and_then(|opened_object| {
+        if opened_object.named_object.is_file() {
             // Make `opened_object` mutable here
-            opened_object.named_object.as_file().and_then(|file| {
+            return opened_object.named_object.as_file().and_then(|file| {
                 let new_pos = match origin {
                     SeekOrigin::Start => offset,
                     SeekOrigin::End => file.stat()?.size + offset,
@@ -113,23 +117,25 @@ pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno
                 };
                 opened_object.pos.store(new_pos, Ordering::SeqCst);
                 Ok(new_pos) // Success
-            })
-        })
+            });
+        }
+        Err(Errno::ENOTSUP)
+    })
 }
 
 pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
-    get_open_object_table()
-        .lock()
-        .lookup_opened_object(fh)
-        .and_then(|opened_object| {
+    get_open_object_table().lock().lookup_opened_object(fh).and_then(|opened_object| {
+        if opened_object.named_object.is_dir() {
             // Make `opened_object` mutable here
-            opened_object.named_object.as_dir().and_then(|dir| {
+            return opened_object.named_object.as_dir().and_then(|dir| {
                 let pos = opened_object.pos.load(Ordering::SeqCst);
                 let dir_entry = dir.readdir(pos)?;
                 opened_object.pos.store(pos + 1, Ordering::SeqCst);
                 Ok(dir_entry) // Return the DirEntry
-            })
-        })
+            });
+        }
+        Err(Errno::ENOTSUP)
+    })
 }
 
 pub(super) fn close(handle: usize) -> Result<usize, Errno> {
@@ -139,7 +145,6 @@ pub(super) fn close(handle: usize) -> Result<usize, Errno> {
 /*pub(super) fn dump() {
     get_open_object_table().lock().dump();
 }*/
-
 
 impl OpenObjectTable {
     /// Create a new OpenObjectTable
@@ -151,10 +156,7 @@ impl OpenObjectTable {
     }
 
     /// Lookup an 'OpenedObject' for a given handle
-    fn lookup_opened_object(
-        &mut self,
-        opened_object_handle: usize,
-    ) -> Result<&mut Arc<OpenedObject>, Errno> {
+    fn lookup_opened_object(&mut self, opened_object_handle: usize) -> Result<&mut Arc<OpenedObject>, Errno> {
         self.open_handles
             .iter_mut()
             .find(|(h, _)| *h == opened_object_handle)
@@ -176,11 +178,7 @@ impl OpenObjectTable {
     /// Free handle
     fn free_handle(&mut self, opened_object_handle: usize) -> SyscallResult {
         // Find the position of the file handle in the `open_handles` vector
-        if let Some(index) = self
-            .open_handles
-            .iter()
-            .position(|(h, _)| *h == opened_object_handle)
-        {
+        if let Some(index) = self.open_handles.iter().position(|(h, _)| *h == opened_object_handle) {
             // Remove the handle from `open_handles`
             self.open_handles.swap_remove(index);
             // set handle as free
@@ -194,15 +192,12 @@ impl OpenObjectTable {
 
     /// Helper function of 'allocate' to find a free handle
     fn find_free_handle(&mut self) -> Option<usize> {
-        self.free_handles
-            .iter_mut()
-            .position(|value| *value == 0)
-            .inspect(|index| {
-                self.free_handles[*index] = 1;
-            })
+        self.free_handles.iter_mut().position(|value| *value == 0).inspect(|index| {
+            self.free_handles[*index] = 1;
+        })
     }
 
-/*
+    /*
     fn dump(&self) {
         info!("OpenObjectTable: dumping used handles");
         for (handle, opened_object) in &self.open_handles {
@@ -227,10 +222,6 @@ pub struct OpenedObject {
 
 impl OpenedObject {
     pub fn new(named_object: Arc<NamedObject>, pos: AtomicUsize, options: OpenOptions) -> OpenedObject {
-        OpenedObject {
-            named_object,
-            pos,
-            options,
-        }
+        OpenedObject { named_object, pos, options }
     }
 }

@@ -1,0 +1,19 @@
+[package]
+edition = "2024"
+name = "pipetest"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/pipes.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+terminal = { path = "../../library/terminal" }
+runtime = { path = "../../library/runtime" }
+naming = { path = "../../library/naming" }
+concurrent = { path = "../../library/concurrent" }

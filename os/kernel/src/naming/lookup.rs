@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Lookup functions.                                                       ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 30.12.2024               ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 25.8.2025                ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use alloc::string::String;
@@ -19,6 +19,7 @@ pub(super) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errn
     match lookup_named_object(path)? {
         NamedObject::DirectoryObject(dir) => Ok(dir),
         NamedObject::FileObject(_) => Err(Errno::ENOTDIR),
+        NamedObject::PipeObject(_) => Err(Errno::ENOTDIR),
     }
 }
 

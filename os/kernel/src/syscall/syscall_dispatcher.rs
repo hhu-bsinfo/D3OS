@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Low-level dispatcher for system calls.                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, 27.12.2024, HHU                                 ║
+   ║ Author: Fabian Ruhland, 25.8.2025, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use core::arch::{asm, naked_asm};
@@ -128,6 +128,7 @@ impl SyscallTable {
                 sys_sock_receive as *const _,
                 sys_sock_close as *const _,
                 sys_get_ip_adresses as *const _,
+                sys_mkfifo as *const _,
             ],
         }
     }
