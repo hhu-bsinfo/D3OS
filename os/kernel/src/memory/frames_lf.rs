@@ -74,7 +74,7 @@ pub fn alloc(frame_count: usize) -> PhysFrameRange {
 
     // Allocate 2^order frames
     // returning the offset in number of frames from beginning = 0
-    match PAGE_FRAME_ALLOCATOR.get().unwrap().get(0, Flags::o(exponent as usize)) {
+    match PAGE_FRAME_ALLOCATOR.get().unwrap().get(0, None, Flags::o(exponent as usize)) {
         Ok(first_frame) => {
             let start_frame = PhysFrame::containing_address(PhysAddr::new(first_frame as u64));
 
