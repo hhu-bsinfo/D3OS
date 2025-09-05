@@ -45,7 +45,7 @@ smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "
 mbrs = { version = "0.3.1", default-features = false, features = ["no-std"] }
 num_enum = { version = "0.7.3", default-features = false }
 bitfield-struct = "0.10"
-llfree = { git = "https://github.com/luhsra/llfree-rs", subdir = "core", default-features = false }
+llfree = { git = "https://github.com/luhsra/llfree-rs", subdir = "core", default-features = false, rev = "8d3e2aaff9fbb9cce708cea8fc1a3cb5a20a9471" }
 
 [build-dependencies]
 built = { version = "0.7.7", features = ["chrono", "git2"] }
