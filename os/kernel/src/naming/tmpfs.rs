@@ -4,22 +4,24 @@
    ║ Temporary file system running storing everything in main memory. It     ║
    ║ supports directories, files, and named pipes.                           ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 28.8.2025                ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 01.09.2025               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use super::stat::Mode;
 use super::stat::Stat;
 use super::traits::{DirectoryObject, FileObject, FileSystem, NamedObject, PipeObject};
+use crate::sync::wait_queue::WaitQueue;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt::{Debug, Formatter};
 use core::result::Result;
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering;
 use core::{fmt, ptr};
 use log::info;
 use naming::shared_types::{DirEntry, FileType, OpenOptions};
 use nolock::queues::mpmc;
-use nolock::queues::mpmc::bounded;
 use spin::rwlock::RwLock;
 use syscall::return_vals::Errno;
 
@@ -310,19 +312,38 @@ impl Debug for StaticFile {
 const PIPE_SIZE: usize = 0x1000;
 
 struct Pipe {
-    buffer: (mpmc::bounded::scq::Receiver<u8>, mpmc::bounded::scq::Sender<u8>),
+    rx: mpmc::bounded::scq::Receiver<u8>, // reader
+    wx: mpmc::bounded::scq::Sender<u8>,   // writer
+    rx_wq: WaitQueue,                     // readers block when pipe is empty
+    wx_wq: WaitQueue,                     // writers block when pipe is full
     stat: RwLock<Stat>,
+    count: AtomicUsize,
 }
 
 impl Pipe {
     pub fn new() -> Pipe {
-        Pipe {
-            buffer: mpmc::bounded::scq::queue(PIPE_SIZE),
+        let (rx, wx) = mpmc::bounded::scq::queue(PIPE_SIZE);
+        Self {
+            rx,
+            wx,
+            rx_wq: WaitQueue::new(),
+            wx_wq: WaitQueue::new(),
             stat: RwLock::new(Stat {
                 mode: Mode::new(0),
                 ..Stat::zeroed()
             }),
+            count: AtomicUsize::new(0),
         }
+    }
+
+    #[inline]
+    fn has_data(&self) -> bool {
+        self.count.load(Ordering::Acquire) > 0
+    }
+
+    #[inline]
+    fn has_space(&self) -> bool {
+        self.count.load(Ordering::Acquire) < PIPE_SIZE
     }
 }
 
@@ -333,49 +354,69 @@ impl PipeObject for Pipe {
 
     /// Read from pipe buffer, `offset` is ignored
     fn read(&self, buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
+        let total_to_read = buf.len();
+
+        // Nothing to do?
+        if total_to_read == 0 {
+            return Ok(0);
+        }
+
         let mut total_read = 0;
         loop {
-            match self.buffer.0.try_dequeue() {
+            // Are we done?
+            if total_read >= total_to_read {
+                break;
+            }
+
+            // Read one byte
+            match self.rx.try_dequeue() {
                 Ok(byte) => {
-                    if total_read < buf.len() {
-                        buf[total_read] = byte;
-                        total_read += 1;
-                    } else {
-                        break; // Buffer is full
-                    }
+                    // We consumed a byte
+                    self.count.fetch_sub(1, Ordering::Release);
+
+                    // We freed space -> wake potentially blocked writer
+                    self.wx_wq.notify_one();
+
+                    // Copy byte
+                    buf[total_read] = byte;
+                    total_read += 1;
                 }
                 Err(_) => {
-                    if total_read == 0 {
-                        return Err(Errno::EAGAIN); // Buffer empty, no data read
-                    } else {
-                        break; // Buffer empty, some data read
-                    }
-                } // No more data to read
+                    // no data available -> block until data appears
+                    self.rx_wq.wait(|| self.has_data());
+                }
             }
         }
         Ok(total_read)
     }
 
-
-
     /// Write to pipe buffer, `offset` is ignored
     fn write(&self, buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
+        let total_to_write: usize = buf.len();
+
+        // Nothing to do?
+        if total_to_write == 0 {
+            return Ok(0);
+        }
+
         let mut total_written = 0;
         for byte in buf {
-            match self.buffer.1.try_enqueue(*byte) {
+//            info!("    pipe write loop");
+            match self.wx.try_enqueue(*byte) {
                 Ok(()) => {
+                    self.count.fetch_add(1, Ordering::Release);
+
+                    // We have new data -> wake potentially blocked reader
+                    self.rx_wq.notify_one();
+                   
                     total_written += 1;
-                },
+                }
                 Err(_) => {
-                    if total_written == 0 {
-                        return Err(Errno::EAGAIN); // Buffer full, no data written
-                    } else {
-                        break; // Buffer full, some data written
-                    }
+                    // no space in buffer available -> block until data is consumed
+                    self.wx_wq.wait(|| self.has_space());
                 }
             }
         }
-        //        info!("   written: {}", total_written);
         Ok(total_written)
     }
 }

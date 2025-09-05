@@ -14,7 +14,8 @@ const PIPE: &str = "/mypipe";
 const NR_OF_ITERATIONS: u32 = 6;
 
 fn writer_thread() {
-    println!("writer_thread: start");
+    let thread = thread::current().unwrap();
+    println!("writer_thread (tid={}): start", thread.id());
     let res = open("/mypipe", OpenOptions::WRITEONLY);
     if res.is_err() {
         println!("writer_thread: open failed, error: {:?}", res);
@@ -44,7 +45,7 @@ fn writer_thread() {
         if cnt > NR_OF_ITERATIONS {
             break;
         }
-        concurrent::thread::sleep(1000);
+//        concurrent::thread::sleep(1000);
     }
 
     close(fh);
@@ -52,7 +53,8 @@ fn writer_thread() {
 }
 
 fn reader_thread() {
-    println!("reader_thread: start");
+    let thread = thread::current().unwrap();
+    println!("reader_thread (tid={}): start", thread.id());
     let res = open("/mypipe", OpenOptions::READONLY);
     if res.is_err() {
         println!("reader_thread: open failed, error: {:?}", res);
@@ -78,7 +80,7 @@ fn reader_thread() {
         if cnt > NR_OF_ITERATIONS {
             break;
         }
-        concurrent::thread::sleep(1000);
+//        concurrent::thread::sleep(1000);
     }
 
     close(fh);

@@ -6,6 +6,7 @@
    ║ Public functions                                                        ║
    ║   - active_thread_ids      get a list of all active thread IDs          ║
    ║   - current_thread         get the currently running thread             ║
+   ║   - current_ids            get the (pid, tid) of the current thread     ║
    ║   - exit                   exit the calling thread                      ║
    ║   - join                   wait for a thread to finish                  ║
    ║   - kill                   kill a thread                                ║
@@ -16,8 +17,11 @@
    ║   - start                  start the scheduler                          ║
    ║   - switch_thread_from_interrupt  switch thread, called from interrupt  ║
    ║   - switch_thread_no_interrupt    switch thread, not called from int.   ║
+   ║   - current_ids            get the (pid, tid) of the current thread     ║
+   ║   - block                   put the calling thread into blocked mode    ║
+   ║   - deblock                 wake up a blocked thread                    ║  
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, HHU                                             ║
+   ║ Author: Fabian Ruhland, 05.09.2025, HHU                                 ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use crate::process::thread::Thread;
@@ -25,12 +29,12 @@ use crate::{allocator, apic, scheduler, timer, tss};
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::ptr;
+use core::{panic, ptr};
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use smallmap::Map;
 use spin::{Mutex, MutexGuard};
-
+use log::info;
 
 // thread IDs
 static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -60,6 +64,7 @@ impl ReadyState {
 pub struct Scheduler {
     ready_state: Mutex<ReadyState>,
     sleep_list: Mutex<Vec<(Arc<Thread>, usize)>>,
+    blocked_list: Mutex<Vec<Arc<Thread>>>,
     join_map: Mutex<Map<usize, Vec<Arc<Thread>>>>, // manage which threads are waiting for a thread-id to terminate
 }
 
@@ -79,6 +84,7 @@ impl Scheduler {
         Self {
             ready_state: Mutex::new(ReadyState::new()),
             sleep_list: Mutex::new(Vec::new()),
+            blocked_list: Mutex::new(Vec::new()),
             join_map: Mutex::new(Map::new()),
         }
     }
@@ -115,6 +121,14 @@ impl Scheduler {
             .cloned()
     }
 
+    /// Return (pid, tid) of current thread
+    pub fn current_ids(&self) -> (usize, usize) {
+        let tid = self.current_thread().id();
+        let pid = self.current_thread().process().id();
+        (pid, tid)
+    }
+
+
     /// Start the scheduler, called only once from `boot.rs` 
     pub fn start(&self) {
         // TODO: make sure this is actually called just once
@@ -145,7 +159,7 @@ impl Scheduler {
         join_map.insert(id, Vec::new());
     }
 
-    /// Put calling thread `self` to sleep for `ms` milliseconds
+    /// Put calling thread to sleep for `ms` milliseconds
     pub fn sleep(&self, ms: usize) {
         let mut state = self.get_ready_state();
 
@@ -165,7 +179,39 @@ impl Scheduler {
                 sleep_list.push((thread, wakeup_time));
             }
 
-            self.block(&mut state);
+            self.block_and_switch(&mut state);
+        }
+    }
+
+    /// Put calling thread to block
+    pub fn block(&self) {
+        let mut state = self.get_ready_state();
+
+        if !state.initialized {
+            // Scheduler is not initialized yet, so this function has been called during the boot process
+            // We panic
+            panic!("Scheduler: Cannot block thread before scheduler is initialized!");
+        } 
+        else {
+            // Scheduler is initialized, so we can block the calling thread
+            let thread = Scheduler::current(&state);
+            {
+                // Execute in own block, so that the lock is released automatically (block() does not return)
+                let mut block_list = self.blocked_list.lock();
+                block_list.push(thread);
+            } // drop lock for block_list
+            //info!("Scheduler::block: switch to next thread");
+            self.block_and_switch(&mut state);
+        }
+    }
+
+    /// Put calling thread to block
+    pub fn deblock(&self, pid: usize, tid: usize) {
+        let mut block_list = self.blocked_list.lock();
+
+        if let Some(pos) = block_list.iter().position(|thread| thread.id() == tid && thread.process().id() == pid) {
+            let thread = block_list.remove(pos);
+            self.ready(thread);
         }
     }
 
@@ -237,7 +283,7 @@ impl Scheduler {
             }
         }
 
-        self.block(&mut state);
+        self.block_and_switch(&mut state);
     }
 
     /// Exit calling thread.
@@ -262,7 +308,7 @@ impl Scheduler {
         }
 
         drop(current); // Decrease Rc manually, because block() does not return
-        self.block(&mut ready_state);
+        self.block_and_switch(&mut ready_state);
         unreachable!()
     }
 
@@ -292,9 +338,8 @@ impl Scheduler {
         ready_state.ready_queue.retain(|thread| thread.id() != thread_id);
     }
 
-    /// Block calling thread. \
-    /// Function is used by `sleep` and `exit`
-    fn block(&self, state: &mut ReadyState) {
+    /// Block calling thread and switch to next ready thread.
+    fn block_and_switch(&self, state: &mut ReadyState) {
         let mut next_thread = state.ready_queue.pop_back();
 
         {

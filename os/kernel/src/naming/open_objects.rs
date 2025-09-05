@@ -4,7 +4,7 @@
    ║ Managing opened objects in a global table (OPEN_OBJECTS). And providing ║
    ║ all major functions for the naming service.                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 25.08.2025               ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 03.09.2025               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -14,6 +14,7 @@ use alloc::vec::Vec;
 use core::result::Result;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use log::info;
+use spin::rwlock::RwLock;
 use spin::{Mutex, Once};
 
 use super::lookup;
@@ -24,20 +25,16 @@ use syscall::return_vals::{Errno, SyscallResult};
 /// Max. number of open objetcs
 const MAX_OPEN_OBJECTS: usize = 0x1000;
 
-/// Helper function returning safe access to the open object table (oot)
-fn get_open_object_table() -> Arc<Mutex<Box<OpenObjectTable>>> {
-    OPEN_OBJECTS.get().unwrap().clone()
-}
-
-static OPEN_OBJECTS: Once<Arc<Mutex<Box<OpenObjectTable>>>> = Once::new();
+//static OPEN_OBJECTS: Once<Arc<Mutex<Box<OpenObjectTable>>>> = Once::new();
+static OPEN_OBJECTS: Once<Arc<OpenObjectTable>> = Once::new();
 
 struct OpenObjectTable {
-    open_handles: Vec<(usize, Option<Arc<OpenedObject>>)>,
-    free_handles: Box<[usize; MAX_OPEN_OBJECTS]>,
+    open_handles: RwLock<Vec<(usize, Option<Arc<OpenedObject>>)>>,
+    free_handles: RwLock<Box<[usize; MAX_OPEN_OBJECTS]>>,
 }
 
 pub(super) fn open_object_table_init() {
-    OPEN_OBJECTS.call_once(|| Arc::new(Mutex::new(OpenObjectTable::new())));
+    OPEN_OBJECTS.call_once(|| Arc::new(OpenObjectTable::new()));
 }
 
 pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
@@ -56,13 +53,11 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
     }
 
     // try to allocate an new handle
-    get_open_object_table()
-        .lock()
-        .allocate_handle(Arc::new(OpenedObject::new(Arc::new(found_named_object), AtomicUsize::new(0), flags)))
+    get_open_object_table().allocate_handle(Arc::new(OpenedObject::new(Arc::new(found_named_object), AtomicUsize::new(0), flags)))
 }
 
 pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
-    get_open_object_table().lock().lookup_opened_object(fh).and_then(|opened_object| {
+    get_open_object_table().lookup_opened_object(fh).and_then(|opened_object| {
         if opened_object.named_object.is_file() {
             // Make `opened_object` mutable here
             return opened_object.named_object.as_file().and_then(|file| {
@@ -84,7 +79,7 @@ pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
 }
 
 pub(super) fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
-    get_open_object_table().lock().lookup_opened_object(fh).and_then(|opened_object| {
+    get_open_object_table().lookup_opened_object(fh).and_then(|opened_object| {
         if opened_object.named_object.is_file() {
             // Make `opened_object` mutable here
             return opened_object.named_object.as_file().and_then(|file| {
@@ -106,7 +101,7 @@ pub(super) fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
 }
 
 pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno> {
-    get_open_object_table().lock().lookup_opened_object(fh).and_then(|opened_object| {
+    get_open_object_table().lookup_opened_object(fh).and_then(|opened_object| {
         if opened_object.named_object.is_file() {
             // Make `opened_object` mutable here
             return opened_object.named_object.as_file().and_then(|file| {
@@ -124,7 +119,7 @@ pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno
 }
 
 pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
-    get_open_object_table().lock().lookup_opened_object(fh).and_then(|opened_object| {
+    get_open_object_table().lookup_opened_object(fh).and_then(|opened_object| {
         if opened_object.named_object.is_dir() {
             // Make `opened_object` mutable here
             return opened_object.named_object.as_dir().and_then(|dir| {
@@ -139,62 +134,69 @@ pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
 }
 
 pub(super) fn close(handle: usize) -> Result<usize, Errno> {
-    get_open_object_table().lock().free_handle(handle)
+    get_open_object_table().free_handle(handle)
 }
 
 /*pub(super) fn dump() {
     get_open_object_table().lock().dump();
 }*/
 
+/// ************************ OpenedObject ************************
+
 impl OpenObjectTable {
     /// Create a new OpenObjectTable
-    fn new() -> Box<OpenObjectTable> {
-        Box::new(OpenObjectTable {
-            open_handles: Vec::new(),
-            free_handles: Box::new([0; MAX_OPEN_OBJECTS]),
-        })
+    fn new() -> OpenObjectTable {
+        OpenObjectTable {
+            open_handles: RwLock::new(Vec::with_capacity(MAX_OPEN_OBJECTS)),
+            free_handles: RwLock::new(Box::new([0; MAX_OPEN_OBJECTS])),
+        }
     }
 
     /// Lookup an 'OpenedObject' for a given handle
-    fn lookup_opened_object(&mut self, opened_object_handle: usize) -> Result<&mut Arc<OpenedObject>, Errno> {
-        self.open_handles
-            .iter_mut()
-            .find(|(h, _)| *h == opened_object_handle)
-            .ok_or(Errno::EINVALH) // Handle not found in the table
-            .and_then(|(_, named_obj)| named_obj.as_mut().ok_or(Errno::EINVALH))
+    fn lookup_opened_object(&self, handle: usize) -> Result<Arc<OpenedObject>, Errno> {
+        let guard = self.open_handles.read();
+        guard
+            .iter()
+            .find(|(h, _)| *h == handle)
+            .and_then(|(_, obj)| obj.as_ref())
+            .cloned()
+            .ok_or(Errno::EINVALH)
     }
 
     /// Allocate a new handle for a given 'OpenObject'
-    fn allocate_handle(&mut self, opened_object: Arc<OpenedObject>) -> Result<usize, Errno> {
-        let res = self.find_free_handle();
-        if res.is_none() {
-            return Err(Errno::ENOHANDLES);
-        }
-        let new_handle = res.unwrap();
-        self.open_handles.push((new_handle, Some(opened_object)));
-        Ok(new_handle)
+    fn allocate_handle(&self, opened_object: Arc<OpenedObject>) -> Result<usize, Errno> {
+        // We modify both vectors, so take a write lock
+        let mut guard = self.open_handles.write();
+
+        // find a free slot
+        let handle = self.find_free_handle().ok_or(Errno::ENOHANDLES)?;
+        guard.push((handle, Some(opened_object)));
+        Ok(handle)
     }
 
     /// Free handle
-    fn free_handle(&mut self, opened_object_handle: usize) -> SyscallResult {
-        // Find the position of the file handle in the `open_handles` vector
-        if let Some(index) = self.open_handles.iter().position(|(h, _)| *h == opened_object_handle) {
-            // Remove the handle from `open_handles`
-            self.open_handles.swap_remove(index);
-            // set handle as free
-            self.free_handles[index] = 0;
+    fn free_handle(&self, handle: usize) -> SyscallResult {
+        let mut guard = self.open_handles.write();
+
+        if let Some(idx) = guard.iter().position(|(h, _)| *h == handle) {
+            guard.swap_remove(idx);
+            self.free_handles.write()[handle] = 0;
             Ok(0)
         } else {
-            // Handle not found
             Err(Errno::EINVALH)
         }
     }
 
     /// Helper function of 'allocate' to find a free handle
-    fn find_free_handle(&mut self) -> Option<usize> {
-        self.free_handles.iter_mut().position(|value| *value == 0).inspect(|index| {
-            self.free_handles[*index] = 1;
-        })
+    fn find_free_handle(&self) -> Option<usize> {
+        let mut free = self.free_handles.write(); // hold guard for the whole loop
+        for (i, v) in free.iter_mut().enumerate() {
+            if *v == 0 {
+                *v = 1;
+                return Some(i);
+            }
+        }
+        None
     }
 
     /*
@@ -211,6 +213,13 @@ impl OpenObjectTable {
     }
     */
 }
+
+/// Helper function returning safe access to the open object table (oot)
+fn get_open_object_table() -> Arc<OpenObjectTable> {
+    OPEN_OBJECTS.get().unwrap().clone()
+}
+
+/// ************************ OpenedObject ************************
 
 // Opened object stored in the 'OpenObjectTable'
 // (includes NamedObject, current position within object, and options)
