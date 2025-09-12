@@ -1,0 +1,13 @@
+// Zed tries to parse VS Code's config, but fails on remote-gdb.
+// So instead it gets its own config.
+[
+  {
+    "label": "qemu-gdb",
+    "adapter": "GDB",
+    "program": "$ZED_WORKTREE_ROOT/loader/kernel.elf",
+    "sourceLanguages": ["rust"],
+    // spawning into background doesn't work
+    "request": "attach",
+    "target": "localhost:1234"
+  }
+]
