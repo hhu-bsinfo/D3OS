@@ -8,7 +8,10 @@ use crate::{
         button::Button,
         component::ComponentStylingBuilder,
         container::{
-            basic_container::{AlignmentMode, BasicContainer, LayoutMode, StretchMode},
+            basic_container::BasicContainer,
+            container_layout::{
+                AlignmentMode, ContainerLayoutBuilder, HorDirection, StretchMode, VertDirection,
+            },
             Container, ContainerStylingBuilder,
         },
     },
@@ -52,8 +55,12 @@ impl AppWindow {
         // Root container for the window
         let mut root_container = Box::new(BasicContainer::new(
             screen_rect,
-            LayoutMode::Vertical(AlignmentMode::Top),
-            StretchMode::Fill,
+            Some(
+                ContainerLayoutBuilder::new()
+                    .alignment(AlignmentMode::Vertical(VertDirection::Top))
+                    .stretch(StretchMode::Fill)
+                    .build(),
+            ),
             Some(
                 ContainerStylingBuilder::new()
                     .show_border(false)
@@ -69,9 +76,18 @@ impl AppWindow {
                 width: 0,
                 height: 40,
             },
-            LayoutMode::Horizontal(AlignmentMode::Right),
-            StretchMode::Fill,
-            Some(ContainerStylingBuilder::new().show_border(true).show_background(true).build()),
+            Some(
+                ContainerLayoutBuilder::new()
+                    .alignment(AlignmentMode::Horizontal(HorDirection::Right))
+                    .stretch(StretchMode::Fill)
+                    .build(),
+            ),
+            Some(
+                ContainerStylingBuilder::new()
+                    .show_border(true)
+                    .show_background(true)
+                    .build(),
+            ),
         ));
 
         let button_rect = RectData {
@@ -142,8 +158,7 @@ impl AppWindow {
                 width: 0,
                 height: 560,
             },
-            LayoutMode::None,
-            StretchMode::None,
+            None,
             Some(ContainerStylingBuilder::new().show_border(false).build()),
         )));
 
@@ -263,6 +278,17 @@ impl AppWindow {
         }
 
         return true;
+    }
+
+    /// Force unfocus the currently focused component
+    pub fn unfocus(&mut self) {
+        self.focused_component = None;
+
+        if let Some(focused) = &self.focused_component {
+            if let Some(focusable) = focused.write().as_focusable_mut() {
+                return focusable.unfocus();
+            }
+        }
     }
 
     pub fn focus_next_component(&mut self) {

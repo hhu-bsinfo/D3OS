@@ -20,17 +20,17 @@ use crate::{
         button::Button,
         canvas::Canvas,
         checkbox::Checkbox,
-        component::{self, Component},
+        component,
         container::{
-            basic_container::{self, BasicContainer, LayoutMode, StretchMode},
-            Container, ContainerStyling,
+            basic_container::BasicContainer,
+            container_layout::ContainerLayout,
+            ContainerStyling,
         },
         input_field::InputField,
         label::Label,
         radio_button_group::RadioButtonGroup,
         slider::Slider,
     },
-    config::PADDING_BORDERS_AND_CHARS,
     signal::{ComponentRef, ComponentRefExt, Signal, Stateful},
     SCREEN,
 };
@@ -113,8 +113,7 @@ pub enum Command<'a> {
     },
     CreateContainer {
         log_rect_data: RectData,
-        layout: LayoutMode,
-        stretch: StretchMode,
+        layout: Option<ContainerLayout>,
         styling: Option<ContainerStyling>,
     },
 }
@@ -502,19 +501,14 @@ impl Api {
 
                 self.add_component(dispatch_data);
 
-                component
-            }
-            Command::CreateContainer {
-                log_rect_data,
-                layout,
-                stretch,
-                styling,
-            } => {
+                        component
+                    }
+            Command::CreateContainer { log_rect_data, layout, styling } => {
                 self.validate_log_pos(&log_rect_data.top_left)?;
 
                 let rel_rect_data = self.scale_rect_data_to_rel(&log_rect_data);
 
-                let container = BasicContainer::new(rel_rect_data, layout, stretch, styling);
+                let container = BasicContainer::new(rel_rect_data, layout, styling);
                 let component: ComponentRef = ComponentRef::from_component(Box::new(container));
 
                 let dispatch_data = NewCompData {

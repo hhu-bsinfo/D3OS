@@ -64,6 +64,7 @@ impl Workspace {
             return;
         }
         
+        self.get_focused_window_mut().unfocus();
         self.get_focused_window_mut().mark_window_dirty(); // old window
         
         let mut cursor =
@@ -88,6 +89,7 @@ impl Workspace {
             return;
         }
         
+        self.get_focused_window_mut().unfocus();
         self.get_focused_window_mut().mark_window_dirty(); // old window
 
         let mut cursor =
@@ -123,6 +125,7 @@ impl Workspace {
             }
 
             // Mark the old window as dirty
+            self.get_focused_window_mut().unfocus();
             self.get_focused_window_mut().mark_window_dirty();
 
             self.focused_window_id = new_window_id;

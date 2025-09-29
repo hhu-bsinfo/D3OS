@@ -5,7 +5,7 @@ use crate::apps::text_editor::editor::OpenDocuments;
 use crate::apps::text_editor::messages::Message;
 use crate::apps::text_editor::view::View;
 use crate::components::component::ComponentStyling;
-use crate::components::container::basic_container::{AlignmentMode, LayoutMode, StretchMode};
+use crate::components::container::container_layout::{AlignmentMode, ContainerLayoutBuilder, HorDirection, StretchMode, VertDirection};
 use crate::components::container::ContainerStyling;
 use crate::config::DEFAULT_BACKGROUND_COLOR;
 use crate::signal::{ComponentRef, Signal};
@@ -65,8 +65,12 @@ impl Runnable for TextEditor {
                         width: LOG_SCREEN.0 - 100,
                         height: LOG_SCREEN.1 - 140,
                     },
-                    layout: LayoutMode::Vertical(AlignmentMode::Top),
-                    stretch: StretchMode::Fill,
+                    layout: Some(
+                        ContainerLayoutBuilder::new()
+                            .alignment(AlignmentMode::Vertical(VertDirection::Top))
+                            .stretch(StretchMode::Fill)
+                            .build()
+                    ),
                     styling: Some(container_styling),
                 },
             )
@@ -81,8 +85,12 @@ impl Runnable for TextEditor {
                         width: LOG_SCREEN.0 as u32 - 100,
                         height: 40,
                     },
-                    layout: LayoutMode::Horizontal(AlignmentMode::Top),
-                    stretch: StretchMode::Fill,
+                    layout: Some(
+                        ContainerLayoutBuilder::new()
+                            .alignment(AlignmentMode::Horizontal(HorDirection::Left))
+                            .stretch(StretchMode::Fill)
+                            .build()
+                    ),
                     styling: Some(container_styling),
                 },
             )
