@@ -24,7 +24,7 @@ use crate::string::string::strlen;
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn terminal_write(buffer: *const c_char) {
-    let res = syscall(SystemCall::TerminalWrite, &[buffer as usize, unsafe { strlen(buffer) }]);
+    let res = syscall(SystemCall::TerminalWriteOutput, &[buffer as usize, unsafe { strlen(buffer) }]);
     if res.is_err() {
         panic!("Error while writing to the terminal!");
     }

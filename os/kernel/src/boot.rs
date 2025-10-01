@@ -8,8 +8,9 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
+use crate::consts;
 use crate::device::pit::Timer;
-use crate::device::ps2::Keyboard;
+use crate::device::ps2::{Keyboard, Mouse};
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
@@ -18,12 +19,18 @@ use crate::memory::vma::VmaType;
 use crate::memory::{dram, frames_lf, nvmem, PAGE_SIZE};
 use crate::process::thread::Thread;
 use crate::syscall::{sys_vmem, syscall_dispatcher};
-use crate::{acpi_tables, allocator, apic, built_info, consts, gdt, get_initrd_frames, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss};
-use crate::{efi_services_available, naming, storage};
+use crate::{
+    acpi_tables, allocator, apic, gdt, get_initrd_frames,
+    efi_services_available, init_acpi_tables, init_apic, init_boot_info,
+    init_cpu_info, init_initrd, init_lfb, init_lfb_info, init_pci,
+    init_serial_port, init_tty, initrd, keyboard, logger, mouse,
+    process_manager, scheduler, serial_port, timer, tss,
+};
+use crate::{built_info, memory, naming, network, storage};
+
 use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use chrono::DateTime;
 use core::ffi::c_void;
 use core::mem::size_of;
@@ -52,6 +59,8 @@ unsafe extern "C" {
     static ___KERNEL_DATA_START__: c_void; // start address of OS image
     static ___KERNEL_DATA_END__: c_void; // end address of OS image
 }
+
+const BOOT_TO_GUI: bool = false; // Immediately start the GUI instead of terminal (Debug)
 
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \
@@ -174,13 +183,20 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         fb_end_phys_addr,
         );
 
-    // Initialize terminal kernel thread and enable terminal logging
-    init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+    // Initialize lfb info (For terminal_emulator)
+    init_lfb_info(fb_info.address(), fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+    // Initialize framebuffer (For window_manager)
+    init_lfb(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
     // Dumping basic infos
     info!("Welcome to D3OS!");
-    let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
-    let git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
+    let version = format!(
+        "v{} ({} - O{})",
+        built_info::PKG_VERSION,
+        built_info::PROFILE,
+        built_info::OPT_LEVEL
+    );
+    let _git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("Unknown");
     let build_date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
         Ok(date_time) => date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -196,9 +212,17 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         }
         None => "Unknown",
     };
-    info!("OS Version: [{version}]");
-    info!("Git Version: [{} - {}]", built_info::GIT_HEAD_REF.unwrap_or("Unknown"), git_commit);
-    info!("Build Date: [{build_date}]");
+
+    // Remember boot info
+    init_boot_info(bootloader_name.to_string());
+
+    info!("OS Version: [{}]", version);
+    info!(
+        "Git Version: [{} - {}]",
+        built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown"),
+        git_commit
+    );
+    info!("Build Date: [{}]", build_date);
     info!("Compiler: [{}]", built_info::RUSTC_VERSION);
     info!("Bootloader: [{bootloader_name}]");
 
@@ -249,6 +273,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize keyboard
     if let Some(keyboard) = keyboard() {
         Keyboard::plugin(keyboard);
+    }
+
+    if let Some(mouse) = mouse() {
+        Mouse::plugin(mouse);
     }
 
     // Enable serial port interrupts
@@ -313,30 +341,27 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     }
     scheduler().ready(Thread::new_kernel_thread(cleanup, "cleanup"));
 
-    // Create and register the 'shell' thread (from app image in ramdisk) in the scheduler
-    scheduler().ready(Thread::load_application(
-        initrd()
-            .entries()
-            .find(|entry| entry.filename().as_str().unwrap() == "bin/shell")
-            .expect("Shell application not available!")
-            .data(),
-        "shell",
-        &Vec::new(),
-    ));
+    //Initialize tty buffer (Workaround for missing pipes)
+    init_tty();
 
-    // Disable terminal logging (remove terminal output stream)
-    logger().remove(terminal().as_ref());
-    terminal().clear();
-
-    println!(
-        include_str!("banner.txt"),
-        version,
-        git_ref.rsplit("/").next().unwrap_or(git_ref),
-        git_commit,
-        build_date,
-        built_info::RUSTC_VERSION.split_once("(").unwrap_or((built_info::RUSTC_VERSION, "")).0.trim(),
-        bootloader_name
-    );
+    if BOOT_TO_GUI {
+        // Create and register the 'window_manager' thread in the scheduler
+        scheduler().ready(Thread::load_application(initrd().entries()
+            .find(|entry| entry.filename().as_str().unwrap() == "bin/window_manager")
+            .expect("Window Manager application not available!")
+            .data(), "window_manager", &[].to_vec()));
+    } else {
+        // Create and register the 'terminal_emulator' thread (from app image in ramdisk) in the scheduler
+        scheduler().ready(Thread::load_application(
+            initrd()
+                .entries()
+                .find(|entry| entry.filename().as_str().unwrap() == "bin/terminal_emulator")
+                .expect("Terminal application not available!")
+                .data(),
+            "terminal_emulator",
+            &[].to_vec(),
+        ));
+    }
 
     // Dump information about all processes (including VMAs)
     process_manager().read().dump();

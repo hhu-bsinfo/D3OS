@@ -15,17 +15,36 @@ use x86_64::registers::control::{Efer, EferFlags};
 use x86_64::registers::model_specific::{KernelGsBase, LStar, SFMask, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
-use crate::syscall::sys_net::{sys_get_ip_adresses, sys_sock_accept, sys_sock_bind, sys_sock_close, sys_sock_connect, sys_sock_open, sys_sock_receive, sys_sock_send};
-use crate::syscall::sys_vmem::{sys_map_frame_buffer, sys_map_memory};
-use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, };
-use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
-    sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch};
-use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_read_nb, sys_terminal_write};
-use crate::syscall::sys_naming::*;
 
 use crate::{core_local_storage, tss};
 use log::info;
 use x86_64::registers::rflags::RFlags;
+
+use super::sys_concurrent::{
+    sys_process_count, sys_process_execute_binary, sys_process_exit,
+    sys_process_id, sys_thread_count, sys_thread_create, sys_thread_exit,
+    sys_thread_id, sys_thread_join, sys_thread_kill, sys_thread_sleep,
+    sys_thread_switch,
+};
+use super::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
+use super::sys_input::{sys_read_keyboard, sys_read_mouse};
+use super::sys_logger::sys_log;
+use super::sys_naming::{
+    sys_close, sys_cd, sys_cwd, sys_mkdir, sys_mkfifo, sys_open, sys_read,
+    sys_readdir, sys_seek, sys_touch, sys_write,
+};
+use super::sys_net::{
+    sys_sock_accept, sys_sock_bind, sys_sock_close, sys_sock_connect,
+    sys_get_ip_adresses, sys_sock_open, sys_sock_receive, sys_sock_send,
+};
+use super::sys_system_info::sys_map_build_info;
+use super::sys_terminal::{
+    sys_terminal_check_input_state, sys_terminal_read_input,
+    sys_terminal_read_output, sys_terminal_write_input,
+    sys_terminal_write_output,
+};
+use super::sys_time::{sys_get_date, sys_get_system_time, sys_set_date};
+use super::sys_vmem::{sys_map_memory, sys_map_frame_buffer};
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -93,20 +112,25 @@ impl SyscallTable {
     pub const fn new() -> Self {
         SyscallTable {
             handle: [
-                sys_terminal_read as *const _,
-                sys_terminal_read_nb as *const _,
-                sys_terminal_write as *const _,
+                sys_terminal_read_input as *const _,
+                sys_terminal_write_input as *const _,
+                sys_terminal_check_input_state as *const _,
+                sys_terminal_write_output as *const _,
+                sys_terminal_read_output as *const _,
                 sys_map_memory as *const _,
                 sys_map_frame_buffer as *const _,
                 sys_process_execute_binary as *const _,
                 sys_process_id as *const _,
                 sys_process_exit as *const _,
+                sys_process_count as *const _,
                 sys_thread_create as *const _,
                 sys_thread_id as *const _,
                 sys_thread_switch as *const _,
                 sys_thread_sleep as *const _,
                 sys_thread_join as *const _,
                 sys_thread_exit as *const _,
+                sys_thread_kill as *const _,
+                sys_thread_count as *const _,
                 sys_get_system_time as *const _,
                 sys_get_date as *const _,
                 sys_set_date as *const _,
@@ -129,6 +153,12 @@ impl SyscallTable {
                 sys_sock_close as *const _,
                 sys_get_ip_adresses as *const _,
                 sys_mkfifo as *const _,
+                sys_write_graphic as *const _,
+                sys_get_graphic_resolution as *const _,
+                sys_read_mouse as *const _,
+                sys_read_keyboard as *const _,
+                sys_map_build_info as *const _,
+                sys_log as *const _,
             ],
         }
     }
@@ -143,7 +173,7 @@ unsafe impl Sync for SyscallTable {}
 ///    This function does not take any parameters per its declaration,
 ///    but in reality, it takes at least the system call ID in rax
 ///    and may take additional parameters for the system call in `rdi`, `rsi` ... \
-///    See AMD64 ABI. 
+///    See AMD64 ABI.
 ///
 /// Return: \
 ///    Two values in `rax`, `rdx` to reconstruct `Result`in user mode
@@ -161,7 +191,7 @@ unsafe extern "C" fn syscall_handler() {
     // Store registers (except rax, which is used for system call ID and return value)
     "push rbx",
     "push rcx", // Contains rip for returning to ring 3
-    "push rdx", 
+    "push rdx",
     "push rdi",
     "push rsi",
     "push r8",

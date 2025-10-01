@@ -98,16 +98,14 @@ Examples:
     // loop: send and receive
     let mut buf = [0u8; 1024];
     loop {
-        let key = read();
-        if let Some(key) = key {
-            let string = key.encode_utf8(&mut buf);
-            match socket {
-                Socket::Udp(ref sock) => sock.send_to(string.as_bytes(), addr)
-                    .expect("failed to send char"),
-                Socket::Tcp(ref sock) => sock.write(string.as_bytes())
-                    .expect("failed to send char"),
-            };
-        }
+        let mut message = read();
+        message.push('\n');
+        match socket {
+            Socket::Udp(ref sock) => sock.send_to(message.as_bytes(), addr)
+                .expect("failed to send char"),
+            Socket::Tcp(ref sock) => sock.write(message.as_bytes())
+                .expect("failed to send char"),
+        };
         let len = match socket {
             Socket::Udp(ref sock) => sock.recv_from(&mut buf)
                 .expect("failed to receive char").0,

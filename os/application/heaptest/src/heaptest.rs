@@ -4,7 +4,7 @@ extern crate alloc;
 use alloc::{boxed::Box, vec::Vec};
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{print, println, read::read};
+use terminal::{print, println, read::read_fluid, DecodedKey};
 
 #[unsafe(no_mangle)]
 fn main() {
@@ -16,19 +16,17 @@ fn main() {
     println!("press Q to exit");
     loop {
         println!("currently allocated: {} kilobytes ", allocations.len());
-        let key = read();
-        if let Some(key) = key {
-            if key.is_ascii() {
-                match key {
-                    'a' | 'A' => for _ in 0..25 {
-                        allocations.push(Box::new([0u8; 1024]));
-                    },
-                    'd' | 'D' => for _ in 0..25 {
-                        allocations.pop();
-                    },
-                    'q' | 'Q' => break,
-                    _ => continue,
-                }
+        let key = read_fluid();
+        if let Some(DecodedKey::Unicode(key)) = key {
+            match key {
+                'a' | 'A' => for _ in 0..25 {
+                    allocations.push(Box::new([0u8; 1024]));
+                },
+                'd' | 'D' => for _ in 0..25 {
+                    allocations.pop();
+                },
+                'q' | 'Q' => break,
+                _ => continue,
             }
         }
     }

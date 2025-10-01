@@ -1,0 +1,17 @@
+[package]
+name = "syntax"
+version = "0.1.0"
+edition = "2024"
+authors = ["Julius Carl Drodofsky <julius@drodofsky.xyz>"]
+
+[features]
+default = ["alloc"]
+alloc = []
+
+
+[dependencies]
+
+[dependencies.nom]
+version = "8"
+default-features = false
+features = ["alloc"]

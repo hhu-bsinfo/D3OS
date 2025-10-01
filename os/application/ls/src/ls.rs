@@ -9,7 +9,7 @@ use naming::cwd;
 use naming::shared_types::{DirEntry, FileType, OpenOptions};
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{print, println};
+use terminal::println;
 
 fn print_usage() {
     println!("usage: ls [directory_name");

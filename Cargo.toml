@@ -7,6 +7,7 @@ members = [
     "os/application/hello",
     "os/application/helloc",
     "os/application/shell",
+    "os/application/legacy_shell",
     "os/application/uptime",
     "os/application/date",
     "os/application/ls",
@@ -17,7 +18,10 @@ members = [
     "os/application/ping",
     "os/application/ip",
     "os/application/peanut-gb",
-    "os/application/pipetest"
+    "os/application/pipetest",
+    "os/application/window_manager",
+    "os/application/terminal_emulator",
+    "os/application/keytest",
 ]
 
 # [profile.release]

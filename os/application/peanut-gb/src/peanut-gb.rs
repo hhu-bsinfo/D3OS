@@ -14,8 +14,8 @@ use chrono::{Datelike, Timelike};
 use spin::{Once, RwLock};
 use concurrent::thread;
 use ::time::{date, systime};
-use graphic::{color, map_framebuffer, FramebufferInfo};
-use graphic::lfb::{DEFAULT_CHAR_HEIGHT, LFB};
+use graphic::color;
+use graphic::lfb::{DEFAULT_CHAR_HEIGHT, LFB, map_framebuffer, FramebufferInfo};
 use libc::time::time::tm;
 use naming::shared_types::{OpenOptions, SeekOrigin};
 use terminal::{print, println};
@@ -306,7 +306,7 @@ pub fn main() {
     FRAMEBUFFER.call_once(|| map_framebuffer().unwrap());
 
     let fb_info  = FRAMEBUFFER.get().unwrap();
-    let lfb = LFB::new(fb_info.addr as *mut u8, fb_info.pitch, fb_info.width, fb_info.height, fb_info.bpp);
+    let mut lfb = LFB::new(fb_info.addr as *mut u8, fb_info.pitch, fb_info.width, fb_info.height, fb_info.bpp);
     let x_offset = (fb_info.width - GB_SCREEN_RES.0 * SCALE) / 2;
     let y_offset = (fb_info.height - GB_SCREEN_RES.1 * SCALE) / 2;
     SCREEN_OFFSET.call_once(|| (x_offset, y_offset));
@@ -321,7 +321,7 @@ pub fn main() {
         let time = systime();
 
         // Check if a key has been pressed and update the joypad state accordingly
-        if let Some(key) = terminal::read::read_nb() {
+        if let Some(terminal::DecodedKey::Unicode(key)) = terminal::read::read_fluid() {
             match key {
                 ' ' => *gb_joypad = !(JoypadButton::Start as u8),
                 '\n' => *gb_joypad = !(JoypadButton::Select as u8),

@@ -26,6 +26,7 @@ unsafe extern "C" {
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
+#[cfg(not(any(test, feature = "std")))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("Panic: {}!", info);

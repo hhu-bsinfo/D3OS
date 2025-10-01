@@ -9,6 +9,11 @@ pub trait InputStream {
     fn read_byte_nb(&self) -> Option<i16>;
 }
 
+pub trait DecodedInputStream {
+    fn decoded_read_byte(&self) -> i16;
+    fn decoded_try_read_byte(&self) -> Option<i16>;
+}
+
 pub trait OutputStream: Send + Sync {
     fn write_byte(&self, b: u8);
     fn write_str(&self, string: &str);

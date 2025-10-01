@@ -1,0 +1,13 @@
+[package]
+edition = "2021"
+name = "drawer"
+version = "0.1.0"
+authors = ["Artur Herdt"]
+
+[dependencies]
+# Local dependencies
+syscall = { path = "../syscall" }
+graphic = { path = "../graphic" }
+
+spin = "0.9.8"
+nolock = { version = "0.4.1", default-features = false, features = ["queues"] }

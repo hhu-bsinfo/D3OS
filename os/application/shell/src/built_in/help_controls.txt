@@ -1,0 +1,14 @@
+Controls:
+  ← (Left Arrow)      Move cursor one position left
+  → (Right Arrow)     Move cursor one position right
+  Home (POS1)         Move cursor to start of line
+  End (END)           Move cursor to end of line
+  ↑ (Up Arrow)        Recall previous history entry
+  ↓ (Down Arrow)      Recall next history entry
+  Tab (no focus)      Focus current suggestion list
+  Tab (with focus)    Cycle through suggestions
+  Space (with focus)  Autocomplete focused suggestion
+
+Type `help controls` to see navigation keys.
+Type `help tokens`   to see special symbols.
+Type `help built‑in‑1` or `help built‑in‑2` for built‑ins.

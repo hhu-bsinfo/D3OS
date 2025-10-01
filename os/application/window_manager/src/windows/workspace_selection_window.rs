@@ -1,0 +1,256 @@
+/*
+    The workspace selection window is displayed above the windows
+    and allows the user to switch workspaces or create/close them.
+*/
+
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+};
+use drawer::{rect_data::RectData, vertex::Vertex};
+use graphic::color::{BLUE, GREY, RED};
+use hashbrown::HashMap;
+
+use crate::{
+    api::WindowManagerMessage,
+    components::{
+        button::Button,
+        component::{Casts, Component, ComponentStylingBuilder},
+        container::{
+            basic_container::BasicContainer,
+            container_layout::{AlignmentMode, ContainerLayoutBuilder, HorDirection, StretchMode},
+            Container, ContainerStylingBuilder,
+        },
+    },
+    config::FOCUSED_BG_COLOR,
+    mouse_state::MouseEvent,
+    signal::{ComponentRef, ComponentRefExt, Signal},
+    WindowManager, SCREEN,
+};
+
+pub struct WorkspaceSelectionWindow {
+    abs_rect: RectData,
+    root_container: Box<BasicContainer>,
+    button_container: ComponentRef,
+    action_container: ComponentRef,
+
+    new_workspace_button: ComponentRef,
+    close_workspace_button: ComponentRef,
+
+    workspace_buttons: HashMap<usize, ComponentRef>,
+}
+
+impl WorkspaceSelectionWindow {
+    pub fn new(abs_rect: RectData) -> Self {
+        let screen_size = SCREEN.get().unwrap();
+        let screen_rect = RectData {
+            top_left: Vertex::zero(),
+            width: screen_size.0,
+            height: screen_size.1,
+        };
+
+        // Root container that will hold all buttons
+        let mut root_container = Box::new(BasicContainer::new(
+            screen_rect,
+            Some(
+                ContainerLayoutBuilder::new()
+                    .stretch(StretchMode::Fill)
+                    .build(),
+            ),
+            None,
+        ));
+
+        // Initial scaling to the window bounds
+        root_container.move_to(abs_rect);
+
+        // Container for the workspace buttons
+        let button_container = Box::new(BasicContainer::new(
+            RectData {
+                top_left: Vertex::zero(),
+                width: 0,
+                height: 0,
+            },
+            Some(
+                ContainerLayoutBuilder::new()
+                    .alignment(AlignmentMode::Horizontal(HorDirection::Left))
+                    .stretch(StretchMode::Fill)
+                    .build(),
+            ),
+            Some(ContainerStylingBuilder::new().show_border(false).build()),
+        ));
+
+        // Container for workspace actions (new, close)
+        let mut action_container = Box::new(BasicContainer::new(
+            RectData {
+                top_left: Vertex::zero(),
+                width: 0,
+                height: 0,
+            },
+            Some(
+                ContainerLayoutBuilder::new()
+                    .alignment(AlignmentMode::Horizontal(HorDirection::Right))
+                    .stretch(StretchMode::Fill)
+                    .build(),
+            ),
+            Some(ContainerStylingBuilder::new().show_border(false).build()),
+        ));
+
+        // Action buttons
+        let rel_rect = RectData {
+            top_left: Vertex::zero(),
+            width: 50,
+            height: 0,
+        };
+
+        let new_workspace_button = Button::new(
+            rel_rect,
+            rel_rect,
+            Some(Signal::new(String::from("+"))),
+            1,
+            Some(Box::new(move || {
+                WindowManager::get_api().send_message(WindowManagerMessage::CreateNewWorkspace);
+            })),
+            Some(
+                ComponentStylingBuilder::new()
+                    .border_color(BLUE)
+                    .background_color(BLUE.dim())
+                    .build(),
+            ),
+        );
+
+        let close_workspace_button = Button::new(
+            rel_rect,
+            rel_rect,
+            Some(Signal::new(String::from("X"))),
+            1,
+            Some(Box::new(move || {
+                WindowManager::get_api().send_message(WindowManagerMessage::CloseCurrentWorkspace);
+            })),
+            Some(
+                ComponentStylingBuilder::new()
+                    .border_color(RED)
+                    .background_color(RED.dim())
+                    .build(),
+            ),
+        );
+
+        action_container.add_child(close_workspace_button.clone());
+        action_container.add_child(new_workspace_button.clone());
+
+        let button_container = ComponentRef::from_component(button_container);
+        let action_container = ComponentRef::from_component(action_container);
+
+        root_container.add_child(button_container.clone());
+        root_container.add_child(action_container.clone());
+
+        Self {
+            abs_rect,
+            root_container,
+            button_container,
+            action_container,
+
+            new_workspace_button,
+            close_workspace_button,
+
+            workspace_buttons: HashMap::new(),
+        }
+    }
+
+    pub fn draw(&mut self, active_workspace_id: Option<usize>) {
+        let focus_id = active_workspace_id
+            .and_then(|workspace_id| self.workspace_buttons.get(&workspace_id))
+            .map(|button| button.read().get_id());
+
+        self.root_container
+            .as_container_mut()
+            .unwrap()
+            .draw(focus_id);
+    }
+
+    /// Adds a new buttons for the given workspace id
+    pub fn register_workspace(&mut self, workspace_id: usize) {
+        let rel_rect = RectData {
+            top_left: Vertex::zero(),
+            width: 50,
+            height: 0,
+        };
+
+        let button = Button::new(
+            rel_rect,
+            rel_rect,
+            Some(Signal::new(workspace_id.to_string())),
+            1,
+            Some(Box::new(move || {
+                WindowManager::get_api()
+                    .send_message(WindowManagerMessage::SwitchToWorkspace(workspace_id));
+            })),
+            Some(
+                ComponentStylingBuilder::new()
+                    .background_color(GREY.dim())
+                    .focused_background_color(GREY)
+                    .build(),
+            ),
+        );
+
+        self.workspace_buttons.insert(workspace_id, button.clone());
+        self.button_container
+            .write()
+            .as_container_mut()
+            .unwrap()
+            .add_child(button);
+    }
+
+    /// Removes the designated button the the given workspace id
+    pub fn unregister_workspace(&mut self, workspace_id: usize) {
+        // Remove the button from the list
+        let button = self.workspace_buttons.remove(&workspace_id);
+
+        if let Some(button) = button {
+            self.button_container
+                .write()
+                .as_container_mut()
+                .unwrap()
+                .remove_child(button.read().get_id());
+        }
+    }
+
+    pub fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce()>> {
+        // Action buttons
+        {
+            let new_component = self
+                .action_container
+                .write()
+                .as_container_mut()
+                .unwrap()
+                .focus_child_at(mouse_event.position);
+
+            if let Some(new_component) = new_component {
+                if let Some(interactable) = new_component.write().as_interactable_mut() {
+                    return interactable.consume_mouse_event(mouse_event);
+                }
+            }
+        }
+
+        // Workspace buttons
+        {
+            let new_component = self
+                .button_container
+                .write()
+                .as_container_mut()
+                .unwrap()
+                .focus_child_at(mouse_event.position);
+
+            if let Some(new_component) = new_component {
+                if let Some(interactable) = new_component.write().as_interactable_mut() {
+                    return interactable.consume_mouse_event(mouse_event);
+                }
+            }
+        }
+
+        return None;
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.root_container.mark_dirty();
+    }
+}

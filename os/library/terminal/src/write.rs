@@ -9,7 +9,7 @@
 use core::fmt;
 use core::fmt::Write;
 use spin::Mutex;
-use syscall::{syscall, SystemCall};
+use syscall::{SystemCall, syscall};
 
 #[macro_export]
 macro_rules! print {
@@ -20,8 +20,12 @@ macro_rules! print {
 
 #[macro_export]
 macro_rules! println {
-    ($fmt:expr) => (print!(concat!($fmt, "\n")));
-    ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
+    ($fmt:expr) => ({
+        $crate::write::print(format_args!(concat!($fmt, "\n")));
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        $crate::write::print(format_args!(concat!($fmt, "\n"), $($arg)*));
+    });
 }
 
 static WRITER: Mutex<Writer> = Mutex::new(Writer::new());
@@ -41,7 +45,7 @@ impl Writer {
 impl Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let res = syscall(
-            SystemCall::TerminalWrite,
+            SystemCall::TerminalWriteOutput,
             &[s.as_bytes().as_ptr() as usize, s.len()],
         );
         match res {

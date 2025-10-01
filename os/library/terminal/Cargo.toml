@@ -15,3 +15,5 @@ syscall = { path = "../syscall" }
 
 # External dependencies
 spin = "0.9.8"
+num_enum = { version = "0.7", default-features = false }
+pc-keyboard = "0.8.0"

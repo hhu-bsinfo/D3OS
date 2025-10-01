@@ -26,6 +26,10 @@ pub extern "sysv64" fn sys_process_exit() -> ! {
     scheduler().exit();
 }
 
+pub fn sys_process_count() -> isize {
+    process_manager().read().active_process_ids().len() as isize
+}
+
 pub extern "sysv64" fn sys_thread_create(kickoff_addr: u64, entry: extern "sysv64" fn()) -> isize {
     let thread = Thread::new_user_thread(process_manager().read().current_process(), VirtAddr::new(kickoff_addr), entry);
     let id = thread.id();
@@ -53,8 +57,17 @@ pub extern "sysv64" fn sys_thread_join(id: usize) -> isize {
     0
 }
 
+pub fn sys_thread_kill(id: usize) -> isize {
+    scheduler().kill(id);
+    0
+}
+
 pub extern "sysv64" fn sys_thread_exit() -> ! {
     scheduler().exit();
+}
+
+pub fn sys_thread_count() -> isize {
+    scheduler().active_thread_ids().len() as isize
 }
 
 pub unsafe extern "sysv64" fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize, args: *const Vec<&str>) -> isize {

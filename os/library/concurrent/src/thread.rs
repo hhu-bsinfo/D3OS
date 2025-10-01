@@ -26,6 +26,10 @@ impl Thread {
     pub fn join(&self) {
         let _ = syscall(SystemCall::ThreadJoin, &[self.id]);
     }
+
+    pub fn kill(&self) {
+        let _ = syscall(SystemCall::ThreadKill, &[self.id]);
+    }
 }
 
 extern "sysv64" fn kickoff_user_thread(entry: extern "sysv64" fn()) {
@@ -64,6 +68,14 @@ pub fn sleep(ms: usize) {
 pub fn exit() -> ! {
     let _ = syscall(SystemCall::ThreadExit, &[]);
     panic!("System call 'ThreadExit' has returned!")
+}
+
+pub fn count() -> usize {
+    match syscall(SystemCall::ThreadCount, &[]) {
+        Ok(count) => count,
+        Err(_) => 0,
+    }
+    
 }
 
 pub fn start_application(name: &str, args: Vec<&str>) -> Option<Thread> {
