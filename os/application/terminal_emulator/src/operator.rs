@@ -1,4 +1,5 @@
 use alloc::vec;
+use logger::info;
 use concurrent::thread::{self, Thread};
 
 pub struct Operator {
@@ -9,12 +10,18 @@ impl Operator {
     pub const fn new() -> Self {
         Self { thread: None }
     }
-
+    
+    /// Start the shell.
+    /// 
+    /// This happens in a separate thread, so it can wait for the shell to exit
+    /// (or crash) and then restart it.
     pub fn create(&mut self) {
-        if self.thread.is_some() {
-            return;
-        }
-        self.thread =
-            Some(thread::start_application("shell", vec![]).expect("Unable to start operator"));
+        assert!(self.thread.is_none());
+        self.thread = thread::create(|| loop {
+            thread::start_application("shell", vec![])
+                .expect("Unable to start operator")
+                .join();
+            info!("Restarting shell...");
+        });
     }
 }
