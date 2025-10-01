@@ -2,10 +2,11 @@ use core::cell::RefCell;
 
 use alloc::{format, rc::Rc, string::String, vec::Vec};
 use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
-use pc_keyboard::{DecodedKey, KeyCode};
+use pc_keyboard::{DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet1};
+use pc_keyboard::layouts::{AnyLayout, De105Key};
 use stream::{InputStream, OutputStream};
 use syscall::{SystemCall, syscall};
-use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode};
+use terminal_lib::{println, DecodedKeyType, TerminalInputState, TerminalMode};
 
 use crate::{
     event_handler::{Event, EventHandler},
@@ -93,7 +94,7 @@ impl Canonical {
 pub struct InputObserver {
     terminal: Rc<LFBTerminal>,
     event_handler: Rc<RefCell<EventHandler>>,
-    decoder: Decoder,
+    decoder: Keyboard<AnyLayout, ScancodeSet1>,
     mode: TerminalMode,
     canonical: Canonical,
 }
@@ -103,7 +104,11 @@ impl InputObserver {
         Self {
             terminal,
             event_handler,
-            decoder: Decoder::new(),
+            decoder: Keyboard::new(
+                ScancodeSet1::new(),
+                AnyLayout::De105Key(De105Key),
+                HandleControl::Ignore,
+            ),
             mode: TerminalMode::Raw,
             canonical: Canonical::new(),
         }
@@ -113,21 +118,43 @@ impl InputObserver {
 impl Worker for InputObserver {
     fn run(&mut self) {
         let raw = self.terminal.read_byte_nb().unwrap_or_default() as u8;
-        let Some(decoded_key) = self.decoder.decode(raw) else {
+
+        // Process raw keyboard byte into key event (keycode + state up/down)
+        let Ok(Some(key_event)) = self.decoder.add_byte(raw) else {
             return;
         };
+
+        // Get terminal input state (canonical, fluid, idle)
+        let raw_state = syscall(SystemCall::TerminalCheckInputState, &[]).expect("Unable to check input state");
+        let state = TerminalInputState::from(raw_state);
+
+        // Process key event into decoded key (unicode char or raw keycode)
+        let Some(decoded_key) = self.decoder.process_keyevent(key_event) else {
+            // This returns none if the key event was a key release
+            // In this case, we only process the byte if the terminal is in raw mode
+            if self.mode == TerminalMode::Raw {
+                if let Some(buffer) = self.buffer_raw(raw) {
+                    syscall(
+                        SystemCall::TerminalWriteInput,
+                        &[buffer.as_ptr() as usize, buffer.len(), TerminalMode::Raw as usize],
+                    );
+                }
+            }
+
+            return;
+        };
+
+        // Handle reserved keys (e.g. hotkeys)
         let Some(decoded_key) = self.try_intercept_reserved_key(decoded_key) else {
             return;
         };
 
-        let raw_state = syscall(SystemCall::TerminalCheckInputState, &[]).expect("Unable to check input state");
-        let state = TerminalInputState::from(raw_state);
-
+        // Buffer the decoded key based on the terminal input state
         let (buffer, mode) = match state {
             TerminalInputState::Canonical => (self.buffer_canonical(decoded_key), TerminalMode::Canonical),
             TerminalInputState::Fluid => (self.buffer_fluid(decoded_key), TerminalMode::Fluid),
             TerminalInputState::Raw => (self.buffer_raw(raw), TerminalMode::Raw),
-            TerminalInputState::Idle => return,
+            TerminalInputState::Idle => return
         };
         let Some(buffer) = buffer else {
             return;

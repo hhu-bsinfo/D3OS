@@ -1,5 +1,4 @@
 use core::{
-    hint::spin_loop,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -7,6 +6,7 @@ use alloc::collections::vec_deque::VecDeque;
 use num_enum::{FromPrimitive, IntoPrimitive};
 use spin::Mutex;
 use terminal::TerminalMode;
+use crate::scheduler;
 
 /// TTY-Input device (Workaround for missing pipes).
 /// Buffers input from the terminal when an application is reading.
@@ -60,7 +60,7 @@ impl TtyInput {
         self.mode.store(mode.into(), Ordering::SeqCst);
 
         while self.state.load(Ordering::SeqCst) != (TtyInputState::Ready as usize) {
-            spin_loop();
+            scheduler().switch_thread_no_interrupt();
         }
 
         let mut input_buffer = self.buffer.lock();

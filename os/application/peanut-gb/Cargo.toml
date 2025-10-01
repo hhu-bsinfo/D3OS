@@ -26,3 +26,4 @@ naming = { path = "../../library/naming" }
 # External dependencies
 spin = "0.10.0"
 chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
+pc-keyboard = "0.8.0"

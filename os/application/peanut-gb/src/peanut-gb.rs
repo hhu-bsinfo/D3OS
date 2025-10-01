@@ -11,14 +11,16 @@ use alloc::vec::Vec;
 use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
 use chrono::{Datelike, Timelike};
-use spin::{Once, RwLock};
+use pc_keyboard::{HandleControl, KeyEvent, KeyState, Keyboard, ScancodeSet1};
+use pc_keyboard::layouts::{AnyLayout, De105Key};
+use spin::{Mutex, Once, RwLock};
 use concurrent::thread;
 use ::time::{date, systime};
 use graphic::color;
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, LFB, map_framebuffer, FramebufferInfo};
 use libc::time::time::tm;
 use naming::shared_types::{OpenOptions, SeekOrigin};
-use terminal::{print, println};
+use terminal::{println, KeyCode};
 
 unsafe extern "C" {
     /// Get the size of the `gb_s` structure (implemented in `peanut-gb.c`).
@@ -169,6 +171,9 @@ static FRAMEBUFFER: Once<FramebufferInfo> = Once::new();
 /// The screen offset for centering the rendered Game Boy screen in the framebuffer.
 static SCREEN_OFFSET: Once<(u32, u32)> = Once::new();
 
+/// Stores unprocessed keyboard events.
+static INPUT_BUFFER: Mutex<Vec<KeyEvent>> = Mutex::new(Vec::new());
+
 /// Read a byte from the ROM file at the offset specified by `addr`.
 /// This is a callback function for the PeanutGB emulator.
 pub unsafe extern "C" fn gb_rom_read(_gb: *mut c_void, addr: u32) -> u8 {
@@ -316,39 +321,53 @@ pub fn main() {
     let mut fps = 0;
     let mut fps_timer = 0;
 
+    // Start input reading thread
+    thread::create(|| {
+        loop {
+            let mut decoder = Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore);
+
+            if let Some(byte) = terminal::read::read_raw() {
+                if let Ok(Some(event)) = decoder.add_byte(byte) {
+                    INPUT_BUFFER.lock().push(event);
+                    thread::switch();
+                }
+            }
+        }
+    });
+
     // Run the emulator loop until 'q' is pressed
     loop {
         let time = systime();
 
-        // Check if a key has been pressed and update the joypad state accordingly
-        if let Some(terminal::DecodedKey::Unicode(key)) = terminal::read::read_fluid() {
-            match key {
-                ' ' => *gb_joypad = !(JoypadButton::Start as u8),
-                '\n' => *gb_joypad = !(JoypadButton::Select as u8),
-                'w' => *gb_joypad = !(JoypadButton::Up as u8),
-                's' => *gb_joypad = !(JoypadButton::Down as u8),
-                'a' => *gb_joypad = !(JoypadButton::Left as u8),
-                'd' => *gb_joypad = !(JoypadButton::Right as u8),
-                'j' => *gb_joypad = !(JoypadButton::A as u8),
-                'k' => *gb_joypad = !(JoypadButton::B as u8),
-                'q' => {
-                    println!("\nExiting PeanutGB emulator...");
-                    break; // Exit the emulator loop
+        // Process input events
+        {
+            let mut input_buffer = INPUT_BUFFER.lock();
+            if let Some(event) = input_buffer.pop() {
+                let button = match event.code {
+                    KeyCode::Spacebar => Some(JoypadButton::Start),
+                    KeyCode::Return => Some(JoypadButton::Select),
+                    KeyCode::W => Some(JoypadButton::Up),
+                    KeyCode::S => Some(JoypadButton::Down),
+                    KeyCode::A => Some(JoypadButton::Left),
+                    KeyCode::D => Some(JoypadButton::Right),
+                    KeyCode::J => Some(JoypadButton::A),
+                    KeyCode::K => Some(JoypadButton::B),
+                    KeyCode::Q => return,
+                    _ => None
+                };
+
+                if let Some(button) = button {
+                    match event.state {
+                        KeyState::Down => *gb_joypad &= !(button as u8),
+                        KeyState::Up => *gb_joypad |= button as u8,
+                        _ => {}
+                    }
                 }
-                _ => {}
             }
         }
 
         // Emulate a single frame
         unsafe { gb_run_frame(gb_ptr) };
-
-        // Reset the joypad state to 0xff (no buttons pressed)
-        // Currently, there is no way to check if a key is pressed or released.
-        // We can just read characters from the terminal.
-        // For each character read, we emulate a button press.
-        // This will make most games unplayable and will be updated
-        // once D3OS offers a proper input API.
-        *gb_joypad = 0xff;
 
         // Calculate the elapsed time since the start of the frame
         let elapsed = systime() - time;

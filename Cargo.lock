@@ -995,6 +995,7 @@ dependencies = [
  "graphic",
  "libc 0.1.0",
  "naming",
+ "pc-keyboard",
  "runtime",
  "spin 0.10.0",
  "terminal",
