@@ -2,12 +2,13 @@
    ║ Module: traits                                                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ All internal traits used within the naming service (ns).                ║
-   ║   - FileSystem: type and operations for a file system                   ║
-   ║   - NamedObject: generic type of an object                              ║
+   ║   - FileSystem:      type and operations for a file system              ║
+   ║   - NamedObject:     generic type of an object                          ║
    ║   - DirectoryObject: specifies all operations on a directory object     ║
-   ║   - FileObject: specifies all operations on a file object               ║
+   ║   - FileObject:      specifies all operations on a file object          ║
+   ║   - PipeObject:      specifies all operations on a pipe object          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 25.8.2025                ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 05.09.2025               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -27,33 +28,18 @@ pub trait FileSystem: Send + Sync {
 
 /// File object operations
 pub trait FileObject: Debug + Send + Sync {
-    fn stat(&self) -> Result<Stat, Errno> {
-        Err(Errno::EBADF)
-    }
-
-    fn read(&self, _buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
-        Err(Errno::EBADF)
-    }
-
-    fn write(&self, _buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
-        Err(Errno::EBADF)
-    }
+    fn stat(&self) -> Result<Stat, Errno>;
+    fn read(&self, _buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno>;
+    fn write(&self, _buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno>;
 }
 
 /// Pipe object operations
 pub trait PipeObject: Debug + Send + Sync {
-    fn stat(&self) -> Result<Stat, Errno> {
-        Err(Errno::EBADF)
-    }
-
-    fn read(&self, _buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
-        Err(Errno::EBADF)
-    }
-
-    fn write(&self, _buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
-        Err(Errno::EBADF)
-    }
-}
+    fn open(&self, flags: OpenOptions) -> Result<usize, Errno>;
+    fn stat(&self) -> Result<Stat, Errno>;
+    fn read(&self, _buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno>;
+    fn write(&self, _buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno>;
+ }
 
 
 /// Directory object operations

@@ -99,7 +99,7 @@ pub fn phys_limit() -> PhysFrame {
 pub(super) fn alloc(frame_count: usize) -> PhysFrameRange {
     PAGE_FRAME_ALLOCATOR.lock().alloc_block(frame_count)
 }
-
+/*
 /// Remove `frame_count` contiguous page frames, starting at given address `addr`.
 /// This function is used for removing device memory from the frame allocator
 pub(super) fn remove_dev_mem(addr: u64, frame_count: usize) -> Result<Option<PhysFrameRange>, String> {
@@ -113,7 +113,7 @@ pub(super) fn remove_dev_mem(addr: u64, frame_count: usize) -> Result<Option<Phy
         None => Err("frames already used".to_string()),
     }
 }
-
+*/
 /// Free a contiguous range of page `frames`.
 /// Unsafe because invalid parameters may break the list allocator.
 pub(super) unsafe fn free(frames: PhysFrameRange) {
@@ -314,7 +314,7 @@ impl PageFrameListAllocator {
         }
     }
 
-    /// Allocate a block with `frame_count` contiguous page frames at the given address `addr`.
+/*    /// Allocate a block with `frame_count` contiguous page frames at the given address `addr`.
     fn alloc_block_at(&mut self, addr: u64, frame_count: usize) -> Option<PhysFrameRange> {
         info!("***frames: alloc_block at addr = 0x{addr:x}, {frame_count} #frames!");
 
@@ -353,7 +353,7 @@ impl PageFrameListAllocator {
             }
         }
     }
-
+*/
     /// Free a region of `frames` consisting of at least one page frame.
     /// The block is inserted ascending by address and fused with its neighbours, if possible.
     unsafe fn free_block(&mut self, frames: PhysFrameRange) {

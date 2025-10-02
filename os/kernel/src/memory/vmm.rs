@@ -365,12 +365,12 @@ impl VirtualAddressSpace {
         let vma = self
             .alloc_vma(Some(start_page_addr), pr.len() as u64, MemorySpace::Kernel, typ, tag)
             .expect("alloc_vma failed");
-
+/*
         // Remove frames from allocator, so frames are not allocated again
         if let Err(e) = frames::remove_dev_mem(start_phys_addr, pfr.len() as usize) {
             panic!("Failed to remove device memory frames: {}", e);
         }
-
+*/
         // Now we do the mapping
         self.map_pfr_for_vma(&vma, pfr, flags).expect("map_pfr_for_vma failed in map_devmem_identity");
 

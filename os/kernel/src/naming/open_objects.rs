@@ -52,6 +52,11 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
         }
     }
 
+    // call the 'open' for pipes specific behavior
+    if found_named_object.is_pipe() {
+        found_named_object.as_pipe()?.open(flags)?; // ignore return value
+    }
+
     // try to allocate an new handle
     get_open_object_table().allocate_handle(Arc::new(OpenedObject::new(Arc::new(found_named_object), AtomicUsize::new(0), flags)))
 }

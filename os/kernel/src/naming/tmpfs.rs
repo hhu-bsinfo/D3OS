@@ -107,6 +107,7 @@ impl Dir {
 }
 
 impl DirectoryObject for Dir {
+    // check if an object with the given name exists in the directory
     fn lookup(&self, name: &str) -> Result<NamedObject, Errno> {
         let guard = self.0.read(); // Lock the mutex to access the inner data
         if let Some((_, tmpfs_inode)) = guard.files.iter().find(|(file_name, _)| file_name == name) {
@@ -348,6 +349,10 @@ impl Pipe {
 }
 
 impl PipeObject for Pipe {
+    fn open(&self, flags: OpenOptions) -> Result<usize, Errno> {
+        Err(Errno::EBADF)
+    }
+
     fn stat(&self) -> Result<Stat, Errno> {
         Ok(*self.stat.read())
     }
