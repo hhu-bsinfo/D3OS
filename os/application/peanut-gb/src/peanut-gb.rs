@@ -11,8 +11,7 @@ use alloc::vec::Vec;
 use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
 use chrono::{Datelike, Timelike};
-use pc_keyboard::{HandleControl, KeyEvent, KeyState, Keyboard, ScancodeSet1};
-use pc_keyboard::layouts::{AnyLayout, De105Key};
+use pc_keyboard::{KeyEvent, KeyState};
 use spin::{Mutex, Once, RwLock};
 use concurrent::thread;
 use ::time::{date, systime};
@@ -324,13 +323,9 @@ pub fn main() {
     // Start input reading thread
     thread::create(|| {
         loop {
-            let mut decoder = Keyboard::new(ScancodeSet1::new(), AnyLayout::De105Key(De105Key), HandleControl::Ignore);
-
-            if let Some(byte) = terminal::read::read_raw() {
-                if let Ok(Some(event)) = decoder.add_byte(byte) {
-                    INPUT_BUFFER.lock().push(event);
-                    thread::switch();
-                }
+            if let Some(event) = terminal::read::read_raw() {
+                INPUT_BUFFER.lock().push(event);
+                thread::switch();
             }
         }
     });

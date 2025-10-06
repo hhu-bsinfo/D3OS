@@ -2,15 +2,15 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use stream::{DecodedInputStream, InputStream};
-use log::{debug, info};
+use stream::{DecodedInputStream, RawInputStream};
+use log::{debug, error, info};
 use nolock::queues::{DequeueError, mpmc};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use ps2::{Controller, KeyboardType, MouseType};
 use ps2::error::{ControllerError, KeyboardError, MouseError};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
-use pc_keyboard::{DecodedKey, HandleControl, Keyboard as PcKeyboard, ScancodeSet1};
-use spin::Mutex;
+use pc_keyboard::{DecodedKey, Error as PcError, HandleControl, KeyEvent, Keyboard as PcKeyboard, ScancodeSet1, ScancodeSet2};
+use spin::{Mutex, MutexGuard};
 use spin::once::Once;
 use crate::{apic, interrupt_dispatcher};
 
@@ -26,7 +26,28 @@ pub struct PS2 {
 pub struct Keyboard {
     controller: Arc<Mutex<Controller>>,
     buffer: (mpmc::bounded::scq::Receiver<u8>, mpmc::bounded::scq::Sender<u8>),
-    decoder: Mutex<PcKeyboard<AnyLayout, ScancodeSet1>>,
+    decoder: Mutex<KeyboardDecoder>,
+}
+
+enum KeyboardDecoder {
+    Set1(PcKeyboard<AnyLayout, ScancodeSet1>),
+    Set2(PcKeyboard<AnyLayout, ScancodeSet2>),
+}
+
+impl KeyboardDecoder {
+    fn add_byte(&mut self, byte: u8) -> Result<Option<KeyEvent>, PcError> {
+        match self {
+            KeyboardDecoder::Set1(keyboard) => keyboard.add_byte(byte),
+            KeyboardDecoder::Set2(keyboard) => keyboard.add_byte(byte),
+        }
+    }
+    
+    fn process_keyevent(&mut self, ev: KeyEvent) -> Option<DecodedKey> {
+        match self {
+            KeyboardDecoder::Set1(keyboard) => keyboard.process_keyevent(ev),
+            KeyboardDecoder::Set2(keyboard) => keyboard.process_keyevent(ev),
+        }
+    }
 }
 
 struct KeyboardInterruptHandler {
@@ -34,92 +55,88 @@ struct KeyboardInterruptHandler {
 }
 
 impl Keyboard {
-    fn new(controller: Arc<Mutex<Controller>>, buffer_cap: usize) -> Self {
-        Self {
-            controller,
-            buffer: mpmc::bounded::scq::queue(buffer_cap),
-            decoder: Mutex::new(PcKeyboard::new(
+    fn new(controller: Arc<Mutex<Controller>>, buffer_cap: usize, scancode_set: u8) -> Result<Self, KeyboardError> {
+        let decoder = match scancode_set {
+            1 => KeyboardDecoder::Set1(PcKeyboard::new(
                 ScancodeSet1::new(),
                 AnyLayout::De105Key(De105Key),
                 HandleControl::Ignore,
             )),
-        }
+            2 => KeyboardDecoder::Set2(PcKeyboard::new(
+                ScancodeSet2::new(),
+                AnyLayout::De105Key(De105Key),
+                HandleControl::Ignore,
+            )),
+            s => {
+                error!("invalid scancode set: {s}");
+                return Err(KeyboardError::KeyDetectionError)
+            },
+        };
+        Ok(Self {
+            controller,
+            buffer: mpmc::bounded::scq::queue(buffer_cap),
+            decoder: Mutex::new(decoder),
+        })
     }
 
     pub fn plugin(keyboard: Arc<Keyboard>) {
         interrupt_dispatcher().assign(InterruptVector::Keyboard, Box::new(KeyboardInterruptHandler::new(Arc::clone(&keyboard))));
         apic().allow(InterruptVector::Keyboard);
     }
+    
+    /// Parse a byte and get the next key event.
+    /// 
+    /// This also returns the held decoder lock, in case you want to decode the key event.
+    fn get_next_keyevent(&self) -> (MutexGuard<'_, KeyboardDecoder>, Option<KeyEvent>) {
+        let mut decoder = self.decoder.lock();
+
+        let scancode = match self.buffer.0.try_dequeue() {
+            Ok(code) => code,
+            Err(DequeueError::Closed) => panic!("Keyboard stream closed!"),
+            Err(DequeueError::Empty) => return (decoder, None),
+        };
+        let key_event = decoder.add_byte(scancode).unwrap();
+        (decoder, key_event)
+    }
 }
 
 impl DecodedInputStream for Keyboard {
     fn decoded_read_byte(&self) -> i16 {
         loop {
-            let mut decoder = self.decoder.lock();
-
-            let scancode = match self.buffer.0.try_dequeue() {
-                Ok(code) => Some(code as i16),
-                Err(DequeueError::Closed) => {
-                    panic!("Keyboard stream closed!");
-                },
-                Err(_) => {
-                    panic!("An error occured!");
-                },
-            };
-
-            if let Ok(Some(event)) = decoder.add_byte(scancode.unwrap() as u8) {
-                if let Some(key) = decoder.process_keyevent(event) {
-                    match key {
-                        DecodedKey::Unicode(c) => {
-                            return c as i16;
-                        }
-                        _ => {}
-                    }
-                }
+            if let Some(byte) = self.decoded_try_read_byte() {
+                return byte
             }
         }
     }
 
     fn decoded_try_read_byte(&self) -> Option<i16> {
-        let mut decoder = self.decoder.lock();
+        let (mut decoder, key_event) = self.get_next_keyevent();
 
-        let scancode = match self.buffer.0.try_dequeue() {
-            Ok(code) => Some(code as i16),
-            Err(DequeueError::Closed) => {
-                panic!("Keyboard stream closed!");
-            },
-            Err(_) => None
-        };
-
-        match decoder.add_byte(scancode? as u8) {
-            Ok(Some(event)) => {
-                let key = decoder.process_keyevent(event)?;
-                return match key {
-                    DecodedKey::Unicode(c) => Some(c as i16),
-                    _ => None,
-                };
-            }
-            Ok(None) | Err(_) => return None,
+        if let Some(event) = key_event {
+            let key = decoder.process_keyevent(event)?;
+            return match key {
+                DecodedKey::Unicode(c) => Some(c as i16),
+                _ => None,
+            };
+        } else {
+            None
         }
     }
 }
 
-impl InputStream for Keyboard {
-    fn read_byte(&self) -> i16 {
+impl RawInputStream for Keyboard {
+    fn read_event(&self) -> KeyEvent {
         loop {
-            match self.read_byte_nb() {
+            match self.read_event_nb() {
                 Some(code) => return code,
                 None => {}
             }
         }
     }
     
-    fn read_byte_nb(&self) -> Option<i16> {
-        match self.buffer.0.try_dequeue() {
-            Ok(code) => Some(code as i16),
-            Err(DequeueError::Closed) => Some(-1),
-            Err(_) => None,
-        }
+    fn read_event_nb(&self) -> Option<KeyEvent> {
+        let (_decoder, key_event) = self.get_next_keyevent();
+        key_event
     }
 }
 
@@ -352,18 +369,26 @@ impl PS2 {
             }
             _ => info!("   Keyboard does not need translation"),
         }
+        let scancode_set = controller.keyboard().get_scancode_set()?;
+        info!("   Keyboard uses scancode set {scancode_set}");
 
         // Setup keyboard
         info!("   Enabling keyboard");
+        debug!("     Setting defaults");
         controller.keyboard().set_defaults()?;
-        controller.keyboard().set_scancode_set(1)?;
+        debug!("     Setting rate and delay");
         controller.keyboard().set_typematic_rate_and_delay(0)?;
+        debug!("     Setting leds");
         controller.keyboard().set_leds(KeyboardLedFlags::empty())?;
+        debug!("     Enabling scanning");
         controller.keyboard().enable_scanning()?;
-
-        self.keyboard.call_once(|| {
-            Arc::new(Keyboard::new(Arc::clone(&self.controller), KEYBOARD_BUFFER_CAPACITY))
-        });
+        
+        let keyboard = Keyboard::new(
+            Arc::clone(&self.controller),
+            KEYBOARD_BUFFER_CAPACITY,
+            scancode_set,
+        )?;
+        self.keyboard.call_once(|| Arc::new(keyboard));
 
         Ok(())
     }

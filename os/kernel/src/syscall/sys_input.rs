@@ -1,5 +1,5 @@
 use input::keyboard::ReadKeyboardOption;
-use stream::{DecodedInputStream, InputStream};
+use stream::{event_to_u16, DecodedInputStream, RawInputStream};
 
 use crate::{keyboard, mouse};
 
@@ -12,17 +12,20 @@ pub fn sys_read_mouse() -> usize {
 
 /// SystemCall implementation for SystemCall::KeyboardRead.
 /// Reads from keyboard with given mode (Raw or Decoded).
-///
-/// Author: Sebastian Keller
 pub fn sys_read_keyboard(option: ReadKeyboardOption, blocking: bool) -> isize {
     let keyboard = keyboard().expect("Failed to read from keyboard!");
 
     match option {
-        ReadKeyboardOption::Raw => (if blocking {
-            keyboard.read_byte()
-        } else {
-            keyboard.read_byte_nb().unwrap_or_default()
-        } as isize),
+        ReadKeyboardOption::Raw => {
+            let event = if blocking {
+                Some(keyboard.read_event())
+            } else {
+                keyboard.read_event_nb()
+            };
+            if let Some(event) = event {
+                event_to_u16(event).try_into().unwrap()
+            } else { 0 }
+        },
         ReadKeyboardOption::Decode => (if blocking {
             keyboard.decoded_read_byte()
         } else {

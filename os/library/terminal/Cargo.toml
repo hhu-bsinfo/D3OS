@@ -12,6 +12,7 @@ bench = false
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }
+stream = { path = "../stream" }
 
 # External dependencies
 spin = "0.9.8"

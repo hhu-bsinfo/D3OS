@@ -2,11 +2,12 @@
 edition = "2024"
 name = "input"
 version = "0.1.0"
-authors = ["Leon Lehnen, Sebastian Keller <sebastian.keller@hhu.de>"]
+authors = ["Leon Lehnen", "Sebastian Keller <sebastian.keller@hhu.de>"]
 
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }
+stream = { path = "../stream" }
 
 # External dependencies
 bitflags = "2.9.0"

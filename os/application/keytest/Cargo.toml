@@ -9,6 +9,7 @@ crate-type = ["staticlib"]
 path = "src/keytest.rs"
 
 [dependencies]
+pc-keyboard = "0.8"
 # Local dependencies
 runtime = { path = "../../library/runtime" }
 terminal = { path = "../../library/terminal" }

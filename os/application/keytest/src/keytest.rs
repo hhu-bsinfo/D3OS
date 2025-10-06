@@ -2,11 +2,11 @@
 
 extern crate alloc;
 
+use pc_keyboard::{KeyEvent, KeyState};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::{
-    DecodedKey, print, println,
-    read::{read, read_fluid, read_raw},
+    print, println, read::{read, read_fluid, read_raw}, DecodedKey, KeyCode
 };
 
 /// This application can be used to test the new terminal modes.
@@ -53,8 +53,10 @@ pub fn main() {
             loop {
                 loop {
                     match read_raw() {
-                        Some(1) => return,
-                        Some(key) => println!("{}", key),
+                        Some(KeyEvent {
+                            code: KeyCode::Escape, state: KeyState::Down,
+                        }) => return,
+                        Some(event) => println!("{:?}", event),
                         None => continue,
                     };
                     break;

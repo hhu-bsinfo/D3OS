@@ -2,16 +2,15 @@ use core::cell::RefCell;
 
 use alloc::{format, rc::Rc, string::String, vec::Vec};
 use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
-use pc_keyboard::{DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet1};
+use pc_keyboard::{DecodedKey, EventDecoder, HandleControl, KeyCode, KeyEvent};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
-use stream::{InputStream, OutputStream};
+use stream::{event_to_u16, OutputStream, RawInputStream};
 use syscall::{SystemCall, syscall};
 use terminal_lib::{println, DecodedKeyType, TerminalInputState, TerminalMode};
 
 use crate::{
     event_handler::{Event, EventHandler},
     terminal::lfb_terminal::LFBTerminal,
-    util::decoder::Decoder,
 };
 
 use super::worker::Worker;
@@ -94,7 +93,7 @@ impl Canonical {
 pub struct InputObserver {
     terminal: Rc<LFBTerminal>,
     event_handler: Rc<RefCell<EventHandler>>,
-    decoder: Keyboard<AnyLayout, ScancodeSet1>,
+    decoder: EventDecoder<AnyLayout>,
     mode: TerminalMode,
     canonical: Canonical,
 }
@@ -104,8 +103,7 @@ impl InputObserver {
         Self {
             terminal,
             event_handler,
-            decoder: Keyboard::new(
-                ScancodeSet1::new(),
+            decoder: EventDecoder::new(
                 AnyLayout::De105Key(De105Key),
                 HandleControl::Ignore,
             ),
@@ -117,23 +115,18 @@ impl InputObserver {
 
 impl Worker for InputObserver {
     fn run(&mut self) {
-        let raw = self.terminal.read_byte_nb().unwrap_or_default() as u8;
-
-        // Process raw keyboard byte into key event (keycode + state up/down)
-        let Ok(Some(key_event)) = self.decoder.add_byte(raw) else {
-            return;
-        };
+        let Some(key_event) = self.terminal.read_event_nb() else { return };
 
         // Get terminal input state (canonical, fluid, idle)
         let raw_state = syscall(SystemCall::TerminalCheckInputState, &[]).expect("Unable to check input state");
         let state = TerminalInputState::from(raw_state);
 
         // Process key event into decoded key (unicode char or raw keycode)
-        let Some(decoded_key) = self.decoder.process_keyevent(key_event) else {
+        let Some(decoded_key) = self.decoder.process_keyevent(key_event.clone()) else {
             // This returns none if the key event was a key release
             // In this case, we only process the byte if the terminal is in raw mode
             if self.mode == TerminalMode::Raw {
-                if let Some(buffer) = self.buffer_raw(raw) {
+                if let Some(buffer) = self.buffer_raw(key_event) {
                     syscall(
                         SystemCall::TerminalWriteInput,
                         &[buffer.as_ptr() as usize, buffer.len(), TerminalMode::Raw as usize],
@@ -153,7 +146,7 @@ impl Worker for InputObserver {
         let (buffer, mode) = match state {
             TerminalInputState::Canonical => (self.buffer_canonical(decoded_key), TerminalMode::Canonical),
             TerminalInputState::Fluid => (self.buffer_fluid(decoded_key), TerminalMode::Fluid),
-            TerminalInputState::Raw => (self.buffer_raw(raw), TerminalMode::Raw),
+            TerminalInputState::Raw => (self.buffer_raw(key_event), TerminalMode::Raw),
             TerminalInputState::Idle => return
         };
         let Some(buffer) = buffer else {
@@ -178,8 +171,9 @@ impl InputObserver {
         }
     }
 
-    fn buffer_raw(&self, raw: u8) -> Option<Vec<u8>> {
-        Some([raw].to_vec())
+    fn buffer_raw(&self, event: KeyEvent) -> Option<Vec<u8>> {
+        let raw = event_to_u16(event);
+        Some(raw.to_ne_bytes().to_vec())
     }
 
     fn buffer_fluid(&self, key: DecodedKey) -> Option<Vec<u8>> {

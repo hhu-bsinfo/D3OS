@@ -13,8 +13,9 @@ use graphic::{
 };
 use input::keyboard;
 
+use pc_keyboard::KeyEvent;
 use spin::Mutex;
-use stream::{InputStream, OutputStream};
+use stream::{DecodedInputStream, RawInputStream, OutputStream};
 use time::{date, systime};
 
 use crate::{util::system_info::system_info, worker::cursor::CursorState};
@@ -65,16 +66,13 @@ impl OutputStream for LFBTerminal {
     }
 }
 
-impl InputStream for LFBTerminal {
-    fn read_byte(&self) -> i16 {
-        match keyboard::read_raw(true) {
-            Some(byte) => byte as i16,
-            None => 0,
-        }
+impl RawInputStream for LFBTerminal {
+    fn read_event(&self) -> KeyEvent {
+        keyboard::read_raw(true).unwrap()
     }
     
-    fn read_byte_nb(&self) -> Option<i16> {
-        keyboard::read_raw(false).map(|v| v as i16)
+    fn read_event_nb(&self) -> Option<KeyEvent> {
+        keyboard::read_raw(false)
     }
 }
 

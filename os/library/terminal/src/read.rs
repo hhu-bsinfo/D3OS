@@ -1,5 +1,6 @@
 use alloc::string::{String, ToString};
-use pc_keyboard::DecodedKey;
+use pc_keyboard::{DecodedKey, KeyEvent};
+use stream::event_from_u16;
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: read                                                            ║
    ╟─────────────────────────────────────────────────────────────────────────╢
@@ -74,19 +75,19 @@ pub fn read_fluid() -> Option<DecodedKey> {
 /// The terminal will not echo.
 /// The application will not block.
 /// Returns raw undecoded key.
-///
-/// Author: Sebastian Keller
-pub fn read_raw() -> Option<u8> {
-    let mut buffer: [u8; 1] = [0; 1];
+pub fn read_raw() -> Option<KeyEvent> {
+    let mut buffer: [u8; 2] = [0; 2];
 
-    syscall(
+    let len = syscall(
         SystemCall::TerminalReadInput,
         &[buffer.as_mut_ptr() as usize, buffer.len(), TerminalMode::Raw as usize],
     )
-    .expect("Unable to read input");
-
-    match *buffer.first().unwrap() {
-        0 => None,
-        byte => Some(byte),
+        .expect("Unable to read input");
+    if len > 0 {
+        assert_eq!(len, 2);
+        let raw = u16::from_ne_bytes(buffer);
+        Some(event_from_u16(raw))
+    } else {
+        None
     }
 }

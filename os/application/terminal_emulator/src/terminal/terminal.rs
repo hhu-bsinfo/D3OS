@@ -1,9 +1,9 @@
 use core::fmt;
 use core::fmt::Write;
 use core::ops::Deref;
-use stream::{InputStream, OutputStream};
+use stream::{RawInputStream, OutputStream};
 
-pub trait Terminal: OutputStream + InputStream {
+pub trait Terminal: OutputStream + RawInputStream {
     fn clear(&self);
 }
 

@@ -4,9 +4,36 @@ use core::fmt;
 use core::fmt::Write;
 use core::ops::Deref;
 
-pub trait InputStream {
-    fn read_byte(&self) -> i16;
-    fn read_byte_nb(&self) -> Option<i16>;
+use pc_keyboard::{KeyCode, KeyEvent, KeyState};
+
+pub trait RawInputStream {
+    /// Read a single event, blocking.
+    fn read_event(&self) -> KeyEvent;
+    /// Read a single event, non-blocking.
+    fn read_event_nb(&self) -> Option<KeyEvent>;
+    
+}
+
+/// Convert a key event to u16.
+pub fn event_to_u16(event: KeyEvent) -> u16 {
+    let mut res: u16 = (event.code as u8).into();
+    res |= match event.state {
+        KeyState::Up => 1,
+        KeyState::Down => 2,
+        KeyState::SingleShot => 0,
+    } << 8;
+    res
+}
+
+pub fn event_from_u16(raw: u16) -> KeyEvent {
+    let code = unsafe { core::mem::transmute::<u8, KeyCode>(raw as u8) };
+    let state = match raw >> 8 {
+        0 => KeyState::SingleShot,
+        1 => KeyState::Up,
+        2 => KeyState::Down,
+        state => panic!("invalid key state {state}"),
+    };
+    KeyEvent::new(code, state)
 }
 
 pub trait DecodedInputStream {
