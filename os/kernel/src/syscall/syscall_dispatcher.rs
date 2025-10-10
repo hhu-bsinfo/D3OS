@@ -202,6 +202,8 @@ unsafe extern "C" fn syscall_handler() {
     "push r13",
     "push r14",
     "push r15",
+    // push another value, so that the stack is aligned for u128s (% 16)
+    "push 0",
 
     // copy 4th argument to rcx to adhere x86_64 ABI
     "mov rcx, r10",
@@ -217,6 +219,7 @@ unsafe extern "C" fn syscall_handler() {
     "call syscall_disp",
 
     // Restore registers
+    "pop r15", // the 0 from above
     "pop r15",
     "pop r14",
     "pop r13",
