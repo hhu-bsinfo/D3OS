@@ -19,6 +19,7 @@ use graphic::lfb::map_framebuffer;
 use operator::Operator;
 use stream::OutputStream;
 use terminal::lfb_terminal::LFBTerminal;
+use terminal_lib::init_logger;
 use util::banner::create_banner_string;
 use worker::cursor::Cursor;
 use worker::input_observer::InputObserver;
@@ -111,6 +112,7 @@ pub fn main() {
         lfb_info.height,
         lfb_info.bpp,
     );
+    init_logger();
     emulator.init();
     emulator.run()
 }

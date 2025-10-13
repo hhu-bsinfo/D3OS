@@ -19,6 +19,7 @@ impl Display for RectData {
     }
 }
 
+#[cfg(feature = "userspace")]
 impl RectData {
     pub fn zero() -> Self {
         RectData { top_left: Vertex::zero(), width: 0, height: 0 }

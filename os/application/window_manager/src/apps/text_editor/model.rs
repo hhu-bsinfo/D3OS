@@ -1,6 +1,6 @@
 use alloc::string::String;
 use graphic::color::Color;
-use logger::warn;
+use log::{warn, error};
 use terminal::DecodedKey;
 use text_buffer::TextBuffer;
 
@@ -8,7 +8,7 @@ use super::font::Font;
 use super::messages::{Message, ViewMessage};
 use super::TextEditorConfig;
 use crate::apps::text_editor::messages::CommandMessage;
-use logger::error;
+
 enum EditMode {
     Normal,
     Insert,

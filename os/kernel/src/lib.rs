@@ -47,7 +47,6 @@ use graphic::lfb::LFB;
 use multiboot2::ModuleTag;
 use spin::{Mutex, Once, RwLock};
 use tar_no_std::TarArchiveRef;
-use terminal::println;
 use x86_64::PhysAddr;
 use x86_64::structures::gdt::GlobalDescriptorTable;
 use x86_64::structures::idt::InterruptDescriptorTable;

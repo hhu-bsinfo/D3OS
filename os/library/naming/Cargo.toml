@@ -9,10 +9,13 @@ test = false
 doctest = false
 bench = false
 
+[features]
+default = ["userspace"]
+userspace = ["dep:syscall"]
+
 [dependencies]
 # Local dependencies
-syscall = { path = "../syscall" }
-terminal = { path = "../terminal" }
+syscall = { path = "../syscall", optional = true }
 
 # External depencies
 num_enum = { version = "0.7", default-features = false }

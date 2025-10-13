@@ -78,7 +78,7 @@ pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
 /// Return: Result \
 ///    success >= 0 \
 ///    error, codes defined in consts.rs
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", feature = "userspace"))]
 pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
     use core::arch::asm;
     use return_vals::convert_ret_code_to_syscall_result;
@@ -116,7 +116,7 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
 }
 
 /// Only needed to run tests on non-x86_64 architectures (e.g. Apple Silicon).
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(all(target_arch = "x86_64", feature = "userspace")))]
 pub fn syscall(_call: SystemCall, _args: &[usize]) -> SyscallResult {
     use crate::return_vals::Errno;
 

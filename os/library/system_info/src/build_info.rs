@@ -1,5 +1,6 @@
 use alloc::string::{String, ToString};
 use num_enum::{FromPrimitive, IntoPrimitive};
+#[cfg(feature = "userspace")]
 use syscall::{SystemCall, syscall};
 
 #[derive(Debug, PartialEq, IntoPrimitive, FromPrimitive)]
@@ -47,11 +48,13 @@ pub enum BuildInfo {
     BootloaderName = 38,
 }
 
+#[cfg(feature = "userspace")]
 static BUFFER_LEN: usize = 64;
 
 /// Get build information from boot.
 ///
 /// Author: Sebastian Keller
+#[cfg(feature = "userspace")]
 pub fn build_info(info_type: BuildInfo) -> String {
     let mut buffer: [u8; BUFFER_LEN] = [0; BUFFER_LEN];
 

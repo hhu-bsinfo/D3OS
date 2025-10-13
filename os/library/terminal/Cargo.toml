@@ -9,12 +9,18 @@ test = false
 doctest = false
 bench = false
 
+[features]
+default = ["userspace"]
+userspace = ["dep:syscall", "dep:stream", "dep:spin", "dep:pc-keyboard", "dep:spin", "dep:log", "dep:logger"]
+
 [dependencies]
 # Local dependencies
-syscall = { path = "../syscall" }
-stream = { path = "../stream" }
+syscall = { path = "../syscall", optional = true }
+stream = { path = "../stream", optional = true }
+logger = { path = "../logger", optional = true }
 
 # External dependencies
-spin = "0.9.8"
+log = { version = "0.4.26", optional = true }
+spin = { version = "0.9.8", optional = true }
 num_enum = { version = "0.7", default-features = false }
-pc-keyboard = "0.8.0"
+pc-keyboard = { version = "0.8.0", default-features = false, optional = true }

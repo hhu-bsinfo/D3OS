@@ -649,7 +649,6 @@ dependencies = [
  "linked_list_allocator",
  "llfree",
  "log",
- "logger",
  "mbrs",
  "multiboot2",
  "naming",
@@ -787,7 +786,7 @@ checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 name = "logger"
 version = "0.1.0"
 dependencies = [
- "num_enum",
+ "log",
  "syscall",
 ]
 
@@ -878,7 +877,6 @@ dependencies = [
  "bitflags 1.3.2",
  "num_enum",
  "syscall",
- "terminal",
 ]
 
 [[package]]
@@ -1363,7 +1361,7 @@ version = "0.1.0"
 dependencies = [
  "concurrent",
  "globals",
- "logger",
+ "log",
  "naming",
  "runtime",
  "spin 0.10.0",
@@ -1500,7 +1498,6 @@ name = "system_info"
 version = "0.1.0"
 dependencies = [
  "num_enum",
- "spin 0.9.8",
  "syscall",
 ]
 
@@ -1520,6 +1517,8 @@ dependencies = [
 name = "terminal"
 version = "0.1.0"
 dependencies = [
+ "log",
+ "logger",
  "num_enum",
  "pc-keyboard",
  "spin 0.9.8",
@@ -1538,7 +1537,7 @@ dependencies = [
  "globals",
  "graphic",
  "input",
- "logger",
+ "log",
  "num_enum",
  "pc-keyboard",
  "runtime",
@@ -1946,7 +1945,7 @@ dependencies = [
  "hashbrown 0.14.5",
  "input",
  "libm",
- "logger",
+ "log",
  "nolock",
  "pc-keyboard",
  "pulldown-cmark",

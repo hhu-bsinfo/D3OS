@@ -2,10 +2,7 @@ use pc_keyboard::KeyEvent;
 use stream::event_from_u16;
 use syscall::{SystemCall, syscall};
 
-pub enum ReadKeyboardOption {
-    Raw,
-    Decode,
-}
+use crate::ReadKeyboardOption;
 
 /// Read raw byte from keyboard.
 pub fn read_raw(blocking: bool) -> Option<KeyEvent> {

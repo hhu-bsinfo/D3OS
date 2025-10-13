@@ -1,5 +1,5 @@
 use alloc::string::ToString;
-use logger::info;
+use log::info;
 
 use crate::{
     context::{

@@ -196,7 +196,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         built_info::PROFILE,
         built_info::OPT_LEVEL
     );
-    let _git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("Unknown");
     let build_date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
         Ok(date_time) => date_time.format("%Y-%m-%d %H:%M:%S").to_string(),

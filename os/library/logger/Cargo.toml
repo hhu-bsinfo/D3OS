@@ -2,7 +2,7 @@
 edition = "2024"
 name = "logger"
 version = "0.1.0"
-authors = ["Sebastian Keller <sebastian.keller@hhu.de>"]
+authors = ["Sebastian Keller <sebastian.keller@hhu.de>", "Niklas Sombert <niklas.sombert@uni-duesseldorf.de>"]
 
 [lib]
 test = false
@@ -14,4 +14,4 @@ bench = false
 syscall = { path = "../syscall" }
 
 # External depencies
-num_enum = { version = "0.7", default-features = false }
+log = "0.4.26"

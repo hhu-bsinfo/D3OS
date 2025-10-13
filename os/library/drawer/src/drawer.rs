@@ -1,6 +1,7 @@
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+#[cfg(feature = "userspace")]
 use syscall::{syscall, SystemCall};
 
 use graphic::{bitmap::Bitmap, color::{Color, INVISIBLE}};
@@ -70,8 +71,10 @@ pub enum DrawerCommand<'a> {
     Flush,
 }
 
+#[cfg(feature = "userspace")]
 pub struct Drawer;
 
+#[cfg(feature = "userspace")]
 impl Drawer {
     fn execute(command: DrawerCommand) {
         let command_addr = core::ptr::addr_of!(command) as usize;

@@ -9,10 +9,14 @@ test = false
 doctest = false
 bench = false
 
+[features]
+default = ["userspace"]
+userspace = ["dep:syscall", "dep:spin", "dep:nolock"]
+
 [dependencies]
 # Local dependencies
-syscall = { path = "../syscall" }
+syscall = { path = "../syscall", optional = true }
 graphic = { path = "../graphic" }
 
-spin = "0.9.8"
-nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
+spin = { version = "0.9.8", optional = true }
+nolock = { version = "0.4.1", default-features = false, features = ["queues"], optional = true }

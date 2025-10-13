@@ -1,5 +1,5 @@
 use alloc::vec;
-use logger::info;
+use log::info;
 use concurrent::thread::{self, Thread};
 
 pub struct Operator {

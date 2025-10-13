@@ -16,13 +16,12 @@ bench = false
 # Local dependencies
 graphic = { path = "../library/graphic" }
 stream = { path = "../library/stream" }
-syscall = { path = "../library/syscall" }
-naming = { path = "../library/naming" }
-terminal = { path = "../library/terminal" }
-drawer = { path = "../library/drawer" }
-system_info = { path = "../library/system_info" }
-input = { path = "../library/input" }
-logger = { path = "../library/logger" }
+syscall = { path = "../library/syscall", default-features = false }
+naming = { path = "../library/naming", default-features = false }
+terminal = { path = "../library/terminal", default-features = false }
+drawer = { path = "../library/drawer", default-features = false }
+system_info = { path = "../library/system_info", default-features = false }
+input = { path = "../library/input", default-features = false }
 
 
 # External depencies

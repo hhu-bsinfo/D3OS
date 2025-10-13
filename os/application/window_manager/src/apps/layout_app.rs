@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, format, string::String};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::color::Color;
-use logger::debug;
+use log::debug;
 
 use crate::{
     api::{Api, Command},

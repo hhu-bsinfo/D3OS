@@ -20,10 +20,11 @@ use alloc::ffi::CString;
 use core::mem;
 
 use shared_types::{DirEntry, FileType, OpenOptions, RawDirent, SeekOrigin};
+#[cfg(feature = "userspace")]
 use syscall::{SystemCall, return_vals::Errno, syscall};
 
 
-
+#[cfg(feature = "userspace")]
 pub fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
     match CString::new(path) {
         Ok(c_path) => syscall(SystemCall::Open, &[
@@ -34,10 +35,12 @@ pub fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
     }
 }
 
+#[cfg(feature = "userspace")]
 pub fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
     syscall(SystemCall::Write, &[fh, buf.as_ptr() as usize, buf.len()])
 }
 
+#[cfg(feature = "userspace")]
 pub fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
     syscall(SystemCall::Read, &[
         fh,
@@ -46,14 +49,17 @@ pub fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
     ])
 }
 
+#[cfg(feature = "userspace")]
 pub fn seek(fh: usize, offset: usize, origin: SeekOrigin) -> Result<usize, Errno> {
     syscall(SystemCall::Seek, &[fh, offset, origin.into()])
 }
 
+#[cfg(feature = "userspace")]
 pub fn close(fh: usize) -> Result<usize, Errno> {
     syscall(SystemCall::Close, &[fh])
 }
 
+#[cfg(feature = "userspace")]
 pub fn mkdir(path: &str) -> Result<usize, Errno> {
     match CString::new(path) {
         Ok(c_path) => syscall(SystemCall::MkDir, &[c_path.as_bytes().as_ptr() as usize]),
@@ -61,6 +67,7 @@ pub fn mkdir(path: &str) -> Result<usize, Errno> {
     }
 }
 
+#[cfg(feature = "userspace")]
 pub fn touch(path: &str) -> Result<usize, Errno> {
     match CString::new(path) {
         Ok(c_path) => syscall(SystemCall::Touch, &[c_path.as_bytes().as_ptr() as usize]),
@@ -68,6 +75,7 @@ pub fn touch(path: &str) -> Result<usize, Errno> {
     }
 }
 
+#[cfg(feature = "userspace")]
 pub fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
     let mut raw_dirent = RawDirent::new();
     let ret = syscall(SystemCall::Readdir, &[
@@ -82,6 +90,7 @@ pub fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
     }
 }
 
+#[cfg(feature = "userspace")]
 impl DirEntry {
     pub fn from_dirent(dirent: &RawDirent) -> Option<Self> {
         // Convert d_type to a FileType enum
@@ -110,6 +119,7 @@ impl DirEntry {
     }
 }
 
+#[cfg(feature = "userspace")]
 pub fn cwd() -> Result<String, Errno> {
     let buf: [u8; 512] = [0; 512]; // buffer for the path
     let result = syscall(SystemCall::Cwd, &[ buf.as_ptr() as usize, buf.len(), ]);
@@ -127,6 +137,7 @@ pub fn cwd() -> Result<String, Errno> {
     }
 }
 
+#[cfg(feature = "userspace")]
 pub fn cd(path: &str) -> Result<usize, Errno> {
     match CString::new(path) {
         Ok(c_path) => syscall(SystemCall::Cd, &[c_path.as_bytes().as_ptr() as usize]),
@@ -134,6 +145,7 @@ pub fn cd(path: &str) -> Result<usize, Errno> {
     }
 }
 
+#[cfg(feature = "userspace")]
 pub fn mkfifo(path: &str) -> Result<usize, Errno> {
     match CString::new(path) {
         Ok(c_path) => syscall(SystemCall::Mkfifo, &[c_path.as_bytes().as_ptr() as usize]),

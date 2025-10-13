@@ -1,5 +1,5 @@
 use alloc::{string::String, vec::Vec};
-use logger::warn;
+use log::warn;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IoTarget {

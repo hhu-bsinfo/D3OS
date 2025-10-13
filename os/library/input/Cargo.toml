@@ -9,11 +9,15 @@ test = false
 doctest = false
 bench = false
 
+[features]
+default = ["userspace"]
+userspace = ["dep:syscall", "dep:stream", "dep:bitflags", "dep:pc-keyboard"]
+
 [dependencies]
 # Local dependencies
-syscall = { path = "../syscall" }
-stream = { path = "../stream" }
+syscall = { path = "../syscall", optional = true }
+stream = { path = "../stream", optional = true }
 
 # External dependencies
-bitflags = "2.9.0"
-pc-keyboard = "0.8.0"
+bitflags = { version = "2.9.0", optional = true }
+pc-keyboard = { version = "0.8.0", optional = true }

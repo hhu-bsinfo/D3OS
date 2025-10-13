@@ -653,6 +653,9 @@ impl WindowManager {
 #[cfg(feature = "with_runtime")]
 #[no_mangle]
 fn main() {
+    use terminal::init_logger;
+
+    init_logger();
     let resolution = Drawer::get_graphic_resolution();
     let (mut window_manager, senders) = WindowManager::new(resolution);
     window_manager.init(senders);

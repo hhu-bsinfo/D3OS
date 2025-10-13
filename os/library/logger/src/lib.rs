@@ -3,92 +3,44 @@
 extern crate alloc;
 
 use alloc::format;
-use num_enum::{FromPrimitive, IntoPrimitive};
+use log::{Level, Log, Metadata, Record};
 use syscall::{SystemCall, syscall};
 
-#[derive(Debug, PartialEq, IntoPrimitive, FromPrimitive)]
-#[repr(usize)]
-pub enum LogLevel {
-    #[num_enum(default)]
-    Error = 0,
-    Warn = 1,
-    Info = 2,
-    Debug = 3,
-    Trace = 4,
+/// Forward log to kernel logger
+pub struct Logger {
+    /// the verbosity
+    level: Level,
 }
 
-/// Forward log to kernel logger at given level.
-///
-/// Author: Sebastian Keller
-pub fn log(message: &str, level: LogLevel) {
-    syscall(
-        SystemCall::Log,
-        &[message.as_bytes().as_ptr() as usize, message.len(), level as usize],
-    )
-    .expect(&format!("Unable to log {}", message));
-}
+impl Log for Logger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= self.level
+    }
+    
+    fn log(&self, record: &Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
 
-/// Forward error-log to kernel logger.
-///
-/// Author: Sebastian Keller
-#[macro_export]
-macro_rules! error {
-    ($($arg:tt)*) => {{
-        $crate::log(
-            &alloc::format!($($arg)*),
-            $crate::LogLevel::Error,
+        let level = record.metadata().level();
+        let file = record.file().unwrap_or("unknown").split('/').next_back().unwrap_or("unknown");
+        let line = record.line().unwrap_or(0);
+        let message = format!("[{}@{:0>3}] {}", file, line, record.args());
+
+        syscall(
+            SystemCall::Log,
+            &[message.as_bytes().as_ptr() as usize, message.len(), level as usize],
         )
-    }};
+        .expect(&format!("Unable to log {}", message));
+    }
+
+    fn flush(&self) {}
 }
 
-/// Forward warn-log to kernel logger.
-///
-/// Author: Sebastian Keller
-#[macro_export]
-macro_rules! warn {
-    ($($arg:tt)*) => {{
-        $crate::log(
-            &alloc::format!($($arg)*),
-            $crate::LogLevel::Warn,
-        )
-    }};
-}
-
-/// Forward info-log to kernel logger.
-///
-/// Author: Sebastian Keller
-#[macro_export]
-macro_rules! info {
-    ($($arg:tt)*) => {{
-        $crate::log(
-            &alloc::format!($($arg)*),
-            $crate::LogLevel::Info,
-        )
-    }};
-}
-
-/// Forward debug-log to kernel logger.
-///
-/// Author: Sebastian Keller
-#[macro_export]
-macro_rules! debug {
-    ($($arg:tt)*) => {{
-        $crate::log(
-            &alloc::format!($($arg)*),
-            $crate::LogLevel::Debug,
-        )
-    }};
-}
-
-/// Forward trace-log to kernel logger.
-///
-/// Author: Sebastian Keller
-#[macro_export]
-macro_rules! trace {
-    ($($arg:tt)*) => {{
-        $crate::log(
-            &alloc::format!($($arg)*),
-            $crate::LogLevel::Trace,
-        )
-    }};
+impl Logger {
+    pub fn new() -> Self {
+        Self {
+            level: Level::Debug,
+        }
+    }
 }

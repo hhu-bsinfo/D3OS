@@ -1,4 +1,4 @@
-use input::keyboard::ReadKeyboardOption;
+use input::ReadKeyboardOption;
 use stream::{event_to_u16, DecodedInputStream, RawInputStream};
 
 use crate::{keyboard, mouse};
