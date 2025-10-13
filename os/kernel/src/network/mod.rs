@@ -125,8 +125,8 @@ fn add_interface(interface: Interface) {
 /// 
 /// If host is none, get the addresses of the current host.
 pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
-    let handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
     if let Some(host) = host {
+        let handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
         // first, start the queries
         let mut query_handles: Vec<_> = {
             let mut interfaces = INTERFACES.write();
