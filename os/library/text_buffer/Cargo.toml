@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Julius Carl Drodofsky <julius@drodofsky.xyz>"]
 
+[lib]
+test = true
+doctest = false
+bench = false
+
 [dependencies]
 
 [features]

@@ -4,6 +4,11 @@ name = "drawer"
 version = "0.1.0"
 authors = ["Artur Herdt"]
 
+[lib]
+test = false
+doctest = false
+bench = false
+
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }

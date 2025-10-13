@@ -7,6 +7,9 @@ authors = ["Artur Herdt"]
 [lib]
 crate-type = ["staticlib"]
 path = "src/window_manager.rs"
+test = false
+doctest = false
+bench = false
 
 
 [features]
