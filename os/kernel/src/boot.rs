@@ -178,9 +178,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         "framebuffer",
     );
     info!(
-        "framebuffer region: [Start: {:#x}, End: {:#x}]",
+        "framebuffer region: [Start: {:#x}, End: {:#x}] ({}x{})",
         fb_start_phys_addr,
         fb_end_phys_addr,
+        fb_info.width(),
+        fb_info.height(),
         );
 
     // Initialize lfb info (For terminal_emulator)
