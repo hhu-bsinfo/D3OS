@@ -33,7 +33,9 @@ use crate::process::process_manager::ProcessManager;
 use crate::process::scheduler::Scheduler;
 use crate::syscall::sys_graphic::LfbInfo;
 use crate::syscall::syscall_dispatcher::CoreLocalStorage;
-use ::log::{Level, Log, Record, error, info};
+use alloc::format;
+use graphic::color::{BLUE, WHITE};
+use ::log::{Level, Log, Record, error};
 use acpi::AcpiTables;
 use alloc::string::String;
 use alloc::sync::Arc;
@@ -93,15 +95,25 @@ fn panic(info: &PanicInfo) -> ! {
         .build();
 
     logger().log(&record);
-
+        
+    // if we do have a terminal, try to print the error there, too
+    let lfb_info = BUFFERED_LFB.get().map(|lfb| {
+        unsafe { lfb.force_unlock() };
+        let mut lfb = lfb.try_lock().unwrap();
+        let lfb_height = lfb.direct_lfb().height();
+        let lfb_width = lfb.direct_lfb().width();
+        lfb.direct_lfb().fill_rect(lfb_width/8, lfb_height/4, lfb_width * 3 / 4, lfb_height/3, BLUE);
+        lfb.direct_lfb().draw_string(lfb_width/7, lfb_height/3, WHITE, BLUE, "D3OS has encountered an unknown error:");
+        (lfb, lfb_height, lfb_width)
+    });
     // if we do have an allocator already, try to use it to print more information
     // this might fail, but we got the basic information out already
     if allocator().is_initialized() {
-        error!("{info}");
-        // if we do have a terminal, print the error there, too
-        // if LFB_INFO.is_completed() {
-        //     println!("Panic: {}", info);
-        // }
+        let message = format!("{info}");
+        error!("{message}");
+        if let Some((mut lfb, lfb_height, lfb_width)) = lfb_info {
+            lfb.direct_lfb().draw_string(lfb_width/7, lfb_height/2, WHITE, BLUE, &message);
+        }
     }
 
     loop {
