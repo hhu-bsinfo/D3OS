@@ -158,7 +158,7 @@ impl PciBus {
             let bridge = PciPciBridgeHeader::from_header(device, self.config_space()).unwrap();
             self.scan_bus(PciAddress::new(0x8000, bridge.secondary_bus_number(self.config_space()), 0, 0));
         } else {
-            info!("Found PCI device [0x{:0>4x}:0x{:0>4x}.{}] on bus [{}]", id.0, id.1, address.function(), address.bus());
+            info!("Found PCI device [0x{:0>4x}:0x{:0>4x}] at [{:02x}:{:02x}.{:x}]", id.0, id.1, address.bus(), address.device(), address.function());
             self.devices
                 .push(RwLock::new(EndpointHeader::from_header(device, self.config_space()).unwrap()));
         }
