@@ -140,11 +140,6 @@ impl PciBus {
         if device.has_multiple_functions(self.config_space()) {
             for i in 1..MAX_FUNCTIONS_PER_DEVICE {
                 let address = PciAddress::new(address.segment(), address.bus(), address.device(), i);
-                let device = PciHeader::new(address);
-                if device.id(self.config_space()).0 == INVALID {
-                    break;
-                }
-
                 self.check_function(address)
             }
         }
@@ -154,12 +149,16 @@ impl PciBus {
         let device = PciHeader::new(address);
         let id = device.id(self.config_space());
 
+        if id.0 == INVALID {
+            return;
+        }
+
         if device.header_type(self.config_space()) == HeaderType::PciPciBridge {
             info!("Found PCI-to-PCI bridge on bus [{}]", address.bus());
             let bridge = PciPciBridgeHeader::from_header(device, self.config_space()).unwrap();
             self.scan_bus(PciAddress::new(0x8000, bridge.secondary_bus_number(self.config_space()), 0, 0));
         } else {
-            info!("Found PCI device [0x{:0>4x}:0x{:0>4x}] on bus [{}]", id.0, id.1, address.bus());
+            info!("Found PCI device [0x{:0>4x}:0x{:0>4x}.{}] on bus [{}]", id.0, id.1, address.function(), address.bus());
             self.devices
                 .push(RwLock::new(EndpointHeader::from_header(device, self.config_space()).unwrap()));
         }
