@@ -1,11 +1,9 @@
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 #[cfg(feature = "userspace")]
 use syscall::{syscall, SystemCall};
 
-use graphic::{bitmap::Bitmap, color::{Color, INVISIBLE}};
-
+use graphic::{bitmap::Bitmap, color::Color};
 use crate::{rect_data::RectData, vertex::Vertex};
 
 #[repr(C, u8)]
@@ -185,7 +183,7 @@ impl Drawer {
             string_to_draw,
             pos,
             fg_color,
-            bg_color: bg_color.unwrap_or(INVISIBLE),
+            bg_color: bg_color.unwrap_or(graphic::color::INVISIBLE),
             scale,
         };
 
@@ -201,7 +199,7 @@ impl Drawer {
         let bottom_right = Vertex::new(top_left.x + width, top_left.y + height);
 
         let command = DrawerCommand::DrawPolygon {
-            vertices: vec![
+            vertices: alloc::vec![
                 Vertex::new(top_left.x, top_left.y),
                 Vertex::new(bottom_right.x, top_left.y),
                 Vertex::new(bottom_right.x, bottom_right.y),

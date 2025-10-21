@@ -88,10 +88,10 @@ impl<'b, 'v, 'r> Document<'b, 'v> {
             scroll_offset: 0,
         }
     }
-    pub fn text_buffer(&self) -> &TextBuffer {
+    pub fn text_buffer(&self) -> &TextBuffer<'_> {
         &self.text_buffer
     }
-    pub fn view_config(&self) -> &ViewConfig {
+    pub fn view_config(&self) -> &ViewConfig<'_> {
         &self.current_view
     }
     pub fn scroll_offset(&self) -> u32 {

@@ -1,6 +1,13 @@
 #![no_std]
 #![feature(linked_list_cursors)]
 
+// TODO: There are a lot of warnings in the window manager and they should be fixed in the future!
+//       I disabled them for now, because they clutter up the console,
+//       making it hard to see new warnings/errors - Fabian Ruhland (21.10.2025)
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(static_mut_refs)]
+
 extern crate alloc;
 
 use alloc::{borrow::ToOwned, vec::Vec};
@@ -95,7 +102,7 @@ impl WindowManager {
     }
 
     fn get_api() -> MutexGuard<'static, Api> {
-        unsafe { API.get_mut().expect("API accessed before init").lock() }
+        unsafe { API.get().expect("API accessed before init").lock() }
     }
 
     fn new(screen: (u32, u32)) -> (Self, Senders) {

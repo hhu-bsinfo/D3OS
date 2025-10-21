@@ -1,8 +1,8 @@
-use alloc::{format, vec::Vec};
+use alloc::{vec::Vec};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 
 use crate::{
-    components::{component::{Casts, Component, ComponentStyling}, container::container_layout::{AlignmentMode, ContainerLayout, FitMode, HorDirection, StretchMode, VertDirection}},
+    components::{component::{Casts, Component}, container::container_layout::{AlignmentMode, ContainerLayout, FitMode, HorDirection, StretchMode, VertDirection}},
     signal::ComponentRef,
     utils::{scale_pos_to_rect, scale_radius_to_rect, scale_rect_to_rect},
     WindowManager,

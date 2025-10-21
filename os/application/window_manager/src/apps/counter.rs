@@ -1,8 +1,7 @@
 use crate::{
     alloc::string::ToString,
     components::{
-        checkbox,
-        component::{ComponentStylingBuilder, Hideable},
+        component::ComponentStylingBuilder,
     },
     signal::{ComponentRef, Signal},
 };
@@ -70,7 +69,7 @@ impl Runnable for Counter {
                         .build(),
                 ),
             },
-        );
+        ).unwrap();
 
         *counter_button.write() = Some(
             api.execute(

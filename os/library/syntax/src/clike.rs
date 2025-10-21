@@ -64,7 +64,7 @@ fn keyword<'a, 's>(input: &'s str, keywords: &'a [&'s str]) -> IResult<&'s str, 
     .parse(input)
 }
 
-fn identifier(input: &str) -> IResult<&str, Token> {
+fn identifier(input: &str) -> IResult<&str, Token<'_>> {
     map(
         preceded(
             not(digit1),
@@ -75,11 +75,11 @@ fn identifier(input: &str) -> IResult<&str, Token> {
     .parse(input)
 }
 
-fn whitespace(input: &str) -> IResult<&str, Token> {
+fn whitespace(input: &str) -> IResult<&str, Token<'_>> {
     map(multispace1, Token::Whitespace).parse(input)
 }
 
-fn number(input: &str) -> IResult<&str, Token> {
+fn number(input: &str) -> IResult<&str, Token<'_>> {
     map(
         recognize(alt((recognize((digit1, tag("."), digit1)), digit1))),
         Token::Number,
@@ -87,11 +87,11 @@ fn number(input: &str) -> IResult<&str, Token> {
     .parse(input)
 }
 
-fn punctuation(input: &str) -> IResult<&str, Token> {
+fn punctuation(input: &str) -> IResult<&str, Token<'_>> {
     map(one_of("(){}[];,."), Token::Punctuation).parse(input)
 }
 
-fn string(input: &str) -> IResult<&str, Token> {
+fn string(input: &str) -> IResult<&str, Token<'_>> {
     map(
         recognize(separated_pair(
             char('\"'),
@@ -103,14 +103,14 @@ fn string(input: &str) -> IResult<&str, Token> {
     .parse(input)
 }
 
-fn comment(input: &str) -> IResult<&str, Token> {
+fn comment(input: &str) -> IResult<&str, Token<'_>> {
     map(
         recognize(preceded(tag("//"), take_till(|c| c == '\n'))),
         Token::Comment,
     )
     .parse(input)
 }
-fn operator(input: &str) -> IResult<&str, Token> {
+fn operator(input: &str) -> IResult<&str, Token<'_>> {
     const OPERATORS: &[&str] = &[
         "+", "-", "*", "/", "%", "&", "|", "^", "~", "!", "=", "<", ">", "+=", "-=", "*=", "/=",
         "%=", "&=", "|=", "^=", "<<", ">>", "++", "--", "==", "!=", "<=", ">=", "&&", "||",
@@ -118,7 +118,7 @@ fn operator(input: &str) -> IResult<&str, Token> {
     map(match_any(OPERATORS), Token::Operator).parse(input)
 }
 
-fn other(input: &str) -> IResult<&str, Token> {
+fn other(input: &str) -> IResult<&str, Token<'_>> {
     map(satisfy(|_| true), Token::Other).parse(input)
 }
 

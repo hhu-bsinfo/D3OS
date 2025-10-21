@@ -5,12 +5,11 @@ use alloc::{
 };
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH};
-use spin::RwLock;
 use terminal::DecodedKey;
 
 use crate::{
     config::INTERACT_BUTTON,
-    mouse_state::{ButtonState, MouseEvent},
+    mouse_state::MouseEvent,
     signal::{ComponentRef, ComponentRefExt, Signal, Stateful},
     WindowManager,
 };

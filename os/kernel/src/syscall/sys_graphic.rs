@@ -102,7 +102,7 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
             center,
             radius,
             inner_color,
-            border_color,
+            border_color: _,
         } => {
             lfb.draw_filled_circle_bresenham(
                 (center.x as i32, center.y as i32),

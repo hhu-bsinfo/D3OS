@@ -31,7 +31,6 @@ linked_list_allocator = { version = "0.10.5", features = ["alloc_ref"] }
 multiboot2 = "0.23.1"
 ps2 = { git = "https://github.com/lnx00/ps2-rs.git" }
 pc-keyboard = "0.8.0"
-anstyle-parse = "0.2.6"
 chrono = { version = "0.4.40", default-features = false, features = ["alloc"] }
 nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
 thingbuf = { version = "0.1", default-features = false, features = ["alloc"] }
@@ -49,8 +48,7 @@ bitflags = "2.9.0"
 smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "log", "proto-ipv6", "socket-dhcpv4", "socket-udp", "socket-tcp", "socket-icmp", "socket-dns", "dns-max-result-count-4", "dns-max-server-count-4"] }
 mbrs = { version = "0.3.1", default-features = false, features = ["no-std"] }
 num_enum = { version = "0.7.3", default-features = false }
-bitfield-struct = "0.10"
-llfree = { git = "https://github.com/luhsra/llfree-rs", subdir = "core", default-features = false, rev = "8d3e2aaff9fbb9cce708cea8fc1a3cb5a20a9471" }
+llfree = { git = "https://github.com/luhsra/llfree-rs", default-features = false, rev = "8d3e2aaff9fbb9cce708cea8fc1a3cb5a20a9471" }
 
 [build-dependencies]
 built = { version = "0.7.7", features = ["chrono", "git2"] }

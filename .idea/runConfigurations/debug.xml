@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="debug" type="RsRemoteRunConfiguration" debuggerKind="GDB" remoteCommand="localhost:1234" symbolFile="$PROJECT_DIR$/loader/kernel.elf" sysroot="">
+  <configuration default="false" name="debug" type="RsRemoteRunConfiguration" debuggerKind="USER_GDB" userDebuggerPath="/usr/bin/rust-gdb" remoteCommand="localhost:1234" symbolFile="$PROJECT_DIR$/loader/kernel.elf" sysroot="">
     <method v="2" />
   </configuration>
 </component>

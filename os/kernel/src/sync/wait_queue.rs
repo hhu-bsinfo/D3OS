@@ -15,7 +15,6 @@ use alloc::collections::VecDeque;
 
 use crate::scheduler;
 use crate::sync::irqsave_spinlock::IrqSaveSpinlock;
-use log::info;
 
 pub struct WaitQueue {
     queue: IrqSaveSpinlock<VecDeque<(usize, usize)>>,

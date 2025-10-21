@@ -22,7 +22,6 @@ use crate::{
             Container, ContainerStylingBuilder,
         },
     },
-    config::FOCUSED_BG_COLOR,
     mouse_state::MouseEvent,
     signal::{ComponentRef, ComponentRefExt, Signal},
     WindowManager, SCREEN,

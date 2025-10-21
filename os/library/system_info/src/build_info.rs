@@ -1,7 +1,8 @@
-use alloc::string::{String, ToString};
 use num_enum::{FromPrimitive, IntoPrimitive};
 #[cfg(feature = "userspace")]
 use syscall::{SystemCall, syscall};
+#[cfg(feature = "userspace")]
+use alloc::string::{String, ToString};
 
 #[derive(Debug, PartialEq, IntoPrimitive, FromPrimitive)]
 #[repr(usize)]

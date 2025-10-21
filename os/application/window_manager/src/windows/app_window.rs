@@ -16,7 +16,6 @@ use crate::{
         },
     },
     config::{DEFAULT_FG_COLOR, FOCUSED_BG_COLOR},
-    mouse_state::MouseEvent,
     signal::{ComponentRef, ComponentRefExt, Signal},
     Interaction, WindowManager, SCREEN,
 };

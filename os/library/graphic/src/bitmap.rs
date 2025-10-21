@@ -217,7 +217,7 @@ impl Bitmap {
         }
     }
 
-    pub fn scale_in_place(&mut self, mode: ScalingMode, target_width: u32, target_height: u32) {
+    pub fn scale_in_place(&mut self, _mode: ScalingMode, target_width: u32, target_height: u32) {
         if target_height == self.height && target_width == self.width {
             return;
         }

@@ -8,9 +8,8 @@ use naming::{close, mkfifo, open, read, write};
 use concurrent::thread;
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{print, println};
+use terminal::println;
 
-const PIPE: &str = "/mypipe";
 const NR_OF_ITERATIONS: u32 = 6;
 
 fn writer_thread() {
@@ -48,7 +47,7 @@ fn writer_thread() {
 //        concurrent::thread::sleep(1000);
     }
 
-    close(fh);
+    close(fh).expect("Failed to close pipe");
     println!("writer_thread: end");
 }
 
@@ -83,7 +82,7 @@ fn reader_thread() {
 //        concurrent::thread::sleep(1000);
     }
 
-    close(fh);
+    close(fh).expect("Failed to close pipe");
     println!("reader_thread: end");
 }
 

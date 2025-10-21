@@ -3,7 +3,7 @@ use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::lfb::DEFAULT_CHAR_HEIGHT;
 use libm::roundf;
 use terminal::DecodedKey;
-use crate::{config::DEFAULT_FONT_SCALE, mouse_state::{ButtonState, MouseEvent, ScrollDirection}, signal::{ComponentRef, ComponentRefExt, Stateful}, WindowManager};
+use crate::{mouse_state::{MouseEvent, ScrollDirection}, signal::{ComponentRef, ComponentRefExt, Stateful}, WindowManager};
 
 use super::{component::{Casts, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};
 

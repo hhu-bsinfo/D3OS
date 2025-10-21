@@ -15,10 +15,14 @@ extern crate bitflags;
 
 pub mod shared_types;
 
+#[cfg(feature = "userspace")]
 use alloc::string::String;
+#[cfg(feature = "userspace")]
 use alloc::ffi::CString;
+#[cfg(feature = "userspace")]
 use core::mem;
 
+#[cfg(feature = "userspace")]
 use shared_types::{DirEntry, FileType, OpenOptions, RawDirent, SeekOrigin};
 #[cfg(feature = "userspace")]
 use syscall::{SystemCall, return_vals::Errno, syscall};

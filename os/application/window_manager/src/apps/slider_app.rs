@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, rc::Rc, string::{String, ToString}};
+use alloc::{boxed::Box, rc::Rc, string::ToString};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::{bitmap::{Bitmap, ScalingMode}, color::Color};
 use spin::RwLock;

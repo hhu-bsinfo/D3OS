@@ -16,7 +16,7 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use alloc::format;
-use alloc::string::{String,ToString};
+use alloc::string::String;
 use core::cell::Cell;
 use core::fmt::{Debug, Formatter};
 use core::ptr;

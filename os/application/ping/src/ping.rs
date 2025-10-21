@@ -10,7 +10,7 @@ use network::{resolve_hostname, IcmpSocket};
 #[allow(unused_imports)]
 use runtime::*;
 use smoltcp::{phy::ChecksumCapabilities, wire::{Icmpv4Packet, Icmpv4Repr}};
-use terminal::{print, println};
+use terminal::println;
 
 #[unsafe(no_mangle)]
 fn main() {

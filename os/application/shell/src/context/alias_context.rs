@@ -28,7 +28,7 @@ impl AliasContext {
     pub fn new() -> Self {
         let mut alias = Self::default();
         for (key, value) in INITIAL_ALIASES {
-            alias.set(key, value);
+            alias.set(key, value).unwrap();
         }
         alias
     }

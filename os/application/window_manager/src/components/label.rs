@@ -1,9 +1,8 @@
 use alloc::{boxed::Box, rc::Rc, string::String};
 use drawer::{drawer::Drawer, rect_data::RectData, vertex::Vertex};
 use graphic::{color::{Color, WHITE, YELLOW}, lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH}};
-use spin::{rwlock::RwLock};
 
-use crate::{signal::{ComponentRef, ComponentRefExt, Signal, Stateful}, WindowManager, SCREEN};
+use crate::{signal::{ComponentRef, ComponentRefExt, Stateful}, WindowManager};
 
 use super::{component::{Casts, Component, ComponentStyling, Hideable}, container::Container};
 

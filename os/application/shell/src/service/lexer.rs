@@ -251,7 +251,7 @@ impl LexerService {
     fn add_blank(tokens_clx: &mut TokensContext, ch: char) {
         if let Some(last) = tokens_clx.last() {
             if *last.kind() == TokenKind::Blank {
-                tokens_clx.push_to_last_token(ch);
+                tokens_clx.push_to_last_token(ch).unwrap();
                 return;
             }
         }

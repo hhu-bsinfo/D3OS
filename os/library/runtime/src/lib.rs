@@ -7,6 +7,7 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
+#![allow(unexpected_cfgs)]
 #![no_std]
 
 extern crate alloc;
@@ -15,7 +16,7 @@ pub mod env;
 
 use concurrent::{process, thread};
 use core::panic::PanicInfo;
-use terminal::{print, println};
+use terminal::println;
 use linked_list_allocator::LockedHeap;
 use syscall::{syscall, SystemCall};
 

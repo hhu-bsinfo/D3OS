@@ -4,11 +4,10 @@ use graphic::{
     color::{Color, CYAN},
     lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
 };
-use spin::RwLock;
 use terminal::DecodedKey;
 
 use crate::{
-    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, mouse_state::ButtonState, signal::{ComponentRef, ComponentRefExt}, WindowManager
+    config::{BACKSPACE_UNICODE, INTERACT_BUTTON}, signal::{ComponentRef, ComponentRefExt}, WindowManager
 };
 
 use super::{component::{Casts, Clearable, Component, ComponentStyling, Disableable, Focusable, Hideable, Interactable}, container::Container};

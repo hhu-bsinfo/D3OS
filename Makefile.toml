@@ -23,8 +23,8 @@ dependencies = [ "image", "hdd", "ovmf" ]
 args = [
     # Base machine configuration
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "256M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
+    "-m", "512M,slots=2,maxmem=1G",
+    "-cpu", "Haswell",
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "d",
     "-vga", "std",
@@ -58,8 +58,8 @@ env = { WSL_BIOS_PATH = { script = ["wslpath -w 'RELEASEX64_OVMF.fd'"]}, WSL_BOO
 args = [
     # Base machine configuration
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "256M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
+    "-m", "512M,slots=2,maxmem=1G",
+    "-cpu", "Haswell",
     "-bios", "${WSL_BIOS_PATH}",
     "-boot", "d",
     "-vga", "std",
@@ -95,8 +95,8 @@ dependencies = [ "debug-signal-vscode" ]
 args = [
     # Base machine configuration
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
-    "-m", "256M,slots=2,maxmem=1G",
-    "-cpu", "qemu64",
+    "-m", "512M,slots=2,maxmem=1G",
+    "-cpu", "Haswell",
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "c",
     "-vga", "std",

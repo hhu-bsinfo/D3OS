@@ -15,7 +15,7 @@ use input::keyboard;
 
 use pc_keyboard::KeyEvent;
 use spin::Mutex;
-use stream::{DecodedInputStream, RawInputStream, OutputStream};
+use stream::{RawInputStream, OutputStream};
 use time::{date, systime};
 
 use crate::{util::system_info::system_info, worker::cursor::CursorState};
@@ -745,7 +745,7 @@ impl LFBTerminal {
             }
             _ => {}
         }
-        &display.lfb.flush(); // Fixes trailing cursor
+        display.lfb.flush(); // Fixes trailing cursor
     }
 
     fn handle_ansi_erase_sequence(

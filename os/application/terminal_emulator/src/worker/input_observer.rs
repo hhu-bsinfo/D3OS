@@ -6,7 +6,7 @@ use pc_keyboard::{DecodedKey, EventDecoder, HandleControl, KeyCode, KeyEvent};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use stream::{event_to_u16, OutputStream, RawInputStream};
 use syscall::{SystemCall, syscall};
-use terminal_lib::{println, DecodedKeyType, TerminalInputState, TerminalMode};
+use terminal_lib::{DecodedKeyType, TerminalInputState, TerminalMode};
 
 use crate::{
     event_handler::{Event, EventHandler},
@@ -130,7 +130,7 @@ impl Worker for InputObserver {
                     syscall(
                         SystemCall::TerminalWriteInput,
                         &[buffer.as_ptr() as usize, buffer.len(), TerminalMode::Raw as usize],
-                    );
+                    ).expect("System call TerminalWriteInput failed");
                 }
             }
 
@@ -156,7 +156,7 @@ impl Worker for InputObserver {
         syscall(
             SystemCall::TerminalWriteInput,
             &[buffer.as_ptr() as usize, buffer.len(), mode as usize],
-        );
+        ).expect("System call TerminalWriteInput failed");
     }
 }
 

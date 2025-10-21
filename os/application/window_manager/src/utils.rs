@@ -6,7 +6,7 @@ use crate::SCREEN;
 pub fn get_element_cursor_from_orderer<T: PartialEq>(
     linked_list: &mut LinkedList<T>,
     needle: T,
-) -> Option<CursorMut<T>> {
+) -> Option<CursorMut<'_, T>> {
     let mut cursor = linked_list.cursor_front_mut();
     while let Some(element) = cursor.current() {
         if *element == needle {

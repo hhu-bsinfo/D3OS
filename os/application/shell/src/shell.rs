@@ -1,5 +1,9 @@
 #![no_std]
 
+// TODO: Some functions in this crate are never used
+//       We should check if they actually serve any purpose - Fabian Ruhland (21.10.2025)
+#![allow(dead_code)]
+
 extern crate alloc;
 
 mod built_in;
@@ -151,10 +155,10 @@ impl Shell {
                 self.event_bus.trigger(Event::ProcessFailed(error));
             }
 
-            self.handle_event(Event::ProcessCompleted);
+            self.handle_event(Event::ProcessCompleted).unwrap();
 
             let input_event = self.await_input_event();
-            self.handle_event(input_event);
+            self.handle_event(input_event).unwrap();
         }
     }
 

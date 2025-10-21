@@ -62,7 +62,7 @@ impl EventHandler for AutoCompletionService {
         }
 
         self.revalidate();
-        self.clear_suggestion();
+        self.clear_suggestion()?;
         self.cycle_suggestion()
     }
 
@@ -116,7 +116,7 @@ impl AutoCompletionService {
         }
 
         event_bus.trigger(Event::LineWritten);
-        self.clear_suggestion();
+        self.clear_suggestion()?;
         Ok(Response::Ok)
     }
 
@@ -135,7 +135,7 @@ impl AutoCompletionService {
 
     fn focus_suggestion(&mut self) -> Result<Response, Error> {
         if self.current_suggestion.is_none() {
-            self.cycle_suggestion();
+            self.cycle_suggestion()?;
             if self.current_suggestion.is_none() {
                 return Ok(Response::Skip);
             }

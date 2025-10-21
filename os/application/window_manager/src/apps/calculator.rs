@@ -11,7 +11,7 @@ use crate::{
     },
     signal::{ComponentRef, Signal},
 };
-use alloc::{boxed::Box, format, rc::Rc, string::String, vec};
+use alloc::{boxed::Box, format, rc::Rc, string::String};
 use drawer::{rect_data::RectData, vertex::Vertex};
 use graphic::color::{Color, GREY, RED, WHITE};
 use spin::rwlock::RwLock;
@@ -93,7 +93,7 @@ impl Runnable for Calculator {
                 on_loop_iter: None,
                 styling: None,
             },
-        );
+        ).unwrap();
 
         // Button container
         let button_container = api
@@ -179,7 +179,7 @@ impl Runnable for Calculator {
                             .build(),
                     ),
                 },
-            );
+            ).unwrap();
         };
 
         // Helper to create operator buttons
@@ -224,7 +224,7 @@ impl Runnable for Calculator {
                                 .build(),
                         ),
                     },
-                );
+                ).unwrap();
             };
 
         // Buttons
@@ -267,7 +267,7 @@ impl Runnable for Calculator {
                         .build(),
                 ),
             },
-        );
+        ).unwrap();
 
         api.execute(
             handle,
@@ -290,7 +290,7 @@ impl Runnable for Calculator {
                         .build(),
                 ),
             },
-        );
+        ).unwrap();
 
         create_operator_button(button_container.clone(), "/", CalculatorOperation::Divide);
 
@@ -343,7 +343,7 @@ impl Runnable for Calculator {
                         .build(),
                 ),
             },
-        );
+        ).unwrap();
 
         let equals_button_init = Rc::clone(&equals_button);
         *equals_button_init.write() = Some(

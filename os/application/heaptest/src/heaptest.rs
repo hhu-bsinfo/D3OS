@@ -4,7 +4,7 @@ extern crate alloc;
 use alloc::{boxed::Box, vec::Vec};
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{print, println, read::read_fluid, DecodedKey};
+use terminal::{println, read::read_fluid, DecodedKey};
 
 #[unsafe(no_mangle)]
 fn main() {

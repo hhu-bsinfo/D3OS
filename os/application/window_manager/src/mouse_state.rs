@@ -4,7 +4,7 @@
 */
 
 use drawer::drawer::Drawer;
-use alloc::{format, vec};
+use alloc::vec;
 use input::mouse::MousePacket;
 
 use crate::config::DEFAULT_FG_COLOR;

@@ -38,7 +38,7 @@ impl Runnable for RadioButtonApp {
                         .build(),
                 ),
             },
-        );
+        ).expect("Failed to create radio button group");
 
         api.execute(
             handle,
@@ -50,7 +50,7 @@ impl Runnable for RadioButtonApp {
                 font_size: Some(4),
                 styling: None,
             },
-        );
+        ).expect("Failed to create label");
 
         api.execute(
             handle,
@@ -62,6 +62,6 @@ impl Runnable for RadioButtonApp {
                 font_size: Some(4),
                 styling: None,
             },
-        );
+        ).expect("Failed to create label");
     }
 }

@@ -8,15 +8,12 @@
 */
 use core::slice::from_raw_parts;
 use core::slice::from_raw_parts_mut;
-use core::sync::atomic::AtomicBool;
 use log::error;
 use syscall::return_vals::Errno;
 use terminal::{TerminalInputState, TerminalMode};
 
 use crate::device::tty::TtyInputState;
 use crate::{tty_input, tty_output};
-
-static KILL_OPERATOR_FLAG: AtomicBool = AtomicBool::new(false);
 
 /// SystemCall implementation for SystemCall::TerminalWriteOutput.
 /// Used by applications to write output in the terminal.

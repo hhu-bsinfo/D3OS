@@ -3,7 +3,6 @@ use core::fmt::Debug;
 use core::ops::{Deref, DerefMut};
 use nom::Offset;
 use nom::Parser;
-use nom::{IResult, error::ParseError};
 
 #[derive(Copy, Clone)]
 pub struct Located<T, I: Offset>(T, I);

@@ -3,7 +3,7 @@ use drawer::rect_data::RectData;
 use graphic::color::Color;
 use terminal::DecodedKey;
 
-use crate::{config::{DEFAULT_BACKGROUND_COLOR, DEFAULT_BORDER_COLOR, DEFAULT_DISABLED_BACKGROUND_COLOR, DEFAULT_DISABLED_BORDER_COLOR, DEFAULT_DISABLED_TEXT_COLOR, DEFAULT_FOCUSED_BACKGROUND_COLOR, DEFAULT_FOCUSED_BORDER_COLOR, DEFAULT_FOCUSED_TEXT_COLOR, DEFAULT_SELECTED_BACKGROUND_COLOR, DEFAULT_SELECTED_BORDER_COLOR, DEFAULT_SELECTED_TEXT_COLOR, DEFAULT_TEXT_COLOR}, signal::ComponentRef};
+use crate::{config::{DEFAULT_BACKGROUND_COLOR, DEFAULT_BORDER_COLOR, DEFAULT_DISABLED_BACKGROUND_COLOR, DEFAULT_DISABLED_BORDER_COLOR, DEFAULT_DISABLED_TEXT_COLOR, DEFAULT_FOCUSED_BACKGROUND_COLOR, DEFAULT_FOCUSED_BORDER_COLOR, DEFAULT_FOCUSED_TEXT_COLOR, DEFAULT_SELECTED_BACKGROUND_COLOR, DEFAULT_SELECTED_BORDER_COLOR, DEFAULT_SELECTED_TEXT_COLOR, DEFAULT_TEXT_COLOR}};
 
 pub use crate::mouse_state::MouseEvent;
 
@@ -192,7 +192,7 @@ as if the window was occupying the full screen
 
 // pub trait Component: ComponentBehaviour + Observable {}
 
-pub trait Component: Casts + {
+pub trait Component: Casts {
     fn draw(&mut self, focus_id: Option<usize>);
 
     /// Called when the component is required to adjust its absolute bounds during the layout phase.
