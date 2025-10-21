@@ -2,7 +2,7 @@ use crate::buffered_lfb;
 use drawer::{drawer::DrawerCommand, rect_data::RectData};
 use graphic::color::BLACK;
 
-pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
+pub extern "sysv64" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
     let enum_val = unsafe { command_ptr.as_ref().unwrap() };
     let mut buff_lfb = buffered_lfb().lock();
     let lfb = buff_lfb.lfb();
@@ -172,7 +172,7 @@ pub extern "C" fn sys_write_graphic(command_ptr: *const DrawerCommand) {
 
 /// w = width, h = height;
 /// Format in bytes: wwwwhhhh
-pub extern "C" fn sys_get_graphic_resolution() -> usize {
+pub extern "sysv64" fn sys_get_graphic_resolution() -> usize {
     // We need 64bits to transform the information of both width and height.
     if size_of::<usize>() != 8 {
         return 0;

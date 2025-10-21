@@ -9,7 +9,7 @@ use crate::{boot_info, built_info};
 /// Exposes build infos to User-Space.
 ///
 /// Author: Sebastian Keller
-pub fn sys_map_build_info(address: *mut u8, length: usize, info_type: usize) -> isize {
+pub extern "sysv64" fn sys_map_build_info(address: *mut u8, length: usize, info_type: usize) -> isize {
     if address.is_null() {
         error!("Unable to map build info, buffer is null");
         return Errno::EINVAL as isize;

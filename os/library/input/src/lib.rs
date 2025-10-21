@@ -1,5 +1,6 @@
 #![no_std]
 
+#[repr(C)]
 pub enum ReadKeyboardOption {
     Raw,
     Decode,

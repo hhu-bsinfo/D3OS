@@ -30,6 +30,7 @@ args = [
     "-vga", "std",
     "-rtc", "base=localtime",
     "-serial", "stdio",
+    "-display", "sdl",
 
     # Hard disk drive configuration
     "-device", "piix3-ide,id=ide",  # IDE Controller

@@ -9,7 +9,7 @@ use crate::{network::{accept_tcp, bind_icmp, bind_tcp, bind_udp, close_socket, c
 
 /// This module contains all network-related system calls.
 
-pub fn sys_sock_open(protocol: SocketType) -> isize {
+pub extern "sysv64" fn sys_sock_open(protocol: SocketType) -> isize {
     info!("opening a {protocol:?} socket");
     // TODO: what happens when we get a type thats not in the enum?
     #[allow(unreachable_patterns)]
@@ -228,7 +228,8 @@ pub unsafe fn sys_sock_receive(
     }
 }
 
-pub fn sys_sock_close(handle: SocketHandle) -> isize {
+pub extern "sysv64" fn sys_sock_close(handle: *const SocketHandle) -> isize {
+    let handle = unsafe { *handle };
     info!("closing {handle} socket");
     close_socket(handle);
     0

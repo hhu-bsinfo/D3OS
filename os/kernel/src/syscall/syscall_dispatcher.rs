@@ -177,9 +177,16 @@ unsafe impl Sync for SyscallTable {}
 ///
 /// Return: \
 ///    Two values in `rax`, `rdx` to reconstruct `Result`in user mode
-unsafe extern "C" fn syscall_handler() {
+unsafe extern "sysv64" fn syscall_handler() {
     naked_asm!(
     // We are now in ring 0 with disabled interrupts, but still on the user stack
+    // Setup segment registers for kernel mode
+    "push rax",
+    "mov rax, 0x10",
+    "mov fs, rax",
+    "mov gs, rax",
+    "pop rax",
+
     // Switch to kernel stack
     "swapgs", // Setup core local storage access via gs base
     "mov gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}], rsp", // Temporarily store user rip in core local storage
@@ -188,8 +195,8 @@ unsafe extern "C" fn syscall_handler() {
     "push gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}]", // Store user rip on kernel stack (core local storage might be overwritten, when a thread switch occurs during system call execution)
     "swapgs", // Restore gs base
 
-    // Store registers (except rax, which is used for system call ID and return value)
-    "push rbx",
+    // Store registers according to System V AMD64 ABI
+    // (except rax, which is used for system call ID and return value)
     "push rcx", // Contains rip for returning to ring 3
     "push rdx",
     "push rdi",
@@ -197,15 +204,10 @@ unsafe extern "C" fn syscall_handler() {
     "push r8",
     "push r9",
     "push r10",
-    "push r11", // Contains eflags for returning to ring 3
-    "push r12",
-    "push r13",
-    "push r14",
-    "push r15",
-    // push another value, so that the stack is aligned for u128s (% 16)
-    "push 0",
+    "push r11", // Contains rflags for returning to ring 3
+    "push 0", // Push another value so that the stack pointer 16-byte aligned (needed for u128)
 
-    // copy 4th argument to rcx to adhere x86_64 ABI
+    // copy 4th argument to rcx to adhere System V AMD64 ABI
     "mov rcx, r10",
 
     // Enable interrupts (we are now on the kernel stack and can handle them properly)
@@ -216,14 +218,10 @@ unsafe extern "C" fn syscall_handler() {
     "jge syscall_abort", // Panics and does not return
 
     // Call system call handler, corresponding to ID (in rax)
-    "call syscall_disp",
+    "call [{SYSCALL_TABLE} + 8 * rax]",
 
     // Restore registers
-    "pop r15", // the 0 from above
-    "pop r15",
-    "pop r14",
-    "pop r13",
-    "pop r12",
+    "pop r11", // Pop the alignment 0
     "pop r11", // Contains eflags for returning to ring 3
     "pop r10",
     "pop r9",
@@ -232,40 +230,38 @@ unsafe extern "C" fn syscall_handler() {
     "pop rdi",
     "pop rdx",
     "pop rcx", // Contains rip for returning to ring 3
-    "pop rbx",
 
     // Switch back to user stack
     "cli", // Disable interrupts, since we are still in Ring 0 and no interrupt handler should be called with the user stack
-    "pop rsp", // Restore rsp from kernel stack,
+    "pop rsp", // Restore rsp from kernel stack
+
+    // Setup segment registers for user mode
+    "push rax",
+    "mov rax, 0x1b",
+    "mov fs, rax",
+    "mov gs, rax",
+    "pop rax",
 
     // Return to Ring 3
     // Interrupts will be enabled automatically, because eflags is restored from r11
     "sysretq",
     NUM_SYSCALLS = const NUM_SYSCALLS,
     CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX,
-    CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX
-    );
-}
-
-#[unsafe(naked)]
-#[unsafe(no_mangle)]
-unsafe extern "C" fn syscall_disp() {
-    naked_asm!(
-    "call [{SYSCALL_TABLE} + 8 * rax]",
-    "ret",
+    CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX,
     SYSCALL_TABLE = sym SYSCALL_TABLE
     );
 }
 
 #[unsafe(no_mangle)]
+#[unsafe(naked)]
 unsafe extern "C" fn syscall_abort() {
-    let syscall_number: u64;
+    naked_asm!(
+        "mov rdi, rax", // Move syscall number to first argument (rdi)
+        "call syscall_abort_panic"
+    )
+}
 
-    unsafe {
-        asm!(
-        "mov {}, rax", out(reg) syscall_number
-        );
-    }
-
+#[unsafe(no_mangle)]
+unsafe extern "C" fn syscall_abort_panic(syscall_number: u64) {
     panic!("System call with id [{}] does not exist!", syscall_number);
 }

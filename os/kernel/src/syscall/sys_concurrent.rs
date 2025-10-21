@@ -26,7 +26,7 @@ pub extern "sysv64" fn sys_process_exit() -> ! {
     scheduler().exit();
 }
 
-pub fn sys_process_count() -> isize {
+pub extern "sysv64" fn sys_process_count() -> isize {
     process_manager().read().active_process_ids().len() as isize
 }
 
@@ -57,7 +57,7 @@ pub extern "sysv64" fn sys_thread_join(id: usize) -> isize {
     0
 }
 
-pub fn sys_thread_kill(id: usize) -> isize {
+pub extern "sysv64" fn sys_thread_kill(id: usize) -> isize {
     scheduler().kill(id);
     0
 }
@@ -66,7 +66,7 @@ pub extern "sysv64" fn sys_thread_exit() -> ! {
     scheduler().exit();
 }
 
-pub fn sys_thread_count() -> isize {
+pub extern "sysv64" fn sys_thread_count() -> isize {
     scheduler().active_thread_ids().len() as isize
 }
 

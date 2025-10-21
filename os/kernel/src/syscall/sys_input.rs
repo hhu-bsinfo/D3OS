@@ -3,7 +3,7 @@ use stream::{event_to_u16, DecodedInputStream, RawInputStream};
 
 use crate::{keyboard, mouse};
 
-pub fn sys_read_mouse() -> usize {
+pub extern "sysv64" fn sys_read_mouse() -> usize {
     match mouse() {
         Some(mouse) => mouse.read().unwrap_or(0x0) as usize,
         None => 0x0,
@@ -12,7 +12,7 @@ pub fn sys_read_mouse() -> usize {
 
 /// SystemCall implementation for SystemCall::KeyboardRead.
 /// Reads from keyboard with given mode (Raw or Decoded).
-pub fn sys_read_keyboard(option: ReadKeyboardOption, blocking: bool) -> isize {
+pub extern "sysv64" fn sys_read_keyboard(option: ReadKeyboardOption, blocking: bool) -> isize {
     let keyboard = keyboard().expect("Failed to read from keyboard!");
 
     match option {

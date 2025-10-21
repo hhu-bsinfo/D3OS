@@ -8,7 +8,7 @@ use syscall::return_vals::Errno;
 /// Receives logging data from User-Space and forwards it to the kernel logger.
 ///
 /// Author: Sebastian Keller
-pub fn sys_log(address: *const u8, length: usize, level: Level) -> isize {
+pub extern "sysv64" fn sys_log(address: *const u8, length: usize, level: Level) -> isize {
     if address.is_null() {
         error!("Unable to read userspace log");
         return Errno::EINVAL as isize;

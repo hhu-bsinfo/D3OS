@@ -398,15 +398,15 @@ fn init_gdt() {
         // Load task state segment
         load_tss(SegmentSelector::new(5, Ring0));
 
-        // Set code and stack segment register
+        // Set segment registers
         CS::set_reg(SegmentSelector::new(1, Ring0));
         SS::set_reg(SegmentSelector::new(2, Ring0));
+        FS::set_reg(SegmentSelector::new(2, Ring0));
+        GS::set_reg(SegmentSelector::new(2, Ring0));
 
-        // Other segment registers are not used in long mode (set to 0)
+        // DS and ES are unused in 64-bit mode, so we set them to null selectors
         DS::set_reg(SegmentSelector::new(0, Ring0));
         ES::set_reg(SegmentSelector::new(0, Ring0));
-        FS::set_reg(SegmentSelector::new(0, Ring0));
-        GS::set_reg(SegmentSelector::new(0, Ring0));
     }
 }
 

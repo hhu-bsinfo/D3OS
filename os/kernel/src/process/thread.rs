@@ -51,7 +51,9 @@ use goblin::elf::Elf;
 use goblin::elf64;
 use log::info;
 use spin::Mutex;
-use x86_64::PrivilegeLevel::Ring3;
+use x86_64::instructions::segmentation::{Segment, GS};
+use x86_64::PrivilegeLevel::{Ring0, Ring3};
+use x86_64::registers::segmentation::FS;
 use x86_64::VirtAddr;
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::structures::paging::Page;
@@ -288,13 +290,14 @@ impl Thread {
     /// Prepare a fake stack for starting a thread in kernel mode
     fn prepare_kernel_stack(&self) {
         let mut stacks = self.stacks.lock();
-        let stack_addr = stacks.kernel_stack.as_ptr() as u64;
-        let capacity = stacks.kernel_stack.capacity();
 
         // init stack with 0s
         for _ in 0..stacks.kernel_stack.capacity() {
             stacks.kernel_stack.push(0);
         }
+        let top_of_stack = Self::get_top_of_stack(&stacks.kernel_stack);
+        let capacity = stacks.kernel_stack.capacity();
+        let segment_selector = SegmentSelector::new(2, Ring0).0 as u64; // kernel data segment
 
         stacks.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
         stacks.kernel_stack[capacity - 2] = Thread::kickoff_kernel_thread as u64; // Address of 'kickoff_kernel_thread()';
@@ -318,7 +321,9 @@ impl Thread {
         stacks.kernel_stack[capacity - 17] = 0; // rdi
         stacks.kernel_stack[capacity - 18] = 0; // rbp
 
-        stacks.old_rsp0 = VirtAddr::new(stack_addr + ((capacity - 18) * 8) as u64);
+        stacks.kernel_stack[capacity - 19] = (segment_selector << 48 | segment_selector << 32) as u64; // fs
+
+        stacks.old_rsp0 = VirtAddr::new((top_of_stack as usize - (8 * 18) - 4) as u64);
     }
 
     /// Switch a thread to user mode by preparing a fake stackframe
@@ -346,6 +351,8 @@ impl Thread {
         }
 
         unsafe {
+            FS::set_reg(SegmentSelector::new(4, Ring3));
+            GS::set_reg(SegmentSelector::new(4, Ring3));
             thread_user_start(old_rsp0, self.entry);
         }
     }
@@ -475,6 +482,13 @@ impl Thread {
             }
         }
     }
+
+    /// Get a pointer to the top of the given stack.
+    fn get_top_of_stack(stack: &Vec<u64, StackAllocator>) -> *const u64 {
+        unsafe {
+            ptr::from_ref(&stack[stack.len() - 1]).offset(1)
+        }
+    }
 }
 
 /// Low-level function for starting a thread in kernel mode
@@ -482,6 +496,8 @@ impl Thread {
 unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
     naked_asm!(
         "mov rsp, rdi", // First parameter -> load 'old_rsp0'
+        "pop gs",
+        "pop fs",
         "pop rbp",
         "pop rdi", // 'old_rsp0' is here
         "pop rsi",
@@ -535,6 +551,8 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
     "push rsi",
     "push rdi",
     "push rbp",
+    "push fs",
+    "push gs",
 
     // Save stack pointer in 'current_rsp0' (first parameter)
     "mov [rdi], rsp",
@@ -550,6 +568,8 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
 
     // Load registers of next thread by using 'next_rsp0' (second parameter)
     "mov rsp, rsi",
+    "pop gs",
+    "pop fs",
     "pop rbp",
     "pop rdi",
     "pop rsi",

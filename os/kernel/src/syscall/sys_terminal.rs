@@ -19,7 +19,7 @@ use crate::{tty_input, tty_output};
 /// Used by applications to write output in the terminal.
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_write_output(address: *const u8, length: usize) -> isize {
+pub extern "sysv64" fn sys_terminal_write_output(address: *const u8, length: usize) -> isize {
     if address.is_null() {
         error!("Output buffer must not be null");
         return Errno::EINVAL as isize;
@@ -33,7 +33,7 @@ pub fn sys_terminal_write_output(address: *const u8, length: usize) -> isize {
 /// Used by terminal to read output from applications.
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_read_output(address: *mut u8, length: usize) -> isize {
+pub extern "sysv64" fn sys_terminal_read_output(address: *mut u8, length: usize) -> isize {
     if address.is_null() {
         error!("Output buffer must not be null");
         return Errno::EINVAL as isize;
@@ -47,7 +47,7 @@ pub fn sys_terminal_read_output(address: *mut u8, length: usize) -> isize {
 /// Used by terminal to write input for applications.
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_write_input(address: *mut u8, length: usize, mode: usize) -> isize {
+pub extern "sysv64" fn sys_terminal_write_input(address: *mut u8, length: usize, mode: usize) -> isize {
     if address.is_null() {
         error!("Input buffer must not be null");
         return Errno::EINVAL as isize;
@@ -62,7 +62,7 @@ pub fn sys_terminal_write_input(address: *mut u8, length: usize, mode: usize) ->
 /// Used by applications to read input from the terminal.
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_read_input(address: *mut u8, length: usize, mode: usize) -> isize {
+pub extern "sysv64" fn sys_terminal_read_input(address: *mut u8, length: usize, mode: usize) -> isize {
     if address.is_null() {
         error!("Input buffer must not be null");
         return Errno::EINVAL as isize;
@@ -77,7 +77,7 @@ pub fn sys_terminal_read_input(address: *mut u8, length: usize, mode: usize) -> 
 /// Used by terminal to check if an applications is waiting for input.
 ///
 /// Author: Sebastian Keller
-pub fn sys_terminal_check_input_state() -> isize {
+pub extern "sysv64" fn sys_terminal_check_input_state() -> isize {
     let tty_input = tty_input();
 
     if tty_input.state() != TtyInputState::Waiting {
