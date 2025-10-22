@@ -34,7 +34,7 @@ log = "0.4.26"
 hashbrown = "0.14.5"
 spin = "0.9.8"
 nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
-chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
+chrono = { version = "0.4.42", default-features = false, features = ["alloc"] }
 libm = "0.2.8"
 pc-keyboard = "0.8.0"
 pulldown-cmark = { git = "https://github.com/pulldown-cmark/pulldown-cmark.git", version = "0.13.0", default-features = false, features = ["hashbrown"] }

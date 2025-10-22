@@ -27,7 +27,7 @@ globals = {path ="../../library/globals"}
 
 # Extern dependencies
 anstyle-parse = "0.2.6"
-chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
+chrono = { version = "0.4.42", default-features = false, features = ["alloc"] }
 pc-keyboard = "0.8.0"
 spin = "0.10.0"
 uefi = "0.34.1"

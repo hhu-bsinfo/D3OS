@@ -13,3 +13,6 @@ bench = false
 # Local dependencies
 syscall = { path = "../syscall" }
 time = { path = "../time" }
+
+# External dependencies
+chrono = { version = "0.4.42", default-features = false, features = ["alloc"] }

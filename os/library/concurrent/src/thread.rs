@@ -9,6 +9,7 @@
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::ptr;
+use chrono::TimeDelta;
 use syscall::{syscall, SystemCall};
 use time::systime;
 
@@ -16,10 +17,11 @@ pub struct Thread {
     id: usize,
 }
 
+#[repr(C, packed)]
 pub struct ThreadEnvironment {
     #[allow(dead_code)] // Only read in assembly code
     self_ptr: *mut ThreadEnvironment,
-    start_time: usize,
+    start_time: TimeDelta,
 }
 
 impl Thread {
@@ -39,7 +41,7 @@ impl Thread {
         let _ = syscall(SystemCall::ThreadKill, &[self.id]);
     }
 
-    pub fn start_time(&self) -> usize {
+    pub fn start_time(&self) -> TimeDelta {
         let thread_env = thread_environment();
         thread_env.start_time
     }
@@ -64,7 +66,7 @@ pub fn init_thread_environment() {
     let thread_env = thread_environment();
     *thread_env = ThreadEnvironment {
         self_ptr: ptr::from_mut(thread_env),
-        start_time: systime.num_milliseconds() as usize,
+        start_time: systime,
     };
 }
 
@@ -110,11 +112,7 @@ pub fn exit() -> ! {
 }
 
 pub fn count() -> usize {
-    match syscall(SystemCall::ThreadCount, &[]) {
-        Ok(count) => count,
-        Err(_) => 0,
-    }
-    
+    syscall(SystemCall::ThreadCount, &[]).unwrap_or_else(|_| 0)
 }
 
 pub fn start_application(name: &str, args: Vec<&str>) -> Option<Thread> {
