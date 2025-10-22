@@ -24,13 +24,12 @@ args = [
     # Base machine configuration
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
-    "-cpu", "Haswell",
+    "-cpu", "Haswell,fsgsbase",
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "d",
     "-vga", "std",
     "-rtc", "base=localtime",
     "-serial", "stdio",
-    "-display", "sdl",
 
     # Hard disk drive configuration
     "-device", "piix3-ide,id=ide",  # IDE Controller

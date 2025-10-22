@@ -88,6 +88,12 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     info!("Initializing GDT");
     init_gdt();
 
+    // Enable FSGSBASE
+    info!("Enabling FSGSBASE instructions");
+    unsafe {
+        Cr4::update(|flags| flags.insert(Cr4Flags::FSGSBASE));
+    }
+
     // The bootloader marks the kernel image region as available, so we need to reserve it manually
     let kernel_image_region = kernel_image_region();
     unsafe {

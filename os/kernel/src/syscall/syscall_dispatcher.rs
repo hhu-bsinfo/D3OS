@@ -6,7 +6,7 @@
    ║ Author: Fabian Ruhland, 25.8.2025, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use core::arch::{asm, naked_asm};
+use core::arch::naked_asm;
 use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
@@ -180,10 +180,9 @@ unsafe impl Sync for SyscallTable {}
 unsafe extern "sysv64" fn syscall_handler() {
     naked_asm!(
     // We are now in ring 0 with disabled interrupts, but still on the user stack
-    // Setup segment registers for kernel mode
+    // Setup gs for kernel mode
     "shl rax, 16", // Shift syscall ID to high bits (limits syscall ID to 16-bit values, which is fine)
     "mov ax, 0x10", // Load segment selector for kernel data segment
-    "mov fs, ax",
     "mov gs, ax",
     "shr rax, 16", // Restore syscall ID
 
@@ -235,10 +234,9 @@ unsafe extern "sysv64" fn syscall_handler() {
     "cli", // Disable interrupts, since we are still in Ring 0 and no interrupt handler should be called with the user stack
     "pop rsp", // Restore rsp from kernel stack
 
-    // Setup segment registers for user mode
+    // Setup gs for user mode
     "push rax",
-    "mov rax, 0x1b",
-    "mov fs, rax",
+    "mov ax, 0x1b",
     "mov gs, rax",
     "pop rax",
 

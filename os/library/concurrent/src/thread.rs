@@ -7,11 +7,19 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use alloc::vec::Vec;
+use core::arch::asm;
 use core::ptr;
 use syscall::{syscall, SystemCall};
+use time::systime;
 
 pub struct Thread {
     id: usize,
+}
+
+pub struct ThreadEnvironment {
+    #[allow(dead_code)] // Only read in assembly code
+    self_ptr: *mut ThreadEnvironment,
+    start_time: usize,
 }
 
 impl Thread {
@@ -30,9 +38,40 @@ impl Thread {
     pub fn kill(&self) {
         let _ = syscall(SystemCall::ThreadKill, &[self.id]);
     }
+
+    pub fn start_time(&self) -> usize {
+        let thread_env = thread_environment();
+        thread_env.start_time
+    }
+}
+
+pub fn thread_environment() -> &'static mut ThreadEnvironment {
+    let thread_env: *mut ThreadEnvironment;
+
+    unsafe {
+        asm!(
+        "mov {}, fs:0",
+        out(reg) thread_env,
+        );
+
+        &mut *thread_env
+    }
+}
+
+pub fn init_thread_environment() {
+    let systime = systime();
+
+    let thread_env = thread_environment();
+    *thread_env = ThreadEnvironment {
+        self_ptr: ptr::from_mut(thread_env),
+        start_time: systime.num_milliseconds() as usize,
+    };
 }
 
 extern "sysv64" fn kickoff_user_thread(entry: extern "sysv64" fn()) {
+    // set up the thread environment, which is stored at FS:0
+    init_thread_environment();
+
     // entry has no parameters, so we don't really need to ensure the calling convention
     entry();
     exit();

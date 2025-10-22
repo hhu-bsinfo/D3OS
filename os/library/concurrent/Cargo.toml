@@ -12,3 +12,4 @@ bench = false
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }
+time = { path = "../time" }
