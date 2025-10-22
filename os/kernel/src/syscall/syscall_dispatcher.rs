@@ -181,11 +181,11 @@ unsafe extern "sysv64" fn syscall_handler() {
     naked_asm!(
     // We are now in ring 0 with disabled interrupts, but still on the user stack
     // Setup segment registers for kernel mode
-    "push rax",
-    "mov rax, 0x10",
-    "mov fs, rax",
-    "mov gs, rax",
-    "pop rax",
+    "shl rax, 16", // Shift syscall ID to high bits (limits syscall ID to 16-bit values, which is fine)
+    "mov ax, 0x10", // Load segment selector for kernel data segment
+    "mov fs, ax",
+    "mov gs, ax",
+    "shr rax, 16", // Restore syscall ID
 
     // Switch to kernel stack
     "swapgs", // Setup core local storage access via gs base

@@ -13,7 +13,7 @@ use crate::return_vals::SyscallResult;
 pub mod return_vals;
 
 /// Enum with all known system calls
-#[repr(usize)]
+#[repr(u16)] // Cannot use full size of rax, because ax is needed to set up fs/gs in syscall_handler()
 #[allow(dead_code)]
 pub enum SystemCall {
     TerminalReadInput = 0,
