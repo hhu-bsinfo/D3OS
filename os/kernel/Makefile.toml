@@ -2,11 +2,13 @@
 CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_kernel.json"
 BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/d3os_kernel/debug"
 CARGO_BUILD_OPTION = "--lib"
+PROFILE="debug"
 
 [env.production]
 CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_kernel.json"
 BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/d3os_kernel/release"
 CARGO_BUILD_OPTION = "--release"
+PROFILE="release"
 
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
@@ -31,6 +33,39 @@ condition = { files_modified = { input = [
     "${LIBRARY_DIRECTORY}/graphic/Cargo.toml", "${LIBRARY_DIRECTORY}/graphic/src/**/*.rs",
     "${LIBRARY_DIRECTORY}/stream/Cargo.toml", "${LIBRARY_DIRECTORY}/stream/src/**/*.rs",
     "${LIBRARY_DIRECTORY}/syscall/Cargo.toml", "${LIBRARY_DIRECTORY}/syscall/src/**/*.rs" ], output = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*" ] } }
+
+[tasks.test-compile]
+env = { HOST_MACHINE = "${HOST_MACHINE}" , SOURCE_IP = "${SOURCE_IP}" , TARGET_IP = "${TARGET_IP}" , TARGET_PORT= "${TARGET_PORT}" , IS_SENDER = "${IS_SENDER}" , GATEWAY_IP="${GATEWAY_IP}" }
+command = "cargo"
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", 
+        "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}", "--target-dir", "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}",
+        "--config", 'build.rustflags="--cfg kernel_test --cfg ${HOST_MACHINE} --cfg ${CARGO_INFINIBAND_OPERATION}"' ]
+
+[tasks.test-build-asm]
+command = "nasm"
+args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/boot.o", 
+        "${SOURCE_DIRECTORY}/boot.asm" ]
+
+[tasks.bench-compile]
+env = { HOST_MACHINE = "${HOST_MACHINE}" , SOURCE_IP = "${SOURCE_IP}" , TARGET_IP = "${TARGET_IP}" , TARGET_PORT= "${TARGET_PORT}" , IS_SENDER = "${IS_SENDER}" , GATEWAY_IP="${GATEWAY_IP}"}
+command = "cargo"
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", 
+        "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}", "--target-dir", "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}",
+        "--config", 'build.rustflags="--cfg kernel_bench --cfg ${BENCH_OPERATION} --cfg ${HOST_MACHINE} --cfg ${CARGO_INFINIBAND_OPERATION}"' ]
+
+[tasks.test]
+command = "${LINKER}"
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${BOOTLOADER_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}-${HOST_MACHINE}.elf", 
+         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/boot.o",
+         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/lib${CARGO_MAKE_PROJECT_NAME}.a"]
+dependencies = [ "test-compile", "test-build-asm" ]
+
+[tasks.bench]
+command = "${LINKER}"
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${BOOTLOADER_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}-${HOST_MACHINE}.elf", 
+         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/boot.o",
+         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/lib${CARGO_MAKE_PROJECT_NAME}.a"]
+dependencies = [ "bench-compile", "test-build-asm" ]
 
 [tasks.build-asm]
 command = "nasm"
