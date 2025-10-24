@@ -3,7 +3,7 @@
 ### Work to be done in User Mode
 
 1. You need to add an entry for your new system call in: `os/library/syscall`
-In `enum SysCall`. Insert your new system call name before `LastEntryMarker`.
+In `enum SysCall`.
 
 2. For using your new system call, see examples in `os/library`. A system call is typically used within a runtime library function, not directly within an application. *Important: Check params before firing a system call and abort if they are not valid.*
 

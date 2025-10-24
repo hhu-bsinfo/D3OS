@@ -7,10 +7,12 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![no_std]
+#![feature(variant_count)]
 
 pub mod return_vals;
 
 use core::arch::asm;
+use core::mem;
 use return_vals::{SyscallResult, convert_ret_code_to_syscall_result};
 
 /// Enum with all known system calls
@@ -49,13 +51,10 @@ pub enum SystemCall {
     SockSend,
     SockReceive,
     SockClose,
-    GetIpAddresses,
-    // no syscall, just marking last number, see NUM_SYSCALLS
-    // insert any new system calls before this marker
-    LastEntryMarker,
+    GetIpAddresses
 }
 
-pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
+pub const NUM_SYSCALLS: usize = mem::variant_count::<SystemCall>() as usize;
 
 ///
 /// Description:
