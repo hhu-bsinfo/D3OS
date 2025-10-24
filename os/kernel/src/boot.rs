@@ -509,6 +509,10 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
                 || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0
         }) // .0 necessary because of different version dependencies to uefi-crate
         .for_each(|area| {
+            if area.virt_start != 0 {
+                warn!("ignoring memory area with virtual address");
+                return;
+            }
             let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
             let frames = PhysFrame::range(start, start + area.page_count);
 
@@ -536,6 +540,10 @@ fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
                 || area.ty == MemoryType::BOOT_SERVICES_DATA
         })
         .for_each(|area| {
+            if area.virt_start != 0 {
+                warn!("ignoring memory area with virtual address");
+                return;
+            }
             let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
             let frames = PhysFrame::range(start, start + area.page_count);
 
