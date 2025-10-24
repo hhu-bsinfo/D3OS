@@ -78,7 +78,20 @@ Setting a breakpoint in `gdb`:
 ```bash
 break kernel::naming::api::init
 ```
+
+This way, a single application can also be debugged:
+
+```bash
+add-symbol-file loader/initrd/bin/hello
+break main
+```
+
 For further commands check [GDB Quick Reference](docs/gdb-commands.pdf).
+
+### In your editor
+
+The repository contains debug configurations for RustRover, Visual Studio Code and Zed.
+To debug userspace applications, you might need to modify them.
 
 ## Creating a bootable USB stick
 
