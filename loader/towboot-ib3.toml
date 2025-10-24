@@ -1,0 +1,9 @@
+default = "d3os"
+timeout = 0
+log_level = "info"
+
+[entries]
+  [entries.d3os]
+    name = "D3OS"
+    image = "kernel-ib3.elf"
+    modules = [ { image = "initrd.tar", argv = "initrd" } ]
