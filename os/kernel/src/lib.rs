@@ -84,7 +84,8 @@ fn panic(info: &PanicInfo) -> ! {
     interrupts::disable();
     
     // write the panic directly out to the serial port
-    // this needs no allocations, no locks and should always work
+    // this needs no allocations and should always work
+    unsafe { logger().force_unlock() };
     error!("Panic:");
     let args = [info.message().as_str().unwrap_or("(no message provided)")];
     let record = Record::builder()
