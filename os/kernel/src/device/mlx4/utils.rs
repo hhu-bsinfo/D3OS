@@ -11,25 +11,55 @@ use core::mem as mem;
 
 use alloc::slice;
 use alloc::vec::Vec;
+use alloc::boxed::Box;
 
 type FillValues = (u8, *mut u8, usize);
 type CopyValues<'a> = (&'a[u8], *mut u8, usize);
-type FillOperation = fn (FillValues);
-type CopyOperation = fn (CopyValues);
 
 pub type PageToFrameMapping = (MappedPages, PhysAddr);
 
 const OPERATION_COPY: u8 = 1;
 const OPERATION_FILL: u8 = 2;
 
-pub (super) struct OperationValue {
-    value : *const (),
-    key : u8
+pub enum OperationArgs<'a> {
+    Fill(u8, *mut u8, usize),
+    Copy(&'a [u8], *mut u8, usize),
 }
 
+pub trait Operation {
+    fn run(&self, args: &OperationArgs);
+    fn key(&self) -> u8;
+}
+
+impl Operation for FillOperation {
+    fn run(&self, args: &OperationArgs) {
+        if let OperationArgs::Fill(a, b, c) = args {
+            fill_pages(*a, *b, *c)
+        } else {
+            panic!("wrong args for FillOperation")
+        }
+    }
+    fn key(&self) -> u8 { OPERATION_FILL }
+}
+
+impl Operation for CopyOperation {
+    fn run(&self, args: &OperationArgs) {
+        if let OperationArgs::Copy(a, b, c) = args {
+            copy_pages(*a, *b, *c)
+        } else {
+            panic!("wrong args for CopyOperation")
+        }
+    }
+    fn key(&self) -> u8 { OPERATION_COPY }
+}
+
+pub (super) struct FillOperation {}
+
+pub (super) struct CopyOperation {}
+
 #[derive(Default)]
-pub (super) struct Operations{
-    operation : Vec<(*const (), OperationValue)>
+pub (super) struct Operations<'a> {
+    operation_container : Vec<(Box<dyn Operation>, OperationArgs<'a>)>
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -218,85 +248,31 @@ impl MappedPages {
     }
 }
 
-impl Operations {
-    pub fn add_operation(&mut self, value: *const (), key: u8) -> i8 {
-        match key {
-            OPERATION_COPY => {
-                let operation = fill_pages as *const FillOperation as *const ();
-                self.operation.push((operation, OperationValue { value, key}));
-            }, 
-            OPERATION_FILL => {
-                let operation = copy_pages as *const CopyOperation as *const ();
-                self.operation.push((operation, OperationValue { value, key}));
-            },
-            _ => return -1
-        }
-
-        return 0
+impl <'a> Operations<'a> {
+    pub fn add_operation(&mut self, operation : Box<dyn Operation>, operation_value : OperationArgs<'a>) {
+        self.operation_container.push((operation, operation_value));
     }
 
     pub fn perform_and_flush(&mut self) {
-        for operation_entry in self.operation.iter() {
-            let function = &operation_entry.0;
-            let value = &operation_entry.1;
-            match value.key {
-                OPERATION_COPY => {
-                    let f = unsafe {*(*function as *const CopyOperation)};
-                    let v = unsafe {*(value.value as *const CopyValues) };
-                    
-                    f(v);
-                },
-                OPERATION_FILL => {
-                    let f = unsafe {*(*function as *const FillOperation)};
-                    let v = unsafe {*(value.value as *const FillValues) };
-                    
-                    f(v);
-                },
-                _ => return
-            }
+        for (operation, operation_value) in self.operation_container.iter() {
+            operation.run(operation_value);
         }
 
-        self.operation.clear();
-        self.operation.shrink_to_fit();
+        self.operation_container.clear();
+        self.operation_container.shrink_to_fit();
     }
 
     pub fn perform(self) {
-        for operation_entry in self.operation.into_iter() {
-            let function = operation_entry.0;
-            let value = operation_entry.1;
-            match value.key {
-                OPERATION_COPY => {
-                    let f = unsafe {*(function as *const CopyOperation)};
-                    let v = unsafe {*(value.value as *const CopyValues) };
-                    
-                    f(v);
-                },
-                OPERATION_FILL => {
-                    let f = unsafe {*(function as *const FillOperation)};
-                    let v = unsafe {*(value.value as *const FillValues) };
-                    
-                    f(v);
-                },
-                _ => return
-            }
+        for (operation, operation_value) in self.operation_container.into_iter() {
+            operation.run(&operation_value);
         }
-    }
-
-    // maybe handle the creation bit more generic ?!
-    pub fn create_fill(&mut self, arguments: &(u8, *mut u8, usize)) {
-        let a = arguments as *const (u8, *mut u8, usize) as *const ();
-        self.add_operation(a, OPERATION_FILL);
-    }
-
-    pub fn create_cpy(&mut self, arguments: &(&[u8], *mut u8, usize)) {
-        let a = arguments as *const (&[u8], *mut u8, usize) as *const ();
-        self.add_operation(a, OPERATION_COPY);
     }
 }
 
 const DMA_FLAGS: PageTableFlags = PageTableFlags::from_bits_truncate(
-        PageTableFlags::ACCESSED.bits() | PageTableFlags::NO_EXECUTE.bits()
-            | PageTableFlags::PRESENT.bits() | PageTableFlags::WRITABLE.bits());
+    PageTableFlags::NO_EXECUTE.bits()
+            | PageTableFlags::PRESENT.bits() 
+            | PageTableFlags::WRITABLE.bits());
 
 pub fn mapped_pages_from_frames(frame_range: PhysFrameRange) -> PageRange<Size4KiB> {
     let v1 = VirtAddr::new(frame_range.start.start_address().as_u64());
@@ -358,7 +334,7 @@ pub fn get_physical_address(addr: VirtAddr) -> PhysAddr {
 
 pub fn pci_map_bar_mem(mlx3_pci_dev: &EndpointHeader, slot: u8, config_access: &impl ConfigRegionAccess) -> Result<MappedPages, &'static str>{
     let (address, size) = mlx3_pci_dev.bar(slot, config_access)
-        .ok_or("error bar 0 (64-bit Mem)")?.unwrap_mem();
+        .ok_or("Error bar 0 (64-bit Mem)")?.unwrap_mem();
 
     let start_frame = PhysFrame::<Size4KiB>::from_start_address(PhysAddr::new(address as u64)).unwrap();
     let end_frame = PhysFrame::<Size4KiB>::containing_address(PhysAddr::new((address + size) as u64)) + 1;
@@ -376,7 +352,7 @@ pub fn pci_map_bar_mem(mlx3_pci_dev: &EndpointHeader, slot: u8, config_access: &
 pub fn create_cont_mapping_with_dma_flags(frame_count: usize) -> Result<PageToFrameRange, &'static str> {
     let memory = frames::alloc(frame_count);
     if memory.is_empty() {
-        return Err("no mem");
+        return Err("Memory can't be allocated, since the frame allocator didn't return frames");
     }
     let page_range = mapped_pages_from_frames(memory);
     set_dma_flags(page_range);
