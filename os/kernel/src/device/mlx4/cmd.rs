@@ -6,14 +6,14 @@ use core::sync::atomic::{compiler_fence, Ordering};
 
 use bitflags::{bitflags};
 use byteorder::BigEndian;
-use crate::memory::{PAGE_SIZE};
+use crate::{device::mlx4::utils::{CopyOperation, FillOperation}, memory::PAGE_SIZE};
 use strum_macros::{FromRepr, IntoStaticStr};
 use volatile::{Volatile, WriteOnly};
 use zerocopy::{U32, U64};
 use log::trace;
 use crate::device::mlx4::utils;
-
-use super::utils::Operations as Operations;
+use alloc::boxed::Box;
+use super::utils::{Operations as Operations, OperationArgs};
 
 const HCR_BASE: usize = 0x80680;
 const HCR_OPMOD_SHIFT: u32 = 12;
@@ -218,8 +218,10 @@ impl InputParameter for &[u8] {
             .expect("").fetch_in_addr().expect("");
         let data = utils::start_page_as_mut_ptr::<u8>(mapped_pages.into_range().start);
 
-        operation_container.create_fill(&(0u8, data, PAGE_SIZE));
-        operation_container.create_cpy( &(self, data, self.len()));
+        operation_container.add_operation(Box::new(FillOperation {}), 
+        OperationArgs::Fill(0u8, data, PAGE_SIZE));
+        operation_container.add_operation(Box::new(CopyOperation {}),
+            OperationArgs::Copy(self, data, self.len()));
 
         operation_container.perform();
 
@@ -276,7 +278,8 @@ impl OutputParameter for utils::MappedPages {
             .expect("").fetch_in_addr().expect("");
         let data = utils::start_page_as_mut_ptr::<u8>(mapped_pages.into_range().start);
 
-        operation_container.create_fill(&(0, data, PAGE_SIZE));
+        operation_container.add_operation(Box::new(FillOperation {}), 
+        OperationArgs::Fill(0u8, data, PAGE_SIZE));
 
         operation_container.perform();
         
