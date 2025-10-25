@@ -60,22 +60,30 @@
 //! [RDMAmojo]: http://www.rdmamojo.com/
 //! [1]: http://www.rdmamojo.com/2012/05/18/libibverbs/
 
-#![deny(missing_docs)]
+//#![deny(missing_docs)]
 #![warn(rust_2018_idioms)]
 // avoid warnings about RDMAmojo, iWARP, InfiniBand, etc. not being in backticks
 #![allow(clippy::doc_markdown)]
 
 use alloc;
 
+use core::alloc::Layout;
 use core::convert::TryInto;
 use core::ffi::CStr;
 use core::marker::PhantomData;
 use core::mem;
 use core::ops::Range;
+use core::ptr;
+use crate::infiniband::ib_core::ibv_port_attr;
+use crate::infiniband::ib_core::ibv_recv_wr;
+use crate::infiniband::ib_core::ibv_send_wr;
+use crate::infiniband::ib_core::ibv_send_flags;
+use crate::infiniband::ib_core::ibv_qp_cap;
+use crate::memory::PAGE_SIZE;
 
 use super::ibverbs_sys as ffi;
 
-use alloc::{boxed::Box, ffi::CString, vec, vec::Vec};
+use alloc::{boxed::Box, ffi::CString, vec::Vec};
 use core2::io;
 
 const PORT_NUM: u8 = 1;
@@ -87,15 +95,15 @@ pub use ffi::ibv_wc;
 pub use ffi::ibv_wc_opcode;
 pub use ffi::ibv_wc_status;
 
-//#[cfg(feature = "serde")]
-//use serde::{Deserialize, Serialize};
+#[cfg(feature = "serialize")]
+use bincode::{Encode, Decode};
 
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
 pub use ffi::ibv_access_flags;
 
 /// Because `std::slice::SliceIndex` is still unstable, we follow @alexcrichton's suggestion in
 /// https://github.com/rust-lang/rust/issues/35729 and implement it ourselves.
-mod sliceindex;
+pub mod sliceindex;
 
 /// Get list of available RDMA devices.
 ///
@@ -178,7 +186,7 @@ impl<'d> From<&'d ffi::ibv_device> for Device<'d> {
 /// This struct acts as a rust wrapper for GUID value represented as `__be64` in
 /// libibverbs. We introduce this struct, because u64 is stored in host
 /// endianness, whereas ibverbs stores GUID in network order (big endian).
-//#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serialize", derive(Encode, Decode))]
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[repr(transparent)]
 pub struct Guid {
@@ -395,6 +403,14 @@ impl Context {
         let pd = ffi::ibv_alloc_pd(&self.ctx)?;
         Ok(ProtectionDomain { ctx: self, pd })
     }
+
+    pub fn query_port<'ctx>(&'ctx self) -> &'ctx ibv_port_attr{
+        &self.port_attr
+    }
+
+    pub fn query_device(&self) -> Result<ffi::ibv_device_attr, io::Error> {
+        ffi::ibv_query_device(&self.ctx)
+    }
 }
 
 /// A completion queue that allows subscribing to the completion of queued sends and receives.
@@ -462,13 +478,9 @@ pub struct QueuePairBuilder<'res> {
     pd: &'res ProtectionDomain<'res>,
 
     send: &'res CompletionQueue<'res>,
-    max_send_wr: u32,
     recv: &'res CompletionQueue<'res>,
-    max_recv_wr: u32,
 
-    max_send_sge: u32,
-    max_recv_sge: u32,
-    max_inline_data: u32,
+    cap: ibv_qp_cap,
 
     qp_type: ffi::ibv_qp_type::Type,
 
@@ -509,10 +521,9 @@ impl<'res> QueuePairBuilder<'res> {
     fn new<'scq, 'rcq, 'pd, 'ctx>(
         pd: &'pd ProtectionDomain<'ctx>,
         send: &'scq CompletionQueue<'ctx>,
-        max_send_wr: u32,
         recv: &'rcq CompletionQueue<'ctx>,
-        max_recv_wr: u32,
         qp_type: ffi::ibv_qp_type::Type,
+        cap: ibv_qp_cap
     ) -> QueuePairBuilder<'res>
     where
         'scq: 'res,
@@ -531,13 +542,8 @@ impl<'res> QueuePairBuilder<'res> {
             pd,
 
             send,
-            max_send_wr,
+            cap,
             recv,
-            max_recv_wr,
-
-            max_send_sge: 1,
-            max_recv_sge: 1,
-            max_inline_data: 0,
 
             qp_type,
 
@@ -804,13 +810,7 @@ impl<'res> QueuePairBuilder<'res> {
             send_cq: &self.send.cq,
             recv_cq: &self.recv.cq,
             srq: None,
-            cap: ffi::ibv_qp_cap {
-                max_send_wr: self.max_send_wr,
-                max_recv_wr: self.max_recv_wr,
-                max_send_sge: self.max_send_sge,
-                max_recv_sge: self.max_recv_sge,
-                max_inline_data: self.max_inline_data,
-            },
+            cap: self.cap,
             qp_type: self.qp_type,
             sq_sig_all: 0,
         };
@@ -902,7 +902,7 @@ pub struct PreparedQueuePair<'res> {
 /// For continuity, the methods `subnet_prefix` and `interface_id` are provided.
 /// These methods read the array as big endian, regardless of native cpu
 /// endianness.
-//#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serialize", derive(Encode, Decode))]
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[repr(transparent)]
 pub struct Gid {
@@ -957,7 +957,7 @@ impl AsMut<ffi::ibv_gid> for Gid {
 ///
 /// Internally, this contains the `QueuePair`'s `qp_num`, as well as the context's `lid` and `gid`.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-//#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serialize", derive(Encode, Decode))]
 pub struct QueuePairEndpoint {
     /// the `QueuePair`'s `qp_num`
     pub num: u32,
@@ -1139,7 +1139,7 @@ impl<'pd, T> LocalMemoryRegion<'pd, T> {
 ///
 /// Having this information authorizes direct memory access to a memory region.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-//#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serialize", derive(Encode, Decode))]
 pub struct RemoteMemoryRegion<T> {
     /// the remote pointer
     pub addr: u64,
@@ -1179,6 +1179,7 @@ impl<'ctx> ProtectionDomain<'ctx> {
         send: &'scq CompletionQueue<'ctx>,
         recv: &'rcq CompletionQueue<'ctx>,
         qp_type: ffi::ibv_qp_type::Type,
+        cap: ibv_qp_cap
     ) -> QueuePairBuilder<'res>
     where
         'scq: 'res,
@@ -1189,7 +1190,7 @@ impl<'ctx> ProtectionDomain<'ctx> {
         'pd: 'ctx,
         'res: 'ctx,
     {
-        QueuePairBuilder::new(self, send, 1, recv, 1, qp_type)
+        QueuePairBuilder::new(self, send, recv, qp_type, cap)
     }
 
     /// Allocates and registers a Memory Region (MR) associated with this `ProtectionDomain`.
@@ -1233,8 +1234,22 @@ impl<'ctx> ProtectionDomain<'ctx> {
         assert!(n > 0);
         assert!(mem::size_of::<T>() > 0);
 
-        let mut data = Vec::with_capacity(n);
-        data.resize(n, T::default());
+        let size = n * mem::size_of::<T>();
+
+        let ly = Layout::from_size_align(size, PAGE_SIZE).unwrap();
+        let data_ptr = unsafe { alloc::alloc::alloc(ly) };
+
+        if data_ptr.is_null() {
+            return Err(io::Error::new(io::ErrorKind::Other, "allocation failed"));
+        }
+
+        let data_ptr_t = data_ptr as *mut T;
+
+        for i in 0..n {
+            unsafe { ptr::write(data_ptr_t.add(i), T::default()) };
+        }
+
+        let mut data = unsafe { Vec::from_raw_parts(data_ptr_t, n, n) };
 
         let access = ffi::ibv_access_flags::IBV_ACCESS_LOCAL_WRITE
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_WRITE
@@ -1307,30 +1322,47 @@ impl<'res> QueuePair<'res> {
     pub unsafe fn post_send<'pd, T, R>(
         &mut self,
         mr: &mut LocalMemoryRegion<'pd, T>,
-        range: R,
-        wr_id: u64,
+        mut ranges: Vec<Vec<R>>,
+        mut wr_ids: Vec<u64>,
+        mut send_flags: Vec<ibv_send_flags>
     ) -> io::Result<()>
     where
         R: sliceindex::SliceIndex<[T], Output = [T]>,
     {
-        let range = range.index(mr);
-        let sge = ffi::ibv_sge {
-            addr: range.as_ptr() as u64,
-            length: mem::size_of_val(range) as u32,
-            lkey: mr.mr.lkey,
-        };
-        let mut wr = ffi::ibv_send_wr {
-            wr_id,
-            next: None,
-            sg_list: vec![sge],
-            num_sge: 1,
-            opcode: ffi::ibv_wr_opcode::IBV_WR_SEND,
-            send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED,
-            wr: Default::default(),
-            qp_type: Default::default(),
-            __bindgen_anon_1: Default::default(),
-            __bindgen_anon_2: Default::default(),
-        };
+        assert!(
+            ranges.len() == wr_ids.len(),
+            "local ranges, and wr ids must have the same size!");
+
+        let mut next: *mut ibv_send_wr = ptr::null_mut();
+        wr_ids.reverse();
+
+        for wr_id in wr_ids {
+            let mut sg_list = Vec::new();
+            let range = ranges.pop().unwrap();
+            let wr_send_flags = send_flags.pop().unwrap();
+
+            for slice in range {
+                let l = slice.index(mr);
+                let sge = ffi::ibv_sge {
+                    addr: l.as_ptr() as u64,
+                    length: mem::size_of_val(l) as u32,
+                    lkey: mr.mr.lkey,
+                };
+                sg_list.push(sge);
+            }
+
+            let wr_inner = ffi::ibv_send_wr_builder(
+                wr_id, 
+                ffi::ibv_wr_opcode::IBV_WR_SEND, 
+                wr_send_flags, 
+                Default::default(), 
+                next, 
+                sg_list);
+
+            next = Box::into_raw(wr_inner);
+        }
+
+        let wr = unsafe { &mut *next };
 
         // TODO:
         //
@@ -1346,7 +1378,13 @@ impl<'res> QueuePair<'res> {
         // ... However, if the IBV_SEND_INLINE flag was set, the  buffer  can  be reused
         // immediately after the call returns.
 
-        let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, &mut wr)? };
+        let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, wr)? };
+
+        while !next.is_null() {
+            let _next = unsafe { Box::from_raw(next) };
+            next = _next.next;
+        }
+
         Ok(())
     }
 
@@ -1383,24 +1421,46 @@ impl<'res> QueuePair<'res> {
     pub unsafe fn post_receive<'pd, T, R>(
         &mut self,
         mr: &mut LocalMemoryRegion<'pd, T>,
-        range: R,
-        wr_id: u64,
+        mut ranges: Vec<Vec<R>>,
+        mut wr_ids: Vec<u64>,
     ) -> io::Result<()>
     where
         R: sliceindex::SliceIndex<[T], Output = [T]>,
     {
-        let range = range.index(mr);
-        let sge = ffi::ibv_sge {
-            addr: range.as_ptr() as u64,
-            length: mem::size_of_val(range) as u32,
-            lkey: mr.mr.lkey,
-        };
-        let mut wr = ffi::ibv_recv_wr {
-            wr_id,
-            next: None,
-            sg_list: vec![sge],
-            num_sge: 1,
-        };
+        assert!(
+            ranges.len() == wr_ids.len(),
+            "local ranges, and wr ids must have the same size!");
+
+        let mut next: *mut ibv_recv_wr = ptr::null_mut();
+        wr_ids.reverse();
+
+        for wr_id in wr_ids {
+            let mut sg_list = Vec::new();
+            let range = ranges.pop().unwrap();
+
+            for slice in range {
+                let l = slice.index(mr);
+                let sge = ffi::ibv_sge {
+                    addr: l.as_ptr() as u64,
+                    length: mem::size_of_val(l) as u32,
+                    lkey: mr.mr.lkey,
+                };
+                sg_list.push(sge);
+            }
+
+            let num_sge = sg_list.len() as i32;
+
+            let wr_inner = Box::new(ffi::ibv_recv_wr {
+                wr_id,
+                next,
+                sg_list,
+                num_sge,
+            });
+
+            next = Box::into_raw(wr_inner);
+        }
+
+        let wr = unsafe { &mut *next };
 
         // TODO:
         //
@@ -1414,7 +1474,7 @@ impl<'res> QueuePair<'res> {
         // means that in all cases, the actual data of the incoming message will start at an offset
         // of 40 bytes into the buffer(s) in the scatter list.
 
-        let _bad_wr = unsafe { self.qp.ops.post_recv.as_ref().unwrap()(&mut self.qp, &mut wr)? };
+        let _bad_wr = unsafe { self.qp.ops.post_recv.as_ref().unwrap()(&mut self.qp, wr)? };
         Ok(())
     }
 
@@ -1452,74 +1512,23 @@ impl<'res> QueuePair<'res> {
     pub unsafe fn rdma_write<'pd, T, R>(
         &mut self,
         local_mr: &mut LocalMemoryRegion<'pd, T>,
-        local_range: R,
+        local_ranges: Vec<Vec<R>>,
         remote_mr: &mut RemoteMemoryRegion<T>,
-        remote_range: Range<u64>,
-        wr_id: u64,
+        remote_ranges: Vec<Range<u64>>,
+        wr_ids: Vec<u64>,
+        send_flags: Vec<ibv_send_flags>
     ) -> io::Result<()>
     where
         R: sliceindex::SliceIndex<[T], Output = [T]>,
     {
-        let local_range = local_range.index(local_mr);
-        // check memory bounds before access
-        let remote_start = remote_mr.addr + remote_range.start;
-        let remote_end = remote_mr.addr + remote_range.end;
-        if remote_end < remote_start {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "remote range is invalid",
-            ));
-        }
-        if remote_range.end > remote_mr.len as u64 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "remote range is invalid",
-            ));
-        }
-        if local_range.len() != remote_range.count() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "local and remote range must have the same size",
-            ));
-        }
-
-        let sge = ffi::ibv_sge {
-            addr: local_range.as_ptr() as u64,
-            length: mem::size_of_val(local_range) as u32,
-            lkey: local_mr.mr.lkey,
-        };
-        let mut wr = ffi::ibv_send_wr {
-            wr_id,
-            next: None,
-            sg_list: vec![sge],
-            num_sge: 1,
-            opcode: ffi::ibv_wr_opcode::IBV_WR_RDMA_WRITE,
-            send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED,
-            wr: ffi::ibv_send_wr_wr::rdma {
-                remote_addr: remote_mr.addr,
-                rkey: remote_mr.rkey,
-            },
-            qp_type: Default::default(),
-            __bindgen_anon_1: Default::default(),
-            __bindgen_anon_2: Default::default(),
-        };
-
-        // TODO:
-        //
-        // ibv_post_send()  posts the linked list of work requests (WRs) starting with wr to the
-        // send queue of the queue pair qp.  It stops processing WRs from this list at the first
-        // failure (that can  be  detected  immediately  while  requests  are  being posted), and
-        // returns this failing WR through bad_wr.
-        //
-        // The user should not alter or destroy AHs associated with WRs until request is fully
-        // executed and  a  work  completion  has been retrieved from the corresponding completion
-        // queue (CQ) to avoid unexpected behavior.
-        //
-        // ... However, if the IBV_SEND_INLINE flag was set, the  buffer  can  be reused
-        // immediately after the call returns.
-
-        let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, &mut wr)? };
-        Ok(())
+        self.rdma_backbone(
+            remote_mr, 
+            remote_ranges, 
+            local_mr, 
+            local_ranges, 
+            wr_ids, 
+            ffi::ibv_wr_opcode::IBV_WR_RDMA_WRITE,
+        send_flags)
     }
 
     /// Posts a RDMA Read Work Request (WR) to the Send Queue of this Queue Pair.
@@ -1556,57 +1565,105 @@ impl<'res> QueuePair<'res> {
     pub unsafe fn rdma_read<'pd, T, R>(
         &mut self,
         remote_mr: &mut RemoteMemoryRegion<T>,
-        remote_range: Range<u64>,
+        remote_ranges: Vec<Range<u64>>,
         local_mr: &mut LocalMemoryRegion<'pd, T>,
-        local_range: R,
-        wr_id: u64,
+        local_ranges: Vec<Vec<R>>,
+        wr_ids: Vec<u64>,
+        send_flags: Vec<ibv_send_flags>
     ) -> io::Result<()>
     where
         R: sliceindex::SliceIndex<[T], Output = [T]>,
     {
-        let local_range = local_range.index(local_mr);
-        // check memory bounds before access
-        let remote_start = remote_mr.addr + remote_range.start;
-        let remote_end = remote_mr.addr + remote_range.end;
-        if remote_end < remote_start {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "remote range is invalid",
-            ));
-        }
-        if remote_range.end > remote_mr.len as u64 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "remote range is invalid",
-            ));
-        }
-        if local_range.len() != remote_range.count() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "local and remote range must have the same size",
-            ));
+        self.rdma_backbone(
+            remote_mr, 
+            remote_ranges, 
+            local_mr, 
+            local_ranges, 
+            wr_ids, 
+            ffi::ibv_wr_opcode::IBV_WR_RDMA_READ,
+            send_flags)
+    }
+
+    #[inline]
+    fn rdma_backbone<'pd, T, R>(
+        &mut self,
+        remote_mr: &mut RemoteMemoryRegion<T>,
+        mut remote_ranges: Vec<Range<u64>>,
+        local_mr: &mut LocalMemoryRegion<'pd, T>,
+        mut local_ranges: Vec<Vec<R>>,
+        mut wr_ids: Vec<u64>,
+        opcode: ffi::ibv_wr_opcode,
+        mut send_flags: Vec<ibv_send_flags>
+    ) -> io::Result<()>
+    where
+        R: sliceindex::SliceIndex<[T], Output = [T]>,
+    {
+        assert!(
+            (remote_ranges.len() == local_ranges.len()) && (local_ranges.len() == wr_ids.len())
+            && (wr_ids.len() == send_flags.len()),
+            "remote ranges, local ranges, and wr ids must have the same size!");
+
+        let mut next: *mut ibv_send_wr = ptr::null_mut();
+        wr_ids.reverse();
+
+        for wr_id in wr_ids {
+            let mut sg_list = Vec::new();
+            let local_range = local_ranges.pop().unwrap();
+            let remote_range = remote_ranges.pop().unwrap();
+            let wr_send_flags = send_flags.pop().unwrap();
+
+            // check memory bounds before access
+            let remote_start = remote_mr.addr + remote_range.start;
+            let remote_end = remote_mr.addr + remote_range.end;
+            if remote_end < remote_start {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "remote range is invalid",
+                ));
+            }
+            if remote_end > remote_mr.addr + remote_mr.len as u64 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "remote range is invalid",
+                ));
+            }
+
+            let remote_c = (remote_range.end - remote_range.start) as usize;
+            let mut local_c = 0;
+
+            for slice in local_range {
+                let l = slice.index(local_mr);
+                let sge = ffi::ibv_sge {
+                    addr: l.as_ptr() as u64,
+                    length: mem::size_of_val(l) as u32,
+                    lkey: local_mr.mr.lkey,
+                };
+                local_c += l.len();
+                sg_list.push(sge);
+            }
+
+            if local_c != remote_c {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "local and remote range must have the same size",
+                ));
+            }
+
+            let wr_inner = ffi::ibv_send_wr_builder(
+                wr_id, 
+                opcode,
+                wr_send_flags, 
+                ffi::ibv_send_wr_wr::rdma {
+                    remote_addr: remote_start,
+                    rkey: remote_mr.rkey,
+                }, 
+                next, 
+                sg_list);
+
+            next = Box::into_raw(wr_inner);
         }
 
-        let sge = ffi::ibv_sge {
-            addr: local_range.as_ptr() as u64,
-            length: mem::size_of_val(local_range) as u32,
-            lkey: local_mr.mr.lkey,
-        };
-        let mut wr = ffi::ibv_send_wr {
-            wr_id,
-            next: None,
-            sg_list: vec![sge],
-            num_sge: 1,
-            opcode: ffi::ibv_wr_opcode::IBV_WR_RDMA_READ,
-            send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED,
-            wr: ffi::ibv_send_wr_wr::rdma {
-                remote_addr: remote_mr.addr,
-                rkey: remote_mr.rkey,
-            },
-            qp_type: Default::default(),
-            __bindgen_anon_1: Default::default(),
-            __bindgen_anon_2: Default::default(),
-        };
+        let wr = unsafe { &mut *next };
 
         // TODO:
         //
@@ -1622,7 +1679,13 @@ impl<'res> QueuePair<'res> {
         // ... However, if the IBV_SEND_INLINE flag was set, the  buffer  can  be reused
         // immediately after the call returns.
 
-        let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, &mut wr)? };
+        let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, wr)? };
+        
+        while !next.is_null() {
+            let _next = unsafe { Box::from_raw(next) };
+            next = _next.next;
+        }
+
         Ok(())
     }
 }
