@@ -5,7 +5,7 @@ use core::ops::Deref;
 use core::ptr;
 use log::info;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
-use smoltcp::socket::udp;
+use smoltcp::socket::udp::{self, RecvError};
 use smoltcp::time::Instant;
 use smoltcp::wire::Ipv4Address;
 use spin::{Once, RwLock};
@@ -91,6 +91,13 @@ pub fn send_datagram(handle: SocketHandle, destination: Ipv4Address, port: u16, 
     let socket = sockets.get_mut::<udp::Socket>(handle);
 
     socket.send_slice(data, (destination, port))
+}
+
+pub fn recv_datagram(handle: SocketHandle, data : &mut [u8]) -> Result<(usize, udp::UdpMetadata), RecvError> {
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let socket = sockets.get_mut::<udp::Socket>(handle);
+
+    socket.recv_slice(data)
 }
 
 fn poll_sockets() {
