@@ -1,6 +1,4 @@
-use core::cell::OnceCell;
-
-use log::{warn, info, trace};
+use log::{info, trace};
 
 pub mod ib_core;
 pub mod ibverbs_sys;
