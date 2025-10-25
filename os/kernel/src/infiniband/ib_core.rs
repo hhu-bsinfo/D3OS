@@ -19,6 +19,7 @@ pub mod ibv_qp_type {
     pub use Type::IBV_QPT_UD;
 }
 
+#[derive(Clone, Copy)]
 pub struct ibv_qp_cap {
     pub max_send_wr: u32,
     pub max_recv_wr: u32,
@@ -180,7 +181,7 @@ pub enum ibv_qp_state {
 #[derive(Debug)]
 pub struct ibv_send_wr {
     pub wr_id: u64,
-    pub next: Option<()>,
+    pub next: *mut ibv_send_wr,
     pub sg_list: Vec<ibv_sge>,
     pub num_sge: i32,
     pub opcode: ibv_wr_opcode,
@@ -234,21 +235,26 @@ pub struct ibv_send_wr_wr_ah {
 #[derive(Debug)]
 pub struct ibv_recv_wr {
     pub wr_id: u64,
-    pub next: Option<()>,
+    pub next: *mut ibv_recv_wr,
     pub sg_list: Vec<ibv_sge>,
     pub num_sge: i32,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum ibv_wr_opcode {
     IBV_WR_RDMA_WRITE,
     IBV_WR_SEND,
     IBV_WR_RDMA_READ,
 }
 
-#[derive(Debug)]
-pub enum ibv_send_flags {
-    IBV_SEND_SIGNALED,
+bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    pub struct ibv_send_flags: u32 {
+        const SIGNALED   = 1 << 0;
+        const FENCE      = 1 << 1;
+        const SOLICITED  = 1 << 2; // event driven approach
+        const INLINE     = 1 << 3; // only for very small packages
+    }
 }
 
 #[derive(Debug)]
