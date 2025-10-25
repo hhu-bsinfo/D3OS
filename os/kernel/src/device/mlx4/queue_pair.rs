@@ -4,9 +4,12 @@
 
 use core::{mem::size_of, sync::atomic::{compiler_fence, Ordering}};
 
+use alloc::boxed::Box;
 use bitflags::bitflags;
 use byteorder::BigEndian;
-use crate::infiniband::ib_core::{ibv_access_flags, ibv_mtu, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_state, ibv_qp_type, ibv_recv_wr, ibv_send_wr, ibv_send_wr_wr, ibv_sge, ibv_wr_opcode};
+use crate::{device::mlx4::utils::FillOperation, 
+    infiniband::ib_core::{ibv_access_flags, ibv_mtu, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_state, ibv_qp_type, ibv_recv_wr, 
+                            ibv_send_wr, ibv_send_wr_wr, ibv_sge, ibv_wr_opcode, ibv_send_flags}};
 use modular_bitfield_msb::{bitfield, prelude::{B12, B16, B17, B19, B2, B20, B24, B3, B4, B40, B48, B5, B53, B56, B6, B7}};
 use strum_macros::FromRepr;
 use volatile::WriteOnly;
@@ -14,6 +17,7 @@ use x86_64::{PhysAddr, VirtAddr};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use crate::memory::PAGE_SIZE;
 use log::trace;
+use alloc::{vec,vec::Vec};
 
 use super::{
     cmd::{CommandInterface, Opcode},
@@ -23,7 +27,7 @@ use super::{
     icm::{ICM_PAGE_SHIFT, MrTable},
     Offsets,
     utils,
-    utils::{MappedPages, Operations}
+    utils::{MappedPages, Operations, OperationArgs}
 };
 
 const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
@@ -88,7 +92,8 @@ impl QueuePair {
             utils::pages_required(buf_size))?.fetch_in_addr()?;
         let bytes = utils::start_page_as_mut_ptr::<u8>(mapped_page_to_frame.0.into_range().start);
         // zero the queue
-        operation_container.create_fill(&(0u8, bytes, buf_size));
+        operation_container.add_operation(Box::new(FillOperation{}), 
+        OperationArgs::Fill(0u8, bytes, buf_size));
         operation_container.perform();
         
         let mtt = memory_regions.alloc_mtt(
@@ -543,21 +548,25 @@ impl QueuePair {
                 elem.copy_from_sge(sge)?;
                 sge_index += 1;
             }
+
+            // write wr id, so that cp can recover it
+            self.sq.update_id(index as usize, curr.wr_id);
+
             // fill the last one
             let last_elem: &mut WqeDataSegment = self.rq.get_element(
                     self.memory.as_mut().unwrap(), index + sge_index,
             )?;
             *last_elem = WqeDataSegment::last();
             num_req += 1;
-            index += 1;
+            index = index.wrapping_add(1);
             // TODO: support multiple work requests
-            assert!(curr.next.is_none());
+            current = unsafe { if !curr.next.is_null() { Some(&mut *curr.next) } else { None }};
         }
         // return if we don't have anything to do
         if num_req == 0 {
             return Ok(());
         }
-        self.rq.head += num_req;
+        self.rq.head = self.rq.head.wrapping_add(num_req);
         // make sure that the descriptors are written before the doorbell
         compiler_fence(Ordering::SeqCst);
         let doorbell: &mut QueuePairDoorbell = self.doorbell_page
@@ -582,6 +591,7 @@ impl QueuePair {
         let mut index = self.sq.head;
         let mut current = Some(wr);
         let mut num_req = 0;
+        let mut chain_size = 1;
         let memory = self.memory.as_mut().unwrap();
         while current.is_some() {
             let curr = current.take().unwrap();
@@ -598,7 +608,9 @@ impl QueuePair {
                     memory, index,
                 )?;
                 ctrl.vlan_cv_f_ds = 0.into();
-                ctrl.flags = WqeControlSegmentFlags::CQ_UPDATE.bits().into();
+                let wqe_segment_flags: WqeControlSegmentFlags = curr.send_flags.into();
+                ctrl.flags = wqe_segment_flags.bits().into();
+                //ctrl.flags = WqeControlSegmentFlags::CQ_UPDATE.bits().into();
                 ctrl.flags2 = 0.into();
                 VirtAddr::new(
                     ctrl as *mut WqeControlSegment as u64
@@ -668,13 +680,25 @@ impl QueuePair {
             // We can improve latency by not stamping the last send queue WQE
             // until after ringing the doorbell, so only stamp here if there are
             // still more WQEs to post.
-            if curr.next.is_some() {
+            if !curr.next.is_null() {
                 self.sq.stamp_wqe(memory, index + self.sq.spare_wqes.unwrap())?;
             }
+            
+            if curr.send_flags.contains(ibv_send_flags::SIGNALED) {
+                // write wr id, so that completion queue poll can recover it
+                self.sq.update_id(index as usize, curr.wr_id);
+                self.sq.update_chain_size(index as usize, chain_size);
+
+                chain_size = 1;
+            }
+            else{
+                chain_size += 1;
+            }
+
             num_req += 1;
-            index += 1;
-            // TODO: support multiple work requests
-            assert!(curr.next.is_none());
+            index = index.wrapping_add(1);
+            // TODO: support multiple work requests ; Done
+            current = unsafe { if !curr.next.is_null() { Some(&mut *curr.next) } else { None }};
         }
         // return if we don't have anything to do
         if num_req == 0 {
@@ -709,7 +733,7 @@ impl QueuePair {
             // which we have to alternate between
             let bf_reg: &mut [u64] = blueflame.unwrap()[self.uar_idx].as_slice_mut(
                 (index as usize % 2) * (caps.bf_reg_size() / 2),
-                caps.bf_reg_size() / 16,
+                caps.bf_reg_size() / 8,
             )?;
             let src = memory.0.as_slice(ctrl_offset, size)?;
             bf_reg[..size].copy_from_slice(src);
@@ -722,22 +746,40 @@ impl QueuePair {
             doorbell.send_queue_number.write((self.number << 8).into());
         }
         self.sq.stamp_wqe(memory, index + self.sq.spare_wqes.unwrap() - 1)?;
-        self.sq.head += num_req;
+        self.sq.head = self.sq.head.wrapping_add(num_req);
         Ok(())
     }
 
     /// Advance the tail of the receive queue.
     /// 
     /// This is called on work completion.
-    pub(super) fn advance_receive_queue(&mut self) {
-        self.rq.tail += 1;
+    #[inline(always)]
+    pub(super) fn advance_receive_queue_by(&mut self, by: u32) {
+        self.rq.tail += by;
     }
 
     /// Advance the tail of the send queue.
     /// 
     /// This is called on work completion.
-    pub(super) fn advance_send_queue(&mut self) {
-        self.sq.tail += 1;
+    #[inline(always)]
+    pub(super) fn advance_send_queue_by(&mut self, by: u32) {
+        self.sq.tail += by;
+    }
+
+    #[inline(always)]
+    pub fn query_wr_id(&self, wqe_idx: usize, is_send: bool) -> u64 {
+        if is_send {
+            return self.sq.get_id(wqe_idx);
+        }
+        self.rq.get_id(wqe_idx)
+    }
+
+    #[inline(always)]
+    pub fn query_chain_size(&self, wqe_idx: usize, is_send: bool) -> u32 {
+        if is_send {
+            return self.sq.get_chain_size(wqe_idx);
+        }
+        self.rq.get_chain_size(wqe_idx)
     }
 
     /// Destroy this queue pair.
@@ -778,6 +820,8 @@ struct QueuePairDoorbell {
     receive_wqe_index: WriteOnly<U16<BigEndian>>,
 }
 
+type WorkQueueMeta<U, T> = (U, T);
+
 #[derive(Debug)]
 struct WorkQueue {
     wqe_cnt: u32,
@@ -788,6 +832,7 @@ struct WorkQueue {
     spare_wqes: Option<u32>,
     head: u32,
     tail: u32,
+    meta: Vec<WorkQueueMeta<u64, u32>>
 }
 
 impl WorkQueue {
@@ -796,7 +841,7 @@ impl WorkQueue {
         hca_caps: &Capabilities, ib_caps: &mut ibv_qp_cap,
     ) -> Result<Self, &'static str> {
         // check the RQ size before proceeding
-        if ib_caps.max_recv_wr > 1 << u32::from(hca_caps.log_max_qp_sz()) - IB_SQ_MAX_SPARE
+        if ib_caps.max_recv_wr > ((1 << u32::from(hca_caps.log_max_qp_sz())) - IB_SQ_MAX_SPARE)
          || ib_caps.max_recv_sge > hca_caps.max_sg_sq().into()
          || ib_caps.max_recv_sge > hca_caps.max_sg_rq().into() {
             return Err("RQ size is invalid")
@@ -814,9 +859,8 @@ impl WorkQueue {
         let wqe_shift = (
             max_gs * u32::try_from(size_of::<WqeDataSegment>()).unwrap()
         ).ilog2();
-        let mut max_post = 1 << u32::from(
-            hca_caps.log_max_qp_sz()
-        ) - IB_SQ_MAX_SPARE;
+        let mut max_post = (1 << u32::from(
+            hca_caps.log_max_qp_sz())) - IB_SQ_MAX_SPARE;
         if max_post > wqe_cnt {
             max_post = wqe_cnt;
         }
@@ -827,7 +871,8 @@ impl WorkQueue {
         ].iter().min().unwrap();
         Ok(Self {
             wqe_cnt, max_post, max_gs, offset: 0, wqe_shift,
-            spare_wqes: None, head: 0, tail: 0,
+            spare_wqes: None, head: 0, tail: 0, 
+            meta: vec![(0u64, 0u32); wqe_cnt as usize]
         })
     }
     
@@ -837,7 +882,7 @@ impl WorkQueue {
         qp_type: ibv_qp_type::Type,
     ) -> Result<Self, &'static str> {
         // check the SQ size before proceeding
-        if ib_caps.max_send_wr > 1 << u32::from(hca_caps.log_max_qp_sz()) - IB_SQ_MAX_SPARE
+        if ib_caps.max_send_wr > ((1 << u32::from(hca_caps.log_max_qp_sz())) - IB_SQ_MAX_SPARE)
          || ib_caps.max_send_sge > hca_caps.max_sg_sq().into()
          || ib_caps.max_send_sge > hca_caps.max_sg_rq().into() {
             return Err("SQ size is invalid")
@@ -870,12 +915,39 @@ impl WorkQueue {
         Ok(Self {
             wqe_cnt, max_post, max_gs, offset: 0, wqe_shift,
             spare_wqes: Some(spare_wqes), head: 0, tail: 0,
+            meta: vec![(0u64, 0u32); wqe_cnt as usize]
         })
     }
     
     /// Get the size.
     fn size(&self) -> u32 {
         self.wqe_cnt << self.wqe_shift
+    }
+
+    /// Get work id based on wqe index
+    #[inline(always)]
+    fn get_id(&self, wqe_idx: usize) -> u64 {
+        let idx = wqe_idx & ((self.wqe_cnt - 1) as usize);
+        self.meta[idx].0
+    }
+
+    #[inline(always)]
+    fn update_id(&mut self, wqe_idx: usize, wr_id: u64) {
+        let idx = wqe_idx & ((self.wqe_cnt - 1) as usize);
+        self.meta[idx].0 = wr_id;
+    }
+
+    /// Get batch size based on wqe index
+    #[inline(always)]
+    fn get_chain_size(&self, wqe_idx: usize) -> u32 {
+        let idx = wqe_idx & ((self.wqe_cnt - 1) as usize);
+        self.meta[idx].1
+    }
+
+    #[inline(always)]
+    fn update_chain_size(&mut self, wqe_idx: usize, batch_size: u32) {
+        let idx = wqe_idx & ((self.wqe_cnt - 1) as usize);
+        self.meta[idx].1 = batch_size;
     }
     
     /// Get an element of this work queue.
@@ -981,6 +1053,25 @@ bitflags! {
         const FORCE_LOOPBACK = 1 << 0;
     }
 }
+
+impl From<ibv_send_flags> for WqeControlSegmentFlags {
+    fn from(flags: ibv_send_flags) -> Self {
+        let mut out = WqeControlSegmentFlags::empty();
+
+        if flags.contains(ibv_send_flags::FENCE) {
+            out |= WqeControlSegmentFlags::FENCE;
+        }
+        if flags.contains(ibv_send_flags::SOLICITED) {
+            out |= WqeControlSegmentFlags::SOLICITED;
+        }
+        // CQ update for signaled WRs
+        if flags.contains(ibv_send_flags::SIGNALED) {
+            out |= WqeControlSegmentFlags::CQ_UPDATE;
+        }
+        out
+    }
+}
+
 
 #[derive(FromBytes)]
 #[repr(C)]
