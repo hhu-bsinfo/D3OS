@@ -347,7 +347,7 @@ impl VirtualAddressSpace {
         VmaIterator::new(vmas)
     }
 
-    /// Map the sub `page_range` of the given `vma` by allocating frames as needed. 
+     /// Map the sub `page_range` of the given `vma` by allocating frames as needed. 
     pub fn map_partial_vma(
         &self,
         vma: &VirtualMemoryArea,
@@ -355,45 +355,6 @@ impl VirtualAddressSpace {
         space: MemorySpace,
         flags: PageTableFlags,
     ) {
-        self.add_vma(VirtualMemoryArea::new_with_tag(space, pages, mem_type, tag_str));
-        self.page_tables.map(pages, space, flags);
-    }
-
-    pub fn map_physical(
-        &self,
-        frames: PhysFrameRange,
-        pages: PageRange,
-        space: MemorySpace,
-        flags: PageTableFlags,
-        mem_type: VmaType,
-        tag_str: &str,
-    ) {
-        self.add_vma(VirtualMemoryArea::new_with_tag(space, pages, mem_type, tag_str));
-        self.page_tables.map_physical(frames, pages, space, flags);
-    }
-
-    pub fn map_io(&self, _frames: PhysFrameRange) { 
-        // self.add_vma(VirtualMemoryArea::new(pages, mem_type));
-        // self.page_tables.map_physical(frames, pages, space, flags);
-        
-        self.page_tables.map_io(_frames);
-
-        self.add_vma(
-            VirtualMemoryArea::from_address(
-                VirtAddr::new(_frames.start.start_address().as_u64()), 
-                _frames.size() as usize,
-                MemorySpace::Kernel,
-                VmaType::DeviceMemory));
-    }
-
-    pub fn map_kernel_stack(&self, pages: PageRange, tag_str: &str) {
-        self.add_vma(VirtualMemoryArea::new_with_tag(
-            MemorySpace::Kernel,
-            pages,
-            VmaType::KernelStack,
-            tag_str,
-        ));
-        // no need for mapping in page tables because all frames are already identity mapped
         let areas = self.virtual_memory_areas.read();
         areas
             .iter()
@@ -402,6 +363,25 @@ impl VirtualAddressSpace {
         assert!(page_range.start.start_address() >= vma.start());
         assert!(page_range.end.start_address() <= vma.end());
         self.page_tables.map(page_range, space, flags);
+    }
+
+    // this is adapted since we used the older version, and made the infiniband compatible with this call
+    pub fn map_io(&self, _frames: PhysFrameRange) { 
+        // self.add_vma(VirtualMemoryArea::new(pages, mem_type));
+        // self.page_tables.map_physical(frames, pages, space, flags);
+        
+        self.page_tables.map_io(_frames);
+
+        
+        let v_area = Arc::new(VirtualMemoryArea::from_address(
+                VirtAddr::new(_frames.start.start_address().as_u64()), 
+                _frames.size() as usize,
+                MemorySpace::Kernel,
+                VmaType::DeviceMemory));
+
+        let mut vmas = self.virtual_memory_areas.write();
+
+        vmas.push(Arc::clone(&v_area));
     }
 
     /// Set page table `flags` for the give page range `pages`  
