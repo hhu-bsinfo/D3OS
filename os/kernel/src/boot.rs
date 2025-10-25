@@ -25,8 +25,13 @@ use crate::syscall::syscall_dispatcher;
 use crate::{
     acpi_tables, allocator, apic, built_info, gdt, init_acpi_tables, init_apic, init_cpu_info,
     init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory,
-    network, process_manager, scheduler, serial_port, terminal, timer, tss,
+    network, process_manager, scheduler, serial_port, terminal, timer, tss, infiniband
 };
+#[cfg(any(kernel_test, kernel_bench))]
+use crate::{init_test_runner, run_tests};
+#[cfg(any(kernel_test, kernel_bench))]
+use crate::build_constants;
+use crate::calibrate;
 use crate::{efi_services_available, naming, storage};
 use alloc::format;
 use alloc::string::ToString;
@@ -69,7 +74,7 @@ unsafe extern "C" {
     static ___KERNEL_DATA_END__: u64; // end address of OS image
 }
 
-const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS
+const INIT_HEAP_PAGES: usize = 0x40000; // number of heap pages for booting the OS
 
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \
@@ -115,6 +120,14 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     );
     debug!("Page frame allocator:\n{}", memory::frames::dump());
 
+    #[cfg(any(kernel_test, kernel_bench))]
+    {
+        info!("Running D3OS in test mode!");
+        info!("This Host => {} ({})\nTarget Host => {} ({})\nSender => {}\nReceiver => {}",
+                build_constants::THIS_HOST, build_constants::THIS_IP,
+                build_constants::TARGET_HOST, build_constants::TARGET_IP,
+                build_constants::IS_SENDER, !build_constants::IS_SENDER);
+    }
 
     // Initialize CPU information
     init_cpu_info();
@@ -302,19 +315,44 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device, since it does not modify the device itself)
         let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
         let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
+        #[cfg(not(any(kernel_test, kernel_bench)))]
         interface.update_ip_addrs(|ips| {
             ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
                 .expect("Failed to add IP address");
         });
+
+        #[cfg(any(kernel_test, kernel_bench))]
+        interface.update_ip_addrs(|ips| {
+            ips.push(IpCidr::new(Ipv4(build_constants::THIS_IP.parse::<Ipv4Address>().unwrap()), 24))
+                .expect("Failed to add IP address");
+        });
+
+        #[cfg(any(kernel_test, kernel_bench))]
+        interface
+            .routes_mut()
+            .add_default_ipv4_route(build_constants::GATEWAY_IP.parse::<Ipv4Address>().unwrap())
+            .expect("Failed to add default route");
+
+        #[cfg(not(any(kernel_test, kernel_bench)))]
         interface
             .routes_mut()
             .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
             .expect("Failed to add default route");
 
+        debug!("Interface IP addresses: {:?}", interface.ip_addrs());
+        debug!("Interface hardware address: {}", interface.hardware_addr());
+
         network::add_interface(interface);
     }
 
+    #[cfg(any(kernel_test, kernel_bench))]
+    init_test_runner();
+
+    calibrate(50);
     infiniband::init();
+
+    #[cfg(any(kernel_test, kernel_bench))]
+    run_tests();
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
