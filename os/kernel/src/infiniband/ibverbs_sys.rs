@@ -5,10 +5,10 @@
 
 extern crate alloc;
 
-use alloc::{string::{String, ToString}, vec::Vec};
+use alloc::{string::{String, ToString}, vec::Vec, boxed::Box};
 use core2::io::{Error, ErrorKind, Result as Result};
 use spin::{Mutex, MutexGuard};
-use crate::device::mlx4::{get_mlx3_nic, ConnectX3Nic};
+use crate::{device::mlx4::{get_mlx3_nic, ConnectX3Nic}, infiniband::ibverbs::RemoteMemoryRegion};
 pub use super::ib_core::{
     __be64, ibv_access_flags, ibv_ah_attr, ibv_device_attr, ibv_gid, ibv_mtu,
     ibv_port_attr, ibv_port_state,
@@ -282,4 +282,21 @@ unsafe fn ibv_post_recv(
     qp.recv_cq.context.lock()
         .post_receive(qp.qp_num, wr)
         .map_err(|s| Error::new(ErrorKind::Other, s))
+}
+
+pub fn ibv_send_wr_builder(wr_id: u64, opcode: ibv_wr_opcode, send_flags: ibv_send_flags,
+    wr: ibv_send_wr_wr, next: *mut ibv_send_wr, sg_list: Vec<ibv_sge>) -> Box<ibv_send_wr> {
+    let num_sge = sg_list.len() as i32;
+    Box::new(ibv_send_wr {
+                wr_id,
+                next,
+                sg_list,
+                num_sge,
+                opcode,
+                send_flags,
+                wr,
+                qp_type: Default::default(),
+                __bindgen_anon_1: Default::default(),
+                __bindgen_anon_2: Default::default(),
+    })
 }
