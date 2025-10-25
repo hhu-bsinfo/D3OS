@@ -4,8 +4,9 @@
 
 use core::{mem::size_of, sync::atomic::{compiler_fence, Ordering}};
 
+use alloc::boxed::Box;
 use byteorder::BigEndian;
-use crate::infiniband::ib_core::{ibv_wc, ibv_wc_flags, ibv_wc_opcode, ibv_wc_status};
+use crate::{device::mlx4::utils::{FillOperation, OperationArgs}, infiniband::ib_core::{ibv_wc, ibv_wc_flags, ibv_wc_opcode, ibv_wc_status}};
 use modular_bitfield_msb::{bitfield, prelude::{B12, B4, B7}, specifiers::{B2, B24, B3, B40, B48, B5, B6}};
 use strum_macros::FromRepr;
 use volatile::WriteOnly;
@@ -62,8 +63,10 @@ impl CompletionQueue {
 
         let bytes = utils::start_page_as_mut_ptr::<u8>(mapped_page_to_frame.0.into_range().start);
         
-        operation_container.create_fill(&(0u8, bytes, size));
-        operation_container.perform_and_flush();
+        operation_container.add_operation(Box::new(FillOperation {}), 
+        OperationArgs::Fill(0u8, bytes, size));
+
+        operation_container.perform();
 
         let mtt = memory_regions.alloc_mtt(cmd, caps, num_pages, 
             mapped_page_to_frame.1)?;
@@ -162,13 +165,16 @@ impl CompletionQueue {
         &mut self, eqs: &mut [EventQueue], qps: &mut [QueuePair],
         doorbells: &mut [MappedPages], wc: &mut [ibv_wc],
     ) -> Result<usize, &'static str> {
+        // the event queue should be polled async and not while polling here !!!
+        // consider moving to seperate thread or impl. interrupts !
+        
         // try to poll the assiociated event queue first
-        if let Some(eq_number) = self.eq_number {
+        /*if let Some(eq_number) = self.eq_number {
             eqs.iter_mut()
                 .find(|eq| eq.number() == eq_number)
                 .ok_or("invalid event queue number")?
                 .handle_events(doorbells)?;
-        }
+        }*/
         let mut completions = 0;
         // poll one for as long as there are elements
         while completions < wc.len() {
@@ -205,11 +211,13 @@ impl CompletionQueue {
             wc.qp_num = cqe.qp_number();
             if let Some(qp) = qps.iter_mut()
                 .find(|qp| qp.number() == cqe.qp_number()) {
+                let chain_size = qp.query_chain_size(cqe.wqe_index() as usize, cqe.is_send());
                 if cqe.is_send() {
-                    qp.advance_send_queue();
+                    qp.advance_send_queue_by(chain_size);
                 } else {
-                    qp.advance_receive_queue();
+                    qp.advance_receive_queue_by(chain_size);
                 }
+                wc.wr_id = qp.query_wr_id(cqe.wqe_index() as usize, cqe.is_send());
             } else {
                 warn!("completion has invalid queue pair number {}", cqe.qp_number());
             }
