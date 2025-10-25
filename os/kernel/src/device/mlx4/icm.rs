@@ -324,6 +324,8 @@ impl MrTable {
         let size = data.len() * size_of::<T>();
         let address = utils::get_physical_address(VirtAddr::from_ptr(
             data.as_ptr()));
+        //println!("Physical address = {:x} => is aligend = {}", address, address.is_aligned(PAGE_SIZE as u64));
+        
         let mut num_pages = size / PAGE_SIZE;
         if num_pages == 0 {
             num_pages = 1;
@@ -339,7 +341,8 @@ impl MrTable {
         }
         dmpt.set_start(address.as_u64().try_into().unwrap());
         dmpt.set_length(size.try_into().unwrap());
-        dmpt.set_entity_size(size.ilog2());
+        dmpt.set_entity_size(PAGE_SIZE.ilog2()); // used PAGE_SIZE mappings in the mtt,
+        // hence the granularity also has to match PAGE_SIZE, setting to buffer size doesn't make sense !
         dmpt.set_mtt_addr(mtt);
         dmpt.set_mtt_size(num_pages.try_into().unwrap());
         dmpt.set_mio(true);
