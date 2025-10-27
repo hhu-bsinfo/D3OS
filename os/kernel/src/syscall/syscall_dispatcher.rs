@@ -204,7 +204,7 @@ unsafe extern "sysv64" fn syscall_handler() {
     "push r9",
     "push r10",
     "push r11", // Contains rflags for returning to ring 3
-    "push 0", // Push another value so that the stack pointer 16-byte aligned (needed for u128)
+    "push 0", // Push another value so that the stack pointer is 16-byte aligned (needed for u128)
 
     // copy 4th argument to rcx to adhere System V AMD64 ABI
     "mov rcx, r10",
@@ -221,7 +221,7 @@ unsafe extern "sysv64" fn syscall_handler() {
 
     // Restore registers
     "pop r11", // Pop the alignment 0
-    "pop r11", // Contains eflags for returning to ring 3
+    "pop r11", // Contains rflags for returning to ring 3
     "pop r10",
     "pop r9",
     "pop r8",
@@ -237,11 +237,11 @@ unsafe extern "sysv64" fn syscall_handler() {
     // Setup gs for user mode
     "push rax",
     "mov ax, 0x1b",
-    "mov gs, rax",
+    "mov gs, ax",
     "pop rax",
 
     // Return to Ring 3
-    // Interrupts will be enabled automatically, because eflags is restored from r11
+    // Interrupts will be enabled automatically, because rflags is restored from r11
     "sysretq",
     NUM_SYSCALLS = const NUM_SYSCALLS,
     CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX,

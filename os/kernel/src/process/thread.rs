@@ -194,16 +194,6 @@ impl Thread {
             .user_alloc_map_full(None, 1, VmaType::Environment, "threadenv")
             .expect("could not create thread environment");
 
-        unsafe {
-            // First entry in user thread environment is a self referencing pointer
-            let environment_ptr = parent.virtual_address_space
-                .get_phys(user_environment.start().as_u64())
-                .unwrap()
-                .as_u64() as *mut u64;
-
-            environment_ptr.write(user_environment.start().as_u64());
-        }
-
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
             id: tid,

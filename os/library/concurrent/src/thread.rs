@@ -19,8 +19,6 @@ pub struct Thread {
 
 #[repr(C, packed)]
 pub struct ThreadEnvironment {
-    #[allow(dead_code)] // Only read in assembly code
-    self_ptr: *mut ThreadEnvironment,
     start_time: TimeDelta,
 }
 
@@ -52,7 +50,7 @@ pub fn thread_environment() -> &'static mut ThreadEnvironment {
 
     unsafe {
         asm!(
-        "mov {}, fs:0",
+        "rdfsbase {0}",
         out(reg) thread_env,
         );
 
@@ -65,7 +63,6 @@ pub fn init_thread_environment() {
 
     let thread_env = thread_environment();
     *thread_env = ThreadEnvironment {
-        self_ptr: ptr::from_mut(thread_env),
         start_time: systime,
     };
 }
