@@ -132,6 +132,7 @@ RELEASEX64_OVMF.fd
 loader/kernel.elf
 loader/initrd.tar
 loader/initrd/bin
+loader/towboot.efi
 nvdimm0
 rtl8139.dump
 towbootctl
