@@ -36,15 +36,14 @@ fn panic(info: &PanicInfo) -> ! {
 
 #[unsafe(no_mangle)]
 extern "sysv64" fn entry() {
-    // set up the thread environment, which is stored at FS:0
-    thread::init_thread_environment();
-
     syscall(SystemCall::MapMemory, &[env::HEAP_START, env::HEAP_SIZE])
         .expect("Could not create user heap.");
 
     unsafe {
         ALLOCATOR.lock().init(env::HEAP_START as *mut u8, env::HEAP_SIZE);
     }
+
+    thread::init_thread_environment();
 
     unsafe {
         main(*env::ARGC_PTR as isize, env::ARGV_PTR);

@@ -51,10 +51,7 @@ use goblin::elf::Elf;
 use goblin::elf64;
 use log::info;
 use spin::Mutex;
-use x86_64::instructions::segmentation::{Segment, GS};
-use x86_64::PrivilegeLevel::{Ring0, Ring3};
-use x86_64::registers::model_specific::FsBase;
-use x86_64::registers::segmentation::FS;
+use x86_64::PrivilegeLevel::Ring3;
 use x86_64::VirtAddr;
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::structures::paging::Page;
@@ -93,8 +90,6 @@ pub struct Thread {
     process: Arc<Process>, // reference to my process
     /// for user threads: the address to jump to
     user_kickoff: VirtAddr,
-    /// for user threads: pointer to the thread environment block (e.g. for local storage), which is loaded into fs_base
-    user_environment: VirtAddr,
     /// the actual entry point (eg. for user threads the single parameter to kickoff)
     entry: extern "sysv64" fn(),
 }
@@ -132,7 +127,6 @@ impl Thread {
                 .kernel_process()
                 .expect("Trying to create a kernel thread before process initialization!"),
             user_kickoff: VirtAddr::zero(),
-            user_environment: VirtAddr::zero(),
             entry,
         };
 
@@ -189,18 +183,12 @@ impl Thread {
         // Make a Vec for the user stack
         let user_stack: Vec<u64, StackAllocator> = stack::alloc_user_stack(pid, tid, stack_vma.start().as_u64() as usize, MAX_USER_STACK_SIZE);
 
-        // Create environment for the thread
-        let user_environment = parent.virtual_address_space
-            .user_alloc_map_full(None, 1, VmaType::Environment, "threadenv")
-            .expect("could not create thread environment");
-
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
             id: tid,
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: parent,
             user_kickoff: kickoff_addr,
-            user_environment: user_environment.start(),
             entry,
         };
 
@@ -328,9 +316,10 @@ impl Thread {
         stacks.kernel_stack[capacity - 17] = 0; // rdi
         stacks.kernel_stack[capacity - 18] = 0; // rbp
 
-        stacks.kernel_stack[capacity - 19] = 0; // fs base
+        stacks.kernel_stack[capacity - 19] = 0; // fsbase
+        stacks.kernel_stack[capacity - 20] = 0; // gsbase
 
-        stacks.old_rsp0 = VirtAddr::new((top_of_stack as usize - 8 * 19) as u64);
+        stacks.old_rsp0 = VirtAddr::new((top_of_stack as usize - 8 * 20) as u64);
     }
 
     /// Switch a thread to user mode by preparing a fake stackframe
@@ -358,10 +347,6 @@ impl Thread {
         }
 
         unsafe {
-            FS::set_reg(SegmentSelector::new(4, Ring3));
-            GS::set_reg(SegmentSelector::new(4, Ring3));
-            FsBase::write(self.user_environment);
-
             thread_user_start(old_rsp0, self.entry);
         }
     }
@@ -505,6 +490,7 @@ impl Thread {
 unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
     naked_asm!(
         "mov rsp, rdi", // First parameter -> load 'old_rsp0'
+        "pop rax", "wrgsbase rax",
         "pop rax", "wrfsbase rax",
         "pop rbp",
         "pop rdi", // 'old_rsp0' is here
@@ -560,13 +546,12 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
     "push rdi",
     "push rbp",
     "rdfsbase rax", "push rax",
+    "rdgsbase rax", "push rax",
 
     // Save stack pointer in 'current_rsp0' (first parameter)
     "mov [rdi], rsp",
 
     // Set rsp0 of kernel stack in tss (third parameter 'next_rsp0_end')
-    "mov ax, 0x10", // Load segment selector for kernel data segment
-    "mov gs, ax",
     "swapgs", // Setup core local storage access via gs base
     "mov rax, gs:[{CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX}]", // Load pointer to rsp0 entry of tss into rax
     "mov [rax], rdx", // Set rsp0 entry in tss to 'next_rsp0_end' (third parameter)
@@ -577,6 +562,7 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
 
     // Load registers of next thread by using 'next_rsp0' (second parameter)
     "mov rsp, rsi",
+    "pop rax", "wrgsbase rax",
     "pop rax", "wrfsbase rax",
     "pop rbp",
     "pop rdi",
