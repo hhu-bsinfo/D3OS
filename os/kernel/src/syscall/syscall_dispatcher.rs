@@ -179,13 +179,6 @@ unsafe impl Sync for SyscallTable {}
 ///    Two values in `rax`, `rdx` to reconstruct `Result`in user mode
 unsafe extern "sysv64" fn syscall_handler() {
     naked_asm!(
-    // We are now in ring 0 with disabled interrupts, but still on the user stack
-    // Setup gs for kernel mode
-    "shl rax, 16", // Shift syscall ID to high bits (limits syscall ID to 16-bit values, which is fine)
-    "mov ax, 0x10", // Load segment selector for kernel data segment
-    "mov gs, ax",
-    "shr rax, 16", // Restore syscall ID
-
     // Switch to kernel stack
     "swapgs", // Setup core local storage access via gs base
     "mov gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}], rsp", // Temporarily store user rip in core local storage
@@ -233,12 +226,6 @@ unsafe extern "sysv64" fn syscall_handler() {
     // Switch back to user stack
     "cli", // Disable interrupts, since we are still in Ring 0 and no interrupt handler should be called with the user stack
     "pop rsp", // Restore rsp from kernel stack
-
-    // Setup gs for user mode
-    "push rax",
-    "mov ax, 0x1b",
-    "mov gs, ax",
-    "pop rax",
 
     // Return to Ring 3
     // Interrupts will be enabled automatically, because rflags is restored from r11

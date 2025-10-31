@@ -305,7 +305,6 @@ impl Thread {
         }
         let top_of_stack = Self::get_top_of_stack(&stacks.kernel_stack);
         let capacity = stacks.kernel_stack.capacity();
-        let segment_selector = SegmentSelector::new(2, Ring0).0 as u64; // kernel data segment
 
         stacks.kernel_stack[capacity - 1] = 0x00DEAD00u64; // Dummy return address
         stacks.kernel_stack[capacity - 2] = Thread::kickoff_kernel_thread as u64; // Address of 'kickoff_kernel_thread()';
@@ -330,9 +329,8 @@ impl Thread {
         stacks.kernel_stack[capacity - 18] = 0; // rbp
 
         stacks.kernel_stack[capacity - 19] = 0; // fs base
-        stacks.kernel_stack[capacity - 20] = (segment_selector << 48 | segment_selector << 32) as u64; // fs and gs
 
-        stacks.old_rsp0 = VirtAddr::new((top_of_stack as usize - (8 * 19) - 4) as u64);
+        stacks.old_rsp0 = VirtAddr::new((top_of_stack as usize - 8 * 19) as u64);
     }
 
     /// Switch a thread to user mode by preparing a fake stackframe
@@ -507,8 +505,6 @@ impl Thread {
 unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
     naked_asm!(
         "mov rsp, rdi", // First parameter -> load 'old_rsp0'
-        "pop gs",
-        "pop fs",
         "pop rax", "wrfsbase rax",
         "pop rbp",
         "pop rdi", // 'old_rsp0' is here
@@ -564,8 +560,6 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
     "push rdi",
     "push rbp",
     "rdfsbase rax", "push rax",
-    "push fs",
-    "push gs",
 
     // Save stack pointer in 'current_rsp0' (first parameter)
     "mov [rdi], rsp",
@@ -583,8 +577,6 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
 
     // Load registers of next thread by using 'next_rsp0' (second parameter)
     "mov rsp, rsi",
-    "pop gs",
-    "pop fs",
     "pop rax", "wrfsbase rax",
     "pop rbp",
     "pop rdi",
