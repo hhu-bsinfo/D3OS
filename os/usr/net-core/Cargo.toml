@@ -1,0 +1,14 @@
+[package]
+edition = "2024"
+name = "net-core"
+version = "0.1.0"
+authors = [ "Sandro Jose Leal Miudo" ]
+
+[dependencies]
+# Local dependencies
+syscall  = { path = "../../library/syscall" }
+net = { path = "../../library/net" }
+naming = { path = "../../library/naming" }
+
+# External dependencies
+smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "log", "medium-ethernet", "proto-ipv4", "socket-udp"] }
