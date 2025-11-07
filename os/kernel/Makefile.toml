@@ -17,7 +17,6 @@ SOURCE_DIRECTORY = "${CARGO_MAKE_WORKING_DIRECTORY}/src"
 LIBRARY_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library"
 LINKER_FILE = "${CARGO_MAKE_WORKING_DIRECTORY}/link.ld"
 RUST_OBJECT = "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}.a"
-ASM_OBJECT = "${BUILD_DIRECTORY}/boot.o"
 KERNEL = "${BOOTLOADER_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}.elf"
 
 [tasks.default]
@@ -27,7 +26,7 @@ alias = "link"
 
 [tasks.compile]
 command = "cargo"
-args = [ "build", "--no-default-features", "--features", "${CARGO_INFINIBAND_FEATURE}", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
 condition = { files_modified = { input = [
     "${CARGO_MAKE_WORKING_DIRECTORY}/Cargo.toml", "${SOURCE_DIRECTORY}/**/*.rs",
     "${LIBRARY_DIRECTORY}/graphic/Cargo.toml", "${LIBRARY_DIRECTORY}/graphic/src/**/*.rs",
@@ -39,43 +38,56 @@ env = { HOST_MACHINE = "${HOST_MACHINE}" , SOURCE_IP = "${SOURCE_IP}" , TARGET_I
 command = "cargo"
 args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", 
         "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}", "--target-dir", "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}",
-        "--config", 'build.rustflags="--cfg kernel_test --cfg ${HOST_MACHINE} --cfg ${CARGO_INFINIBAND_OPERATION}"' ]
+        "--config", 'build.rustflags="--cfg kernel_test --cfg ${HOST_MACHINE}"' ]
 
-[tasks.test-build-asm]
+[tasks.test-build-boot-asm]
 command = "nasm"
 args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/boot.o", 
         "${SOURCE_DIRECTORY}/boot.asm" ]
+
+[tasks.test-build-sec-asm]
+command = "nasm"
+args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/sec.o", 
+        "${SOURCE_DIRECTORY}/security/sec.asm" ]
 
 [tasks.bench-compile]
 env = { HOST_MACHINE = "${HOST_MACHINE}" , SOURCE_IP = "${SOURCE_IP}" , TARGET_IP = "${TARGET_IP}" , TARGET_PORT= "${TARGET_PORT}" , IS_SENDER = "${IS_SENDER}" , GATEWAY_IP="${GATEWAY_IP}"}
 command = "cargo"
 args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", 
         "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}", "--target-dir", "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}",
-        "--config", 'build.rustflags="--cfg kernel_bench --cfg ${BENCH_OPERATION} --cfg ${HOST_MACHINE} --cfg ${CARGO_INFINIBAND_OPERATION}"' ]
+        "--config", 'build.rustflags="--cfg kernel_bench --cfg ${HOST_MACHINE}"' ]
 
 [tasks.test]
 command = "${LINKER}"
-args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${BOOTLOADER_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}-${HOST_MACHINE}.elf", 
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${IB_PROFILE}/${CARGO_MAKE_PROJECT_NAME}.elf", 
          "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/boot.o",
+         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/sec.o",
          "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/lib${CARGO_MAKE_PROJECT_NAME}.a"]
-dependencies = [ "test-compile", "test-build-asm" ]
+dependencies = [ "test-compile", "test-build-boot-asm", "test-build-sec-asm" ]
 
 [tasks.bench]
 command = "${LINKER}"
-args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${BOOTLOADER_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}-${HOST_MACHINE}.elf", 
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${IB_PROFILE}/${CARGO_MAKE_PROJECT_NAME}.elf", 
          "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/boot.o",
+         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/sec.o",
          "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/lib${CARGO_MAKE_PROJECT_NAME}.a"]
-dependencies = [ "bench-compile", "test-build-asm" ]
+dependencies = [ "bench-compile", "test-build-boot-asm", "test-build-sec-asm" ]
 
-[tasks.build-asm]
+[tasks.build-boot-asm]
 command = "nasm"
-args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${ASM_OBJECT}", "${SOURCE_DIRECTORY}/boot.asm" ]
+args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${BUILD_DIRECTORY}/boot.o", "${SOURCE_DIRECTORY}/boot.asm" ]
 condition = { files_modified = { input = [ "${SOURCE_DIRECTORY}/boot.asm" ], output = [ "${BUILD_DIRECTORY}/boot.o" ] } }
+
+[tasks.build-sec-asm]
+command = "nasm"
+args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${BUILD_DIRECTORY}/sec.o", "${SOURCE_DIRECTORY}/security/sec.asm" ]
+condition = { files_modified = { input = [ "${SOURCE_DIRECTORY}/security/sec.asm" ], output = [ "${BUILD_DIRECTORY}/sec.o" ] } }
 
 [tasks.link]
 command = "${LINKER}"
-args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${KERNEL}", "${ASM_OBJECT}", "${RUST_OBJECT}" ]
-dependencies = [ "compile", "build-asm" ]
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${KERNEL}", 
+        "${BUILD_DIRECTORY}/boot.o", "${BUILD_DIRECTORY}/sec.o", "${RUST_OBJECT}" ]
+dependencies = [ "compile", "build-boot-asm", "build-sec-asm" ]
 condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*", "${LINKER_FILE}" ], output = [ "${BOOTLOADER_DIRECTORY}/kernel.elf" ] } }
 
 [tasks.check]
