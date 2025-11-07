@@ -3,6 +3,7 @@
 readonly INFINIBAND_FEATURE_MLX4="infiniband_mlx4"
 readonly INFINIBAND_FEATURE_MLX5="infiniband_mlx5"
 readonly BOOTLOADER_DIRECTORY="$(pwd)/loader"
+readonly PROFILE_DIRECTORY="${BOOTLOADER_DIRECTORY}/profile"
 readonly LINKER="ld"
 readonly TOWBOOT_TARGET="$(pwd)/d3os.img"
 readonly HOST_IB3="ib3"
@@ -25,17 +26,38 @@ function bench {
   local GW_IP="$8"
   local BENCH_OP="$9"
 
+  local current_profile="${PROFILE_DIRECTORY}/${HOST}"
+
+  cp -R "${BOOTLOADER_DIRECTORY}/initrd" "${current_profile}"
+
+  ln -sf "${BOOTLOADER_DIRECTORY}/towboot.toml" "${current_profile}/towboot-cfg"
+
   CARGO_ROOT_DIR=$(git rev-parse --show-toplevel)
 
   printf "Root level directory : %s" "${CARGO_ROOT_DIR}"
 
   cargo make --cwd os/kernel --no-workspace \
-      --env CARGO_INFINIBAND_FEATURE="${FEATURE}" --env CARGO_INFINIBAND_OPERATION="${OP}" --env BENCH_OPERATION="${BENCH_OP}" --env BOOTLOADER_DIRECTORY="${BOOTLOADER_DIRECTORY}" \
+      --env IB_PROFILE="${current_profile}" --env CARGO_INFINIBAND_FEATURE="${FEATURE}" --env BOOTLOADER_DIRECTORY="${BOOTLOADER_DIRECTORY}" \
       --env LINKER="${LINKER}" --env HOST_MACHINE="${HOST}" --env SOURCE_IP="${SOURCE_IP}" \
-      --env TARGET_IP="${TARGET_IP}" --env TARGET_PORT="${TARGET_PORT}" --env IS_SENDER="${IS_SENDER}" --env GATEWAY_IP="${GW_IP}" --env CARGO_ROOT_DIR="${CARGO_ROOT_DIR}" bench
+      --env TARGET_IP="${TARGET_IP}" --env GATEWAY_IP="${GW_IP}" --env CARGO_ROOT_DIR="${CARGO_ROOT_DIR}" bench
+  
+  cargo make --cwd os/application/rdma/mlx4 --no-workspace \
+      --env IB_PROFILE="${current_profile}" --env CARGO_INFINIBAND_OPERATION="${OP}" --env BENCH_OPERATION="${BENCH_OP}" --env BOOTLOADER_DIRECTORY="${BOOTLOADER_DIRECTORY}" \
+      --env LINKER="${LINKER}" --env HOST_MACHINE="${HOST}" --env SOURCE_IP="${SOURCE_IP}" \
+      --env TARGET_IP="${TARGET_IP}" --env TARGET_PORT="${TARGET_PORT}" --env IS_SENDER="${IS_SENDER}" --env CARGO_ROOT_DIR="${CARGO_ROOT_DIR}" bench
+
   cargo make --no-workspace towbootctl
   TARGET="${TOWBOOT_TARGET%d3os\.img}d3os-${HOST}.img"
-  ./towbootctl image --target "${TARGET}" -- -config "${BOOTLOADER_DIRECTORY}/towboot-${HOST}.toml"
+
+  pushd "${current_profile}" > /dev/null
+  pushd "initrd" > /dev/null
+  tar -cf "${current_profile}/initrd.tar" *
+
+  popd > /dev/null # move stack pointer to prior dir
+
+  ${CARGO_ROOT_DIR}/towbootctl image --target "${TARGET}" -- -config "towboot-cfg"
+
+  popd > /dev/null # move stack pointer to prior dir
 }
 
 function test {
@@ -48,17 +70,38 @@ function test {
   local IS_SENDER="$7"
   local GW_IP="$8"
 
+  local current_profile="${PROFILE_DIRECTORY}/${HOST}"
+
+  cp -R "${BOOTLOADER_DIRECTORY}/initrd" "${current_profile}"
+
+  ln -sf "${BOOTLOADER_DIRECTORY}/towboot.toml" "${current_profile}/towboot-cfg"
+
   CARGO_ROOT_DIR=$(git rev-parse --show-toplevel)
 
   printf "Root level directory : %s" "${CARGO_ROOT_DIR}"
 
   cargo make --cwd os/kernel --no-workspace \
-      --env CARGO_INFINIBAND_FEATURE="${FEATURE}" --env CARGO_INFINIBAND_OPERATION="${OP}" --env BOOTLOADER_DIRECTORY="${BOOTLOADER_DIRECTORY}" \
+      --env IB_PROFILE="${current_profile}" --env CARGO_INFINIBAND_FEATURE="${FEATURE}" --env BOOTLOADER_DIRECTORY="${BOOTLOADER_DIRECTORY}" \
       --env LINKER="${LINKER}" --env HOST_MACHINE="${HOST}" --env SOURCE_IP="${SOURCE_IP}" \
-      --env TARGET_IP="${TARGET_IP}" --env TARGET_PORT="${TARGET_PORT}" --env IS_SENDER="${IS_SENDER}" --env GATEWAY_IP="${GW_IP}" --env CARGO_ROOT_DIR="${CARGO_ROOT_DIR}" test
+      --env TARGET_IP="${TARGET_IP}" --env GATEWAY_IP="${GW_IP}" --env CARGO_ROOT_DIR="${CARGO_ROOT_DIR}" test
+  
+  cargo make --cwd os/application/rdma/mlx4 --no-workspace \
+      --env IB_PROFILE="${current_profile}" --env CARGO_INFINIBAND_OPERATION="${OP}" --env BOOTLOADER_DIRECTORY="${BOOTLOADER_DIRECTORY}" \
+      --env LINKER="${LINKER}" --env HOST_MACHINE="${HOST}" --env SOURCE_IP="${SOURCE_IP}" \
+      --env TARGET_IP="${TARGET_IP}" --env TARGET_PORT="${TARGET_PORT}" --env IS_SENDER="${IS_SENDER}" --env CARGO_ROOT_DIR="${CARGO_ROOT_DIR}" test
+
   cargo make --no-workspace towbootctl
   TARGET="${TOWBOOT_TARGET%d3os\.img}d3os-${HOST}.img"
-  ./towbootctl image --target "${TARGET}" -- -config "${BOOTLOADER_DIRECTORY}/towboot-${HOST}.toml"
+
+  pushd "${current_profile}" > /dev/null
+  pushd "initrd" > /dev/null
+  tar -cf "${current_profile}/initrd.tar" *
+
+  popd > /dev/null # move stack pointer to prior dir
+
+  ${CARGO_ROOT_DIR}/towbootctl image --target "${TARGET}" -- -config "towboot-cfg"
+
+  popd > /dev/null # move stack pointer to prior dir
 }
 
 function build {

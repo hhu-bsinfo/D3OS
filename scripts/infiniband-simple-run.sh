@@ -11,7 +11,7 @@ DEVICE_ID="15b3 1003"
 
 DEVICES_TO_REMOVE="pci0000:00/0000:00:1a.0"
 
-MEMORY=$((2 * 1024))
+MEMORY=$((4 * 1024))
 
 # unbind the MLX card
 # the ID is the symlink in /sys/bus/pci/drivers/mlx?_core/
@@ -46,39 +46,38 @@ DHCP_START="192.168.100.10"
 HOST=$(hostname)
 eval "NIC_MAC_ADDRESS=\${${HOST}NIC_MAC}"
 
-HUGEPAGE_SIZE_MB=2
+# HUGEPAGE_SIZE_MB=2
 
-echo "Hugepages information:"
-cat /sys/kernel/mm/hugepages/hugepages-2048kB/{nr_hugepages,free_hugepages,resv_hugepages}
+# echo "Hugepages information:"
+# cat /sys/kernel/mm/hugepages/hugepages-2048kB/{nr_hugepages,free_hugepages,resv_hugepages}
 
-AVAILABLE=$(< /sys/kernel/mm/hugepages/hugepages-2048kB/free_hugepages)
+# AVAILABLE=$(< /sys/kernel/mm/hugepages/hugepages-2048kB/free_hugepages)
 #TOTAL=$(< /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages)
 
-printf "%dMB available using hugepages\n" $(( AVAILABLE * HUGEPAGE_SIZE_MB ))
+# printf "%dMB available using hugepages\n" $(( AVAILABLE * HUGEPAGE_SIZE_MB ))
 
-REQUIRED=$(( MEMORY / HUGEPAGE_SIZE_MB ))
+#REQUIRED=$(( MEMORY / HUGEPAGE_SIZE_MB ))
 
-if (( AVAILABLE < REQUIRED )); then
-    TARGET=$REQUIRED
-    echo "Not enough hugepages. Setting nr_hugepages to $TARGET..."
-    echo $TARGET | sudo tee /proc/sys/vm/nr_hugepages
-fi
+#if (( AVAILABLE < REQUIRED )); then
+#    TARGET=$REQUIRED
+#    echo "Not enough hugepages. Setting nr_hugepages to $TARGET..."
+#    echo $TARGET | sudo tee /proc/sys/vm/nr_hugepages
+# fi
 
-sudo chown ${USER} /dev/hugepages
+# sudo chown ${USER} /dev/hugepages
 
 LIMIT=$(($(($MEMORY + 128)) * 1024 * 1024))
 sudo prlimit --memlock="$LIMIT" --pid=$$
-IOMMU_ADDRESS_WIDTH=$(( ((0x$(cat /sys/devices/virtual/iommu/dmar0/intel-iommu/cap) & 0x3F0000) >> 16) + 1 ))
+# IOMMU_ADDRESS_WIDTH=$(( ((0x$(cat /sys/devices/virtual/iommu/dmar0/intel-iommu/cap) & 0x3F0000) >> 16) + 1 ))
 
-touch /dev/hugepages/qemu.mem
-sudo chmod u=rw /dev/hugepages/qemu.mem 
+# touch /dev/hugepages/qemu.mem
+# sudo chmod u=rw /dev/hugepages/qemu.mem 
 
 printf "starting system !"
 
 prlimit --memlock="$LIMIT" qemu-system-x86_64 \
   -machine q35 \
   -m ${MEMORY} \
-  -mem-path /dev/hugepages/qemu.mem \
   -cpu Broadwell \
   -bios RELEASEX64_OVMF.fd \
   -boot d \
