@@ -23,7 +23,7 @@ use event_queue::{init_eqs, EventQueue};
 use fw::{Capabilities, Hca, MappedFirmwareArea};
 use icm::MappedIcmTables;
 
-use crate::infiniband::ib_core::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_type, ibv_recv_wr, ibv_send_wr, ibv_wc};
+use rdma::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_type, ibv_recv_wr, ibv_send_wr, ibv_wc};
 
 use port::Port;
 use queue_pair::QueuePair;
@@ -35,20 +35,45 @@ use device::{Ownership, ResetRegisters};
 use fw::Firmware;
 use profile::Profile;
 
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering::Relaxed;
+
 /// Vendor ID for Mellanox
 pub const MLX_VEND: u16 = 0x15b3;
 /// Device ID for the ConnectX-3 NIC
 pub const CONNECTX3_DEV: u16 = 0x1003;
 
-/// The singleton connectx-3 NIC.
-/// TODO: Allow for multiple NICs
-static CONNECTX3_NIC: Once<Mutex<ConnectX3Nic>> = Once::new();
+const DEVICE_END: usize = 10;
+const DEVICE_START: usize = 1;
 
-/// Returns a reference to the NIC wrapped in a IrqSafeMutex,
-/// if it exists and has been initialized.
-pub fn get_mlx3_nic() -> Option<&'static Mutex<ConnectX3Nic>> {
-    CONNECTX3_NIC.get()
+#[inline(always)]
+pub const fn devices_supported() -> usize {
+    (DEVICE_END - DEVICE_START) + 1
 }
+
+#[inline(always)]
+pub fn device_in_range(minor: usize) -> bool {
+    (DEVICE_START..=DEVICE_END).contains(&minor)
+}
+
+#[inline(always)]
+pub fn minor_to_idx(minor: usize) -> usize {
+    minor - DEVICE_START
+}
+
+static MINOR: AtomicUsize = AtomicUsize::new(DEVICE_START);
+static DEV_LIST: Once<Mutex<Vec<ConnectX3Nic>>> = Once::new();
+
+fn next_minor() -> usize {
+    MINOR.fetch_add(1, Relaxed)
+}
+
+pub fn get_dev_list() -> &'static Mutex<Vec<ConnectX3Nic>> {
+    DEV_LIST.call_once(|| {
+        Mutex::new(Vec::with_capacity(devices_supported()))
+    })
+}
+
 
 /// Struct representing a ConnectX-3 card
 pub struct ConnectX3Nic {
@@ -66,6 +91,7 @@ pub struct ConnectX3Nic {
     cqs: Vec<CompletionQueue>,
     qps: Vec<QueuePair>,
     ports: Vec<Port>,
+    pub minor: usize
 }
 
 /// Functions that setup the struct.
@@ -74,7 +100,11 @@ impl ConnectX3Nic {
     ///
     /// # Arguments
     /// * `mlx3_pci_dev`: Contains the pci device information.
-    pub fn init(mlx3_pci_dev: &RwLock<EndpointHeader>) -> Result<&'static Mutex<ConnectX3Nic>, &'static str> {
+    pub fn init(mlx3_pci_dev: &RwLock<EndpointHeader>) -> Result<usize, &'static str> {
+        if MINOR.load(Relaxed) > DEVICE_END  {
+            return Err("Max devices reached !");
+        }
+        
         let config_space = pci_bus().config_space();
         // set the memory space bit for this PciDevice
         // set the bus mastering bit for this PciDevice, which allows it to use DMA
@@ -127,6 +157,7 @@ impl ConnectX3Nic {
             cqs: Vec::new(),
             qps: Vec::new(),
             ports: Vec::new(),
+            minor: 0
         };
         let mut command_interface = CommandInterface::new(&mut nic.config_regs)?;
         let firmware_area = nic.firmware_area.as_mut().unwrap();
@@ -157,8 +188,14 @@ impl ConnectX3Nic {
         hca.config_mad_demux(&mut command_interface, &caps)?;
         nic.ports = hca.init_ports(&mut command_interface, &caps)?;
 
-        let nic_ref = CONNECTX3_NIC.call_once(|| Mutex::new(nic));
-        Ok(nic_ref)
+        let minor = next_minor();
+
+        nic.minor = minor;
+        get_dev_list()
+            .lock()
+            .push(nic);
+
+        Ok(minor)
     }
 
     /// Get statistics about the device.
