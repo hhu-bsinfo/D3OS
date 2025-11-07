@@ -1,8 +1,7 @@
-use log::{info, trace};
+pub mod uverbs;
+pub mod uverbs_cmd;
 
-pub mod ib_core;
-pub mod ibverbs_sys;
-pub mod ibverbs;
+use log::{info, trace};
 
 use crate::pci_bus;
 
@@ -19,15 +18,17 @@ fn _init() {
         .search_by_ids(
             mlx4::MLX_VEND,
             mlx4::CONNECTX3_DEV);
-    if !devices.is_empty() {
-        let device = devices[0];
+    for (i, dev) in devices.iter().enumerate() {
+        info!("Found ConnectX-3 card ! - dev : {}", i);
 
-        info!("Found ConnectX-3 card !");
-
-        let _ = ConnectX3Nic::init(device);
+        let minor = ConnectX3Nic::init(dev)
+            .expect("error in x3 init");
+        info!("Initialized mlx4 driver, associated dev {} with minor => {}", i, minor);
     }
 
-    else { trace!("No ConnectX-3 card found !"); }
+    if devices.is_empty() {
+        trace!("No ConnectX-3 card found !");
+    }
 }
 
 #[cfg(feature = "infiniband_mlx5")]
