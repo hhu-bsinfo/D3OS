@@ -1,0 +1,63 @@
+[env.development]
+CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_application.json"
+BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/d3os_application/debug"
+CARGO_BUILD_OPTION = "--lib"
+PROFILE="debug"
+
+[env.production]
+CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_application.json"
+BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/d3os_application/release"
+CARGO_BUILD_OPTION = "--release"
+PROFILE="release"
+
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
+SOURCE_DIRECTORY = "${CARGO_MAKE_WORKING_DIRECTORY}/src"
+LIBRARY_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library"
+LINKER_FILE = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/application/link.ld"
+RUST_OBJECT = "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}.a"
+APPLICATION = "${IB_PROFILE}/initrd/${CARGO_MAKE_PROJECT_NAME}"
+
+# Build tasks
+
+[tasks.test-compile]
+env = { HOST_MACHINE = "${HOST_MACHINE}" , SOURCE_IP = "${SOURCE_IP}" , TARGET_IP = "${TARGET_IP}" , TARGET_PORT= "${TARGET_PORT}" , IS_SENDER = "${IS_SENDER}" }
+command = "cargo"
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", 
+        "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}", "--target-dir", "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}",
+        "--config", 'build.rustflags="--cfg user_test --cfg ${HOST_MACHINE} --cfg ${CARGO_INFINIBAND_OPERATION}"' ]
+
+[tasks.bench-compile]
+env = { HOST_MACHINE = "${HOST_MACHINE}" , SOURCE_IP = "${SOURCE_IP}" , TARGET_IP = "${TARGET_IP}" , TARGET_PORT= "${TARGET_PORT}" , IS_SENDER = "${IS_SENDER}" }
+command = "cargo"
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", 
+        "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}", "--target-dir", "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}",
+        "--config", 'build.rustflags="--cfg user_bench --cfg ${BENCH_OPERATION} --cfg ${HOST_MACHINE} --cfg ${CARGO_INFINIBAND_OPERATION}"' ]
+
+[tasks.test]
+command = "${LINKER}"
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${APPLICATION}",
+         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_application/${PROFILE}/lib${CARGO_MAKE_PROJECT_NAME}.a" ]
+dependencies = [ "test-compile" ]
+
+[tasks.bench]
+command = "${LINKER}"
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${APPLICATION}", 
+         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_application/${PROFILE}/lib${CARGO_MAKE_PROJECT_NAME}.a" ]
+dependencies = [ "bench-compile" ]
+
+# Cleanup tasks
+
+[tasks.clean]
+command = "cargo"
+args = [ "clean" ]
+dependencies = [ "remove-application" ]
+
+[tasks.remove-application]
+command = "rm"
+args = [ "-f", "${APPLICATION}" ]
+
+[tasks.link]
+description = "Dummy task that does nothing"
+command = "true"
