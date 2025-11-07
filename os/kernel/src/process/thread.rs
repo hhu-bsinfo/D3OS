@@ -43,6 +43,7 @@ use crate::process::process::Process;
 use crate::process::scheduler;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
 use crate::{process_manager, scheduler, tss};
+use crate::security::sec::{ExceptionSec, SEC_FAULT};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::naked_asm;
@@ -93,6 +94,10 @@ pub struct Thread {
     user_kickoff: VirtAddr,
     /// the actual entry point (eg. for user threads the single parameter to kickoff)
     entry: fn(),
+    /// per thread user access flag, could be replaced later if the interrupt
+    /// backend supports trap frames, instead of only passing in the interrupt frame
+    /// then we could modify rax, and rip inplace
+    copy_faulted: u8
 }
 
 impl Stacks {
@@ -149,6 +154,7 @@ impl Thread {
                 .expect("Trying to create a kernel thread before process initialization!"),
             user_kickoff: VirtAddr::zero(),
             entry,
+            copy_faulted: 0,
         };
 
         thread.prepare_kernel_stack();
@@ -400,6 +406,7 @@ impl Thread {
             process: parent,
             user_kickoff: kickoff_addr,
             entry,
+            copy_faulted: 0,
         };
 
         info!("Created user stack for thread at 0x{stack_start:x?}");
@@ -567,6 +574,13 @@ impl Thread {
         unsafe {
             thread_user_start(old_rsp0, self.entry);
         }
+    }
+
+    pub fn copy_faulted(&mut self, fault: u8) { self.copy_faulted = fault }
+
+    pub fn faulted(&self) -> Result<(), ExceptionSec> { 
+        if self.copy_faulted == SEC_FAULT { Err(ExceptionSec::CopyException) } 
+        else { Ok(()) }
     }
 }
 
