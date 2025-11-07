@@ -36,6 +36,28 @@ struct OpenObjectTable {
     free_handles: Box<[usize; MAX_OPEN_OBJECTS]>,
 }
 
+pub fn create_open_table_entry(mapping: NamedObject) -> Result<usize, Errno> {
+    get_open_object_table()
+        .lock()
+        .allocate_handle(Arc::new(OpenedObject::new(
+            Arc::new(mapping),
+            AtomicUsize::new(0),
+            OpenOptions::empty(),
+        )))
+}
+
+pub fn get_open_table_entry(handle: usize) -> Result<Arc<OpenedObject>, Errno> {
+    get_open_object_table()
+        .lock()
+        .lookup_opened_object(handle)
+        .and_then(|x| Ok(Arc::clone(x)))
+}
+
+pub fn free_open_table_entry(handle: usize) -> Result<usize, Errno> {
+    get_open_object_table()
+        .lock()
+        .free_handle(handle)
+}
 
 pub(super) fn open_object_table_init() {
     OPEN_OBJECTS.call_once(|| Arc::new(Mutex::new(OpenObjectTable::new())));
@@ -72,14 +94,20 @@ pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
         .lookup_opened_object(fh)
         .and_then(|opened_object| {
             // Make `opened_object` mutable here
-            opened_object.named_object.as_file().and_then(|file| {
-                let pos = opened_object.pos.load(Ordering::SeqCst);
-                let bytes_written = file.write(buf, pos, opened_object.options)?;
-                opened_object
-                    .pos
-                    .store(pos + bytes_written, Ordering::SeqCst);
-                Ok(bytes_written) // Return the bytes written
-            })
+            match opened_object.named_object.as_ref() {
+                NamedObject::FileObject(file) => {
+                    let pos = opened_object.pos.load(Ordering::SeqCst);
+                    let bytes_written = file.write(buf, pos, opened_object.options)?;
+                    opened_object
+                        .pos
+                        .store(pos + bytes_written, Ordering::SeqCst);
+                    Ok(bytes_written) // Return the bytes written
+                },
+                NamedObject::PseudoFileObject(file) => {
+                    file.ops.write(buf)
+                },
+                _ => Err(Errno::EEXIST)
+            }
         })
 }
 
@@ -89,12 +117,18 @@ pub(super) fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
         .lookup_opened_object(fh)
         .and_then(|opened_object| {
             // Make `opened_object` mutable here
-            opened_object.named_object.as_file().and_then(|file| {
-                let pos = opened_object.pos.load(Ordering::SeqCst);
-                let bytes_read = file.read(buf, pos, opened_object.options)?;
-                opened_object.pos.store(pos + bytes_read, Ordering::SeqCst);
-                Ok(bytes_read) // Return the bytes read
-            })
+            match opened_object.named_object.as_ref() {
+                NamedObject::FileObject(file) => {
+                    let pos = opened_object.pos.load(Ordering::SeqCst);
+                    let bytes_read = file.read(buf, pos, opened_object.options)?;
+                    opened_object.pos.store(pos + bytes_read, Ordering::SeqCst);
+                    Ok(bytes_read) // Return the bytes read
+                },
+                NamedObject::PseudoFileObject(file) => {
+                    file.ops.read(buf)
+                },
+                _ => Err(Errno::EEXIST)
+            }
         })
 }
 
@@ -231,5 +265,9 @@ impl OpenedObject {
             pos,
             options,
         }
+    }
+
+    pub fn inner_node(&self) -> &Arc<NamedObject> {
+        &self.named_object
     }
 }

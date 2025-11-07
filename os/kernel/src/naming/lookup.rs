@@ -18,7 +18,7 @@ use syscall::return_vals::Errno;
 pub(super) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errno> {
     match lookup_named_object(path)? {
         NamedObject::DirectoryObject(dir) => Ok(dir),
-        NamedObject::FileObject(_) => Err(Errno::ENOTDIR),
+        NamedObject::FileObject(_) | NamedObject::PseudoFileObject(_) => Err(Errno::ENOTDIR),
     }
 }
 
