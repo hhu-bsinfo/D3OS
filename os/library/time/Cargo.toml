@@ -2,7 +2,7 @@
 edition = "2024"
 name = "time"
 version = "0.1.0"
-authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>, Sandro Jose Leal Miudo"]
 
 [dependencies]
 # Local dependencies
