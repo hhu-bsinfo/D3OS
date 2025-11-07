@@ -25,6 +25,8 @@ pub enum Errno {
     EINVALH    = -9,  // Invalid handle
     ENOTEMPTY  = -10, // Directory not empty
     EBADSTR    = -11, // Bad string
+    EFAULT     = -12, // Fault occured
+    ENOCMD     = -13
 }
 
 
