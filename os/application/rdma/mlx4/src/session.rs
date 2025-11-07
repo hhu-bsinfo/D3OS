@@ -3,7 +3,6 @@ use rdma_core::sliceindex::SliceIndex;
 use crate::build_constants;
 use smoltcp::iface::SocketHandle;
 use smoltcp::wire::Ipv4Address;
-use log::debug;
 use rdma_core::{ibv_qp_type::Type, ibv_wc};
 use rdma::ibv_qp_cap;
 use core::ops;
@@ -120,8 +119,8 @@ impl UdpSession {
 
         let ip = build_constants::TARGET_IP.parse::<Ipv4Address>().unwrap();
 
-        debug!("Target: {} ({})", build_constants::TARGET_HOST, ip);
-        debug!("Local: {} ({})", build_constants::THIS_HOST, 
+        println!("Target: {} ({})", build_constants::TARGET_HOST, ip);
+        println!("Local: {} ({})", build_constants::THIS_HOST, 
             build_constants::THIS_IP.parse::<Ipv4Address>().unwrap());
 
         connect(fd, ip, tgt_port).expect("error while connecting");

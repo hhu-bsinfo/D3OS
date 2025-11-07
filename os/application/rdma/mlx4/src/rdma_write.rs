@@ -1,6 +1,5 @@
 use super::{session, handshake, integrity};
 use crate::build_constants;
-use log::{debug};
 use rdma_core::{
     devices
 };
@@ -28,13 +27,13 @@ pub fn invoke() {
         match res_ctx {
             Ok(ctx) => break ctx,
             Err(_) => {
-                debug!("failed to get device context => most likely due to port not being ready yet ...");
+                println!("failed to get device context => most likely due to port not being ready yet ...");
                 sleep(5000);
             },
         }
     };
 
-    debug!("obtained device context");
+    println!("obtained device context");
 
     let pd = ctx.alloc_pd().expect("failed to allocate protection domain");
 
@@ -46,7 +45,7 @@ pub fn invoke() {
     let payload_f = integrity::PAYLOAD_FUNCTIONS.seq;
 
     if build_constants::IS_SENDER {
-        debug!("Starting as SENDER");
+        println!("Starting as SENDER");
 
         let payload = integrity::build_payload(ALLOC_MEM - META_DATA_SIZE, payload_f);
 
@@ -83,11 +82,11 @@ pub fn invoke() {
         let local_mr = rdma_session.mr.remote();
 
         let remote_qp_endpoint = handshake::exchange_endpoints(&udp_session, endpoint);
-        debug!("Successfully received remote endpoint : {:?}", remote_qp_endpoint);
+        println!("Successfully received remote endpoint : {:?}", remote_qp_endpoint);
 
         let mut remote_mr = handshake::exchange_memory_region(&udp_session, local_mr);
-        debug!("Successfully received remote memory region");
-        debug!("Remote memory region\n: {:?}", remote_mr);
+        println!("Successfully received remote memory region");
+        println!("Remote memory region\n: {:?}", remote_mr);
 
         let mut qp = allocated_qp.handshake(remote_qp_endpoint).expect("failed handshake");
 
@@ -95,7 +94,7 @@ pub fn invoke() {
 
         #[cfg(user_test)]
         {
-            debug!("Performing RDMA write...");
+            println!("Performing RDMA write...");
         
             let _result = unsafe { qp.rdma_write(
                 &mut rdma_session.mr, 
@@ -125,7 +124,7 @@ pub fn invoke() {
         handshake::send_ack(&udp_session);
     }
     else {
-        debug!("Starting as RECEIVER");
+        println!("Starting as RECEIVER");
         let allocated_qp = session::RdmaSession::create_qp(
             rdma_session.pd, 
             &rdma_session.cq_send, 
@@ -144,7 +143,7 @@ pub fn invoke() {
         let local_mr = rdma_session.mr.remote();
 
         let remote_qp_endpoint = handshake::exchange_endpoints(&udp_session, endpoint);
-        debug!("Successfully received remote endpoint : {:?}", remote_qp_endpoint);
+        println!("Successfully received remote endpoint : {:?}", remote_qp_endpoint);
 
         let _remote_mr = handshake::exchange_memory_region(&udp_session, local_mr);
 
@@ -152,13 +151,13 @@ pub fn invoke() {
 
         handshake::send_ack(&udp_session);
 
-        debug!("Receiver finished sending data");
+        println!("Receiver finished sending data");
 
         handshake::wait_ack(&udp_session);
 
         #[cfg(user_test)]
         {
-            debug!("Checking data integrity...");
+            println!("Checking data integrity...");
 
             unsafe { flush_cache(&rdma_session.mr) };
 
@@ -192,7 +191,7 @@ pub fn invoke() {
             println!("last rdma write hit rate: {:.2}%", hit_rate);
         }
 
-        debug!("end - rdma write")
+        println!("end - rdma write")
         //loop {}
     }
 
