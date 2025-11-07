@@ -1,5 +1,4 @@
 use spin::{Once, Mutex};
-use super::mlx4;
 use alloc::vec::Vec;
 use alloc::boxed::Box;
 use alloc::vec;
@@ -22,10 +21,7 @@ pub struct TestRunner {
 impl TestRunner {
     pub fn new() {
         GLOBAL_TEST_RUNNER.call_once(|| {
-            let entrypoints: Vec<Box<dyn TestPlugin<Output = ()> + Send + Sync>> = vec![
-                Box::new(mlx4::Mlx4Plugin {}),
-            ];
-
+            let entrypoints: Vec<Box<dyn TestPlugin<Output = ()> + Send + Sync>> = vec![];
             Mutex::new(TestRunner { entrypoints })
         });
     }

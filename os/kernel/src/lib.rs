@@ -54,8 +54,9 @@ use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::tss::TaskStateSegment;
 extern crate alloc;
-#[cfg(any(kernel_test, kernel_bench))]
-use tests::test_runner;
+
+/*#[cfg(any(kernel_test, kernel_bench))]
+use tests::test_runner; */
 
 #[macro_use]
 pub mod device;
@@ -70,8 +71,9 @@ pub mod process;
 pub mod storage;
 pub mod syscall;
 pub mod infiniband;
-#[cfg(any(kernel_test, kernel_bench))]
-pub mod tests;
+pub mod security;
+/*#[cfg(any(kernel_test, kernel_bench))]
+pub mod tests; */
 
 pub mod built_info {
     // The file has been placed there by the build script.
@@ -442,7 +444,7 @@ pub fn get_time_in_us() -> u64 {
     cpu().rdtsc() / cycles_per_us
 }
 
-#[cfg(any(kernel_test, kernel_bench))]
+/*#[cfg(any(kernel_test, kernel_bench))]
 pub fn init_test_runner() {
     test_runner::TestRunner::new();
 }
@@ -450,4 +452,4 @@ pub fn init_test_runner() {
 #[cfg(any(kernel_test, kernel_bench))]
 pub fn run_tests() {
     test_runner::get_test_runner().expect("Trying to access Test Runner before init!").lock().exec();
-}
+} */

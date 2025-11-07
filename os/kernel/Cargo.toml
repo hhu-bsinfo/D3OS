@@ -15,6 +15,8 @@ graphic = { path = "../library/graphic" }
 stream = { path = "../library/stream" }
 syscall = { path = "../library/syscall" }
 naming = { path = "../library/naming" }
+rdma = { path = "../library/rdma" }
+net = { path = "../library/net" }
 
 # External depencies
 spin = "0.9.8"
@@ -47,14 +49,11 @@ strum_macros = "0.26"
 volatile = "0.2.7"
 zerocopy = "0.5.2"
 core2 = { version = "0.4", default-features = false, features = ["alloc"] }
-bincode = { version = "2.0.1", optional = true, default-features = false, features = ["derive", "alloc"] }
-crc32fast = { version = "1.4", default-features = false }
 
 [build-dependencies]
 built = { version = "0.7.7", features = ["chrono", "git2"] }
 
 [features]
-default = ["infiniband_mlx4", "serialize" ]
+default = ["infiniband_mlx4"]
 infiniband_mlx4 = []
 infiniband_mlx5 = []
-serialize = ["dep:bincode"]

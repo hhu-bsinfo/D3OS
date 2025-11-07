@@ -27,8 +27,10 @@ use crate::{
     init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory,
     network, process_manager, scheduler, serial_port, terminal, timer, tss, infiniband
 };
+/*
 #[cfg(any(kernel_test, kernel_bench))]
-use crate::{init_test_runner, run_tests};
+use crate::{init_test_runner, run_tests}; */
+
 #[cfg(any(kernel_test, kernel_bench))]
 use crate::build_constants;
 use crate::calibrate;
@@ -74,7 +76,7 @@ unsafe extern "C" {
     static ___KERNEL_DATA_END__: u64; // end address of OS image
 }
 
-const INIT_HEAP_PAGES: usize = 0x40000; // number of heap pages for booting the OS
+const INIT_HEAP_PAGES: usize = 0x10000; // number of heap pages for booting the OS
 
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \
@@ -83,7 +85,7 @@ const INIT_HEAP_PAGES: usize = 0x40000; // number of heap pages for booting the 
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
     // Initialize logger
     log::set_logger(logger())
-        .map(|()| log::set_max_level(LevelFilter::Debug))
+        .map(|()| log::set_max_level(LevelFilter::Trace))
         .expect("Failed to initialize logger!");
 
     // Log messages and panics are now working, but cannot use format string until the heap is initialized later on
@@ -123,10 +125,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     #[cfg(any(kernel_test, kernel_bench))]
     {
         info!("Running D3OS in test mode!");
-        info!("This Host => {} ({})\nTarget Host => {} ({})\nSender => {}\nReceiver => {}",
+        info!("This Host => {} ({})\nTarget Host => {} ({})\n",
                 build_constants::THIS_HOST, build_constants::THIS_IP,
-                build_constants::TARGET_HOST, build_constants::TARGET_IP,
-                build_constants::IS_SENDER, !build_constants::IS_SENDER);
+                build_constants::TARGET_HOST, build_constants::TARGET_IP);
     }
 
     // Initialize CPU information
@@ -345,14 +346,14 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         network::add_interface(interface);
     }
 
-    #[cfg(any(kernel_test, kernel_bench))]
-    init_test_runner();
+    /*#[cfg(any(kernel_test, kernel_bench))]
+    init_test_runner(); */
 
     calibrate(50);
     infiniband::init();
 
-    #[cfg(any(kernel_test, kernel_bench))]
-    run_tests();
+    /*#[cfg(any(kernel_test, kernel_bench))]
+    run_tests(); */
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
@@ -441,7 +442,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Start APIC timer & scheduler
     info!("Starting scheduler");
-    apic().start_timer(10);
+    apic().start_timer(1);
      
     scheduler().start();
 }

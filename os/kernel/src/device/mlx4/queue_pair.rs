@@ -7,9 +7,9 @@ use core::{mem::size_of, sync::atomic::{compiler_fence, Ordering}};
 use alloc::boxed::Box;
 use bitflags::bitflags;
 use byteorder::BigEndian;
-use crate::{device::mlx4::utils::FillOperation, 
-    infiniband::ib_core::{ibv_access_flags, ibv_mtu, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_state, ibv_qp_type, ibv_recv_wr, 
-                            ibv_send_wr, ibv_send_wr_wr, ibv_sge, ibv_wr_opcode, ibv_send_flags}};
+use crate::{device::mlx4::utils::FillOperation};
+use rdma::{ibv_access_flags, ibv_mtu, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_state, ibv_qp_type, ibv_recv_wr, 
+                            ibv_send_wr, ibv_send_wr_wr, ibv_sge, ibv_wr_opcode, ibv_send_flags};
 use modular_bitfield_msb::{bitfield, prelude::{B12, B16, B17, B19, B2, B20, B24, B3, B4, B40, B48, B5, B53, B56, B6, B7}};
 use strum_macros::FromRepr;
 use volatile::WriteOnly;

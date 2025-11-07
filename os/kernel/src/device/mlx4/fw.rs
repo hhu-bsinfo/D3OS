@@ -4,7 +4,7 @@ use core::{mem::size_of};
 
 use alloc::{format, string::String, vec::Vec};
 use byteorder::BigEndian;
-use crate::infiniband::ib_core::ibv_mtu;
+use rdma::ibv_mtu;
 use modular_bitfield_msb::{bitfield, specifiers::{B1, B10, B104, B11, B12, B15, B2, B20, B22, 
     B24, B25, B27, B3, B31, B36, B4, B42, B45, B5, B6, B63, B7, B72, B88, B91}};
 use volatile::WriteOnly;

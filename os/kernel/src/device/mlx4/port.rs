@@ -1,7 +1,7 @@
 use core::{fmt::{self, Debug}, mem::size_of};
 use byteorder::BigEndian;
 use modular_bitfield_msb::{bitfield, prelude::{B11, B28, B3, B5, B60, B84}, specifiers::{B2, B4, B48, B9}};
-use crate::infiniband::ib_core::{ibv_mtu, ibv_port_attr, ibv_port_state, PhysicalPortState};
+use rdma::{ibv_mtu, ibv_port_attr, ibv_port_state, PhysicalPortState};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 
 use super::utils::MappedPages;

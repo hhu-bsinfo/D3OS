@@ -1,7 +1,7 @@
 use core::mem::size_of;
 
 use alloc::vec::Vec;
-use crate::infiniband::ib_core::ibv_access_flags;
+use rdma::ibv_access_flags;
 use modular_bitfield_msb::{bitfield, prelude::{B10, B11, B21, B24, B28, B3, B4, B40, B7}};
 use x86_64::{PhysAddr, VirtAddr};
 use zerocopy::{AsBytes, BigEndian, FromBytes, U64};

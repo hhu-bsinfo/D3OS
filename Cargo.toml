@@ -11,7 +11,9 @@ members = [
     "os/application/date",
     "os/application/ls",
     "os/application/heaptest",
-    "os/application/ntest"
+    "os/application/ntest",
+    "os/application/ibstat/mlx4",
+    "os/application/rdma/mlx4"
 ]
 
 # [profile.release]
