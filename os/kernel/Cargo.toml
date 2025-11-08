@@ -17,6 +17,7 @@ syscall = { path = "../library/syscall" }
 naming = { path = "../library/naming" }
 rdma = { path = "../library/rdma" }
 net = { path = "../library/net" }
+mm = { path = "../library/mm" }
 
 # External depencies
 spin = "0.9.8"
