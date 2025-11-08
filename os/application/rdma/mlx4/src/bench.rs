@@ -11,7 +11,7 @@ use time::get_time_in_us;
 use cpu_core::{flush_cache};
 use terminal::{println, print};
 
-const ITERATIONS: usize = 10;
+const ITERATIONS: usize = 1000;
 const MAX_OUTSTANDING_BATCHES: usize = ITERATIONS + 24;
 const WARMUP: usize = 5; // for better measurements we can warmup for N steps
 const LOG_STEP: usize = 5; // debug only, otherwise logging would interfere with measurement
@@ -89,17 +89,6 @@ fn local_range_init() -> [Vec<Vec<Range<usize>>>; BATCHES] {
     result
 }
 
-/*fn local_range_init() -> [Vec<Vec<Range<usize>>>; BATCHES] {
-    [
-        vec![vec![0..ALLOC_MEM]], 
-        vec![vec![0..(ALLOC_MEM/2)], vec![(ALLOC_MEM/2)..ALLOC_MEM]],
-        vec![vec![0..(ALLOC_MEM/4)], 
-            vec![(ALLOC_MEM/4)..(ALLOC_MEM/2)],
-            vec![(ALLOC_MEM/2)..(ALLOC_MEM - (ALLOC_MEM/4))],
-            vec![(ALLOC_MEM - (ALLOC_MEM/4))..ALLOC_MEM]]
-    ]
-} */
-
 fn remote_range_init() -> [Vec<Range<u64>>; BATCHES] {
     let mut result = [(); BATCHES].map(|_| Vec::new());
 
@@ -118,40 +107,12 @@ fn remote_range_init() -> [Vec<Range<u64>>; BATCHES] {
     result
 }
 
-/* fn remote_range_init() -> [Vec<Range<u64>>; BATCHES] {
-    [
-        vec![0..(ALLOC_MEM as u64)], 
-        vec![0..((ALLOC_MEM/2) as u64), ((ALLOC_MEM/2) as u64)..ALLOC_MEM as u64], 
-        vec![0..((ALLOC_MEM / 4) as u64), 
-        ((ALLOC_MEM/4) as u64)..((ALLOC_MEM/2) as u64), 
-        ((ALLOC_MEM/2) as u64)..((ALLOC_MEM - (ALLOC_MEM/4)) as u64), 
-        ((ALLOC_MEM - (ALLOC_MEM/4)) as u64)..(ALLOC_MEM as u64)]
-    ]
-} */
-
 fn work_id_init() -> [Vec<u64>; BATCHES] {
     core::array::from_fn(|i| {
         let parts = 1 << i;
         (1..=parts).map(|x| x as u64).collect()
     })
 }
-
-/*fn work_id_init() -> [Vec<u64>; BATCHES] {
-    [
-        vec![1],
-        vec![1,2],
-        vec![1,2,3,4]
-    ]
-}*/
-
-/*fn send_flags_init() -> [Vec<ibv_send_flags>; BATCHES] {
-    [
-        vec![ibv_send_flags::SIGNALED],
-        vec![ibv_send_flags::empty(), ibv_send_flags::SIGNALED],
-        vec![ibv_send_flags::empty(), ibv_send_flags::empty(),
-            ibv_send_flags::empty(), ibv_send_flags::SIGNALED]
-    ]
-} */
 
 fn send_flags_init() -> [Vec<ibv_send_flags>; BATCHES] {
     core::array::from_fn(|i| {

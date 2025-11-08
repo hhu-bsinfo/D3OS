@@ -1,5 +1,6 @@
 use super::{session, handshake, integrity};
 use crate::build_constants;
+use mm::{MmapFlags, mmap};
 use rdma_core::{
     devices, LocalMemoryRegion
 };
@@ -14,9 +15,11 @@ use concurrent::thread::sleep;
 use terminal::{println, print};
 
 pub fn invoke() {
-    let min_cq_entries = 4096;
+    let min_cq_entries = 1000;
     let alloc_mem = ALLOC_MEM;
-    let mut context_buffer = vec![0u8; CONTEXT_BUFFER_SIZE];
+    let context_buffer = mmap(30 * 1024 * 1024 * 1024 * 1024, CONTEXT_BUFFER_SIZE,
+        MmapFlags::ANONYMOUS | MmapFlags::POPULATE | MmapFlags::ALLOC_AT)
+        .expect("mmap failed");
 
     println!("waiting for device context");
 
@@ -31,7 +34,7 @@ pub fn invoke() {
             Ok(ctx) => break ctx,
             Err(_) => {
                 println!("failed to get device context => most likely due to port not being ready yet ...");
-                sleep(5000);
+                sleep(1000);
             },
         }
     };
@@ -43,13 +46,13 @@ pub fn invoke() {
     let mut rdma_session = session::RdmaSession::new(&ctx, &pd, alloc_mem, min_cq_entries);
     let udp_session  = session::UdpSession::new();
 
-    sleep(1000); // give some time for the memory regions
+    // sleep(1000); // give some time for the memory regions
 
     let payload_f = integrity::PAYLOAD_FUNCTIONS.lcg;
 
     if build_constants::IS_SENDER {
         println!("Starting as SENDER");
-        let max_send_wr = 4096;
+        let max_send_wr = 4000;
         let max_send_sge = 1;
         let allocated_qp = session::RdmaSession::create_qp(
             rdma_session.pd, 
@@ -110,7 +113,7 @@ pub fn invoke() {
             
             let _ = integrity::validate_packet(packet)
                 .map_err(|e| {
-                    hit_wo_fault(packet, &mut context_buffer[..], payload_f);
+                    hit_wo_fault(packet, context_buffer, payload_f);
                     println!("Data integrity failed due to {:?}", e);
                     e
                 });
@@ -120,7 +123,7 @@ pub fn invoke() {
         {
             let payload = integrity::build_payload(ALLOC_MEM - META_DATA_SIZE, payload_f);
 
-            let packet_len = integrity::build_packet(&payload[..], &mut context_buffer[..]).expect("failed to create packet");
+            let packet_len = integrity::build_packet(&payload[..], context_buffer).expect("failed to create packet");
             let packet = &context_buffer[..packet_len];
             
             unsafe { bench::rdma_bench(
@@ -169,7 +172,7 @@ pub fn invoke() {
 
         let payload = integrity::build_payload(ALLOC_MEM - META_DATA_SIZE, payload_f);
 
-        let packet_len = integrity::build_packet(&payload[..], &mut context_buffer[..]).expect("failed to create packet");
+        let packet_len = integrity::build_packet(&payload[..], context_buffer).expect("failed to create packet");
         let packet = &context_buffer[..packet_len];
 
         session::RdmaSession::write(mr, packet, 0..alloc_mem);
