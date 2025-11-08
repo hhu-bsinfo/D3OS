@@ -76,6 +76,8 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ops::Range;
 use core::ptr;
+use mm::MmapFlags;
+use mm::mmap;
 use rdma::{ibv_port_attr, ibv_recv_wr, ibv_send_wr, ibv_send_flags, ibv_qp_cap };
 use mm::PAGE_SIZE;
 
@@ -1233,21 +1235,19 @@ impl<'ctx> ProtectionDomain<'ctx> {
         assert!(mem::size_of::<T>() > 0);
 
         let size = n * mem::size_of::<T>();
+        
+        // fault in, reducing latency ; map at 40 TB
+        let data_ptr = mmap(
+            40 * 1024 * 1024 * 1024 * 1024, size, 
+            MmapFlags::ANONYMOUS | MmapFlags::POPULATE | MmapFlags::ALLOC_AT )
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "allocation failed"))?;
 
-        let ly = Layout::from_size_align(size, PAGE_SIZE).unwrap();
-        let data_ptr = unsafe { alloc::alloc::alloc(ly) };
-
-        if data_ptr.is_null() {
-            return Err(io::Error::new(io::ErrorKind::Other, "allocation failed"));
-        }
-
-        let data_ptr_t = data_ptr as *mut T;
-
-        for i in 0..n {
-            unsafe { ptr::write(data_ptr_t.add(i), T::default()) };
-        }
-
-        let mut data = unsafe { Vec::from_raw_parts(data_ptr_t, n, n) };
+        let mut data = unsafe { 
+            Vec::from_raw_parts(
+                data_ptr.as_mut_ptr() as *mut T,
+                n,
+                n) 
+        };
 
         let access = ffi::ibv_access_flags::IBV_ACCESS_LOCAL_WRITE
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_WRITE
@@ -1378,10 +1378,10 @@ impl<'res> QueuePair<'res> {
 
         let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, wr)? };
 
-        while !next.is_null() {
+        /*while !next.is_null() {
             let _next = unsafe { Box::from_raw(next) };
             next = _next.next;
-        }
+        } */
 
         Ok(())
     }
@@ -1679,10 +1679,10 @@ impl<'res> QueuePair<'res> {
 
         let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, wr)? };
         
-        while !next.is_null() {
+        /*while !next.is_null() {
             let _next = unsafe { Box::from_raw(next) };
             next = _next.next;
-        }
+        } */
 
         Ok(())
     }
