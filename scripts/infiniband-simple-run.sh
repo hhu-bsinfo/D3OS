@@ -92,8 +92,8 @@ prlimit --memlock="$LIMIT" qemu-system-x86_64 \
   -device ide-hd,bus=ahci.0,drive=boot \
   -device ide-hd,bus=ide.0,drive=hdd \
   -netdev user,id=net0,net="${GUEST_SUBNET}",dhcpstart="${DHCP_START}",hostfwd=udp:0.0.0.0:"${HOST_PORT}"-:"${GUEST_PORT}" \
-  -device rtl8139,netdev=net0,id=nic0,mac="${NIC_MAC_ADDRESS}" \
-  -S -gdb tcp::1234
+  -device rtl8139,netdev=net0,id=nic0,mac="${NIC_MAC_ADDRESS}"
+  # -S -gdb tcp::1234
 
 printf "shutdown system !"
 

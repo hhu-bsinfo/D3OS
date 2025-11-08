@@ -1,4 +1,4 @@
 export IB_TARGET_NET="$(getent hosts ib3 | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')"
 export IB_TARGET_PORT="1234"
-export IB_TARGET_BREAK="rdma_read.rs:108"
+export IB_TARGET_BREAK="ibverbs.rs:1232"
 export IB_TARGET_HOST="ib3"
