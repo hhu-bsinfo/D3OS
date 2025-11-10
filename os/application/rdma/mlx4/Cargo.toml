@@ -14,7 +14,7 @@ runtime = { path = "../../../library/runtime" }
 rdma_core = { package = "rdma-core", path = "../../../usr/rdma-core" }
 rdma = { path = "../../../library/rdma" }
 terminal = { path = "../../../library/terminal" }
-net = { path = "../../../library/net" }
+network = { path = "../../../library/network" }
 time = { path = "../../../library/time" }
 concurrent = { path = "../../../library/concurrent" }
 cpu_core = { package = "cpu-core", path = "../../../library/cpu" }

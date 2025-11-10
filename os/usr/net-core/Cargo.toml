@@ -7,7 +7,7 @@ authors = [ "Sandro Jose Leal Miudo" ]
 [dependencies]
 # Local dependencies
 syscall  = { path = "../../library/syscall" }
-net = { path = "../../library/net" }
+network = { path = "../../library/network" }
 naming = { path = "../../library/naming" }
 
 # External dependencies

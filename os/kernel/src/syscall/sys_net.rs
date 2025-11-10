@@ -271,7 +271,7 @@ use syscall::return_vals::{SyscallResult};
 use smoltcp::wire::Ipv4Address;
 
 use crate::network::{SocketS, close_socket_legacy, connect_socket, open_socket};
-use net::SocketType;
+use network::SocketType;
 
 pub fn sys_socket(protocol: SocketType) -> SyscallResult {
     let (_, fh) = open_socket(protocol)?;

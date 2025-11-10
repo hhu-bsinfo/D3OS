@@ -1,7 +1,7 @@
 #![no_std]
 
 use syscall::{SystemCall, return_vals::SyscallResult, syscall};
-use net::SocketType;
+use network::SocketType;
 use smoltcp::wire::Ipv4Address;
 use naming;
 

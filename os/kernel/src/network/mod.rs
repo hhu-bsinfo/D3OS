@@ -19,7 +19,7 @@ use crate::{pci_bus, process_manager, scheduler, timer};
 use crate::process::thread::Thread;
 use crate::naming::virtual_objects::{create_pseudo, close_pseudo};
 use syscall::return_vals::Errno;
-use net::SocketType;
+use network::SocketType;
 
 pub struct SocketS { pub handle: SocketHandle }
 

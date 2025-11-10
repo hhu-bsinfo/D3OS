@@ -23,7 +23,7 @@ drawer = { path = "../library/drawer", default-features = false }
 system_info = { path = "../library/system_info", default-features = false }
 input = { path = "../library/input", default-features = false }
 rdma = { path = "../library/rdma" }
-net = { path = "../library/net" }
+network = { path = "../library/network" }
 mm = { path = "../library/mm" }
 
 # External depencies

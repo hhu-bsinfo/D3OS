@@ -1,7 +1,6 @@
 use rdma_core::*;
 use rdma_core::sliceindex::SliceIndex;
 use crate::build_constants;
-use smoltcp::iface::SocketHandle;
 use smoltcp::wire::Ipv4Address;
 use rdma_core::{ibv_qp_type::Type, ibv_wc};
 use rdma::ibv_qp_cap;
@@ -9,7 +8,7 @@ use core::ops;
 use core::slice::from_raw_parts_mut;
 use terminal::{println, print};
 use net_core::{socket, bind, close, connect};
-use net::SocketType;
+use network::SocketType;
 use naming::{read, write};
 use syscall::return_vals::{SyscallResult};
 
