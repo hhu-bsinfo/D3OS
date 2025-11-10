@@ -9,4 +9,5 @@ pub mod serial;
 pub mod ide;
 pub mod pci;
 pub mod rtl8139;
+pub mod mlx4;
 pub mod cpu;

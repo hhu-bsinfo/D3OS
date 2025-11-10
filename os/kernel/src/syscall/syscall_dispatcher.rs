@@ -15,16 +15,20 @@ use x86_64::registers::control::{Efer, EferFlags};
 use x86_64::registers::model_specific::{KernelGsBase, LStar, SFMask, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
+use crate::syscall::sys_vmem::sys_map_memory;
+use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, sys_get_time_us};
+use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
+    sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch};
+use crate::syscall::sys_uverbs::sys_uverbs_ctl;
+use crate::syscall::sys_net::{sys_socket_bind, sys_socket, sys_socket_close, sys_socket_connect};
+use crate::syscall::sys_naming::*;
 
 use crate::{core_local_storage, tss};
 use log::info;
 use x86_64::registers::rflags::RFlags;
 
 use super::sys_concurrent::{
-    sys_process_count, sys_process_execute_binary, sys_process_exit,
-    sys_process_id, sys_thread_count, sys_thread_create, sys_thread_exit,
-    sys_thread_id, sys_thread_join, sys_thread_kill, sys_thread_sleep,
-    sys_thread_switch,
+    sys_process_count, sys_thread_count, sys_thread_kill,
 };
 use super::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
 use super::sys_input::{sys_read_keyboard, sys_read_mouse};
@@ -43,8 +47,7 @@ use super::sys_terminal::{
     sys_terminal_read_output, sys_terminal_write_input,
     sys_terminal_write_output,
 };
-use super::sys_time::{sys_get_date, sys_get_system_time, sys_set_date};
-use super::sys_vmem::{sys_map_memory, sys_map_frame_buffer};
+use super::sys_vmem::{sys_map_frame_buffer};
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -159,6 +162,12 @@ impl SyscallTable {
                 sys_read_keyboard as *const _,
                 sys_map_build_info as *const _,
                 sys_log as *const _,
+                sys_uverbs_ctl as *const _,
+                sys_socket as *const _,
+                sys_socket_connect as *const _,
+                sys_socket_bind as *const _,
+                sys_socket_close as *const _,
+                sys_get_time_us as *const _,
             ],
         }
     }

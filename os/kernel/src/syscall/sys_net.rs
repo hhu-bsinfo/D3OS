@@ -5,7 +5,7 @@ use log::{debug, info, warn};
 use smoltcp::{iface::SocketHandle, socket::{icmp, tcp, udp}, wire::IpAddress};
 use syscall::return_vals::Errno;
 
-use crate::{network::{accept_tcp, bind_icmp, bind_tcp, bind_udp, close_socket, connect_tcp, get_ip_addresses, open_icmp, open_tcp, open_udp, receive_datagram, receive_icmp, receive_tcp, send_datagram, send_icmp, send_tcp, SocketType}, syscall::sys_naming::ptr_to_string};
+use crate::{naming::virtual_objects::recover_pseudo, network::{accept_tcp, bind_icmp, bind_tcp, bind_udp, close_socket, connect_tcp, get_ip_addresses, open_icmp, open_tcp, open_udp, receive_datagram, receive_icmp, receive_tcp, send_datagram, send_icmp, send_tcp}, syscall::sys_naming::ptr_to_string};
 
 /// This module contains all network-related system calls.
 
@@ -257,4 +257,56 @@ pub unsafe fn sys_get_ip_adresses(ptr: *mut u8, len: usize, host_ptr: *const u8)
         idx += text.len() + 1;
     }
     0
+}
+
+/*********************************
+
+Naming service based approach
+
+**********************************/
+
+use core::mem::ManuallyDrop;
+
+use syscall::return_vals::{SyscallResult};
+use smoltcp::wire::Ipv4Address;
+
+use crate::network::{SocketS, close_socket_legacy, connect_socket, open_socket};
+use network::SocketType;
+
+pub fn sys_socket(protocol: SocketType) -> SyscallResult {
+    let (_, fh) = open_socket(protocol)?;
+
+    Ok(fh)
+}
+
+pub fn sys_socket_connect(fh: usize, destination_as_u32: u32, port: u16) -> SyscallResult {
+    let destination = Ipv4Address::from(destination_as_u32);
+
+    let socket_struct = recover_pseudo::<SocketS>(fh)?;
+
+    let x = ManuallyDrop::new(socket_struct);
+
+    if !connect_socket(x.handle, destination, port){
+        return Err(Errno::EINVAL);
+    }
+
+    Ok(0)
+}
+
+pub fn sys_socket_bind(fh: usize, port: u16) -> SyscallResult {
+    let socket_struct = recover_pseudo::<SocketS>(fh)?;
+
+    let x = ManuallyDrop::new(socket_struct);
+
+    let _ = bind_udp(x.handle, IpAddress::Ipv4(Ipv4Address::UNSPECIFIED), port).map_err(|_| Errno::EINVAL)?;
+
+    Ok(0)
+}
+
+pub fn sys_socket_close(fh: usize) -> SyscallResult {
+    let socket_struct = recover_pseudo::<SocketS>(fh)?;
+
+    close_socket_legacy(socket_struct.handle, fh);
+
+    Ok(0)
 }

@@ -33,3 +33,12 @@ pub fn set_date(date: DateTime<Utc>) -> Result<(), ()> {
     let res = syscall(SystemCall::SetDate, &[date_ms as usize, ]);
     res.map(|_| ()).map_err(|_| ())
 }
+
+pub fn get_time_in_us() -> usize {
+    let time_in_us_res = syscall(SystemCall::GetTimeInUs, &[]);
+    
+    match time_in_us_res {
+        Ok(time_in_us) => time_in_us,
+        Err(_) => panic!("Syscall: GetTimeInUs failed")
+    }
+}

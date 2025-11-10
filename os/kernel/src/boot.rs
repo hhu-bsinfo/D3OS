@@ -26,8 +26,15 @@ use crate::{
     init_serial_port, init_tty, initrd, keyboard, logger, mouse,
     process_manager, scheduler, serial_port, timer, tss,
 };
-use crate::{built_info, memory, naming, network, storage};
+use crate::{built_info, memory, naming, network, storage, infiniband};
 
+/*
+#[cfg(any(kernel_test, kernel_bench))]
+use crate::{init_test_runner, run_tests}; */
+
+#[cfg(any(kernel_test, kernel_bench))]
+use crate::build_constants;
+use crate::calibrate;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
@@ -69,7 +76,7 @@ const BOOT_TO_GUI: bool = false; // Immediately start the GUI instead of termina
 pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInformationHeader) {
     // Initialize logger
     log::set_logger(logger())
-        .map(|()| log::set_max_level(LevelFilter::Debug))
+        .map(|()| log::set_max_level(LevelFilter::Trace))
         .expect("Failed to initialize logger!");
 
     // Log messages and panics are now working, but cannot use format string until the heap is initialized later on
@@ -134,6 +141,13 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     dram::alloc(consts::KERNEL_HEAP_PAGES as u64).expect("Failed to allocate kernel heap frames!");
     dram::dump();
     debug!("Old page frame allocator:\n{}", memory::frames::dump());
+    #[cfg(any(kernel_test, kernel_bench))]
+    {
+        info!("Running D3OS in test mode!");
+        info!("This Host => {} ({})\nTarget Host => {} ({})\n",
+                build_constants::THIS_HOST, build_constants::THIS_IP,
+                build_constants::TARGET_HOST, build_constants::TARGET_IP);
+    }
 
     /*
         Hier den neuen Frame-Allocator aktivieren + Device Memory separat verwalten
@@ -294,6 +308,15 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize network stack
     network::init();
+
+    /*#[cfg(any(kernel_test, kernel_bench))]
+    init_test_runner(); */
+
+    calibrate(50);
+    infiniband::init();
+
+    /*#[cfg(any(kernel_test, kernel_bench))]
+    run_tests(); */
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();

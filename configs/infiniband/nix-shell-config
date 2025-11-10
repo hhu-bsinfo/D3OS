@@ -1,0 +1,20 @@
+# shell.nix
+{ pkgs ? import <nixpkgs> {} }:
+
+pkgs.mkShell {
+  buildInputs = [ 
+	  pkgs.sshfs 
+	  pkgs.htop  
+    pkgs.iptables
+    pkgs.vde2
+  ];
+
+  shellHook = ''
+    alias start-d3os-default="/bin/sh ~/run/d3os_run.sh"
+    alias start-d3os-bridge="/bin/sh ~/run/d3os_run_bridge.sh"
+    alias start-d3os-vxlan="/bin/sh ~/run/d3os_run_vxlan.sh"
+    alias start-d3os-vde="/bin/sh ~/run/d3os_run_vde.sh"
+    alias start-d3os-tcp="/bin/sh ~/run/d3os_run_tcp.sh"
+    alias start-d3os-simple="/bin/sh ~/run/d3os_run_simple.sh"
+  '';
+}

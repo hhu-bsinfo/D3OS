@@ -1,0 +1,26 @@
+[package]
+edition = "2024"
+name = "rdma-core"
+version = "0.1.0"
+authors = [ "Sandro Jose Leal Miudo" ]
+
+[lib]
+path = "src/ibverbs.rs"
+
+[dependencies]
+# internal depencies
+rdma = { path = "../../library/rdma" }
+mm = { path = "../../library/mm" }
+syscall = { path = "../../library/syscall" }
+
+# external depencies
+spin = "0.9.8"
+core2 = { version = "0.4", default-features = false, features = ["alloc"] }
+bincode = { version = "2.0.1", optional = true, default-features = false, features = ["derive", "alloc"] }
+
+# External depencies
+bitflags = "2.9.0"
+
+[features]
+default = ["serialize"]
+serialize = ["dep:bincode"]
