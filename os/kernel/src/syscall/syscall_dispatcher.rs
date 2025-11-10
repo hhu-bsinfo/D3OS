@@ -15,6 +15,14 @@ use x86_64::registers::control::{Efer, EferFlags};
 use x86_64::registers::model_specific::{KernelGsBase, LStar, SFMask, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
+use crate::syscall::sys_vmem::sys_map_memory;
+use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, sys_get_time_us};
+use crate::syscall::sys_concurrent::{sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit,
+    sys_thread_id, sys_thread_join, sys_thread_sleep, sys_thread_switch};
+use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write};
+use crate::syscall::sys_uverbs::sys_uverbs_ctl;
+use crate::syscall::sys_net::{sys_socket_bind, sys_socket, sys_socket_close, sys_socket_connect};
+use crate::syscall::sys_naming::*;
 
 use crate::{core_local_storage, tss};
 use log::info;
@@ -159,6 +167,12 @@ impl SyscallTable {
                 sys_read_keyboard as *const _,
                 sys_map_build_info as *const _,
                 sys_log as *const _,
+                sys_uverbs_ctl as *const _,
+                sys_socket as *const _,
+                sys_socket_connect as *const _,
+                sys_socket_bind as *const _,
+                sys_socket_close as *const _,
+                sys_get_time_us as *const _,
             ],
         }
     }

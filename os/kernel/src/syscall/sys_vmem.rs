@@ -12,10 +12,16 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use graphic::lfb::FramebufferInfo;
+
+use alloc::sync::Arc;
+use x86_64::VirtAddr;
+use x86_64::structures::paging::{Page, PageTableFlags};
+
 use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process_manager;
 use syscall::return_vals::Errno;
+use mm::MmapFlags;
 
 static FB_INFO: Once<FramebufferInfo> = Once::new();
 
@@ -37,25 +43,50 @@ pub fn init_fb_info(tag: &FramebufferTag) {
 ///
 /// This just sets up the VMA, no page tables are created yet.
 /// This happens later on on page faults.
-pub extern "sysv64" fn sys_map_memory(start: usize, size: usize) -> isize {
+/// 
+/// supports populating (aka fault in directly), which reduces overhead for larger buffers
+pub extern "sysv64" fn sys_map_memory(start: usize, size: usize, options: usize) -> isize {
     let process = process_manager().read().current_process();
 
-    let start_addr = VirtAddr::new(start.try_into().unwrap());
-    let start_page = Page::containing_address(start_addr);
+    let m_flags = MmapFlags::from_bits_truncate(options as u8);
+
+    let start_page = if m_flags.contains(MmapFlags::ALLOC_AT) {
+        let start_addr = VirtAddr::new(start.try_into().unwrap());
+        Some(Page::containing_address(start_addr))
+    } else {
+        None
+    };
+
     let num_pages = size.div_ceil(PAGE_SIZE);
 
+    let (vma_type, vma_tag) = if m_flags.contains(MmapFlags::ANONYMOUS) {
+        (VmaType::Anonymous, "anon")
+    } else {
+        (VmaType::Heap, "heap")
+    };
+
     let vma = process.virtual_address_space.alloc_vma(
-        Some(start_page),
+        start_page,
         num_pages as u64,
         MemorySpace::User,
-        VmaType::Heap,
-        "heap",
+        vma_type,
+        vma_tag,
     );
-    if vma.is_none() {
-        Errno::EUNKN as isize
-    } else {
-        0
+
+    let Some(vma_u) = vma else {
+        return Errno::EUNKN as isize;
+    };
+
+    if m_flags.contains(MmapFlags::POPULATE) {
+        let complete_range = vma_u.range();
+        process.virtual_address_space.map_partial_vma(
+            &vma_u, 
+            complete_range, 
+            MemorySpace::User, 
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
     }
+
+    vma_u.start().as_u64() as isize
 }
 
 pub extern "sysv64" fn sys_map_frame_buffer(fb_info_user: *mut FramebufferInfo) -> isize {

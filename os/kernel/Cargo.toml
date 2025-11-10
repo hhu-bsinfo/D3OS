@@ -16,6 +16,7 @@ bench = false
 # Local dependencies
 graphic = { path = "../library/graphic" }
 stream = { path = "../library/stream" }
+<<<<<<< HEAD
 syscall = { path = "../library/syscall", default-features = false }
 naming = { path = "../library/naming", default-features = false }
 terminal = { path = "../library/terminal", default-features = false }
@@ -23,6 +24,13 @@ drawer = { path = "../library/drawer", default-features = false }
 system_info = { path = "../library/system_info", default-features = false }
 input = { path = "../library/input", default-features = false }
 
+=======
+syscall = { path = "../library/syscall" }
+naming = { path = "../library/naming" }
+rdma = { path = "../library/rdma" }
+net = { path = "../library/net" }
+mm = { path = "../library/mm" }
+>>>>>>> dev
 
 # External depencies
 spin = "0.9.8"
@@ -49,6 +57,18 @@ smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "
 mbrs = { version = "0.3.1", default-features = false, features = ["no-std"] }
 num_enum = { version = "0.7.3", default-features = false }
 llfree = { git = "https://github.com/luhsra/llfree-rs", default-features = false, rev = "8d3e2aaff9fbb9cce708cea8fc1a3cb5a20a9471" }
+byteorder = { version = "1.4.3", default-features = false }
+modular-bitfield-msb = "0.11.2"
+strum = { version = "0.26", default-features = false }
+strum_macros = "0.26"
+volatile = "0.2.7"
+zerocopy = "0.5.2"
+core2 = { version = "0.4", default-features = false, features = ["alloc"] }
 
 [build-dependencies]
 built = { version = "0.7.7", features = ["chrono", "git2"] }
+
+[features]
+default = ["infiniband_mlx4"]
+infiniband_mlx4 = []
+infiniband_mlx5 = []

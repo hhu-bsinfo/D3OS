@@ -30,6 +30,8 @@ pub enum Errno {
     ECONNRESET = -14, // Connection reset by peer
     ERDONLY    = -15, // Read-only file system
     EAGAIN     = -16, // Resource unavailable
+    EFAULT     = -17, // Fault occured
+    ENOCMD     = -18
 }
 
 

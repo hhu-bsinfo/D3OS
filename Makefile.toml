@@ -46,6 +46,9 @@ args = [
     # Network configuration
     "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797,hostfwd=tcp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
+    
+    # Infiniband configuration
+    "-device vfio-pci,host=${CARGO_INFINIBAND_BUS_ID}",
 
     # Audio configuration (Using pulse audio for Linux)
     "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
@@ -119,6 +122,9 @@ args = [
     "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797,hostfwd=tcp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
+    # Infiniband configuration
+    "-device vfio-pci,host=${CARGO_INFINIBAND_BUS_ID}",
+
     # Audio configuration (Using pulse audio for Linux)
     "-audiodev", "id=audio0,driver=${QEMU_AUDIO_DEVICE}",
 
@@ -166,7 +172,11 @@ condition = { files_not_exist = [ "${INITRD_DIRECTORY}/bin" ] }
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
 command = "${TAR}"
+<<<<<<< HEAD
 args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "bin/", "usr/" ]
+=======
+args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "about", "hello", "helloc", "shell", "uptime", "date", "ntest", "heaptest", "ls", "ibstat" ]
+>>>>>>> dev
 dependencies = [ "link-members" ]
 condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/**/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
 

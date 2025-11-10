@@ -1,0 +1,5 @@
+[package]
+edition = "2024"
+name = "net"
+version = "0.1.0"
+authors = [ "Sandro Jose Leal Miudo" ]

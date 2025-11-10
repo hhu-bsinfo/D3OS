@@ -1,0 +1,11 @@
+[package]
+edition = "2024"
+name = "cpu-core"
+version = "0.1.0"
+authors = [ "Sandro Jose Leal Miudo" ]
+
+[lib]
+path = "src/cpu_core.rs"
+
+[dependencies]
+raw-cpuid = "11.2.0"

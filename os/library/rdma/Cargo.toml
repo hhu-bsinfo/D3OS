@@ -1,0 +1,11 @@
+[package]
+edition = "2024"
+name = "rdma"
+version = "0.1.0"
+authors = [ "Sandro Jose Leal Miudo" ]
+
+[dependencies]
+# External depencies
+bitflags = "2.9.0"
+strum_macros = "0.26"
+num_enum = { version = "0.5", default-features = false }

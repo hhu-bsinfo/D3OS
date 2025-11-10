@@ -1,0 +1,30 @@
+[package]
+edition = "2024"
+name = "rdma_test_mlx4"
+version = "0.1.0"
+authors = [ "Sandro Jose Leal Miudo" ]
+build = "build.rs"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../../library/runtime" }
+rdma_core = { package = "rdma-core", path = "../../../usr/rdma-core" }
+rdma = { path = "../../../library/rdma" }
+terminal = { path = "../../../library/terminal" }
+net = { path = "../../../library/net" }
+time = { path = "../../../library/time" }
+concurrent = { path = "../../../library/concurrent" }
+cpu_core = { package = "cpu-core", path = "../../../library/cpu" }
+naming = { path = "../../../library/naming" }
+syscall = { path = "../../../library/syscall" }
+net_core = { package = "net-core", path = "../../../usr/net-core" }
+mm = { path = "../../../library/mm" }
+
+# External dependencies
+smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "log", "medium-ethernet", "proto-ipv4", "socket-udp"] }
+bincode = { version = "2.0.1", default-features = false, features = ["derive", "alloc"] }
+crc32fast = { version = "1.4", default-features = false }
+spin = "0.9.8"

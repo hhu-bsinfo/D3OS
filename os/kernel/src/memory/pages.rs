@@ -123,8 +123,10 @@ impl Paging {
         Paging::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
-/*    /// Map a range of `frames` of a device into kernel space 
-    pub(super) fn map_io(&self, frames: PhysFrameRange) {
+    /// Map a range of `frames` of a device into kernel space
+    /// adopted this method to return the given page range for the frames
+    /// so we don't need to recompute these again
+    pub(super) fn map_io(&self, frames: PhysFrameRange) -> PageRange {
         let v_start = VirtAddr::new(frames.start.start_address().as_u64());
         let v_end = VirtAddr::new(frames.end.start_address().as_u64());
 
@@ -134,8 +136,10 @@ impl Paging {
 
         // We have 1:1 mapping in kernel space
         self.map(pages, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+    
+        pages
     }
-*/
+    
     /// Return physical address for the give a virtual address `addr`
     pub(super) fn translate(&self, addr: VirtAddr) -> Option<PhysAddr> {
         let depth = self.depth;

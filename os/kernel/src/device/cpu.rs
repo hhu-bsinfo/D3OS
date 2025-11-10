@@ -125,5 +125,48 @@ fn is_int_enabled() -> bool {
 pub fn pause() {
     unsafe {
         asm!("pause", options(nomem, nostack));
+
     }
 }
+
+#[inline(always)]
+pub fn rdtsc(&self) -> u64 {
+    let lo: u32;
+    let hi: u32;
+    unsafe {
+        asm!(
+            "rdtsc",
+            out("eax") lo,
+            out("edx") hi,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    ((hi as u64) << 32) | (lo as u64)
+}
+
+#[inline(always)]
+pub fn cpuid(&self, eax: u32, ecx: u32) -> (u32, u32, u32) {
+    let mut eax_out: u32;
+    let mut ecx_out: u32;
+    let mut edx_out: u32;
+
+    unsafe {
+        asm!(
+            "cpuid",
+            inout("eax") eax => eax_out,
+            inout("ecx") ecx => ecx_out,
+            lateout("edx") edx_out,
+            // EBX is not captured
+            options(nostack, nomem),
+        );
+    }
+
+    (eax_out, ecx_out, edx_out)
+}
+
+#[inline(always)]
+pub fn has_tsc(&self) -> bool {
+    let (_eax, _ecx, edx) = self.cpuid(1, 0);
+    (edx & (1 << 4)) != 0
+}
+

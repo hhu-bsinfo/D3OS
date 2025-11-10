@@ -13,6 +13,9 @@ use x86_64::set_general_handler;
 use x86_64::structures::idt::InterruptStackFrame;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags};
+use crate::{apic, idt, interrupt_dispatcher, scheduler};
+use crate::memory::MemorySpace;
+use crate::security::sec::{get_exception_table, fixup_fn};
 
 #[repr(u8)]
 #[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
@@ -180,6 +183,18 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
     if !thread.is_kernel_thread() {
         let fault_page = Page::containing_address(fault_addr);
 
+        // Check if page fault occured inside marked fault instruction
+        get_exception_table()
+            .iter()
+            .find(|ex_entry| fault_addr.as_u64() == ex_entry.ftistn)
+            .map(|ex_entry| {
+                (fixup_fn(ex_entry.fixup))();
+                ()
+            });
+
+        if thread.faulted().is_err() {
+            return; // inside marked fault instruction, leave
+        }
         // Check if page fault occurred inside a user stack
         if let Some(stack) = thread
             .process()

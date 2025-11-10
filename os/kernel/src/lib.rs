@@ -15,6 +15,9 @@
 #![feature(str_split_remainder)]
 #![allow(internal_features)]
 #![no_std]
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
+#![feature(associated_type_defaults)]
 
 use crate::device::apic::Apic;
 use crate::device::cpu::Cpu;
@@ -55,9 +58,11 @@ use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::tss::TaskStateSegment;
-
 extern crate alloc;
 extern crate llfree;
+
+/*#[cfg(any(kernel_test, kernel_bench))]
+use tests::test_runner; */
 
 #[macro_use]
 pub mod device;
@@ -72,11 +77,18 @@ pub mod process;
 pub mod storage;
 pub mod syscall;
 pub mod sync;
+pub mod infiniband;
+pub mod security;
+/*#[cfg(any(kernel_test, kernel_bench))]
+pub mod tests; */
 
 pub mod built_info {
     // The file has been placed there by the build script
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
+
+#[cfg(any(kernel_test, kernel_bench))]
+pub mod build_constants;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -504,3 +516,40 @@ pub fn boot_info() -> &'static BootInfo {
         .get()
         .expect("Trying to access boot info before initialization")
 }
+static CYCLES_PER_US: Once<u64> = Once::new();
+
+// assuming pit is set to 1ms for simplicity
+// assuming feature on cpu is supported 
+pub fn calibrate(wait_ticks: usize) {
+
+    CYCLES_PER_US.call_once(|| {
+        let end_time = timer().systime_ms() + wait_ticks;
+        let start_tsc = cpu().rdtsc();
+
+        while timer().systime_ms() < end_time {}
+
+        let end_tsc = cpu().rdtsc();
+        let elapsed_cycles = end_tsc - start_tsc;
+
+        // Convert PIT ticks to microseconds (assuming 1 tick = 1 ms)
+        let elapsed_us = wait_ticks * 1000;
+        elapsed_cycles / (elapsed_us as u64) 
+    });
+}
+
+pub fn get_time_in_us() -> u64 {
+    let cycles_per_us = unsafe {
+        CYCLES_PER_US.get_unchecked()
+    };
+    cpu().rdtsc() / cycles_per_us
+}
+
+/*#[cfg(any(kernel_test, kernel_bench))]
+pub fn init_test_runner() {
+    test_runner::TestRunner::new();
+}
+
+#[cfg(any(kernel_test, kernel_bench))]
+pub fn run_tests() {
+    test_runner::get_test_runner().expect("Trying to access Test Runner before init!").lock().exec();
+} */
