@@ -31,7 +31,7 @@ pub enum Errno {
     ERDONLY    = -15, // Read-only file system
     EAGAIN     = -16, // Resource unavailable
     EFAULT     = -17, // Fault occured
-    ENOCMD     = -18
+    ENOCMD     = -18,
 }
 
 

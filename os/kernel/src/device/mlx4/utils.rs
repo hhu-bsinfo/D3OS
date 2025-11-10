@@ -5,7 +5,7 @@ use x86_64::structures::paging::{PageTableFlags, PhysFrame, Size4KiB};
 
 use crate::process_manager;
 use x86_64::{PhysAddr, VirtAddr};
-use crate::memory::{frames, PAGE_SIZE};
+use crate::memory::{PAGE_SIZE, frames, vmm};
 
 use core::mem as mem;
 
@@ -350,7 +350,7 @@ pub fn pci_map_bar_mem(mlx3_pci_dev: &EndpointHeader, slot: u8, config_access: &
 }
 
 pub fn create_cont_mapping_with_dma_flags(frame_count: usize) -> Result<PageToFrameRange, &'static str> {
-    let memory = frames::alloc(frame_count);
+    let memory = unsafe { vmm::alloc_frames(frame_count) };
     if memory.is_empty() {
         return Err("Memory can't be allocated, since the frame allocator didn't return frames");
     }

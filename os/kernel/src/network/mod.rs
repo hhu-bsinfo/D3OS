@@ -9,30 +9,28 @@ use core::ptr;
 use log::{info, warn};
 use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
 use smoltcp::socket::{dhcpv4, dns, icmp, tcp, udp};
-use log::info;
-use smoltcp::iface::{Interface, SocketHandle, SocketSet};
-use smoltcp::socket::udp::{self, RecvError};
 use smoltcp::time::Instant;
 use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint};
 use spin::{Once, RwLock};
 use crate::device::rtl8139::Rtl8139;
+use crate::naming::{PseudoFileObject, PseudoType};
 use crate::process::process::Process;
 use crate::{pci_bus, process_manager, scheduler, timer};
 use crate::process::thread::Thread;
-use crate::naming::{NamedObject, PseudoFile, PseudoFileObject, PseudoType, create_open_table_entry, free_open_table_entry};
+use crate::naming::virtual_objects::{create_pseudo, close_pseudo};
 use syscall::return_vals::Errno;
 use net::SocketType;
 
 pub struct SocketS { pub handle: SocketHandle }
 
 struct SocketResolutionTable {
-    sockets: Vec<(Arc<SocketS>, Ipv4Address, u16)>
+    sockets: Vec<(Arc<SocketS>, Ipv4Addr, u16)>
 }
 
 impl PseudoFileObject for SocketS {
 
     fn read(&self, _buf: &mut [u8]) -> Result<usize, Errno> {
-        let (x, _) = recv_datagram(self.handle, _buf).map_err(|_| Errno::EFAULT)?;
+        let (x, _) = receive_datagram(self.handle, _buf).map_err(|_| Errno::EFAULT)?;
 
         Ok(x)
     }
@@ -49,7 +47,7 @@ impl PseudoFileObject for SocketS {
             None => Err(Errno::EFAULT)
         }?;
 
-        let _ = send_datagram(self.handle, res.1, res.2, _buf).map_err(|_| Errno::EFAULT)?;
+        let _ = send_datagram(self.handle, IpAddress::Ipv4(res.1), res.2, _buf).map_err(|_| Errno::EFAULT)?;
     
         Ok(_buf.len())
     }
@@ -71,13 +69,6 @@ static SOCKET_PROCESS: RwLock<BTreeMap<SocketHandle, Arc<Process>>> = RwLock::ne
 static DNS_SOCKET: Once<SocketHandle> = Once::new();
 static DHCP_SOCKET: Once<SocketHandle> = Once::new();
 static SOCK_RES_TABLE: Once<RwLock<SocketResolutionTable>> = Once::new();
-
-#[derive(Debug)]
-#[repr(u8)]
-#[non_exhaustive]
-pub enum SocketType {
-    Udp, Tcp, Icmp,
-}
 
 pub fn init() {
     SOCKETS.call_once(|| RwLock::new(SocketSet::new(Vec::new())));
@@ -303,44 +294,41 @@ pub fn open_socket(protocol: SocketType) -> Result<(SocketHandle, usize), Errno>
     );
 
     let socket = match protocol {
-        SocketType::Udp => udp::Socket::new(rx_buffer, tx_buffer),
-    };
+        SocketType::Udp => Ok(udp::Socket::new(rx_buffer, tx_buffer)),
+        _ => Err(Errno::ENOTSUP),
+    }?;
 
     let sh = sockets.write().add(socket);
     let ss = Arc::new(SocketS { handle: sh } );
     let ss_c = Arc::clone(&ss);
 
-    SOCK_RES_TABLE.get().unwrap().write().sockets.push((ss_c, Ipv4Address::UNSPECIFIED, 0));
+    SOCKET_PROCESS
+        .write()
+        .try_insert(sh, process_manager().read().current_process())
+        .expect("failed to insert socket into socket-process map");
 
-    let fd = create_fd_for_socket(ss)?;
+    SOCK_RES_TABLE.get().unwrap().write().sockets.push((ss_c, Ipv4Addr::UNSPECIFIED, 0));
+
+    let fd = create_pseudo(ss)?;
 
     Ok((sh, fd))
-}
-
-pub fn create_fd_for_socket(ss: Arc<SocketS>) -> Result<usize, Errno> {
-    let p = PseudoFile {
-        ops: Arc::clone(&ss) as Arc<dyn PseudoFileObject>,
-        private_data: Arc::into_raw(ss).cast()
-    };
-
-    let p_obj = NamedObject::PseudoFileObject(Arc::new(p));
-    create_open_table_entry(p_obj)
 }
 
 pub fn close_socket_legacy(handle: SocketHandle, fh: usize) {
     let table_v = SOCK_RES_TABLE.get().unwrap().read();
     let query_hit = table_v.sockets.iter().enumerate()
-            .find(|(i, x)| x.0.handle == handle);
+            .find(|(_, x)| x.0.handle == handle);
 
-    let Some((index, hit)) = query_hit else {
+    let Some((index, _)) = query_hit else {
         return;
     };
 
     SOCK_RES_TABLE.get().unwrap().write().sockets.swap_remove(index);
-    free_open_table_entry(fh).expect("File handle not present !");
+    
+    close_pseudo(fh).expect("File handle not present !");
 }
 
-pub fn connect_socket(handle: SocketHandle, destination: Ipv4Address, port: u16) -> bool {
+pub fn connect_socket(handle: SocketHandle, destination: Ipv4Addr, port: u16) -> bool {
     SOCK_RES_TABLE.get().unwrap().write().sockets.iter_mut()
         .find(|x| x.0.handle == handle)
         .and_then(|x| {
@@ -385,20 +373,6 @@ pub fn bind_tcp(handle: SocketHandle, addr: IpAddress, port: u16) -> Result<(), 
 pub fn bind_icmp(handle: SocketHandle, ident: u16) -> Result<(), icmp::BindError> {
     get_socket_for_current_process!(socket, handle, icmp::Socket);
     socket.bind(icmp::Endpoint::Ident(ident))
-}
-
-pub fn send_datagram(handle: SocketHandle, destination: Ipv4Address, port: u16, data: &[u8]) -> Result<(), udp::SendError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<udp::Socket>(handle);
-
-    socket.send_slice(data, (destination, port))
-}
-
-pub fn recv_datagram(handle: SocketHandle, data : &mut [u8]) -> Result<(usize, udp::UdpMetadata), RecvError> {
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let socket = sockets.get_mut::<udp::Socket>(handle);
-
-    socket.recv_slice(data)
 }
 
 pub fn accept_tcp(handle: SocketHandle) -> Result<IpEndpoint, tcp::ConnectError> {

@@ -36,7 +36,9 @@ impl<'ctx, 'pd> RdmaSession<'ctx, 'pd> {
         println!("State: {:?}, Max MTU: {:?}, Active MTU: {:?}", 
             port_stats.state, port_stats.max_mtu, port_stats.active_mtu);
 
-        let mr = pd.allocate::<u8>(alloc_mem).expect("failed to pin memory");
+        let mut mr = pd.allocate::<u8>(alloc_mem).expect("failed to pin memory");
+
+        println!("remote ===> {:?}", mr.remote());
 
         let cq_send = ctx.create_cq(min_cq_entries, 1).expect("failed to create send CQ");
         let cq_recv = ctx.create_cq(min_cq_entries, 2).expect("failed to create recv CQ");
@@ -84,11 +86,17 @@ impl<'ctx, 'pd> RdmaSession<'ctx, 'pd> {
         while completed < wait_until {
             let completions = cq_send.poll(&mut wc).expect("failed to poll for completions");
 
-            #[cfg(user_test)]
+            // #[cfg(user_test)]
             for wr in completions.iter() {
                 println!("Work request ID: {}", wr.wr_id());
                 if !wr.is_valid() {
-                    println!("Error occurred: {:#?}", wr.error().unwrap());
+                    match wr.error() {
+                        Some(error) => {
+                            println!("Error occurred: {:#?}", error.0);
+                        },
+                        _ => println!("Error occurred" )
+                    }
+                    
                 }
                 println!("Opcode: {:#?}, Bytes transferred: {}", wr.opcode(), wr.len());
             }

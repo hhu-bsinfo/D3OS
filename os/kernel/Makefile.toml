@@ -2,7 +2,7 @@
 skip_core_tasks = true
 skip_git_env_info = true
 skip_rust_env_info = true
-skip_crate_env_info = true
+# skip_crate_env_info = true
 
 [env.development]
 CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_kernel.json"
@@ -69,7 +69,8 @@ command = "${LINKER}"
 args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${IB_PROFILE}/${CARGO_MAKE_PROJECT_NAME}.elf", 
          "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/boot.o",
          "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/sec.o",
-         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/lib${CARGO_MAKE_PROJECT_NAME}.a"]
+         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/lib${CARGO_MAKE_PROJECT_NAME}.a",
+         "-z", "noexecstack" ]
 dependencies = [ "test-compile", "test-build-boot-asm", "test-build-sec-asm" ]
 
 [tasks.bench]
@@ -77,7 +78,8 @@ command = "${LINKER}"
 args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${IB_PROFILE}/${CARGO_MAKE_PROJECT_NAME}.elf", 
          "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/boot.o",
          "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/sec.o",
-         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/lib${CARGO_MAKE_PROJECT_NAME}.a"]
+         "${CARGO_ROOT_DIR}/target-${HOST_MACHINE}/d3os_kernel/${PROFILE}/lib${CARGO_MAKE_PROJECT_NAME}.a",
+         "-z", "noexecstack" ]
 dependencies = [ "bench-compile", "test-build-boot-asm", "test-build-sec-asm" ]
 
 [tasks.build-boot-asm]
@@ -93,7 +95,7 @@ condition = { files_modified = { input = [ "${SOURCE_DIRECTORY}/security/sec.asm
 [tasks.link]
 command = "${LINKER}"
 args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${KERNEL}", 
-        "${BUILD_DIRECTORY}/boot.o", "${BUILD_DIRECTORY}/sec.o", "${RUST_OBJECT}" "-z", "noexecstack" ]
+        "${BUILD_DIRECTORY}/boot.o", "${BUILD_DIRECTORY}/sec.o", "${RUST_OBJECT}", "-z", "noexecstack" ]
 dependencies = [ "compile", "build-boot-asm", "build-sec-asm" ]
 condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*", "${LINKER_FILE}" ], output = [ "${BOOTLOADER_DIRECTORY}/kernel.elf" ] } }
 

@@ -13,10 +13,6 @@ use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use graphic::lfb::FramebufferInfo;
 
-use alloc::sync::Arc;
-use x86_64::VirtAddr;
-use x86_64::structures::paging::{Page, PageTableFlags};
-
 use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process_manager;

@@ -52,7 +52,7 @@ pub fn invoke() {
 
     if build_constants::IS_SENDER {
         println!("Starting as SENDER");
-        let max_send_wr = 4000;
+        let max_send_wr = 10;
         let max_send_sge = 1;
         let allocated_qp = session::RdmaSession::create_qp(
             rdma_session.pd, 
@@ -64,7 +64,7 @@ pub fn invoke() {
             max_send_sge,
             0
         )
-        .set_timeout(10)
+        .set_timeout(20)
         .set_min_rnr_timer(30)
         .build()
         .expect("build of allocated QP was not successful");

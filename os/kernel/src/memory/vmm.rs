@@ -41,6 +41,7 @@
 
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
+use x86_64::structures::paging::Size4KiB;
 use core::ops::Range;
 use log::{warn, info};
 use spin::RwLock;
@@ -57,6 +58,7 @@ use crate::memory::frames;
 use crate::memory::frames::phys_limit;
 use crate::memory::pages;
 use crate::memory::pages::Paging;
+use crate::memory::vma;
 use crate::memory::vma::{VirtualMemoryArea, VmaType};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 
@@ -322,16 +324,22 @@ impl VirtualAddressSpace {
         
         self.page_tables.map_io(_frames);
 
-        
-        let v_area = Arc::new(VirtualMemoryArea::from_address(
-                VirtAddr::new(_frames.start.start_address().as_u64()), 
-                _frames.size() as usize,
-                MemorySpace::Kernel,
-                VmaType::DeviceMemory));
+        let start_address = VirtAddr::new(_frames.start.start_address().as_u64());
+        let end_address = VirtAddr::new(_frames.end.start_address().as_u64());
+
+        let p_range = Page::range(
+            Page::from_start_address(start_address).unwrap(), 
+            Page::from_start_address(end_address).unwrap());
+
+        let v_area = VirtualMemoryArea::new_with_tag(
+            MemorySpace::Kernel, 
+            p_range, 
+            VmaType::DeviceMemory,
+            "dev-mem");
 
         let mut vmas = self.virtual_memory_areas.write();
 
-        vmas.push(Arc::clone(&v_area));
+        vmas.insert(start_address, Arc::new(v_area));
     }
 
     /// Set page table `flags` for the give page range `pages`  

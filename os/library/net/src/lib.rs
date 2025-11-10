@@ -1,8 +1,10 @@
 #![no_std]
 
+#[derive(Debug)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum SocketType {
-    Udp
+    Udp, Tcp, Icmp,
 }
 
 impl From<SocketType> for usize {

@@ -41,7 +41,7 @@ SECTIONS {
     .ex_table ALIGN (8) :
     {
         KEEP(*sec.o(.ex_table*))
-    }
+    } :data
 
     .data ALIGN (4K) :
     {

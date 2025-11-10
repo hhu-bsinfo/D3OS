@@ -18,6 +18,5 @@ pub mod sys_input;
 pub mod sys_system_info;
 pub mod sys_logger;
 pub mod sys_uverbs;
-pub mod sys_net;
 
 pub mod syscall_dispatcher;

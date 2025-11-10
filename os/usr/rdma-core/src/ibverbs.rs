@@ -1378,10 +1378,10 @@ impl<'res> QueuePair<'res> {
 
         let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, wr)? };
 
-        /*while !next.is_null() {
+        while !next.is_null() {
             let _next = unsafe { Box::from_raw(next) };
             next = _next.next;
-        } */
+        }
 
         Ok(())
     }
@@ -1679,10 +1679,10 @@ impl<'res> QueuePair<'res> {
 
         let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, wr)? };
         
-        /*while !next.is_null() {
+        while !next.is_null() {
             let _next = unsafe { Box::from_raw(next) };
             next = _next.next;
-        } */
+        }
 
         Ok(())
     }

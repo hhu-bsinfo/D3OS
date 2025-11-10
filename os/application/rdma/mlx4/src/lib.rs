@@ -30,7 +30,7 @@ pub const ALLOC_MEM_XL: usize = 10000000;
 pub const ALLOC_MEM_XXL: usize= 40000000;
 pub const ALLOC_MEM_XXXL: usize = 1000000000;
 
-pub const ALLOC_MEM: usize = ALLOC_MEM_L;
+pub const ALLOC_MEM: usize = ALLOC_MEM_XL;
 
 pub const CONTEXT_BUFFER_SIZE: usize = ALLOC_MEM;
 pub const PAYLOAD_FILL: u8 = 0xFA;

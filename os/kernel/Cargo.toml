@@ -16,21 +16,15 @@ bench = false
 # Local dependencies
 graphic = { path = "../library/graphic" }
 stream = { path = "../library/stream" }
-<<<<<<< HEAD
 syscall = { path = "../library/syscall", default-features = false }
 naming = { path = "../library/naming", default-features = false }
 terminal = { path = "../library/terminal", default-features = false }
 drawer = { path = "../library/drawer", default-features = false }
 system_info = { path = "../library/system_info", default-features = false }
 input = { path = "../library/input", default-features = false }
-
-=======
-syscall = { path = "../library/syscall" }
-naming = { path = "../library/naming" }
 rdma = { path = "../library/rdma" }
 net = { path = "../library/net" }
 mm = { path = "../library/mm" }
->>>>>>> dev
 
 # External depencies
 spin = "0.9.8"

@@ -13,8 +13,6 @@ use x86_64::set_general_handler;
 use x86_64::structures::idt::InterruptStackFrame;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags};
-use crate::{apic, idt, interrupt_dispatcher, scheduler};
-use crate::memory::MemorySpace;
 use crate::security::sec::{get_exception_table, fixup_fn};
 
 #[repr(u8)]

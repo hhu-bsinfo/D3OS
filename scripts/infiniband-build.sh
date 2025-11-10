@@ -51,7 +51,7 @@ function bench {
 
   pushd "${current_profile}" > /dev/null
   pushd "initrd" > /dev/null
-  tar -cf "${current_profile}/initrd.tar" *
+  tar -cf "${current_profile}/initrd.tar" bin/ usr/
 
   popd > /dev/null # move stack pointer to prior dir
 
@@ -95,7 +95,7 @@ function test {
 
   pushd "${current_profile}" > /dev/null
   pushd "initrd" > /dev/null
-  tar -cf "${current_profile}/initrd.tar" *
+  tar -cf "${current_profile}/initrd.tar" bin/ usr/
 
   popd > /dev/null # move stack pointer to prior dir
 

@@ -26,7 +26,7 @@ use crate::{
     init_serial_port, init_tty, initrd, keyboard, logger, mouse,
     process_manager, scheduler, serial_port, timer, tss,
 };
-use crate::{built_info, memory, naming, network, storage};
+use crate::{built_info, memory, naming, network, storage, infiniband};
 
 /*
 #[cfg(any(kernel_test, kernel_bench))]
@@ -35,7 +35,6 @@ use crate::{init_test_runner, run_tests}; */
 #[cfg(any(kernel_test, kernel_bench))]
 use crate::build_constants;
 use crate::calibrate;
-use crate::{efi_services_available, naming, storage};
 use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
@@ -309,49 +308,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize network stack
     network::init();
-
-    // Set up network interface for emulated QEMU network (IP: 10.0.2.15, Gateway: 10.0.2.2)
-    if let Some(rtl8139) = rtl8139()
-        && qemu_cfg::is_available()
-    {
-        let time = timer.systime_ms();
-        let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
-        conf.random_seed = time as u64;
-
-        // The Ssoltcp interface struct wants a mutable reference to the device. However, the RTL8139 driver is designed to work with shared references.
-        // Since smoltcp does not actually store the mutable reference anywhere, we can safely cast the shared reference to a mutable one.
-        // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device, since it does not modify the device itself)
-        let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-        let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
-        #[cfg(not(any(kernel_test, kernel_bench)))]
-        interface.update_ip_addrs(|ips| {
-            ips.push(IpCidr::new(Ipv4(Ipv4Address::new(10, 0, 2, 15)), 24))
-                .expect("Failed to add IP address");
-        });
-
-        #[cfg(any(kernel_test, kernel_bench))]
-        interface.update_ip_addrs(|ips| {
-            ips.push(IpCidr::new(Ipv4(build_constants::THIS_IP.parse::<Ipv4Address>().unwrap()), 24))
-                .expect("Failed to add IP address");
-        });
-
-        #[cfg(any(kernel_test, kernel_bench))]
-        interface
-            .routes_mut()
-            .add_default_ipv4_route(build_constants::GATEWAY_IP.parse::<Ipv4Address>().unwrap())
-            .expect("Failed to add default route");
-
-        #[cfg(not(any(kernel_test, kernel_bench)))]
-        interface
-            .routes_mut()
-            .add_default_ipv4_route(Ipv4Address::new(10, 0, 2, 2))
-            .expect("Failed to add default route");
-
-        debug!("Interface IP addresses: {:?}", interface.ip_addrs());
-        debug!("Interface hardware address: {}", interface.hardware_addr());
-
-        network::add_interface(interface);
-    }
 
     /*#[cfg(any(kernel_test, kernel_bench))]
     init_test_runner(); */

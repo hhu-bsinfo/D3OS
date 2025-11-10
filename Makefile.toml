@@ -172,11 +172,7 @@ condition = { files_not_exist = [ "${INITRD_DIRECTORY}/bin" ] }
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
 command = "${TAR}"
-<<<<<<< HEAD
 args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "bin/", "usr/" ]
-=======
-args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "about", "hello", "helloc", "shell", "uptime", "date", "ntest", "heaptest", "ls", "ibstat" ]
->>>>>>> dev
 dependencies = [ "link-members" ]
 condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/**/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
 
