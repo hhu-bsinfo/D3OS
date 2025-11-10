@@ -32,9 +32,8 @@ struct OpenObjectTable {
     free_handles: RwLock<Box<[usize; MAX_OPEN_OBJECTS]>>,
 }
 
-pub fn create_open_table_entry(mapping: NamedObject) -> Result<usize, Errno> {
+pub(super) fn create_open_table_entry(mapping: NamedObject) -> Result<usize, Errno> {
     get_open_object_table()
-        .lock()
         .allocate_handle(Arc::new(OpenedObject::new(
             Arc::new(mapping),
             AtomicUsize::new(0),
@@ -42,16 +41,14 @@ pub fn create_open_table_entry(mapping: NamedObject) -> Result<usize, Errno> {
         )))
 }
 
-pub fn get_open_table_entry(handle: usize) -> Result<Arc<OpenedObject>, Errno> {
+pub(super) fn get_open_table_entry(handle: usize) -> Result<Arc<OpenedObject>, Errno> {
     get_open_object_table()
-        .lock()
         .lookup_opened_object(handle)
-        .and_then(|x| Ok(Arc::clone(x)))
+        .and_then(|x| Ok(Arc::clone(&x)))
 }
 
-pub fn free_open_table_entry(handle: usize) -> Result<usize, Errno> {
+pub(super) fn free_open_table_entry(handle: usize) -> Result<usize, Errno> {
     get_open_object_table()
-        .lock()
         .free_handle(handle)
 }
 

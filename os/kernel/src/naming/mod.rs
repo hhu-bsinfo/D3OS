@@ -6,5 +6,9 @@ mod tmpfs;
 mod lookup;
 mod traits;
 
-pub use open_objects::{create_open_table_entry, free_open_table_entry, get_open_table_entry};
-pub use traits::{NamedObject, PseudoFile, PseudoFileObject, PseudoType};
+pub mod virtual_objects;
+
+pub use traits::{PseudoFileObject, PseudoType};
+
+use open_objects::{create_open_table_entry, free_open_table_entry, get_open_table_entry};
+use traits::{NamedObject, PseudoFile};
