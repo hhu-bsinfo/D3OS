@@ -6,6 +6,7 @@
    ║ Author: Fabian Ruhland, Michael Schoettner, 31.8.2024, HHU              ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::ptr;
@@ -59,12 +60,17 @@ pub fn thread_environment() -> &'static mut ThreadEnvironment {
 }
 
 pub fn init_thread_environment() {
-    let systime = systime();
+    let thread_env = Box::new(ThreadEnvironment {
+        start_time: systime(),
+    });
 
-    let thread_env = thread_environment();
-    *thread_env = ThreadEnvironment {
-        start_time: systime,
-    };
+    let thread_env_ptr = Box::into_raw(thread_env);
+    unsafe {
+        asm!(
+        "wrfsbase {0}",
+        in(reg) thread_env_ptr,
+        );
+    }
 }
 
 extern "sysv64" fn kickoff_user_thread(entry: extern "sysv64" fn()) {
