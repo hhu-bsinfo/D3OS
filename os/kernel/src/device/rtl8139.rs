@@ -20,13 +20,15 @@ use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::{PhysAddr, VirtAddr};
- 
+
 use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::{vmm, PAGE_SIZE};
 
-const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
+// Ethernet frame size without FCS
+const MAX_ETHERNET_FRAME_SIZE: usize = 1514;
+const BUFFER_SIZE: usize = 8 * 1024 + 16 + MAX_ETHERNET_FRAME_SIZE + 4;
 const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 { BUFFER_SIZE / PAGE_SIZE } else { BUFFER_SIZE / PAGE_SIZE + 1 };
 const RECV_QUEUE_CAP: usize = 16;
 
@@ -116,7 +118,8 @@ struct Registers {
     transmit_descriptors: [Mutex<TransmitDescriptor>; 4],
     receive_buffer_start: PortWriteOnly<u32>,
     command: Port<u8>,
-    current_read_address: Mutex<Port<u32>>,
+    current_read_address: Mutex<Port<u16>>,
+    current_buffer_address: Mutex<Port<u16>>,
     interrupt_mask: PortWriteOnly<u16>,
     interrupt_status: Mutex<Port<u16>>,
     receive_configuration: PortWriteOnly<u32>,
@@ -155,6 +158,7 @@ impl Registers {
             command: Port::new(base_address + 0x37),
             receive_buffer_start: PortWriteOnly::new(base_address + 0x30),
             current_read_address: Mutex::new(Port::new(base_address + 0x38)),
+            current_buffer_address: Mutex::new(Port::new(base_address + 0x3a)),
             interrupt_mask: PortWriteOnly::new(base_address + 0x3c),
             interrupt_status: Mutex::new(Port::new(base_address + 0x3e)),
             receive_configuration: PortWriteOnly::new(base_address + 0x44),
@@ -233,7 +237,7 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
             panic!("Packet length may not exceed page size!");
         }
 
-       // Allocate physical memory for the packet (DMA only works with physical addresses)
+        // Allocate physical memory for the packet (DMA only works with physical addresses)
         let phys_buffer = unsafe { vmm::alloc_frames(1) };
         let pages = PageRange {
             start: Page::from_start_address(VirtAddr::new(phys_buffer.start.start_address().as_u64())).unwrap(),
@@ -299,7 +303,7 @@ impl phy::Device for Rtl8139 {
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
-        caps.max_transmission_unit = 1536;
+        caps.max_transmission_unit = MAX_ETHERNET_FRAME_SIZE;
         caps.max_burst_size = Some(1);
         caps.medium = Medium::Ethernet;
 
@@ -328,6 +332,9 @@ impl InterruptHandler for Rtl8139InterruptHandler {
             panic!("Transmit failed!");
         } else if status.contains(Interrupt::RECEIVE_ERROR) {
             panic!("Receive failed!");
+        } else if status.contains(Interrupt::RX_BUFFER_OVERFLOW) {
+            info!("CRA: {}, CBA: {}", unsafe { self.device.registers.current_read_address.lock().read() }, unsafe { self.device.registers.current_buffer_address.lock().read() });
+            panic!("RX buffer overflow!");
         }
 
         // Writing the status register clears all bits.
@@ -410,12 +417,12 @@ impl Rtl8139 {
             }
 
             info!("Masking interrupts");
-            rtl8139.registers.interrupt_mask.write((Interrupt::RECEIVE_OK | Interrupt::RECEIVE_ERROR | Interrupt::TRANSMIT_OK | Interrupt::TRANSMIT_ERROR).bits());
+            rtl8139.registers.interrupt_mask.write((Interrupt::RECEIVE_OK | Interrupt::RECEIVE_ERROR | Interrupt::TRANSMIT_OK | Interrupt::TRANSMIT_ERROR | Interrupt::RX_BUFFER_OVERFLOW).bits());
 
             info!("Configuring receive buffer");
+            rtl8139.registers.current_read_address.lock().write(0);
             rtl8139.registers.receive_buffer_start.write(rtl8139.recv_buffer.lock().data.as_ptr() as u32);
             rtl8139.registers.receive_configuration.write((ReceiveFlag::ACCEPT_PHYSICAL_MATCH | ReceiveFlag::ACCEPT_BROADCAST | ReceiveFlag::WRAP | ReceiveFlag::LENGTH_8K).bits());
-            rtl8139.registers.current_read_address.lock().write(0);
 
             info!("Enabling transmitter/receiver");
             rtl8139.registers.command.write((Command::ENABLE_TRANSMITTER | Command::ENABLE_RECEIVER).bits());
@@ -472,7 +479,7 @@ impl Rtl8139 {
                 }
 
                 let mut read_addr_register = self.registers.current_read_address.try_lock().expect("Current read address register is locked during packet processing");
-                unsafe { read_addr_register.write(recv_buffer.index as u32) };
+                unsafe { read_addr_register.write((recv_buffer.index as u16).wrapping_sub(0x10)) };
 
                 // Copy message to new buffer and enqueue for processing
                 if let Ok(mut target) = self.recv_buffers_empty.0.try_dequeue() {
