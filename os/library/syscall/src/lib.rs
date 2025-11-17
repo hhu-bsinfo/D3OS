@@ -7,7 +7,9 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![no_std]
+#![feature(variant_count)]
 
+use core::mem;
 use crate::return_vals::SyscallResult;
 
 pub mod return_vals;
@@ -63,12 +65,9 @@ pub enum SystemCall {
     KeyboardRead,
     MapSystemInfo,
     Log,
-    // no syscall, just marking last number, see NUM_SYSCALLS
-    // insert any new system calls before this marker
-    LastEntryMarker,
 }
 
-pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
+pub const NUM_SYSCALLS: usize = mem::variant_count::<SystemCall>() as usize;
 
 ///
 /// Description:
