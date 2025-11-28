@@ -23,7 +23,7 @@ use crate::{
     acpi_tables, allocator, apic, gdt, get_initrd_frames,
     efi_services_available, init_acpi_tables, init_apic, init_boot_info,
     init_cpu_info, init_initrd, init_lfb, init_lfb_info, init_pci,
-    init_serial_port, init_tty, initrd, keyboard, logger, mouse,
+    init_serial_port, init_tty, keyboard, logger, mouse,
     process_manager, scheduler, serial_port, timer, tss,
 };
 use crate::{built_info, memory, naming, network, storage};
@@ -353,21 +353,14 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     if BOOT_TO_GUI {
         // Create and register the 'window_manager' thread in the scheduler
-        scheduler().ready(Thread::load_application(initrd().entries()
-            .find(|entry| entry.filename().as_str().unwrap() == "bin/window_manager")
-            .expect("Window Manager application not available!")
-            .data(), "window_manager", &[].to_vec()));
+        scheduler().ready(Thread::load_application(
+            "bin/window_manager", "window_manager", &[].to_vec(),
+        ).expect("failed to load window_manager"));
     } else {
         // Create and register the 'terminal_emulator' thread (from app image in ramdisk) in the scheduler
         scheduler().ready(Thread::load_application(
-            initrd()
-                .entries()
-                .find(|entry| entry.filename().as_str().unwrap() == "bin/terminal_emulator")
-                .expect("Terminal application not available!")
-                .data(),
-            "terminal_emulator",
-            &[].to_vec(),
-        ));
+            "bin/terminal_emulator", "terminal_emulator", &[].to_vec(),
+        ).expect("failed to load terminal_emulator"));
     }
 
     // Dump information about all processes (including VMAs)
