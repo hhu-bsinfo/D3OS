@@ -67,3 +67,48 @@ pub fn build_info(info_type: BuildInfo) -> String {
 
     String::from_utf8_lossy(&buffer[..written_len]).to_string()
 }
+
+/*impl From<usize> for BuildInfo {
+    fn from(b: usize) -> Self {
+        match b {
+            0  => BuildInfo::CiPlatform,
+            1  => BuildInfo::PkgVersion,
+            2  => BuildInfo::PkgVersionMajor,
+            3  => BuildInfo::PkgVersionMinor,
+            4  => BuildInfo::PkgVersionPatch,
+            5  => BuildInfo::PkgVersionPre,
+            6  => BuildInfo::PkgAuthors,
+            7  => BuildInfo::PkgName,
+            8  => BuildInfo::PkgDescription,
+            9  => BuildInfo::PkgHomepage,
+            10 => BuildInfo::PkgLicense,
+            11 => BuildInfo::PkgRepository,
+            12 => BuildInfo::Target,
+            13 => BuildInfo::Host,
+            14 => BuildInfo::Profile,
+            15 => BuildInfo::Rustc,
+            16 => BuildInfo::Rustdoc,
+            17 => BuildInfo::OptLevel,
+            18 => BuildInfo::NumJobs,
+            19 => BuildInfo::Debug,
+            21 => BuildInfo::FeaturesStr,
+            23 => BuildInfo::FeaturesLowercaseStr,
+            24 => BuildInfo::RustcVersion,
+            25 => BuildInfo::RustdocVersion,
+            26 => BuildInfo::CfgTargetArch,
+            27 => BuildInfo::CfgEndian,
+            28 => BuildInfo::CfgEnv,
+            29 => BuildInfo::CfgFamily,
+            30 => BuildInfo::CfgOs,
+            31 => BuildInfo::CfgPointerWidth,
+            32 => BuildInfo::GitVersion,
+            33 => BuildInfo::GitDirty,
+            34 => BuildInfo::GitHeadRef,
+            35 => BuildInfo::GitCommitHash,
+            36 => BuildInfo::GitCommitHashShort,
+            37 => BuildInfo::BuiltTimeUtc,
+            38 => BuildInfo::BootloaderName,
+            _ => panic!("Invalid value {} for BuildInfo", b),
+        }
+    }
+}*/

@@ -1,0 +1,18 @@
+[package]
+edition = "2024"
+name = "stdlibtest"
+version = "0.1.0"
+authors = ["David Baranowski"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/stdlibtest.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+#runtime = { path = "../../library/runtime", features = ["no-std"] }
+terminal = { path = "../../library/terminal" }

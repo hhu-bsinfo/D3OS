@@ -17,7 +17,8 @@ pub extern "sysv64" fn sys_sock_open(protocol: SocketType) -> isize {
         SocketType::Udp => open_udp(),
         SocketType::Tcp => open_tcp(),
         SocketType::Icmp => open_icmp(),
-        _ => return Errno::ENOTSUP.into(),
+        //_ => return Errno::ENOTSUP.into(),
+        _ => return Errno::ENOTSUP as isize,
     };
     // handle.0 is private, sadly, so just hope this works
     unsafe { core::mem::transmute::<SocketHandle, usize>(handle) }.try_into().unwrap()
@@ -34,29 +35,37 @@ pub unsafe fn sys_sock_bind(
             SocketType::Udp => match bind_udp(handle, addr, port) {
                 Ok(()) => 0,
                 // socket has already been opened
-                Err(udp::BindError::InvalidState) => Errno::EEXIST.into(),
+                //Err(udp::BindError::InvalidState) => Errno::EEXIST.into(),
+                Err(udp::BindError::InvalidState) => Errno::EEXIST as isize,
                 // port is zero
-                Err(udp::BindError::Unaddressable) => Errno::EINVAL.into(),
+                //Err(udp::BindError::Unaddressable) => Errno::EINVAL.into(),
+                Err(udp::BindError::Unaddressable) => Errno::EINVAL as isize,
             },
             SocketType::Tcp => match bind_tcp(handle, addr, port) {
                 Ok(()) => 0,
                 // socket has already been opened
-                Err(tcp::ListenError::InvalidState) => Errno::EEXIST.into(),
+                //Err(tcp::ListenError::InvalidState) => Errno::EEXIST.into(),
+                Err(tcp::ListenError::InvalidState) => Errno::EEXIST as isize,
                 // port is zero
-                Err(tcp::ListenError::Unaddressable) => Errno::EINVAL.into(),
+                //Err(tcp::ListenError::Unaddressable) => Errno::EINVAL.into(),
+                Err(tcp::ListenError::Unaddressable) => Errno::EINVAL as isize,
             },
             // port is actually the ident here
             SocketType::Icmp => match bind_icmp(handle, port) {
                 Ok(()) => 0,
                 // socket has already been opened
-                Err(icmp::BindError::InvalidState) => Errno::EEXIST.into(),
+                //Err(icmp::BindError::InvalidState) => Errno::EEXIST.into(),
+                Err(icmp::BindError::InvalidState) => Errno::EEXIST as isize,
                 // ident is missing
-                Err(icmp::BindError::Unaddressable) => Errno::EINVAL.into(),
+                //Err(icmp::BindError::Unaddressable) => Errno::EINVAL.into(),
+                Err(icmp::BindError::Unaddressable) => Errno::EINVAL as isize,
             }
-            _ => Errno::ENOTSUP.into(),
+            //_ => Errno::ENOTSUP.into(),
+            _ => Errno::ENOTSUP as isize,
         }
     } else {
-        Errno::EINVAL.into()
+        //Errno::EINVAL.into()
+        Errno::EINVAL as isize
     }
 }
 
@@ -81,7 +90,8 @@ pub unsafe fn sys_sock_accept(
             Err(e) => panic!("failed to accept: {e:?}"),
         }
     } else {
-        Errno::ENOTSUP.into()
+        //Errno::ENOTSUP.into()
+        Errno::ENOTSUP as isize
     }
 }
 
@@ -109,10 +119,12 @@ pub unsafe fn sys_sock_connect(
                 Err(e) => panic!("failed to accept: {e:?}"),
             }
         } else {
-            Errno::EINVAL.into()
+            //Errno::EINVAL.into()
+            Errno::EINVAL as isize
         }
     } else {
-        Errno::ENOTSUP.into()
+        //Errno::ENOTSUP.into()
+        Errno::ENOTSUP as isize
     }
 }
 
@@ -133,33 +145,41 @@ pub unsafe fn sys_sock_send(
                 match send_datagram(handle, addr, port, data) {
                     Ok(()) => data.len().try_into().unwrap(),
                     // host or port are missing or zero
-                    Err(udp::SendError::Unaddressable) => Errno::EINVAL.into(),
+                    //Err(udp::SendError::Unaddressable) => Errno::EINVAL.into(),
+                    Err(udp::SendError::Unaddressable) => Errno::EINVAL as isize,
                     // TODO: drop? return 0?
-                    Err(udp::SendError::BufferFull) => Errno::EBUSY.into(),
+                    //Err(udp::SendError::BufferFull) => Errno::EBUSY.into(),
+                    Err(udp::SendError::BufferFull) => Errno::EBUSY as isize,
                 }
             } else {
-                Errno::EINVAL.into()
+                //Errno::EINVAL.into()
+                Errno::EINVAL as isize
             }
         },
         SocketType::Tcp => match send_tcp(handle, data) {
             Ok(len) => len.try_into().unwrap(),
             // socket can't send (yet)
-            Err(tcp::SendError::InvalidState) => Errno::EINVAL.into(),
+            //Err(tcp::SendError::InvalidState) => Errno::EINVAL.into(),
+            Err(tcp::SendError::InvalidState) => Errno::EINVAL as isize,
         },
         SocketType::Icmp => {
             if let Ok(addr_str) = unsafe { ptr_to_string(addr_ptr) } && let Ok(addr) = IpAddress::from_str(&addr_str) {
                 match send_icmp(handle, addr, data) {
                     Ok(()) => 0,
                     // ip address missing
-                    Err(icmp::SendError::Unaddressable) => Errno::EINVAL.into(),
+                    //Err(icmp::SendError::Unaddressable) => Errno::EINVAL.into(),
+                    Err(icmp::SendError::Unaddressable) => Errno::EINVAL as isize,
                     // TODO: drop? return 0?
-                    Err(icmp::SendError::BufferFull) => Errno::EBUSY.into(),
+                    //Err(icmp::SendError::BufferFull) => Errno::EBUSY.into(),
+                    Err(icmp::SendError::BufferFull) => Errno::EBUSY as isize,
                 }
             } else {
-                Errno::EINVAL.into()
+                //Errno::EINVAL.into()
+                Errno::EINVAL as isize
             }
         }
-        _ => Errno::ENOTSUP.into(),
+        //_ => Errno::ENOTSUP.into(),
+        _ => Errno::ENOTSUP as isize,
     }
 }
 
@@ -200,10 +220,12 @@ pub unsafe fn sys_sock_receive(
             Ok(len) => len.try_into().unwrap(),
             Err(tcp::RecvError::InvalidState) => {
                 warn!("TCP socket is in an invalid state");
-                Errno::EINVALH.into()
+                //Errno::EINVALH.into()
+                Errno::EINVALH as isize
             },
             // the remote host closed the connection
-            Err(tcp::RecvError::Finished) => Errno::ECONNRESET.into(),
+            //Err(tcp::RecvError::Finished) => Errno::ECONNRESET.into(),
+            Err(tcp::RecvError::Finished) => Errno::ECONNRESET as isize,
         },
         SocketType::Icmp => match receive_icmp(handle, data) {
             Ok((len, address)) => {
@@ -224,7 +246,8 @@ pub unsafe fn sys_sock_receive(
             // if we got no data, that is okay
             Err(icmp::RecvError::Exhausted) => 0,
         },
-        _ => Errno::ENOTSUP.into(),
+        //_ => Errno::ENOTSUP.into(),
+        _ => Errno::ENOTSUP as isize,
     }
 }
 
@@ -244,7 +267,8 @@ pub unsafe fn sys_get_ip_adresses(ptr: *mut u8, len: usize, host_ptr: *const u8)
     } else {
         match unsafe { ptr_to_string(host_ptr) } {
             Ok(host) => Some(host),
-            Err(errno) => return errno.into(),
+            //Err(errno) => return errno.into(),
+            Err(errno) => return errno as isize,
         }
     };
     info!("resolving host {host:?}");

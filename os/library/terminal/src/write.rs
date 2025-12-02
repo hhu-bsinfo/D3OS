@@ -8,7 +8,7 @@
 */
 use core::fmt;
 use core::fmt::Write;
-use spin::Mutex;
+//use spin::Mutex;
 use syscall::{SystemCall, syscall};
 
 #[macro_export]
@@ -28,10 +28,17 @@ macro_rules! println {
     });
 }
 
-static WRITER: Mutex<Writer> = Mutex::new(Writer::new());
+//static WRITER: Mutex<Writer> = Mutex::new(Writer::new());
+static mut WRITER: Writer = Writer::new();
 
-pub fn print(args: fmt::Arguments) {
-    WRITER.lock().write_fmt(args).unwrap();
+#[allow(static_mut_refs)]
+pub fn print(args: fmt::Arguments<'_>) {
+    //WRITER.lock().write_fmt(args).unwrap();
+    unsafe {
+        let _a = args;
+        WRITER.write_fmt(args).unwrap();
+        //WRITER.write_fmt(format_args!("{}", "#")).unwrap();
+    }
 }
 
 struct Writer {}

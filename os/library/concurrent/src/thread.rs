@@ -10,17 +10,19 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::ptr;
-use chrono::TimeDelta;
+//use chrono::TimeDelta;
 use syscall::{syscall, SystemCall};
-use time::systime;
+//use time::systime;
+use alloc::collections::BTreeMap;
 
 pub struct Thread {
     id: usize,
 }
 
-#[repr(C, packed)]
+//#[repr(C, packed)]
 pub struct ThreadEnvironment {
-    start_time: TimeDelta,
+    //start_time: TimeDelta,
+    thread_local_storage: BTreeMap<usize, u8>, //hier map
 }
 
 impl Thread {
@@ -40,15 +42,29 @@ impl Thread {
         let _ = syscall(SystemCall::ThreadKill, &[self.id]);
     }
 
-    pub fn start_time(&self) -> TimeDelta {
+     pub fn set_tls_value(&self, key: usize, value: u8) { //return nothing
+        let thread_env = thread_environment();
+        thread_env.thread_local_storage.insert(key, value);
+    }
+
+    pub fn get_tls_value(&self, key: usize) -> Option<&u8> { //reutrn value or nothing
+        let thread_env = thread_environment();
+        thread_env.thread_local_storage.get(&key)
+    }
+
+    pub fn remove_tls_value(&self, key: usize) { //reutrn value or nothing
+        let thread_env = thread_environment();
+        thread_env.thread_local_storage.remove(&key);
+    }
+
+    /*pub fn start_time(&self) -> TimeDelta {  //auskommentiert
         let thread_env = thread_environment();
         thread_env.start_time
-    }
+    }*/
 }
 
-pub fn thread_environment() -> &'static mut ThreadEnvironment {
+pub fn thread_environment() -> &'static mut ThreadEnvironment {//get über das
     let thread_env: *mut ThreadEnvironment;
-
     unsafe {
         asm!(
         "rdfsbase {0}",
@@ -61,7 +77,8 @@ pub fn thread_environment() -> &'static mut ThreadEnvironment {
 
 pub fn init_thread_environment() {
     let thread_env = Box::new(ThreadEnvironment {
-        start_time: systime(),
+        //start_time: systime(),
+        thread_local_storage: BTreeMap::new(),
     });
 
     let thread_env_ptr = Box::into_raw(thread_env);

@@ -80,6 +80,7 @@ pub unsafe extern "sysv64" fn sys_process_execute_binary(name_buffer: *const u8,
             scheduler().ready(Arc::clone(&thread));
             thread.id() as isize
         }
-        None => Errno::ENOENT.into(),
+        //None => Errno::ENOENT.into(),
+        None => Errno::ENOENT as isize,
     }
 }

@@ -18,7 +18,7 @@ with_runtime = []
 
 [dependencies]
 # Local dependencies
-runtime = { path = "../../library/runtime" }
+runtime = { path = "../../library/runtime", features = ["no-std"] }
 # io = { path = "../../library/io" }
 terminal = { path = "../../library/terminal" }
 concurrent = { path = "../../library/concurrent" }

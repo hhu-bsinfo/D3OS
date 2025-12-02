@@ -31,6 +31,17 @@ pub enum SeekOrigin {
     Current = 3,
 }
 
+/*impl SeekOrigin {
+    pub fn from_primitive(b: usize) -> Self {
+        match b {
+            0 => SeekOrigin::Start,
+            1 => SeekOrigin::Current,
+            2 => SeekOrigin::End,
+            _ => panic!("Invalid value {} for SeekOrigin", b),
+        }
+    }
+}*/
+
 /// File types
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]

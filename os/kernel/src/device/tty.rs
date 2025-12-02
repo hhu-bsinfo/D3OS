@@ -37,7 +37,7 @@ pub struct TtyOutput {
     buffer: Mutex<VecDeque<u8>>,
 }
 
-#[derive(Debug, PartialEq, IntoPrimitive, FromPrimitive, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, IntoPrimitive, FromPrimitive)] 
 #[repr(usize)]
 pub enum TtyInputState {
     #[num_enum(default)]
@@ -45,6 +45,17 @@ pub enum TtyInputState {
     Waiting = 1,
     Ready = 2,
 }
+
+/*impl From<usize> for TtyInputState {
+    fn from(b: usize) -> Self {
+        match b {
+            0 => TtyInputState::Idle,
+            1 => TtyInputState::Waiting,
+            2 => TtyInputState::Ready,
+            _ => panic!("Invalid value for TtyInputState: {}", b),
+        }
+    }
+}*/
 
 impl TtyInput {
     pub const fn new() -> Self {
@@ -58,6 +69,7 @@ impl TtyInput {
     pub fn read(&self, buffer: &mut [u8], mode: TerminalMode) -> usize {
         self.state.store(TtyInputState::Waiting as usize, Ordering::SeqCst);
         self.mode.store(mode.into(), Ordering::SeqCst);
+        //self.mode.store(mode as usize, Ordering::SeqCst);
 
         while self.state.load(Ordering::SeqCst) != (TtyInputState::Ready as usize) {
             scheduler().switch_thread_no_interrupt();

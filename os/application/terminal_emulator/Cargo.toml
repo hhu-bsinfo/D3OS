@@ -13,7 +13,7 @@ bench = false
 
 [dependencies]
 # Local dependencies
-runtime = { path = "../../library/runtime" }
+runtime = { path = "../../library/runtime", features = ["no-std"] }
 graphic = { path = "../../library/graphic" }
 stream = { path = "../../library/stream" }
 concurrent = { path = "../../library/concurrent" }

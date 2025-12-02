@@ -14,5 +14,5 @@ bench = false
 [dependencies]
 # Local dependencies
 terminal = { path = "../../library/terminal" }
-runtime = { path = "../../library/runtime" }
+runtime = { path = "../../library/runtime", features = ["no-std"] }
 naming = { path = "../../library/naming" }

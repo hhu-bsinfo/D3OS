@@ -14,5 +14,5 @@ bench = false
 [dependencies]
 pc-keyboard = "0.8"
 # Local dependencies
-runtime = { path = "../../library/runtime" }
+runtime = { path = "../../library/runtime", features = ["no-std"] }
 terminal = { path = "../../library/terminal" }

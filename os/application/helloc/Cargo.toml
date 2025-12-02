@@ -13,5 +13,5 @@ bench = false
 
 [dependencies]
 # Local dependencies
-runtime = { path = "../../library/runtime" }
+runtime = { path = "../../library/runtime", features = ["no-std"] }
 libc = { path = "../../library/libc" }

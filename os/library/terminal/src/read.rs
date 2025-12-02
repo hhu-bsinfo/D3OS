@@ -57,7 +57,7 @@ pub fn read_fluid() -> Option<DecodedKey> {
         return None;
     }
 
-    let key_type = DecodedKeyType::from(*buffer.first().unwrap());
+    let key_type = DecodedKeyType::from(*buffer.first().unwrap()); //<-- 
     let key = *buffer.last().unwrap();
 
     if key_type == DecodedKeyType::Unicode {

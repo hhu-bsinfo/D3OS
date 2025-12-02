@@ -15,7 +15,7 @@ fn thread_fn() {
     let thread = thread::current().unwrap();
     let start_time = thread.start_time();
 
-    println!("Hello from thread [{}] in process [{}] started at [{}]!", thread.id(), process.id(), start_time);
+    println!("Hello from thread [{}] in process [{}] started at [{:?}]!", thread.id(), process.id(), start_time);
 
     let mut arr = [0; 16384];
     arr.fill(1);
@@ -34,7 +34,7 @@ pub fn main() {
     let thread = thread::current().unwrap();
     let start_time = thread.start_time();
 
-    println!("Hello from main thread with ID [{}] in process [{}] started at [{}]!", thread.id(), process.id(), start_time);
+    println!("Hello from main thread with ID [{}] in process [{}] started at [{:?}]!", thread.id(), process.id(), start_time);
 
     for _ in 0..num_threads {
         match thread::create(thread_fn) {

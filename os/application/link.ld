@@ -1,4 +1,4 @@
-ENTRY(entry)
+ENTRY(_start)
 
 PHDRS {
     text PT_LOAD;
@@ -20,7 +20,7 @@ SECTIONS {
     {
       ___BSS_START__ = .;
       *(".bss*")
-      ___BSS_END__ = .;
+       *(".lbss*")
     } :bss
 
     .data ALIGN (4K) :

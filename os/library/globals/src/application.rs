@@ -141,6 +141,11 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
         key_value_pair: &[],
     },
     Application {
+        namespace: "stdlibtest",
+        single_value: &[],
+        key_value_pair: &[],
+    },
+    Application {
         namespace: "uptime",
         single_value: &[],
         key_value_pair: &[],

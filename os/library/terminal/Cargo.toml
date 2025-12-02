@@ -12,15 +12,25 @@ bench = false
 [features]
 default = ["userspace"]
 userspace = ["dep:syscall", "dep:stream", "dep:spin", "dep:pc-keyboard", "dep:spin", "dep:log", "dep:logger"]
+rustc-dep-of-std = [
+	"core",
+    "alloc",
+	"compiler_builtins",
+    "syscall/rustc-dep-of-std"
+	#"cfg-if/rustc-dep-of-std"
+]
 
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall", optional = true }
 stream = { path = "../stream", optional = true }
 logger = { path = "../logger", optional = true }
+core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+compiler_builtins = { version = "0.1", optional = true }
+alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
 
 # External dependencies
-log = { version = "0.4.26", optional = true }
-spin = { version = "0.9.8", optional = true }
-num_enum = { version = "0.7", default-features = false }
-pc-keyboard = { version = "0.8.0", default-features = false, optional = true }
+log = { version = "0.4.26", optional = true }#müsste weg
+spin = { version = "0.9.8", optional = true }#müsste weg
+num_enum = { version = "0.7", default-features = false }#müsste weg
+pc-keyboard = { version = "0.8.0", default-features = false, optional = true }#müsste weg
