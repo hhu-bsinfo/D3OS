@@ -14,7 +14,7 @@ use std::io::{self, Write};
 #[unsafe(no_mangle)]
 pub fn main() {
     let stdout = io::stdout();
-let mut handle = stdout.lock();
+    let mut handle = stdout.lock();
 
-handle.write(b"hello world");
+    handle.write(b"hello world!!!");
 }
