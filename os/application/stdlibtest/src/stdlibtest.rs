@@ -16,5 +16,5 @@ pub fn main() {
     let stdout = io::stdout();
     let mut handle = stdout.lock();
 
-    handle.write(b"hello world!!!");
+    handle.write(b"hello world!");
 }

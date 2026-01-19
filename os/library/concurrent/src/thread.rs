@@ -22,7 +22,7 @@ pub struct Thread {
 //#[repr(C, packed)]
 pub struct ThreadEnvironment {
     //start_time: TimeDelta,
-    thread_local_storage: BTreeMap<usize, *mut u8>, //map for tls
+    thread_local_storage: BTreeMap<usize, u8>, //map for TLS
 }
 
 impl Thread {
@@ -42,10 +42,25 @@ impl Thread {
         let _ = syscall(SystemCall::ThreadKill, &[self.id]);
     }
 
-    /*pub fn start_time(&self) -> TimeDelta {  //commented out as 'time' is not necessary
+    /*pub fn start_time(&self) -> TimeDelta {  //commented temporarily out as 'time' is not necessary
         let thread_env = thread_environment();
         thread_env.start_time
     }*/
+
+    pub fn set_tls_value(&mut self, key: usize, value: u8) { //return nothing  
+        let thread_env = thread_environment();
+        thread_env.thread_local_storage.insert(key, value);
+    }
+
+    pub fn get_tls_value(&mut self, key: usize) -> Option<&u8> { //return value or nothing
+        let thread_env = thread_environment();
+        thread_env.thread_local_storage.get(&key)
+    }
+
+    pub fn remove_tls_value(&mut self, key: usize) { //return value or nothing
+        let thread_env = thread_environment();
+        thread_env.thread_local_storage.remove(&key);
+    }
 }
 
 pub fn thread_environment() -> &'static mut ThreadEnvironment {//returns a thread environment
@@ -57,20 +72,6 @@ pub fn thread_environment() -> &'static mut ThreadEnvironment {//returns a threa
         );
 
         &mut *thread_env
-    }
-}
-
-impl ThreadEnvironment {
- pub fn set_tls_value(&mut self, key: usize, value: *mut u8) { //return nothing
-        self.thread_local_storage.insert(key, value);
-    }
-
-    pub fn get_tls_value(&mut self, key: usize) -> Option<&*mut u8> { //reutrn value or nothing
-        self.thread_local_storage.get(&key)
-    }
-
-    pub fn remove_tls_value(&mut self, key: usize) { //reutrn value or nothing
-        self.thread_local_storage.remove(&key);
     }
 }
 
