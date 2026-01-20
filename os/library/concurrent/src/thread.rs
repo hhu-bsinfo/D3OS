@@ -52,12 +52,12 @@ impl Thread {
         thread_env.thread_local_storage.insert(key, value);
     }
 
-    pub fn get_tls_value(&mut self, key: usize) -> Option<&u8> { //return value or nothing
+    pub fn get_tls_value(&mut self, key: usize) -> Option<u8> { //return value or nothing
         let thread_env = thread_environment();
-        thread_env.thread_local_storage.get(&key)
+        thread_env.thread_local_storage.get(&key).copied()
     }
 
-    pub fn remove_tls_value(&mut self, key: usize) { //return value or nothing
+    pub fn remove_tls_value(&mut self, key: usize) { //return nothing
         let thread_env = thread_environment();
         thread_env.thread_local_storage.remove(&key);
     }
