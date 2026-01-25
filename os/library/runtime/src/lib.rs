@@ -19,9 +19,9 @@ pub mod env;
 use concurrent::{process, thread};
 #[cfg(feature="no-std")]
 use core::panic::PanicInfo;
-//#[cfg(feature="no-std")]
-//use terminal::println;
-//use linked_list_allocator::LockedHeap; (moved lower)
+/*#[cfg(feature="no-std")]
+use terminal::println;
+use linked_list_allocator::LockedHeap;*/ // moved lower, see line 35
 #[cfg(feature="no-std")]
 use syscall::{syscall, SystemCall};
 
@@ -58,7 +58,7 @@ extern "sysv64" fn _start() {
         ALLOCATOR.lock().init(env::HEAP_START as *mut u8, env::HEAP_SIZE);
     }
 
-    thread::init_thread_environment(); //das ist neu
+    thread::init_thread_environment(); // newly introduced thread environment (used for TLS)
 
     unsafe {
         main(*env::ARGC_PTR as isize, env::ARGV_PTR);

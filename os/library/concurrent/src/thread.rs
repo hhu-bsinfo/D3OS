@@ -10,10 +10,9 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::ptr;
-//use chrono::TimeDelta;
 use syscall::{syscall, SystemCall};
-//use time::systime;
-//use alloc::collections::BTreeMap;
+//use chrono::TimeDelta; // commented out because standard library depends now on thread.rs
+//use time::systime;     // was used for start_time which needs chrono::TimeDelta
 
 pub struct Thread {
     id: usize,
@@ -21,9 +20,8 @@ pub struct Thread {
 
 //#[repr(C, packed)]
 pub struct ThreadEnvironment {
-    //start_time: TimeDelta,
-    //thread_local_storage: BTreeMap<usize, *mut u8>, //map for TLS
-    thread_local_storage: [*mut u8; 1024], //neuer tls
+    //start_time: TimeDelta, // see line 14
+    thread_local_storage: [*mut u8; 1024], // array for TLS
 }
 
 impl Thread {
@@ -43,30 +41,27 @@ impl Thread {
         let _ = syscall(SystemCall::ThreadKill, &[self.id]);
     }
 
-    /*pub fn start_time(&self) -> TimeDelta {  //commented temporarily out as 'time' is not necessary
+    // does not work without chrono::Timedelta; was only used by application "threadtest"
+    /*pub fn start_time(&self) -> TimeDelta {
         let thread_env = thread_environment();
         thread_env.start_time
     }*/
 }
 
-pub fn set_tls_value(key: usize, value: *mut u8) { //return nothing  
+// set TLS value, returns nothing (used by rust/libary/std/src/sys/thread_local/key/d3os.rs)
+pub fn set_tls_value(key: usize, value: *mut u8) {
     let thread_env = thread_environment();
-    //thread_env.thread_local_storage.insert(key, value);
     thread_env.thread_local_storage[key] = value;
 }
 
-pub fn get_tls_value(key: usize) -> *mut u8 { //return value or nothing
+// get TLS value, returns value or default (used by rust/libary/std/src/sys/thread_local/key/d3os.rs)
+pub fn get_tls_value(key: usize) -> *mut u8 {
     let thread_env = thread_environment();
-    //thread_env.thread_local_storage.get(&key).copied().unwrap_or_default()
     thread_env.thread_local_storage[key]
 }
 
-/*pub fn remove_tls_value(key: usize) { //return nothing (DELETE THIS)
-    let thread_env = thread_environment();
-    thread_env.thread_local_storage.remove(&key);
-}*/
-
-pub fn thread_environment() -> &'static mut ThreadEnvironment {//returns a thread environment
+// returns a thread environment
+pub fn thread_environment() -> &'static mut ThreadEnvironment {
     let thread_env: *mut ThreadEnvironment;
     unsafe {
         asm!(
@@ -80,9 +75,8 @@ pub fn thread_environment() -> &'static mut ThreadEnvironment {//returns a threa
 
 pub fn init_thread_environment() {
     let thread_env = Box::new(ThreadEnvironment {
-        //start_time: systime(),
-        //thread_local_storage: BTreeMap::new(),
-        thread_local_storage: [Default::default(); 1024], //new tls
+        //start_time: systime(), // see line 14
+        thread_local_storage: [Default::default(); 1024], // initialise TLS with 1024 null_mut pointers
     });
 
     let thread_env_ptr = Box::into_raw(thread_env);

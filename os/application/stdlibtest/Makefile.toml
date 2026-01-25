@@ -31,7 +31,7 @@ alias = "link"
 
 [tasks.compile]
 command = "cargo"
-args = [ "build", "--target", "x86_64-unknown-d3os", "${CARGO_BUILD_OPTION}" ] # edited this line here
+args = [ "build", "--target", "x86_64-unknown-d3os", "${CARGO_BUILD_OPTION}" ] # edited this line here, use target D3OS with standard library
 #args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
 condition = { files_modified = { input = [
     "${CARGO_MAKE_WORKING_DIRECTORY}/Cargo.toml", "${SOURCE_DIRECTORY}/**/*.rs",
