@@ -19,9 +19,9 @@ pub mod env;
 use concurrent::{process, thread};
 #[cfg(feature="no-std")]
 use core::panic::PanicInfo;
-/*#[cfg(feature="no-std")]
-use terminal::println;
-use linked_list_allocator::LockedHeap;*/ // moved lower, see line 35
+#[cfg(feature="no-std")]
+//use terminal::println; // cannot depend on terminal due to dependencies incompatible with std
+//use linked_list_allocator::LockedHeap; // moved lower, see line 35
 #[cfg(feature="no-std")]
 use syscall::{syscall, SystemCall};
 
@@ -31,7 +31,7 @@ unsafe extern "C" {
 }
 
 cfg_if::cfg_if! {
-	if #[cfg(feature="no-std")] {
+	if #[cfg(feature="no-std")] { // only have a global allocator if not using std
 		use linked_list_allocator::LockedHeap;
 		#[global_allocator]
 		static ALLOCATOR: LockedHeap = LockedHeap::empty(); 
@@ -39,10 +39,10 @@ cfg_if::cfg_if! {
 }
 
 cfg_if::cfg_if! {
-    if #[cfg(feature="no-std")] {
+    if #[cfg(feature="no-std")] { // only have a panic handler if not using std
         #[panic_handler]
         fn panic(info: &PanicInfo<'_>) -> ! {
-            //println!("Panic: {}!", info);
+            //println!("Panic: {}!", info); // see line 23
             thread::exit();
         }
     }
