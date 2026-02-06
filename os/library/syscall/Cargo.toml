@@ -16,7 +16,6 @@ rustc-dep-of-std = [
 	"core",
     "alloc",
 	"compiler_builtins",
-	#"cfg-if/rustc-dep-of-std" #neu
 ]
 
 [dependencies]

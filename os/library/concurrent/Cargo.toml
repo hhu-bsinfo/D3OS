@@ -26,5 +26,4 @@ rustc-dep-of-std = [
     "alloc",
 	"compiler_builtins",
     "syscall/rustc-dep-of-std"
-	#"cfg-if/rustc-dep-of-std"
 ]

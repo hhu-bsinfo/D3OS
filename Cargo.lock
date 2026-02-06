@@ -1450,19 +1450,12 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stdlibtest"
 version = "0.1.0"
-dependencies = [
- "runtime",
- "terminal",
-]
 
 [[package]]
 name = "stream"
 version = "0.1.0"
 dependencies = [
- "compiler_builtins",
  "pc-keyboard",
- "rustc-std-workspace-alloc",
- "rustc-std-workspace-core",
 ]
 
 [[package]]
@@ -1538,13 +1531,10 @@ dependencies = [
 name = "terminal"
 version = "0.1.0"
 dependencies = [
- "compiler_builtins",
  "log",
  "logger",
  "num_enum",
  "pc-keyboard",
- "rustc-std-workspace-alloc",
- "rustc-std-workspace-core",
  "spin 0.9.8",
  "stream",
  "syscall",

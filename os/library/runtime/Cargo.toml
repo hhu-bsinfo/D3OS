@@ -29,10 +29,8 @@ rustc-dep-of-std = [
 	"core",
     "alloc",
 	"compiler_builtins",
-    #"terminal/rustc-dep-of-std",
     "syscall/rustc-dep-of-std",
     "concurrent/rustc-dep-of-std",
-    #"stream/rustc-dep-of-std",
 	"cfg-if/rustc-dep-of-std",
 ]
 no-std = [
