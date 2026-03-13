@@ -10,6 +10,7 @@ TOWBOOT_VERSION = "0.10.0"
 TOWBOOT_URL = "https://github.com/hhuOS/towboot/releases/download/v${TOWBOOT_VERSION}/towbootctl-v${TOWBOOT_VERSION}"
 TAR = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "tar", mapping = { "macos" = "gtar" } }
 LINKER = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "ld", mapping = { "macos" = "x86_64-elf-ld" } }
+ESP_DIRECTORY = "/boot/"
 QEMU_AUDIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "pa", mapping = { "macos" = "coreaudio" } }
 
 [tasks.default]
@@ -200,6 +201,20 @@ command = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl"
 args = [ "image", "--target", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img", "--", "-config", "towboot.toml"]
 dependencies = [ "link-members", "initrd", "towbootctl" ]
 condition = { files_modified = { input = [ "${BOOTLOADER_DIRECTORY}/initrd.tar", "${BOOTLOADER_DIRECTORY}/kernel.elf", "${BOOTLOADER_DIRECTORY}/towboot.toml" ], output = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os.img" ] } }
+
+[tasks.image-install]
+cwd = "${BOOTLOADER_DIRECTORY}"
+command = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl"
+args = [ "install", "${ESP_DIRECTORY}", "--name", "D3OS", "--", "-config", "towboot.toml"]
+dependencies = [ "link-members", "initrd", "towbootctl" ]
+condition = { files_modified = { input = [ "${BOOTLOADER_DIRECTORY}/initrd.tar", "${BOOTLOADER_DIRECTORY}/kernel.elf", "${BOOTLOADER_DIRECTORY}/towboot.toml" ], output = [ "${ESP_DIRECTORY}/D3OS/towboot.efi", "${ESP_DIRECTORY}/D3OS/towboot.toml" ] } }
+
+[tasks.image-install-removable]
+cwd = "${BOOTLOADER_DIRECTORY}"
+command = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/towbootctl"
+args = [ "install", "${ESP_DIRECTORY}", "--removable", "--", "-config", "towboot.toml"]
+dependencies = [ "link-members", "initrd", "towbootctl" ]
+condition = { files_modified = { input = [ "${BOOTLOADER_DIRECTORY}/initrd.tar", "${BOOTLOADER_DIRECTORY}/kernel.elf", "${BOOTLOADER_DIRECTORY}/towboot.toml" ], output = [ "${ESP_DIRECTORY}/D3OS/towboot.efi", "${ESP_DIRECTORY}/D3OS/towboot.toml" ] } }
 
 [tasks.towbootctl]
 script = '''

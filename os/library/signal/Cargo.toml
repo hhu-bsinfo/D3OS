@@ -1,0 +1,12 @@
+[package]
+edition = "2024"
+name = "signal"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>, Lukas Rose <lukas.rose@hhu.de>"]
+
+[dependencies]
+# Local dependencies
+terminal = { path = "../terminal" }
+
+# External depencies
+spin = "0.9.8"

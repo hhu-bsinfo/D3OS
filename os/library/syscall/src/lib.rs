@@ -11,6 +11,7 @@
 
 use core::mem;
 use crate::return_vals::SyscallResult;
+use core::arch::asm;
 
 pub mod return_vals;
 
@@ -51,6 +52,8 @@ pub enum SystemCall {
     Readdir,
     Cwd,
     Cd,
+    SignalHandlerRegister,
+    MeltdownCopyToKernelMemory,
     SockOpen,
     SockBind,
     SockAccept,
@@ -101,6 +104,11 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
     let a3 = *args.get(3).unwrap_or(&0usize);
     let a4 = *args.get(4).unwrap_or(&0usize);
     let a5 = *args.get(5).unwrap_or(&0usize);
+    
+    match &call {
+        SystemCall::TerminalWriteOutput => try_read(a0 as *const u8, a1),
+        _ => {},
+    }
 
     #[cfg(target_arch = "x86_64")]
     unsafe {
@@ -119,6 +127,22 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
     }
 
     convert_ret_code_to_syscall_result(ret_code)
+}
+
+/* SECURITY: This can be skipped by using the syscall instruction directly
+ *           instead of using this library function. Proper permission
+ *           checking needs to be moved to kernel space instead.
+ */
+fn try_read(address: *const u8, len: usize) {
+    for i in 0..len {
+        unsafe {
+            asm!(
+                "mov {tmp}, [{x}]",
+                x = in(reg) address.add(i),
+                tmp = out(reg) _,
+            );
+        }
+    }
 }
 
 /// Only needed to run tests on non-x86_64 architectures (e.g. Apple Silicon).

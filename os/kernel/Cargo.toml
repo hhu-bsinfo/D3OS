@@ -16,6 +16,7 @@ bench = false
 # Local dependencies
 graphic = { path = "../library/graphic" }
 stream = { path = "../library/stream" }
+signal = { path = "../library/signal" }
 syscall = { path = "../library/syscall", default-features = false }
 naming = { path = "../library/naming", default-features = false }
 terminal = { path = "../library/terminal", default-features = false }

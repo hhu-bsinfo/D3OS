@@ -46,7 +46,9 @@ use crate::memory::vma::VmaType;
 use crate::process::process::Process;
 use crate::process::scheduler;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
-use crate::{process_manager, scheduler, tss};
+use crate::signal::signal_dispatcher;
+use signal::signal_vector::SignalVector;
+use crate::{memory, process_manager, scheduler, tss};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::naked_asm;
@@ -61,13 +63,21 @@ use spin::Mutex;
 use x86_64::PrivilegeLevel::Ring3;
 use x86_64::VirtAddr;
 use x86_64::structures::gdt::SegmentSelector;
-use x86_64::structures::paging::Page;
+use x86_64::structures::idt::InterruptStackFrame;
+use x86_64::structures::paging::page::PageRange;
+use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB};
 
 /// kernel & user stack of a thread
 struct Stacks {
     kernel_stack: Vec<u64, StackAllocator>,
     user_stack: Vec<u64, StackAllocator>,
     old_rsp0: VirtAddr, // used for thread switching; rsp3 is stored in TSS
+}
+
+/// Signal mask & pending signals of a thread
+struct Signals {
+    signal_mask: i32, // Which signals should be blocked
+    signal_pending: i32, // Which signals are pending
 }
 
 /// A thread is the unit of execution.
@@ -99,6 +109,7 @@ pub struct Thread {
     user_kickoff: VirtAddr,
     /// the actual entry point (eg. for user threads the single parameter to kickoff)
     entry: extern "sysv64" fn(),
+    signals: Mutex<Signals>,
     state: AtomicU8,
     wake_pending: AtomicBool, // false => allowed to block; true => do NOT block (wake pending)
 }
@@ -109,6 +120,15 @@ impl Stacks {
             kernel_stack,
             user_stack,
             old_rsp0: VirtAddr::zero(),
+        }
+    }
+}
+
+impl Signals {
+    const fn new() -> Self {
+        Self {
+            signal_mask: 0,
+            signal_pending: 0
         }
     }
 }
@@ -137,6 +157,7 @@ impl Thread {
                 .expect("Trying to create a kernel thread before process initialization!"),
             user_kickoff: VirtAddr::zero(),
             entry,
+            signals: Mutex::new(Signals::new()),
             state: AtomicU8::new(ThreadState::Created.as_u8()),
             wake_pending: AtomicBool::new(false),
         };
@@ -204,6 +225,7 @@ impl Thread {
             process: parent,
             user_kickoff: kickoff_addr,
             entry,
+            signals: Mutex::new(Signals::new()),
             state: AtomicU8::new(ThreadState::Created.as_u8()),
             wake_pending: AtomicBool::new(false),
         };
@@ -364,6 +386,42 @@ impl Thread {
 
         unsafe {
             thread_user_start(old_rsp0, self.entry);
+        }
+    }
+
+    /// Block/Unblock a signal in the signal mask
+    pub fn set_signal_blocked(&self, signal_vector: SignalVector, state: bool) {
+        assert!((signal_vector as u8) < signal::signal_vector::MAX_VECTORS as u8, "Invalid signal vector number: {signal_vector:?}");
+        if state {
+            self.signals.lock().signal_mask |= 1 << signal_vector as u8;
+        } else {
+            self.signals.lock().signal_mask &= !1 << signal_vector as u8;
+        }
+    }
+    
+    /// Set pending signal
+    pub fn set_signal_pending(&self, signal_vector: SignalVector) {
+        assert!((signal_vector as u8) < signal::signal_vector::MAX_VECTORS as u8, "Invalid signal vector number: {signal_vector:?}");
+        self.signals.lock().signal_pending |= 1 << signal_vector as u8;
+    }
+    
+    /// Check if thread has a pending signal
+    pub fn has_pending_signal(&self) -> bool {
+        self.signals.lock().signal_pending > 0
+    }
+    
+    /// Get and clear next pending signal
+    pub fn get_pending_signal(&self) -> Option<SignalVector> {
+        // find next signal (least significant positive bit) using https://graphics.stanford.edu/%7Eseander/bithacks.html#ZerosOnRightModLookup
+        const Mod37BitPosition: [u8; 37] = [32, 0, 1, 26, 2, 23, 27, 0, 3, 16, 24, 30, 28, 11, 0, 13, 4, 7, 17, 0, 25, 22, 31, 15, 29, 10, 12, 6, 0, 21, 14, 9, 5, 20, 8, 19, 18];
+        let signal_pending = self.signals.lock().signal_pending; //TODO: Check if this lock() is always returned
+        let signal_number = Mod37BitPosition[((-signal_pending & signal_pending) % 37) as usize];
+
+        self.signals.lock().signal_pending &= !(1 << signal_number); // clear signal
+        
+        match SignalVector::try_from(signal_number) {
+            Ok(signal_vector) => Some(signal_vector),
+            Err(_) => None,
         }
     }
 

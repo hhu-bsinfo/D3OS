@@ -12,8 +12,13 @@ use spin::Mutex;
 use x86_64::registers::control::Cr2;
 use x86_64::set_general_handler;
 use x86_64::structures::idt::InterruptStackFrame;
+use x86_64::VirtAddr;
+use crate::memory::PAGE_SIZE;
+use crate::signal::signal_dispatcher::handle_signal;
+use signal::signal_vector::SignalVector;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags};
+use terminal::println;
 
 #[repr(u8)]
 #[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
@@ -153,6 +158,7 @@ pub fn setup_idt() {
     set_general_handler!(&mut idt, handle_exception, 0..31);
     set_general_handler!(&mut idt, handle_interrupt, 32..255);
     set_general_handler!(&mut idt, handle_page_fault, 14);
+    set_general_handler!(&mut idt, handle_protection_fault, 13);
 
     unsafe {
         // We need to obtain a static reference to the IDT for the following operation.
@@ -173,7 +179,7 @@ fn handle_exception(frame: InterruptStackFrame, index: u8, error: Option<u64>) {
     );
 }
 
-fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>) {
+fn handle_page_fault(mut frame: InterruptStackFrame, _index: u8, error: Option<u64>) {
     let fault_addr = Cr2::read().expect("Invalid address in CR2 during page fault");
     let thread = scheduler().try_get_current_thread();
     if thread.is_none() {
@@ -225,8 +231,22 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
         }
     }
 
-    // Page fault not resolved, panic
-    panic!("Page Fault!\nError code: [{:?}]\nAddress: [0x{:0>16x}]\n{:?}", error, fault_addr, frame);
+    if let Err(()) = thread.process().signal_dispatcher.dispatch(SignalVector::SIGSEGV, &mut frame) {
+        // Page fault not resolved, panic
+        panic!("Page Fault!\nError code: [{:?}]\nAddress: [0x{:0>16x}]\n{:?}", error, fault_addr, frame);
+    }
+}
+
+fn handle_protection_fault(mut frame: InterruptStackFrame, index: u8, error: Option<u64>) {
+    let thread = scheduler().try_get_current_thread();
+    if !thread.is_none() {   
+        let thread = thread.unwrap();
+        if let Ok(()) = thread.process().signal_dispatcher.dispatch(SignalVector::SIGSEGV, &mut frame) {
+            return;
+        }
+    }
+    // Protection fault not resolved, panic
+    panic!("General protection fault handler, frame at {:?}: {:?}", &frame as *const InterruptStackFrame, frame);
 }
 
 fn handle_interrupt(_frame: InterruptStackFrame, index: u8, _error: Option<u64>) {

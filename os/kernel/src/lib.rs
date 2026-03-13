@@ -71,6 +71,7 @@ pub mod network;
 pub mod process;
 pub mod storage;
 pub mod syscall;
+pub mod signal;
 pub mod sync;
 
 pub mod built_info {

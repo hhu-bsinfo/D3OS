@@ -1,24 +1,26 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: lib                                                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: All system call counterparts in kernel, starting with 'sys_'.   ║
+   ║ Descr.: All system calls (starting with sys_).                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland & Michael Schoettner, 30.8.2024, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-pub mod sys_naming;
-pub mod sys_terminal;
-pub mod sys_concurrent;
-pub mod sys_net;
-pub mod sys_time;
-pub mod sys_vmem;
-pub mod sys_signal;
-pub mod sys_meltdown;
-pub mod sys_graphic;
-pub mod sys_input;
-pub mod sys_system_info;
-pub mod sys_logger;
-pub mod sys_shm;
+use alloc::boxed::Box;
+use crate::scheduler;
+use signal::signal_handler::SignalHandler;
+use signal::signal_vector::SignalVector;
+use log::{debug, info, warn};
 
-pub mod syscall_dispatcher;
+pub fn sys_signal_handler_register(index: SignalVector, handler: u64) {
+    /* TODO: To make this safe, this should only allow user-mode applications to register
+     *       syscalls for themselves.
+     *       That means, the interrupt dispatcher would probably need to manage interrupt
+     *       overrides per thread.
+     */
+    let thread = scheduler().current_thread();
+    let process = thread.process();
+    info!("Registering handler for thread {} in process {} for index {:?} at {:x}", thread.id(), process.id(), index, handler);
+    process.signal_dispatcher.assign(index, handler);
+}
