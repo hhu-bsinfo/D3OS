@@ -1,0 +1,17 @@
+[package]
+edition = "2024"
+name = "heaptest"
+version = "0.1.0"
+authors = ["Niklas Sombert <niklas.sombert@uni-duesseldorf.de"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/heaptest.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+terminal = { path = "../../library/terminal" }
