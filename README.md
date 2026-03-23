@@ -4,4 +4,4 @@
   [![Download](https://img.shields.io/static/v1?label=&message=pdf&color=EE3F24&style=for-the-badge&logo=adobe-acrobat-reader&logoColor=FFFFFF)](/../-/jobs/artifacts/master/file/document/thesis.pdf?job=latex)
 </div>
 
-# :notebook: &nbsp; Entwicklung einer Capability-basierten Zugriffskontrolle in einem Rust-Betriebssystem
+# Entwicklung einer Capability-basierten Zugriffskontrolle in einem Rust-Betriebssystem
