@@ -1,0 +1,148 @@
+\chapter{Code}
+
+\section{Pseudocode}
+
+\begin{algorithm}[H]
+  \KwIn{A[0..N-1], value}
+  \KwOut{value if found, otherwise not\_found}
+  \tcp{Lokale Variablen}
+  let \textit{low} = 0
+  let \textit{high} = N - 1
+  
+  \tcp{Es gibt auch noch weitere Loops wie ForEach}
+  \While{low \textless= high}
+  {
+    \tcp{Invariante: value \textgreater{} A[i] for all i \textless low}
+    \tcp{Invariante: value \textless{} A[i] for all i \textgreater high}
+    mid = (low + high) / 2\;
+    \eIf{A[mid] \textgreater value}
+    {
+      high = mid - 1\;
+    }
+    {
+      \eIf{A[mid] \textless value}
+      {
+	low = mid + 1\;
+      }
+      {
+	return mid\;
+      }
+    }
+    return not\_found\;
+  }
+  \label{binary_search}
+  \caption{Binärsuche in Pseudocode}
+\end{algorithm}
+
+\clearpage
+
+\section{Codeschnipsel}
+
+\begin{codeblock}{HelloWorld.java}{Java}
+  \begin{javacode}
+    public class HelloWorld {
+      public static void main(String[] args) {
+        System.out.println("Hello World!");
+      }
+    }
+  \end{javacode}
+\end{codeblock}
+
+\begin{codeblock}{HelloWorld.kt}{Kotlin}
+  \begin{kotlincode}
+    fun main() {
+      println("Hello world!")
+    }
+  \end{kotlincode}
+\end{codeblock}
+
+\begin{codeblock}{HelloWorld.scala}{Scala}
+  \begin{scalacode}
+    println("Hello world!")
+  \end{scalacode}
+\end{codeblock}
+
+\begin{codeblock}{hello.c}{C}
+  \begin{ccode}
+    #include <stdio.h>
+    
+    int main(int argc, char** argv) {
+      printf("Hello World!\n");
+      return 0;
+    }
+  \end{ccode}
+\end{codeblock}
+
+\begin{codeblock}{hello.cpp}{C++}
+  \begin{cppcode}
+    #include <iostream>
+    
+    int main () {
+      std::cout << "Hello world!" << std::endl;
+      return 0;
+    }
+  \end{cppcode}
+\end{codeblock}
+
+\begin{codeblock}{hello.rs}{Rust}
+  \begin{rustcode}
+    fn main() {
+      println!("Hello world!");
+    }
+  \end{rustcode}
+\end{codeblock}
+
+\begin{codeblock}{hello.go}{Go}
+  \begin{gocode}
+    package main
+    
+    import "fmt"
+    
+    func main() { fmt.Println("Hello world!") }
+  \end{gocode}
+\end{codeblock}
+
+\section{Terminalausgabe}
+
+\begin{terminalblock}
+  \begin{textcode}
+    [user@computer thesis]$ ls -la
+    total 12
+    drwxr-xr-x  3 user user 4096 Apr 28 19:09 .
+    drwxr-xr-x 23 user user 4096 Apr 28 19:09 ..
+    drwxr-xr-x  7 user user 4096 Apr 28 20:12 folder
+  \end{textcode}
+\end{terminalblock}
+
+
+
+
+
+
+
+
+% custom style (c code style)
+% \lstdefinestyle{customc}{
+%   belowcaptionskip=1\baselineskip,
+%   breaklines=true,
+%   frame=L,
+%   xleftmargin=\parindent,
+%   language=C,
+%   showstringspaces=false,
+%   basicstyle=\footnotesize\ttfamily,
+%   keywordstyle=\bfseries\color{green!40!black},
+%   commentstyle=\itshape\color{purple!40!black},
+%   identifierstyle=\color{blue},
+%   stringstyle=\color{orange},
+% }
+% 
+% \lstdefinestyle{customasm}{
+%   belowcaptionskip=1\baselineskip,
+%   frame=L,
+%   xleftmargin=\parindent,
+%   language=[x86masm]Assembler,
+%   basicstyle=\footnotesize\ttfamily,
+%   commentstyle=\itshape\color{purple!40!black},
+% }
+% 
+% \lstset{escapechar=@,style=customc}

@@ -1,0 +1,50 @@
+\chapter{Struktur}
+
+Die Arbeit kann mit den nachfolgenden Befehlen sehr einfach in Kapitel mit Unterkapiteln eingeteilt werden.
+
+\begin{itemize}
+ \item \verb|\chapter{Name}| - Beginne ein neues Kapitel
+ \item \verb|\section{Name}| - Beginne einen neuen Abschnitt eines Kapitels
+ \item \verb|\subsection{Name}| - Beginne einen Unterabschnitt eines Abschnitts
+ \item \verb|\subsubsection{Name}| - Beginne einen Unterabschnitt in einem Unterabschnitt
+\end{itemize}
+
+Mithilfe von Labels lassen sich Referenzen erstellen.
+
+\begin{itemize}
+  \item \verb|\label{LabelName}| - Erstelle ein Label
+  \item \verb|\ref{LabelName}| - Referenziere ein Label
+\end{itemize}
+
+\clearpage
+
+\section{Mein Abschnitt}
+
+\subsection{Unterabschnitt} \label{MeinUnterabschnitt}
+
+In diesem Abschnit wird beschrieben\ldots
+
+\subsection{Noch ein Unterabschnitt}
+
+\subsubsection{Noch tiefere Hierarchie}
+
+Im Unterabschnitt \ref{MeinUnterabschnitt} wurde erläutert\ldots
+
+\subsubsection{Noch ein Unterpunkt vom Unterpunkt}
+
+\subsection{Wieder eine Subsection}
+
+\section{Und eine einfache Section}
+
+\section{Zeilenumbrüche und Absätze}
+
+Manchmal ist es ganz gut (hauptsächlich am Ende der Arbeit), die Strukturierung etwas in die Hand zu nehmen,
+da LaTeX nicht immer eine optimale Aufteilung des Textes mit Grafiken und Tabellen erzeugt. 
+Ein Zeilenumbruch lässt sich mit \verb|\\| erzeugen.\\
+\\ 
+Falls ein Umbruch auf einen weiteren folgt, so erzeugt dies einen Absatz.                                      
+
+\section{Seitenumbrüche}
+
+Auch das erzwingen einer neuen Seite kann nützlich sein, um eine bessere Formatierung zu bekommen.
+Mit \verb|\newpage| lässt sich dies erzwingen.
