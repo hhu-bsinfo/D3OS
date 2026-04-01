@@ -192,6 +192,7 @@ unsafe extern "C" fn syscall_handler() {
     );
 }
 
+///Gets the function pointer of the syscall with the given ID from the capability
 #[unsafe(no_mangle)]
 unsafe extern "C" fn get_capability_entry() -> *const () {
     let syscall_number: u64;

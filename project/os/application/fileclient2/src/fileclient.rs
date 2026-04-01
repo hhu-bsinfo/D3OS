@@ -112,12 +112,15 @@ pub fn main(){
 
     let handle = client.write_file(b'B').expect("Failed to write letter");
     print!("Wrote 'B' with handle: {}\n", handle);
+    
+    sleep(5000); // Sleep a bit to ensure the server has processed the write command before we share the handle
+    share_naming_object(12, OpenOptions::all(), client.pipe_cap); //share file handle with server so it can process the read request
 
     // Read it back
-    let Ok(letter) = client.read_file(handle) else {
-        print!("Failed to read file with handle: {}\n", handle);
-        return;
-    };
-    print!("Read back: {}\n", letter as char);
+    // let Ok(letter) = client.read_file(handle) else {
+    //     print!("Failed to read file with handle: {}\n", handle);
+    //     return;
+    // };
+    // print!("Read back: {}\n", letter as char);
 
 }

@@ -163,6 +163,10 @@ pub fn main() -> () {
         println!("Failed to start file client");
         return;
     };
+    let Some(t3) = thread::start_application("fileclient3", Vec::new()) else {;
+        println!("Failed to start file client");
+        return;
+    };
     let Some(t2) = thread::start_application("fileclient2", Vec::new()) else {;
         println!("Failed to start file client");
         return;

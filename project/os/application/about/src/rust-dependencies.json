@@ -306,6 +306,15 @@
     "description": null
   },
   {
+    "name": "fileclient3",
+    "version": "0.1.0",
+    "authors": "Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>",
+    "repository": null,
+    "license": null,
+    "license_file": null,
+    "description": null
+  },
+  {
     "name": "fileserver",
     "version": "0.1.0",
     "authors": "Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>",
@@ -1552,7 +1561,7 @@
     "version": "1.0.22",
     "authors": "David Tolnay <dtolnay@gmail.com>",
     "repository": "https://github.com/dtolnay/unicode-ident",
-    "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "license": "(Apache-2.0 OR MIT) AND Unicode-3.0",
     "license_file": null,
     "description": "Determine whether characters have the XID_Start or XID_Continue properties according to Unicode Standard Annex #31"
   },
