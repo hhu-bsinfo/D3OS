@@ -303,6 +303,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fileclient3"
+version = "0.1.0"
+dependencies = [
+ "capabilities",
+ "concurrent",
+ "naming",
+ "runtime",
+ "syscall",
+ "terminal",
+]
+
+[[package]]
 name = "fileserver"
 version = "0.1.0"
 dependencies = [

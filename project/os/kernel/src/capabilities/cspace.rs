@@ -35,6 +35,7 @@ pub struct CSpace{
 }
 
 impl CSpace{ 
+    /// Create a new CSpace with all capabilities initialized to the default values
     pub fn new() -> Self {
         let syscall_fns: [*const (); NUM_SYSCALLS] = [
             sys_terminal_read as *const (), //0
@@ -79,7 +80,7 @@ impl CSpace{
             sys_share_naming_cap as *const (),
             sys_revoke_naming_cap as *const (),
             sys_naming_len as *const (), //40
-        ]; //TODO individual configuration depending on calling app
+        ]; 
         
         let mut num = 0;
         let mut syscall_capabilities: Vec<_> = syscall_fns
@@ -125,6 +126,7 @@ impl CSpace{
         }
     }
     
+    ///Saves the provided syscall capability to the CSpace, returns the index of the capability in the CSpace
     pub fn receive_syscall_capability(&mut self, capability: Option<Capability<Syscall>>, syscall_num: usize) -> isize{
         if let Some(capability) = capability {
             if let Some(cap) = self.syscall_capabilities.get_mut(syscall_num) {
@@ -139,22 +141,30 @@ impl CSpace{
         -1
     }
     
+    ///Revoke the provided syscall capability from the CSpace
     pub fn revoke_syscall_capability(&mut self, syscall_num: usize){
         if let Some(cap) = self.syscall_capabilities.get_mut(syscall_num) {
 
             cap.revoke();
         }
     }
+    
+    ///Returns the syscall capability at the provided index in the CSpace, if it exists
     pub fn get_syscall_capability(&self, syscall_num: usize) -> Option<&Capability<Syscall>> {
         self.syscall_capabilities.get(syscall_num)
     }
+    
+    ///Returns the syscall capability at the provided index in the CSpace, if it exists
     pub fn get_syscall_capability_mut(&mut self, syscall_num: usize) -> Option<&mut Capability<Syscall>> {
         self.syscall_capabilities.get_mut(syscall_num)
     }
+    
+    ///Removes the syscall capability at the provided index in the CSpace, if it exists
     pub fn remove_syscall_capability(&mut self, syscall_num: usize) -> Capability<Syscall> {
         self.syscall_capabilities.remove(syscall_num)
     }
 
+    ///Saves the provided naming capability to the CSpace, returns the index of the capability in the CSpace
     pub(crate) fn receive_root_naming_capability(&mut self, capability: Option<Capability<NamingObject>>) -> isize{
         if let Some(cap) = capability {
             self.naming_capabilities[0] = cap;
@@ -164,6 +174,7 @@ impl CSpace{
         -1
     }
 
+    ///Saves the provided naming capability to the CSpace, returns the index of the capability in the CSpace
     pub fn receive_naming_capability(&mut self, capability: Option<Capability<NamingObject>>) -> isize{
         if let Some(cap) = capability {
             // info!("     CSpace: Naming capability is none: {}", cap.is_none());
@@ -175,7 +186,8 @@ impl CSpace{
         warn!("     CSpace: Failed to receive naming capability");
         -1
     }
-
+    
+    ///Saves the provided naming capability to the CSpace, returns the index of the capability in the CSpace
     pub fn receive_open_naming_capability(&mut self, capability: Option<Capability<NamingObject>>) -> isize{
         if let Some(cap) = capability {
             // info!("     CSpace: Naming capability is none: {}", cap.is_none());
@@ -188,30 +200,37 @@ impl CSpace{
         -1
     }
 
+    ///returns the opened naming capability at the provided index in the CSpace, if it exists
     pub fn get_open_naming_capability(&self, handle: usize) -> Option<&Capability<NamingObject>> {
         self.open_naming_capabilities.get(handle)
     }
 
+    ///returns the opened naming capability at the provided index in the CSpace, if it exists
     pub fn get_open_naming_capability_mut(&mut self, handle: usize) -> Option<&mut Capability<NamingObject>> {
         self.open_naming_capabilities.get_mut(handle)
     }
 
+    ///returns the naming capability at the provided index in the CSpace, if it exists
     pub fn get_naming_capability(&self, handle: usize) -> Option<&Capability<NamingObject>> {
         self.naming_capabilities.get(handle)
     }
 
+    ///returns the naming capability at the provided index in the CSpace, if it exists
     pub fn get_naming_capability_mut(&mut self, handle: usize) -> Option<&mut Capability<NamingObject>> {
         self.naming_capabilities.get_mut(handle)
     }
 
+    ///returns the number of naming capabilities in the CSpace
     pub fn get_naming_capabilities_len(&self) -> usize {
         self.naming_capabilities.len()
     }
 
+    ///returns the number of open naming capabilities in the CSpace
     pub fn get_open_naming_capabilities_len(&self) -> usize {
         self.open_naming_capabilities.len()
     }
 
+    ///Removes the naming capability at the provided index in the CSpace, if it exists
     pub fn close_open_naming_capability(&mut self, handle: usize) -> isize{
         if let Some(cap) = self.open_naming_capabilities.get_mut(handle) {
             cap.revoke();
@@ -314,6 +333,7 @@ impl CSpace{
         -1
     }
     
+    ///Returns the index of the capability pointing to the same object as the provided capability, if it exists
     pub(crate) fn cap_with_same_obj(&self, cap: &Capability<NamingObject>) -> Result<usize, Errno>{
         for (i, capability) in self.naming_capabilities.iter().enumerate() {
             if capability.points_to_same_object(cap) {

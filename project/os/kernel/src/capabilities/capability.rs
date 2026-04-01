@@ -9,6 +9,14 @@ use pc_keyboard::KeyCode::Mute;
 use spin::{Mutex, MutexGuard};
 use crate::capabilities::capability_objects::naming_object::NamingObject;
 
+/// Flags to describe permissions associated with capabilities.
+///
+/// The flags are defined using the `bitflags` crate, and include:
+/// - `READ`: The resource can be read.
+/// - `WRITE`: The resource can be modified.
+/// - `EXECUTE`: The resource can be executed.
+/// - `SHARE`: The resource can be shared.
+
 bitflags! {
     #[derive(Clone, Copy)]
     pub struct CapabilityFlags: u32 {
@@ -27,6 +35,8 @@ pub struct Capability<T> {
 }
 
 impl<T> Capability<T> {
+    
+    ///Returns true if the capability is None, typically because it has been revoked.
     pub(crate) fn is_none(&self) -> bool {
         self.obj.is_none()
     }
@@ -34,6 +44,7 @@ impl<T> Capability<T> {
 
 impl<T> Capability<T> {
 
+    /// Creates a new, original `Capability` with the given resource and permissions.
     pub fn new(obj: T, flags: CapabilityFlags) -> Self {
         Self {
             obj: Some(Arc::new(Mutex::new(obj))),
@@ -43,18 +54,22 @@ impl<T> Capability<T> {
         }
     }
 
+    ///returns true if the capability has the specified permissions
     pub fn has_permissions(&self, flags: CapabilityFlags) -> bool {
         self.flags.contains(flags)
     }
 
+    ///returns the permissions of the capability
     pub fn get_permissions(&self) -> CapabilityFlags {
         self.flags
     }
     
+    ///returns true if the capability is original, i.e. it was not shared from another capability
     pub fn is_original(&self) -> bool {
         self.original
     }
     
+    ///invokes the capability, i.e. locks the underlying resource and returns a guard to it
     pub fn invoke(&self) -> Option<MutexGuard<'_, T>> {
         if !self.flags.intersects(CapabilityFlags::READ | CapabilityFlags::WRITE | CapabilityFlags::EXECUTE) { 
             warn!("Tried to invoke a capability without READ permission");
@@ -120,11 +135,15 @@ impl<T> Capability<T> {
         // Note: shared_by remains to maintain the revocation chain
     }
 
+    /// Revokes this capability's rights
+    /// 
+    /// Revoke should rarely be necessary as capabilities should only be shared if absolutely needed
     pub fn revoke_rights(&mut self, rights: CapabilityFlags) {
         self.flags = self.flags - rights;
     }
 
-    // New method to check if this capability was derived from another one
+    
+    /// Returns true if this capability has been shared to the specified capability
     pub fn was_shared_to(&self, other: &Capability<T>) -> bool {
         let Some(shared_to) = self.shared_to.try_lock() else {
             warn!("Could not acquire lock on shared_to list.");
@@ -136,6 +155,7 @@ impl<T> Capability<T> {
         })
     }
 
+    ///Combines two capabilities into one, merging their permissions and shared_to lists if they refer to the same object
     pub(crate) fn combine(&self, other: &Capability<T>) -> Option<Capability<T>> {
         // Only allow combining if both capabilities refer to the same object
         if let Some(obj) = &self.obj {
@@ -156,6 +176,7 @@ impl<T> Capability<T> {
         None
     }
     
+    ///Returns true if both capabilities refer to the same object
     pub(crate) fn points_to_same_object(&self, other: &Capability<T>) -> bool {
         if let (Some(obj), Some(other_obj)) = (&self.obj, &other.obj) {
             Arc::as_ptr(obj) == Arc::as_ptr(other_obj)
