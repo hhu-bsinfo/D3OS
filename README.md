@@ -6,8 +6,6 @@
 
 # Entwicklung einer Capability-basierten Zugriffskontrolle in einem Rust-Betriebssystem
 
-%Fassen Sie hier die Fragestellung, Motivation und Ergebnisse Ihrer Arbeit in wenigen Worten zusammen.
-%Die Zusammenfassung sollte den Umfang einer Seite nicht überschreiten.
 Die vorliegende Arbeit untersucht und implementiert eine Capability-basierte Zugriffskontrolle für das Forschungsbetriebssystem D3OS, das als verteiltes, in Rust entwickeltes Mikrokernel-System für moderne Rechenzentrumsanforderungen konzipiert ist. 
 
 Die Motivation der Arbeit liegt darin, ein flexibles und sicheres Zugriffskontrollmodell zu entwickeln, das den Anforderungen moderner, verteilter Systeme gerecht wird. Capability-basierte Zugriffskontrolle verfolgt dabei einen dezentralen Ansatz: Zugriffsrechte werden nicht global verwaltet, sondern als nicht manipulierbare Objekte direkt an Prozesse vergeben. Diese Capabilities definieren präzise, auf welche Ressourcen und in welcher Weise zugegriffen werden darf. Dadurch wird das Prinzip der minimalen Rechtevergabe konsequent umgesetzt und die Angriffsfläche reduziert.
