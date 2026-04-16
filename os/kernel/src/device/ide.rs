@@ -26,9 +26,10 @@ use x86_64::structures::paging::page::{PageRange, Page};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::PAGE_SIZE;
+use crate::process::core_local_storage::scheduler;
 use crate::storage::block::BlockDevice;
 use crate::storage::{add_block_device, block};
-use crate::{apic, interrupt_dispatcher, memory, pci_bus, scheduler, timer, process_manager};
+use crate::{apic, interrupt_dispatcher, memory, pci_bus, timer, process_manager};
 
 
 

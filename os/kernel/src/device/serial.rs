@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 use crate::device::serial::ComPort::{Com1, Com2, Com3, Com4};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
+use crate::process::core_local_storage::scheduler;
 use stream::{DecodedInputStream, OutputStream};
 use alloc::string::String;
 use alloc::sync::Arc;
@@ -12,7 +13,7 @@ use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
 use nolock::queues::{mpmc, DequeueError};
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
-use crate::{allocator, apic, interrupt_dispatcher, scheduler};
+use crate::{allocator, apic, interrupt_dispatcher};
 
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq)]

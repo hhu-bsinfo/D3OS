@@ -14,8 +14,9 @@ use smoltcp::time::Instant;
 use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint};
 use spin::{Once, RwLock};
 use crate::device::rtl8139::Rtl8139;
+use crate::process::core_local_storage::scheduler;
 use crate::process::process::Process;
-use crate::{pci_bus, process_manager, scheduler, timer};
+use crate::{pci_bus, process_manager, timer};
 use crate::process::thread::Thread;
 
 

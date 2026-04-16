@@ -40,13 +40,14 @@ use crate::consts::MAX_USER_STACK_SIZE;
 use crate::consts::USER_SPACE_ENV_START;
 use crate::initrd;
 use crate::memory::PAGE_SIZE;
+use crate::process::core_local_storage::scheduler;
 use crate::memory::stack;
 use crate::memory::stack::StackAllocator;
 use crate::memory::vma::VmaType;
 use crate::process::process::Process;
 use crate::process::scheduler;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
-use crate::{process_manager, scheduler, tss};
+use crate::{process_manager, tss};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::naked_asm;
@@ -304,6 +305,8 @@ impl Thread {
         let mut stacks = self.stacks.lock();
 
         // init stack with 0s
+        info!("Stack capacity: {}", stacks.kernel_stack.capacity());
+        info!("Addr: {:x}", stacks.kernel_stack.as_ptr() as u64);
         for _ in 0..stacks.kernel_stack.capacity() {
             stacks.kernel_stack.push(0);
         }

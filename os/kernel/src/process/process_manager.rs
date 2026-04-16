@@ -15,9 +15,9 @@ use x86_64::VirtAddr;
 
 use crate::memory::{vmm, MemorySpace};
 use crate::memory::vma::VmaType;
+use crate::process::core_local_storage::scheduler;
 use crate::process::process::Process;
 use crate::process::process_stats::ProcStat;
-use crate::scheduler;
 
 pub struct ProcessManager {
     active_processes: Vec<Arc<Process>>,

@@ -19,7 +19,8 @@ use alloc::collections::vec_deque::VecDeque;
 use num_enum::{FromPrimitive, IntoPrimitive};
 use spin::Mutex;
 use terminal::TerminalMode;
-use crate::scheduler;
+
+use crate::process::core_local_storage::scheduler;
 
 /// TTY-Input device (Workaround for missing pipes).
 /// Buffers input from the terminal when an application is reading.

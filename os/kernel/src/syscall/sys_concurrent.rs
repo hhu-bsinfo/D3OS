@@ -1,3 +1,4 @@
+use crate::process::core_local_storage::scheduler;
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: sys_concurrent                                                  ║
    ╟─────────────────────────────────────────────────────────────────────────╢
@@ -7,7 +8,7 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use crate::process::thread::{ProcessLoadError, Thread};
-use crate::{process_manager, scheduler};
+use crate::{process_manager};
 use alloc::format;
 use alloc::slice;
 use alloc::sync::Arc;

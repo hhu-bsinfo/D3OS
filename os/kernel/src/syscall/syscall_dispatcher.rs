@@ -7,16 +7,13 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use core::arch::naked_asm;
-use core::mem::size_of;
-use core::ops::Deref;
-use core::ptr;
 use syscall::NUM_SYSCALLS;
 use x86_64::registers::control::{Efer, EferFlags};
-use x86_64::registers::model_specific::{KernelGsBase, LStar, SFMask, Star};
+use x86_64::registers::model_specific::{LStar, SFMask, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 
-use crate::{core_local_storage, tss};
+use crate::process::core_local_storage::init_tss_cls;
 use log::info;
 use x86_64::registers::rflags::RFlags;
 
@@ -49,23 +46,8 @@ use super::sys_vmem::{sys_map_memory, sys_map_frame_buffer};
 use super::sys_shm::{sys_shm_attach, sys_shm_detach, sys_shm_open, sys_shm_unlink};
 
 
-pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
-pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
-
-#[repr(C, packed)]
-pub struct CoreLocalStorage {
-    tss_rsp0_ptr: VirtAddr,
-    user_rsp: VirtAddr,
-}
-
-impl CoreLocalStorage {
-    pub const fn new() -> Self {
-        Self {
-            tss_rsp0_ptr: VirtAddr::zero(),
-            user_rsp: VirtAddr::zero(),
-        }
-    }
-}
+pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x08;    //2nd pointer in struct
+pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x10;        //3rd pointer in struct
 
 pub fn init() {
     info!("Initializing system calls");
@@ -94,13 +76,9 @@ pub fn init() {
     // The CPU clears every flag that is set in the SFMask register
     SFMask::write(RFlags::INTERRUPT_FLAG);
 
-    // Initialize core local storage (accessible via 'swapgs')
-    let mut core_local_storage = core_local_storage().lock();
-    core_local_storage.tss_rsp0_ptr =
-        VirtAddr::new(ptr::from_ref(tss().lock().deref()) as u64 + size_of::<u32>() as u64);
-    KernelGsBase::write(VirtAddr::new(
-        ptr::from_ref(core_local_storage.deref()) as u64
-    ));
+    // Initialize TSS rsp0 in core local storage (accessible via 'swapgs')
+    //let mut core_local_storage = core_local_storage().lock();
+    init_tss_cls();
 }
 
 #[unsafe(no_mangle)]

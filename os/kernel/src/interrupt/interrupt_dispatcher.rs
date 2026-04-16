@@ -2,7 +2,8 @@ use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::MemorySpace;
 use crate::memory;
 use crate::memory::vma::VmaType;
-use crate::{apic, idt, interrupt_dispatcher, scheduler};
+use crate::process::core_local_storage::scheduler;
+use crate::{apic, idt, interrupt_dispatcher};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ops::Deref;
@@ -82,6 +83,7 @@ pub enum InterruptVector {
     // Possibly some other interrupts supported by IO APICs
 
     // Local APIC interrupts (247 - 254)
+    Reschedule = 0xf1, // dedicated reschedule IPI
     Cmci = 0xf8,
     ApicTimer = 0xf9,
     Thermal = 0xfa,
@@ -140,6 +142,7 @@ impl TryFrom<u8> for InterruptVector {
             value if value == InterruptVector::PrimaryAta as u8 => Ok(InterruptVector::PrimaryAta),
             value if value == InterruptVector::SecondaryAta as u8 => Ok(InterruptVector::SecondaryAta),
 
+            value if value == InterruptVector::Reschedule as u8 => Ok(InterruptVector::Reschedule),
             value if value == InterruptVector::Cmci as u8 => Ok(InterruptVector::Cmci),
             value if value == InterruptVector::ApicTimer as u8 => Ok(InterruptVector::ApicTimer),
             value if value == InterruptVector::Thermal as u8 => Ok(InterruptVector::Thermal),
@@ -175,6 +178,21 @@ pub fn setup_idt() {
         // We need to obtain a static reference to the IDT for the following operation.
         // We know, that it has a static lifetime, since it is are declared as a static variable in 'kernel/mod.rs'.
         // However, since it is hidden behind a Mutex, the borrow checker does not see it with a static lifetime.
+        let idt_ref = ptr::from_ref(idt.deref()).as_ref().unwrap();
+        idt_ref.load();
+    }
+}
+
+// gets called once during interrupt initialization (after dispatcher exists)
+pub fn install_reschedule_ipi_handler() {
+    interrupt_dispatcher().assign(InterruptVector::Reschedule, Box::new(crate::interrupt::interrupt_handler::ReschedIpiHandler));
+}
+
+//Similar method for Application Cores
+#[unsafe(no_mangle)]
+pub extern "C" fn setup_ap_idt() {
+    let idt = idt().lock();
+    unsafe {
         let idt_ref = ptr::from_ref(idt.deref()).as_ref().unwrap();
         idt_ref.load();
     }

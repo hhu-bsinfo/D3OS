@@ -21,7 +21,8 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::{PhysAddr, VirtAddr};
 
-use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
+use crate::process::core_local_storage::scheduler;
+use crate::{apic, interrupt_dispatcher, pci_bus, process_manager};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::PAGE_SIZE;

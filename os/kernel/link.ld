@@ -1,12 +1,17 @@
 ENTRY(start)
 
-PHDRS {
-    text PT_LOAD;
-    data PT_LOAD;
-    bss PT_LOAD;
-}
-
 SECTIONS {
+    . = 8K;
+
+
+    /* Startcode fuer die APs, wird von System::init() reloziert */
+	.boot_seg_ap :
+	{
+		___BOOT_AP_START__ = .;
+		*(".boot_seg_ap")
+		*(".boot_seg_ap$")
+	    ___BOOT_AP_END__ = .;
+	}
     /*
      * load the kernel to the following address
      *
@@ -23,24 +28,24 @@ SECTIONS {
 
     .boot :
     {
-        *(.multiboot2_header)
-    } :text
-
+        *(.multiboot2_sec)
+    }
+    
     .text ALIGN (4K) :
     {
         *(.text*)
-    } :text
+    }
 
    .bss ALIGN (4K) :
     {
       ___BSS_START__ = .;
       *(".bss*")
       ___BSS_END__ = .;
-    } :bss
+    }
 
     .data ALIGN (4K) :
     {
         *(.data*)
-    } :data
+    }
     ___KERNEL_DATA_END__ = .;
 }

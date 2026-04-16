@@ -111,6 +111,17 @@ checksum = "1e4b40c7323adcfc0a41c4b88143ed58346ff65a288fc144329c5c45e05d70c6"
 
 [[package]]
 name = "bitfield-struct"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32d03926c42da50950a05787410db34aa0f61c4ab7b3ecc174fd8d37428f7921"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "bitfield-struct"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8769c4854c5ada2852ddf6fd09d15cf43d4c2aaeccb4de6432f5402f08a6003b"
@@ -749,6 +760,7 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "acpi",
+ "bitfield-struct 0.1.8",
  "bitflags 2.10.0",
  "built",
  "chrono",
@@ -866,7 +878,7 @@ name = "llfree"
 version = "0.2.0"
 source = "git+https://github.com/luhsra/llfree-rs#d9fd8b1f03e3f65fa529de0211b4b371128db0fd"
 dependencies = [
- "bitfield-struct",
+ "bitfield-struct 0.12.1",
  "log",
 ]
 

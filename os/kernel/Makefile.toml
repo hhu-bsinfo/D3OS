@@ -22,6 +22,7 @@ LIBRARY_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library"
 LINKER_FILE = "${CARGO_MAKE_WORKING_DIRECTORY}/link.ld"
 RUST_OBJECT = "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}.a"
 ASM_OBJECT = "${BUILD_DIRECTORY}/boot.o"
+ASM_OBJECT_AP = "${BUILD_DIRECTORY}/boot_ap.o"
 KERNEL = "${BOOTLOADER_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}.elf"
 RUSTFLAGS="-C target-cpu=x86-64-v3"
 
@@ -44,10 +45,15 @@ command = "nasm"
 args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${ASM_OBJECT}", "${SOURCE_DIRECTORY}/boot.asm" ]
 condition = { files_modified = { input = [ "${SOURCE_DIRECTORY}/boot.asm" ], output = [ "${BUILD_DIRECTORY}/boot.o" ] } }
 
+[tasks.build-asm-ap]
+command = "nasm"
+args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${ASM_OBJECT_AP}", "${SOURCE_DIRECTORY}/boot_ap.asm" ]
+condition = { files_modified = { input = [ "${SOURCE_DIRECTORY}/boot_ap.asm" ], output = [ "${BUILD_DIRECTORY}/boot_ap.o" ] } }
+
 [tasks.link]
 command = "${LINKER}"
-args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${KERNEL}", "${ASM_OBJECT}", "${RUST_OBJECT}", "-z", "noexecstack" ]
-dependencies = [ "compile", "build-asm" ]
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${KERNEL}", "${ASM_OBJECT}", "${ASM_OBJECT_AP}", "${RUST_OBJECT}" ]
+dependencies = [ "compile", "build-asm" , "build-asm-ap" ]
 condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*", "${LINKER_FILE}" ], output = [ "${BOOTLOADER_DIRECTORY}/kernel.elf" ] } }
 
 [tasks.check]
