@@ -1,0 +1,12 @@
+# Editor Einstellungen
+.vscode/
+
+# Build Artefakte & Images
+target/
+*.img
+*.fd
+*.dump
+loader/initrd.tar
+loader/kernel.elf
+loader/initrd/bin/
+towbootctl
