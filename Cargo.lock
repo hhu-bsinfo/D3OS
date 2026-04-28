@@ -1511,6 +1511,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "service_manager"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "log",
+ "naming",
+ "runtime",
+ "serde",
+ "serde_json",
+ "syscall",
+ "terminal",
+]
+
+[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1616,6 +1630,15 @@ name = "stream"
 version = "0.1.0"
 dependencies = [
  "pc-keyboard",
+]
+
+[[package]]
+name = "svc_dummy"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "runtime",
+ "terminal",
 ]
 
 [[package]]

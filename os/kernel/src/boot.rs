@@ -54,6 +54,7 @@ use x86_64::structures::gdt::Descriptor;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::{PageTable, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
+use alloc::vec::Vec;
 
 // import labels from linker script 'link.ld'
 unsafe extern "C" {
@@ -353,17 +354,14 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     //Initialize tty buffer (Workaround for missing pipes)
     init_tty();
 
+    // Start service manager as the first userspace component.
+    let mut service_manager_args: Vec<&str> = Vec::new();
     if BOOT_TO_GUI {
-        // Create and register the 'window_manager' thread in the scheduler
-        scheduler().ready(Thread::load_application(
-            "bin/window_manager", "window_manager", &[].to_vec(),
-        ).expect("failed to load window_manager"));
+        service_manager_args.push("--gui");
     } else {
-        // Create and register the 'terminal_emulator' thread (from app image in ramdisk) in the scheduler
-        scheduler().ready(Thread::load_application(
-            "bin/terminal_emulator", "terminal_emulator", &[].to_vec(),
-        ).expect("failed to load terminal_emulator"));
+        service_manager_args.push("--terminal");
     }
+    scheduler().ready(Thread::load_application("bin/service_manager", "service_manager", &service_manager_args).expect("failed to load service_manager"));
 
     // Dump information about all processes (including VMAs)
     process_manager().read().dump();

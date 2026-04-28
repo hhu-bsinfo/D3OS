@@ -1,0 +1,13 @@
+{
+  "name": "window_manager",
+  "binary": "window_manager",
+  "args": [],
+  "enabled": true,
+  "targets": ["gui"],
+  "restart": "on_failure",
+  "restart_on": "restart",
+  "require_all": [],
+  "require_any": [],
+  "optional_all": [],
+  "exclude_all": []
+}

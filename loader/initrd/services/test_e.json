@@ -1,0 +1,9 @@
+{
+  "name": "test_e",
+  "binary": "svc_dummy",
+  "args": ["--label=E", "--sleep-ms=10000"],
+  "enabled": true,
+  "targets": ["any"],
+  "restart": "never",
+  "exclude_all": ["test_a"]
+}

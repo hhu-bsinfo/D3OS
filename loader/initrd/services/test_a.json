@@ -1,0 +1,9 @@
+{
+  "name": "test_a",
+  "binary": "svc_dummy",
+  "args": ["--label=A", "--sleep-ms=10000"],
+  "enabled": true,
+  "targets": ["any"],
+  "restart": "never",
+  "require_all": ["terminal"]
+}

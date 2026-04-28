@@ -1,0 +1,19 @@
+[package]
+name = "svc_dummy"
+version = "0.1.0"
+edition = "2024"
+
+authors = ["D3OS"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/svc_dummy.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+terminal = { path = "../../library/terminal" }
+concurrent = { path = "../../library/concurrent" }

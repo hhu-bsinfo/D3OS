@@ -1,0 +1,13 @@
+{
+  "name": "terminal",
+  "binary": "terminal_emulator",
+  "args": [],
+  "enabled": true,
+  "targets": ["terminal"],
+  "restart": "on_failure",
+  "restart_on": "restart",
+  "require_all": [],
+  "require_any": [],
+  "optional_all": [],
+  "exclude_all": []
+}

@@ -186,13 +186,13 @@ run_task = { name = "clippy", fork = true }
 
 [tasks.create-initrd-directory]
 command = "mkdir"
-args = [ "-p", "${INITRD_DIRECTORY}", "${INITRD_DIRECTORY}/bin" ]
-condition = { files_not_exist = [ "${INITRD_DIRECTORY}/bin" ] }
+args = [ "-p", "${INITRD_DIRECTORY}", "${INITRD_DIRECTORY}/bin", "${INITRD_DIRECTORY}/services" ]
+condition = { files_not_exist = [ "${INITRD_DIRECTORY}/bin", "${INITRD_DIRECTORY}/services" ] }
 
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
 command = "${TAR}"
-args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "bin/", "usr/" ]
+args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "bin/", "usr/", "services/" ]
 dependencies = [ "link-members" ]
 condition = { files_modified = { input = [ "${INITRD_DIRECTORY}/**/*" ], output = [ "${BOOTLOADER_DIRECTORY}/initrd.tar" ] } }
 

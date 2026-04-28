@@ -1,0 +1,13 @@
+{
+  "name": "httpd",
+  "binary": "httpd",
+  "args": [],
+  "enabled": true,
+  "targets": ["terminal"],
+  "restart": "on_failure",
+  "restart_on": "restart",
+  "require_all": ["terminal", "test_a"],
+  "require_any": [],
+  "optional_all": [],
+  "exclude_all": []
+}
