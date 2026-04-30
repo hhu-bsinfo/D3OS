@@ -1,13 +1,16 @@
 #![warn(missing_docs)]
 
-use alloc::sync::Weak;
+use crate::capabilities::capability_objects::naming_object::NamingObject;
 use alloc::sync::Arc;
+use alloc::sync::Weak;
 use alloc::vec::Vec;
 use bitflags::bitflags;
 use log::{error, info, warn};
 use pc_keyboard::KeyCode::Mute;
-use spin::{Mutex, MutexGuard};
-use crate::capabilities::capability_objects::naming_object::NamingObject;
+use spin::{
+    Mutex, MutexGuard, RwLock,
+    rwlock::{RwLockReadGuard, RwLockWriteGuard},
+};
 
 /// Flags to describe permissions associated with capabilities.
 ///
@@ -28,14 +31,13 @@ bitflags! {
 }
 
 pub struct Capability<T> {
-    obj: Option<Arc<Mutex<T>>>,
+    obj: Option<Arc<RwLock<T>>>,
     flags: CapabilityFlags,
     shared_to: Mutex<Vec<Weak<Capability<T>>>>, // Reference to the capability that shared this one
     original: bool,
 }
 
 impl<T> Capability<T> {
-    
     ///Returns true if the capability is None, typically because it has been revoked.
     pub(crate) fn is_none(&self) -> bool {
         self.obj.is_none()
@@ -43,14 +45,13 @@ impl<T> Capability<T> {
 }
 
 impl<T> Capability<T> {
-
     /// Creates a new, original `Capability` with the given resource and permissions.
     pub fn new(obj: T, flags: CapabilityFlags) -> Self {
         Self {
-            obj: Some(Arc::new(Mutex::new(obj))),
+            obj: Some(Arc::new(RwLock::new(obj))),
             flags,
-            shared_to: Mutex::new(Vec::new()), 
-            original: true
+            shared_to: Mutex::new(Vec::new()),
+            original: true,
         }
     }
 
@@ -63,19 +64,28 @@ impl<T> Capability<T> {
     pub fn get_permissions(&self) -> CapabilityFlags {
         self.flags
     }
-    
+
     ///returns true if the capability is original, i.e. it was not shared from another capability
     pub fn is_original(&self) -> bool {
         self.original
     }
-    
-    ///invokes the capability, i.e. locks the underlying resource and returns a guard to it
-    pub fn invoke(&self) -> Option<MutexGuard<'_, T>> {
-        if !self.flags.intersects(CapabilityFlags::READ | CapabilityFlags::WRITE | CapabilityFlags::EXECUTE) { 
-            warn!("Tried to invoke a capability without READ permission");
+
+    /// Invokes the capability for reading. Multiple threads can hold a read guard simultaneously.
+    pub fn invoke(&self) -> Option<RwLockReadGuard<'_, T>> {
+        if !self.flags.intersects(CapabilityFlags::READ | CapabilityFlags::WRITE | CapabilityFlags::EXECUTE) {
+            warn!("Tried to invoke a capability without READ/WRITE/EXECUTE permission");
             return None;
         }
-        self.obj.as_ref()?.try_lock()
+        self.obj.as_ref()?.try_read()
+    }
+
+    /// Invokes the capability for writing. Requires exclusive access.
+    pub fn invoke_mut(&self) -> Option<RwLockWriteGuard<'_, T>> {
+        if !self.flags.intersects(CapabilityFlags::READ | CapabilityFlags::WRITE | CapabilityFlags::EXECUTE) {
+            warn!("Tried to invoke_mut a capability without READ/WRITE/EXECUTE permission");
+            return None;
+        }
+        self.obj.as_ref()?.try_write()
     }
 
     /// Shares this capability, creating a new capability with the specified permissions
@@ -92,13 +102,13 @@ impl<T> Capability<T> {
                 obj: Some(Arc::clone(arc)),
                 flags: new_flags & self.flags,
                 shared_to: Mutex::new(Vec::new()),
-                original: false
+                original: false,
             };
 
             // Store weak reference to the new capability
-            let new_cap_arc : Arc<Capability<T>> = Arc::new(new_cap.clone());
+            let new_cap_arc: Arc<Capability<T>> = Arc::new(new_cap.clone());
             self.shared_to.try_lock().unwrap().push(Arc::downgrade(&new_cap_arc));
-    
+
             info!("Shared cap");
             new_cap
         })
@@ -136,13 +146,12 @@ impl<T> Capability<T> {
     }
 
     /// Revokes this capability's rights
-    /// 
+    ///
     /// Revoke should rarely be necessary as capabilities should only be shared if absolutely needed
     pub fn revoke_rights(&mut self, rights: CapabilityFlags) {
         self.flags = self.flags - rights;
     }
 
-    
     /// Returns true if this capability has been shared to the specified capability
     pub fn was_shared_to(&self, other: &Capability<T>) -> bool {
         let Some(shared_to) = self.shared_to.try_lock() else {
@@ -150,9 +159,7 @@ impl<T> Capability<T> {
             return false;
         };
 
-        shared_to.iter().any(|weak_cap| {
-            weak_cap.as_ptr() == Arc::as_ptr(&Arc::new(other.clone()))
-        })
+        shared_to.iter().any(|weak_cap| weak_cap.as_ptr() == Arc::as_ptr(&Arc::new(other.clone())))
     }
 
     ///Combines two capabilities into one, merging their permissions and shared_to lists if they refer to the same object
@@ -160,14 +167,14 @@ impl<T> Capability<T> {
         // Only allow combining if both capabilities refer to the same object
         if let Some(obj) = &self.obj {
             if let Some(other_obj) = &other.obj {
-                if Arc::<Mutex<T>>::as_ptr(obj) == Arc::<Mutex<T>>::as_ptr(other_obj) {
+                if Arc::<RwLock<T>>::as_ptr(obj) == Arc::<RwLock<T>>::as_ptr(other_obj) {
                     let mut merged_shared_to = self.shared_to.try_lock().unwrap().clone();
                     merged_shared_to.extend(other.shared_to.try_lock().unwrap().iter().cloned());
 
                     return Some(Capability {
                         obj: self.obj.clone(),
                         flags: self.flags.clone() | other.flags.clone(),
-                        shared_to: Mutex::new(merged_shared_to), //if combining original capability's lineage is kept
+                        shared_to: Mutex::new(merged_shared_to),  //if combining original capability's lineage is kept
                         original: self.original | other.original, //if one of them is original the combined cap is also original
                     });
                 }
@@ -175,11 +182,11 @@ impl<T> Capability<T> {
         }
         None
     }
-    
+
     ///Returns true if both capabilities refer to the same object
     pub(crate) fn points_to_same_object(&self, other: &Capability<T>) -> bool {
         if let (Some(obj), Some(other_obj)) = (&self.obj, &other.obj) {
-            Arc::as_ptr(obj) == Arc::as_ptr(other_obj)
+            Arc::<RwLock<T>>::as_ptr(obj) == Arc::<RwLock<T>>::as_ptr(other_obj)
         } else {
             false
         }
@@ -190,7 +197,6 @@ impl<T> Capability<T> {
     // }
     // FORBIDDEN. Get rights by share or transfer!!!
     // Could lead to rights escalation.
-
 }
 
 // Hilfreiche Methoden für die Erstellung von Capabilities mit verschiedenen Berechtigungen
@@ -212,15 +218,21 @@ impl<T> Capability<T> {
     }
 
     pub fn null() -> Self {
-        Self { obj: None, flags: CapabilityFlags::empty(), shared_to: Mutex::new(Vec::new()), original: true }
+        Self {
+            obj: None,
+            flags: CapabilityFlags::empty(),
+            shared_to: Mutex::new(Vec::new()),
+            original: true,
+        }
     }
-    
+
     pub fn syscall(obj: T) -> Self {
         Self::new(obj, CapabilityFlags::EXECUTE | CapabilityFlags::SHARE)
     }
 }
 
-impl<T> Clone for Capability<T> { //Only used for the shared_to chain
+impl<T> Clone for Capability<T> {
+    //Only used for the shared_to chain
     fn clone(&self) -> Self {
         Self {
             obj: self.obj.as_ref().map(Arc::clone),
