@@ -46,6 +46,7 @@ use crate::memory::stack::StackAllocator;
 use crate::memory::vma::VmaType;
 use crate::process::process::Process;
 use crate::process::scheduler;
+use crate::process::scheduler::ThreadPriority;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
 use crate::{process_manager, tss};
 use alloc::sync::Arc;
@@ -94,6 +95,7 @@ struct Stacks {
 ///   can safely return.
 pub struct Thread {
     id: usize,
+    priority: ThreadPriority,
     stacks: Mutex<Stacks>,
     process: Arc<Process>, // reference to my process
     /// for user threads: the address to jump to
@@ -131,6 +133,7 @@ impl Thread {
         // Create the thread struct
         let thread = Thread {
             id: tid,
+            priority: ThreadPriority::Low, // TODO: Priority is being set on thread creatioin 
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: process_manager()
                 .read()
@@ -201,6 +204,7 @@ impl Thread {
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
             id: tid,
+            priority: ThreadPriority::Low, // TODO: Priority is being set on thread creatioin
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: parent,
             user_kickoff: kickoff_addr,
@@ -291,6 +295,11 @@ impl Thread {
     /// Return my thread id
     pub fn id(&self) -> usize {
         self.id
+    }
+
+    // New: Get the priority of the thread
+    pub fn priority(&self) -> ThreadPriority {
+        self.priority
     }
 
     /// Helper function, returns highest useable stack address of kernel stack  of 'self'

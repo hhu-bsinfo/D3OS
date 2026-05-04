@@ -5,3 +5,4 @@ extern crate alloc;
 pub mod process;
 pub mod thread;
 pub mod shm;
+pub mod core;

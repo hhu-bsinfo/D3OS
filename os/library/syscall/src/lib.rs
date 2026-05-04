@@ -72,6 +72,7 @@ pub enum SystemCall {
     ShmAttach,
     ShmDetach,
     ShmUnlink,
+    CoreId,
 }
 
 pub const NUM_SYSCALLS: usize = mem::variant_count::<SystemCall>() as usize;

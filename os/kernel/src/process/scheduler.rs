@@ -32,6 +32,7 @@ use alloc::sync::Arc;
 use alloc::{format, vec};
 use alloc::vec::Vec;
 use syscall::return_vals::Errno;
+use uefi::proto::debug;
 use core::{panic, ptr};
 use core::arch::asm;
 use core::fmt::Write;
@@ -96,8 +97,17 @@ pub fn cpu_count() -> u32 {
 pub struct ReadyState {
     initialized: bool,
     current_thread: Option<Arc<Thread>>,
-    ready_queue: VecDeque<Arc<Thread>>,
-    idle_thread: Arc<Thread>
+    // Priority queues (0 = high, 1 = mid, 2 = low)
+    ready_queues: [VecDeque<Arc<Thread>>; 3],
+    idle_thread: Arc<Thread>,
+}
+
+// This is inverted so that it is easier to iterate over the priorities in the ready queues (high first)
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ThreadPriority {
+    Low = 2,
+    Mid = 1,
+    High = 0,
 }
 
 impl ReadyState {
@@ -105,13 +115,13 @@ impl ReadyState {
 
         let initialized = false;
         let current_thread = None;
-        let ready_queue = VecDeque::new();
+        let ready_queues = [VecDeque::new(), VecDeque::new(), VecDeque::new()];
         let idle_thread = Thread::new_kernel_thread(idle_thread, "idle");
 
         Self {
             initialized: initialized,
             current_thread: current_thread,
-            ready_queue: ready_queue,
+            ready_queues: ready_queues,
             idle_thread: idle_thread,
         }
     }
@@ -220,10 +230,14 @@ impl Scheduler {
     }
 
     /// Return reference to thread identified by `thread_id`
+    /// 
+    /// New: multiple queues therefore we need to check all of them for the thread with the given id
     pub fn thread(&self, thread_id: usize) -> Option<Arc<Thread>> {
-        self.ready_state.lock().ready_queue
+        let state = self.get_ready_state();
+        state
+            .ready_queues
             .iter()
-            .find(|thread| thread.id() == thread_id)
+            .find_map(|queue| queue.iter().find(|t| t.id() == thread_id))
             .cloned()
     }
 
@@ -234,6 +248,24 @@ impl Scheduler {
         (pid, tid)
     }
 
+    // New:
+    // Get thread from high first if empty then mid if empty then low
+    // High Index = 0, Mid Index = 1, Low Index = 2
+    pub fn pop_next_thread_by_priority(&self, state: &mut ReadyState) -> Option<Arc<Thread>> {
+        for queue in state.ready_queues.iter_mut() {
+            if let Some(thread) = queue.pop_back() {
+                return Some(thread);
+            }
+        }
+        None
+    }
+
+    // New:
+    // Push thread to the back of the queue corresponding to its priority
+    pub fn push_thread_by_priority(thread: Arc<Thread>, state: &mut ReadyState) {
+        let priority = thread.priority() as usize;
+        state.ready_queues[priority].push_front(thread);
+    }
 
     /// Start the scheduler, called only once from `boot.rs`
     pub fn start(&mut self) {
@@ -242,7 +274,9 @@ impl Scheduler {
         }
         self.has_started = true;
         let mut state = self.get_ready_state();
-        state.current_thread = state.ready_queue.pop_back();
+        // New: pop the first thread from highest priority to lowest priority queue instead of the single ready queue
+        state.current_thread = self.pop_next_thread_by_priority(&mut state);
+
         if state.current_thread.is_none() {
             state.current_thread = Some(Arc::clone(&state.idle_thread));
         }
@@ -272,7 +306,9 @@ impl Scheduler {
         };
 
         inc_rq_len();
-        state.ready_queue.push_front(thread);
+        //state.ready_queue.push_front(thread);
+        Scheduler::push_thread_by_priority(thread, &mut state);
+
         join_map.insert(id, Vec::new());
     }
 
@@ -380,7 +416,9 @@ impl Scheduler {
 
         if let Some(join_list) = join_map.get_mut(&thread_id) {
             for thread in join_list {
-                ready_state.ready_queue.push_front(Arc::clone(thread));
+                // New: push the thread to the back of the queue corresponding to its priority instead of the single ready queue
+                Scheduler::push_thread_by_priority(Arc::clone(thread), ready_state);
+                
                 inc_rq_len();
             }
         }
@@ -418,6 +456,12 @@ impl Scheduler {
         }
     }
 
+    // New:
+    // Get the length of all ready queues
+    pub fn get_ready_queues_length(&self, state: &ReadyState) -> usize {
+        state.ready_queues.iter().map(|q| q.len()).sum()
+    }
+
     /// Kill the thread with the id `thread_id`, if it is on the same Core
     /// goes through ready_queue, sleep_list, blocked_list, and join_map in this order
     /// returns true if a thread with the given id was found
@@ -426,9 +470,19 @@ impl Scheduler {
         let mut changed = false;
 
         // check ready_queue
-        let mut before = state.ready_queue.len();
-        state.ready_queue.retain(|thread| thread.id() != thread_id);
-        let mut after = state.ready_queue.len();
+        // New: Iterate over all ready queues and check length
+        let mut before = self.get_ready_queues_length(state);
+
+        // Kill thread in ready queues by retaining only threads that not match the id
+        // New here: Check all ready queues
+        for queue in state.ready_queues.iter_mut() {
+            queue.retain(|thread| thread.id() != thread_id);
+        }
+
+        // New: Iterate over all ready queues and check length
+        let mut after = self.get_ready_queues_length(state);
+
+
         if before != after {
             changed = true;
         }
@@ -437,7 +491,9 @@ impl Scheduler {
                 let mut sleep_list = self.sleep_list.lock();
                 before = sleep_list.len();
                 sleep_list.retain(|(thread, _)| thread.id() != thread_id);
-                after = state.ready_queue.len() + sleep_list.len();
+
+                // New: Iterate over all ready queues and check length
+                after = self.get_ready_queues_length(state) + sleep_list.len();
             }
             if before != after {
                 changed = true;
@@ -486,9 +542,16 @@ impl Scheduler {
         info!("Scheduler{}: total_threads: {}, own_threads: {}, cpus: {}",
                 id, nbr_threads, own_threads, nbr_cpus);
         info!("Scheduler {}: Ready queue:", id);
-        for thread in &state.ready_queue {
-            info!("  - {}", thread.id());
+        self.debug_ready_queue();
+        // for thread in &state.ready_queue {
+        //     info!("  - {}", thread.id());
+        // }
+        for queue in state.ready_queues.iter() {
+            for thread in queue.iter() {
+                info!("  - {}, priority: {:?}", thread.id(), thread.priority());
+            }
         }
+
         info!("Scheduler {}: Sleep list:", id);
         for thread in sleep_list.iter() {
             info!("  - {}, {}", thread.0.id(), thread.1);
@@ -504,8 +567,10 @@ impl Scheduler {
         let state = self.get_ready_state();
         let id = current_core_id();
         info!("Scheduler {}: Ready queue:", id);
-        for thread in &state.ready_queue {
-            info!("  - {}", thread.id());
+        for queue in state.ready_queues.iter() {
+            for thread in queue.iter() {
+                info!("  - {}, priority: {:?}", thread.id(), thread.priority());
+            }
         }
     }
 
@@ -522,14 +587,17 @@ impl Scheduler {
 
     /// Block calling thread and switch to next ready thread.
     fn block_and_switch(&self, mut state: MutexGuard<ReadyState>) {
-        let mut next_thread = state.ready_queue.pop_back();
+        // New: pop the first thread from highest priority to lowest priority queue instead of the single ready queue
+        let mut next_thread = self.pop_next_thread_by_priority(&mut state);
 
         if next_thread.is_none() {
             // Execute in own if-block, so that the lock is released automatically (block() does not return)
             let mut sleep_list = self.sleep_list.lock();
             Scheduler::check_sleep_list(&mut state, &mut sleep_list);
             drain_inbox_into_ready(10, &mut state);
-            next_thread = state.ready_queue.pop_back();
+            // New: pop the first thread from highest priority to lowest priority queue instead of the single ready queue
+            next_thread = self.pop_next_thread_by_priority(&mut state);
+            
             if next_thread.is_none() {  //still no new thread => switch to idle
                 next_thread = Some(Arc::clone(&state.idle_thread));
             }
@@ -585,9 +653,11 @@ impl Scheduler {
 
         // If we found a blocked thread in the block_list, wake it up
         if let Some(thread) = blocked_thread {
-            // let mut state = self.get_ready_state();
             thread.set_state(ThreadState::Ready);
-            state.ready_queue.push_front(Arc::clone(&thread));
+            
+            // New: push the thread to the back of the queue corresponding to its priority instead of the single ready queue
+            Scheduler::push_thread_by_priority(thread, &mut state);
+
             return true;
         }
 
@@ -599,7 +669,12 @@ impl Scheduler {
             }
 
         // 2b) Check if the thread to be woken up is in the ready queue
-        if let Some(thread) = state.ready_queue.iter().find(|t| t.id() == tid && t.process().id() == pid) {
+        // New: Iterate over all ready queues and check for the thread with the given id
+        if let Some(thread) = state
+            .ready_queues
+            .iter()
+            .find_map(|queue| queue.iter().find(|t| t.id() == tid && t.process().id() == pid))
+            {
                 curr_thread.set_state(ThreadState::Ready);
                 return true;
             }
@@ -650,7 +725,8 @@ impl Scheduler {
             }
 
             // Try to get the next thread from the ready queue
-            let next = match state.ready_queue.pop_back() {
+            // New: pop the first thread from highest priority to lowest priority queue instead of the single ready queue
+            let next = match self.pop_next_thread_by_priority(&mut state) { 
                 Some(thread) => thread,
                 None => {
                     if interrupt {
@@ -672,7 +748,8 @@ impl Scheduler {
 
             // last!=idle => we need to enqueue it back in the readyQueue
             if current_was_idle == false {
-                state.ready_queue.push_front(current);
+                // New: push the thread to the back of the queue corresponding to its priority instead of the single ready queue
+                Scheduler::push_thread_by_priority(current, &mut state);
             }
 
             if interrupt {
@@ -775,9 +852,17 @@ impl Scheduler {
         }
     }
 
-    /// Pops the last inserted thread from the ready queue.
+    /// Pops a thread for balancing, preferring lower priorities.
     fn pop_last(&self, state: &mut ReadyState) -> Option<Arc<Thread>> {
-        state.ready_queue.pop_front()
+        // For balancing, prefer moving low-priority threads off-core.
+        for priority in [ThreadPriority::Low, ThreadPriority::Mid, ThreadPriority::High] {
+            let idx = priority as usize;
+            if let Some(thread) = state.ready_queues[idx].pop_front() {
+                return Some(thread);
+            }
+        }
+        None
+
     }
 
     /// Return the current running thread
@@ -801,7 +886,10 @@ impl Scheduler {
 
         sleep_list.retain(|entry| {
             if time >= entry.1 {
-                state.ready_queue.push_front(Arc::clone(&entry.0));
+                //state.ready_queue.push_front(Arc::clone(&entry.0));
+                // New: push the thread to the back of the queue corresponding to its priority instead of the single ready queue
+                Scheduler::push_thread_by_priority(Arc::clone(&entry.0), state);
+                
                 inc_rq_len();
                 false
             } else {
@@ -851,10 +939,12 @@ impl Scheduler {
         let cur = self.current_thread();
         let _ = writeln!(out, "PID: {}, TID: {}, State: {:?}", cur.process().id(), cur.id(), ThreadState::Running);
 
-        // Ready Queue
+        // Ready Queues
         let state = self.get_ready_state();
-        for thread in state.ready_queue.iter() {
-            let _ = writeln!(out, "PID: {}, TID: {}, State: {:?}", thread.process().id(), thread.id(), thread.state());
+        for queue in state.ready_queues.iter() {
+            for thread in queue.iter() {
+                let _ = writeln!(out, "PID: {}, TID: {}, State: {:?}", thread.process().id(), thread.id(), thread.state());
+            }
         }
 
         // Sleep List
@@ -889,7 +979,9 @@ impl Scheduler {
 
                 if let Some(join_list) = join_map.get_mut(&tid) {
                     for waiter in join_list.drain(..) {
-                        state.ready_queue.push_front(waiter);
+                        // New: push the thread to the back of the queue corresponding to its priority instead of the single ready queue
+                        Scheduler::push_thread_by_priority(waiter, state);
+
                         inc_rq_len();
                     }
                     join_map.remove(&tid);
@@ -904,7 +996,8 @@ impl Scheduler {
                     .iter().position(|t| t.id() == tid && t.process().id() == pid)
                 {
                     let thread = blocked_list.remove(pos);
-                    state.ready_queue.push_front(thread);
+                    // New: push the thread to the back of the queue corresponding to its priority instead of the single ready queue
+                    Scheduler::push_thread_by_priority(thread, state);
                     inc_rq_len();
                 }
             }
@@ -945,16 +1038,21 @@ impl Scheduler {
 
         // If there is nobody else runnable, don't bother.
         // (Note: ready_queue does NOT include the current thread yet.)
-        if state.ready_queue.is_empty() {
+        // New here: Check all ready queues len instead of single ready queue
+        if self.get_ready_queues_length(&state) == 0 {
             return;
         }
 
         // Requeue current as Ready
         current.set_state(ThreadState::Ready);
-        state.ready_queue.push_front(Arc::clone(&current));
+
+        // New: push the thread to the back of the queue corresponding to its priority instead of the single ready queue
+        let current_for_queue = Arc::clone(&current);
+        Scheduler::push_thread_by_priority(current_for_queue, &mut state);
 
         // Pick next
-        let next = match state.ready_queue.pop_back() {
+        //let next = match state.ready_queue.pop_back() {
+        let next = match self.pop_next_thread_by_priority(&mut state) {
             Some(t) => t,
             None => {
                 // Shouldn't happen because we checked !empty, but be safe
@@ -1100,7 +1198,9 @@ pub fn drain_inbox_into_ready(max: usize, state: &mut ReadyState) {
         match cls().try_recv() {
             Ok(Some(item)) => match item {
                 MessageItem::Thread(thread) => {
-                    state.ready_queue.push_front(thread);
+                    // New: push the thread to the back of the queue corresponding to its priority instead of the single ready queue
+                    Scheduler::push_thread_by_priority(thread, state);
+                    
                     inc_rq_len();
                     drained_threads += 1;
                 }

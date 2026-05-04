@@ -947,6 +947,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "mandelbrot"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "graphic",
+ "runtime",
+ "spin 0.9.8",
+ "terminal",
+ "time",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

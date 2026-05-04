@@ -1,4 +1,4 @@
-use crate::process::core_local_storage::scheduler;
+use crate::process::core_local_storage::{current_core_id, scheduler};
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: sys_concurrent                                                  ║
    ╟─────────────────────────────────────────────────────────────────────────╢
@@ -93,4 +93,8 @@ pub unsafe extern "sysv64" fn sys_process_execute_binary(name_buffer: *const u8,
         Err(ProcessLoadError::NotFound) => Errno::ENOENT.into(),
         Err(ProcessLoadError::ElfInvalid) => Errno::EBADF.into(),
     }
+}
+
+pub extern "sysv64" fn sys_core_id() -> isize {
+    current_core_id() as isize
 }

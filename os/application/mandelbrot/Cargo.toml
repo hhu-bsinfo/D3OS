@@ -1,0 +1,22 @@
+[package]
+edition = "2024"
+name = "mandelbrot"
+version = "0.1.0"
+authors = ["Alex Wantz <exalws@gmail.com>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/mandelbrot.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+terminal = { path = "../../library/terminal" }
+concurrent = { path = "../../library/concurrent" }
+graphic = { path = "../../library/graphic" }
+time = { path = "../../library/time" }
+
+spin = "0.9.8"
