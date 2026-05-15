@@ -95,7 +95,7 @@ struct Stacks {
 ///   can safely return.
 pub struct Thread {
     id: usize,
-    priority: ThreadPriority,
+    priority: AtomicU8,
     used_time: AtomicUsize, // used time in ms for the current timeslice
     stacks: Mutex<Stacks>,
     process: Arc<Process>, // reference to my process
@@ -134,7 +134,7 @@ impl Thread {
         // Create the thread struct
         let thread = Thread {
             id: tid,
-            priority: ThreadPriority::Low, // TODO: Priority is being set on thread creatioin 
+            priority: AtomicU8::new(ThreadPriority::High as u8), // TODO: Priority is being set on thread creation
             used_time: AtomicUsize::new(0), // Initially did not use any time of its slice
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: process_manager()
@@ -206,7 +206,7 @@ impl Thread {
         // create user thread and prepare the stack for starting it later
         let thread = Thread {
             id: tid,
-            priority: ThreadPriority::Low, // TODO: Priority is being set on thread creatioin
+            priority: AtomicU8::new(ThreadPriority::High as u8), // TODO: Priority is being set on thread creatioin
             used_time: AtomicUsize::new(0), // Initially did not use any time of its slice
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: parent,
@@ -302,7 +302,16 @@ impl Thread {
 
     // New: Get the priority of the thread
     pub fn priority(&self) -> ThreadPriority {
-        self.priority
+        match self.priority.load(Ordering::Acquire) {
+            0 => ThreadPriority::High,
+            1 => ThreadPriority::Mid,
+            _ => ThreadPriority::Low,
+        }
+    }
+
+    // New: Set new priority for the thread
+    pub fn set_priority(&self, priority: ThreadPriority) {
+        self.priority.store(priority as u8, Ordering::Release);
     }
 
     // New: Get used time of the thread

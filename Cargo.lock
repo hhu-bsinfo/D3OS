@@ -959,6 +959,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "masst"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "graphic",
+ "runtime",
+ "terminal",
+ "time",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

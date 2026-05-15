@@ -56,6 +56,8 @@ static ACTIVE_CPUS: AtomicU32 = AtomicU32::new(1);  //BP automatically
 /// Presence means: joining on this tid should block (unless it exits concurrently).
 static ACTIVE_TIDS: Once<Mutex<Map<usize, ()>>> = Once::new();
 
+static REFRESH_INTERVAL_MS: usize = 5000; // Interval for refreshing the priority of the threads in ms (New)
+
 #[inline]
 pub fn active_tids() -> &'static Mutex<Map<usize, ()>> {
     ACTIVE_TIDS.call_once(|| Mutex::new(Map::new()))
@@ -145,6 +147,7 @@ pub struct Scheduler {
     join_map: Mutex<Map<usize, Vec<Arc<Thread>>>>, // manage which threads are waiting for a thread-id to terminate
     has_started: bool,
     time_since_last_check: AtomicUsize,
+    last_refresh_time: AtomicUsize,
 }
 
 unsafe impl Send for Scheduler {}
@@ -172,6 +175,8 @@ impl Scheduler {
 
         // Added after each preemption check
         let time_since_last_check = AtomicUsize::new(0);
+        // Last refresh time of the current threads
+        let last_refresh_time: AtomicUsize = AtomicUsize::new(0);
 
         Self {
             ready_state: ready_state,
@@ -180,6 +185,7 @@ impl Scheduler {
             join_map: join_map,
             has_started: has_started,
             time_since_last_check: time_since_last_check,
+            last_refresh_time: last_refresh_time,
         }
     }
 
@@ -398,6 +404,66 @@ impl Scheduler {
         self.switch_thread(true);
     }
 
+    // Demote a Thread to the next lower priority level when timeslice expires
+    fn demote_thread(&self, thread: Arc<Thread>) {
+        let thread_id = thread.id();
+        let current_priority = thread.priority();
+        let new_priority = match current_priority {
+            ThreadPriority::High => ThreadPriority::Mid,
+            ThreadPriority::Mid => ThreadPriority::Low,
+            ThreadPriority::Low => ThreadPriority::Low, // already lowest priority
+        };
+
+        //info!("Demoting thread {} from priority {:?} to {:?}", thread_id, current_priority, new_priority);
+        thread.set_priority(new_priority);
+    }
+
+    // After a certain interval, refresh the priority of one thread in lowest priority queue to prevent starvation
+    fn refresh(&self, state: &mut ReadyState, refresh_middle_aswell: bool) {
+        // Get length of lowest priority queue
+        let low_queue_len = state.ready_queues[ThreadPriority::Low as usize].len();
+
+        if low_queue_len > 0
+            && timer().systime_ms() - self.last_refresh_time.load(Relaxed) >= REFRESH_INTERVAL_MS {
+            // Pop one thread from the lowest priority queue
+            if let Some(thread) = state.ready_queues[ThreadPriority::Low as usize].pop_back() {
+                // Refresh its priority to high and push it to the high priority queue
+                let thread_id = thread.id();
+
+                thread.set_priority(ThreadPriority::High);
+                state.ready_queues[ThreadPriority::High as usize].push_front(thread);
+                
+                self.last_refresh_time.store(timer().systime_ms(), Relaxed);
+                
+                //info!("Refreshed priority of thread {} in low priority queue to prevent starvation", thread_id);
+                return;
+            }
+        }
+
+        // Alternatively if there are not threads in the lowest priority queue, we check the mid priority queue for refreshing
+        if refresh_middle_aswell {
+            let mid_queue_len = state.ready_queues[ThreadPriority::Mid as usize].len();
+
+            if mid_queue_len > 0
+                && timer().systime_ms() - self.last_refresh_time.load(Relaxed) >= REFRESH_INTERVAL_MS {
+                // Pop one thread from the mid priority queue
+                if let Some(thread) = state.ready_queues[ThreadPriority::Mid as usize].pop_back() {
+                    // Refresh its priority to high and push it to the high priority queue
+                    let thread_id = thread.id();
+
+                    thread.set_priority(ThreadPriority::High);
+                    state.ready_queues[ThreadPriority::High as usize].push_front(thread);
+                    
+                    self.last_refresh_time.store(timer().systime_ms(), Relaxed);
+                    
+                    //info!("Refreshed priority of thread {} in mid priority queue to prevent starvation", thread_id);
+                    return;
+                }
+            }
+        }
+
+    }
+
     // Check if time slice of current thread has expired and switch thread
     fn check_preemption(&self, state: &ReadyState) -> bool{
         let current_thread = Scheduler::current(state);
@@ -414,17 +480,23 @@ impl Scheduler {
         current_thread.set_used_time(new_used_time);
         self.time_since_last_check.store(current_time, Relaxed);
 
+        // Mapping of priority to timeslice
         let timeslice_ms = match current_priority {
             ThreadPriority::High => HIGH_PRIORITY_TIMESLICE_MS,
             ThreadPriority::Mid => MID_PRIORITY_TIMESLICE_MS,
             ThreadPriority::Low => LOW_PRIORITY_TIMESLICE_MS,
         };
 
-        let current_thread_id = current_thread.id();
+        //let current_thread_id = current_thread.id();
 
         if new_used_time >= timeslice_ms {
-            info!("Preempting thread {} with priority {:?} after using {} ms (timeslice: {} ms)", current_thread_id, current_priority, new_used_time, timeslice_ms);
+            //info!("Preempting thread {} with priority {:?} after using {} ms (timeslice: {} ms)", current_thread_id, current_priority, new_used_time, timeslice_ms);
             current_thread.set_used_time(0); // reset used time for the current thread
+            
+            // Demote the thread to the next lower priority leve if timeslice expired
+            if current_priority != ThreadPriority::Low {
+                self.demote_thread(current_thread);
+            }
 
             return true;
         } else {
@@ -770,6 +842,9 @@ impl Scheduler {
                 return;
             }
 
+            // You can choose to refresh the priority of a middle thread aswell if there are not threads in the lowest prio queue
+            Scheduler::refresh(&self, &mut state, false);
+
             // Get clone of the current thread
             let current = Scheduler::current(&state);
             let current_was_idle = current.id() == state.idle_thread.id();
@@ -870,6 +945,15 @@ impl Scheduler {
     /// returns (target_core, target_load)
     fn find_less_loaded_core(&self) -> Option<(usize, usize)> {
         // Inspect per-core exported metrics
+        // map for all cores: core_id -> rq_len and print it for debugging
+        ///let active_cpus = ACTIVE_CPUS.load(Relaxed);
+        // let mut core_loads = Vec::with_capacity(active_cpus as usize);
+        // for i in 0..active_cpus {
+        //     core_loads.push(read_rq_len_remote(i as usize));
+        // }
+        // info!("Scheduler{}: Core loads: {:?}", current_core_id(), core_loads);
+
+
         let mut curr: usize = 0;
         let mut min = read_rq_len_remote(0);
         for i in 1..ACTIVE_CPUS.load(Relaxed) as usize {
@@ -1004,7 +1088,6 @@ impl Scheduler {
                 let _ = writeln!(out, "PID: {}, TID: {}, State: {:?}", thread.process().id(), thread.id(), thread.state());
             }
         }
-
         // Sleep List
         let sleep_list = self.sleep_list.lock();
         for entry in sleep_list.iter() {
