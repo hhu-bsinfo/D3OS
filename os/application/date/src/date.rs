@@ -11,4 +11,10 @@ use time::date;
 pub fn main() {
     let date = date();
     println!("{}", date.format("%Y-%m-%d %H:%M:%S"));
+
+    // While True => does never exit 
+    loop {
+       
+    }
+
 }

@@ -69,6 +69,8 @@ unsafe extern "C" {
 
 const BOOT_TO_GUI: bool = false; // Immediately start the GUI instead of terminal (Debug)
 
+pub const APIC_TIMER_INTERVAL_MS: usize = 1; // Interval for the APIC timer in ms 
+
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \
 ///   and `multiboot2_addr` is the address of multiboot2 info records
@@ -404,7 +406,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Start APIC timer & scheduler
     info!("Starting scheduler");
-    apic().start_timer(10);
+    apic().start_timer(APIC_TIMER_INTERVAL_MS);
 
 
     // loop {

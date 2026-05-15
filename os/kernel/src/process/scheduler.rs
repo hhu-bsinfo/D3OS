@@ -102,6 +102,11 @@ pub struct ReadyState {
     idle_thread: Arc<Thread>,
 }
 
+pub enum ThreadSwitchType {
+    TimesliceExpired, // Thread switch because the timeslice of the current thread has expired
+    SelfYield, // Thread switch because it yielded => does not switch queue used time only added 
+}
+
 // This is inverted so that it is easier to iterate over the priorities in the ready queues (high first)
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ThreadPriority {
@@ -109,6 +114,11 @@ pub enum ThreadPriority {
     Mid = 1,
     High = 0,
 }
+
+// Timeslice in milliseconds
+pub const LOW_PRIORITY_TIMESLICE_MS: usize = 50; 
+pub const MID_PRIORITY_TIMESLICE_MS: usize = 20;
+pub const HIGH_PRIORITY_TIMESLICE_MS: usize = 10;
 
 impl ReadyState {
     pub fn new() -> Self {
@@ -134,6 +144,7 @@ pub struct Scheduler {
     blocked_list: Mutex<Vec<Arc<Thread>>>,
     join_map: Mutex<Map<usize, Vec<Arc<Thread>>>>, // manage which threads are waiting for a thread-id to terminate
     has_started: bool,
+    time_since_last_check: AtomicUsize,
 }
 
 unsafe impl Send for Scheduler {}
@@ -159,12 +170,16 @@ impl Scheduler {
         let join_map = Mutex::new(Map::new());
         let has_started = false;
 
+        // Added after each preemption check
+        let time_since_last_check = AtomicUsize::new(0);
+
         Self {
             ready_state: ready_state,
             sleep_list: sleep_list,
             blocked_list: blocked_list,
             join_map: join_map,
             has_started: has_started,
+            time_since_last_check: time_since_last_check,
         }
     }
 
@@ -381,6 +396,42 @@ impl Scheduler {
     /// Helper function for switching a thread caused by an interrupt
     pub fn switch_thread_from_interrupt(&self) {
         self.switch_thread(true);
+    }
+
+    // Check if time slice of current thread has expired and switch thread
+    fn check_preemption(&self, state: &ReadyState) -> bool{
+        let current_thread = Scheduler::current(state);
+        let current_priority = current_thread.priority();
+        let current_time = timer().systime_ms();
+
+        // Used time and current diff needs to be checked as the new value is important for the preemption decision
+        let used_time = current_thread.used_time();
+        let last_check = self.time_since_last_check.load(Relaxed);
+        let time_diff = current_time.saturating_sub(last_check);
+
+        // Add the time difference to the used time of the current thread
+        let new_used_time = used_time.saturating_add(time_diff);
+        current_thread.set_used_time(new_used_time);
+        self.time_since_last_check.store(current_time, Relaxed);
+
+        let timeslice_ms = match current_priority {
+            ThreadPriority::High => HIGH_PRIORITY_TIMESLICE_MS,
+            ThreadPriority::Mid => MID_PRIORITY_TIMESLICE_MS,
+            ThreadPriority::Low => LOW_PRIORITY_TIMESLICE_MS,
+        };
+
+        let current_thread_id = current_thread.id();
+
+        if new_used_time >= timeslice_ms {
+            info!("Preempting thread {} with priority {:?} after using {} ms (timeslice: {} ms)", current_thread_id, current_priority, new_used_time, timeslice_ms);
+            current_thread.set_used_time(0); // reset used time for the current thread
+
+            return true;
+        } else {
+            //info!("Not preempting thread {} with priority {:?} yet, used time: {} ms (timeslice: {} ms)", current_thread_id, current_priority, used_time, timeslice_ms);
+            return false;
+        }
+        
     }
 
     /// Calling thread will block until thread with `thread_id` has terminated
@@ -710,6 +761,13 @@ impl Scheduler {
             // Check if this core has too many threads running
             if read_resched_flag() || self.should_balance_now() {
                 self.balance_once(&mut state);
+            }
+
+            let preempt = self.check_preemption(&state);
+
+            if !preempt {
+                if interrupt { apic().end_of_interrupt(); }
+                return;
             }
 
             // Get clone of the current thread

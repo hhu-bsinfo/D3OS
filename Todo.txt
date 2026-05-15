@@ -1,0 +1,7 @@
+Heap freier Scheduler 
+Eventuell Round Robin weg und dafür mit Prioritäten 
+-> iwas State of the Art anschauen
+Power und Effieciency Cores
+Shared-Nothing Architektur
+
+TockOS mal anschauen: https://github.com/tock/tock

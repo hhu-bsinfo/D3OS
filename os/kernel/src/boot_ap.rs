@@ -1,5 +1,6 @@
 use log::info;
 use x86_64::registers::control::{Cr4, Cr4Flags};
+use crate::boot::APIC_TIMER_INTERVAL_MS;
 use crate::{APIC, apic, process_manager};
 use crate::device::apic::Apic;
 use crate::process::core_local_storage::{cls, cls_mut, init_gdt_for_this_core, install_gs_base, scheduler_start, scheduler};
@@ -38,7 +39,7 @@ pub extern "C" fn startup_ap(cpu_id: u32) {
     Apic::enable_local_apic(cls().local_apic());
 
     info!("Starting scheduler{}",cpu_id);
-    apic().start_timer(10);
+    apic().start_timer(APIC_TIMER_INTERVAL_MS);
     scheduler_start();
 
     loop {}

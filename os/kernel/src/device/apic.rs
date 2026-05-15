@@ -9,7 +9,7 @@ use acpi::platform::interrupt::{InterruptSourceOverride, NmiSource, Polarity, Tr
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::vec::Vec;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use raw_cpuid::CpuId;
 use spin::Mutex;
 use uefi::boot::PAGE_SIZE;

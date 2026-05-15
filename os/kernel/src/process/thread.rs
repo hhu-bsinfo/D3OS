@@ -53,7 +53,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::naked_asm;
 use core::ptr;
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use goblin::elf::Elf;
 use goblin::elf64;
 use log::error;
@@ -96,6 +96,7 @@ struct Stacks {
 pub struct Thread {
     id: usize,
     priority: ThreadPriority,
+    used_time: AtomicUsize, // used time in ms for the current timeslice
     stacks: Mutex<Stacks>,
     process: Arc<Process>, // reference to my process
     /// for user threads: the address to jump to
@@ -134,6 +135,7 @@ impl Thread {
         let thread = Thread {
             id: tid,
             priority: ThreadPriority::Low, // TODO: Priority is being set on thread creatioin 
+            used_time: AtomicUsize::new(0), // Initially did not use any time of its slice
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: process_manager()
                 .read()
@@ -205,6 +207,7 @@ impl Thread {
         let thread = Thread {
             id: tid,
             priority: ThreadPriority::Low, // TODO: Priority is being set on thread creatioin
+            used_time: AtomicUsize::new(0), // Initially did not use any time of its slice
             stacks: Mutex::new(Stacks::new(kernel_stack, user_stack)),
             process: parent,
             user_kickoff: kickoff_addr,
@@ -300,6 +303,16 @@ impl Thread {
     // New: Get the priority of the thread
     pub fn priority(&self) -> ThreadPriority {
         self.priority
+    }
+
+    // New: Get used time of the thread
+    pub fn used_time(&self) -> usize {
+        self.used_time.load(Ordering::Acquire)
+    }
+
+    // New: Set new used time for the thread
+    pub fn set_used_time(&self, time: usize) {
+        self.used_time.store(time, Ordering::Release);
     }
 
     /// Helper function, returns highest useable stack address of kernel stack  of 'self'
