@@ -75,6 +75,13 @@ pub struct Scheduler {
     sleep_list: Mutex<Vec<(Arc<Thread>, usize)>>,
     blocked_list: Mutex<Vec<Arc<Thread>>>,
     join_map: Mutex<Map<usize, Vec<Arc<Thread>>>>, // manage which threads are waiting for a thread-id to terminate
+    exit_status_map: Mutex<Map<usize, ExitStatus>>, // exit status for threads that have terminated but still have joiners
+}
+
+#[derive(Copy, Clone, Debug)]
+struct ExitStatus {
+    code: usize,
+    remaining_joiners: usize,
 }
 
 unsafe impl Send for Scheduler {}
@@ -96,6 +103,7 @@ impl Scheduler {
             sleep_list: Mutex::new(Vec::new()),
             blocked_list: Mutex::new(Vec::new()),
             join_map: Mutex::new(Map::new()),
+            exit_status_map: Mutex::new(Map::new()),
         }
     }
 
@@ -389,11 +397,16 @@ impl Scheduler {
         }
 
         self.block_switch(state);
-        Ok(0)
+        self.take_exit_code(thread_id)
     }
 
     /// Exit calling thread.
     pub fn exit(&self) -> ! {
+        self.exit_with_code(0)
+    }
+
+    /// Exit calling thread with an explicit exit code.
+    pub fn exit_with_code(&self, exit_code: usize) -> ! {
         let mut ready_state;
         let current;
 
@@ -409,6 +422,12 @@ impl Scheduler {
 
          //   info!("Scheduler: searching join-list");
             let join_list = join_map.get_mut(&current.id()).expect("Missing join_map entry!");
+
+            let joiners = join_list.len();
+            if joiners > 0 {
+                let mut exit_status_map = self.exit_status_map.lock();
+                exit_status_map.insert(current.id(), ExitStatus {code: exit_code, remaining_joiners: joiners});
+            }
 
             for thread in join_list {
                 ready_state.ready_queue.push_front(Arc::clone(thread));
@@ -444,12 +463,36 @@ impl Scheduler {
 
         let join_list = join_map.get_mut(&thread_id).expect("Missing join map entry!");
 
+        let joiners = join_list.len();
+        if joiners > 0 {
+            let mut exit_status_map = self.exit_status_map.lock();
+            exit_status_map.insert(thread_id, ExitStatus {code: 1, remaining_joiners: joiners});
+        }
+
         for thread in join_list {
             ready_state.ready_queue.push_front(Arc::clone(thread));
         }
 
         join_map.remove(&thread_id);
         ready_state.ready_queue.retain(|thread| thread.id() != thread_id);
+    }
+
+    fn take_exit_code(&self, thread_id: usize) -> Result<usize, Errno> {
+        let mut exit_status_map = self.exit_status_map.lock();
+        let status = exit_status_map
+            .get_mut(&thread_id)
+            .ok_or(Errno::ESRCH)?;
+
+        let code = status.code;
+
+        // One joiner has consumed the status.
+        if status.remaining_joiners > 0 {
+            status.remaining_joiners -= 1;
+        }
+        if status.remaining_joiners == 0 {
+            exit_status_map.remove(&thread_id);
+        }
+        Ok(code)
     }
 
     /// Switch to next thread, called from 'exit', 'sleep', and 'block'

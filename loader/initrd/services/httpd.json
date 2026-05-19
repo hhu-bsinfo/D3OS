@@ -2,7 +2,7 @@
   "name": "httpd",
   "binary": "httpd",
   "args": [],
-  "enabled": true,
+  "enabled": false,
   "targets": ["terminal"],
   "restart": "on_failure",
   "restart_on": "restart",

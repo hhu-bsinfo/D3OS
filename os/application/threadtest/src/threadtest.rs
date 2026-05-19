@@ -25,10 +25,14 @@ fn thread_fn() {
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let num_threads: usize = args().skip(1).next()
+    let mut it = args().skip(1);
+
+    let num_threads: usize = it.next()
         .unwrap_or("1".to_string())
         .parse()
         .expect("Failed to parse number of threads argument!");
+
+    let panic_mode = it.next().as_deref() == Some("panic");
 
     let process = process::current().unwrap();
     let thread = thread::current().unwrap();
@@ -37,11 +41,19 @@ pub fn main() {
     println!("Hello from main thread with ID [{}] in process [{}] started at [{}]!", thread.id(), process.id(), start_time);
 
     for _ in 0..num_threads {
-        match thread::create(thread_fn) {
-            Some(t) => { 
-                let _ = t.join(); 
+        let t = if panic_mode {
+            thread::create(|| panic!("threadtest: intentional panic"))
+        } 
+        else {
+            thread::create(thread_fn)
+        };
+
+        match t {
+            Some(t) => match t.join() {
+                Ok(code) => println!("Joined thread [{}] with exit code [{}]", t.id(), code),
+                Err(e) => println!("Join failed for thread [{}]: {:?}", t.id(), e),
             },
-            None => println!("Failed to create anonymous thread!")
+            None => println!("Failed to create anonymous thread!"),
         }
     }
 }

@@ -132,7 +132,11 @@ pub fn sleep(ms: usize) {
 }
 
 pub fn exit() -> ! {
-    let _ = syscall(SystemCall::ThreadExit, &[]);
+    exit_with_code(0)
+}
+
+pub fn exit_with_code(exit_code: usize) -> ! {
+    let _ = syscall(SystemCall::ThreadExit, &[exit_code]);
     panic!("System call 'ThreadExit' has returned!")
 }
 
