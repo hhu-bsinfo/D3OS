@@ -35,10 +35,35 @@ pub fn main() {
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(10_000);
 
+    let exit_after_ms: Option<usize> = arg_value(&args, "--exit-after-ms=")
+        .and_then(|v| v.parse::<usize>().ok());
+
+    let panic_on_start = has_flag(&args, "--panic") || has_flag(&args, "--crash");
+    let panic_after_ms: Option<usize> = arg_value(&args, "--panic-after-ms=")
+        .and_then(|v| v.parse::<usize>().ok());
+
     println!("svc_dummy: start label={} initial_sleep_ms={} sleep_ms={}", label, initial_sleep_ms, sleep_ms);
+
+    if panic_on_start {
+        panic!("svc_dummy: intentional crash (label={})", label);
+    }
 
     if initial_sleep_ms != 0 {
         thread::sleep(initial_sleep_ms);
+    }
+
+    if let Some(ms) = panic_after_ms {
+        if ms != 0 {
+            thread::sleep(ms);
+        }
+        panic!("svc_dummy: intentional crash after {}ms (label={})", ms, label);
+    }
+
+    if let Some(ms) = exit_after_ms {
+        if ms != 0 {
+            thread::sleep(ms);
+        }
+        thread::exit_with_code(0);
     }
 
     loop {

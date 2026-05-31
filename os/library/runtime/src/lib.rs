@@ -16,7 +16,6 @@ pub mod env;
 
 use concurrent::{process, thread};
 use core::panic::PanicInfo;
-use terminal::println;
 use linked_list_allocator::LockedHeap;
 use syscall::{syscall, SystemCall};
 
@@ -30,7 +29,7 @@ pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
 #[cfg(not(any(test, feature = "std")))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    println!("Panic: {}!", info);
+    let _ = info;
     thread::exit_with_code(1);
 }
 

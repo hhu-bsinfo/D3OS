@@ -194,6 +194,48 @@ struct Service {
     state: ServiceState,
 }
 
+fn should_restart(policy: RestartPolicy, exit_code: usize) -> bool {
+    match policy {
+        RestartPolicy::Never => false,
+        RestartPolicy::Always => true,
+        RestartPolicy::OnFailure => exit_code != 0,
+    }
+}
+
+fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread) {
+    loop {
+        let exit_code = match child.join() {
+            Ok(code) => code,
+            Err(e) => {
+                println!("svc: {} join failed (err={:?})", manifest.name, e);
+                1
+            }
+        };
+
+        println!("svc: {} exited (code={})", manifest.name, exit_code);
+
+        if !should_restart(manifest.restart, exit_code) {
+            println!("svc: {} not restarting (policy={:?})", manifest.name, manifest.restart);
+            break;
+        }
+
+        thread::sleep(200); // Kurz Verzögern, um Crash-Loops zu vermeiden
+
+        println!("svc: restarting {} -> {}", manifest.name, manifest.binary);
+        let args_vec: Vec<&str> = manifest.args.iter().map(|s| s.as_str()).collect();
+        match thread::start_application(&manifest.binary, args_vec) {
+            Some(new_child) => {
+                println!("svc: {} online (tid={})", manifest.name, new_child.id());
+                child = new_child;
+            }
+            None => {
+                println!("svc: {} entered maintenance (restart exec failed)", manifest.name);
+                break;
+            }
+        }
+    }
+}
+
 fn service_state_by_name(services: &[Service], name: &str) -> Option<ServiceState> {
     services.iter().find(|s| s.manifest.name == name).map(|s| s.state)
 }
@@ -256,8 +298,12 @@ fn start_service_once(service: &mut Service) -> bool {
 
     match thread::start_application(&service.manifest.binary, args_vec) {
         Some(child) => {
+            let manifest = service.manifest.clone();
+
             service.state = ServiceState::Online;
             println!("svc: {} online (tid={})", service.manifest.name, child.id());
+
+            let _ = thread::create(move || supervise_service(manifest, child));
             true
         }
         None => {
