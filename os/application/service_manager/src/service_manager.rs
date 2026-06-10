@@ -16,15 +16,16 @@ use terminal::println;
 use log::error;
 use time::systime;
 
-const HEARTBEAT_DIR: &str = "/heartbeat";           // Ort für die Pipes
+const HEARTBEAT_DIR: &str = "/heartbeat";           // Ort für die Heartbeat-Dateien
 const HEARTBEAT_INTERVAL_MS: usize = 2_000;         // Wie oft Heartbeats gesendet werden
 const WATCHDOG_TICK_INTERVAL_MS: usize = 1_000;    // Intervall für den Watchdog-Tick
 const HEARTBEAT_TIMEOUT_MS: usize = 5_000;         // Wie alt ein Heartbeat sein darf, bevor der Watchdog Alarm schlägt
 
 #[derive(Debug, Clone, Copy)]
-struct HeartbeatState {     // Merken uns für jeden Service das letzte Signal + ob schon ein Alarm/Neustart durchgeführt wurde
+struct HeartbeatState {     // Merken uns für jeden Service das letzte Signal + ob schon ein Alarm/Neustart durchgeführt wurde + Datei handle
     last_seen_ms: usize,
     reported: bool,
+    handle: Option<usize>,
 }
 
 type HeartbeatMap = BTreeMap<String, HeartbeatState>;   // Service Name -> HeartbeatState
@@ -239,67 +240,30 @@ fn build_effective_args(manifest: &ServiceManifest) -> Vec<String> {
     }
     args
 }
-
-fn heartbeat_runtime_disabled(args: &[String]) -> bool {
-    args.iter().any(|a| a == "--no-heartbeat" || a == "--disable-heartbeat")
-}
-
 // Heartsbeats registrieren oder entfernen
-fn heartbeat_register(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str) {
+fn heartbeat_register(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str, handle: Option<usize>) {
     let mut map = heartbeats.lock();
-    map.insert(name.to_string(), HeartbeatState { last_seen_ms: systime().num_milliseconds() as usize, reported: false });
+    map.insert(name.to_string(), HeartbeatState {last_seen_ms: systime().num_milliseconds() as usize, reported: false, handle});
 }
 
 fn heartbeat_remove(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str) {
     let mut map = heartbeats.lock();
-    map.remove(name);
+    if let Some(state) = map.remove(name) {
+        if let Some(handle) = state.handle {
+            let _ = naming::close(handle);
+        }
+    }
 }
 
-// Erstelle Pipe für gegebenen Service
-fn ensure_heartbeat_fifo(service_name: &str) -> String {
+fn ensure_heartbeat_file(service_name: &str) -> String {
     let hb_path = alloc::format!("{}/{}", HEARTBEAT_DIR, service_name);
-    let _ = naming::mkfifo(&hb_path);
+    let _ = naming::touch(&hb_path);        // Statt Pipies, jetzt tmpfs nutzen (Dateien)
     hb_path
 }
 
-
-// Starte neuen Thread für jeden Service, welcher die Pipe ausliest
-fn start_service_heartbeat_receiver(service_name: String, heartbeat_path: String, heartbeats: Arc<Mutex<HeartbeatMap>>) {
-    let _ = thread::create(move || {
-        let mut buf = [0u8; 1];
-
-        let fh = loop {
-            match naming::open(&heartbeat_path, OpenOptions::READONLY) {
-                Ok(fh) => break fh,
-                Err(_) => {
-                    thread::sleep(500);
-                }
-            }
-        };
-
-        loop {
-            match naming::read(fh, &mut buf) {
-                Ok(0) => thread::sleep(100),
-                Ok(_) => {
-                    let mut map = heartbeats.lock();
-                    if let Some(state) = map.get_mut(&service_name) {
-                        state.last_seen_ms = systime().num_milliseconds() as usize;
-                        state.reported = false;
-                    } 
-                    else {
-                        map.insert(service_name.clone(), HeartbeatState {last_seen_ms: systime().num_milliseconds() as usize, reported: false});
-                    }
-                }
-                Err(_) => thread::sleep(200),
-            }
-        }
-    });
-}
-
-// Watchdog Thread, der regelmäßig die Heartbeats überprüft und Alarm schlägt, wenn eines zu alt ist
 fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>) {
     let _ = thread::create(move || {
-        let timeout = HEARTBEAT_TIMEOUT_MS;
+        let mut buf = [0u8; 8];
 
         loop {
             thread::sleep(WATCHDOG_TICK_INTERVAL_MS);
@@ -308,8 +272,18 @@ fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>) {
             let mut missed: Vec<(String, usize)> = Vec::new();
             let mut map = heartbeats.lock();
             for (name, state) in map.iter_mut() {
+                if let Some(handle) = state.handle {
+                    while let Ok(n) = naming::read(handle, &mut buf) {
+                        if n == 0 {
+                            break;
+                        }
+                        state.last_seen_ms = now;
+                        state.reported = false;
+                    }
+                }
+
                 let age = now.saturating_sub(state.last_seen_ms);
-                if age >= timeout && !state.reported {
+                if age >= HEARTBEAT_TIMEOUT_MS && !state.reported {
                     missed.push((name.clone(), age / 1000));
                     state.reported = true;
                 }
@@ -348,12 +322,6 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heart
         thread::sleep(200); // Kurz Verzögern, um Crash-Loops zu vermeiden
 
         println!("svc: restarting {} -> {}", manifest.name, manifest.binary);
-        let _heartbeat_path = if manifest.heartbeat {
-            Some(ensure_heartbeat_fifo(&manifest.name))
-        } 
-        else {
-            None
-        };
         let args = build_effective_args(&manifest);
         let args_vec: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         match thread::start_application(&manifest.binary, args_vec) {
@@ -361,7 +329,9 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heart
                 //println!("svc: {} online (tid={})", manifest.name, new_child.id());
                 child = new_child;
                 if manifest.heartbeat {
-                    heartbeat_register(&heartbeats, &manifest.name);
+                    let heartbeat_path = ensure_heartbeat_file(&manifest.name);
+                    let heartbeat_fh = naming::open(&heartbeat_path, OpenOptions::READONLY).ok();
+                    heartbeat_register(&heartbeats, &manifest.name, heartbeat_fh);
                 }
             }
             None => {
@@ -431,13 +401,13 @@ fn can_start_now(service: &Service, services: &[Service]) -> bool {
 fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap>>) -> bool {
     println!("svc: start {} -> {}", service.manifest.name, service.manifest.binary);
     let heartbeat_path = if service.manifest.heartbeat {
-        Some(ensure_heartbeat_fifo(&service.manifest.name))
+        Some(ensure_heartbeat_file(&service.manifest.name))
     } 
     else {
         None
     };
+    let heartbeat_fh = heartbeat_path.as_ref().and_then(|path| naming::open(path, OpenOptions::READONLY).ok());
     let args = build_effective_args(&service.manifest);
-    let runtime_disables_heartbeat = heartbeat_runtime_disabled(&args);
     let args_vec: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
     match thread::start_application(&service.manifest.binary, args_vec) {
@@ -449,17 +419,16 @@ fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap
             println!("svc: {} online (tid={})", service.manifest.name, child.id());
 
             if manifest.heartbeat {
-                let hb_path = heartbeat_path.unwrap_or_else(|| ensure_heartbeat_fifo(&manifest.name));
-                if !runtime_disables_heartbeat {
-                    start_service_heartbeat_receiver(manifest.name.clone(), hb_path, heartbeats.clone());
-                }
-                heartbeat_register(&heartbeats, &manifest.name);
+                heartbeat_register(&heartbeats, &manifest.name, heartbeat_fh);
             }
 
             let _ = thread::create(move || supervise_service(manifest, child, heartbeats));
             true
         }
         None => {
+            if let Some(handle) = heartbeat_fh {
+                let _ = naming::close(handle);
+            }
             service.state = ServiceState::Maintenance;
             println!("svc: {} entered maintenance (exec failed)", service.manifest.name);
             false
