@@ -18,8 +18,10 @@ terminal = { path = "../../library/terminal" }
 concurrent = { path = "../../library/concurrent" }
 naming = { path = "../../library/naming" }
 syscall = { path = "../../library/syscall" }
+time = { path = "../../library/time" }
 
 # External dependencies (no_std + alloc)
 serde_json = { version = "1.0.109", default-features = false, features = ["alloc"] }
 serde = { version = "1.0.219", default-features = false, features = ["derive"] }
 log = { version = "0.4.26", default-features = false }
+spin = { version = "0.9.8", default-features = false }

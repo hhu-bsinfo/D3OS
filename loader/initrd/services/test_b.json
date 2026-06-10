@@ -1,9 +1,10 @@
 {
   "name": "test_b",
   "binary": "svc_dummy",
-  "args": ["--label=B", "--exit-after-ms=800"],
+  "args": ["--label=B", "--initial-sleep-ms=500", "--sleep-ms=1000", "--quiet"],
   "enabled": true,
   "targets": ["any"],
   "restart": "on_failure",
+  "heartbeat": true,
   "require_all": ["terminal"]
 }

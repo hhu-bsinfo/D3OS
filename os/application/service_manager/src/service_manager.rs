@@ -3,14 +3,31 @@
 extern crate alloc;
 
 use alloc::string::{String, ToString};
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use concurrent::thread;
 use naming::shared_types::{FileType, OpenOptions};
+use spin::Mutex;
 use syscall::return_vals::Errno;
 use runtime::*;
 use serde::Deserialize;
 use terminal::println;
 use log::error;
+use time::systime;
+
+const HEARTBEAT_DIR: &str = "/heartbeat";           // Ort für die Pipes
+const HEARTBEAT_INTERVAL_MS: usize = 2_000;         // Wie oft Heartbeats gesendet werden
+const WATCHDOG_TICK_INTERVAL_MS: usize = 1_000;    // Intervall für den Watchdog-Tick
+const HEARTBEAT_TIMEOUT_MS: usize = 5_000;         // Wie alt ein Heartbeat sein darf, bevor der Watchdog Alarm schlägt
+
+#[derive(Debug, Clone, Copy)]
+struct HeartbeatState {     // Merken uns für jeden Service das letzte Signal + ob schon ein Alarm/Neustart durchgeführt wurde
+    last_seen_ms: usize,
+    reported: bool,
+}
+
+type HeartbeatMap = BTreeMap<String, HeartbeatState>;   // Service Name -> HeartbeatState
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BootTarget {   // Um zu wissen welcher Service gestartet werden soll
@@ -94,6 +111,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_false() -> bool {
+    false
+}
+
 fn default_restart_policy() -> RestartPolicy {
     RestartPolicy::OnFailure
 }
@@ -122,6 +143,9 @@ struct ServiceManifestJson {
 
     #[serde(default = "default_restart_on")]
     restart_on: RestartOn,
+
+    #[serde(default = "default_false")]
+    heartbeat: bool,
 
     #[serde(default)]
     require_all: Vec<String>,
@@ -165,6 +189,7 @@ impl ServiceManifestJson {
             targets: target_bits,
             restart: self.restart,
             restart_on: self.restart_on,
+            heartbeat: self.heartbeat,
             require_all: self.require_all,
             require_any: self.require_any,
             optional_all: self.optional_all,
@@ -182,6 +207,7 @@ struct ServiceManifest {
     targets: Targets,
     restart: RestartPolicy,
     restart_on: RestartOn,
+    heartbeat: bool,
     require_all: Vec<String>,
     require_any: Vec<String>,
     optional_all: Vec<String>,
@@ -202,7 +228,103 @@ fn should_restart(policy: RestartPolicy, exit_code: usize) -> bool {
     }
 }
 
-fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread) {
+// Hängt die Heartbeat argumente an, falls heartbeat auf true ist
+fn build_effective_args(manifest: &ServiceManifest) -> Vec<String> {
+    let mut args = manifest.args.clone();
+    if manifest.heartbeat {
+        let hb_path = alloc::format!("{}/{}", HEARTBEAT_DIR, manifest.name);
+        args.push(alloc::format!("--service-name={}", manifest.name));
+        args.push(alloc::format!("--heartbeat-path={}", hb_path));
+        args.push(alloc::format!("--heartbeat-ms={}", HEARTBEAT_INTERVAL_MS));
+    }
+    args
+}
+
+fn heartbeat_runtime_disabled(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--no-heartbeat" || a == "--disable-heartbeat")
+}
+
+// Heartsbeats registrieren oder entfernen
+fn heartbeat_register(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str) {
+    let mut map = heartbeats.lock();
+    map.insert(name.to_string(), HeartbeatState { last_seen_ms: systime().num_milliseconds() as usize, reported: false });
+}
+
+fn heartbeat_remove(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str) {
+    let mut map = heartbeats.lock();
+    map.remove(name);
+}
+
+// Erstelle Pipe für gegebenen Service
+fn ensure_heartbeat_fifo(service_name: &str) -> String {
+    let hb_path = alloc::format!("{}/{}", HEARTBEAT_DIR, service_name);
+    let _ = naming::mkfifo(&hb_path);
+    hb_path
+}
+
+
+// Starte neuen Thread für jeden Service, welcher die Pipe ausliest
+fn start_service_heartbeat_receiver(service_name: String, heartbeat_path: String, heartbeats: Arc<Mutex<HeartbeatMap>>) {
+    let _ = thread::create(move || {
+        let mut buf = [0u8; 1];
+
+        let fh = loop {
+            match naming::open(&heartbeat_path, OpenOptions::READONLY) {
+                Ok(fh) => break fh,
+                Err(_) => {
+                    thread::sleep(500);
+                }
+            }
+        };
+
+        loop {
+            match naming::read(fh, &mut buf) {
+                Ok(0) => thread::sleep(100),
+                Ok(_) => {
+                    let mut map = heartbeats.lock();
+                    if let Some(state) = map.get_mut(&service_name) {
+                        state.last_seen_ms = systime().num_milliseconds() as usize;
+                        state.reported = false;
+                    } 
+                    else {
+                        map.insert(service_name.clone(), HeartbeatState {last_seen_ms: systime().num_milliseconds() as usize, reported: false});
+                    }
+                }
+                Err(_) => thread::sleep(200),
+            }
+        }
+    });
+}
+
+// Watchdog Thread, der regelmäßig die Heartbeats überprüft und Alarm schlägt, wenn eines zu alt ist
+fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>) {
+    let _ = thread::create(move || {
+        let timeout = HEARTBEAT_TIMEOUT_MS;
+
+        loop {
+            thread::sleep(WATCHDOG_TICK_INTERVAL_MS);
+            let now = systime().num_milliseconds() as usize;
+
+            let mut missed: Vec<(String, usize)> = Vec::new();
+            let mut map = heartbeats.lock();
+            for (name, state) in map.iter_mut() {
+                let age = now.saturating_sub(state.last_seen_ms);
+                if age >= timeout && !state.reported {
+                    missed.push((name.clone(), age / 1000));
+                    state.reported = true;
+                }
+            }
+            drop(map);
+
+            for (name, age) in missed {
+                error!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
+                println!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
+            }
+        }
+    });
+}
+
+fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heartbeats: Arc<Mutex<HeartbeatMap>>) {
     loop {
         let exit_code = match child.join() {
             Ok(code) => code,
@@ -214,6 +336,10 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread) {
 
         println!("svc: {} exited (code={})", manifest.name, exit_code);
 
+        if manifest.heartbeat {
+            heartbeat_remove(&heartbeats, &manifest.name);
+        }
+
         if !should_restart(manifest.restart, exit_code) {
             println!("svc: {} not restarting (policy={:?})", manifest.name, manifest.restart);
             break;
@@ -222,11 +348,21 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread) {
         thread::sleep(200); // Kurz Verzögern, um Crash-Loops zu vermeiden
 
         println!("svc: restarting {} -> {}", manifest.name, manifest.binary);
-        let args_vec: Vec<&str> = manifest.args.iter().map(|s| s.as_str()).collect();
+        let _heartbeat_path = if manifest.heartbeat {
+            Some(ensure_heartbeat_fifo(&manifest.name))
+        } 
+        else {
+            None
+        };
+        let args = build_effective_args(&manifest);
+        let args_vec: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         match thread::start_application(&manifest.binary, args_vec) {
             Some(new_child) => {
-                println!("svc: {} online (tid={})", manifest.name, new_child.id());
+                //println!("svc: {} online (tid={})", manifest.name, new_child.id());
                 child = new_child;
+                if manifest.heartbeat {
+                    heartbeat_register(&heartbeats, &manifest.name);
+                }
             }
             None => {
                 println!("svc: {} entered maintenance (restart exec failed)", manifest.name);
@@ -292,18 +428,35 @@ fn can_start_now(service: &Service, services: &[Service]) -> bool {
     true
 }
 
-fn start_service_once(service: &mut Service) -> bool {
+fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap>>) -> bool {
     println!("svc: start {} -> {}", service.manifest.name, service.manifest.binary);
-    let args_vec: Vec<&str> = service.manifest.args.iter().map(|s| s.as_str()).collect();
+    let heartbeat_path = if service.manifest.heartbeat {
+        Some(ensure_heartbeat_fifo(&service.manifest.name))
+    } 
+    else {
+        None
+    };
+    let args = build_effective_args(&service.manifest);
+    let runtime_disables_heartbeat = heartbeat_runtime_disabled(&args);
+    let args_vec: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
     match thread::start_application(&service.manifest.binary, args_vec) {
         Some(child) => {
             let manifest = service.manifest.clone();
+            let heartbeats = heartbeats.clone();
 
             service.state = ServiceState::Online;
             println!("svc: {} online (tid={})", service.manifest.name, child.id());
 
-            let _ = thread::create(move || supervise_service(manifest, child));
+            if manifest.heartbeat {
+                let hb_path = heartbeat_path.unwrap_or_else(|| ensure_heartbeat_fifo(&manifest.name));
+                if !runtime_disables_heartbeat {
+                    start_service_heartbeat_receiver(manifest.name.clone(), hb_path, heartbeats.clone());
+                }
+                heartbeat_register(&heartbeats, &manifest.name);
+            }
+
+            let _ = thread::create(move || supervise_service(manifest, child, heartbeats));
             true
         }
         None => {
@@ -315,7 +468,7 @@ fn start_service_once(service: &mut Service) -> bool {
 }
 
 // Geht über alle Services und starte alle die, die dürfen (Offline + Abhängigkeiten erfüllt)
-fn start_eligible_services(services: &mut [Service], start_order: &mut Vec<String>) -> usize {
+fn start_eligible_services(services: &mut [Service], start_order: &mut Vec<String>, heartbeats: &Arc<Mutex<HeartbeatMap>>) -> usize {
     let mut started = 0;
     for i in 0..services.len() {
         if services[i].state != ServiceState::Offline {
@@ -326,7 +479,7 @@ fn start_eligible_services(services: &mut [Service], start_order: &mut Vec<Strin
             continue;
         }
 
-        let ok = start_service_once(&mut services[i]);
+        let ok = start_service_once(&mut services[i], heartbeats);
         if ok {
             start_order.push(services[i].manifest.name.clone());
         }
@@ -336,11 +489,11 @@ fn start_eligible_services(services: &mut [Service], start_order: &mut Vec<Strin
 }
 
 // Schleife, bis alle Services gestartet wurden. 
-fn start_services_with_dependencies(services: &mut [Service]) {
+fn start_services_with_dependencies(services: &mut [Service], heartbeats: &Arc<Mutex<HeartbeatMap>>) {
     let mut start_order: Vec<String> = Vec::new();
 
     loop {
-        let started_now = start_eligible_services(services, &mut start_order);
+        let started_now = start_eligible_services(services, &mut start_order, heartbeats);
         if started_now == 0 {   // Nichts mehr gestaret, also entweder alle online oder Zyklus
             break;
         }
@@ -471,10 +624,10 @@ fn parse_boot_target() -> BootTarget {
 pub fn main() {
     terminal::init_logger();
 
-    println!("D3OS service_manager starting...");
+    //println!("D3OS service_manager starting...");
 
     let boot_target = parse_boot_target();
-    println!("service_manager: boot_target={:?}", boot_target);
+    //println!("service_manager: boot_target={:?}", boot_target);
 
     let manifests = load_service_manifests();
     println!("svc: loaded {} manifest(s)", manifests.len());
@@ -507,6 +660,7 @@ pub fn main() {
                 targets: Targets::any(),
                 restart: RestartPolicy::OnFailure,
                 restart_on: RestartOn::Restart,
+                heartbeat: false,
                 require_all: Vec::new(),
                 require_any: Vec::new(),
                 optional_all: Vec::new(),
@@ -523,6 +677,7 @@ pub fn main() {
                 targets: Targets::any(),
                 restart: RestartPolicy::OnFailure,
                 restart_on: RestartOn::Restart,
+                heartbeat: false,
                 require_all: Vec::new(),
                 require_any: Vec::new(),
                 optional_all: Vec::new(),
@@ -532,11 +687,19 @@ pub fn main() {
         out
     };
 
+    let heartbeats: Arc<Mutex<HeartbeatMap>> = Arc::new(Mutex::new(BTreeMap::new()));
+    let any_heartbeat = services.iter().any(|s| s.manifest.heartbeat);
+    if any_heartbeat {
+        let _ = naming::mkdir(HEARTBEAT_DIR);
+        start_watchdog(heartbeats.clone());
+        println!("svc: watchdog enabled (dir={}, interval={}ms, timeout={}ms)", HEARTBEAT_DIR, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS);
+    }
+
     if services.is_empty() {
         println!("service_manager: nothing enabled for this boot target; dropping to idle loop");
     } 
     else {
-        start_services_with_dependencies(&mut services);
+        start_services_with_dependencies(&mut services, &heartbeats);
     }
 
     loop {

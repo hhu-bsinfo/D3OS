@@ -4,6 +4,7 @@ extern crate alloc;
 
 use alloc::string::String;
 use concurrent::thread;
+use naming::shared_types::OpenOptions;
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::println;
@@ -26,6 +27,8 @@ pub fn main() {
     let args: alloc::vec::Vec<String> = env::args().collect();
 
     let label = arg_value(&args, "--label=").unwrap_or("svc_dummy");
+    let service_name = arg_value(&args, "--service-name=").unwrap_or(label);
+    let heartbeat_path = arg_value(&args, "--heartbeat-path=").unwrap_or("/heartbeat");
     let quiet = has_flag(&args, "--quiet") || has_flag(&args, "--no-print");
     let initial_sleep_ms: usize = arg_value(&args, "--initial-sleep-ms=")
         .and_then(|v| v.parse::<usize>().ok())
@@ -38,11 +41,21 @@ pub fn main() {
     let exit_after_ms: Option<usize> = arg_value(&args, "--exit-after-ms=")
         .and_then(|v| v.parse::<usize>().ok());
 
+    let heartbeat_ms: Option<usize> = arg_value(&args, "--heartbeat-ms=")
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&v| v != 0);
+
+    let no_heartbeat = has_flag(&args, "--no-heartbeat") || has_flag(&args, "--disable-heartbeat");
+
+    let hang_after_ms: Option<usize> = arg_value(&args, "--hang-after-ms=")
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&v| v != 0);
+
     let panic_on_start = has_flag(&args, "--panic") || has_flag(&args, "--crash");
     let panic_after_ms: Option<usize> = arg_value(&args, "--panic-after-ms=")
         .and_then(|v| v.parse::<usize>().ok());
 
-    println!("svc_dummy: start label={} initial_sleep_ms={} sleep_ms={}", label, initial_sleep_ms, sleep_ms);
+    println!("svc_dummy: start label={} service_name={} initial_sleep_ms={} sleep_ms={} heartbeat_ms={:?} hang_after_ms={:?}", label, service_name, initial_sleep_ms, sleep_ms, if no_heartbeat { None } else { heartbeat_ms }, hang_after_ms);
 
     if panic_on_start {
         panic!("svc_dummy: intentional crash (label={})", label);
@@ -66,10 +79,42 @@ pub fn main() {
         thread::exit_with_code(0);
     }
 
+    let heartbeat_fh = if !no_heartbeat && heartbeat_ms.is_some() {     // Pipe öffnen, um Nachrichten an den Service Manager zu senden
+        match naming::open(heartbeat_path, OpenOptions::WRITEONLY) {
+            Ok(fh) => Some(fh),
+            Err(_) => None,
+        }
+    } 
+    else {
+        None
+    };
+
+    let mut elapsed_ms: usize = 0;
+
     loop {
+        if let Some(ms) = hang_after_ms {
+            if elapsed_ms >= ms {   // Extra hängen bleiben
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        }
+
+        if let Some(fh) = heartbeat_fh {
+            let _ = naming::write(fh, service_name.as_bytes());     // Heartbeat normal senden
+        }
+
         if !quiet {
             println!("svc_dummy: hi from {}", label);
         }
-        thread::sleep(sleep_ms);
+
+        let delay = if no_heartbeat {
+            sleep_ms
+        } 
+        else {
+            heartbeat_ms.unwrap_or(sleep_ms)
+        };
+        thread::sleep(delay);
+        elapsed_ms = elapsed_ms.saturating_add(delay);
     }
 }
