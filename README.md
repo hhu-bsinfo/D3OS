@@ -1,19 +1,101 @@
-<div align="center">
-  <img src="https://coconucos.cs.hhu.de/lehre/bigdata/resources/img/hhu-logo.svg" width=300>
+<p align="center">
+  <a href="https://www.uni-duesseldorf.de/home/en/home.html"><img src="media/d3os.png" width=460></a>
+</p>
 
-  [![Download](https://img.shields.io/static/v1?label=&message=pdf&color=EE3F24&style=for-the-badge&logo=adobe-acrobat-reader&logoColor=FFFFFF)](/document/Masterarbeit.pdf)
-</div>
+**A new distributed operating system for data centers, developed by the [operating systems group](https://www.cs.hhu.de/en/research-groups/operating-systems.html) of the department of computer science at [Heinrich Heine University Düsseldorf](https://www.hhu.de)**
 
-# Entwicklung einer Capability-basierten Zugriffskontrolle in einem Rust-Betriebssystem
+<p align="center">
+  <a href="https://www.uni-duesseldorf.de/home/en/home.html"><img src="media/hhu.svg" width=300></a>
+</p>
 
-Die vorliegende Arbeit untersucht und implementiert eine Capability-basierte Zugriffskontrolle für das Forschungsbetriebssystem D3OS, das als verteiltes, in Rust entwickeltes Mikrokernel-System für moderne Rechenzentrumsanforderungen konzipiert ist. 
+<p align="center">
+  <a href="https://github.com/hhu-bsinfo/D3OS/actions/workflows/build.yml"><img src="https://github.com/hhu-bsinfo/D3OS/actions/workflows/build.yml/badge.svg"></a>
+  <img src="https://img.shields.io/badge/Rust-2024-blue.svg">
+  <img src="https://img.shields.io/badge/license-GPLv3-orange.svg">
+</p>
 
-Die Motivation der Arbeit liegt darin, ein flexibles und sicheres Zugriffskontrollmodell zu entwickeln, das den Anforderungen moderner, verteilter Systeme gerecht wird. Capability-basierte Zugriffskontrolle verfolgt dabei einen dezentralen Ansatz: Zugriffsrechte werden nicht global verwaltet, sondern als nicht manipulierbare Objekte direkt an Prozesse vergeben. Diese Capabilities definieren präzise, auf welche Ressourcen und in welcher Weise zugegriffen werden darf. Dadurch wird das Prinzip der minimalen Rechtevergabe konsequent umgesetzt und die Angriffsfläche reduziert.
+## Requirements
 
-Im theoretischen Teil werden Grundlagen der Zugriffskontrolle sowie bestehende Systeme wie seL4, NOVA oder Fuchsia analysiert. Diese dienen als Referenz für Designentscheidungen, insbesondere hinsichtlich Capability-Spaces, Rechteweitergabe und Systemintegration. Zudem werden zentrale Herausforderungen wie Revocation, also der Entzug von Rechten, und sichere Delegation behandelt.
+For building D3OS, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
+```bash
+apt install rustup build-essential nasm dosfstools wget qemu-system-x86
+```
 
-Der praktische Schwerpunkt der Arbeit liegt auf der Implementierung des Capability-Modells in D3OS. Hierzu wurden zentrale Systemkomponenten angepasst. Capabilities werden als generische Datenstrukturen implementiert, die sowohl das geschützte Objekt als auch zugehörige Zugriffsrechte kapseln. Alle Capabilities eines Prozesses werden in einem Capability-Space verwaltet, der im Kernel liegt, um Manipulationen zu verhindern. Prozesse und Threads greifen ausschließlich über diese Capabilities auf System-Ressourcen zu.
+This has been tested on Ubuntu 24.04.
 
-Ein wesentlicher Beitrag ist die Umstellung der Systemaufrufe: Statt über globale Syscall-Nummern werden Aufrufe nun über Capability-Referenzen gesteuert. Dadurch kann ein Prozess nur noch solche Operationen ausführen, für die er explizit berechtigt ist. Auch das Naming-System wurden entsprechend angepasst, sodass Zugriffe nur noch über vorhandene Capabilities möglich sind. Klassische globale Sichtweisen auf Ressourcen werden dadurch eingeschränkt. Zusätzlich wurden Mechanismen zur Weitergabe und zum Entzug von Capabilities implementiert.
+For macOS, the same can be achieved with:
+```bash
+xcode-select --install
+brew install rustup dosfstools nasm x86_64-elf-gcc gnu-tar wget qemu
+brew link --force rustup
+```
 
-Die Ergebnisse zeigen, dass sich eine Capability-basierte Zugriffskontrolle effektiv in ein modernes Betriebssystem integrieren lässt und eine feingranulare sowie sichere Rechteverwaltung ermöglicht. Gleichzeitig ergeben sich neue Herausforderungen, etwa bei der sicheren Kommunikation zwischen Prozessen oder der effizienten Verwaltung von Revocations. Insgesamt bildet die Implementierung eine solide Grundlage für weiterführende Entwicklungen, insbesondere im Hinblick auf Restartability, Message-Passing und verteilte Systeme.
+This has been tested on macOS 14.
+
+[rustup](https://rustup.rs/) will download a _rust nightly_ toolchain on the first compile.
+
+To run the build, the commands _cargo-make_ and _cargo-license_ are required. Install them with:
+```bash
+cargo install --no-default-features cargo-make cargo-license
+```
+
+
+## Build and Run
+
+To build D3OS and run it in QEMU, just execute:
+```bash
+cargo make --no-workspace
+```
+
+To build a release version of D3OS (much faster) and run it in QEMU, just execute:
+```bash
+cargo make --no-workspace --profile production
+```
+
+
+To only build the bootable image _d3os.img_, run:
+```bash
+cargo make --no-workspace image
+```
+
+## Debugging 
+
+### In a terminal with gdb
+
+Open a terminal and compile and start D3OS in `qemu` halted by `gdb` with the following commands:
+```bash
+cargo make --no-workspace clean
+cargo make --no-workspace debug
+```
+
+Open another terminal and start `gdb` with:
+```bash
+cargo make --no-workspace gdb
+```
+This will fire booting D3OS and stop in `boot.rs::start`.
+
+Setting a breakpoint in `gdb`:
+```bash
+break kernel::naming::api::init
+```
+For further commands check [GDB Quick Reference](docs/gdb-commands.pdf).
+
+## Creating a bootable USB stick
+
+### Using towboot
+D3OS uses [towboot](https://github.com/hhuOS/towboot) which is already installed after you have successfully compiled D3OS. 
+
+Use following command (in the D3OS directory) to create a bootable media for the device referenced by `/mnt/external`
+
+`$ towbootctl install /mnt/external --removable -- -config towboot.toml`
+
+### Using balenaEtcher
+Write the file `d3os.img` using [balenaEtcher](https://etcher.balena.io) to your USB stick.
+
+## Passing an existing PCI device to the VM
+
+To use a real device with QEMU, change the Makefile so that it uses `${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/qemu-pci.sh` instead of `qemu-system-x86_64`.
+Also take a look at that script and fill in the constants at the top.
+
+If you want to run D3OS on a different device, build with `cargo make --no-workspace image` and copy over `qemu-pci.sh`, `RELEASEX64_OVMF.fd` and `d3os.img`.
+Run it with `./qemu-pci.sh -bios RELEASEX64_OVMF.fd -hda d3os.img`.
