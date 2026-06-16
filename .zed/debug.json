@@ -1,0 +1,15 @@
+// Zed tries to parse VS Code's config, but fails on remote-gdb.
+// So instead it gets its own config.
+[
+  {
+    "label": "qemu-gdb",
+    "adapter": "GDB",
+    "program": "$ZED_WORKTREE_ROOT/loader/kernel.elf",
+    // Zed apparently doesn't support adding a symbol file
+    "sourceLanguages": ["rust"],
+    // spawning into background doesn't work,
+    // so you need to run `cargo make --no-workspace debug` in a terminal
+    "request": "attach",
+    "target": "localhost:1234"
+  }
+]

@@ -10,4 +10,4 @@
 
 4. Add your app in `D3OS/Cargo.toml`
 
-5. Add your app in `D3OS/Makefile.toml` in list `[tasks.initrd]`
+5. (optional) Add your app in `os/library/globals/src/application.rs` for the shell autocomplete

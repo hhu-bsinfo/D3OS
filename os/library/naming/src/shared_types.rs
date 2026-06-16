@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Types used by the naming service both in user und kernel mode.  ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, 25.08.2025, HHU                             ║
+   ║ Author: Michael Schoettner, Julian Schnock 23.12.2025, HHU              ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use alloc::string::String;
@@ -12,13 +12,14 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 bitflags! {
     /// Description: Option flags for opening objects
     pub struct OpenOptions: usize {
-        const READONLY  = 1 << 0;
-        const READWRITE = 1 << 1;
-        const CREATE    = 1 << 2;
-        const EXCLUSIVE = 1 << 3;
-        const DIRECTORY = 1 << 4;
-        const WRITEONLY = 1 << 5; // relevant for pipes
-        const SHARE    = 1 << 6;  // relevant for caps
+        const READONLY  = 1;
+        const READWRITE = 2;
+        const CREATE    = 4;
+        const EXCLUSIVE = 8;
+        const DIRECTORY = 16;
+        const WRITEONLY = 32; // relevant for pipes & caps
+        const SHARE    = 64; // relevant for caps
+
     }
 }
 
@@ -29,7 +30,7 @@ pub enum SeekOrigin {
     #[num_enum(default)]
     Start = 1,
     End = 2,
-    Current = 3,
+    Current = 4,
 }
 
 /// File types
@@ -40,7 +41,7 @@ pub enum FileType {
     NamedPipe = 1,
     Directory = 4,
     Regular = 8,
-    Link = 10,
+    Link = 16,
 }
 
 /// A directory entry 

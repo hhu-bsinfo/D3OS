@@ -8,22 +8,30 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
+use crate::consts;
 use crate::device::pit::Timer;
-use crate::device::ps2::Keyboard;
+use crate::device::ps2::{Keyboard, Mouse};
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
 use crate::memory::pages::page_table_index;
 use crate::memory::vma::VmaType;
-use crate::memory::{dram, frames_lf, nvmem, PAGE_SIZE};
+use crate::memory::vmm;
+use crate::memory::{dram, nvmem, PAGE_SIZE};
 use crate::process::thread::Thread;
 use crate::syscall::{sys_vmem, syscall_dispatcher};
-use crate::{acpi_tables, allocator, apic, built_info, consts, gdt, get_initrd_frames, init_acpi_tables, init_apic, init_cpu_info, init_initrd, init_pci, init_serial_port, init_terminal, initrd, keyboard, logger, memory, network, process_manager, scheduler, serial_port, terminal, timer, tss};
-use crate::{efi_services_available, naming, storage};
+use crate::{
+    acpi_tables, allocator, apic, gdt, get_initrd_frames,
+    efi_services_available, init_acpi_tables, init_apic, init_boot_info,
+    init_cpu_info, init_initrd, init_lfb, init_lfb_info, init_pci,
+    init_serial_port, init_tty, keyboard, logger, mouse,
+    process_manager, scheduler, serial_port, timer, tss,
+};
+use crate::{built_info, memory, naming, network, storage};
+
 use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use chrono::DateTime;
 use core::ffi::c_void;
 use core::mem::size_of;
@@ -53,6 +61,8 @@ unsafe extern "C" {
     static ___KERNEL_DATA_END__: c_void; // end address of OS image
 }
 
+const BOOT_TO_GUI: bool = false; // Immediately start the GUI instead of terminal (Debug)
+
 /// First Rust function called from assembly code `boot.asm` \
 ///   `multiboot2_magic` is the magic number read from 'eax' \
 ///   and `multiboot2_addr` is the address of multiboot2 info records
@@ -78,6 +88,12 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Has to be done after EFI boot services have been exited, since they rely on their own GDT
     info!("Initializing GDT");
     init_gdt();
+
+    // Enable FSGSBASE
+    info!("Enabling FSGSBASE instructions");
+    unsafe {
+        Cr4::update(|flags| flags.insert(Cr4Flags::FSGSBASE));
+    }
 
     // The bootloader marks the kernel image region as available, so we need to reserve it manually
     let kernel_image_region = kernel_image_region();
@@ -135,6 +151,11 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     dram::dump();
     debug!("Old page frame allocator:\n{}", memory::frames::dump());
 
+    // Initialize total free frames count in frame allocator
+    vmm::init_total_free_frames();
+    info!("Total free frames #{}, memory::frames::get_total_free_frames()", memory::frames::get_total_free_frames());
+    info!("Total free frames #{}, vmm::get_free_frames()", vmm::get_free_frames());
+
     
     // Initialize CPU information
     init_cpu_info();
@@ -169,18 +190,26 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         "framebuffer",
     );
     info!(
-        "framebuffer region: [Start: {:#x}, End: {:#x}]",
+        "framebuffer region: [Start: {:#x}, End: {:#x}] ({}x{})",
         fb_start_phys_addr,
         fb_end_phys_addr,
+        fb_info.width(),
+        fb_info.height(),
         );
 
-    // Initialize terminal kernel thread and enable terminal logging
-    init_terminal(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+    // Initialize lfb info (For terminal_emulator)
+    init_lfb_info(fb_info.address(), fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
+    // Initialize framebuffer (For window_manager)
+    init_lfb(fb_info.address() as *mut u8, fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
 
     // Dumping basic infos
     info!("Welcome to D3OS!");
-    let version = format!("v{} ({} - O{})", built_info::PKG_VERSION, built_info::PROFILE, built_info::OPT_LEVEL);
-    let git_ref = built_info::GIT_HEAD_REF.unwrap_or("Unknown");
+    let version = format!(
+        "v{} ({} - O{})",
+        built_info::PKG_VERSION,
+        built_info::PROFILE,
+        built_info::OPT_LEVEL
+    );
     let git_commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("Unknown");
     let build_date = match DateTime::parse_from_rfc2822(built_info::BUILT_TIME_UTC) {
         Ok(date_time) => date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -196,9 +225,17 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         }
         None => "Unknown",
     };
-    info!("OS Version: [{version}]");
-    info!("Git Version: [{} - {}]", built_info::GIT_HEAD_REF.unwrap_or("Unknown"), git_commit);
-    info!("Build Date: [{build_date}]");
+
+    // Remember boot info
+    init_boot_info(bootloader_name.to_string());
+
+    info!("OS Version: [{}]", version);
+    info!(
+        "Git Version: [{} - {}]",
+        built_info::GIT_HEAD_REF.unwrap_or_else(|| "Unknown"),
+        git_commit
+    );
+    info!("Build Date: [{}]", build_date);
     info!("Compiler: [{}]", built_info::RUSTC_VERSION);
     info!("Bootloader: [{bootloader_name}]");
 
@@ -249,6 +286,10 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize keyboard
     if let Some(keyboard) = keyboard() {
         Keyboard::plugin(keyboard);
+    }
+
+    if let Some(mouse) = mouse() {
+        Mouse::plugin(mouse);
     }
 
     // Enable serial port interrupts
@@ -313,30 +354,20 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     }
     scheduler().ready(Thread::new_kernel_thread(cleanup, "cleanup"));
 
-    // Create and register the 'shell' thread (from app image in ramdisk) in the scheduler
-    scheduler().ready(Thread::load_application(
-        initrd()
-            .entries()
-            .find(|entry| entry.filename().as_str().unwrap() == "bin/shell")
-            .expect("Shell application not available!")
-            .data(),
-        "shell",
-        &Vec::new(),
-    ));
+    //Initialize tty buffer (Workaround for missing pipes)
+    init_tty();
 
-    // Disable terminal logging (remove terminal output stream)
-    logger().remove(terminal().as_ref());
-    terminal().clear();
-
-    println!(
-        include_str!("banner.txt"),
-        version,
-        git_ref.rsplit("/").next().unwrap_or(git_ref),
-        git_commit,
-        build_date,
-        built_info::RUSTC_VERSION.split_once("(").unwrap_or((built_info::RUSTC_VERSION, "")).0.trim(),
-        bootloader_name
-    );
+    if BOOT_TO_GUI {
+        // Create and register the 'window_manager' thread in the scheduler
+        scheduler().ready(Thread::load_application(
+            "bin/window_manager", "window_manager", &[].to_vec(),
+        ).expect("failed to load window_manager"));
+    } else {
+        // Create and register the 'terminal_emulator' thread (from app image in ramdisk) in the scheduler
+        scheduler().ready(Thread::load_application(
+            "bin/terminal_emulator", "terminal_emulator", &[].to_vec(),
+        ).expect("failed to load terminal_emulator"));
+    }
 
     // Dump information about all processes (including VMAs)
     process_manager().read().dump();
@@ -372,11 +403,11 @@ fn init_gdt() {
         // Load task state segment
         load_tss(SegmentSelector::new(5, Ring0));
 
-        // Set code and stack segment register
+        // Set CS and SS segment registers
         CS::set_reg(SegmentSelector::new(1, Ring0));
         SS::set_reg(SegmentSelector::new(2, Ring0));
 
-        // Other segment registers are not used in long mode (set to 0)
+        // Other segment registers are unused in 64-bit mode, so we set them to null selectors
         DS::set_reg(SegmentSelector::new(0, Ring0));
         ES::set_reg(SegmentSelector::new(0, Ring0));
         FS::set_reg(SegmentSelector::new(0, Ring0));
@@ -477,6 +508,10 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
                 || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0
         }) // .0 necessary because of different version dependencies to uefi-crate
         .for_each(|area| {
+            if area.virt_start != 0 {
+                warn!("ignoring memory area with virtual address");
+                return;
+            }
             let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
             let frames = PhysFrame::range(start, start + area.page_count);
 
@@ -504,6 +539,10 @@ fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
                 || area.ty == MemoryType::BOOT_SERVICES_DATA
         })
         .for_each(|area| {
+            if area.virt_start != 0 {
+                warn!("ignoring memory area with virtual address");
+                return;
+            }
             let start = PhysFrame::from_start_address(PhysAddr::new(area.phys_start).align_up(PAGE_SIZE as u64)).unwrap();
             let frames = PhysFrame::range(start, start + area.page_count);
 

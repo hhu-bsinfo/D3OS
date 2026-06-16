@@ -24,6 +24,7 @@ LINKER_FILE = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/application/link.ld"
 RUST_OBJECT = "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}.a"
 C_OBJECT = "${BUILD_DIRECTORY}/${CARGO_MAKE_PROJECT_NAME}.o"
 APPLICATION = "${INITRD_DIRECTORY}/bin/${CARGO_MAKE_PROJECT_NAME}"
+RUSTFLAGS="-C target-cpu=x86-64-v3"
 CC = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gcc", mapping = { "macos" = "x86_64-elf-gcc" } }
 
 # Build tasks

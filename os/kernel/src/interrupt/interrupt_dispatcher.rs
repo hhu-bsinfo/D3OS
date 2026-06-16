@@ -1,5 +1,6 @@
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::MemorySpace;
+use crate::memory::vmm;
 use crate::memory::vma::VmaType;
 use crate::{apic, idt, interrupt_dispatcher, scheduler};
 use alloc::boxed::Box;
@@ -174,7 +175,12 @@ fn handle_exception(frame: InterruptStackFrame, index: u8, error: Option<u64>) {
 
 fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>) {
     let fault_addr = Cr2::read().expect("Invalid address in CR2 during page fault");
-    let thread = scheduler().current_thread();
+    let thread = scheduler().try_get_current_thread();
+    if thread.is_none() {
+        panic!("Page Fault, cannot get lock to scheduler\nError code: [{:?}]\nAddress: [0x{:0>16x}]", error, fault_addr);
+    }
+
+    let thread = thread.unwrap();
 
     // Was the page fault caused by a user thread?
     if !thread.is_kernel_thread() {
@@ -186,6 +192,10 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
             .virtual_address_space
             .is_address_within_vma(fault_addr.as_u64(), VmaType::UserStack)
         {
+            if vmm::frame_allocator_locked() {
+                panic!("Page Fault, cannot get lock to frame allocator\nError code: [{:?}]\nAddress: [0x{:0>16x}]", error, fault_addr);
+            }
+
             thread.process().virtual_address_space.map_partial_vma(
                 &stack,
                 PageRange {
@@ -201,6 +211,10 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
 
         // Check if page fault occurred inside a user heap
         if let Some(heap) = thread.process().virtual_address_space.is_address_within_vma(fault_addr.as_u64(), VmaType::Heap) {
+            if vmm::frame_allocator_locked() {
+                panic!("Page Fault, cannot get lock to frame allocator\nError code: [{:?}]\nAddress: [0x{:0>16x}]", error, fault_addr);
+            }
+
             thread.process().virtual_address_space.map_partial_vma(
                 &heap,
                 PageRange { start: fault_page, end: fault_page + 1 },

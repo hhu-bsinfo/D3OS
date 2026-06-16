@@ -1,0 +1,269 @@
+[config]
+skip_core_tasks = true
+skip_git_env_info = true
+skip_rust_env_info = true
+skip_crate_env_info = true
+
+[env.development]
+CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_application.json"
+BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/d3os_application/debug"
+CARGO_BUILD_OPTION = "--lib"
+CC_OPT_LEVEL = "0"
+
+[env.production]
+CARGO_CFG_TARGET_FAMILY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/d3os_application.json"
+BUILD_DIRECTORY = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/d3os_application/release"
+CARGO_BUILD_OPTION = "--release"
+CC_OPT_LEVEL = "3"
+
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
+SOURCE_DIRECTORY = "${CARGO_MAKE_WORKING_DIRECTORY}/src"
+LIBRARY_DIRECTORY = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library"
+LINKER_FILE = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/application/link.ld"
+RUST_OBJECT = "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}.a"
+APPLICATION = "${INITRD_DIRECTORY}/bin/${CARGO_MAKE_PROJECT_NAME}"
+RUSTFLAGS="-C target-cpu=x86-64-v3"
+CC = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gcc", mapping = { "macos" = "x86_64-elf-gcc" } }
+AR = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "ar", mapping = { "macos" = "x86_64-elf-ar" } }
+
+# Build tasks
+
+[tasks.default]
+alias = "link"
+
+[tasks.compile]
+command = "cargo"
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+condition = { files_modified = { input = [
+    "${CARGO_MAKE_WORKING_DIRECTORY}/Cargo.toml", "${SOURCE_DIRECTORY}/**/*.rs",
+    "${LIBRARY_DIRECTORY}/runtime/Cargo.toml", "${LIBRARY_DIRECTORY}/runtime/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/terminal/Cargo.toml", "${LIBRARY_DIRECTORY}/terminal/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/concurrent/Cargo.toml", "${LIBRARY_DIRECTORY}/concurrent/src/**/*.rs",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library/libc/Cargo.toml",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library/libc/**/*.h",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library/libc/**/*.c",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library/libc/**/*.rs",
+    "${LIBRARY_DIRECTORY}/syscall/Cargo.toml", "${LIBRARY_DIRECTORY}/syscall/src/**/*.rs" ], output = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*" ] } }
+
+[tasks.link]
+command = "${LINKER}"
+args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${APPLICATION}", "${RUST_OBJECT}", "-z", "noexecstack", "--no-relax" ]
+dependencies = [ "compile", "archive-doom" ]
+condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_PROJECT_NAME}*", "${LINKER_FILE}" ], output = [ "${APPLICATION}" ] } }
+
+[tasks.check]
+command = "cargo"
+args = [ "check", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+
+[tasks.clippy]
+command = "cargo"
+args = [ "clippy", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+
+[tasks.compile-doom]
+command = "${CC}"
+cwd = "${BUILD_DIRECTORY}"
+args = [
+    # Compiler flags
+    "-c", "-nostdlib", "-ffreestanding", "-fno-stack-protector", "-fpic", "-std=gnu99", "-O${CC_OPT_LEVEL}", "-march=x86-64-v3", "-g",
+    "-I", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library/libc/src/include", "-D_DEFAULT_SOURCE",
+
+    # Source files
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library/libc/src/stdio/stdio.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/am_map.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/d_event.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/d_items.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/d_iwad.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/d_loop.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/d_main.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/d_mode.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/d_net.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/doomdef.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/doomgeneric.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/doomstat.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/dstrings.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/dummy.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/f_finale.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/f_wipe.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/g_game.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/gusconf.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/hu_lib.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/hu_stuff.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/i_cdmus.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/icon.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/i_endoom.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/i_input.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/i_joystick.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/info.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/i_scale.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/i_sound.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/i_system.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/i_timer.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/i_video.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/m_argv.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/m_bbox.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/m_cheat.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/m_config.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/m_controls.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/memio.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/m_fixed.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/m_menu.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/m_misc.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/m_random.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/mus2mid.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_ceilng.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_doors.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_enemy.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_floor.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_inter.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_lights.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_map.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_maputl.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_mobj.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_plats.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_pspr.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_saveg.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_setup.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_sight.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_spec.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_switch.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_telept.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_tick.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/p_user.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/r_bsp.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/r_data.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/r_draw.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/r_main.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/r_plane.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/r_segs.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/r_sky.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/r_things.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/sha1.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/sounds.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/s_sound.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/statdump.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/st_lib.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/st_stuff.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/tables.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/v_video.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/w_checksum.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/w_file.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/w_file_stdc.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/wi_stuff.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/w_main.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/w_wad.c",
+    "${CARGO_MAKE_WORKING_DIRECTORY}/doomgeneric/doomgeneric/z_zone.c"
+]
+condition = { files_modified = { input = [
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library/libc/**/*.h",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library/libc/**/*.c",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/os/library/libc/**/*.rs"
+], output = [
+    "${BUILD_DIRECTORY}/stdio.o", "${BUILD_DIRECTORY}/am_map.o", "${BUILD_DIRECTORY}/d_event.o",
+    "${BUILD_DIRECTORY}/d_items.o", "${BUILD_DIRECTORY}/d_iwad.o", "${BUILD_DIRECTORY}/d_loop.o",
+    "${BUILD_DIRECTORY}/d_main.o", "${BUILD_DIRECTORY}/d_mode.o", "${BUILD_DIRECTORY}/d_net.o",
+    "${BUILD_DIRECTORY}/doomdef.o", "${BUILD_DIRECTORY}/doomgeneric.o", "${BUILD_DIRECTORY}/doomstat.o",
+    "${BUILD_DIRECTORY}/dstrings.o", "${BUILD_DIRECTORY}/dummy.o", "${BUILD_DIRECTORY}/f_finale.o",
+    "${BUILD_DIRECTORY}/f_wipe.o", "${BUILD_DIRECTORY}/g_game.o", "${BUILD_DIRECTORY}/gusconf.o",
+    "${BUILD_DIRECTORY}/hu_lib.o", "${BUILD_DIRECTORY}/hu_stuff.o", "${BUILD_DIRECTORY}/i_cdmus.o",
+    "${BUILD_DIRECTORY}/icon.o", "${BUILD_DIRECTORY}/i_endoom.o", "${BUILD_DIRECTORY}/i_input.o",
+    "${BUILD_DIRECTORY}/i_joystick.o", "${BUILD_DIRECTORY}/info.o", "${BUILD_DIRECTORY}/i_scale.o",
+    "${BUILD_DIRECTORY}/i_sound.o", "${BUILD_DIRECTORY}/i_system.o", "${BUILD_DIRECTORY}/i_timer.o",
+    "${BUILD_DIRECTORY}/i_video.o", "${BUILD_DIRECTORY}/m_argv.o", "${BUILD_DIRECTORY}/m_bbox.o",
+    "${BUILD_DIRECTORY}/m_cheat.o", "${BUILD_DIRECTORY}/m_config.o", "${BUILD_DIRECTORY}/m_controls.o",
+    "${BUILD_DIRECTORY}/memio.o", "${BUILD_DIRECTORY}/m_fixed.o", "${BUILD_DIRECTORY}/m_menu.o",
+    "${BUILD_DIRECTORY}/m_misc.o", "${BUILD_DIRECTORY}/m_random.o", "${BUILD_DIRECTORY}/mus2mid.o",
+    "${BUILD_DIRECTORY}/p_ceilng.o", "${BUILD_DIRECTORY}/p_doors.o", "${BUILD_DIRECTORY}/p_enemy.o",
+    "${BUILD_DIRECTORY}/p_floor.o", "${BUILD_DIRECTORY}/p_inter.o", "${BUILD_DIRECTORY}/p_lights.o",
+    "${BUILD_DIRECTORY}/p_map.o", "${BUILD_DIRECTORY}/p_maputl.o", "${BUILD_DIRECTORY}/p_mobj.o",
+    "${BUILD_DIRECTORY}/p_plats.o", "${BUILD_DIRECTORY}/p_pspr.o", "${BUILD_DIRECTORY}/p_saveg.o",
+    "${BUILD_DIRECTORY}/p_setup.o", "${BUILD_DIRECTORY}/p_sight.o", "${BUILD_DIRECTORY}/p_spec.o",
+    "${BUILD_DIRECTORY}/p_switch.o", "${BUILD_DIRECTORY}/p_telept.o", "${BUILD_DIRECTORY}/p_tick.o",
+    "${BUILD_DIRECTORY}/p_user.o", "${BUILD_DIRECTORY}/r_bsp.o", "${BUILD_DIRECTORY}/r_data.o",
+    "${BUILD_DIRECTORY}/r_draw.o", "${BUILD_DIRECTORY}/r_main.o", "${BUILD_DIRECTORY}/r_plane.o",
+    "${BUILD_DIRECTORY}/r_segs.o", "${BUILD_DIRECTORY}/r_sky.o", "${BUILD_DIRECTORY}/r_things.o",
+    "${BUILD_DIRECTORY}/sha1.o", "${BUILD_DIRECTORY}/sounds.o", "${BUILD_DIRECTORY}/s_sound.o",
+    "${BUILD_DIRECTORY}/statdump.o", "${BUILD_DIRECTORY}/st_lib.o", "${BUILD_DIRECTORY}/st_stuff.o",
+    "${BUILD_DIRECTORY}/tables.o", "${BUILD_DIRECTORY}/v_video.o", "${BUILD_DIRECTORY}/w_checksum.o",
+    "${BUILD_DIRECTORY}/w_file.o", "${BUILD_DIRECTORY}/w_file_stdc.o", "${BUILD_DIRECTORY}/wi_stuff.o",
+    "${BUILD_DIRECTORY}/w_main.o", "${BUILD_DIRECTORY}/w_wad.o", "${BUILD_DIRECTORY}/z_zone.o"
+] } }
+
+[tasks.archive-doom]
+dependencies = [ "compile", "compile-doom" ]
+command = "${AR}"
+args = [
+    "rcs",
+    "${BUILD_DIRECTORY}/libdoom.a",
+    "${BUILD_DIRECTORY}/stdio.o", "${BUILD_DIRECTORY}/am_map.o", "${BUILD_DIRECTORY}/d_event.o",
+    "${BUILD_DIRECTORY}/d_items.o", "${BUILD_DIRECTORY}/d_iwad.o", "${BUILD_DIRECTORY}/d_loop.o",
+    "${BUILD_DIRECTORY}/d_main.o", "${BUILD_DIRECTORY}/d_mode.o", "${BUILD_DIRECTORY}/d_net.o",
+    "${BUILD_DIRECTORY}/doomdef.o", "${BUILD_DIRECTORY}/doomgeneric.o", "${BUILD_DIRECTORY}/doomstat.o",
+    "${BUILD_DIRECTORY}/dstrings.o", "${BUILD_DIRECTORY}/dummy.o", "${BUILD_DIRECTORY}/f_finale.o",
+    "${BUILD_DIRECTORY}/f_wipe.o", "${BUILD_DIRECTORY}/g_game.o", "${BUILD_DIRECTORY}/gusconf.o",
+    "${BUILD_DIRECTORY}/hu_lib.o", "${BUILD_DIRECTORY}/hu_stuff.o", "${BUILD_DIRECTORY}/i_cdmus.o",
+    "${BUILD_DIRECTORY}/icon.o", "${BUILD_DIRECTORY}/i_endoom.o", "${BUILD_DIRECTORY}/i_input.o",
+    "${BUILD_DIRECTORY}/i_joystick.o", "${BUILD_DIRECTORY}/info.o", "${BUILD_DIRECTORY}/i_scale.o",
+    "${BUILD_DIRECTORY}/i_sound.o", "${BUILD_DIRECTORY}/i_system.o", "${BUILD_DIRECTORY}/i_timer.o",
+    "${BUILD_DIRECTORY}/i_video.o", "${BUILD_DIRECTORY}/m_argv.o", "${BUILD_DIRECTORY}/m_bbox.o",
+    "${BUILD_DIRECTORY}/m_cheat.o", "${BUILD_DIRECTORY}/m_config.o", "${BUILD_DIRECTORY}/m_controls.o",
+    "${BUILD_DIRECTORY}/memio.o", "${BUILD_DIRECTORY}/m_fixed.o", "${BUILD_DIRECTORY}/m_menu.o",
+    "${BUILD_DIRECTORY}/m_misc.o", "${BUILD_DIRECTORY}/m_random.o", "${BUILD_DIRECTORY}/mus2mid.o",
+    "${BUILD_DIRECTORY}/p_ceilng.o", "${BUILD_DIRECTORY}/p_doors.o", "${BUILD_DIRECTORY}/p_enemy.o",
+    "${BUILD_DIRECTORY}/p_floor.o", "${BUILD_DIRECTORY}/p_inter.o", "${BUILD_DIRECTORY}/p_lights.o",
+    "${BUILD_DIRECTORY}/p_map.o", "${BUILD_DIRECTORY}/p_maputl.o", "${BUILD_DIRECTORY}/p_mobj.o",
+    "${BUILD_DIRECTORY}/p_plats.o", "${BUILD_DIRECTORY}/p_pspr.o", "${BUILD_DIRECTORY}/p_saveg.o",
+    "${BUILD_DIRECTORY}/p_setup.o", "${BUILD_DIRECTORY}/p_sight.o", "${BUILD_DIRECTORY}/p_spec.o",
+    "${BUILD_DIRECTORY}/p_switch.o", "${BUILD_DIRECTORY}/p_telept.o", "${BUILD_DIRECTORY}/p_tick.o",
+    "${BUILD_DIRECTORY}/p_user.o", "${BUILD_DIRECTORY}/r_bsp.o", "${BUILD_DIRECTORY}/r_data.o",
+    "${BUILD_DIRECTORY}/r_draw.o", "${BUILD_DIRECTORY}/r_main.o", "${BUILD_DIRECTORY}/r_plane.o",
+    "${BUILD_DIRECTORY}/r_segs.o", "${BUILD_DIRECTORY}/r_sky.o", "${BUILD_DIRECTORY}/r_things.o",
+    "${BUILD_DIRECTORY}/sha1.o", "${BUILD_DIRECTORY}/sounds.o", "${BUILD_DIRECTORY}/s_sound.o",
+    "${BUILD_DIRECTORY}/statdump.o", "${BUILD_DIRECTORY}/st_lib.o", "${BUILD_DIRECTORY}/st_stuff.o",
+    "${BUILD_DIRECTORY}/tables.o", "${BUILD_DIRECTORY}/v_video.o", "${BUILD_DIRECTORY}/w_checksum.o",
+    "${BUILD_DIRECTORY}/w_file.o", "${BUILD_DIRECTORY}/w_file_stdc.o", "${BUILD_DIRECTORY}/wi_stuff.o",
+    "${BUILD_DIRECTORY}/w_main.o", "${BUILD_DIRECTORY}/w_wad.o", "${BUILD_DIRECTORY}/z_zone.o"
+]
+condition = { files_modified = { input = [
+    "${CARGO_MAKE_WORKING_DIRECTORY}/Cargo.toml", "${SOURCE_DIRECTORY}/**/*.rs",
+    "${BUILD_DIRECTORY}/stdio.o", "${BUILD_DIRECTORY}/am_map.o", "${BUILD_DIRECTORY}/d_event.o",
+    "${BUILD_DIRECTORY}/d_items.o", "${BUILD_DIRECTORY}/d_iwad.o", "${BUILD_DIRECTORY}/d_loop.o",
+    "${BUILD_DIRECTORY}/d_main.o", "${BUILD_DIRECTORY}/d_mode.o", "${BUILD_DIRECTORY}/d_net.o",
+    "${BUILD_DIRECTORY}/doomdef.o", "${BUILD_DIRECTORY}/doomgeneric.o", "${BUILD_DIRECTORY}/doomstat.o",
+    "${BUILD_DIRECTORY}/dstrings.o", "${BUILD_DIRECTORY}/dummy.o", "${BUILD_DIRECTORY}/f_finale.o",
+    "${BUILD_DIRECTORY}/f_wipe.o", "${BUILD_DIRECTORY}/g_game.o", "${BUILD_DIRECTORY}/gusconf.o",
+    "${BUILD_DIRECTORY}/hu_lib.o", "${BUILD_DIRECTORY}/hu_stuff.o", "${BUILD_DIRECTORY}/i_cdmus.o",
+    "${BUILD_DIRECTORY}/icon.o", "${BUILD_DIRECTORY}/i_endoom.o", "${BUILD_DIRECTORY}/i_input.o",
+    "${BUILD_DIRECTORY}/i_joystick.o", "${BUILD_DIRECTORY}/info.o", "${BUILD_DIRECTORY}/i_scale.o",
+    "${BUILD_DIRECTORY}/i_sound.o", "${BUILD_DIRECTORY}/i_system.o", "${BUILD_DIRECTORY}/i_timer.o",
+    "${BUILD_DIRECTORY}/i_video.o", "${BUILD_DIRECTORY}/m_argv.o", "${BUILD_DIRECTORY}/m_bbox.o",
+    "${BUILD_DIRECTORY}/m_cheat.o", "${BUILD_DIRECTORY}/m_config.o", "${BUILD_DIRECTORY}/m_controls.o",
+    "${BUILD_DIRECTORY}/memio.o", "${BUILD_DIRECTORY}/m_fixed.o", "${BUILD_DIRECTORY}/m_menu.o",
+    "${BUILD_DIRECTORY}/m_misc.o", "${BUILD_DIRECTORY}/m_random.o", "${BUILD_DIRECTORY}/mus2mid.o",
+    "${BUILD_DIRECTORY}/p_ceilng.o", "${BUILD_DIRECTORY}/p_doors.o", "${BUILD_DIRECTORY}/p_enemy.o",
+    "${BUILD_DIRECTORY}/p_floor.o", "${BUILD_DIRECTORY}/p_inter.o", "${BUILD_DIRECTORY}/p_lights.o",
+    "${BUILD_DIRECTORY}/p_map.o", "${BUILD_DIRECTORY}/p_maputl.o", "${BUILD_DIRECTORY}/p_mobj.o",
+    "${BUILD_DIRECTORY}/p_plats.o", "${BUILD_DIRECTORY}/p_pspr.o", "${BUILD_DIRECTORY}/p_saveg.o",
+    "${BUILD_DIRECTORY}/p_setup.o", "${BUILD_DIRECTORY}/p_sight.o", "${BUILD_DIRECTORY}/p_spec.o",
+    "${BUILD_DIRECTORY}/p_switch.o", "${BUILD_DIRECTORY}/p_telept.o", "${BUILD_DIRECTORY}/p_tick.o",
+    "${BUILD_DIRECTORY}/p_user.o", "${BUILD_DIRECTORY}/r_bsp.o", "${BUILD_DIRECTORY}/r_data.o",
+    "${BUILD_DIRECTORY}/r_draw.o", "${BUILD_DIRECTORY}/r_main.o", "${BUILD_DIRECTORY}/r_plane.o",
+    "${BUILD_DIRECTORY}/r_segs.o", "${BUILD_DIRECTORY}/r_sky.o", "${BUILD_DIRECTORY}/r_things.o",
+    "${BUILD_DIRECTORY}/sha1.o", "${BUILD_DIRECTORY}/sounds.o", "${BUILD_DIRECTORY}/s_sound.o",
+    "${BUILD_DIRECTORY}/statdump.o", "${BUILD_DIRECTORY}/st_lib.o", "${BUILD_DIRECTORY}/st_stuff.o",
+    "${BUILD_DIRECTORY}/tables.o", "${BUILD_DIRECTORY}/v_video.o", "${BUILD_DIRECTORY}/w_checksum.o",
+    "${BUILD_DIRECTORY}/w_file.o", "${BUILD_DIRECTORY}/w_file_stdc.o", "${BUILD_DIRECTORY}/wi_stuff.o",
+    "${BUILD_DIRECTORY}/w_main.o", "${BUILD_DIRECTORY}/w_wad.o", "${BUILD_DIRECTORY}/z_zone.o"
+], output = [] } }
+
+# Cleanup tasks
+
+[tasks.clean]
+command = "cargo"
+args = [ "clean" ]
+dependencies = [ "remove-application" ]
+
+[tasks.remove-application]
+command = "rm"
+args = [ "-f", "${APPLICATION}" ]

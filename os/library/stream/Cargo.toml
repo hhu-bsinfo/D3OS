@@ -8,3 +8,6 @@ authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhl
 test = false
 doctest = false
 bench = false
+
+[dependencies]
+pc-keyboard = "0.8.0"

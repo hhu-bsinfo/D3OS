@@ -18,3 +18,4 @@ runtime = { path = "../../library/runtime" }
 naming = { path = "../../library/naming" }
 concurrent = { path = "../../library/concurrent" }
 capabilities = { path = "../../library/capabilities" }
+syscall = { path = "../../library/syscall" }

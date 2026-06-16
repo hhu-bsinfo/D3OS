@@ -8,6 +8,7 @@ use core::ops::Deref;
 use core::ptr;
 use log::{info, warn};
 use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
+use smoltcp::socket;
 use smoltcp::socket::{dhcpv4, dns, icmp, tcp, udp};
 use smoltcp::time::Instant;
 use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint};
@@ -53,7 +54,7 @@ pub fn init() {
 
     if let Some(rtl8139) = RTL8139.get() {
         extern "sysv64" fn poll() {
-            loop { poll_sockets(); scheduler().sleep(50); }
+            loop { poll_sockets(); scheduler().switch_thread_no_interrupt(); }
         }
         scheduler().ready(Thread::new_kernel_thread(poll, "RTL8139"));
         
@@ -125,8 +126,8 @@ fn add_interface(interface: Interface) {
 /// 
 /// If host is none, get the addresses of the current host.
 pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
-    let handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
     if let Some(host) = host {
+        let handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
         // first, start the queries
         let mut query_handles: Vec<_> = {
             let mut interfaces = INTERFACES.write();
@@ -196,11 +197,11 @@ pub fn open_udp() -> SocketHandle {
     let sockets = SOCKETS.get().expect("Socket set not initialized!");
 
     let rx_buffer = udp::PacketBuffer::new(
-        vec![udp::PacketMetadata::EMPTY, udp::PacketMetadata::EMPTY],
+        vec![udp::PacketMetadata::EMPTY; 44],
         vec![0; 65535],
     );
     let tx_buffer = udp::PacketBuffer::new(
-        vec![udp::PacketMetadata::EMPTY, udp::PacketMetadata::EMPTY],
+        vec![udp::PacketMetadata::EMPTY; 44],
         vec![0; 65535],
     );
 
@@ -246,10 +247,27 @@ pub fn open_icmp() -> SocketHandle {
 }
 
 pub fn close_socket(handle: SocketHandle) {
-    let sockets = SOCKETS.get().expect("Socket set not initialized!");
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+
     check_ownership(handle);
+
+    let socket_ref = sockets.iter_mut()
+        .find(|(h, _)| *h == handle)
+        .map(|(_, s)| s);
+
+    if let Some(socket) = socket_ref {
+        match socket {
+            socket::Socket::Tcp(s) => s.close(),
+            socket::Socket::Udp(s) => s.close(),
+            _ => {},
+        }
+    } else {
+        warn!("Socket {} not found in SocketSet", handle);
+    }
+
+    // Remove permission for the process
+    // The socket remains in the set until poll_sockets() garbage collects it.
     SOCKET_PROCESS.write().remove(&handle).unwrap();
-    sockets.write().remove(handle);
 }
 
 pub fn bind_udp(handle: SocketHandle, addr: IpAddress, port: u16) -> Result<(), udp::BindError> {
@@ -289,13 +307,11 @@ pub fn accept_tcp(handle: SocketHandle) -> Result<IpEndpoint, tcp::ConnectError>
         {
             get_socket_for_current_process!(socket, handle, tcp::Socket);
             if socket.is_active() {
-                break;
+                return Ok(socket.remote_endpoint().unwrap())
             }
         }
         scheduler().sleep(100);
     }
-    get_socket_for_current_process!(socket, handle, tcp::Socket);
-    Ok(socket.remote_endpoint().unwrap())
 }
 
 pub fn connect_tcp(handle: SocketHandle, host: IpAddress, port: u16) -> Result<IpEndpoint, tcp::ConnectError> {    get_socket_for_current_process!(socket, handle, tcp::Socket);
@@ -337,6 +353,40 @@ pub fn receive_icmp(handle: SocketHandle, data: &mut [u8]) -> Result<(usize, IpA
     socket.recv_slice(data)
 }
 
+pub fn can_recv(handle: SocketHandle, protocol: SocketType) -> bool {
+    match protocol {
+        SocketType::Udp => {
+            get_socket_for_current_process!(socket, handle, udp::Socket);
+            socket.can_recv()
+        },
+        SocketType::Tcp => {
+            get_socket_for_current_process!(socket, handle, tcp::Socket);
+            socket.can_recv()
+        }
+        SocketType::Icmp => {
+            get_socket_for_current_process!(socket, handle, icmp::Socket);
+            socket.can_recv()
+        }
+    }
+}
+
+pub fn can_send(handle: SocketHandle, protocol: SocketType) -> bool {
+    match protocol {
+        SocketType::Udp => {
+            get_socket_for_current_process!(socket, handle, udp::Socket);
+            socket.can_send()
+        },
+        SocketType::Tcp => {
+            get_socket_for_current_process!(socket, handle, tcp::Socket);
+            socket.can_send()
+        }
+        SocketType::Icmp => {
+            get_socket_for_current_process!(socket, handle, icmp::Socket);
+            socket.can_send()
+        }
+    }
+}
+
 /// Try to poll all sockets.
 /// 
 /// This returns None, if it failed to get all needed locks.
@@ -351,9 +401,18 @@ fn poll_sockets() -> Option<()> {
     // Smoltcp expects a mutable reference to the device, but the RTL8139 driver is built
     // to work with a shared reference. We can safely cast the shared reference to a mutable.
     let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-
     let interface = interfaces.get_mut(0).expect("failed to get interface");
-    interface.poll(time, device, &mut sockets);
+
+    let mut poll_budget = 16;
+    while poll_budget > 0 {
+        match interface.poll(time, device, &mut sockets) {
+            iface::PollResult::None => break,
+            iface::PollResult::SocketStateChanged => {
+                poll_budget -= 1;
+            },
+        }
+    }
+
     // DHCP handling is based on https://github.com/smoltcp-rs/smoltcp/blob/main/examples/dhcp_client.rs
     let dhcp_handle = DHCP_SOCKET.get().expect("DHCP socket does not exist yet");
     let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(*dhcp_handle);
@@ -395,6 +454,38 @@ fn poll_sockets() -> Option<()> {
             },
         }
     }
+
+    // Remove closed sockets
+    let mut sockets_to_remove = Vec::new();
+
+    let socket_map = SOCKET_PROCESS.read();
+    let dns_handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
+
+    for (handle, socket) in sockets.iter() {
+        // Skip system sockets
+        if handle == *dhcp_handle || handle == *dns_handle {
+            continue;
+        }
+
+        let is_closed = match socket {
+            // Only remove TCP sockets that have fully traversed the state machine to the CLOSED state.
+            socket::Socket::Tcp(s) => s.state() == tcp::State::Closed,
+            // UDP sockets are stateless so whe can remove them immediately
+            socket::Socket::Udp(s) => true,
+            _ => false,
+        };
+
+        // only delete the socket if the process has released the handle
+        if is_closed && !socket_map.contains_key(&handle) {
+            sockets_to_remove.push(handle);
+        }
+    }
+
+    for handle in sockets_to_remove {
+        info!("Garbage collecting closed socket: {}", handle);
+        sockets.remove(handle);
+    }
+
     Some(())
 }
 

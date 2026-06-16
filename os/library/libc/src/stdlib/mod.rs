@@ -1,10 +1,13 @@
 use core::cmp::Ordering;
 use core::ffi::{c_char, c_int, c_void};
 
-pub mod abort;
+pub mod system;
 pub mod bsearch;
 pub mod qsort;
 pub mod strtol;
+pub mod abs;
+pub mod memory;
+pub mod strtof;
 
 /*
  * Comparator functions for `bsearch` and `qsort` tests.

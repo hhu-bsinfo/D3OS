@@ -3,7 +3,28 @@ resolver = "2"
 
 members = [
     "os/kernel",
-    "os/application/*"
+    "os/application/about",
+    "os/application/hello",
+    "os/application/helloc",
+    "os/application/shell",
+    "os/application/legacy_shell",
+    "os/application/uptime",
+    "os/application/date",
+    "os/application/ls",
+    "os/application/heaptest",
+    "os/application/threadtest",
+    "os/application/filetest",
+    "os/application/nc",
+    "os/application/ping",
+    "os/application/ip",
+    "os/application/peanut-gb",
+    "os/application/pipetest",
+    "os/application/ps",
+    "os/application/window_manager",
+    "os/application/terminal_emulator",
+    "os/application/keytest",
+    "os/application/netperf",
+    "os/application/shmtest",
 ]
 
 # [profile.release]

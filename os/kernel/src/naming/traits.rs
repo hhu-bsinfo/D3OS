@@ -2,12 +2,13 @@
    ║ Module: traits                                                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ All internal traits used within the naming service (ns).                ║
-   ║   - FileSystem: type and operations for a file system                   ║
-   ║   - NamedObject: generic type of an object                              ║
+   ║   - FileSystem:      type and operations for a file system              ║
+   ║   - NamedObject:     generic type of an object                          ║
    ║   - DirectoryObject: specifies all operations on a directory object     ║
-   ║   - FileObject: specifies all operations on a file object               ║
+   ║   - FileObject:      specifies all operations on a file object          ║
+   ║   - PipeObject:      specifies all operations on a pipe object          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 25.8.2025                ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 23.12.2025               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -15,7 +16,7 @@
 use alloc::sync::Arc;
 use core::fmt::{self, Debug};
 use core::result::Result;
-use log::info;
+
 use super::stat::{Mode, Stat};
 use naming::shared_types::{OpenOptions, DirEntry};
 use syscall::return_vals::Errno;
@@ -27,32 +28,18 @@ pub trait FileSystem: Send + Sync {
 
 /// File object operations
 pub trait FileObject: Debug + Send + Sync {
-    fn stat(&self) -> Result<Stat, Errno> {
-        Err(Errno::EBADF)
-    }
-
-    fn read(&self, _buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
-        Err(Errno::EBADF)
-    }
-
-    fn write(&self, _buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
-        Err(Errno::EBADF)
-    }
+    fn stat(&self) -> Result<Stat, Errno>;
+    fn read(&self, _buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno>;
+    fn write(&self, _buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno>;
 }
 
 /// Pipe object operations
 pub trait PipeObject: Debug + Send + Sync {
-    fn stat(&self) -> Result<Stat, Errno> {
-        Err(Errno::EBADF)
-    }
-
-    fn read(&self, _buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
-        Err(Errno::EBADF)
-    }
-
-    fn write(&self, _buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
-        Err(Errno::EBADF)
-    }
+    fn open(&self, flags: OpenOptions) -> Result<usize, Errno>;
+    fn stat(&self) -> Result<Stat, Errno>;
+    fn read(&self, _buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno>;
+    fn write(&self, _buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno>;
+    fn close(&self, flags: OpenOptions);
 }
 
 
@@ -94,7 +81,6 @@ impl NamedObject {
 
     /// Unwraps as a directory. If it's not, returns `Errno::EBADF`.
     pub fn as_dir(&self) -> Result<&Arc<dyn DirectoryObject>, Errno> {
-        info!("as dir called");
         match self {
             NamedObject::DirectoryObject(dir) => Ok(dir),
             _ => Err(Errno::EBADF),

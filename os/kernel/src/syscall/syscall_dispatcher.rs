@@ -32,6 +32,39 @@ use crate::{core_local_storage, scheduler, tss};
 use log::{error, info};
 use x86_64::registers::rflags::RFlags;
 
+use crate::{core_local_storage, tss};
+use log::info;
+use x86_64::registers::rflags::RFlags;
+
+use super::sys_concurrent::{
+    sys_process_count, sys_process_execute_binary, sys_process_exit,
+    sys_process_id, sys_thread_count, sys_process_status, 
+    sys_thread_create, sys_thread_exit, sys_thread_id, sys_thread_join, 
+    sys_thread_kill, sys_thread_sleep, sys_thread_switch,
+};
+use super::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
+use super::sys_input::{sys_read_keyboard, sys_read_mouse};
+use super::sys_logger::sys_log;
+use super::sys_naming::{
+    sys_close, sys_cd, sys_cwd, sys_mkdir, sys_mkfifo, sys_open, sys_read,
+    sys_readdir, sys_seek, sys_touch, sys_write,
+};
+use super::sys_net::{
+    sys_sock_accept, sys_sock_bind, sys_sock_close, sys_sock_connect,
+    sys_get_ip_adresses, sys_sock_open, sys_sock_receive, sys_sock_send,
+    sys_sock_can_recv, sys_sock_can_send
+};
+use super::sys_system_info::sys_map_build_info;
+use super::sys_terminal::{
+    sys_terminal_check_input_state, sys_terminal_read_input,
+    sys_terminal_read_output, sys_terminal_write_input,
+    sys_terminal_write_output,
+};
+use super::sys_time::{sys_get_date, sys_get_system_time, sys_set_date};
+use super::sys_vmem::{sys_map_memory, sys_map_frame_buffer};
+use super::sys_shm::{self, sys_shm_attach, sys_shm_detach, sys_shm_open, sys_shm_unlink};
+
+
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
 
@@ -62,12 +95,16 @@ pub fn init() {
     let cs_sysret = SegmentSelector::new(4, PrivilegeLevel::Ring3);
     let ss_sysret = SegmentSelector::new(3, PrivilegeLevel::Ring3);
 
+
     if let Err(err) = Star::write(cs_sysret, ss_sysret, cs_syscall, ss_syscall) {
-        panic!("System Call: Failed to initialize STAR register (Error: {})", err)
+        panic!(
+            "System Call: Failed to initialize STAR register (Error: {})",
+            err
+        )
     }
 
     // Set rip for syscall
-    LStar::write(VirtAddr::new(syscall_handler as u64));
+    LStar::write(VirtAddr::new(syscall_handler as *const () as u64));
 
     // Make sure interrupts are disabled during system calls
     // The CPU clears every flag that is set in the SFMask register
@@ -89,9 +126,8 @@ pub fn init() {
 ///
 /// Return: \
 ///    Two values in `rax`, `rdx` to reconstruct `Result`in user mode
-unsafe extern "C" fn syscall_handler() {
+unsafe extern "sysv64" fn syscall_handler() {
     naked_asm!(
-    // We are now in ring 0 with disabled interrupts, but still on the user stack
     // Switch to kernel stack
     "swapgs", // Setup core local storage access via gs base
     "mov gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}], rsp", // Temporarily store user rip in core local storage
@@ -100,8 +136,8 @@ unsafe extern "C" fn syscall_handler() {
     "push gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}]", // Store user rip on kernel stack (core local storage might be overwritten, when a thread switch occurs during system call execution)
     "swapgs", // Restore gs base
 
-    // Store registers (except rax, which is used for system call ID and return value)
-    "push rbx",
+    // Store registers according to System V AMD64 ABI
+    // (except rax, which is used for system call ID and return value)
     "push rcx", // Contains rip for returning to ring 3
     "push rdx",
     "push rdi",
@@ -109,14 +145,10 @@ unsafe extern "C" fn syscall_handler() {
     "push r8",
     "push r9",
     "push r10",
-    "push r11", // Contains eflags for returning to ring 3
-    "push r12",
-    "push r13",
-    "push r14",
-    "push r15",
-    "push 0",// push another value, so that the stack is aligned for u128s (% 16)
+    "push r11", // Contains rflags for returning to ring 3
+    "push 0", // Push another value so that the stack pointer is 16-byte aligned (needed for u128)
 
-    // copy 4th argument to rcx to adhere x86_64 ABI
+    // copy 4th argument to rcx to adhere System V AMD64 ABI
     "mov rcx, r10",
 
     // Enable interrupts (we are now on the kernel stack and can handle them properly)
@@ -127,7 +159,7 @@ unsafe extern "C" fn syscall_handler() {
     "jge syscall_abort", // Panics and does not return
 
     //Save all Registers again because get_capability_entry would overwrite them
-    "push rbx",
+    //"push rbx",
     "push rcx", // Contains rip for returning to ring 3
     "push rdx",
     "push rdi",
@@ -136,18 +168,18 @@ unsafe extern "C" fn syscall_handler() {
     "push r9",
     "push r10",
     "push r11", // Contains eflags for returning to ring 3
-    "push r12",
-    "push r13",
-    "push r14",
-    "push r15",
+    // "push r12",
+    // "push r13",
+    // "push r14",
+    // "push r15",
 
     "call get_capability_entry", // Write Syscall Function Address from Corresponding Capability to stack
 
     //Restore registers to use them in the syscall function
-    "pop r15",
-    "pop r14",
-    "pop r13",
-    "pop r12",
+    // "pop r15",
+    // "pop r14",
+    // "pop r13",
+    // "pop r12",
     "pop r11", // Contains eflags for returning to ring 3
     "pop r10",
     "pop r9",
@@ -156,17 +188,19 @@ unsafe extern "C" fn syscall_handler() {
     "pop rdi",
     "pop rdx",
     "pop rcx", // Contains rip for returning to ring 3
-    "pop rbx",
+    //"pop rbx",
 
     "call rax", // Call system call function pointer
 
     // Restore registers
-    "pop r15", // the 0 from above
-    "pop r15",
-    "pop r14",
-    "pop r13",
-    "pop r12",
-    "pop r11", // Contains eflags for returning to ring 3
+    // "pop r15", // the 0 from above
+    // "pop r15",
+    // "pop r14",
+    // "pop r13",
+    // "pop r12",
+
+    "pop r11", // Pop the alignment 0
+    "pop r11", // Contains rflags for returning to ring 3
     "pop r10",
     "pop r9",
     "pop r8",
@@ -174,19 +208,33 @@ unsafe extern "C" fn syscall_handler() {
     "pop rdi",
     "pop rdx",
     "pop rcx", // Contains rip for returning to ring 3
-    "pop rbx",
 
     // Switch back to user stack
     "cli", // Disable interrupts, since we are still in Ring 0 and no interrupt handler should be called with the user stack
-    "pop rsp", // Restore rsp from kernel stack,
+    "pop rsp", // Restore rsp from kernel stack
 
     // Return to Ring 3
-    // Interrupts will be enabled automatically, because eflags is restored from r11
+    // Interrupts will be enabled automatically, because rflags is restored from r11
     "sysretq",
     NUM_SYSCALLS = const NUM_SYSCALLS,
     CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX,
-    CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX
+    CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX,
+    SYSCALL_TABLE = sym SYSCALL_TABLE
     );
+}
+
+#[unsafe(no_mangle)]
+#[unsafe(naked)]
+unsafe extern "C" fn syscall_abort() {
+    naked_asm!(
+        "mov rdi, rax", // Move syscall number to first argument (rdi)
+        "call syscall_abort_panic"
+    )
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn syscall_abort_panic(syscall_number: u64) {
+    panic!("System call with id [{}] does not exist!", syscall_number);
 }
 
 ///Gets the function pointer of the syscall with the given ID from the capability
@@ -239,22 +287,4 @@ unsafe extern "C" fn get_capability_entry() -> *const () {
     error!("Could not get syscall function pointer for syscall id [{}]!", syscall_number);
     permission_denied as *const ()
     //panic!("Capability for syscall with id [{}] does not exist or has no permission!", syscall_number);
-}
-
-#[unsafe(no_mangle)]
-unsafe extern "C" fn syscall_abort() {
-    let syscall_number: u64;
-
-    unsafe {
-        asm!(
-        "mov {}, rax", out(reg) syscall_number
-        );
-    }
-
-    panic!("System call with id [{}] does not exist!", syscall_number);
-}
-
-#[unsafe(no_mangle)]
-extern "sysv64" fn permission_denied() -> isize {
-    -5 // NO_PERMISSION error code
 }

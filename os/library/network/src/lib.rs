@@ -3,7 +3,7 @@
 #![no_std]
 extern crate alloc;
 
-use core::{ffi::CStr, net::{IpAddr, Ipv6Addr, SocketAddr}, str::FromStr};
+use core::{ffi::CStr, net::{IpAddr, Ipv6Addr, SocketAddr}, ptr, str::FromStr};
 
 use alloc::{ffi::CString, format, string::ToString, vec::Vec, vec};
 use syscall::{return_vals::Errno, syscall, SystemCall};
@@ -87,12 +87,42 @@ impl UdpSocket {
         };
         Ok((num_bytes, remote_addr))
     }
+
+    /// Check whether the receive buffer is not empty.
+    pub fn can_recv(&self) -> Result<bool, NetworkError> {
+        let protocol = 0;
+        let can_recv = syscall(SystemCall::SockCanReceive, &[
+            self.handle,
+            protocol,
+        ])
+            .map_err(|errno| match errno {
+                Errno::ENOTSUP => panic!("invalid protocol"),
+                errno => NetworkError::Unknown(errno)
+            })?;
+
+        Ok(can_recv == 1)
+    }
+
+    /// Check whether the transmit buffer is full.
+    pub fn can_send(&self) -> Result<bool, NetworkError> {
+        let protocol = 0;
+        let can_send = syscall(SystemCall::SockCanSend, &[
+            self.handle,
+            protocol,
+        ])
+            .map_err(|errno| match errno {
+                Errno::ENOTSUP => panic!("invalid protocol"),
+                errno => NetworkError::Unknown(errno)
+            })?;
+
+        Ok(can_send == 1)
+    }
 }
 
 impl Drop for UdpSocket {
     fn drop(&mut self) {
         let protocol = 0;
-        syscall(SystemCall::SockClose, &[self.handle, protocol])
+        syscall(SystemCall::SockClose, &[ptr::from_ref(&self.handle) as usize, protocol])
             .expect("failed to close socket");
     }
 }
@@ -227,12 +257,50 @@ impl TcpStream {
 
         Ok(num_bytes)
     }
+
+    /// Check whether the receive half of the full-duplex connection buffer is open, and the receive buffer is not empty.
+    pub fn can_recv(&self) -> Result<bool, NetworkError> {
+        let protocol = 1;
+        let can_recv = syscall(SystemCall::SockCanReceive, &[
+            self.handle,
+            protocol,
+        ])
+            .map_err(|errno| match errno {
+                Errno::ENOTSUP => panic!("invalid protocol"),
+                errno => NetworkError::Unknown(errno)
+            })?;
+
+        Ok(can_recv == 1)
+    }
+
+    /// Check whether the transmit half of the full-duplex connection is open, and the transmit buffer is not full.
+    pub fn can_send(&self) -> Result<bool, NetworkError> {
+        let protocol = 1;
+        let can_send = syscall(SystemCall::SockCanSend, &[
+            self.handle,
+            protocol,
+        ])
+            .map_err(|errno| match errno {
+                Errno::ENOTSUP => panic!("invalid protocol"),
+                errno => NetworkError::Unknown(errno)
+            })?;
+
+        Ok(can_send == 1)
+    }
+
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_address
+    }
+
+    pub fn peer_addr(&self) -> SocketAddr {
+        self.peer_address
+    }
 }
 
 impl Drop for TcpStream {
     fn drop(&mut self) {
         let protocol = 1;
-        syscall(SystemCall::SockClose, &[self.handle, protocol])
+        syscall(SystemCall::SockClose, &[ptr::from_ref(&self.handle) as usize, protocol])
             .expect("failed to close socket");
     }
 }
@@ -314,7 +382,7 @@ impl IcmpSocket {
 impl Drop for IcmpSocket {
     fn drop(&mut self) {
         let protocol = 2;
-        syscall(SystemCall::SockClose, &[self.handle, protocol])
+        syscall(SystemCall::SockClose, &[ptr::from_ref(&self.handle) as usize, protocol])
             .expect("failed to close socket");
     }
 }

@@ -1,0 +1,65 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "clean",
+            "group": "build",
+            "type": "shell",
+            "isBackground": false,
+            "command": "cargo",
+            "args": [ "make", "--no-workspace", "clean" ],
+            "problemMatcher": []
+        },
+        {
+            "label": "build",
+            "group": "build",
+            "type": "shell",
+            "isBackground": false,
+            "command": "cargo",
+            "args": [ "make", "--no-workspace", "--profile", "development", "image" ],
+            "problemMatcher": []
+        },
+        {
+            "label": "qemu",
+            "type": "shell",
+            "isBackground": false,
+            "command": "cargo",
+            "args": [ "make", "--no-workspace", "--profile", "development", "qemu" ],
+            "problemMatcher": [],
+            "dependsOn": "build"
+        },
+        {
+            "label": "qemu-wsl",
+            "type": "shell",
+            "isBackground": false,
+            "command": "cargo",
+            "args": [ "make", "--no-workspace", "--profile", "development", "qemu-wsl" ],
+            "problemMatcher": [],
+            "dependsOn": "build"
+        },
+        {
+            "label": "qemu-gdb",
+            "type": "shell",
+            "isBackground": true,
+            "command": "cargo",
+            "args": [ "make", "--no-workspace", "--profile", "development", "debug" ],
+            "problemMatcher": [
+                {
+                    "pattern": [
+                      {
+                        "regexp": ".",
+                        "file": 1,
+                        "location": 2,
+                        "message": 3
+                      }
+                    ],
+                    "background": {
+                      "activeOnStart": true,
+                      "beginsPattern": ".",
+                      "endsPattern": "Ready to debug",
+                    }
+                  }
+            ]
+        }
+    ]
+}

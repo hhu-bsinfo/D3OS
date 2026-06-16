@@ -11,10 +11,18 @@ use core::ptr::NonNull;
 use linked_list_allocator::LockedHeap;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use crate::memory::PAGE_SIZE;
+use core::sync::atomic::AtomicUsize;
+use log::info;
 
 pub struct KernelAllocator {
     heap: LockedHeap,
 }
+
+static FREE_BYTES: AtomicUsize = AtomicUsize::new(0);                   // number of bytes currently in the pipe
+
+pub fn get_free_bytes() -> usize {
+    FREE_BYTES.load(core::sync::atomic::Ordering::SeqCst)
+}   
 
 impl KernelAllocator {
     pub const fn new() -> Self {
@@ -24,6 +32,7 @@ impl KernelAllocator {
     pub unsafe fn init(&self, frames: &PhysFrameRange) {
         let mut heap = self.heap.lock();
         unsafe { heap.init(frames.start.start_address().as_u64() as *mut u8, (frames.end - frames.start) as usize * PAGE_SIZE); }
+        FREE_BYTES.store((frames.end - frames.start) as usize * PAGE_SIZE, core::sync::atomic::Ordering::SeqCst);   
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -42,7 +51,10 @@ unsafe impl Allocator for KernelAllocator {
         }
 
         match self.heap.lock().allocate_first_fit(layout) {
-            Ok(ptr) => Ok(NonNull::slice_from_raw_parts(ptr, layout.size())),
+            Ok(ptr) => {
+                FREE_BYTES.fetch_sub(layout.size(), core::sync::atomic::Ordering::SeqCst);
+                Ok(NonNull::slice_from_raw_parts(ptr, layout.size()))
+            },
             Err(()) => Err(AllocError),
         }
     }
@@ -51,12 +63,14 @@ unsafe impl Allocator for KernelAllocator {
         if layout.size() != 0 {
             let mut heap = self.heap.lock();
             unsafe { heap.deallocate(ptr, layout); }
+            FREE_BYTES.fetch_add(layout.size(), core::sync::atomic::Ordering::SeqCst);
         }
     }
 }
 
 unsafe impl GlobalAlloc for KernelAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        FREE_BYTES.fetch_sub(layout.size(), core::sync::atomic::Ordering::SeqCst);
         self.heap.lock()
             .allocate_first_fit(layout)
             .ok()
@@ -64,6 +78,7 @@ unsafe impl GlobalAlloc for KernelAllocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        FREE_BYTES.fetch_add(layout.size(), core::sync::atomic::Ordering::SeqCst);
         let mut heap = self.heap.lock();
         unsafe { heap.deallocate(NonNull::new_unchecked(ptr), layout); }
     }

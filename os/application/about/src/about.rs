@@ -8,8 +8,8 @@ use chrono::DateTime;
 #[allow(unused_imports)]
 use runtime::*;
 use serde::{Deserialize, Serialize};
-use terminal::{print, println};
-use terminal::read::read;
+use terminal::{print, println, DecodedKey};
+use terminal::read::read_fluid;
 
 mod built_info {
     // The file has been placed there by the build script.
@@ -70,13 +70,14 @@ pub fn main() {
         }
         
         loop {
-            let input = read();
+            let input = read_fluid();
             match input {
-                Some('q') | Some('Q') | None => {
+                Some(DecodedKey::Unicode('q')) | Some(DecodedKey::Unicode('Q')) | None => {
                     print!("\n");
                     return; // Exit the application
                 },
-                Some('\n') => {
+                Some(DecodedKey::Unicode('\n')) => {
+                    print!("\n");
                     break; // Proceed to the next dependency
                 },
                 Some(_) => {} // Ignore any other input

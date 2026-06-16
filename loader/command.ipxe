@@ -1,0 +1,10 @@
+#!ipxe
+# get towboot itself
+kernel towboot.efi
+# get the towboot config, kernel and initrd
+# iPXE will emulate a file system containing these files
+module towboot.toml
+module kernel.elf
+module initrd.tar
+# boot
+boot

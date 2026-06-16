@@ -13,8 +13,6 @@
 
 use alloc::alloc::alloc_zeroed;
 use core::alloc::Layout;
-use core::num;
-use core::num::NonZeroUsize;
 use log::info;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::Size4KiB;
@@ -85,7 +83,7 @@ pub fn alloc(frame_count: usize) -> PhysFrameRange {
             info!("frames_lf::alloc frame_count={}, range = {:?}", frame_count, ret_frame_range);
             return ret_frame_range
         }
-        Err(e) => {
+        Err(_) => {
             panic!("PageFrameAllocator: Out of memory!")
         }
     }
@@ -106,10 +104,10 @@ pub fn free(frames: PhysFrameRange) {
     let exp = len.trailing_zeros() as usize;
     
     match PAGE_FRAME_ALLOCATOR.get().unwrap().put(0, start_frame_number as usize, Flags::o(exp)) {
-        Ok(first_frame) => {
+        Ok(_first_frame) => {
             return ;
         }
-        Err(e) => {
+        Err(_) => {
             panic!("PageFrameAllocator: free error!")
         }
     }

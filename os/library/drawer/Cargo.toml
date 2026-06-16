@@ -1,0 +1,22 @@
+[package]
+edition = "2021"
+name = "drawer"
+version = "0.1.0"
+authors = ["Artur Herdt"]
+
+[lib]
+test = false
+doctest = false
+bench = false
+
+[features]
+default = ["userspace"]
+userspace = ["dep:syscall", "dep:spin", "dep:nolock"]
+
+[dependencies]
+# Local dependencies
+syscall = { path = "../syscall", optional = true }
+graphic = { path = "../graphic" }
+
+spin = { version = "0.9.8", optional = true }
+nolock = { version = "0.4.1", default-features = false, features = ["queues"], optional = true }

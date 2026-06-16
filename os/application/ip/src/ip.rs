@@ -6,7 +6,7 @@ extern crate alloc;
 #[allow(unused_imports)]
 use runtime::*;
 use network::get_ip_addresses;
-use terminal::{print, println};
+use terminal::println;
 
 #[unsafe(no_mangle)]
 fn main() {

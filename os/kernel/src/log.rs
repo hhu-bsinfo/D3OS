@@ -166,6 +166,11 @@ impl Logger {
             !ptr::addr_eq(ptr::from_ref(element.as_ref()), ptr::from_ref(stream))
         });
     }
+    
+    /// Unlock all streams. This may cause gibberish.
+    pub unsafe fn force_unlock(&self) {
+        unsafe { self.streams.force_unlock() };
+    }
 }
 
 fn ansi_color(level: Level) -> &'static str {

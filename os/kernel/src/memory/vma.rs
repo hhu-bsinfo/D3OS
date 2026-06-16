@@ -25,6 +25,7 @@ pub enum VmaType {
     KernelStack,
     KernelBuffer,
     Anonymous,
+    SharedMemory {id: usize},
 }
 
 pub const TAG_SIZE: usize = 16; // Define a constant for tag size in bytes

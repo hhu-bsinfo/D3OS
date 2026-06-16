@@ -3,15 +3,24 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Syscalls for thread functions.                                  ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Michael Schoettner, 31.8.2024, HHU              ║
+   ║ Author: Fabian Ruhland, Michael Schoettner, 04.01.2026, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::arch::asm;
 use core::ptr;
-use syscall::{syscall, SystemCall};
+use chrono::TimeDelta;
+use time::systime;
+use syscall::{SystemCall, syscall,return_vals::Errno};
 
 pub struct Thread {
     id: usize,
+}
+
+#[repr(C, packed)]
+pub struct ThreadEnvironment {
+    start_time: TimeDelta,
 }
 
 impl Thread {
@@ -23,19 +32,58 @@ impl Thread {
         self.id
     }
 
-    pub fn join(&self) {
-        let _ = syscall(SystemCall::ThreadJoin, &[self.id]);
+    pub fn join(&self) -> Result<usize, Errno> {
+        syscall(SystemCall::ThreadJoin, &[self.id])
+    }
+
+    pub fn kill(&self) {
+        let _ = syscall(SystemCall::ThreadKill, &[self.id]);
+    }
+
+    pub fn start_time(&self) -> TimeDelta {
+        let thread_env = thread_environment();
+        thread_env.start_time
+    }
+}
+
+pub fn thread_environment() -> &'static mut ThreadEnvironment {
+    let thread_env: *mut ThreadEnvironment;
+
+    unsafe {
+        asm!(
+        "rdfsbase {0}",
+        out(reg) thread_env,
+        );
+
+        &mut *thread_env
+    }
+}
+
+pub fn init_thread_environment() {
+    let thread_env = Box::new(ThreadEnvironment {
+        start_time: systime(),
+    });
+
+    let thread_env_ptr = Box::into_raw(thread_env);
+    unsafe {
+        asm!(
+        "wrfsbase {0}",
+        in(reg) thread_env_ptr,
+        );
     }
 }
 
 extern "sysv64" fn kickoff_user_thread(entry: extern "sysv64" fn()) {
+    // set up the thread environment, which is stored at FS:0
+    init_thread_environment();
+
     // entry has no parameters, so we don't really need to ensure the calling convention
     entry();
     exit();
 }
 
 pub fn create(entry: fn()) -> Option<Thread> {
-    let res = syscall(SystemCall::ThreadCreate, &[kickoff_user_thread as usize,
+    let res = syscall(SystemCall::ThreadCreate, &[kickoff_user_thread as *const () as usize,
         entry as usize,]);
     match res {
         Ok(id) => Some(Thread::new(id)),
@@ -64,6 +112,10 @@ pub fn sleep(ms: usize) {
 pub fn exit() -> ! {
     let _ = syscall(SystemCall::ThreadExit, &[]);
     panic!("System call 'ThreadExit' has returned!")
+}
+
+pub fn count() -> usize {
+    syscall(SystemCall::ThreadCount, &[]).unwrap_or_else(|_| 0)
 }
 
 pub fn start_application(name: &str, args: Vec<&str>) -> Option<Thread> {
