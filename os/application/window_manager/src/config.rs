@@ -1,0 +1,36 @@
+use graphic::color::{Color, CYAN, GREY, HHU_BLUE, WHITE, YELLOW};
+use terminal::DecodedKey;
+
+pub const INTERACT_BUTTON: DecodedKey = DecodedKey::Unicode('f');
+pub const BACKSPACE_UNICODE: DecodedKey = DecodedKey::Unicode('\u{0008}');
+pub const ESCAPE_UNICODE: DecodedKey = DecodedKey::Unicode('\u{001b}');
+
+pub const DEFAULT_FG_COLOR: Color = WHITE;
+pub const FOCUSED_FG_COLOR: Color = YELLOW;
+
+pub const FOCUSED_BG_COLOR: Color = HHU_BLUE;
+pub const UNFOCUSED_BG_COLOR: Color = FOCUSED_BG_COLOR.dim();
+
+pub const DIST_TO_SCREEN_EDGE: u32 = 10;
+pub const COMMAND_LINE_WINDOW_Y_PADDING: u32 = 2;
+pub const DEFAULT_FONT_SCALE: (u32, u32) = (1, 1);
+
+pub const PADDING_BORDERS_AND_CHARS: u32 = 2;
+
+pub const FLUSHING_DELAY_MS: u32 = 16;
+
+pub const DEFAULT_BORDER_COLOR: Color = WHITE;
+pub const DEFAULT_BACKGROUND_COLOR: Color = GREY;
+pub const DEFAULT_TEXT_COLOR: Color = WHITE;
+
+pub const DEFAULT_FOCUSED_BORDER_COLOR: Color = YELLOW.bright();
+pub const DEFAULT_FOCUSED_BACKGROUND_COLOR: Color = GREY;
+pub const DEFAULT_FOCUSED_TEXT_COLOR: Color = WHITE;
+
+pub const DEFAULT_SELECTED_BORDER_COLOR: Color = CYAN;
+pub const DEFAULT_SELECTED_BACKGROUND_COLOR: Color = GREY;
+pub const DEFAULT_SELECTED_TEXT_COLOR: Color = WHITE;
+
+pub const DEFAULT_DISABLED_BORDER_COLOR: Color = GREY;
+pub const DEFAULT_DISABLED_BACKGROUND_COLOR: Color = GREY.dim();
+pub const DEFAULT_DISABLED_TEXT_COLOR: Color = GREY;

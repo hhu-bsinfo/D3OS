@@ -1,0 +1,18 @@
+[package]
+edition = "2024"
+name = "shmtest"
+version = "0.1.0"
+authors = ["Laurenz Maslo <koy22ges@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/shmtest.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+terminal = { path = "../../library/terminal" }
+concurrent = { path = "../../library/concurrent" }

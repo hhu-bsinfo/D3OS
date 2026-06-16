@@ -1,0 +1,18 @@
+[package]
+edition = "2024"
+name = "ps"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/ps.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+terminal = { path = "../../library/terminal" }
+runtime = { path = "../../library/runtime" }
+concurrent = { path = "../../library/concurrent" }

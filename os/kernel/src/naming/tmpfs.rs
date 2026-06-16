@@ -4,26 +4,28 @@
    ║ Temporary file system running storing everything in main memory. It     ║
    ║ supports directories, files, and named pipes.                           ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 01.09.2025               ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 17.1.2026                ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use super::stat::Mode;
 use super::stat::Stat;
 use super::traits::{DirectoryObject, FileObject, FileSystem, NamedObject, PipeObject};
 use crate::sync::wait_queue::WaitQueue;
+use crate::scheduler;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt::{Debug, Formatter};
 use core::result::Result;
+use core::sync::atomic::AtomicBool;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 use core::{fmt, ptr};
-use log::info;
 use naming::shared_types::{DirEntry, FileType, OpenOptions};
 use nolock::queues::mpmc;
 use spin::rwlock::RwLock;
 use syscall::return_vals::Errno;
+use log::{info, warn};
 
 pub struct TmpFs {
     root_dir: Arc<Dir>,
@@ -107,6 +109,7 @@ impl Dir {
 }
 
 impl DirectoryObject for Dir {
+    // check if an object with the given name exists in the directory
     fn lookup(&self, name: &str) -> Result<NamedObject, Errno> {
         let guard = self.0.read(); // Lock the mutex to access the inner data
         if let Some((_, tmpfs_inode)) = guard.files.iter().find(|(file_name, _)| file_name == name) {
@@ -311,57 +314,177 @@ impl Debug for StaticFile {
 
 const PIPE_SIZE: usize = 0x1000;
 
+struct PipeQueue {
+    rx: mpmc::bounded::scq::Receiver<u8>,
+    wx: mpmc::bounded::scq::Sender<u8>,
+}
+
 struct Pipe {
-    rx: mpmc::bounded::scq::Receiver<u8>, // reader
-    wx: mpmc::bounded::scq::Sender<u8>,   // writer
-    rx_wq: WaitQueue,                     // readers block when pipe is empty
-    wx_wq: WaitQueue,                     // writers block when pipe is full
     stat: RwLock<Stat>,
-    count: AtomicUsize,
+    pq: RwLock<PipeQueue>,
+    count: AtomicUsize,      // number of bytes currently in the pipe
+    open_wq: WaitQueue,      // block open calls as needed by POSIX
+    open_epoch: AtomicUsize, // avoid lost wakeups for open calls
+    open_close_mutex: spin::Mutex<()>,  // protects critical sections in open/closer
+    rx_wq: WaitQueue,        // readers block when pipe is empty
+    wx_wq: WaitQueue,        // writers block when pipe is full
+    has_reader: AtomicBool,  // true if opened for reading
+    has_writer: AtomicBool,  // true if opened for writing
 }
 
 impl Pipe {
     pub fn new() -> Pipe {
         let (rx, wx) = mpmc::bounded::scq::queue(PIPE_SIZE);
         Self {
-            rx,
-            wx,
-            rx_wq: WaitQueue::new(),
-            wx_wq: WaitQueue::new(),
             stat: RwLock::new(Stat {
                 mode: Mode::new(0),
                 ..Stat::zeroed()
             }),
+            pq: RwLock::new(PipeQueue { rx, wx }),
+
+            // data plane
             count: AtomicUsize::new(0),
+            rx_wq: WaitQueue::new(),
+            wx_wq: WaitQueue::new(),
+
+            // open rendezvous (fix lost wakeups / open race)
+            open_wq: WaitQueue::new(),
+            open_epoch: AtomicUsize::new(0),
+            open_close_mutex: spin::Mutex::new(()),
+
+            // single-reader/single-writer enforcement
+            has_reader: AtomicBool::new(false),
+            has_writer: AtomicBool::new(false),
+        }
+    }
+
+    #[inline]
+    fn wait_open<F: Fn() -> bool>(&self, cond: F, why: &'static str) {
+        loop {
+            if cond() {
+                return;
+            }
+            // Sleep until either the condition becomes true OR the epoch changed.
+            // Epoch change means "some open/close transition happened, re-check".
+           let e = self.epoch();
+           self.open_wq.wait(|| cond() || self.epoch() != e, why);
+            // loop to re-check; handles spurious wakes and epoch-only wakes.
         }
     }
 
     #[inline]
     fn has_data(&self) -> bool {
-        self.count.load(Ordering::Acquire) > 0
+        self.count.load(Ordering::SeqCst) > 0
     }
 
     #[inline]
     fn has_space(&self) -> bool {
-        self.count.load(Ordering::Acquire) < PIPE_SIZE
+        self.count.load(Ordering::SeqCst) < PIPE_SIZE
+    }
+
+    #[inline]
+    fn has_reader(&self) -> bool {
+        self.has_reader.load(Ordering::SeqCst)
+    }
+
+    #[inline]
+    fn has_writer(&self) -> bool {
+        self.has_writer.load(Ordering::SeqCst)
+    }
+
+    // required to check if we have a lost wakeup for open calls
+    #[inline]
+    fn epoch(&self) -> usize {
+        self.open_epoch.load(Ordering::SeqCst)
+    }
+
+    // required to check if we have a lost wakeup for open calls
+    #[inline]
+    fn bump_epoch_and_wake_open(&self) {
+        self.open_epoch.fetch_add(1, Ordering::SeqCst);
+        self.open_wq.notify_all();
     }
 }
 
 impl PipeObject for Pipe {
+    fn open(&self, flags: OpenOptions) -> Result<usize, Errno> {
+        let (pid, tid) = scheduler().current_ids();
+
+        match flags {
+            OpenOptions::READONLY => {
+                let _g = self.open_close_mutex.lock();
+                //info!("PipeObject::open: READONLY, handle = {}, pid = {}, tid = {}, name = '{}'", handle, pid, tid, name);
+
+                if self.has_reader.load(Ordering::SeqCst) {
+                    return Err(Errno::EBUSY);
+                }
+
+                // publish reader-present
+                self.has_reader.store(true, Ordering::SeqCst);
+                self.bump_epoch_and_wake_open();
+                drop(_g);
+
+                // block until a writer is present.
+                self.wait_open(|| self.has_writer.load(Ordering::SeqCst), "open: reader waiting for writer");
+                Ok(0)
+            }
+
+            OpenOptions::WRITEONLY => {
+                let _g = self.open_close_mutex.lock();
+                //info!("PipeObject::open: WRITEONLY, handle = {}, pid = {}, tid = {}, name = '{}'", handle, pid, tid, name);
+
+                if self.has_writer.load(Ordering::SeqCst) {
+                    return Err(Errno::EBUSY);
+                }
+
+                // publish writer-present
+                self.has_writer.store(true, Ordering::SeqCst);
+                self.bump_epoch_and_wake_open();
+                drop(_g);
+
+                // block until a reader is present
+                self.wait_open(|| self.has_reader.load(Ordering::SeqCst), "open: writer waiting for reader");
+                Ok(0)
+            }
+
+            _ => Err(Errno::EINVAL),
+        }
+    }
+
     fn stat(&self) -> Result<Stat, Errno> {
         Ok(*self.stat.read())
     }
 
     /// Read from pipe buffer, `offset` is ignored
-    fn read(&self, buf: &mut [u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
-        let total_to_read = buf.len();
+    fn read(&self, buf: &mut [u8], _offset: usize, options: OpenOptions) -> Result<usize, Errno> {
+        // Debug output
+        let (pid, tid) = scheduler().current_ids();
+        //info!("read: pid={}, tid={}", pid, tid);
 
-        // Nothing to do?
-        if total_to_read == 0 {
+        // check if pipe was opened for reading
+        if options == OpenOptions::WRITEONLY {
+            return Err(Errno::EBADF);
+        }
+
+        // buf has len = 0 ?
+        if buf.len() == 0 {
             return Ok(0);
         }
 
+        // Block until data is available or writer has gone
+        self.rx_wq.wait(|| self.has_data() || !self.has_writer(), "read: blocks");
+
+        // EOF if no writer is present and no data available
+        if !self.has_data() && !self.has_writer() {
+            return Ok(0);
+        }
+
+        // From here we read data
+        // We have data but the writer might have gone or leaves concurrently
+
+        let total_to_read = buf.len();
         let mut total_read = 0;
+        let pq = self.pq.read();
         loop {
             // Are we done?
             if total_read >= total_to_read {
@@ -369,55 +492,123 @@ impl PipeObject for Pipe {
             }
 
             // Read one byte
-            match self.rx.try_dequeue() {
+            match pq.rx.try_dequeue() {
                 Ok(byte) => {
                     // We consumed a byte
-                    self.count.fetch_sub(1, Ordering::Release);
-
-                    // We freed space -> wake potentially blocked writer
-                    self.wx_wq.notify_one();
-
-                    // Copy byte
+                    self.count.fetch_sub(1, Ordering::SeqCst);
                     buf[total_read] = byte;
                     total_read += 1;
                 }
                 Err(_) => {
-                    // no data available -> block until data appears
-                    self.rx_wq.wait(|| self.has_data());
+                    // We consumed all available data but need more
+                    // We block until more data is available or the writer has gone (-> EOF)
+                    self.rx_wq.wait(|| self.has_data() || !self.has_writer(), "read: blocks");
+                    if !self.has_data() {
+                        break;
+                    }
                 }
             }
         }
+
+        // If we read at least one byte we freed space
+        // -> wake potentially blocked writer
+        if total_read > 0 {
+            self.wx_wq.notify_one();
+        }
+
         Ok(total_read)
     }
 
     /// Write to pipe buffer, `offset` is ignored
-    fn write(&self, buf: &[u8], _offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
-        let total_to_write: usize = buf.len();
+    fn write(&self, buf: &[u8], _offset: usize, options: OpenOptions) -> Result<usize, Errno> {
+        // Debug output
+        let (pid, tid) = scheduler().current_ids();
+        //info!("write: pid={}, tid={}", pid, tid);
 
-        // Nothing to do?
-        if total_to_write == 0 {
+        // check if pipe was opened for reading
+        if options == OpenOptions::READONLY {
+            return Err(Errno::EBADF);
+        }
+
+        // buf has len = 0 ?
+        if buf.len() == 0 {
             return Ok(0);
         }
 
-        let mut total_written = 0;
-        for byte in buf {
-//            info!("    pipe write loop");
-            match self.wx.try_enqueue(*byte) {
-                Ok(()) => {
-                    self.count.fetch_add(1, Ordering::Release);
+        // Block until space is available or reader has gone
+        self.wx_wq.wait(|| self.has_space() || !self.has_reader(), "write: blocks");
 
-                    // We have new data -> wake potentially blocked reader
-                    self.rx_wq.notify_one();
-                   
+        // EOF if no writer is present and no data available
+        if !self.has_reader() {
+            return Err(Errno::EPIPE);
+        }
+
+        // From here we write data
+        // We have space but the reader might leave concurrently
+        let total_to_write: usize = buf.len();
+        let mut total_written = 0;
+        let pq = self.pq.read();
+        loop {
+            // Are we done?
+            if total_written >= total_to_write {
+                break;
+            }
+
+            // Write one byte
+            match pq.wx.try_enqueue(buf[total_written]) {
+                Ok(byte) => {
+                    // We wrote a byte
+                    self.count.fetch_add(1, Ordering::SeqCst);
                     total_written += 1;
                 }
                 Err(_) => {
-                    // no space in buffer available -> block until data is consumed
-                    self.wx_wq.wait(|| self.has_space());
+                    // We consumed all available space but need more
+                    // We block until more space is available or the reader has gone (-> EOF)
+                    self.wx_wq.wait(|| self.has_space() || !self.has_reader(), "write: blocks");
+                    if !self.has_reader() {
+                        return Err(Errno::EPIPE);
+                    }
                 }
             }
         }
+
+        // If we wrote at least one byte we wake up potentially blocked reader
+        if total_written > 0 {
+            info!("PipeObject::write: done, total_written={}, notify_one, pid={}, tid={}", total_written, pid, tid);
+            self.rx_wq.notify_one();
+        }
         Ok(total_written)
+    }
+
+    fn close(&self, flags: OpenOptions) {
+        let (pid, tid) = scheduler().current_ids();
+        let _g = self.open_close_mutex.lock();
+
+        //info!("PipeObject::close: handle = {}, flags={:?}, pid={}, tid={}", fh, flags, pid, tid);
+
+        match flags {
+            OpenOptions::READONLY => {
+                self.has_reader.store(false, Ordering::SeqCst);
+                self.bump_epoch_and_wake_open(); // wake open waiters
+                self.wx_wq.notify_all(); // writers blocked on full/space or EPIPE checks
+            }
+            OpenOptions::WRITEONLY => {
+                self.has_writer.store(false, Ordering::SeqCst);
+                self.bump_epoch_and_wake_open(); // wake open waiters
+                self.rx_wq.notify_all(); // readers blocked on empty/EOF checks
+            }
+            _ => {}
+        }
+
+        // If we have no readers and no writers, we can reset the pipe buffer to avoid keeping data around indefinitely.
+        if !self.has_reader.load(Ordering::SeqCst) && !self.has_writer.load(Ordering::SeqCst) {
+            //info!("PipeObject::close: resetting pipe buffer, pid={}, tid={}", pid, tid);
+            let (rx, wx) = mpmc::bounded::scq::queue(PIPE_SIZE);
+            let mut pq = self.pq.write();
+            pq.rx = rx;
+            pq.wx = wx;
+            self.count.store(0, Ordering::SeqCst);
+        }
     }
 }
 

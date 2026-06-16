@@ -4,7 +4,7 @@ extern crate alloc;
 
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{print, println};
+use terminal::println;
 use time::systime;
 
 #[unsafe(no_mangle)]

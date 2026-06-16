@@ -23,6 +23,7 @@
    ║   - map_pfr_for_partial_vma   map pf range for subrange of a vma        ║
    ║   - map_partial_vma           map a sub page range of a vma by          ║
    ║                               allocating frames as needed               ║
+   ║   - unmap_vma                 unmap VMA in this address space           ║
    ║                                                                         ║
    ║   - clone_address_space       used for process creation                 ║
    ║   - create_kernel_address_space   used for process creation             ║
@@ -35,13 +36,15 @@
    ║   - pfr_from_pr_identity      get pfr range from page range identity    ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland and Michael Schoettner                           ║
-   ║         Univ. Duesseldorf, 7.8.2025                                     ║
+   ║         Univ. Duesseldorf, 8.3.2026                                     ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use core::ops::Range;
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering;
 use log::{warn, info};
 use spin::RwLock;
 
@@ -88,12 +91,14 @@ fn last_usable_virtual_address() -> u64 {
 /// Wrapper function
 /// Allocate `frame_count` contiguous page frames.
 pub unsafe fn alloc_frames(frame_count: usize) -> PhysFrameRange {
+    FREE_FRAMES.fetch_sub(frame_count, Ordering::SeqCst);
     frames::alloc(frame_count)
 }
 
 /// Wrapper function
 /// Free a contiguous range of page `frames`.
 pub unsafe fn free_frames(frames: PhysFrameRange) {
+    FREE_FRAMES.fetch_add((frames.end - frames.start) as usize, Ordering::SeqCst);
     unsafe {
         frames::free(frames);
     }
@@ -116,6 +121,18 @@ pub fn pfr_from_pr_identity(pr: PageRange) -> PhysFrameRange {
         end: end_frame,
     }
 }
+
+
+static FREE_FRAMES: AtomicUsize = AtomicUsize::new(0);                   // number of bytes currently in the pipe
+
+pub fn init_total_free_frames() {
+    FREE_FRAMES.store(frames::get_total_free_frames(), Ordering::SeqCst);
+}
+
+pub fn get_free_frames() -> usize {
+    FREE_FRAMES.load(Ordering::SeqCst)
+}
+
 
 /// All data related to a virtual address space of a process.
 pub struct VirtualAddressSpace {
@@ -365,12 +382,12 @@ impl VirtualAddressSpace {
         let vma = self
             .alloc_vma(Some(start_page_addr), pr.len() as u64, MemorySpace::Kernel, typ, tag)
             .expect("alloc_vma failed");
-
+/*
         // Remove frames from allocator, so frames are not allocated again
         if let Err(e) = frames::remove_dev_mem(start_phys_addr, pfr.len() as usize) {
             panic!("Failed to remove device memory frames: {}", e);
         }
-
+*/
         // Now we do the mapping
         self.map_pfr_for_vma(&vma, pfr, flags).expect("map_pfr_for_vma failed in map_devmem_identity");
 
@@ -464,7 +481,7 @@ impl VirtualAddressSpace {
     /// Destination addresses are manually retrieved from the page tables of the `dest_process`. \
     /// If `fill_up_with_zeroes` is true, the remaining bytes in the last page will be filled with zeroes.
     pub unsafe fn copy_to_addr_space(
-        &self, src_ptr: *const u8, dest_space: &VirtualAddressSpace, dest_page_start: Page, total_bytes_to_copy: u64, fill_up_with_zeroes: bool,
+        &self, src_ptr: *const u8, dest_space: &VirtualAddressSpace, dest_vma: &VirtualMemoryArea, total_bytes_to_copy: u64, fill_up_with_zeroes: bool,
     ) {
         // Calc number of pages to be copied
         let pages_to_copy = if total_bytes_to_copy as usize % PAGE_SIZE == 0 {
@@ -474,9 +491,10 @@ impl VirtualAddressSpace {
         };
 
         unsafe {
-            let mut bytes_to_copy = 0;
+            let mut bytes_to_copy;
             let mut offset = 0;
 
+            let dest_page_start = dest_vma.range.start;
             let mut dest_phys_addr = dest_space.get_phys(dest_page_start.start_address().as_u64()).expect("get_phys failed");
             let mut dest = dest_phys_addr.as_u64() as *mut u8;
             for _i in 0..pages_to_copy {
@@ -503,9 +521,11 @@ impl VirtualAddressSpace {
 
             // fill up last code page with zeroes if not fully used
             if fill_up_with_zeroes {
-                let rest_bytes_to_copy = PAGE_SIZE as u64 - bytes_to_copy;
-                if rest_bytes_to_copy > 0 {
-                    dest.offset(offset as isize).write_bytes(0, rest_bytes_to_copy as usize);
+                let vma_size = dest_vma.range.len() * PAGE_SIZE as u64;
+                let remaining_bytes = vma_size - total_bytes_to_copy;
+
+                if remaining_bytes > 0 {
+                    dest.offset(offset as isize).write_bytes(0, remaining_bytes as usize);
                 }
             }
         }
@@ -524,6 +544,12 @@ impl VirtualAddressSpace {
             }
         }
         None
+    }
+
+    /// unmap VMA in this adress space 
+    /// set free_physical to free the frames
+    pub fn unmap_vma(&self, vma:Arc<VirtualMemoryArea>, free_physical:bool) {
+        self.page_tables.unmap(vma.range, free_physical);
     }
 }
 

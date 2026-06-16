@@ -3,5 +3,5 @@ pub mod stat;
 
 mod open_objects;
 mod tmpfs;
-pub(crate) mod lookup;
-pub mod traits;
+mod lookup;
+mod traits;

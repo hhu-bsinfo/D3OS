@@ -6,6 +6,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Install packages
         uses: amitie10g/install-package@v1.2.3
@@ -52,6 +54,8 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Install packages
         uses: amitie10g/install-package@v1.2.3

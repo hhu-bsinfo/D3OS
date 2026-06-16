@@ -5,11 +5,11 @@ use log::{debug, info, warn};
 use smoltcp::{iface::SocketHandle, socket::{icmp, tcp, udp}, wire::IpAddress};
 use syscall::return_vals::Errno;
 
-use crate::{network::{accept_tcp, bind_icmp, bind_tcp, bind_udp, close_socket, connect_tcp, get_ip_addresses, open_icmp, open_tcp, open_udp, receive_datagram, receive_icmp, receive_tcp, send_datagram, send_icmp, send_tcp, SocketType}, syscall::sys_naming::ptr_to_string};
+use crate::{network::{accept_tcp, bind_icmp, bind_tcp, bind_udp, close_socket, connect_tcp, get_ip_addresses, open_icmp, open_tcp, open_udp, receive_datagram, receive_icmp, receive_tcp, send_datagram, send_icmp, send_tcp, can_recv, can_send, SocketType}, syscall::sys_naming::ptr_to_string};
 
 /// This module contains all network-related system calls.
 
-pub fn sys_sock_open(protocol: SocketType) -> isize {
+pub extern "sysv64" fn sys_sock_open(protocol: SocketType) -> isize {
     info!("opening a {protocol:?} socket");
     // TODO: what happens when we get a type thats not in the enum?
     #[allow(unreachable_patterns)]
@@ -163,6 +163,11 @@ pub unsafe fn sys_sock_send(
     }
 }
 
+pub fn sys_sock_can_send(handle: SocketHandle, protocol: SocketType) -> isize {
+    can_send(handle, protocol).into()
+}
+
+
 pub unsafe fn sys_sock_receive(
     handle: SocketHandle,
     protocol: SocketType,
@@ -228,10 +233,15 @@ pub unsafe fn sys_sock_receive(
     }
 }
 
-pub fn sys_sock_close(handle: SocketHandle) -> isize {
+pub extern "sysv64" fn sys_sock_close(handle: *const SocketHandle) -> isize {
+    let handle = unsafe { *handle };
     info!("closing {handle} socket");
     close_socket(handle);
     0
+}
+
+pub fn sys_sock_can_recv(handle: SocketHandle, protocol: SocketType) -> isize {
+    can_recv(handle, protocol).into()
 }
 
 /// Return a \0 seperated list of IP addresses for a given hostname.

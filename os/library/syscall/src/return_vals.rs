@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Consts and types for syscall return values.                     ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, 28.08.2025, HHU                             ║
+   ║ Author: Michael Schoettner, 04.01.2026, HHU                             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
@@ -30,6 +30,10 @@ pub enum Errno {
     ECONNRESET = -14, // Connection reset by peer
     ERDONLY    = -15, // Read-only file system
     EAGAIN     = -16, // Resource unavailable
+    ESRCH      = -17, // No such thread
+    EOF        = -18, // End of file
+    EPIPE      = -19, // Broken pipe
+    ENOMEM     = -20, // Not enough space / cannot allocate memory
 }
 
 

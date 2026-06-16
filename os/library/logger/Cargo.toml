@@ -1,0 +1,17 @@
+[package]
+edition = "2024"
+name = "logger"
+version = "0.1.0"
+authors = ["Sebastian Keller <sebastian.keller@hhu.de>", "Niklas Sombert <niklas.sombert@uni-duesseldorf.de>"]
+
+[lib]
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+syscall = { path = "../syscall" }
+
+# External depencies
+log = "0.4.26"

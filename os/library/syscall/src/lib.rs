@@ -3,40 +3,48 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Syscall interface in user mode.                                 ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, Michael Schoettner, 25.8.2025, HHU              ║
+   ║ Author: Fabian Ruhland, Michael Schoettner, 26.12.2025, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![no_std]
+#![feature(variant_count)]
 
+use core::mem;
 use crate::return_vals::SyscallResult;
 
 pub mod return_vals;
 
 /// Enum with all known system calls
-#[repr(usize)]
+#[repr(u16)] // Cannot use full size of rax, because ax is needed to set up fs/gs in syscall_handler()
 #[allow(dead_code)]
 pub enum SystemCall {
-    TerminalRead = 0,
-    TerminalReadNonBlocking,
-    TerminalWrite,
+    TerminalReadInput = 0,
+    TerminalWriteInput,
+    TerminalCheckInputState,
+    TerminalWriteOutput,
+    TerminalReadOutput,
     MapMemory,
     MapFrameBuffer,
-    ProcessExecuteBinary, //5
+    ProcessExecuteBinary,
     ProcessId,
     ProcessExit,
+    ProcessCount,
+    ProcessStatus,
     ThreadCreate,
     ThreadId,
-    ThreadSwitch, //10
+    ThreadSwitch,
     ThreadSleep,
     ThreadJoin,
     ThreadExit,
+    ThreadKill,
+    ThreadCount,
     GetSystemTime,
-    GetDate, //15
+    GetDate,
     SetDate,
     Open,
     Read,
-    Write, 
-    Seek, //20
+    Write,
+    Seek,
     Close,
     MkDir,
     Touch,
@@ -48,31 +56,41 @@ pub enum SystemCall {
     SockAccept,
     SockConnect,
     SockSend,
-    SockReceive,
-    SockClose,
-    GetIpAddresses,
-    Mkfifo,
     ShareSyscallCap,
     RevokeSyscallCap,
     ShareNamingCap,
     RevokeNamingCap,
     NamingLen,
-    // no syscall, just marking last number, see NUM_SYSCALLS
-    // insert any new system calls before this marker
-    LastEntryMarker,
+    SockCanSend,
+    SockReceive,
+    SockCanReceive,
+    SockClose,
+    GetIpAddresses,
+    Mkfifo,
+    WriteGraphic,
+    GetGraphicResolution,
+    MouseRead,
+    KeyboardRead,
+    MapSystemInfo,
+    Log,
+    ShmOpen,
+    ShmAttach,
+    ShmDetach,
+    ShmUnlink,
 }
 
-pub const NUM_SYSCALLS: usize = SystemCall::LastEntryMarker as usize;
+pub const NUM_SYSCALLS: usize = mem::variant_count::<SystemCall>() as usize;
 
 ///
 /// Description:
-///    All syscalls are fired here. Parameters are passed in 
+///    All syscalls are fired here. Parameters are passed in
+
 ///    registers according to the AMD 64 bit ABI.
 ///
 /// Return: Result \
 ///    success >= 0 \
 ///    error, codes defined in consts.rs
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", feature = "userspace"))]
 pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
     use core::arch::asm;
     use return_vals::convert_ret_code_to_syscall_result;
@@ -90,6 +108,7 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
     let a4 = *args.get(4).unwrap_or(&0usize);
     let a5 = *args.get(5).unwrap_or(&0usize);
 
+    #[cfg(target_arch = "x86_64")]
     unsafe {
         asm!(
             "syscall",
@@ -109,7 +128,7 @@ pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
 }
 
 /// Only needed to run tests on non-x86_64 architectures (e.g. Apple Silicon).
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(all(target_arch = "x86_64", feature = "userspace")))]
 pub fn syscall(_call: SystemCall, _args: &[usize]) -> SyscallResult {
     use crate::return_vals::Errno;
 

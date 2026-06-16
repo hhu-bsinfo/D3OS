@@ -1,0 +1,25 @@
+[package]
+edition = "2024"
+name = "netperf"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/netperf.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+terminal = { path = "../../library/terminal" }
+network = { path = "../../library/network" }
+concurrent = { path = "../../library/concurrent" }
+time = { path = "../../library/time" }
+chrono = { version = "0.4.42", default-features = false, features = ["alloc"] }
+serde = { version = "1.0.228", default-features = false, features = ["derive", "alloc"] }
+postcard = { version = "1.1.3", features = ["alloc"] }
+spin = "0.10.0"
+log = "0.4.27"

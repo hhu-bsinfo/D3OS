@@ -9,14 +9,13 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
-use log::info;
 use super::api::ROOT;
 use super::traits;
 use super::traits::{NamedObject, DirectoryObject};
 use syscall::return_vals::Errno;
 
 /// Resolves an absolute path into an `DirectoryLike`
-pub(crate) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errno> {
+pub(super) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errno> {
     match lookup_named_object(path)? {
         NamedObject::DirectoryObject(dir) => Ok(dir),
         NamedObject::FileObject(_) => Err(Errno::ENOTDIR),
@@ -26,8 +25,12 @@ pub(crate) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errn
 
 /// Resolves absolute `path` into a named object. \
 /// Returns `Ok(NamedObject)` or `Err`
-pub(super) fn lookup_named_object(path: &str) -> Result<NamedObject, Errno> {
+pub(super) fn lookup_named_object(mut path: &str) -> Result<NamedObject, Errno> {
     let mut found_named_object;
+
+    if path.starts_with("./") {
+        path = &path[2..];
+    }
 
     if check_absolute_path(path) {
         if path == "/" {

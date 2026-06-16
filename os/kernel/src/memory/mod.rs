@@ -6,7 +6,7 @@ pub mod frames_lf;
 
 pub mod nvmem;
 pub mod dram;
-
+pub mod shm;
 
 pub mod heap;
 pub mod stack;

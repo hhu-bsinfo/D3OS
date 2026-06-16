@@ -1,0 +1,26 @@
+[package]
+edition = "2024"
+name = "doom"
+version = "0.1.0"
+authors = ["ozkl, Fabian Ruhland <ruhland@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/doom.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+terminal = { path = "../../library/terminal" }
+concurrent = { path = "../../library/concurrent" }
+time = { path = "../../library/time" }
+graphic = { path = "../../library/graphic" }
+libc = { path = "../../library/libc" }
+
+# External dependencies
+spin = "0.10.0"
+pc-keyboard = "0.8.0"
+chrono = { version = "0.4.43", default-features = false, features = ["alloc"] }

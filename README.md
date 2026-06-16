@@ -78,7 +78,20 @@ Setting a breakpoint in `gdb`:
 ```bash
 break kernel::naming::api::init
 ```
+
+This way, a single application can also be debugged:
+
+```bash
+add-symbol-file loader/initrd/bin/hello
+break main
+```
+
 For further commands check [GDB Quick Reference](docs/gdb-commands.pdf).
+
+### In your editor
+
+The repository contains debug configurations for RustRover, Visual Studio Code and Zed.
+To debug userspace applications, you might need to modify them.
 
 ## Creating a bootable USB stick
 
@@ -91,6 +104,25 @@ Use following command (in the D3OS directory) to create a bootable media for the
 
 ### Using balenaEtcher
 Write the file `d3os.img` using [balenaEtcher](https://etcher.balena.io) to your USB stick.
+
+## Repeatedly booting on a physical device
+
+If you're trying to fix a bug, the workflow of "building D3OS, plugging a USB stick into your development device, flashing it, plugging the USB stick into your target device, boot" can get annoying.
+
+If you do have a working network connection between these devices, this can get easier:
+
+1. grab `towboot.efi` (from the [GitHub releases](https://github.com/hhuOS/towboot/releases) or with `./towbootctl extract --x86-64 loader/towboot.efi`) and place it into `loader/towboot.efi`
+2. grab [`ipxe.efi`](https://boot.ipxe.org/ipxe.efi) and place it on a USB stick under `/BOOT/EFI/BOOTX64.EFI` (or on a FAT partition on the target device)
+3. put the following into `/autoexec.ipxe`:
+```sh
+#!ipxe
+dhcp
+chain http://IP_OF_YOUR_HOST:8000/command.ipxe
+```
+4. `cd loader/; python3 -m http.server`
+5. compile D3OS and boot with the created stick
+
+This way, you only need to recompile and reboot the target, no need to re-flash.
 
 ## Passing an existing PCI device to the VM
 

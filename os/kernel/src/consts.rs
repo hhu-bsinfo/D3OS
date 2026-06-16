@@ -15,3 +15,5 @@ pub const KERNEL_STACK_PAGES: usize = 64;
 pub const STACK_ENTRY_SIZE: usize = 8;  
 
 pub const KERNEL_HEAP_PAGES: usize = 0x700; // number of heap pages for the kernel heap
+
+pub const MAX_SHM_SIZE: usize = 0x100000;  // 1 MiB

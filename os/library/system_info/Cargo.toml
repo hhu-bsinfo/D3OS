@@ -1,0 +1,21 @@
+[package]
+edition = "2024"
+name = "system_info"
+version = "0.1.0"
+authors = ["Sebastian Keller <sebastian.keller@hhu.de>"]
+
+[lib]
+test = false
+doctest = false
+bench = false
+
+[features]
+default = ["userspace"]
+userspace = ["dep:syscall"]
+
+[dependencies]
+# Local dependencies
+syscall = { path = "../syscall", optional = true }
+
+# External dependencies
+num_enum = { version = "0.7", default-features = false }

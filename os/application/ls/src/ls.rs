@@ -4,12 +4,12 @@ extern crate alloc;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use naming::{cwd, ROOT};
+use naming::cwd;
 
 use naming::shared_types::{DirEntry, FileType, OpenOptions};
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{print, println};
+use terminal::println;
 
 fn print_usage() {
     println!("usage: ls [directory_name");
@@ -26,31 +26,30 @@ fn print_dir_entry(dentry: DirEntry) {
 }
 
 fn process_ls(path: &str) {
-    return; //NOTSUP
-    // // open directory
-    // let res = naming::open(path, OpenOptions::DIRECTORY, ROOT);
-    // if res.is_err() {
-    //     print_usage();
-    //     return;
-    // }
-    // let fd = res.unwrap();
-    // 
-    // // dump content of directory
-    // loop {
-    //     let res = naming::readdir(fd);
-    //     match res {
-    //         Ok(data) => {
-    //             match data {
-    //                 Some(content) => print_dir_entry(content),
-    //                 None => break,
-    //             }
-    //         },
-    //         Err(_) => break
-    //     }
-    // }
-    // 
-    // // close directory
-    // //naming::close(fd).expect("Failed to close directory");
+    // open directory
+    let res = naming::open(path, OpenOptions::DIRECTORY);
+    if res.is_err() {
+        print_usage();
+        return;
+    }
+    let fd = res.unwrap();
+
+    // dump content of directory
+    loop {
+        let res = naming::readdir(fd);
+        match res {
+            Ok(data) => {
+                match data {
+                    Some(content) => print_dir_entry(content),
+                    None => break,
+                }
+            },
+            Err(_) => break
+        }
+    }
+
+    // close directory
+    naming::close(fd).expect("Failed to close directory");
 }
 
 pub fn args_to_vec() -> Vec<String> {
