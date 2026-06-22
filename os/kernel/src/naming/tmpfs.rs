@@ -25,7 +25,7 @@ use naming::shared_types::{DirEntry, FileType, OpenOptions};
 use nolock::queues::mpmc;
 use spin::rwlock::RwLock;
 use syscall::return_vals::Errno;
-use log::{info, warn};
+use log::info;
 
 pub struct TmpFs {
     root_dir: Arc<Dir>,
@@ -408,7 +408,7 @@ impl Pipe {
 
 impl PipeObject for Pipe {
     fn open(&self, flags: OpenOptions) -> Result<usize, Errno> {
-        let (pid, tid) = scheduler().current_ids();
+        let (_pid, _tid) = scheduler().current_ids();
 
         match flags {
             OpenOptions::READONLY => {
@@ -458,7 +458,7 @@ impl PipeObject for Pipe {
     /// Read from pipe buffer, `offset` is ignored
     fn read(&self, buf: &mut [u8], _offset: usize, options: OpenOptions) -> Result<usize, Errno> {
         // Debug output
-        let (pid, tid) = scheduler().current_ids();
+        let (_pid, _tid) = scheduler().current_ids();
         //info!("read: pid={}, tid={}", pid, tid);
 
         // check if pipe was opened for reading
@@ -556,7 +556,7 @@ impl PipeObject for Pipe {
 
             // Write one byte
             match pq.wx.try_enqueue(buf[total_written]) {
-                Ok(byte) => {
+                Ok(_) => {
                     // We wrote a byte
                     self.count.fetch_add(1, Ordering::SeqCst);
                     total_written += 1;
@@ -581,7 +581,7 @@ impl PipeObject for Pipe {
     }
 
     fn close(&self, flags: OpenOptions) {
-        let (pid, tid) = scheduler().current_ids();
+        let (_pid, _tid) = scheduler().current_ids();
         let _g = self.open_close_mutex.lock();
 
         //info!("PipeObject::close: handle = {}, flags={:?}, pid={}, tid={}", fh, flags, pid, tid);

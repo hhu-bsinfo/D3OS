@@ -224,7 +224,7 @@ impl Scheduler {
 
     /// Put calling thread to sleep for `ms` milliseconds
     pub fn sleep(&self, ms: usize) {
-        let mut state = self.get_ready_state();
+        let state = self.get_ready_state();
 
         if !state.initialized {
             // Scheduler is not initialized yet, so this function has been called during the boot process
@@ -290,7 +290,7 @@ impl Scheduler {
             }
 
         // 2b) Check if the thread to be woken up is in the ready queue
-        if let Some(thread) = state.ready_queue.iter().find(|t| t.id() == tid && t.process().id() == pid) {
+        if let Some(_) = state.ready_queue.iter().find(|t| t.id() == tid && t.process().id() == pid) {
                 curr_thread.set_state(ThreadState::Ready);
                 return true;
             }
@@ -367,7 +367,7 @@ impl Scheduler {
 
     /// Calling thread will block until thread with `thread_id` has terminated
     pub fn join(&self, thread_id: usize)  -> Result<usize, Errno> {
-        let mut state = self.get_ready_state();
+        let state = self.get_ready_state();
         let thread = Scheduler::current(&state);
 
         {

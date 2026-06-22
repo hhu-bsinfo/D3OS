@@ -1,7 +1,5 @@
-use crate::capabilities::capability::{Capability, CapabilityFlags};
-use crate::capabilities::capability_objects::naming_object::NamingObject;
-use crate::{PROCESS_MANAGER, process_manager, scheduler};
-use core::arch::asm;
+use crate::capabilities::capability::CapabilityFlags;
+use crate::scheduler;
 use log::{error, info, warn};
 use naming::shared_types::OpenOptions;
 
@@ -23,7 +21,7 @@ pub extern "sysv64" fn sys_share_syscall_cap(thread_id: usize, syscall_number: u
     if let Some(receiver_thread) = scheduler().thread(thread_id) {
         if let Some(mut cspace) = receiver_thread.cspace.invoke_mut() {
             // info!("     cspace found");
-            if let Some(ref cap) = shared_cap {
+            if let Some(ref _cap) = shared_cap {
                 return cspace.receive_syscall_capability(shared_cap, syscall_number);
             }
         } else {
@@ -94,7 +92,7 @@ pub extern "sysv64" fn sys_share_naming_cap(thread_id: usize, rights: usize, nam
         // info!(" sharing naming cap: found receiver thread");
         if let Some(mut cspace) = receiver_thread.cspace.invoke_mut() {
             // info!("     cspace found");
-            if let Some(ref cap) = shared_cap {
+            if let Some(ref _cap) = shared_cap {
                 let receiver_handle = cspace.receive_naming_capability(shared_cap);
                 // info!("     naming cap shared, receiver handle: {}", cspace.get_naming_capabilities_len());
                 return receiver_handle;
@@ -124,7 +122,7 @@ pub extern "sysv64" fn sys_revoke_naming_cap(thread_id: usize, naming_object_num
         thread_id, naming_object_number
     );
     let current_thread = scheduler().current_thread();
-    let current_process = scheduler().current_ids().0;
+    let _current_process = scheduler().current_ids().0;
     let Some(mut cspace) = current_thread.cspace.invoke_mut() else { return -5 };
     let Some(cap_to_revoke) = cspace.get_naming_capability_mut(naming_object_number) else {
         return -5;
@@ -167,12 +165,12 @@ pub extern "sysv64" fn sys_revoke_naming_cap(thread_id: usize, naming_object_num
 }
 
 ///revokes specific rights from a shared naming capability from a thread's cspace
-pub extern "sysv64" fn sys_revoke_naming_rights(thread_id: usize, naming_object_number: usize, rights: usize) -> isize {
+pub extern "sysv64" fn sys_revoke_naming_rights(_thread_id: usize, naming_object_number: usize, rights: usize) -> isize {
     let rights_to_revoke = CapabilityFlags::from_bits(rights as u32).unwrap_or_else(|| CapabilityFlags::empty());
     let current_thread = scheduler().current_thread();
-    let current_process = scheduler().current_ids().0;
+    let _current_process = scheduler().current_ids().0;
     let Some(mut cspace) = current_thread.cspace.invoke_mut() else { return -5 };
-    let Some(mut cap_to_revoke) = cspace.get_naming_capability_mut(naming_object_number) else {
+    let Some(cap_to_revoke) = cspace.get_naming_capability_mut(naming_object_number) else {
         return -5;
     };
     // let processes = process_manager().read().active_process_ids();

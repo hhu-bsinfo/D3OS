@@ -53,7 +53,6 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::naked_asm;
 use core::ptr;
-use core::ptr::null;
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use goblin::elf::Elf;
 use goblin::elf64;

@@ -2,6 +2,7 @@
 
 extern crate alloc;
 
+use naming::ROOT;
 use naming::shared_types::{OpenOptions, SeekOrigin};
 #[allow(unused_imports)]
 use runtime::*;
@@ -12,7 +13,13 @@ pub fn main() {
     println!("naming tests");
 
     // opening file
-    let res = naming::open("/file.txt", OpenOptions::READWRITE | OpenOptions::CREATE);
+    let touch_res = naming::touch("file.txt", OpenOptions::all(), ROOT);
+    if touch_res.is_err() {
+        println!("touch error = {:?}", touch_res);
+        return;
+    }
+    let file_cap = touch_res.unwrap();
+    let res = naming::open(file_cap, OpenOptions::READWRITE | OpenOptions::CREATE);
     if res.is_err() {
         println!("open error = {:?}", res);
         return;
@@ -54,20 +61,21 @@ pub fn main() {
     let close_res = naming::close(fd);
     println!("close result = {:?}", close_res);
 
-    let res = naming::mkdir("/test");
+    let res = naming::mkdir("test", OpenOptions::all(), ROOT);
     println!("created dir '/test' = {:?}", res);
+    let dir_cap = res.unwrap_or(ROOT);
 
-    let res = naming::mkdir("/test/dir1");
+    let res = naming::mkdir("dir1", OpenOptions::all(), dir_cap);
     println!("created dir '/test/dir1' = {:?}", res);
 
-    let res = naming::mkdir("/test/dir2");
+    let res = naming::mkdir("dir2", OpenOptions::all(), dir_cap);
     println!("created dir '/test/dir2' = {:?}", res);
 
-    let res = naming::touch("/test/file1.txt");
+    let res = naming::touch("file1.txt", OpenOptions::all(), dir_cap);
     println!("created file '/test/file1.txt' = {:?}", res);
 
     // opening directory
-    let res = naming::open("/test", OpenOptions::DIRECTORY);
+    let res = naming::open(dir_cap, OpenOptions::DIRECTORY);
     if res.is_err() {
         println!("open error = {:?}", res);
         return;

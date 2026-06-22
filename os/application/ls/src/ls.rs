@@ -6,7 +6,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use naming::cwd;
 
-use naming::shared_types::{DirEntry, FileType, OpenOptions};
+use naming::shared_types::{Capability, DirEntry, FileType, OpenOptions};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::println;
@@ -27,7 +27,8 @@ fn print_dir_entry(dentry: DirEntry) {
 
 fn process_ls(path: &str) {
     // open directory
-    let res = naming::open(path, OpenOptions::DIRECTORY);
+    let cap_handle = path.parse::<usize>().unwrap_or(0);
+    let res = naming::open(Capability::new(cap_handle), OpenOptions::DIRECTORY);
     if res.is_err() {
         print_usage();
         return;

@@ -12,7 +12,6 @@ use linked_list_allocator::LockedHeap;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use crate::memory::PAGE_SIZE;
 use core::sync::atomic::AtomicUsize;
-use log::info;
 
 pub struct KernelAllocator {
     heap: LockedHeap,

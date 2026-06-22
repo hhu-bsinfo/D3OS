@@ -13,7 +13,6 @@
 */
 
 use alloc::collections::VecDeque;
-use log::info;
 
 use crate::scheduler;
 use crate::sync::irqsave_spinlock::IrqSaveSpinlock;
@@ -30,7 +29,7 @@ impl WaitQueue {
     }
 
     /// Block until `pred()` becomes true.
-    pub fn wait<F>(&self, mut pred: F, message: &str)
+    pub fn wait<F>(&self, mut pred: F, _message: &str)
     where
         F: FnMut() -> bool,
     {
@@ -59,17 +58,18 @@ impl WaitQueue {
             scheduler().yield_now(); 
         }
 
-        info!("WaitQueue::wait: Thread with PID={}, TID={} is now waiting, message = {}", pid, tid, message);
+        // info!("WaitQueue::wait: Thread with PID={}, TID={} is now waiting, message = {}", pid, tid, message);
 
-        // Check predicate without acquiring the queue lock.
-        // The scheduler will block us, as long as no `notify_one` and `notify_all` have arrived
-        // But even after waking up we need to check for spurious wakeups, so we loop here.
-        loop {
-            if pred() {
-                return;
-            }
-            core::hint::spin_loop();
-        }
+        // // Check predicate without acquiring the queue lock.
+        // // The scheduler will block us, as long as no `notify_one` and `notify_all` have arrived
+        // // But even after waking up we need to check for spurious wakeups, so we loop here.
+        // loop {
+        //     if pred() {
+        //         return;
+        //     }
+        //     core::hint::spin_loop();
+        // }
+
     }
 
     /// Wake up exactly one waiter (if any). Returns true if someone was woken up.

@@ -17,9 +17,6 @@
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
-use alloc::vec::Vec;
-use core::fmt::{Debug, Pointer};
-use core::ptr::read_unaligned;
 use core::sync::atomic::Ordering;
 use log::{error, info, warn};
 use spin::{Mutex, Once};
@@ -27,15 +24,14 @@ use spin::{Mutex, Once};
 use super::lookup;
 use super::open_objects;
 use super::stat::Mode;
+use super::traits::FileSystem;
 use super::tmpfs;
-use super::traits::{FileSystem, NamedObject};
 
 use crate::initrd;
 use naming::shared_types::{OpenOptions, RawDirent, SeekOrigin};
 use syscall::return_vals::Errno;
 use crate::capabilities::capability::{Capability, CapabilityFlags};
-use crate::capabilities::capability_objects::naming_object::{create_naming_capability, NamingObject, ObjectType};
-use crate::syscall::sys_vmem::init_fb_info;
+use crate::capabilities::capability_objects::naming_object::{create_naming_capability, NamingObject};
 
 // root of naming service
 pub(crate) static ROOT: Once<Arc<dyn FileSystem>> = Once::new();
@@ -85,7 +81,7 @@ pub(crate) fn shared_pipe(cap_to_dir: &Capability<NamingObject>) -> Capability<N
 }
 
 pub(crate) fn root() -> Capability<NamingObject> { //Every threat can access Root dir
-    match open_objects::open("/", OpenOptions::READWRITE | OpenOptions::SHARE){
+    match lookup::lookup_named_object("/"){
         Ok(root) => {
             create_naming_capability(root, OpenOptions::all(), "/".to_string())
         },
@@ -111,9 +107,15 @@ pub fn open(flags: OpenOptions, file_cap: &Capability<NamingObject>) -> Result<C
         return Err(Errno::EINVAL);
     };
 
-    // Handle pipes differently from files
-    match open_objects::open(&naming_obj.path, flags) {
+    // Lookup the named object directly (capability-based, no handle table)
+    match lookup::lookup_named_object(&naming_obj.path) {
         Ok(obj) => {
+            // Call pipe-specific open if needed
+            if obj.is_pipe() {
+                if let Ok(pipe) = obj.as_pipe() {
+                    let _ = pipe.open(flags);
+                }
+            }
             // info!("opened object at path: {}, returning OK", &naming_obj.path);
             Ok(create_naming_capability(obj, flags, naming_obj.path.to_string()))
         },
@@ -325,6 +327,7 @@ pub fn touch(name: &str, flags: OpenOptions, dir_cap: &Capability<NamingObject>)
 ///   `Ok(1)` next directory entry in `dentry` \
 ///   `Ok(0)` no more entries in the directory \
 ///   `Err`   error code
+#[allow(unreachable_code, unused_variables)]
 pub fn readdir(dir_handle: usize, dentry: Option<&mut RawDirent>) -> Result<usize, Errno> {
     return Err(Errno::ENOTSUP);
     let res = open_objects::readdir(dir_handle);
@@ -356,6 +359,7 @@ pub fn readdir(dir_handle: usize, dentry: Option<&mut RawDirent>) -> Result<usiz
 
 /// Get the current working directory and return path in `buffer`. \
 /// Return: `Ok(len of string)` or `Err(errno)`
+#[allow(unreachable_code, unused_variables)]
 pub fn cwd(buffer: &mut [u8]) -> Result<usize, Errno> {
     return Err(Errno::ENOTSUP);
     let cwd = CWD.lock();
@@ -383,6 +387,7 @@ pub fn cwd(buffer: &mut [u8]) -> Result<usize, Errno> {
 /// Parameters: `path` absolute path \
 /// Return: `Ok(0)` or `Err(errno)`
 ///
+#[allow(unreachable_code, unused_variables)]
 pub fn cd(path: &String) -> Result<usize, Errno> {
     return Err(Errno::ENOTSUP);
     let result = lookup::lookup_dir(path);
@@ -453,8 +458,14 @@ fn open_shared_pipe(name: &str, flags: OpenOptions, capability_to_dir: &Capabili
         return Err(Errno::EACCES);
     };
 
-    match open_objects::open(path, flags){
+    match lookup::lookup_named_object(path){
         Ok(obj) => {
+            // Call pipe-specific open if needed
+            if obj.is_pipe() {
+                if let Ok(pipe) = obj.as_pipe() {
+                    let _ = pipe.open(flags);
+                }
+            }
             info!("opened object at path: {}", name);
             Ok(create_naming_capability(obj, flags, "/".to_string() + name))
         },

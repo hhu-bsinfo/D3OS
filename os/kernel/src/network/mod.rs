@@ -471,7 +471,7 @@ fn poll_sockets() -> Option<()> {
             // Only remove TCP sockets that have fully traversed the state machine to the CLOSED state.
             socket::Socket::Tcp(s) => s.state() == tcp::State::Closed,
             // UDP sockets are stateless so whe can remove them immediately
-            socket::Socket::Udp(s) => true,
+            socket::Socket::Udp(_) => true,
             _ => false,
         };
 

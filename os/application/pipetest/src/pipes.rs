@@ -11,7 +11,6 @@ use runtime::*;
 use terminal::{print, println};
 use capabilities::*;
 use concurrent::thread::{current, sleep};
-use terminal::write::print;
 
 const PIPE: &str = "/mypipe";
 const NR_OF_ITERATIONS: u32 = 6;
@@ -20,8 +19,8 @@ fn writer_thread() {
     sleep(500);
 
     println!("---writer_thread: start, id {}", current().unwrap().id());
-    let thread = thread::current().unwrap();
-    let mut buff= [0;1];
+    let _thread = thread::current().unwrap();
+    let _buff= [0;1];
     //let res = read(SHARED_PIPE, &mut buff);
     let pipe_cap = Capability::new(3); //receive the cap number
 
@@ -72,7 +71,7 @@ fn reader_thread() {
     //     println!("reader_thread: open failed, error: {:?}", res);
     //     return;
     // }
-    let mut buff= [0;1];
+    let _buff= [0;1];
     //let res = read(SHARED_PIPE, &mut buff);
     let pipe_cap = Capability::new(2); // buff[0] as usize; //receive the cap number
 
@@ -160,7 +159,7 @@ pub fn main() {
         let buff= [num as u8];
         let res = write(SHARED_PIPE, &buff); 
         println!("Sent pipe cap to writer thread {}", w.id());
-        w.join()
+        let _ = w.join();
     }
 
     println!("Writer done, starting reader");

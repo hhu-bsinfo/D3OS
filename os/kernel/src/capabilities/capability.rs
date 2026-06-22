@@ -1,26 +1,23 @@
 #![warn(missing_docs)]
 
-use crate::capabilities::capability_objects::naming_object::NamingObject;
 use alloc::sync::Arc;
 use alloc::sync::Weak;
 use alloc::vec::Vec;
 use bitflags::bitflags;
-use log::{error, info, warn};
-use pc_keyboard::KeyCode::Mute;
+use log::{info, warn};
 use spin::{
-    Mutex, MutexGuard, RwLock,
+    Mutex, RwLock,
     rwlock::{RwLockReadGuard, RwLockWriteGuard},
 };
 
-/// Flags to describe permissions associated with capabilities.
-///
-/// The flags are defined using the `bitflags` crate, and include:
-/// - `READ`: The resource can be read.
-/// - `WRITE`: The resource can be modified.
-/// - `EXECUTE`: The resource can be executed.
-/// - `SHARE`: The resource can be shared.
-
 bitflags! {
+    /// Flags to describe permissions associated with capabilities.
+    ///
+    /// The flags are defined using the `bitflags` crate, and include:
+    /// - `READ`: The resource can be read.
+    /// - `WRITE`: The resource can be modified.
+    /// - `EXECUTE`: The resource can be executed.
+    /// - `SHARE`: The resource can be shared.
     #[derive(Clone, Copy)]
     pub struct CapabilityFlags: u32 {
         const READ =     0b00000001;

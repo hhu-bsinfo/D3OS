@@ -20,7 +20,9 @@ impl BuiltIn for LsBuiltIn {
         let wd_clx = self.wd_provider.borrow();
         let path = args.get(0).unwrap_or(&"");
 
-        let Ok(fd) = naming::open(&wd_clx.resolve(path), OpenOptions::DIRECTORY) else {
+        let absolute_path = wd_clx.resolve(path);
+        let cap_handle = absolute_path.parse::<usize>().unwrap_or(0);
+        let Ok(fd) = naming::open(naming::shared_types::Capability::new(cap_handle), OpenOptions::DIRECTORY) else {
             Self::print_usage();
             return 1;
         };

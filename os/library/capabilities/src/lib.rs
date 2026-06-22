@@ -2,7 +2,7 @@
 
 use syscall::{syscall, SystemCall};
 use core::result::Result::{Err, Ok};
-use terminal::{print, println};
+use terminal::println;
 use naming::shared_types::{Capability, OpenOptions};
 
 pub fn share_syscall(thread_id: usize, syscall_num: usize) -> bool{
