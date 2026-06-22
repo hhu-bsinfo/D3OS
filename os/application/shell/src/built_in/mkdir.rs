@@ -22,10 +22,16 @@ impl BuiltIn for MkdirBuiltIn {
             Self::print_usage();
             return 1;
         };
-        let absolute_path = wd_clx.resolve(path);
-        if mkdir(&absolute_path, OpenOptions::CREATE, Capability::new(0)).is_err() {
-            Self::print_usage();
-            return 1;
+        match mkdir(path, OpenOptions::CREATE, Capability::new(0)) {
+            Ok(cap) => {
+                println!("Debug: Successfully created directory '{}'", path);
+                println!("Debug: Returned capability handle is {}", cap.handle());
+            }
+            Err(e) => {
+                println!("Debug: Failed to create directory '{}', error: {:?}", path, e);
+                Self::print_usage();
+                return 1;
+            }
         }
         0
     }
