@@ -6,17 +6,9 @@
    ║ Author: Fabian Ruhland, 25.8.2025, HHU                                  ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use crate::syscall::sys_concurrent::{
-    sys_process_execute_binary, sys_process_exit, sys_process_id, sys_thread_create, sys_thread_exit, sys_thread_id, sys_thread_join, sys_thread_sleep,
-    sys_thread_switch,
-};
-use crate::syscall::sys_naming::*;
-use crate::syscall::sys_net::{
-    sys_get_ip_adresses, sys_sock_accept, sys_sock_bind, sys_sock_close, sys_sock_connect, sys_sock_open, sys_sock_receive, sys_sock_send,
-};
-use crate::syscall::sys_terminal::{sys_terminal_read, sys_terminal_write};
-use crate::syscall::sys_time::{sys_get_date, sys_get_system_time, sys_set_date};
-use crate::syscall::sys_vmem::{sys_map_frame_buffer, sys_map_memory};
+
+
+
 use core::arch::{asm, naked_asm};
 use core::mem::size_of;
 use core::ops::Deref;
@@ -31,38 +23,6 @@ use crate::capabilities::capability::CapabilityFlags;
 use crate::{core_local_storage, scheduler, tss};
 use log::{error, info};
 use x86_64::registers::rflags::RFlags;
-
-use crate::{core_local_storage, tss};
-use log::info;
-use x86_64::registers::rflags::RFlags;
-
-use super::sys_concurrent::{
-    sys_process_count, sys_process_execute_binary, sys_process_exit,
-    sys_process_id, sys_thread_count, sys_process_status, 
-    sys_thread_create, sys_thread_exit, sys_thread_id, sys_thread_join, 
-    sys_thread_kill, sys_thread_sleep, sys_thread_switch,
-};
-use super::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
-use super::sys_input::{sys_read_keyboard, sys_read_mouse};
-use super::sys_logger::sys_log;
-use super::sys_naming::{
-    sys_close, sys_cd, sys_cwd, sys_mkdir, sys_mkfifo, sys_open, sys_read,
-    sys_readdir, sys_seek, sys_touch, sys_write,
-};
-use super::sys_net::{
-    sys_sock_accept, sys_sock_bind, sys_sock_close, sys_sock_connect,
-    sys_get_ip_adresses, sys_sock_open, sys_sock_receive, sys_sock_send,
-    sys_sock_can_recv, sys_sock_can_send
-};
-use super::sys_system_info::sys_map_build_info;
-use super::sys_terminal::{
-    sys_terminal_check_input_state, sys_terminal_read_input,
-    sys_terminal_read_output, sys_terminal_write_input,
-    sys_terminal_write_output,
-};
-use super::sys_time::{sys_get_date, sys_get_system_time, sys_set_date};
-use super::sys_vmem::{sys_map_memory, sys_map_frame_buffer};
-use super::sys_shm::{self, sys_shm_attach, sys_shm_detach, sys_shm_open, sys_shm_unlink};
 
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
@@ -219,7 +179,6 @@ unsafe extern "sysv64" fn syscall_handler() {
     NUM_SYSCALLS = const NUM_SYSCALLS,
     CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX,
     CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX,
-    SYSCALL_TABLE = sym SYSCALL_TABLE
     );
 }
 
@@ -235,6 +194,11 @@ unsafe extern "C" fn syscall_abort() {
 #[unsafe(no_mangle)]
 unsafe extern "C" fn syscall_abort_panic(syscall_number: u64) {
     panic!("System call with id [{}] does not exist!", syscall_number);
+}
+
+#[unsafe(no_mangle)]
+extern "sysv64" fn permission_denied() -> isize {
+    syscall::return_vals::Errno::EACCES as isize
 }
 
 ///Gets the function pointer of the syscall with the given ID from the capability

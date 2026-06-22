@@ -8,6 +8,7 @@ use core::{ffi::CStr, net::{IpAddr, Ipv6Addr, SocketAddr}, ptr, str::FromStr};
 use alloc::{ffi::CString, format, string::ToString, vec::Vec, vec};
 use syscall::{return_vals::Errno, syscall, SystemCall};
 
+#[allow(dead_code)]
 pub struct UdpSocket {
     handle: usize,
     /// the (local) address this socket is bound to
@@ -305,6 +306,7 @@ impl Drop for TcpStream {
     }
 }
 
+#[allow(dead_code)]
 pub struct IcmpSocket {
     handle: usize,
     ident: u16,

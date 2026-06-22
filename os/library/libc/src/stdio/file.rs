@@ -1,6 +1,6 @@
 use core::ffi::{c_char, c_int, c_long, c_size_t, c_void};
 use core::slice;
-use naming::shared_types::{OpenOptions, SeekOrigin};
+use naming::shared_types::{Capability, OpenOptions, SeekOrigin};
 use crate::errno::errno::{set_errno, Errno};
 use crate::stdio::FILE;
 use crate::str_from_c_ptr;
@@ -13,8 +13,9 @@ pub unsafe extern "C" fn fopen(filename: *const c_char, mode: *const c_char) -> 
     }
 
     let path = str_from_c_ptr(filename);
-    match naming::open(path, OpenOptions::READONLY) {
-        Ok(handle) => handle as *mut FILE,
+    let cap_handle = path.parse::<usize>().unwrap_or(0);
+    match naming::open(Capability::new(cap_handle), OpenOptions::READONLY) {
+        Ok(cap) => cap.handle() as *mut FILE,
         Err(_) => {
             set_errno(Errno::ENOENT);
             core::ptr::null_mut()
@@ -25,7 +26,7 @@ pub unsafe extern "C" fn fopen(filename: *const c_char, mode: *const c_char) -> 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fclose(stream: *mut FILE) -> c_int {
     let handle = stream as usize;
-    match naming::close(handle) {
+    match naming::close(Capability::new(handle)) {
         Ok(_) => 0,
         Err(_) => {
             set_errno(Errno::EBADF);
@@ -42,7 +43,7 @@ pub unsafe extern "C" fn fread(buffer: *mut c_void, size: c_size_t, count: c_siz
     unsafe {
         let target = slice::from_raw_parts_mut(buffer as *mut u8, total_size as usize);
 
-        match naming::read(handle, target) {
+        match naming::read(Capability::new(handle), target) {
             Ok(bytes_read) => bytes_read / size,
             Err(_) => {
                 set_errno(Errno::EBADF);
@@ -77,7 +78,7 @@ pub unsafe extern "C" fn fseek(stream: *mut FILE, offset: c_long, origin: c_int)
         }
     };
 
-    match naming::seek(handle, offset as isize, mode) {
+    match naming::seek(Capability::new(handle), offset as usize, mode) {
         Ok(_) => 0,
         Err(_) => {
             set_errno(Errno::EBADF);
@@ -90,7 +91,7 @@ pub unsafe extern "C" fn fseek(stream: *mut FILE, offset: c_long, origin: c_int)
 pub unsafe extern "C" fn ftell(stream: *mut FILE) -> c_long {
     let handle = stream as usize;
 
-    match naming::seek(handle, 0, SeekOrigin::Current) {
+    match naming::seek(Capability::new(handle), 0, SeekOrigin::Current) {
         Ok(position) => position as c_long,
         Err(_) => {
             set_errno(Errno::EBADF);

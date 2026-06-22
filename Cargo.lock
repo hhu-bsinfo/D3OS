@@ -155,6 +155,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
+name = "capabilities"
+version = "0.1.0"
+dependencies = [
+ "naming",
+ "syscall",
+ "terminal",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -299,21 +308,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.115",
-]
-
-[[package]]
-name = "doom"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "concurrent",
- "graphic",
- "libc 0.1.0",
- "pc-keyboard",
- "runtime",
- "spin 0.10.0",
- "terminal",
- "time",
 ]
 
 [[package]]
@@ -1142,6 +1136,7 @@ dependencies = [
 name = "pipetest"
 version = "0.1.0"
 dependencies = [
+ "capabilities",
  "concurrent",
  "naming",
  "runtime",
@@ -1477,6 +1472,15 @@ name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
+
+[[package]]
+name = "shmtest"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "runtime",
+ "terminal",
+]
 
 [[package]]
 name = "smallmap"

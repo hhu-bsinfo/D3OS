@@ -5,7 +5,8 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use concurrent::thread;
-use naming::{cd, cwd, mkdir, touch};
+use naming::{cd, cwd, mkdir, touch, ROOT};
+use naming::shared_types::OpenOptions;
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::read::read;
@@ -28,7 +29,7 @@ fn process_mkdir(split: &Vec<&str>) {
         println!("usage: mkdir directory_name");
         return;
     }
-    let res = mkdir(&split[1]);
+    let res = mkdir(&split[1], OpenOptions::CREATE, ROOT);
     if res.is_err() {
         println!("usage: mkdir directory_name");
     }
@@ -56,7 +57,7 @@ fn process_internal_command(split: &Vec<&str>) -> bool {
         process_mkdir(split);
         return true;
     } else if split[0] == "touch" {
-        let res = touch(&split[1]);
+        let res = touch(&split[1], OpenOptions::all(), ROOT);
         if res.is_err() {
             println!("{:?}", res);
         }

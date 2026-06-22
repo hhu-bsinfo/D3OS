@@ -6,18 +6,14 @@
    ║ Author: Michael Schoettner, 25.08.2025, HHU                             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use crate::capabilities::capability::Capability;
-use crate::capabilities::capability_objects::naming_object::NamingObject;
 use crate::naming::api;
 use crate::scheduler;
-use crate::syscall::syscall_dispatcher::init;
 use alloc::slice;
 use alloc::string::{String, ToString};
-use core::mem;
 use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
-use log::{error, info, warn};
-use naming::shared_types::{OpenOptions, RawDirent, SeekOrigin};
+use log::{error, warn};
+use naming::shared_types::{OpenOptions, SeekOrigin};
 use num_enum::FromPrimitive;
 use syscall::return_vals::{self, Errno};
 /*pub unsafe extern "sysv64" fn sys_open(path: *const u8, flag_bits: usize) -> isize {
@@ -54,9 +50,11 @@ pub extern "sysv64" fn sys_open(cap_handle: usize, flag_bits: usize) -> isize {
                 // info!("sys_open succeeded, storing new capability");
                 // Store the capability and return its handle
                 let handle = cspace.receive_open_naming_capability(Some(cap));
+                if handle == -1 {
+                    error!("Could not store cap");
+                    return Errno::EUNKN as isize; //Return EUNKN so that client doesnt know if it failed or if it existed
+                }
                 return handle;
-                error!("Could not store cap");
-                return Errno::EUNKN as isize; //Return EUNKN so that client doesnt know if it failed or if it existed
             }
             Err(errno) => {
                 error!("sys_open failed: {:?}", errno);
@@ -238,7 +236,7 @@ pub(super) unsafe fn ptr_to_string(ptr: *const u8) -> Result<String, Errno> {
     }
 }
 
-pub unsafe extern "sysv64" fn sys_readdir(cap_handle: usize, buffer: *mut u8, buffer_length: usize) -> isize {
+pub unsafe extern "sysv64" fn sys_readdir(_cap_handle: usize, _buffer: *mut u8, _buffer_length: usize) -> isize {
     // if buffer.is_null() || buffer_length == 0 || buffer_length <  size_of::<RawDirent>() {
     //     return Errno::EINVAL as isize;
     // }

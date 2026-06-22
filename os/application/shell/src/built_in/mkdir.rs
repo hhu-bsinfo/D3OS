@@ -1,4 +1,5 @@
 use naming::mkdir;
+use naming::shared_types::{Capability, OpenOptions};
 use terminal::println;
 
 use crate::{
@@ -21,7 +22,8 @@ impl BuiltIn for MkdirBuiltIn {
             Self::print_usage();
             return 1;
         };
-        if mkdir(&wd_clx.resolve(path)).is_err() {
+        let absolute_path = wd_clx.resolve(path);
+        if mkdir(&absolute_path, OpenOptions::CREATE, Capability::new(0)).is_err() {
             Self::print_usage();
             return 1;
         }
