@@ -232,17 +232,10 @@ pub fn seek(cap: &Capability<NamingObject>, offset: usize, origin: SeekOrigin) -
 }
  */
 
-pub fn close(cap: &Capability<NamingObject>) -> Result<usize, Errno> {
-    if let Some(naming_obj) = cap.invoke() {
-        if naming_obj.named_object.is_file() || naming_obj.named_object.is_pipe() {
-            // Dropping the capability will close the object if this is the last reference
-            Ok(0) // Success
-        } else {
-            Err(Errno::ENOTSUP)
-        }
-    } else {
-        Err(Errno::EACCES)
-    }
+pub fn close(_cap: &Capability<NamingObject>) -> Result<usize, Errno> {
+    // Dropping the capability from the CSpace will close the object if this is the last reference.
+    // Allow closing handles regardless of permissions or type.
+    Ok(0)
 }
 /// Create a directory named 'name' in the directory given by the capability object. \
 /// Returns `Ok(Capability<NamingObject>)` or `Err(errno)`
@@ -252,7 +245,7 @@ pub fn mkdir(name: &str, flags: OpenOptions, parent_dir: &Capability<NamingObjec
         if dir.access_rights.intersects(OpenOptions::CREATE) {
             return dir.named_object.as_dir().and_then(|directory| {
                 if let Ok(obj) = directory.create_dir(name, Mode::new(0)) {
-                    Ok(create_naming_capability(obj, flags, dir.path.to_string() + name)) // Successfully created the directory
+                    Ok(create_naming_capability(obj, flags, format!("{}/{}", dir.path.trim_end_matches('/'), name))) // Successfully created the directory
                 } else { Err(Errno::EACCES) }
             });
         }
@@ -311,7 +304,7 @@ pub fn touch(name: &str, flags: OpenOptions, dir_cap: &Capability<NamingObject>)
 
 
         return match result {
-            Ok(obj) => Ok(create_naming_capability(obj, flags, naming_obj.path.to_string() + name)), // Successfully created the file
+            Ok(obj) => Ok(create_naming_capability(obj, flags, format!("{}/{}", naming_obj.path.trim_end_matches('/'), name))), // Successfully created the file
             Err(_) => {
                 // Handle the error here (e.g., logging or returning the error code)
                 error!("touch: could not create file: {}", name);

@@ -157,14 +157,17 @@ pub unsafe extern "sysv64" fn sys_mkdir(name: *const u8, flag_bits: usize, dir_c
         return Errno::EACCES as isize;
     };
 
-    let path = dir_cap.invoke().unwrap().path.clone();
-
-    match api::mkdir(&*(path + name.as_str()), flags, dir_cap) {
+    log::info!("sys_mkdir called with name: {}, dir_cap_handle: {}", name, dir_cap_handle);
+    match api::mkdir(&name, flags, dir_cap) {
         Ok(cap) => {
+            log::info!("sys_mkdir: api::mkdir success for '{}'", name);
             // Store capability in current thread's CSpace
             cspace.receive_naming_capability(Some(cap))
         }
-        Err(errno) => errno as isize,
+        Err(errno) => {
+            log::error!("sys_mkdir: api::mkdir failed for '{}' with {:?}", name, errno);
+            errno as isize
+        }
     }
 }
 
