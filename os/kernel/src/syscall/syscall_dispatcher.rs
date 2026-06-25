@@ -14,6 +14,7 @@ use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 
 use crate::process::core_local_storage::init_tss_cls;
+use crate::syscall::sys_ipc::sys_ipc_send;
 use log::info;
 use x86_64::registers::rflags::RFlags;
 
@@ -147,6 +148,7 @@ impl SyscallTable {
                 sys_shm_attach as *const _,
                 sys_shm_detach as *const _,
                 sys_shm_unlink as *const _,
+                sys_ipc_send as *const _,
             ],
         }
     }
