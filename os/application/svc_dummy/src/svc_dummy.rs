@@ -4,10 +4,11 @@ extern crate alloc;
 
 use alloc::string::String;
 use concurrent::thread;
-use naming::shared_types::OpenOptions;
+use naming::shared_types::{OpenOptions, SeekOrigin};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::println;
+use time::systime;
 
 fn arg_value<'a>(args: &'a [String], key: &str) -> Option<&'a str> {
     for arg in args {
@@ -101,7 +102,9 @@ pub fn main() {
         }
 
         if let Some(fh) = heartbeat_fh {
-            let _ = naming::write(fh, service_name.as_bytes());     // Heartbeat normal senden
+            let heartbeat_value = systime().num_milliseconds() as u64;
+            let _ = naming::seek(fh, 0, SeekOrigin::Start);
+            let _ = naming::write(fh, &heartbeat_value.to_le_bytes());     // Heartbeat normal senden
         }
 
         if !quiet {

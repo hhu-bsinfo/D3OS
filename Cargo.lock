@@ -1642,6 +1642,7 @@ dependencies = [
  "naming",
  "runtime",
  "terminal",
+ "time",
 ]
 
 [[package]]

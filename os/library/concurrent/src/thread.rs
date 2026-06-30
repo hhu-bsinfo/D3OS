@@ -34,6 +34,10 @@ impl Thread {
         Self { id }
     }
 
+    pub fn from_id(id: usize) -> Self {
+        Self::new(id)
+    }
+
     pub fn id(&self) -> usize {
         self.id
     }

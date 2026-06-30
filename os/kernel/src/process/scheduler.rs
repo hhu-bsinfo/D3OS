@@ -473,8 +473,22 @@ impl Scheduler {
             ready_state.ready_queue.push_front(Arc::clone(thread));
         }
 
+        for waiting_threads in join_map.values_mut() {
+            waiting_threads.retain(|thread| thread.id() != thread_id);
+        }
+
         join_map.remove(&thread_id);
         ready_state.ready_queue.retain(|thread| thread.id() != thread_id);
+
+        {
+            let mut sleep_list = self.sleep_list.lock();    // Threads auch in sleep list und blocked list killen
+            sleep_list.retain(|(thread, _)| thread.id() != thread_id);
+        }
+
+        {
+            let mut blocked_list = self.blocked_list.lock();
+            blocked_list.retain(|thread| thread.id() != thread_id);
+        }
     }
 
     fn take_exit_code(&self, thread_id: usize) -> Result<usize, Errno> {

@@ -7,7 +7,7 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use concurrent::thread;
-use naming::shared_types::{FileType, OpenOptions};
+use naming::shared_types::{FileType, OpenOptions, SeekOrigin};
 use spin::Mutex;
 use syscall::return_vals::Errno;
 use runtime::*;
@@ -24,7 +24,10 @@ const HEARTBEAT_TIMEOUT_MS: usize = 5_000;         // Wie alt ein Heartbeat sein
 #[derive(Debug, Clone, Copy)]
 struct HeartbeatState {     // Merken uns für jeden Service das letzte Signal + ob schon ein Alarm/Neustart durchgeführt wurde + Datei handle
     last_seen_ms: usize,
+    last_marker: u64,
     reported: bool,
+    thread_id: usize,
+    restart: RestartPolicy,
     handle: Option<usize>,
 }
 
@@ -241,9 +244,9 @@ fn build_effective_args(manifest: &ServiceManifest) -> Vec<String> {
     args
 }
 // Heartsbeats registrieren oder entfernen
-fn heartbeat_register(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str, handle: Option<usize>) {
+fn heartbeat_register(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str, thread_id: usize, restart: RestartPolicy, handle: Option<usize>) {
     let mut map = heartbeats.lock();
-    map.insert(name.to_string(), HeartbeatState {last_seen_ms: systime().num_milliseconds() as usize, reported: false, handle});
+    map.insert(name.to_string(), HeartbeatState {last_seen_ms: systime().num_milliseconds() as usize, last_marker: u64::MAX, reported: false, thread_id, restart, handle});
 }
 
 fn heartbeat_remove(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str) {
@@ -269,30 +272,38 @@ fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>) {
             thread::sleep(WATCHDOG_TICK_INTERVAL_MS);
             let now = systime().num_milliseconds() as usize;
 
-            let mut missed: Vec<(String, usize)> = Vec::new();
+            let mut missed: Vec<(String, usize, usize, RestartPolicy)> = Vec::new();
             let mut map = heartbeats.lock();
             for (name, state) in map.iter_mut() {
                 if let Some(handle) = state.handle {
-                    while let Ok(n) = naming::read(handle, &mut buf) {
-                        if n == 0 {
-                            break;
+                    let _ = naming::seek(handle, 0, SeekOrigin::Start);
+                    if let Ok(n) = naming::read(handle, &mut buf) {
+                        if n == buf.len() {
+                            let marker = u64::from_le_bytes(buf);
+                            if marker != state.last_marker {
+                                state.last_marker = marker;
+                                state.last_seen_ms = now;
+                                state.reported = false;
+                            }
                         }
-                        state.last_seen_ms = now;
-                        state.reported = false;
                     }
                 }
 
                 let age = now.saturating_sub(state.last_seen_ms);
                 if age >= HEARTBEAT_TIMEOUT_MS && !state.reported {
-                    missed.push((name.clone(), age / 1000));
+                    missed.push((name.clone(), age / 1000, state.thread_id, state.restart));
                     state.reported = true;
                 }
             }
             drop(map);
 
-            for (name, age) in missed {
+            for (name, age, thread_id, restart) in missed {
                 error!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
                 println!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
+                if should_restart(restart, 1) {
+                    println!("svc: killing {} (tid={}) after missed heartbeat", name, thread_id);
+                    thread::Thread::from_id(thread_id).kill();
+                }
             }
         }
     });
@@ -331,7 +342,7 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heart
                 if manifest.heartbeat {
                     let heartbeat_path = ensure_heartbeat_file(&manifest.name);
                     let heartbeat_fh = naming::open(&heartbeat_path, OpenOptions::READONLY).ok();
-                    heartbeat_register(&heartbeats, &manifest.name, heartbeat_fh);
+                    heartbeat_register(&heartbeats, &manifest.name, child.id(), manifest.restart, heartbeat_fh);
                 }
             }
             None => {
@@ -419,7 +430,7 @@ fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap
             println!("svc: {} online (tid={})", service.manifest.name, child.id());
 
             if manifest.heartbeat {
-                heartbeat_register(&heartbeats, &manifest.name, heartbeat_fh);
+                heartbeat_register(&heartbeats, &manifest.name, child.id(), manifest.restart, heartbeat_fh);
             }
 
             let _ = thread::create(move || supervise_service(manifest, child, heartbeats));

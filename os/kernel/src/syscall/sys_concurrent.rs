@@ -68,7 +68,14 @@ pub extern "sysv64" fn sys_thread_join(id: usize) -> isize {
 }
 
 pub extern "sysv64" fn sys_thread_kill(id: usize) -> isize {
-    scheduler().kill(id);
+    if let Some(thread) = scheduler().thread(id) {
+        let process = thread.process().clone();
+        scheduler().kill(id);
+
+        if process.thread_ids().is_empty() {
+            process_manager().write().kill(process.id());       // If the process has no more threads, kill it as well
+        }
+    }
     0
 }
 
