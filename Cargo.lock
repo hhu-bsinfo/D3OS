@@ -223,6 +223,7 @@ name = "concurrent"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "nolock",
  "spin 0.10.0",
  "syscall",
  "time",
@@ -771,6 +772,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipctest"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "runtime",
+ "syscall",
+ "terminal",
+ "uuid",
+]
+
+[[package]]
 name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -814,6 +826,7 @@ dependencies = [
  "bitflags 2.10.0",
  "built",
  "chrono",
+ "concurrent",
  "drawer",
  "goblin",
  "graphic",

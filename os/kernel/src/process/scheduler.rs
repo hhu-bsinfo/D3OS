@@ -224,6 +224,8 @@ impl Scheduler {
     pub fn thread(&self, thread_id: usize) -> Option<Arc<Thread>> {
         self.ready_state.lock().ready_queue
             .iter()
+            .chain(self.blocked_list.lock().iter())
+            .chain(self.sleep_list.lock().iter().map(|e| &e.0))
             .find(|thread| thread.id() == thread_id)
             .cloned()
     }

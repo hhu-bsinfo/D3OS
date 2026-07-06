@@ -1,0 +1,22 @@
+[package]
+edition = "2024"
+name = "ipctest"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/ipctest.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+terminal = { path = "../../library/terminal" }
+concurrent = { path = "../../library/concurrent" }
+syscall = { path = "../../library/syscall" }
+
+
+uuid = { version = "1.23.1", default-features = false, features = ["v7"] }

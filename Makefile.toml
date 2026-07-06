@@ -117,7 +117,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
     "-cpu", "Haswell",
-    "-smp", "4", # 4 CPUs
+    "-smp", "1", # 4 CPUs
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "c",
     "-vga", "none",

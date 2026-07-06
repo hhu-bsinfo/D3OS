@@ -11,11 +11,11 @@ pub const USER_SPACE_ARG_START: usize = USER_SPACE_ENV_START;
 
 // User space mailbox
 pub const USER_MAILBOX_SIZE: usize = 0x40000000;  // 1 GiB
-pub const USER_SPACE_MAILBOX_START: usize = USER_SPACE_ENV_START + USER_ENV_SIZE;
+pub const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
 // User space stacks (Max size per stack: 1 GiB)
 pub const MAX_USER_STACK_SIZE: usize = 0x40000000;  // 1 GiB
-pub const MAIN_USER_STACK_START: usize = USER_SPACE_MAILBOX_START + USER_MAILBOX_SIZE;
+pub const MAIN_USER_STACK_START: usize = USER_SPACE_ENV_START + USER_ENV_SIZE;
 pub const KERNEL_STACK_PAGES: usize = 64;
 pub const STACK_ENTRY_SIZE: usize = 8;  
 

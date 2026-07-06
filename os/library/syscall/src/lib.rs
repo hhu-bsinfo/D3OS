@@ -73,7 +73,7 @@ pub enum SystemCall {
     ShmDetach,
     ShmUnlink,
     IpcSend,
-    IpcReceive,
+    IpcReceiveBlocking,
 }
 
 pub const NUM_SYSCALLS: usize = mem::variant_count::<SystemCall>() as usize;
