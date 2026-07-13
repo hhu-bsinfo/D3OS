@@ -4,7 +4,9 @@ extern crate alloc;
 
 use core::num;
 
-use alloc::{format, string::String, vec::{self, Vec}};
+use alloc::string::ToString;
+use alloc::{format, string::String, vec::Vec};
+use alloc::vec;
 use concurrent::{ipc::IpcMessage, process, thread};
 #[allow(unused_imports)]
 use runtime::*;
@@ -22,17 +24,20 @@ pub fn main() {
     let mut args: Vec<String> = env::args().collect();
 
     if args.len() <= 1 {
-        println!("Missing required args");
+        args = vec!["ipctest".to_string(), "start".to_string(), "67".to_string()];
     }
 
     let command = args.get(1).unwrap();
 
 
     if command == "start" {
+
         let mut args_receive = Vec::new();
         args_receive.push("receive");
         thread::start_application("ipctest", args_receive);
+
         thread::sleep(1_000);
+
         let mut args_send = Vec::new();
         args_send.push("send");
         args_send.push(&receiver_tid);
@@ -42,27 +47,26 @@ pub fn main() {
             }
         }
         thread::start_application("ipctest", args_send);
+
         return;
     } else if command == "send" {
         let target_tid = args.get(2).and_then(|s| str::parse::<usize>(&s).ok()).unwrap_or(0);
-        let mut message_content = [0, 0, 0, 0];
-        for i in 0..3 {
-            let idx = 3 + i;
-            message_content[i] = args.get(idx).and_then(|s| str::parse::<usize>(&s).ok()).unwrap_or(i * 9);
-        }
-        
-        let message = IpcMessage::from_arr(&message_content);
-        let res = concurrent::ipc::send(Uuid::from_u128(0), target_tid, &message);
+        let res = concurrent::ipc::send_small(Uuid::from_u128(0), target_tid, args.get(3).and_then(|s| str::parse::<u64>(&s).ok()).unwrap_or(42));
         match res {
             Ok(_) => println!("Send message successfully"),
             Err(err) => println!("Error sending message: {:?}", err),
         }
     } else {
         concurrent::ipc::init_queue();
-        let res = concurrent::ipc::receive_next_blocking(10_000);
-        match res {
-            Ok(message) => println!("Received Message: {:?}", message),
-            Err(err) => println!("Error receiving message: {:?}", err),
+        loop {
+            match concurrent::ipc::receive_small() {
+                Some(msg) => {
+                    println!("Received Message: {:?}", msg);
+                    break;
+                },
+                None => {}
+            }
+            thread::sleep(1_000);
         }
     }
 }

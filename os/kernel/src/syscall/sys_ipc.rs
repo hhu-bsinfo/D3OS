@@ -1,6 +1,6 @@
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
-use concurrent::ipc::{IpcMessage, IpcQueueHandles};
+use concurrent::ipc::{IpcMailboxDistributer, IpcMessage, IpcSmallMessageRingbuffer};
 use spin::{Mutex, Once};
 use syscall::return_vals::{self, SyscallResult};
 use uuid::Uuid;
@@ -10,6 +10,9 @@ use crate::{consts, process::core_local_storage::scheduler, sync::wait_queue::{s
 static WAIT_QUEUE: WaitQueue = WaitQueue::new();
 
 pub extern "sysv64" fn sys_ipc_send(pid1: u64, pid2: u64, tid: usize, message_addr: usize) -> isize {
+
+    /*
+    
 
     let pid = Uuid::from_u64_pair(pid1, pid2);
 
@@ -30,12 +33,40 @@ pub extern "sysv64" fn sys_ipc_send(pid1: u64, pid2: u64, tid: usize, message_ad
             }
         }
     }
+    
+     */
 
     return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(return_vals::Errno::EEXIST))
 }
 
+pub extern "sysv64" fn sys_ipc_send_small(pid1: u64, pid2: u64, tid: usize, message: u64) -> isize {
+
+    let pid = Uuid::from_u64_pair(pid1, pid2);
+
+    // TODO find process + thread globally (using name service etc.)
+    if let Some(thread) = scheduler().thread(tid) {
+        let test = {
+            scheduler().current_thread().process().virtual_address_space.get_phys(consts::USER_SPACE_MAILBOX_START as u64).unwrap()
+        };
+        if let Some(mailbox_addr_phys) = thread.process().virtual_address_space.get_phys(consts::USER_SPACE_MAILBOX_START as u64) {
+            let distributer = unsafe { (mailbox_addr_phys.as_u64() as *const IpcMailboxDistributer).read() };
+            if let Some(small_msg_ringbuffer_addr_phys) = thread.process().virtual_address_space.get_phys(distributer.small_msg_ringbuffer as u64) {
+                let small_msg_ringbuffer = unsafe { (small_msg_ringbuffer_addr_phys.as_u64() as *const IpcSmallMessageRingbuffer).read() };
+                
+                let res = small_msg_ringbuffer.send(message);
+
+                if res.is_ok() {
+                    return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(message as usize));
+                }
+            }
+        }
+    }
+    return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(return_vals::Errno::ENOTEMPTY))
+}
+
 pub extern "sysv64" fn sys_ipc_receive_blocking(timeout_ms: usize) -> isize {
-    
+
+    /*
     let handles_ptr_ptr = consts::USER_SPACE_MAILBOX_START as *mut *const IpcQueueHandles;
     let handles_ptr = unsafe { *handles_ptr_ptr };
     let handles = unsafe { handles_ptr.as_ref().unwrap() };
@@ -53,4 +84,6 @@ pub extern "sysv64" fn sys_ipc_receive_blocking(timeout_ms: usize) -> isize {
     } else {
         return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(return_vals::Errno::EEXIST))
     }
+     */
+    return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(return_vals::Errno::EEXIST))
 }
