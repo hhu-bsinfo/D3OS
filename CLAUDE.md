@@ -63,6 +63,33 @@ for RustRover (`.idea/runConfigurations`), VS Code (`.vscode`), and Zed (`.zed`)
 The Rust toolchain is pinned via `rust-toolchain.toml` (nightly, with `rust-src`) since the build uses
 `-Z build-std=core,alloc`; no manual `rustup` setup should be needed beyond what's listed in `README.md`.
 
+### Testing on real InfiniBand hardware (ib1/ib2)
+
+Two NixOS servers, each with a ConnectX-3 card, are used to exercise the mlx4 driver against a real
+InfiniBand fabric rather than just QEMU-only/loopback setups. Both are reachable via `ssh`.
+
+- `ib1` stays on Linux and runs the InfiniBand subnet manager (SM) for the fabric — it's the known-good
+  peer, not where D3OS itself is tested.
+- `ib2` is where D3OS runs: its ConnectX-3 card is passed through to QEMU via VFIO using `qemu-pci.sh`,
+  a host-local copy of `scripts/qemu-pci.sh` with the placeholder constants (`LINUX_MODULE`, `BUS_ID`,
+  `DEVICE_ID`, `DEVICES_TO_REMOVE`) filled in for `ib2`'s real ConnectX-3 PCI IDs; that filled-in copy
+  lives on `ib2` itself, not in this repo.
+
+To boot a build on `ib2`:
+
+1. Build the image locally: `cargo make --no-workspace image` (produces `d3os.img` at the repo root).
+2. Serve the D3OS repo root over HTTP from the same machine, e.g. `caddy file-server --browse` run from
+   the repo root, reachable as `juliusmac.local`.
+3. From that same machine, run `scripts/infiniband-remote-run.sh` — it `ssh`es into `ib2` and launches
+   `qemu-pci.sh` there with the fixed set of QEMU options this setup needs (`q35` machine with NVDIMM,
+   OVMF UEFI firmware, boot from disk, serial on stdio, an `rtl8139` NIC with host port-forwarding +
+   packet dump, `-snapshot` so writes don't mutate the served image, and `-hda
+   http://juliusmac.local/d3os.img` to fetch the freshly built image over HTTP, with `-vnc :1` to watch
+   boot output remotely).
+
+If the `caddy` file server on the dev machine isn't running (or `d3os.img` is stale), the fetch on `ib2`
+will fail or boot an old image — rebuild and make sure the file server is serving before retrying.
+
 ## Architecture
 
 ### Workspace layout
