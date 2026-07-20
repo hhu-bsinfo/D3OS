@@ -1,49 +1,74 @@
 use core::{ptr, sync::atomic::{AtomicU8, AtomicU64, Ordering}};
 
+use alloc::boxed::Box;
 use syscall::{SystemCall, return_vals::SyscallResult, syscall};
 use uuid::Uuid;
 
 // Schnittstelle für Interprozesskommunikation
 
+#[derive(Debug)]
 pub struct IpcSmallMessageRingbuffer {
-    pub writer_idx: AtomicU8,
+    writer_idx: AtomicU8,
     reader_idx: AtomicU8,
-    pub buffer: [AtomicU64; 256]
+    buffer: [AtomicU64; 256]
 }
 
 impl IpcSmallMessageRingbuffer {
     pub fn send(&self, message: u64) -> Result<(), ()> {
-        let writer_idx = self.writer_idx.fetch_add(1, Ordering::SeqCst) as usize;
-        let res = self.buffer[writer_idx].compare_exchange(0, message, Ordering::SeqCst, Ordering::SeqCst);
+        let writer_idx = self.writer_idx().fetch_add(1, Ordering::SeqCst);
+        let atomic = self.get_message(writer_idx);
+        let res = atomic.compare_exchange(0, message, Ordering::SeqCst, Ordering::SeqCst);
         if res.is_ok() {
             Ok(())
         } else {
-            self.writer_idx.store(writer_idx as u8, Ordering::SeqCst);
+            self.writer_idx().store(writer_idx, Ordering::SeqCst);
             Err(())
         }
     }
     pub fn receive(&self) -> Option<u64> {
-        let writer_idx = self.writer_idx.load(Ordering::SeqCst) as usize;
-        let reader_idx = self.reader_idx.fetch_add(1, Ordering::SeqCst) as usize;
+        let writer_idx = self.writer_idx().load(Ordering::SeqCst);
+        let reader_idx = self.reader_idx().fetch_add(1, Ordering::SeqCst);
+        let atomic = self.get_message(reader_idx);
         if writer_idx != reader_idx {
-            Some(self.buffer[reader_idx].swap(0, Ordering::SeqCst))
+            Some(atomic.swap(0, Ordering::SeqCst))
         } else {
-            let msg = self.buffer[reader_idx].load(Ordering::SeqCst);
+            let msg = atomic.load(Ordering::SeqCst);
             if msg != 0 {
                 Some(msg)
             } else {
-                self.reader_idx.store(reader_idx as u8, Ordering::SeqCst);
+                self.reader_idx().store(reader_idx, Ordering::SeqCst);
                 None
             }
         }
     }
 
-    pub fn get_entry(&self, idx: u8) -> *const AtomicU64 {
-        unsafe { self.buffer.as_ptr().add(idx as usize) }
+
+    pub fn writer_idx(&self) -> &AtomicU8 {
+        &self.writer_idx
+    }
+
+    pub fn reader_idx(&self) -> &AtomicU8 {
+        &self.reader_idx
+    }
+
+    pub fn get_message(&self, idx: u8) -> &AtomicU64 {
+        &self.buffer[idx as usize]
+    }
+
+    pub fn messages_left(&self) -> u8 {
+        let writer_idx = self.writer_idx.load(Ordering::SeqCst);
+        let reader_idx = self.reader_idx.load(Ordering::SeqCst);
+        writer_idx.wrapping_sub(reader_idx)
+    }
+
+    pub fn space_left(&self) -> u8 {
+        let writer_idx = self.writer_idx.load(Ordering::SeqCst);
+        let reader_idx = self.reader_idx.load(Ordering::SeqCst);
+        reader_idx.wrapping_sub(writer_idx)
     }
     
     fn new() -> Self {
-        Self { writer_idx: AtomicU8::new(0), reader_idx: AtomicU8::new(0), buffer: [const { AtomicU64::new(0) }; 256] }
+        Self { writer_idx: AtomicU8::new(0), reader_idx: AtomicU8::new(0), buffer: [const { AtomicU64::new(0) }; _] }
     }
 }
 
@@ -56,15 +81,15 @@ pub struct IpcMessageWrapper {
 
 #[derive(Debug, Copy, Clone)]
 pub enum IpcMessage {
+    Small {
+        a: u64,
+    },
     Simple {
         a: usize,
         b: usize,
         c: usize,
         d: usize,
     },
-    Small {
-        a: u64,
-    }
 }
 
 impl IpcMessage {
@@ -96,7 +121,20 @@ pub fn init_queue() {
     unsafe { handles_ptr_dest.write(handles_ptr); }
     */
 
+
     let mailbox_start = USER_SPACE_MAILBOX_START as *const u8;
+
+    // use box to allocate the struct on the heap
+    let boxed_small_msg_rb = Box::new(IpcSmallMessageRingbuffer::new());
+
+    // leak the box so it doesnt get deleted
+    let box_ref = Box::leak(boxed_small_msg_rb);
+
+    let mailbox_start_ptr = mailbox_start as *mut &mut IpcSmallMessageRingbuffer;
+    unsafe { mailbox_start_ptr.write(box_ref) };
+    
+
+    /*
 
     // manually write struct to memory
     let small_msg_rb_struct_start = USER_SPACE_MAILBOX_START + 0x1000;
@@ -117,7 +155,7 @@ pub fn init_queue() {
     buffer[3].store(123, Ordering::SeqCst);
     unsafe { small_msg_ringbuffer.get_entry(3).read().store(321, Ordering::SeqCst) };
 
-    .
+    //.
     // Zugriff auf den array funktioniert irgendwie nicht -> array wird kopiert?
     // änderungen an den atomics werden nicht durchgeschrieben --> man manipuliert nur eine kopie?
     // ==> pointer / reference speichern um wirklichen atomic im speicher zu bearbeiten
@@ -126,6 +164,7 @@ pub fn init_queue() {
         small_msg_ringbuffer: (small_msg_rb_struct_start as *const _)
     };
     unsafe { (USER_SPACE_MAILBOX_START as *mut IpcMailboxDistributer).write(distributer) };
+    */
 }
 
 pub fn send_small(pid: Uuid, tid: usize, message: u64) -> SyscallResult {
@@ -134,8 +173,8 @@ pub fn send_small(pid: Uuid, tid: usize, message: u64) -> SyscallResult {
 }
 
 pub fn receive_small() -> Option<u64> {
-    let distributer = unsafe { (USER_SPACE_MAILBOX_START as *mut IpcMailboxDistributer).read() };
-    let small_msg_ringbuffer = unsafe { distributer.small_msg_ringbuffer.read() };
+    //let distributer = unsafe { (USER_SPACE_MAILBOX_START as *mut IpcMailboxDistributer).read() };
+    let small_msg_ringbuffer = unsafe { (USER_SPACE_MAILBOX_START as *const &mut IpcSmallMessageRingbuffer).read() };
     small_msg_ringbuffer.receive()
 }
 

@@ -45,21 +45,23 @@ pub extern "sysv64" fn sys_ipc_send_small(pid1: u64, pid2: u64, tid: usize, mess
 
     // TODO find process + thread globally (using name service etc.)
     if let Some(thread) = scheduler().thread(tid) {
-        let test = {
-            scheduler().current_thread().process().virtual_address_space.get_phys(consts::USER_SPACE_MAILBOX_START as u64).unwrap()
-        };
-        if let Some(mailbox_addr_phys) = thread.process().virtual_address_space.get_phys(consts::USER_SPACE_MAILBOX_START as u64) {
-            let distributer = unsafe { (mailbox_addr_phys.as_u64() as *const IpcMailboxDistributer).read() };
-            if let Some(small_msg_ringbuffer_addr_phys) = thread.process().virtual_address_space.get_phys(distributer.small_msg_ringbuffer as u64) {
-                let small_msg_ringbuffer = unsafe { (small_msg_ringbuffer_addr_phys.as_u64() as *const IpcSmallMessageRingbuffer).read() };
+        let vas = &thread.process().virtual_address_space;
+        if let Some(mailbox_ptr) = vas.translate_ptr(consts::USER_SPACE_MAILBOX_START as *const &mut IpcSmallMessageRingbuffer) {
+            let small_msg_ringbuffer_ref = unsafe { mailbox_ptr.read() };
+            if let Some(small_msg_ringbuffer_ptr) = vas.translate_ptr_mut(core::ptr::from_mut(small_msg_ringbuffer_ref)) {
+                if let Some(small_msg_ringbuffer) = unsafe { small_msg_ringbuffer_ptr.as_mut() } {
                 
-                let res = small_msg_ringbuffer.send(message);
+                    let res = small_msg_ringbuffer.send(message);
 
-                if res.is_ok() {
-                    return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(message as usize));
+                    let space = small_msg_ringbuffer.space_left();
+                    let messages = small_msg_ringbuffer.messages_left();
+
+                    if res.is_ok() {
+                        return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(message as usize));
+                    }   
                 }
             }
-        }
+        }        
     }
     return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(return_vals::Errno::ENOTEMPTY))
 }
