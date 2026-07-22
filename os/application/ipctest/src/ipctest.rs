@@ -7,7 +7,7 @@ use core::num;
 use alloc::string::ToString;
 use alloc::{format, string::String, vec::Vec};
 use alloc::vec;
-use concurrent::{ipc::IpcMessage, process, thread};
+use concurrent::{ipc::IpcMessage2, process, thread};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::println;

@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
-use concurrent::ipc::{IpcMailboxDistributer, IpcMessage, IpcSmallMessageRingbuffer};
+use concurrent::ipc::{IpcMailboxDistributer, IpcMessage2, IpcSmallMessageRingbuffer};
 use spin::{Mutex, Once};
 use syscall::return_vals::{self, SyscallResult};
 use uuid::Uuid;
