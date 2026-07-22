@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(unused_imports)]
 
 extern crate alloc;
 
@@ -6,7 +7,6 @@ use alloc::string::ToString;
 use alloc::{format, string::String, vec::Vec};
 use alloc::vec;
 use concurrent::{process, thread};
-#[allow(unused_imports)]
 use runtime::*;
 use terminal::println;
 use uuid::Uuid;

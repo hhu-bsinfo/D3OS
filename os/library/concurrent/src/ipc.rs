@@ -1,7 +1,5 @@
-use core::{ptr::{self}, sync::atomic::{AtomicI16, AtomicU8, AtomicU16, AtomicU64, Ordering}};
-
-use alloc::{boxed::Box, rc::Rc, sync::Arc, vec::Vec};
-use spin::once::Once;
+use core::ptr;
+use core::sync::atomic::{AtomicI16, AtomicU16, Ordering};
 use syscall::{SystemCall, return_vals::SyscallResult, syscall};
 use uuid::Uuid;
 
@@ -9,8 +7,6 @@ use uuid::Uuid;
 
 pub const MESSAGE_SIZE: usize = 0x100;
 const MAX_NUM_MESSAGES: usize = 8; // !this needs to be a power of 2!
-const MESSAGE_DATA_SIZE: usize = MESSAGE_SIZE * MAX_NUM_MESSAGES;
-//const MESSAGE_DATA_PTR: *mut u8 = (USER_SPACE_MAILBOX_START + 0x1000) as _;
 
 pub struct IpcQueue {
     writer_idx: AtomicU16,
@@ -109,111 +105,7 @@ impl Drop for IpcMessageData {
     }
 }
 
-#[derive(Debug)]
-pub struct IpcSmallMessageRingbuffer {
-    writer_idx: AtomicU8,
-    reader_idx: AtomicU8,
-    buffer: [AtomicU64; 256]
-}
-
-impl IpcSmallMessageRingbuffer {
-    pub fn send(&self, message: u64) -> Result<(), ()> {
-        let writer_idx = self.writer_idx().fetch_add(1, Ordering::SeqCst);
-        let atomic = self.get_message(writer_idx);
-        let res = atomic.compare_exchange(0, message, Ordering::SeqCst, Ordering::SeqCst);
-        if res.is_ok() {
-            Ok(())
-        } else {
-            self.writer_idx().store(writer_idx, Ordering::SeqCst);
-            Err(())
-        }
-    }
-    pub fn receive(&self) -> Option<u64> {
-        let writer_idx = self.writer_idx().load(Ordering::SeqCst);
-        let reader_idx = self.reader_idx().fetch_add(1, Ordering::SeqCst);
-        let atomic = self.get_message(reader_idx);
-        if writer_idx != reader_idx {
-            Some(atomic.swap(0, Ordering::SeqCst))
-        } else {
-            let msg = atomic.load(Ordering::SeqCst);
-            if msg != 0 {
-                Some(msg)
-            } else {
-                self.reader_idx().store(reader_idx, Ordering::SeqCst);
-                None
-            }
-        }
-    }
-
-
-    pub fn writer_idx(&self) -> &AtomicU8 {
-        &self.writer_idx
-    }
-
-    pub fn reader_idx(&self) -> &AtomicU8 {
-        &self.reader_idx
-    }
-
-    pub fn get_message(&self, idx: u8) -> &AtomicU64 {
-        &self.buffer[idx as usize]
-    }
-
-    pub fn messages_left(&self) -> u8 {
-        let writer_idx = self.writer_idx.load(Ordering::SeqCst);
-        let reader_idx = self.reader_idx.load(Ordering::SeqCst);
-        writer_idx.wrapping_sub(reader_idx)
-    }
-
-    pub fn space_left(&self) -> u8 {
-        let writer_idx = self.writer_idx.load(Ordering::SeqCst);
-        let reader_idx = self.reader_idx.load(Ordering::SeqCst);
-        reader_idx.wrapping_sub(writer_idx)
-    }
-    
-    fn new() -> Self {
-        Self { writer_idx: AtomicU8::new(0), reader_idx: AtomicU8::new(0), buffer: [const { AtomicU64::new(0) }; _] }
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct IpcMessageWrapper {
-    message: IpcMessage2,
-    pid: Uuid,
-    tid: usize,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum IpcMessage2 {
-    Small {
-        a: u64,
-    },
-    Simple {
-        a: usize,
-        b: usize,
-        c: usize,
-        d: usize,
-    },
-}
-
-impl IpcMessage2 {
-    pub fn from_arr(arr: &[usize]) -> IpcMessage2 {
-        let a = arr.get(0).copied().unwrap_or_default();
-        let b = arr.get(1).copied().unwrap_or_default();
-        let c = arr.get(2).copied().unwrap_or_default();
-        let d = arr.get(3).copied().unwrap_or_default();
-        Self::Simple { a, b, c, d }
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct IpcMailboxDistributer {
-    pub small_msg_ringbuffer: *const IpcSmallMessageRingbuffer
-}
-
 const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
-
-// TODO dont store messages themselves in the queue, instead store pointers to message ==> avoid one copy (currently 2-copy)
-// TODO far future: use rdma to allow zero-copy ==> store large data structures in specific pages; when sending the message, unmap the page and remap into receiver
 
 pub fn init_queue() {
     let mailbox_start = USER_SPACE_MAILBOX_START as *const u8;
@@ -221,17 +113,6 @@ pub fn init_queue() {
     unsafe { 
         ipc_queue_ptr.write(IpcQueue::new());
     }
-}
-
-pub fn send_small(pid: Uuid, tid: usize, message: u64) -> SyscallResult {
-    let (pid1, pid2) = pid.as_u64_pair();
-    syscall(SystemCall::IpcSendSmall, &[pid1 as usize, pid2 as usize, tid, message as usize])
-}
-
-pub fn receive_small() -> Option<u64> {
-    //let distributer = unsafe { (USER_SPACE_MAILBOX_START as *mut IpcMailboxDistributer).read() };
-    let small_msg_ringbuffer = unsafe { (USER_SPACE_MAILBOX_START as *const &mut IpcSmallMessageRingbuffer).read() };
-    small_msg_ringbuffer.receive()
 }
 
 pub fn send(pid: Uuid, tid: usize, message: &[u8]) -> SyscallResult {
@@ -248,23 +129,9 @@ pub fn receive() -> Option<IpcMessageData> {
     ipc_queue.and_then(|iq| iq.receive())
 }
 
-pub fn receive_next() -> Option<IpcMessage2> {
-    /*
-    let handles = unsafe { &*(USER_SPACE_MAILBOX_START as *const IpcQueueHandles) };
-    handles.receiver.lock().dequeue()
-     */
-    None
-}
-
-pub fn receive_next_blocking(timeout_ms: usize) -> Result<IpcMessage2, syscall::return_vals::Errno> {
-    /*
+pub fn receive_blocking(timeout_ms: usize) -> Result<IpcMessageData, syscall::return_vals::Errno> {
     match syscall(SystemCall::IpcReceiveBlocking, &[timeout_ms]) {
-        Ok(_) => {
-            let handles = unsafe { &*(USER_SPACE_MAILBOX_START as *const IpcQueueHandles) };
-            handles.receiver.lock().dequeue().ok_or(syscall::return_vals::Errno::EEXIST)
-        },
+        Ok(_) => receive().ok_or(syscall::return_vals::Errno::EEXIST),
         Err(e) => Err(e),
     }
-     */
-    Err((-1).into())
 }
