@@ -1,40 +1,32 @@
 use core::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
-use concurrent::ipc::{IpcMailboxDistributer, IpcMessage2, IpcSmallMessageRingbuffer};
+use concurrent::ipc::{IpcMailboxDistributer, IpcMessage2, IpcQueue, IpcSmallMessageRingbuffer};
 use spin::{Mutex, Once};
 use syscall::return_vals::{self, SyscallResult};
 use uuid::Uuid;
 
-use crate::{consts, process::core_local_storage::scheduler, sync::wait_queue::{self, WaitQueue}, timer};
+use crate::{consts, process::core_local_storage::scheduler, sync::wait_queue::WaitQueue};
 
 static WAIT_QUEUE: WaitQueue = WaitQueue::new();
 
-pub extern "sysv64" fn sys_ipc_send(pid1: u64, pid2: u64, tid: usize, message_addr: usize) -> isize {
-
-    /*
+pub extern "sysv64" fn sys_ipc_send(pid1: u64, pid2: u64, tid: usize, msg_ptr: *const u8, msg_len: usize) -> isize {
     
-
     let pid = Uuid::from_u64_pair(pid1, pid2);
 
-    // TODO find process + thread globally (using name service etc.)
     if let Some(thread) = scheduler().thread(tid) {
-        if let Some(mailbox_addr_phys) = thread.process().virtual_address_space.get_phys(consts::USER_SPACE_MAILBOX_START as u64) {
-            let handles_ptr_ptr = mailbox_addr_phys.as_u64() as *mut *const IpcQueueHandles;
-            let handles_ptr_virt = unsafe { *handles_ptr_ptr };
-            if let Some(handles_addr_phys) = thread.process().virtual_address_space.get_phys(handles_ptr_virt as u64) {
-                let handles_ptr_phys = handles_addr_phys.as_u64() as *const IpcQueueHandles;
-                let handles = unsafe { handles_ptr_phys.as_ref().unwrap() };
-                let message = unsafe { *(message_addr as *const IpcMessage) };
-                todo!("Messagequeue müsste eingemappt werden");
-                // TODO die queue implementierung benutzt intern virtuelle addressen -> kann nicht von einem anderen process benutzt werden
-                handles.sender.enqueue(message);
-                handles.num_messages.fetch_add(1, Ordering::SeqCst);
-                return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(0))
+        let vas = &thread.process().virtual_address_space;
+        if let Some(ipc_queue_ptr) = vas.translate_ptr_mut(consts::USER_SPACE_MAILBOX_START as *mut IpcQueue) {
+            if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_mut() } {
+            
+                let message = unsafe { core::slice::from_raw_parts(msg_ptr, msg_len) };
+                let res = ipc_queue.send(message);
+
+                if res {
+                    return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(message.len()));
+                }   
             }
-        }
+        }        
     }
-    
-     */
 
     return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(return_vals::Errno::EEXIST))
 }
