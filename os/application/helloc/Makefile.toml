@@ -34,7 +34,7 @@ alias = "link"
 
 [tasks.compile]
 command = "cargo"
-args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+args = [ "build", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "-Z", "json-target-spec", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
 condition = { files_modified = { input = [
     "${CARGO_MAKE_WORKING_DIRECTORY}/Cargo.toml", "${SOURCE_DIRECTORY}/**/*.rs",
     "${CARGO_MAKE_WORKING_DIRECTORY}/Cargo.toml", "${SOURCE_DIRECTORY}/**/*.c",
@@ -71,11 +71,11 @@ condition = { files_modified = { input = [ "${BUILD_DIRECTORY}/lib${CARGO_MAKE_P
 
 [tasks.check]
 command = "cargo"
-args = [ "check", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+args = [ "check", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "-Z", "json-target-spec", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
 
 [tasks.clippy]
 command = "cargo"
-args = [ "clippy", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
+args = [ "clippy", "-Z", "build-std=core,alloc", "-Z", "build-std-features=compiler-builtins-mem", "-Z", "json-target-spec", "--target", "${CARGO_CFG_TARGET_FAMILY}", "${CARGO_BUILD_OPTION}" ]
 
 # Cleanup tasks
 

@@ -7,14 +7,12 @@
    ║ Author: Fabian Ruhland & Michael Schoettner, HHU                        ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-
 use crate::device::apic::get_cpu_count;
-use crate::process::core_local_storage::{init_gdt_for_this_core, install_gs_base, local_apic_static, scheduler, scheduler_start};
-use crate::syscall::sys_time::sys_get_system_time;
+use crate::process::core_local_storage::{init_gdt_for_this_core, install_gs_base, scheduler, scheduler_start};
 use crate::{consts, ipi, per_cpu_init};
 use crate::device::pit::Timer;
 use crate::device::ps2::{Keyboard, Mouse};
-use crate::device::{virtio};
+use crate::device::{cpu, virtio};
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
@@ -40,7 +38,7 @@ use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
-use log::{trace, debug, info, warn, LevelFilter};
+use log::{info, warn, LevelFilter};
 use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
 use uefi::data_types::Handle;
 use uefi::mem::memory_map::MemoryMap;
@@ -95,25 +93,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     info!("Initializing GDT");
     init_gdt();
 
-    // Enable FSGSBASE
-    info!("Enabling FSGSBASE instructions");
-    unsafe {
-        Cr4::update(|flags| flags.insert(Cr4Flags::FSGSBASE));
-    }
-
-    // and initialize kernel heap, after which formatted strings may be used in logs and panics.
-    info!("Initializing kernel heap");
-    let heap_region = dram::boot_alloc(consts::KERNEL_HEAP_PAGES).expect("Failed to allocate kernel heap frames!");
-    dram::insert_reserved(heap_region);
-    unsafe {
-        allocator().init(&heap_region);
-    }
-    info!("Kernel heap region:  [{:#x} - {:#x}], #frames: [{}]", 
-        heap_region.start.start_address().as_u64(), 
-        heap_region.end.start_address().as_u64(),
-        consts::KERNEL_HEAP_PAGES,
-    );
-
     // The bootloader marks the kernel image region as available, so we need to mark it manually as reserved
     // And also the AP boot Region
     let kernel_image_region = kernel_image_region();
@@ -146,7 +125,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         initrd_region.len()
     );
 
-    // and finally the same for the multiboot region
+    // also the multiboot region
     let multiboot_region = get_multiboot_frames(&multiboot);
     dram::insert_reserved(multiboot_region);
     info!(
@@ -156,15 +135,52 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         multiboot_region.len()
     );
 
+    // and finally the same for the framebuffer
+    let fb_info = multiboot
+        .framebuffer_tag()
+        .expect("No framebuffer information provided by bootloader!")
+        .expect("Unknown framebuffer type!");
+    let fb_start_phys_addr = fb_info.address();
+    let fb_end_phys_addr = fb_start_phys_addr + (fb_info.height() * fb_info.pitch()) as u64;
+    dram::insert_reserved(PhysFrameRange {
+        start: PhysFrame::containing_address(PhysAddr::new(fb_start_phys_addr)),
+        end: PhysFrame::containing_address(PhysAddr::new(fb_end_phys_addr - 1)),
+    });
+    info!(
+        "framebuffer region: [Start: {:#x}, End: {:#x}] ({}x{})",
+        fb_start_phys_addr,
+        fb_end_phys_addr,
+        fb_info.width(),
+        fb_info.height(),
+    );
+
     // Remove all reserved regions from the free regions in 'dram'
     dram::finalize();
-
     // Dump information about available and reserved memory regions
     dram::dump();
 
-    // Initialize the page frame allocator
+    // now that we know which memory is in use (minus the devices),
+    // we can allocate memory for the kernel heap
+    info!("Initializing kernel heap");
+    let heap_region = dram::boot_alloc(consts::KERNEL_HEAP_PAGES)
+        .expect("Failed to allocate kernel heap frames!");
+    unsafe {
+        allocator().init(&heap_region);
+    }
+    info!("Kernel heap region:  [{:#x} - {:#x}], #frames: [{}]",
+        heap_region.start.start_address().as_u64(),
+        heap_region.end.start_address().as_u64(),
+        consts::KERNEL_HEAP_PAGES,
+    );
+
+    // with a heap, we can initialize the page frame allocator
     memory::init();
     memory::dump();
+
+    // Enable required CPU extensions
+    info!("Enabling SIMD and FSGSBASE instructions");
+    cpu::enable_simd();
+    cpu::enable_fsgsbase();
   
     // Initialize CPU information
     init_cpu_info();
@@ -186,15 +202,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     }
 
     // Map the framebuffer, needed for text output of the terminal
-    let fb_info = multiboot
-        .framebuffer_tag()
-        .expect("No framebuffer information provided by bootloader!")
-        .expect("Unknown framebuffer type!");
-    let fb_start_phys_addr = fb_info.address();
-    let fb_end_phys_addr = fb_start_phys_addr + (fb_info.height() * fb_info.pitch()) as u64;
-    
     sys_vmem::init_fb_info(&fb_info);
-
     kernel_process.virtual_address_space.kernel_map_devm_identity(
         fb_start_phys_addr,
         fb_end_phys_addr,
@@ -202,14 +210,6 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         VmaType::DeviceMemory,
         "framebuffer",
     );
-    info!(
-        "framebuffer region: [Start: {:#x}, End: {:#x}] ({}x{})",
-        fb_start_phys_addr,
-        fb_end_phys_addr,
-        fb_info.width(),
-        fb_info.height(),
-        );
-
     // Initialize lfb info (For terminal_emulator)
     init_lfb_info(fb_info.address(), fb_info.pitch(), fb_info.width(), fb_info.height(), fb_info.bpp());
     // Initialize framebuffer (For window_manager)
@@ -631,7 +631,6 @@ fn kernel_cr3() -> *mut u64 {
 }
 
 fn ap_boot_region() -> PhysFrameRange {
-
     let start = PhysFrame::from_start_address(PhysAddr::new(boot_ap_start() as u64))
         .expect("AP boot code is not page aligned");
     let end = PhysFrame::from_start_address(PhysAddr::new(boot_ap_end() as u64)

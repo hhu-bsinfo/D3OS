@@ -25,11 +25,11 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use crate::process::thread::{Thread, ThreadState};
-use crate::{allocator, apic, per_cpu_ref, process_manager, timer, tss};
+use crate::{allocator, apic, per_cpu_ref, timer, tss};
 use alloc::collections::VecDeque;
 use alloc::string::String;
 use alloc::sync::Arc;
-use alloc::{format, vec};
+use alloc::{vec};
 use alloc::vec::Vec;
 use syscall::return_vals::Errno;
 use uuid::Uuid;
@@ -43,6 +43,7 @@ use log::{debug, info};
 use smallmap::Map;
 use spin::{Mutex, MutexGuard, Once};
 use thingbuf::mpsc::{Sender};
+use x86_64::registers::control::{Cr0, Cr0Flags};
 use crate::device::apic::get_apic_id;
 use crate::device::cpu::{disable_int_nested, enable_int_nested};
 use crate::ipi::send_fixed_to_apic;
@@ -96,6 +97,7 @@ pub fn cpu_count() -> u32 {
 /// Everything related to the threads in ready state in the scheduler
 pub struct ReadyState {
     initialized: bool,
+    last_fpu_thread: Option<Arc<Thread>>,
     current_thread: Option<Arc<Thread>>,
     ready_queue: VecDeque<Arc<Thread>>,
     idle_thread: Arc<Thread>
@@ -110,10 +112,11 @@ impl ReadyState {
         let idle_thread = Thread::new_kernel_thread(idle_thread, "idle");
 
         Self {
-            initialized: initialized,
-            current_thread: current_thread,
-            ready_queue: ready_queue,
-            idle_thread: idle_thread,
+            initialized,
+            last_fpu_thread: None,
+            current_thread,
+            ready_queue,
+            idle_thread,
         }
     }
 }
@@ -151,11 +154,11 @@ impl Scheduler {
         let has_started = false;
 
         Self {
-            ready_state: ready_state,
-            sleep_list: sleep_list,
-            blocked_list: blocked_list,
-            join_map: join_map,
-            has_started: has_started,
+            ready_state,
+            sleep_list,
+            blocked_list,
+            join_map,
+            has_started,
         }
     }
 
@@ -738,6 +741,26 @@ impl Scheduler {
         }
     }
 
+    pub fn switch_fpu_context(&self) {
+        let mut state = self.ready_state.lock();
+        let current = state.current_thread.as_ref().unwrap();
+
+        unsafe { asm!("clts"); }
+
+        if state.last_fpu_thread.is_some() {
+            let last = state.last_fpu_thread.as_ref().unwrap();
+            last.store_fpu_context();
+
+            if current.id() != last.id() {
+                last.store_fpu_context();
+            }
+
+            current.restore_fpu_context();
+        }
+
+        state.last_fpu_thread = Some(Arc::clone(current));
+    }
+
     /// Checks whether the current core should balance its threads.
     /// returns own_threads > (nbr_threads /nbr_cpus +1)
     fn should_balance_now(&self) -> bool {
@@ -768,6 +791,15 @@ impl Scheduler {
                     // Move one thread from the tail to the target
                     let thread_opt = self.pop_last(state);
                     if let Some(thread) = thread_opt {
+                        // Check if the migrating thread is the last thread on this core that has used the FPU.
+                        // If so, we need to reset `last_fpu_thread` to None.
+                        // We do not need to store the FPU context of the migrating thread,
+                        // as we always take a thread from the ready queue and never the current thread.
+                        if state.last_fpu_thread.is_some() {
+                            if state.last_fpu_thread.as_ref().unwrap().id() == thread.id() {
+                                state.last_fpu_thread = None;
+                            }
+                        }
                         let _tid = thread.id();
                         let w = MessageItem::new_thread(thread);
                         dec_rq_len();
@@ -1149,6 +1181,7 @@ pub fn drain_inbox_into_ready(max: usize, state: &mut ReadyState) {
         match cls().try_recv() {
             Ok(Some(item)) => match item {
                 MessageItem::Thread(thread) => {
+
                     state.ready_queue.push_front(thread);
                     inc_rq_len();
                     drained_threads += 1;
@@ -1210,6 +1243,8 @@ pub fn read_rq_len_remote(target_id: usize) -> u32 {
 extern "sysv64" fn idle_thread () -> () {   //should never return but new_kernel_thread requires it
     loop {
         scheduler().look_for_overloaded_core();
-        unsafe { asm!("hlt"); }
+        unsafe {
+            asm!("hlt");
+        }
     }
 }

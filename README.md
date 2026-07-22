@@ -18,7 +18,7 @@
 
 For building D3OS, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
 ```bash
-apt install rustup build-essential nasm dosfstools wget qemu-system-x86
+apt install rustup build-essential nasm dosfstools fdisk wget qemu-system-x86
 ```
 
 This has been tested on Ubuntu 24.04.

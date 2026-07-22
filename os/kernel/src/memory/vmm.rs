@@ -36,12 +36,13 @@
    ║   - pfr_from_pr_identity      get pfr range from page range identity    ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Fabian Ruhland and Michael Schoettner                           ║
-   ║         Univ. Duesseldorf, 2.4.2026                                     ║
+   ║         Univ. Duesseldorf, 6.7.2026                                     ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
+use log::error;
 use uuid::Uuid;
 use core::ops::{Add, Range};
 use log::{info, warn};
@@ -254,13 +255,15 @@ impl VirtualAddressSpace {
         // Check predecessor or exact same-start VMA.
         if let Some((_, prev)) = vmas.range(..=new_vma_start_addr).next_back() {
             if prev.end() > new_vma_start_addr {
+                error!("allocation failed: {new_vma:?} overlaps {prev:?}");
                 return None;
             }
         }
 
         // Check successor.
-        if let Some((next_start, _next)) = vmas.range(new_vma_start_addr..).next() {
+        if let Some((next_start, next)) = vmas.range(new_vma_start_addr..).next() {
             if new_vma_end_addr > *next_start {
+                error!("allocation failed: {new_vma:?} overlaps {next:?}");
                 return None;
             }
         }
@@ -596,25 +599,37 @@ impl VirtualAddressSpace {
         }
     }
 
-    /// Check if the given `address` is within a VMA of the given type `vma_type` in this address space.
-    /// Helper function using in interrupt_dispatcher.rs to check if a page fault address is within a stack or heap VMA.
-    pub fn is_address_within_vma(&self, address: u64, vma_type: VmaType) -> Option<Arc<VirtualMemoryArea>> {
+    /// Get the VMA containing the given `address`, independent of the VMA type.
+    pub fn vma_for_address(&self, address: u64) -> Option<Arc<VirtualMemoryArea>> {
         let areas = self.virtual_memory_areas.read();
-        let vaddr = VirtAddr::new(address); // or however you construct a VirtAddr from u64
+        let vaddr = VirtAddr::new(address);
 
         // Find the closest VMA with start <= address
         if let Some((_, vma)) = areas.range(..=vaddr).next_back() {
-            if vaddr < vma.end() && vma.typ == vma_type {
+            if vaddr < vma.end() {
                 return Some(Arc::clone(vma));
             }
         }
+
         None
     }
 
-    /// unmap VMA in this adress space
+    /// Check if the given `address` is within a VMA of the given type `vma_type` in this address space.
+    pub fn is_address_within_vma(&self, address: u64, vma_type: VmaType) -> Option<Arc<VirtualMemoryArea>> {
+        let vma = self.vma_for_address(address)?;
+
+        if vma.typ == vma_type {
+            Some(vma)
+        } else {
+            None
+        }
+    }
+
+    /// unmap VMA in this adress space 
     /// set free_physical to free the frames
-    pub fn unmap_vma(&self, vma: Arc<VirtualMemoryArea>, free_physical: bool) {
+    pub fn unmap_vma(&self, vma:Arc<VirtualMemoryArea>, free_physical:bool) {
         self.page_tables.unmap(vma.range, free_physical);
+        self.virtual_memory_areas.write().remove(&vma.start());
     }
 }
 

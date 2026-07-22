@@ -34,7 +34,7 @@ concurrent = { path = "../library/concurrent", default-features = false }
 # External depencies
 spin = "0.9.8"
 x86_64 = "0.15.2"
-linked_list_allocator = { version = "0.10.5", features = ["alloc_ref"] }
+linked_list_allocator = { version = "0.10.6", features = ["alloc_ref"] }
 multiboot2 = "0.23.1"
 ps2 = { git = "https://github.com/lnx00/ps2-rs.git" }
 pc-keyboard = "0.8.0"

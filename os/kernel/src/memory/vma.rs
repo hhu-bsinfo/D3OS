@@ -117,13 +117,13 @@ impl fmt::Debug for VirtualMemoryArea {
 
         write!(
             f,
-            "VMA: Space: {:?}, Type: {:?}, [0x{:x}; 0x{:x}], #pages: {}, tag: {:?}",
+            "VMA {:?}: {:?}, {:?}, [0x{:x}; 0x{:x}], {} pages",
+            tag_str,
             self.space,
             self.typ,
             self.range.start.start_address().as_u64(),
             self.range.end.start_address().as_u64(),
             (self.range.end.start_address().as_u64() - self.range.start.start_address().as_u64()) / PAGE_SIZE as u64,
-            tag_str
         )
     }
 }

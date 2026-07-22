@@ -16,4 +16,4 @@ syscall = { path = "../syscall" }
 concurrent = { path = "../concurrent" }
 
 # External dependencies
-linked_list_allocator = { version = "0.10.5", features = ["alloc_ref"] }
+linked_list_allocator = { version = "0.10.6", features = ["alloc_ref"] }

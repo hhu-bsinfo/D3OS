@@ -10,7 +10,7 @@
  **********************************************************************/
 
 use bitfield_struct::bitfield;
-use core::intrinsics::{volatile_load, volatile_store};
+use core::ptr::{read_volatile, write_volatile};
 use raw_cpuid::CpuId;
 use x86_64::registers::model_specific::Msr;
 
@@ -29,14 +29,14 @@ pub const APIC_BASE:u32 = 0xfee00000;
 // read register
 //
 pub fn read_reg32(reg: u32) -> u32 {
-	unsafe {volatile_load((APIC_BASE + reg) as *const u32)}
+	unsafe { read_volatile((APIC_BASE + reg) as *const u32) }
 }
 
 //
 // Write register
 //
 pub fn write_reg32(reg: u32, value: u32) {
-	unsafe {volatile_store((APIC_BASE + reg) as *mut u32, value)};
+	unsafe { write_volatile((APIC_BASE + reg) as *mut u32, value) };
 }
 
 fn cpu_has_x2apic() -> bool {

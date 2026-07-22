@@ -8,16 +8,9 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![feature(allocator_api)]
-#![feature(alloc_layout_extra)]
-#![feature(fmt_internals)]
 #![feature(abi_x86_interrupt)]
 #![feature(map_try_insert)]
-#![feature(str_split_remainder)]
-#![allow(internal_features)]
 #![no_std]
-
-// For ipi.rs volatile_load and volatile_store
-#![feature(core_intrinsics)]
 
 use crate::device::apic::Apic;
 use crate::device::cpu::Cpu;

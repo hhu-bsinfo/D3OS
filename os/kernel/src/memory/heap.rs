@@ -48,7 +48,7 @@ impl KernelAllocator {
 unsafe impl Allocator for KernelAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         if layout.size() == 0 {
-            return Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0));
+            return Ok(NonNull::slice_from_raw_parts(layout.dangling_ptr(), 0));
         }
 
         match self.heap.lock().allocate_first_fit(layout) {
