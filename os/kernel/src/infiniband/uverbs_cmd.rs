@@ -1,8 +1,9 @@
 use alloc::vec::Vec;
 use rdma::uverbs_uapi::{ibv_cq_container, ibv_mr_res, ibv_qp_container, ibv_qp_modify_container, ibv_qp_post_recv_container, ibv_qp_post_send_container};
 use rdma::{ibv_access_flags, ibv_device, ibv_device_attr, ibv_port_attr, ibv_wc};
-
-use crate::device::mlx4::{get_dev_list, minor_to_idx, ConnectX3Nic};
+use rdma::ibv_qp_type::Type;
+use crate::device::mlx4::{get_dev_list, minor_to_idx, AccessFlags, ConnectX3Nic};
+use crate::device::mlx4::queue_pair::{QueuePairCapabilities, QueuePairType};
 
 pub fn uverbs_query_devices(max_len: usize) -> Vec<ibv_device> {
     get_dev_list().lock().iter()
@@ -24,6 +25,8 @@ pub fn uverbs_query_port(minor: usize, port_num: u8) -> Result<ibv_port_attr, &'
 }
 
 pub fn uverbs_register_mem_region(minor: usize, access_flags: ibv_access_flags, user_data_ref: &mut [u8]) -> Result<ibv_mr_res, &'static str> {
+    // TODO this assumes that ibv_access_flags and AccessFlags have the same bit layout
+    let access_flags = AccessFlags::from_bits(access_flags.bits()).ok_or("Invalid access flags for uverbs")?;
     get_dev_list().lock().get_mut(minor_to_idx(minor)).unwrap()
         .create_mr(user_data_ref, access_flags)
         .map(ibv_mr_res::from)
@@ -40,11 +43,24 @@ pub fn uverbs_create_cq<'cq>(minor: usize, cq_container: &'cq mut ibv_cq_contain
 }
 
 pub fn uverbs_create_qp<'qp>(minor: usize, qp_container: &'qp mut ibv_qp_container) -> Result<&'qp u32, &'static str> {
+    let qp_type: QueuePairType = match qp_container.qp_type {
+        Type::IBV_QPT_RC => QueuePairType::ReliableConnection,
+        Type::IBV_QPT_UC => QueuePairType::UnreliableConnection,
+        Type::IBV_QPT_UD => QueuePairType::UnreliableDatagram,
+        _ => return Err("unsupported qp type"),
+    };
+
+    let mut caps: QueuePairCapabilities = QueuePairCapabilities {
+        max_send_wr: qp_container.ib_caps.max_send_wr,
+        max_recv_wr: qp_container.ib_caps.max_recv_wr,
+        max_send_sge: qp_container.ib_caps.max_send_sge,
+        max_recv_sge: qp_container.ib_caps.max_recv_sge,
+        max_inline_data: qp_container.ib_caps.max_inline_data,
+    };
+
     let number = get_dev_list().lock()
         .get_mut(minor_to_idx(minor)).unwrap()
-        .create_qp(qp_container.qp_type, qp_container.send_cq_num, qp_container.recv_cq_num, unsafe {
-            qp_container.ib_caps.as_mut().unwrap()
-        })?;
+        .create_qp(qp_type, qp_container.send_cq_num, qp_container.recv_cq_num, &mut caps)?;
 
     qp_container.qp_num = number;
     Ok(&qp_container.qp_num)

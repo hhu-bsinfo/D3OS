@@ -11,7 +11,7 @@ mod fw;
 mod icm;
 mod port;
 mod profile;
-mod queue_pair;
+pub mod queue_pair;
 mod utils;
 
 use alloc::vec::Vec;
@@ -23,11 +23,11 @@ use icm::MappedIcmTables;
 use log::trace;
 use pci_types::{CommandRegister, EndpointHeader};
 
-use rdma::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_type, ibv_recv_wr, ibv_send_wr, ibv_wc};
+use rdma::{ibv_access_flags, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_type, ibv_recv_wr, ibv_send_wr, ibv_wc};
 
 use crate::pci_bus;
 use port::Port;
-use queue_pair::QueuePair;
+use queue_pair::{QueuePair, QueuePairType};
 use spin::{Mutex, Once, RwLock};
 use utils::MappedPages;
 
@@ -37,6 +37,9 @@ use profile::Profile;
 
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
+use bitflags::bitflags;
+use rdma::ibv_device_attr;
+use crate::device::mlx4::queue_pair::QueuePairCapabilities;
 
 /// Vendor ID for Mellanox
 pub const MLX_VEND: u16 = 0x15b3;
@@ -72,6 +75,21 @@ fn next_minor() -> usize {
 /// List of all initialized ConnectX-3 NICs
 pub fn get_dev_list() -> &'static Mutex<Vec<ConnectX3Nic>> {
     DEV_LIST.call_once(|| Mutex::new(Vec::with_capacity(devices_supported())))
+}
+
+bitflags! {
+    #[derive(Default, Clone, Copy)]
+    pub struct AccessFlags: i32 {
+        const LOCAL_WRITE = 1;
+        const REMOTE_WRITE = 2;
+        const REMOTE_READ = 4;
+        const REMOTE_ATOMIC = 8;
+        const MW_BIND = 16;
+        const ZERO_BASED = 32;
+        const ON_DEMAND = 64;
+        const HUGETLB = 128;
+        const RELAXED_ORDERING = 1048576;
+    }
 }
 
 /// Struct representing a ConnectX-3 card
@@ -259,7 +277,7 @@ impl ConnectX3Nic {
     ///
     /// This is used by ibv_create_qp.
     pub fn create_qp(
-        &mut self, qp_type: ibv_qp_type::Type, send_cq_number: u32, receive_cq_number: u32, ib_caps: &mut ibv_qp_cap,
+        &mut self, qp_type: QueuePairType, send_cq_number: u32, receive_cq_number: u32, ib_caps: &mut QueuePairCapabilities,
     ) -> Result<u32, &'static str> {
         let send_cq = self
             .cqs
@@ -327,7 +345,7 @@ impl ConnectX3Nic {
     /// Create a memory region and return its index, physical address, lkey and rkey.
     ///
     /// This is used by ibv_reg_mr.
-    pub fn create_mr<T>(&mut self, data: &mut [T], access: ibv_access_flags) -> Result<(u32, usize, u32, u32), &'static str> {
+    pub fn create_mr<T>(&mut self, data: &mut [T], access: AccessFlags) -> Result<(u32, usize, u32, u32), &'static str> {
         // TODO: this fails for large memory regions (>= 64 MB)
         self.icm_tables.memory_regions().alloc_dmpt(
             &mut self.cmd,

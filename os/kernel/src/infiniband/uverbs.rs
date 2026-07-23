@@ -134,21 +134,12 @@ pub fn uverbs_ctl(minor: usize, cmd: usize, arg: usize) -> SyscallResult {
             let __user_qp_num = unsafe { __user_buf.cast::<u8>().add(__user_qp_num_off) };
 
             let mut __kernel_qp_container = ibv_qp_container::default();
-            let mut __kernel_ib_caps = ibv_qp_cap::default();
 
             unsafe { copy_nonoverlapping(
                 __user_buf.cast(),
                 &mut __kernel_qp_container as *mut ibv_qp_container as *mut u8,
                 size.into(),
             ) };
-
-            unsafe {copy_nonoverlapping(
-                __kernel_qp_container.ib_caps.cast(),
-                &mut __kernel_ib_caps as *mut ibv_qp_cap as *mut u8,
-                ibv_qp_container::S,
-            ) };
-
-            __kernel_qp_container.ib_caps = &mut __kernel_ib_caps;
 
             let qp_num_ref = uverbs_create_qp(minor, &mut __kernel_qp_container).map_err(|_| Errno::EINVAL)?;
             unsafe { copy_nonoverlapping(qp_num_ref as *const u32 as *const u8, __user_qp_num, size_of::<u32>()) };

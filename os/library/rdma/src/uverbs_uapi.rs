@@ -178,7 +178,7 @@ pub struct ibv_qp_container {
     pub qp_type: ibv_qp_type::Type,
     pub send_cq_num: u32,
     pub recv_cq_num: u32,
-    pub ib_caps: *mut ibv_qp_cap,
+    pub ib_caps: ibv_qp_cap,
     pub qp_num: u32
 }
 
