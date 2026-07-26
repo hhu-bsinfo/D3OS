@@ -37,7 +37,7 @@ pub fn uverbs_ctl(minor: usize, cmd: UverbsCmd, user_memory_addr: *const UserMem
     let process = process_manager().read().current_process();
     let mut user_memory = MaybeUninit::<UserMemory>::uninit();
     unsafe { process.virtual_address_space.copy_bytes_from_user(user_memory.as_mut_ptr() as *mut u8, VirtAddr::from_ptr(user_memory_addr), size_of::<UserMemory>()) }
-        .map_err(|e| Errno::EINVAL)?;
+        .map_err(log_error_and_invalid)?;
     let user_memory: UserMemory = unsafe { user_memory.assume_init() };
     debug!("Uverbs user memory: {:?}", user_memory);
 
@@ -48,34 +48,34 @@ pub fn uverbs_ctl(minor: usize, cmd: UverbsCmd, user_memory_addr: *const UserMem
             copy_slice_to_user(user_memory, &devices)
         }
         UverbsCmd::QueryDevice => {
-            let dev_attr = uverbs_query_device(minor).map_err(|_| Errno::EINVAL)?;
+            let dev_attr = uverbs_query_device(minor).map_err(log_error_and_invalid)?;
             copy_to_user(user_memory, &dev_attr)
         }
         UverbsCmd::QueryPort => {
             let mut req: QueryPortRequest = copy_from_user(user_memory)?;
-            let port_attr = uverbs_query_port(minor, req.port_num).map_err(|_| Errno::EINVAL)?;
+            let port_attr = uverbs_query_port(minor, req.port_num).map_err(log_error_and_invalid)?;
             copy_to_user(user_memory, &port_attr)
         }
         UverbsCmd::RegMr => {
             let mut req: CreateMrRequest = copy_from_user(user_memory)?;
             // todo: use a custom type like UserSlice instead of slice
             let user_slice = unsafe { from_raw_parts_mut(req.data_ptr, req.len) };
-            let resp = uverbs_register_mem_region(minor, req.ibv_access_flags, user_slice).map_err(|_| Errno::EINVAL)?;
+            let resp = uverbs_register_mem_region(minor, req.ibv_access_flags, user_slice).map_err(log_error_and_invalid)?;
             copy_to_user(user_memory, &resp)
         }
         UverbsCmd::CreateCq => {
             let req: CreateCqRequest = copy_from_user(user_memory)?;
-            let resp = uverbs_create_cq(minor, &req).map_err(|_| Errno::EINVAL)?;
+            let resp = uverbs_create_cq(minor, &req).map_err(log_error_and_invalid)?;
             copy_to_user(user_memory, &resp)
         }
         UverbsCmd::CreateQp => {
             let req: CreateQpRequest = copy_from_user(user_memory)?;
-            let qp_num = uverbs_create_qp(minor, &req).map_err(|_| Errno::EINVAL)?;
+            let qp_num = uverbs_create_qp(minor, &req).map_err(log_error_and_invalid)?;
             copy_to_user(user_memory, &qp_num)
         }
         UverbsCmd::ModifyQp => {
             let req: ModifyQpRequest = copy_from_user(user_memory)?;
-            uverbs_modify_qp(minor, req).map_err(|_| Errno::EINVAL)?;
+            uverbs_modify_qp(minor, req).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::PollCq => {
@@ -83,7 +83,7 @@ pub fn uverbs_ctl(minor: usize, cmd: UverbsCmd, user_memory_addr: *const UserMem
             let wc_len = user_memory.out_size as usize / size_of::<ibv_wc>();
             let supported_len = wc_len.min(UVERBS_MAX_USER_WC_REQ);
             let mut wc_buf = Vec::with_capacity(supported_len);
-            let wc_count = uverbs_poll_cq(minor, req.cq_num, &mut wc_buf).map_err(|_| Errno::EINVAL)?;
+            let wc_count = uverbs_poll_cq(minor, req.cq_num, &mut wc_buf).map_err(log_error_and_invalid)?;
             copy_slice_to_user(user_memory, &wc_buf[..wc_count])
         }
         // for now we just check the ibv_send_wr struct, not the internal pointers it points to which
@@ -91,34 +91,39 @@ pub fn uverbs_ctl(minor: usize, cmd: UverbsCmd, user_memory_addr: *const UserMem
         UverbsCmd::OpPostSend => {
             let buf = copy_vec_from_user(user_memory)?;
             let (req,_): (PostSendRequest, usize)  = bincode::decode_from_slice(&buf, bincode::config::standard()).map_err(|_| Errno::EINVAL)?;
-            uverbs_post_send(minor, &req).map_err(|_| Errno::EINVAL);
+            uverbs_post_send(minor, &req).map_err(log_error_and_invalid);
             Ok(0)
         }
         // same as above
         UverbsCmd::OpPostRecv => {
             let buf = copy_vec_from_user(user_memory)?;
             let (req,_): (PostReceiveRequest, usize) = bincode::decode_from_slice(&buf, bincode::config::standard()).map_err(|_| Errno::EINVAL)?;
-            uverbs_post_recv(minor, &req).map_err(|_| Errno::EINVAL);
+            uverbs_post_recv(minor, &req).map_err(log_error_and_invalid);
             Ok(0)
         }
         UverbsCmd::DestroyCq => {
             let cq_num: u32 = copy_from_user(user_memory)?;
-            uverbs_destroy(minor, ConnectX3Nic::destroy_cq, cq_num).map_err(|_| Errno::EINVAL)?;
+            uverbs_destroy(minor, ConnectX3Nic::destroy_cq, cq_num).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::DestroyQp => {
             let qp_num: u32 = copy_from_user(user_memory)?;
-            uverbs_destroy(minor, ConnectX3Nic::destroy_qp, qp_num).map_err(|_| Errno::EINVAL)?;
+            uverbs_destroy(minor, ConnectX3Nic::destroy_qp, qp_num).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::DeregMr => {
             let mr_index: u32 = copy_from_user(user_memory)?;
-            uverbs_destroy(minor, ConnectX3Nic::destroy_mr, mr_index).map_err(|_| Errno::EINVAL)?;
+            uverbs_destroy(minor, ConnectX3Nic::destroy_mr, mr_index).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::QueryQp => todo!("QueryQp"),
         UverbsCmd::SetMrSize => todo!("SetMrSize"),
     }
+}
+
+fn log_error_and_invalid(msg: &str) -> Errno {
+    error!("{}", msg);
+    Errno::EINVAL
 }
 
 #[inline]
