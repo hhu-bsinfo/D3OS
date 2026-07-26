@@ -51,7 +51,7 @@ bitflags! {
 
 #[derive(Clone, Copy)]
 pub struct ibv_device {
-    pub nic: usize,
+    pub handle: usize,
 }
 
 #[derive(Default, Clone, Copy)]

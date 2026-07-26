@@ -52,13 +52,13 @@ const IBV_CONTEXT_OPS: ibv_context_ops = ibv_context_ops {
 
 pub struct ibv_context {
     pub ops: ibv_context_ops,
-    nic: usize,
+    device_handle: usize,
 }
 
 impl ibv_context {
     /// Get access to the underlying device fd.
-    fn lock(&self) -> usize {
-        self.nic
+    fn device_handle(&self) -> usize {
+        self.device_handle
     }
 }
 
@@ -71,9 +71,9 @@ pub struct ibv_cq<'ctx> {
 
 impl Drop for ibv_cq<'_> {
     fn drop(&mut self) {
-        let dev_fd = self.context.lock();
+        let device_handle = self.context.device_handle();
         let mem = UserMemory::default().with_in_from_ref(&self.number);
-        uverbs(dev_fd, DestroyCq, &mem).expect("failed to destroy completion queue");
+        uverbs(device_handle, DestroyCq, &mem).expect("failed to destroy completion queue");
     }
 }
 
@@ -89,9 +89,9 @@ pub struct ibv_mr<'pd> {
 
 impl Drop for ibv_mr<'_> {
     fn drop(&mut self) {
-        let dev_fd = self.pd.context.lock();
+        let device_handle = self.pd.context.device_handle();
         let mem = UserMemory::default().with_in_from_ref(&self.index);
-        uverbs(dev_fd, DeregMr, &mem).expect("failed to destroy memory region");
+        uverbs(device_handle, DeregMr, &mem).expect("failed to destroy memory region");
     }
 }
 
@@ -110,9 +110,9 @@ pub struct ibv_qp<'ctx, 'cq> {
 
 impl Drop for ibv_qp<'_, '_> {
     fn drop(&mut self) {
-        let dev_fd = self.send_cq.context.lock();
+        let device_handle = self.send_cq.context.device_handle();
         let mem = UserMemory::default().with_in_from_ref(&self.qp_num);
-        uverbs(dev_fd, DestroyQp, &mem).expect("failed to destroy queue pair");
+        uverbs(device_handle, DestroyQp, &mem).expect("failed to destroy queue pair");
     }
 }
 
@@ -154,7 +154,7 @@ pub fn ibv_get_device_name(_device: &ibv_device) -> Option<String> {
 /// over netlink interface. For the unsupported kernels, the
 /// relevant error will be returned.
 pub fn ibv_get_device_index(device: &ibv_device) -> Result<i32> {
-    device.nic.try_into()
+    device.handle.try_into()
         .map_err(|x| Error::from(ErrorKind::InvalidData))
 }
 
@@ -166,17 +166,17 @@ pub fn ibv_get_device_guid(_device: &ibv_device) -> Result<__be64> {
 
 /// Initialize device for use
 pub fn ibv_open_device(device: &ibv_device) -> Result<ibv_context> {
-    Ok(ibv_context { nic: device.nic, ops: IBV_CONTEXT_OPS, })
+    Ok(ibv_context { device_handle: device.handle, ops: IBV_CONTEXT_OPS, })
 }
 
 /// Get device properties
 pub fn ibv_query_device(context: &ibv_context) -> Result<ibv_device_attr> {
-    let dev_fd = context.lock();
+    let device_handle = context.device_handle();
 
     let mut resp = MaybeUninit::<ibv_device_attr>::uninit();
 
     let mem = UserMemory::default().with_out_from_ref(&mut resp);
-    match uverbs(dev_fd, QueryDevice, &mem) {
+    match uverbs(device_handle, QueryDevice, &mem) {
         Ok(_) => Ok(unsafe { resp.assume_init() }),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
@@ -184,7 +184,7 @@ pub fn ibv_query_device(context: &ibv_context) -> Result<ibv_device_attr> {
 
 /// Get port properties
 pub fn ibv_query_port(context: &ibv_context, port_num: u8) -> Result<ibv_port_attr> {
-    let dev_fd = context.lock();
+    let device_handle = context.device_handle();
 
     let req = QueryPortRequest {
         port_num
@@ -194,7 +194,7 @@ pub fn ibv_query_port(context: &ibv_context, port_num: u8) -> Result<ibv_port_at
     let mem = UserMemory::default()
         .with_in_from_ref(&req)
         .with_out_from_ref(&mut resp);
-    match uverbs(dev_fd, QueryPort, &mem) {
+    match uverbs(device_handle, QueryPort, &mem) {
         Ok(_) => Ok(unsafe { resp.assume_init() }),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
@@ -221,7 +221,7 @@ pub fn ibv_alloc_pd(context: &ibv_context) -> Result<ibv_pd<'_>> {
 pub fn ibv_reg_mr<'pd, T>(
     pd: &'pd ibv_pd<'_>, data: &mut [T], access: ibv_access_flags,
 ) -> Result<ibv_mr<'pd>> {
-    let dev_fd = pd.context.lock();
+    let device_handle = pd.context.device_handle();
 
     let req = CreateMrRequest {
         ibv_access_flags: access,
@@ -234,7 +234,7 @@ pub fn ibv_reg_mr<'pd, T>(
     let mem = UserMemory::default()
         .with_in_from_ref(&req)
         .with_out_from_ref(&mut resp);
-    match uverbs(dev_fd, RegMr, &mem) {
+    match uverbs(device_handle, RegMr, &mem) {
         Ok(_) => {
             let CreateMrResponse { index, addr, lkey, rkey } = unsafe { resp.assume_init() };
             let length = data.len();
@@ -260,7 +260,7 @@ pub fn ibv_create_cq(
     assert!(channel.is_none());
     assert_eq!(comp_vector, 0);
 
-    let dev_fd = context.lock();
+    let device_handle = context.device_handle();
 
     let req = CreateCqRequest {
         cq_entries: cqe,
@@ -271,7 +271,7 @@ pub fn ibv_create_cq(
     let mem = UserMemory::default()
         .with_in_from_ref(&req)
         .with_out_from_ref(&mut resp);
-    match uverbs(dev_fd, CreateCq, &mem) {
+    match uverbs(device_handle, CreateCq, &mem) {
         Ok(_) => {
             let resp = unsafe { resp.assume_init() };
             Ok( ibv_cq { context, number: resp.cq_num, _cq_context: cq_context, } )
@@ -288,7 +288,7 @@ pub fn ibv_create_qp<'ctx, 'cq>(
     let recv_cq = qp_init_attr.recv_cq;
     assert!(core::ptr::eq(send_cq.context, recv_cq.context));
 
-    let dev_fd = pd.context.lock();
+    let device_handle = pd.context.device_handle();
 
     let req = CreateQpRequest {
         qp_type: qp_init_attr.qp_type,
@@ -302,7 +302,7 @@ pub fn ibv_create_qp<'ctx, 'cq>(
     let mem = UserMemory::default()
         .with_in_from_ref(&req)
         .with_out_from_ref(&mut resp);
-    match uverbs(dev_fd, CreateQp, &mem) {
+    match uverbs(device_handle, CreateQp, &mem) {
         Ok(_) => {
             let resp = unsafe { resp.assume_init() };
             Ok(ibv_qp {
@@ -321,7 +321,7 @@ pub fn ibv_create_qp<'ctx, 'cq>(
 pub fn ibv_modify_qp(
     qp: &mut ibv_qp<'_, '_>, attr: &ibv_qp_attr, attr_mask: ibv_qp_attr_mask,
 ) -> Result<()> {
-    let dev_fd = qp.recv_cq.context.lock();
+    let device_handle = qp.recv_cq.context.device_handle();
     let attr = *attr;
 
     let req = ModifyQpRequest {
@@ -331,7 +331,7 @@ pub fn ibv_modify_qp(
     };
 
     let mem = UserMemory::default().with_in_from_ref(&req);
-    match uverbs(dev_fd, ModifyQp, &mem) {
+    match uverbs(device_handle, ModifyQp, &mem) {
         Ok(_) => Ok(()),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
@@ -341,7 +341,7 @@ pub fn ibv_modify_qp(
 fn ibv_poll_cq(
     cq: &ibv_cq<'_>, wc: &mut [ibv_wc],
 ) -> Result<i32> {
-    let dev_fd = cq.context.lock();
+    let device_handle = cq.context.device_handle();
 
     let req = PollCqRequest {
         cq_num: cq.number,
@@ -350,7 +350,7 @@ fn ibv_poll_cq(
     let mem = UserMemory::default()
         .with_in_from_ref(&req)
         .with_out_from_slice(wc);
-    match uverbs(dev_fd, PollCq, &mem) {
+    match uverbs(device_handle, PollCq, &mem) {
         Ok(wc_count) => Ok(wc_count.try_into().unwrap()),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
@@ -360,7 +360,7 @@ fn ibv_poll_cq(
 unsafe fn ibv_post_send(
     qp: &mut ibv_qp<'_, '_>, wr: &mut ibv_send_wr,
 ) -> Result<()> {
-    let dev_fd = qp.send_cq.context.lock();
+    let device_handle = qp.send_cq.context.device_handle();
 
     let mut wrs = Vec::new();
     let mut cur = Some(wr);
@@ -381,7 +381,7 @@ unsafe fn ibv_post_send(
     };
 
     let mem = UserMemory::default().with_in_from_ref(&req);
-    match uverbs(dev_fd, OpPostSend, &mem) {
+    match uverbs(device_handle, OpPostSend, &mem) {
         Ok(_) => Ok(()),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
@@ -391,7 +391,7 @@ unsafe fn ibv_post_send(
 unsafe fn ibv_post_recv(
     qp: &mut ibv_qp<'_, '_>, wr: &mut ibv_recv_wr,
 ) -> Result<()> {
-    let dev_fd = qp.recv_cq.context.lock();
+    let device_handle = qp.recv_cq.context.device_handle();
 
     let mut wrs = Vec::new();
     let mut cur = Some(wr);
@@ -412,7 +412,7 @@ unsafe fn ibv_post_recv(
         .map_err(|_| Error::from(ErrorKind::Other))?;
 
     let mem = UserMemory::default().with_in_from_slice(&req_vec);
-    match uverbs(dev_fd, OpPostRecv, &mem) {
+    match uverbs(device_handle, OpPostRecv, &mem) {
         Ok(_) => Ok(()),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }

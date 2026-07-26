@@ -58,20 +58,20 @@ pub const fn devices_supported() -> usize {
 }
 
 #[inline(always)]
-pub fn device_in_range(minor: usize) -> bool {
-    (DEVICE_START..=DEVICE_END).contains(&minor)
+pub fn device_in_range(handle: usize) -> bool {
+    (DEVICE_START..=DEVICE_END).contains(&handle)
 }
 
 #[inline(always)]
-pub fn minor_to_idx(minor: usize) -> usize {
-    minor - DEVICE_START
+pub fn device_handle_to_idx(handle: usize) -> usize {
+    handle - DEVICE_START
 }
 
-static MINOR: AtomicUsize = AtomicUsize::new(DEVICE_START);
+static CURRENT_DEVICE_HANDLE: AtomicUsize = AtomicUsize::new(DEVICE_START);
 static DEV_LIST: Once<Mutex<Vec<ConnectX3Nic>>> = Once::new();
 
-fn next_minor() -> usize {
-    MINOR.fetch_add(1, Relaxed)
+fn next_device_handle() -> usize {
+    CURRENT_DEVICE_HANDLE.fetch_add(1, Relaxed)
 }
 
 /// List of all initialized ConnectX-3 NICs
@@ -111,7 +111,7 @@ pub struct ConnectX3Nic {
     cqs: Vec<CompletionQueue>,
     qps: Vec<QueuePair>,
     ports: Vec<Port>,
-    pub minor: usize,
+    pub handle: usize,
 }
 
 /// Functions that setup the struct.
@@ -122,7 +122,7 @@ impl ConnectX3Nic {
     /// # Arguments
     /// * `mlx3_pci_dev`: Contains the pci device information.
     pub fn init(mlx3_pci_dev: &RwLock<EndpointHeader>) -> Result<usize, &'static str> {
-        if MINOR.load(Relaxed) > DEVICE_END {
+        if CURRENT_DEVICE_HANDLE.load(Relaxed) > DEVICE_END {
             return Err("Max devices reached !");
         }
 
@@ -187,7 +187,7 @@ impl ConnectX3Nic {
 
         let ports = hca.init_ports(&mut cmd, &capabilities, offsets.base_qpn)?;
 
-        let minor = next_minor();
+        let handle = next_device_handle();
 
         let nic = Self {
             cmd,
@@ -204,10 +204,10 @@ impl ConnectX3Nic {
             cqs: Vec::new(),
             qps: Vec::new(),
             ports,
-            minor,
+            handle,
         };
         get_dev_list().lock().push(nic);
-        Ok(minor)
+        Ok(handle)
     }
 
     /// Get statistics about the device.
