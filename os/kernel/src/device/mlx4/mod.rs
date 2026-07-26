@@ -15,6 +15,7 @@ pub mod queue_pair;
 mod utils;
 
 use alloc::vec::Vec;
+use core::slice::Iter;
 use cmd::CommandInterface;
 use completion_queue::CompletionQueue;
 use event_queue::{EventQueue, init_eqs};
@@ -39,6 +40,7 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use bitflags::bitflags;
 use rdma::ibv_device_attr;
+use rdma::uverbs_uapi::{ReceiveWorkRequest, SendWorkRequest};
 use crate::device::mlx4::queue_pair::QueuePairCapabilities;
 
 /// Vendor ID for Mellanox
@@ -328,7 +330,7 @@ impl ConnectX3Nic {
     /// Post a work request to receive data.
     ///
     /// This is used by ibv_post_recv.
-    pub fn post_receive(&mut self, qp_number: u32, wr: &mut ibv_recv_wr) -> Result<(), &'static str> {
+    pub fn post_receive(&mut self, qp_number: u32, wr: &[ReceiveWorkRequest]) -> Result<(), &'static str> {
         let qp = self.qps.iter_mut().find(|qp| qp.number() == qp_number).ok_or("invalid queue pair number")?;
         qp.post_receive(wr)
     }
@@ -336,7 +338,7 @@ impl ConnectX3Nic {
     /// Post a work request to send data.
     ///
     /// This is used by ibv_post_send.
-    pub fn post_send(&mut self, qp_number: u32, wr: &mut ibv_send_wr) -> Result<(), &'static str> {
+    pub fn post_send(&mut self, qp_number: u32, wr: &[SendWorkRequest]) -> Result<(), &'static str> {
         let qp = self.qps.iter_mut().find(|qp| qp.number() == qp_number).ok_or("invalid queue pair number")?;
         // TODO: check if blue flame is available
         qp.post_send(&mut self.capabilities, &mut self.doorbells, Some(&mut self.blueflame), wr)

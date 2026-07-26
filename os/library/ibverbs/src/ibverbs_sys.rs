@@ -5,7 +5,9 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, string::{String, ToString}, vec::{Vec}};
+use alloc::{boxed::Box, string::{String, ToString}, vec, vec::{Vec}};
+use core::mem;
+use core::mem::MaybeUninit;
 use core3::io::{Error, ErrorKind, Result as Result};
 pub use rdma::{
     __be64, ibv_access_flags, ibv_ah_attr, ibv_device_attr, ibv_gid, ibv_mtu,
@@ -15,8 +17,14 @@ pub use rdma::{
     ibv_wr_opcode, ibv_wc, ibv_wc_opcode, ibv_wc_status,
 };
 pub(crate) use rdma::ibv_device;
-use syscall::{syscall, SystemCall::Uverb};
-use rdma::uverbs_uapi::{UVERBS_CMD_CREATE_CQ, UVERBS_CMD_CREATE_QP, UVERBS_CMD_DEREGISTER_MR, UVERBS_CMD_DESTROY_CQ, UVERBS_CMD_DESTROY_QP, UVERBS_CMD_MODIFY_QP, UVERBS_CMD_POLL_CQ, UVERBS_CMD_POST_SEND, UVERBS_CMD_QUERY_DEVICE, UVERBS_CMD_QUERY_DEVICES, UVERBS_CMD_QUERY_PORT, UVERBS_CMD_REGISTER_MR, ibv_cq_container, ibv_cq_poll_container, ibv_mr_container, ibv_mr_res, ibv_port_attr_container, ibv_qp_container, ibv_qp_modify_container, ibv_qp_post_recv_container, ibv_qp_post_send_container, UVERBS_MAX_QUERY_DEVICES_REQ};
+use rdma::uverbs_uapi::{UVERBS_CMD_CREATE_CQ, UVERBS_CMD_CREATE_QP, UVERBS_CMD_DEREGISTER_MR, UVERBS_CMD_DESTROY_CQ, UVERBS_CMD_DESTROY_QP, UVERBS_CMD_MODIFY_QP, UVERBS_CMD_POLL_CQ, UVERBS_CMD_POST_SEND, UVERBS_CMD_QUERY_DEVICE, UVERBS_CMD_QUERY_DEVICES, UVERBS_CMD_QUERY_PORT, UVERBS_CMD_REGISTER_MR, CreateCqRequest, PollCqRequest, CreateMrRequest, CreateMrResponse, QueryPortRequest, CreateQpRequest, ModifyQpRequest, PostSendRequest, UVERBS_MAX_QUERY_DEVICES_REQ, CreateCqResponse, CreateQpResponse, UVERBS_CMD_POST_RECV, ReceiveWorkRequest, PostReceiveRequest, UserMemory, SendWorkRequest};
+use syscall::return_vals::SyscallResult;
+
+pub fn uverbs(device_fd: usize, cmd: usize, user_memory: &UserMemory) -> SyscallResult {
+    use syscall::{syscall, SystemCall::Uverb};
+
+    syscall(Uverb, &[device_fd, cmd, user_memory as *const _ as usize])
+}
 
 pub struct ibv_context_ops {
     pub poll_cq: Option<fn(
@@ -34,6 +42,7 @@ pub struct ibv_context_ops {
     ) -> Result<()>>,
 }
 
+// TODO: bypass syscall with data-path (fast-path) using UAR and Doorbell page
 const IBV_CONTEXT_OPS: ibv_context_ops = ibv_context_ops {
     poll_cq: Some(ibv_poll_cq),
     post_send: Some(ibv_post_send),
@@ -62,12 +71,8 @@ pub struct ibv_cq<'ctx> {
 impl Drop for ibv_cq<'_> {
     fn drop(&mut self) {
         let dev_fd = self.context.lock();
-
-        syscall(Uverb, &[
-            dev_fd,
-            UVERBS_CMD_DESTROY_CQ,
-            self.number as usize
-        ]).expect("failed to destroy completion queue");
+        let mem = UserMemory::default().with_in_from_ref(&self.number);
+        uverbs(dev_fd, UVERBS_CMD_DESTROY_CQ, &mem).expect("failed to destroy completion queue");
     }
 }
 
@@ -84,12 +89,8 @@ pub struct ibv_mr<'pd> {
 impl Drop for ibv_mr<'_> {
     fn drop(&mut self) {
         let dev_fd = self.pd.context.lock();
-
-        syscall(Uverb, &[
-            dev_fd,
-            UVERBS_CMD_DEREGISTER_MR,
-            self.index as usize
-        ]).expect("failed to destroy memory region");
+        let mem = UserMemory::default().with_in_from_ref(&self.index);
+        uverbs(dev_fd, UVERBS_CMD_DEREGISTER_MR, &mem).expect("failed to destroy memory region");
     }
 }
 
@@ -109,12 +110,8 @@ pub struct ibv_qp<'ctx, 'cq> {
 impl Drop for ibv_qp<'_, '_> {
     fn drop(&mut self) {
         let dev_fd = self.send_cq.context.lock();
-
-        syscall(Uverb, &[
-            dev_fd,
-            UVERBS_CMD_DESTROY_QP,
-            self.qp_num as usize
-        ]).expect("failed to destroy queue pair");
+        let mem = UserMemory::default().with_in_from_ref(&self.qp_num);
+        uverbs(dev_fd, UVERBS_CMD_DESTROY_QP, &mem).expect("failed to destroy queue pair");
     }
 }
 
@@ -133,13 +130,15 @@ pub struct ibv_qp_init_attr<'cq, 'ctx> {
 ///
 /// Return a array of IB devices.
 pub fn ibv_get_device_list() -> Result<Vec<ibv_device>> {
-    let mut devices : Vec<ibv_device> = Vec::with_capacity(UVERBS_MAX_QUERY_DEVICES_REQ);
-    syscall(Uverb, &[0, UVERBS_CMD_QUERY_DEVICES, devices.as_mut_ptr() as usize])
-        .map(|count| {
+    let mut devices : Vec<MaybeUninit<ibv_device>> = vec![MaybeUninit::uninit();UVERBS_MAX_QUERY_DEVICES_REQ];
+    let mem = UserMemory::default().with_out_from_slice(&mut devices);
+    match uverbs(0, UVERBS_CMD_QUERY_DEVICES, &mem) {
+        Ok(count) => {
             unsafe { devices.set_len(count) };
-            devices
-        })
-        .map_err(|_| todo!())
+            Ok(unsafe { mem::transmute::<_,Vec<ibv_device>>(devices) })
+        }
+        Err(_) => Err(Error::from(ErrorKind::Other))
+    }
 }
 
 /// Return kernel device name
@@ -173,35 +172,29 @@ pub fn ibv_open_device(device: &ibv_device) -> Result<ibv_context> {
 pub fn ibv_query_device(context: &ibv_context) -> Result<ibv_device_attr> {
     let dev_fd = context.lock();
 
-    let device_attr = ibv_device_attr::default();
+    let mut resp = MaybeUninit::<ibv_device_attr>::uninit();
 
-    match syscall(Uverb, &[
-        dev_fd,
-        UVERBS_CMD_QUERY_DEVICE,
-        &device_attr as *const _ as usize,
-        ]) {
-        Ok(_) => Ok(device_attr),
+    let mem = UserMemory::default().with_out_from_ref(&mut resp);
+    match uverbs(dev_fd, UVERBS_CMD_QUERY_DEVICE, &mem) {
+        Ok(_) => Ok(unsafe { resp.assume_init() }),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
 }
 
 /// Get port properties
-pub fn ibv_query_port(
-    context: &ibv_context, port_num: u8,
-) -> Result<ibv_port_attr> {
+pub fn ibv_query_port(context: &ibv_context, port_num: u8) -> Result<ibv_port_attr> {
     let dev_fd = context.lock();
 
-    let ibv_port_container = ibv_port_attr_container {
-        ibv_port_attr: Default::default(),
+    let req = QueryPortRequest {
         port_num
     };
 
-    match syscall(Uverb, &[
-            dev_fd,
-            UVERBS_CMD_QUERY_PORT,
-            ((&ibv_port_container) as *const ibv_port_attr_container).addr()
-        ]) {
-        Ok(_) => Ok(ibv_port_container.ibv_port_attr),
+    let mut resp = MaybeUninit::<ibv_port_attr>::uninit();
+    let mem = UserMemory::default()
+        .with_in_from_ref(&req)
+        .with_out_from_ref(&mut resp);
+    match uverbs(dev_fd, UVERBS_CMD_QUERY_PORT, &mem) {
+        Ok(_) => Ok(unsafe { resp.assume_init() }),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
 }
@@ -227,31 +220,23 @@ pub fn ibv_alloc_pd(context: &ibv_context) -> Result<ibv_pd<'_>> {
 pub fn ibv_reg_mr<'pd, T>(
     pd: &'pd ibv_pd<'_>, data: &mut [T], access: ibv_access_flags,
 ) -> Result<ibv_mr<'pd>> {
-    let data_u8 = data.as_mut_ptr().cast::<u8>();
-
     let dev_fd = pd.context.lock();
 
-    let ibv_mr_container = ibv_mr_container {
+    let req = CreateMrRequest {
         ibv_access_flags: access,
-        data_ptr: data_u8,
+        data_ptr: data.as_mut_ptr().cast(),
         len: data.len(),
-        ibv_mr_res: ibv_mr_res {
-            index: Default::default(),
-            addr:  Default::default(),
-            lkey:  Default::default(),
-            rkey:  Default::default()
-        }
     };
 
-    match syscall(Uverb, &[
-        dev_fd,
-        UVERBS_CMD_REGISTER_MR,
-        (&ibv_mr_container as *const ibv_mr_container).addr()
-    ]) {
-        Ok(_) => {
-            let ibv_mr_res { index, addr, lkey, rkey } = ibv_mr_container.ibv_mr_res;
-            let length = data.len();
+    let mut resp = MaybeUninit::<CreateMrResponse>::uninit();
 
+    let mem = UserMemory::default()
+        .with_in_from_ref(&req)
+        .with_out_from_ref(&mut resp);
+    match uverbs(dev_fd, UVERBS_CMD_REGISTER_MR, &mem) {
+        Ok(_) => {
+            let CreateMrResponse { index, addr, lkey, rkey } = unsafe { resp.assume_init() };
+            let length = data.len();
             Ok(ibv_mr { pd, index, addr, length, lkey, rkey })
         },
         Err(_) => Err(Error::from(ErrorKind::Other))
@@ -276,18 +261,19 @@ pub fn ibv_create_cq(
 
     let dev_fd = context.lock();
 
-    let ibv_cq_container = ibv_cq_container {
+    let req = CreateCqRequest {
         cq_entries: cqe,
-        cq_num: Default::default()
     };
 
-    match syscall(Uverb, &[
-        dev_fd,
-        UVERBS_CMD_CREATE_CQ,
-        (&ibv_cq_container as *const ibv_cq_container).addr()
-    ]) {
+    let mut resp = MaybeUninit::<CreateCqResponse>::uninit();
+
+    let mem = UserMemory::default()
+        .with_in_from_ref(&req)
+        .with_out_from_ref(&mut resp);
+    match uverbs(dev_fd, UVERBS_CMD_CREATE_CQ, &mem) {
         Ok(_) => {
-            Ok( ibv_cq { context, number: ibv_cq_container.cq_num, _cq_context: cq_context, } )
+            let resp = unsafe { resp.assume_init() };
+            Ok( ibv_cq { context, number: resp.cq_num, _cq_context: cq_context, } )
         },
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
@@ -303,23 +289,24 @@ pub fn ibv_create_qp<'ctx, 'cq>(
 
     let dev_fd = pd.context.lock();
 
-    let ibv_qp_container = ibv_qp_container {
+    let req = CreateQpRequest {
         qp_type: qp_init_attr.qp_type,
         send_cq_num: send_cq.number,
         recv_cq_num: recv_cq.number,
-        ib_caps: &mut qp_init_attr.cap,
-        qp_num: Default::default()
+        ib_caps: qp_init_attr.cap,
     };
 
-    match syscall(Uverb, &[
-        dev_fd,
-        UVERBS_CMD_CREATE_QP,
-        (&ibv_qp_container as *const ibv_qp_container).addr()
-    ]) {
+    let mut resp = MaybeUninit::<CreateQpResponse>::uninit();
+
+    let mem = UserMemory::default()
+        .with_in_from_ref(&req)
+        .with_out_from_ref(&mut resp);
+    match uverbs(dev_fd, UVERBS_CMD_CREATE_QP, &mem) {
         Ok(_) => {
+            let resp = unsafe { resp.assume_init() };
             Ok(ibv_qp {
                 ops: &IBV_CONTEXT_OPS,
-                qp_num: ibv_qp_container.qp_num,
+                qp_num: resp.qp_num,
                 send_cq,
                 recv_cq,
             })
@@ -334,18 +321,16 @@ pub fn ibv_modify_qp(
     qp: &mut ibv_qp<'_, '_>, attr: &ibv_qp_attr, attr_mask: ibv_qp_attr_mask,
 ) -> Result<()> {
     let dev_fd = qp.recv_cq.context.lock();
+    let attr = *attr;
 
-    let ibv_qp_modify_container = ibv_qp_modify_container {
+    let req = ModifyQpRequest {
         qp_num: qp.qp_num,
         attr,
         attr_mask
     };
 
-    match syscall(Uverb, &[
-        dev_fd,
-        UVERBS_CMD_MODIFY_QP,
-        (&ibv_qp_modify_container as *const ibv_qp_modify_container).addr()
-    ]) {
+    let mem = UserMemory::default().with_in_from_ref(&req);
+    match uverbs(dev_fd, UVERBS_CMD_MODIFY_QP, &mem) {
         Ok(_) => Ok(()),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
@@ -357,17 +342,14 @@ fn ibv_poll_cq(
 ) -> Result<i32> {
     let dev_fd = cq.context.lock();
 
-    let ibv_cq_poll_container = ibv_cq_poll_container {
-        wc: wc.as_mut_ptr(),
-        wc_len: wc.len(),
+    let req = PollCqRequest {
         cq_num: cq.number,
     };
 
-    match syscall(Uverb, &[
-        dev_fd,
-        UVERBS_CMD_POLL_CQ,
-        (&ibv_cq_poll_container as *const ibv_cq_poll_container).addr()
-    ]) {
+    let mem = UserMemory::default()
+        .with_in_from_ref(&req)
+        .with_out_from_slice(wc);
+    match uverbs(dev_fd, UVERBS_CMD_POLL_CQ, &mem) {
         Ok(wc_count) => Ok(wc_count.try_into().unwrap()),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
@@ -379,16 +361,26 @@ unsafe fn ibv_post_send(
 ) -> Result<()> {
     let dev_fd = qp.send_cq.context.lock();
 
-    let ibv_send_wr_container = ibv_qp_post_send_container {
-        ibv_send_wr: wr,
-        qp_num: qp.qp_num
+    let mut wrs = Vec::new();
+    let mut cur = Some(wr);
+    while let Some(wr) = cur {
+        wrs.push(SendWorkRequest {
+            wr_id: wr.wr_id,
+            sges: wr.sg_list.clone(),
+            opcode: wr.opcode,
+            send_flags: wr.send_flags,
+            wr: wr.wr,
+        });
+        cur = wr.next.as_mut();
+    }
+
+    let req = PostSendRequest {
+        qp_num: qp.qp_num,
+        wrs,
     };
 
-    match syscall(Uverb, &[
-        dev_fd,
-        UVERBS_CMD_POST_SEND,
-        (&ibv_send_wr_container as *const ibv_qp_post_send_container).addr()
-    ]) {
+    let mem = UserMemory::default().with_in_from_ref(&req);
+    match uverbs(dev_fd, UVERBS_CMD_POST_SEND, &mem) {
         Ok(_) => Ok(()),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
@@ -400,16 +392,26 @@ unsafe fn ibv_post_recv(
 ) -> Result<()> {
     let dev_fd = qp.recv_cq.context.lock();
 
-    let ibv_recv_wr_container = ibv_qp_post_recv_container {
-        ibv_recv_wr: wr,
-        qp_num: qp.qp_num
+    let mut wrs = Vec::new();
+    let mut cur = Some(wr);
+    while let Some(wr) = cur {
+        wrs.push(ReceiveWorkRequest {
+            wr_id: wr.wr_id,
+            sges: wr.sg_list.clone(),
+        });
+        cur = unsafe { wr.next.as_mut() };
+    }
+
+    let req = PostReceiveRequest {
+        qp_num: qp.qp_num,
+        wrs,
     };
 
-    match syscall(Uverb, &[
-        dev_fd,
-        UVERBS_CMD_POST_SEND,
-        (&ibv_recv_wr_container as *const ibv_qp_post_recv_container).addr()
-    ]) {
+    let req_vec = bincode::encode_to_vec(req, bincode::config::standard())
+        .map_err(|_| Error::from(ErrorKind::Other))?;
+
+    let mem = UserMemory::default().with_in_from_slice(&req_vec);
+    match uverbs(dev_fd, UVERBS_CMD_POST_RECV, &mem) {
         Ok(_) => Ok(()),
         Err(_) => Err(Error::from(ErrorKind::Other))
     }
@@ -417,12 +419,10 @@ unsafe fn ibv_post_recv(
 
 pub fn ibv_send_wr_builder(wr_id: u64, opcode: ibv_wr_opcode, send_flags: ibv_send_flags,
     wr: ibv_send_wr_wr, next: *mut ibv_send_wr, sg_list: Vec<ibv_sge>) -> Box<ibv_send_wr> {
-    let num_sge = sg_list.len() as i32;
     Box::new(ibv_send_wr {
                 wr_id,
                 next,
                 sg_list,
-                num_sge,
                 opcode,
                 send_flags,
                 wr,

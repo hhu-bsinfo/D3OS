@@ -884,6 +884,7 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "acpi",
+ "bincode",
  "bitfield-struct 0.1.8",
  "bitflags 2.10.0",
  "built",
@@ -1599,6 +1600,7 @@ dependencies = [
 name = "rdma"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bitflags 2.10.0",
  "num_enum 0.5.11",
  "strum_macros",

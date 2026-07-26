@@ -414,9 +414,7 @@ impl VirtualAddressSpace {
         false
     }
 
-    pub fn copy_to_user<T: Copy>(&self, dst: *mut T, src: &[T]) -> Result<(), ()> {
-        let dst = VirtAddr::from_ptr(dst);
-        let size = src.len() * size_of::<T>();
+    pub unsafe fn copy_bytes_to_user(&self, dst: VirtAddr, src: *const u8, size: usize) -> Result<(), ()> {
         if !self.access_ok(dst, size) {
             return Err(());
         }
@@ -429,13 +427,11 @@ impl VirtualAddressSpace {
             }
         }
 
-        unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), src.len()) };
+        unsafe { core::ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), size) };
         Ok(())
     }
 
-    pub fn copy_from_user<T: Copy>(&self, dst: &mut [T], src: *const T) -> Result<(), ()> {
-        let src = VirtAddr::from_ptr(src);
-        let size = dst.len() * size_of::<T>();
+    pub unsafe fn copy_bytes_from_user(&self, dst: *mut u8, src: VirtAddr, size: usize) -> Result<(), ()> {
         if !self.access_ok(src, size) {
             return Err(());
         }
@@ -448,7 +444,7 @@ impl VirtualAddressSpace {
             }
         }
 
-        unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len()) };
+        unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), dst, size) };
         Ok(())
     }
 

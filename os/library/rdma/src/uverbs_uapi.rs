@@ -1,5 +1,5 @@
-#![allow(non_camel_case_types)]
-
+use alloc::vec::Vec;
+use bincode::{Decode, Encode};
 use num_enum::TryFromPrimitive;
 
 use super::ib_core::*;
@@ -68,16 +68,16 @@ pub const UVERBS_MAX_QUERY_DEVICES_REQ: usize = 10;
 const CHAR_BUF: &[u8] = &[0u8; 64];
 
 pub const UVERBS_CMD_QUERY_DEVICES: usize = UverbsCmd::Call(UverbsInnerCmd::QueryDevices, 1, 0, UVERBS_MAGIC, UVERBS_MINOR_NOT_PRESENT).encode();
-pub const UVERBS_CMD_QUERY_DEVICE: usize = UverbsCmd::Call(UverbsInnerCmd::QueryDevice, 2, size_of::<ibv_device_attr_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_QUERY_PORT: usize = UverbsCmd::Call(UverbsInnerCmd::QueryPort, 3, size_of::<ibv_port_attr_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_REGISTER_MR: usize = UverbsCmd::Call(UverbsInnerCmd::RegMr, 4, size_of::<ibv_mr_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
+pub const UVERBS_CMD_QUERY_DEVICE: usize = UverbsCmd::Call(UverbsInnerCmd::QueryDevice, 2, size_of::<ibv_device_attr>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
+pub const UVERBS_CMD_QUERY_PORT: usize = UverbsCmd::Call(UverbsInnerCmd::QueryPort, 3, size_of::<QueryPortRequest>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
+pub const UVERBS_CMD_REGISTER_MR: usize = UverbsCmd::Call(UverbsInnerCmd::RegMr, 4, size_of::<CreateMrRequest>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
 pub const UVERBS_CMD_SET_MR_SIZE: usize = UverbsCmd::Call(UverbsInnerCmd::SetMrSize, 5, size_of::<usize>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_CREATE_CQ: usize = UverbsCmd::Call(UverbsInnerCmd::CreateCq, 6, size_of::<ibv_cq_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_CREATE_QP: usize = UverbsCmd::Call(UverbsInnerCmd::CreateQp, 7, size_of::<ibv_qp_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_MODIFY_QP: usize = UverbsCmd::Call(UverbsInnerCmd::ModifyQp, 8, size_of::<ibv_qp_modify_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_POLL_CQ: usize = UverbsCmd::Call(UverbsInnerCmd::PollCq, 9, size_of::<ibv_cq_poll_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_POST_SEND: usize = UverbsCmd::Call(UverbsInnerCmd::OpPostSend, 10, size_of::<ibv_qp_post_send_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_POST_RECV: usize = UverbsCmd::Call(UverbsInnerCmd::OpPostRecv, 11, size_of::<ibv_qp_post_recv_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
+pub const UVERBS_CMD_CREATE_CQ: usize = UverbsCmd::Call(UverbsInnerCmd::CreateCq, 6, size_of::<CreateCqRequest>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
+pub const UVERBS_CMD_CREATE_QP: usize = UverbsCmd::Call(UverbsInnerCmd::CreateQp, 7, size_of::<CreateQpRequest>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
+pub const UVERBS_CMD_MODIFY_QP: usize = UverbsCmd::Call(UverbsInnerCmd::ModifyQp, 8, size_of::<ModifyQpRequest>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
+pub const UVERBS_CMD_POLL_CQ: usize = UverbsCmd::Call(UverbsInnerCmd::PollCq, 9, size_of::<PollCqRequest>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
+pub const UVERBS_CMD_POST_SEND: usize = UverbsCmd::Call(UverbsInnerCmd::OpPostSend, 10, size_of::<PostSendRequest>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
+pub const UVERBS_CMD_POST_RECV: usize = UverbsCmd::Call(UverbsInnerCmd::OpPostRecv, 11, size_of::<PostReceiveRequest>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
 pub const UVERBS_CMD_DESTROY_CQ: usize = UverbsCmd::Call(UverbsInnerCmd::DestroyCq, 12, 0, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
 pub const UVERBS_CMD_DESTROY_QP: usize = UverbsCmd::Call(UverbsInnerCmd::DestroyQp, 13, 0, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
 pub const UVERBS_CMD_DEREGISTER_MR: usize = UverbsCmd::Call(UverbsInnerCmd::DeregMr, 14, 0, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
@@ -92,66 +92,58 @@ macro_rules! UVERBS_CMD_SIZE {
 type UverbsCmdEnc = usize;
 type UverbsCmdSupportedSize = usize;
 
-pub trait TypeSize {
-    const S: usize;
+#[repr(C)]
+#[derive(Default, Debug, Copy, Clone)]
+pub struct UserMemory {
+    pub in_address: u64,
+    pub out_address: u64,
+    pub in_size: u32,
+    pub out_size: u32,
 }
 
-impl TypeSize for ibv_device_attr {
-    const S: usize = CHAR_BUF.len();
-}
+impl UserMemory {
+    pub fn with_in_from_ref<T>(mut self, in_ref: &T) -> Self {
+        self.in_address = in_ref as *const T as u64;
+        self.in_size = size_of::<T>() as u32;
+        self
+    }
 
-impl TypeSize for ibv_port_attr_container {
-    const S: usize = size_of::<u8>();
-}
+    pub fn with_in_from_slice<T>(mut self, in_slice: &[T]) -> Self {
+        self.in_address = in_slice.as_ptr() as u64;
+        self.in_size = (in_slice.len() * size_of::<T>()) as u32;
+        self
+    }
 
-impl TypeSize for ibv_mr_container {
-    const S: usize = UVERBS_MAX_USER_TRUST_SIZE;
-}
+    pub fn with_out_from_ref<T>(mut self, out_ref: &mut T) -> Self {
+        self.out_address = out_ref as *mut T as u64;
+        self.out_size = size_of::<T>() as u32;
+        self
+    }
 
-impl TypeSize for ibv_qp_container {
-    const S: usize = size_of::<ibv_qp_cap>();
-}
-
-impl TypeSize for ibv_qp_modify_container {
-    const S: usize = size_of::<ibv_qp_attr>();
-}
-
-impl TypeSize for ibv_cq_poll_container {
-    const S: usize = size_of::<ibv_wc>() * UVERBS_MAX_USER_WC_REQ;
-}
-
-impl TypeSize for ibv_qp_post_send_container {
-    const S: usize = size_of::<ibv_send_wr>();
-}
-
-impl TypeSize for ibv_qp_post_recv_container {
-    const S: usize = size_of::<ibv_recv_wr>();
+    pub fn with_out_from_slice<T>(mut self, out_slice: &mut [T]) -> Self {
+        self.out_address = out_slice.as_mut_ptr() as u64;
+        self.out_size = (out_slice.len() * size_of::<T>()) as u32;
+        self
+    }
 }
 
 #[repr(C)]
-pub struct ibv_device_attr_container {
-    pub fw_ver: [u8; ibv_device_attr::S],
-    pub phys_port_cnt: u8
-}
-
-#[repr(C)]
-pub struct ibv_port_attr_container {
-    pub ibv_port_attr: ibv_port_attr,
+#[derive(Debug, Copy, Clone)]
+pub struct QueryPortRequest {
     pub port_num: u8
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_mr_container {
+#[derive(Default, Copy, Clone)]
+pub struct CreateMrRequest {
     pub ibv_access_flags: ibv_access_flags,
     pub data_ptr: *mut u8,
     pub len: usize,
-    pub ibv_mr_res: ibv_mr_res
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_mr_res {
+#[derive(Default, Copy, Clone)]
+pub struct CreateMrResponse {
     pub index: u32,
     pub addr: usize,
     pub lkey: u32,
@@ -159,56 +151,44 @@ pub struct ibv_mr_res {
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_cq_container {
+#[derive(Default, Copy, Clone)]
+pub struct CreateCqRequest {
     pub cq_entries: i32,
-    pub cq_num: u32
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_cq_poll_container {
-    pub wc: *mut ibv_wc,
-    pub wc_len: usize,
+#[derive(Default, Copy, Clone)]
+pub struct CreateCqResponse {
+    pub cq_num: u32
+}
+
+
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct PollCqRequest {
     pub cq_num: u32,
 }
 
 #[repr(C)]
-pub struct ibv_qp_container {
+#[derive(Copy, Clone)]
+pub struct CreateQpRequest {
     pub qp_type: ibv_qp_type::Type,
     pub send_cq_num: u32,
     pub recv_cq_num: u32,
     pub ib_caps: ibv_qp_cap,
-    pub qp_num: u32
 }
 
-impl Default for ibv_qp_container {
-    fn default() -> Self {
-        Self { 
-            qp_type: ibv_qp_type::IBV_QPT_RC, // just place holder
-            send_cq_num: Default::default(), 
-            recv_cq_num: Default::default(), 
-            ib_caps: Default::default(), 
-            qp_num: Default::default() 
-        }
-    }
+#[derive(Copy, Clone)]
+pub struct CreateQpResponse {
+    pub qp_num: u32,
 }
 
 #[repr(C)]
-pub struct ibv_qp_modify_container {
+#[derive(Copy, Clone)]
+pub struct ModifyQpRequest {
     pub qp_num: u32,
-    pub attr: *const ibv_qp_attr,
+    pub attr: ibv_qp_attr,
     pub attr_mask: ibv_qp_attr_mask
-}
-
-impl Default for ibv_qp_modify_container {
-    fn default() -> Self {
-        Self { 
-            qp_num: Default::default(), 
-            attr: Default::default(), 
-            attr_mask: ibv_qp_attr_mask::IBV_QP_PORT // just place holder
-        }
-    }
 }
 
 impl Default for ibv_send_wr {
@@ -217,8 +197,7 @@ impl Default for ibv_send_wr {
             wr_id: Default::default(), 
             next: Default::default(), 
             sg_list: Default::default(), 
-            num_sge: Default::default(), 
-            opcode: ibv_wr_opcode::IBV_WR_SEND, 
+            opcode: ibv_wr_opcode::IBV_WR_SEND,
             send_flags: ibv_send_flags::SIGNALED, 
             __bindgen_anon_1: Default::default(), 
             wr: Default::default(), 
@@ -233,28 +212,44 @@ impl Default for ibv_recv_wr {
             wr_id: Default::default(), 
             next: Default::default(), 
             sg_list: Default::default(), 
-            num_sge: Default::default() 
         }
     }
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_qp_post_send_container {
-    pub ibv_send_wr: *mut ibv_send_wr,
-    pub qp_num: u32
+#[derive(Clone, Default, Encode, Decode)]
+pub struct PostSendRequest {
+    pub qp_num: u32,
+    pub wrs: Vec<SendWorkRequest>,
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_qp_post_recv_container {
-    pub ibv_recv_wr: *mut ibv_recv_wr,
-    pub qp_num: u32
+#[derive(Clone, Encode, Decode)]
+pub struct SendWorkRequest {
+    pub wr_id: u64,
+    pub sges: Vec<ibv_sge>,
+    pub opcode: ibv_wr_opcode,
+    pub send_flags: ibv_send_flags,
+    pub wr: ibv_send_wr_wr,
 }
 
-impl From<(u32, usize, u32, u32)> for ibv_mr_res {
+
+#[repr(C)]
+#[derive(Clone, Encode, Decode)]
+pub struct PostReceiveRequest {
+    pub qp_num: u32,
+    pub wrs: Vec<ReceiveWorkRequest>,
+}
+
+#[derive(Clone, Encode, Decode)]
+pub struct ReceiveWorkRequest {
+    pub wr_id: u64,
+    pub sges: Vec<ibv_sge>,
+}
+
+impl From<(u32, usize, u32, u32)> for CreateMrResponse {
     fn from(value: (u32, usize, u32, u32)) -> Self {
-        ibv_mr_res { index: value.0, addr: value.1, lkey: value.2, rkey: value.3 }
+        CreateMrResponse { index: value.0, addr: value.1, lkey: value.2, rkey: value.3 }
     }
 }
 
