@@ -36,8 +36,7 @@ pub fn uverbs_ctl(device_handle: usize, cmd: UverbsCmd, user_memory_addr: *const
 
     let process = process_manager().read().current_process();
     let mut user_memory = MaybeUninit::<UserMemory>::uninit();
-    unsafe { process.virtual_address_space.copy_bytes_from_user(user_memory.as_mut_ptr() as *mut u8, VirtAddr::from_ptr(user_memory_addr), size_of::<UserMemory>()) }
-        .map_err(log_error_and_invalid)?;
+    unsafe { process.virtual_address_space.copy_bytes_from_user(user_memory.as_mut_ptr() as *mut u8, VirtAddr::from_ptr(user_memory_addr), size_of::<UserMemory>()) }.map_err(|_| Errno::EFAULT)?;
     let user_memory: UserMemory = unsafe { user_memory.assume_init() };
     debug!("Uverbs user memory: {:?}", user_memory);
 
@@ -136,7 +135,7 @@ fn copy_from_user<T: Copy>(user_memory: UserMemory) -> Result<T, Errno> {
     let process = process_manager().read().current_process();
     let mut req = MaybeUninit::<T>::uninit();
     unsafe { process.virtual_address_space.copy_bytes_from_user(req.as_mut_ptr() as *mut u8, VirtAddr::new(user_memory.in_address), size) }
-        .map_err(|e| Errno::EFAULT)?;
+        .map_err(|_| Errno::EFAULT)?;
     Ok(unsafe { req.assume_init() })
 }
 
@@ -146,7 +145,7 @@ fn copy_vec_from_user(user_memory: UserMemory) -> Result<Vec<u8>, Errno> {
     let process = process_manager().read().current_process();
     let mut buf = vec![0u8; user_memory.in_size as usize];
     unsafe { process.virtual_address_space.copy_bytes_from_user(buf.as_mut_ptr(), VirtAddr::new(user_memory.in_address), buf.len()) }
-        .map_err(|e| Errno::EFAULT)?;
+        .map_err(|_| Errno::EFAULT)?;
     Ok(buf)
 }
 
@@ -159,7 +158,7 @@ fn copy_to_user<T: Copy>(user_memory: UserMemory, resp: &T) -> SyscallResult {
 
     let process = process_manager().read().current_process();
     unsafe { process.virtual_address_space.copy_bytes_to_user(VirtAddr::new(user_memory.out_address), resp as *const T as *const _, size) }
-        .map_err(|e| Errno::EFAULT)
+        .map_err(|_| Errno::EFAULT)
         .map(|()| 0)
 }
 

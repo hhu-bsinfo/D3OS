@@ -287,7 +287,7 @@ impl QueuePair {
                 if self.qp_type == QueuePairType::ReliableConnection {
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_MAX_DEST_RD_ATOMIC));
                     // TODO: check if the devices supports that many outstanding read/atomic operations
-                    context.set_rra_max_checked(attr.max_dest_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|err| "rra_max out of bounds")?;
+                    context.set_rra_max_checked(attr.max_dest_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|_| "rra_max out of bounds")?;
                 }
 
                 // TODO: required parameters for all types: rate_limit_index
@@ -372,7 +372,7 @@ impl QueuePair {
                 if self.qp_type == QueuePairType::ReliableConnection {
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_MAX_QP_RD_ATOMIC));
                     // TODO: check if the devices supports that many outstanding read/atomic operations
-                    context.set_sra_max_checked(attr.max_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|err| "sra_max out of bounds")?;
+                    context.set_sra_max_checked(attr.max_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|_| "sra_max out of bounds")?;
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_RNR_RETRY));
                     context.set_rnr_retry(attr.rnr_retry);
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_TIMEOUT));
