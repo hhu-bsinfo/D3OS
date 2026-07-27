@@ -143,23 +143,23 @@ pub struct ibv_qp_attr {
 
 bitflags! {
     pub struct ibv_qp_attr_mask: u32 {
-        const IBV_QP_STATE = 1;
-        const IBV_QP_ACCESS_FLAGS = 8;
-        const IBV_QP_PKEY_INDEX = 16;
-        const IBV_QP_PORT = 32;
-        const IBV_QP_QKEY = 64;
-        const IBV_QP_AV = 128;
-        const IBV_QP_PATH_MTU = 256;
-        const IBV_QP_TIMEOUT = 512;
-        const IBV_QP_RETRY_CNT = 1024;
-        const IBV_QP_RNR_RETRY = 2048;
-        const IBV_QP_MAX_QP_RD_ATOMIC = 8192;
-        const IBV_QP_RQ_PSN = 4096;
-        const IBV_QP_ALT_PATH = 16384;
-        const IBV_QP_MIN_RNR_TIMER = 32768;
-        const IBV_QP_SQ_PSN = 65536;
-        const IBV_QP_MAX_DEST_RD_ATOMIC = 131072;
-        const IBV_QP_DEST_QPN = 1048576;
+        const IBV_QP_STATE = 1 << 0;
+        const IBV_QP_ACCESS_FLAGS = 1 << 3;
+        const IBV_QP_PKEY_INDEX = 1 << 4;
+        const IBV_QP_PORT = 1 << 5;
+        const IBV_QP_QKEY = 1 << 6;
+        const IBV_QP_AV = 1 << 7;
+        const IBV_QP_PATH_MTU = 1 << 8;
+        const IBV_QP_TIMEOUT = 1 << 9;
+        const IBV_QP_RETRY_CNT = 1 << 10;
+        const IBV_QP_RNR_RETRY = 1 << 11;
+        const IBV_QP_RQ_PSN = 1 << 12;
+        const IBV_QP_MAX_QP_RD_ATOMIC = 1 << 13;
+        const IBV_QP_ALT_PATH = 1 << 14;
+        const IBV_QP_MIN_RNR_TIMER = 1 << 15;
+        const IBV_QP_SQ_PSN = 1 << 16;
+        const IBV_QP_MAX_DEST_RD_ATOMIC = 1 << 17;
+        const IBV_QP_DEST_QPN = 1 << 20;
     }
 }
 
