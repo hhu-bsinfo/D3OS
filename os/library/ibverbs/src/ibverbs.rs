@@ -1,3 +1,5 @@
+// Copied from rust-ibverbs 0.8.1
+
 //! Rust API wrapping the `ibverbs` RDMA library.
 //!
 //! `libibverbs` is a library that allows userspace processes to use RDMA "verbs" to perform
