@@ -424,6 +424,12 @@ impl QueuePair {
 
             // resetting is always possible
             (_, Some(ibv_qp_state::IBV_QPS_RESET)) => Opcode::Any2RstQp,
+
+            // There is a command State2State which allows transitioning through multiple States at
+            // once, e.g. from INIT to RTS (through RTR) with one command. The Card then does the
+            // intermediates transitions automatically. Support has to be checked in the device
+            // capabilities, but ConnectX-3 only support 2 variants: INIT to RTS and Reset to RTS
+
             (ibv_qp_state::IBV_QPS_RESET, Some(_)) => return Err("Can not go from RESET to the supplied State"),
             (ibv_qp_state::IBV_QPS_INIT, Some(_)) => return Err("Can not go from INIT to the supplied State"),
             (ibv_qp_state::IBV_QPS_RTR, Some(_)) => return Err("Can not go from RTR to the supplied State"),
