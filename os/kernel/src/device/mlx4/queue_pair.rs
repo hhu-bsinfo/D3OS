@@ -39,23 +39,6 @@ use super::{
     Offsets,
 };
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum QueuePairType {
-    ReliableConnection,
-    UnreliableConnection,
-    UnreliableDatagram,
-}
-
-#[derive(Clone, Copy, Default)]
-pub struct QueuePairCapabilities {
-    pub max_send_wr: u32,
-    pub max_recv_wr: u32,
-    pub max_send_sge: u32,
-    pub max_recv_sge: u32,
-    pub max_inline_data: u32,
-}
-
-
 const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
 const IB_MAX_HEADROOM: u32 = 2048;
 const IB_SQ_MAX_SPARE: u32 = ib_sq_headroom(IB_SQ_MIN_WQE_SHIFT);
@@ -68,7 +51,7 @@ const fn ib_sq_headroom(shift: u32) -> u32 {
 pub(super) struct QueuePair {
     number: u32,
     state: ibv_qp_state,
-    qp_type: QueuePairType,
+    qp_type: ibv_qp_type::Type,
     port_number: Option<u8>,
     // TODO: this seems deprecated
     _is_special: bool,
@@ -93,8 +76,8 @@ impl QueuePair {
     ///
     /// This is similar to creating a completion queue or an event queue.
     pub(super) fn new(
-        cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable, qp_type: QueuePairType,
-        send_cq: &CompletionQueue, receive_cq: &CompletionQueue, ib_caps: &mut QueuePairCapabilities,
+        cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable, qp_type: ibv_qp_type::Type,
+        send_cq: &CompletionQueue, receive_cq: &CompletionQueue, ib_caps: &mut ibv_qp_cap,
     ) -> Result<Self, &'static str> {
         let number = offsets.alloc_qpn().try_into().unwrap();
         let uar_idx = offsets.alloc_scq_db();
@@ -182,9 +165,9 @@ impl QueuePair {
                 }
                 // set required fields
                 context.set_service_type(match self.qp_type {
-                    QueuePairType::ReliableConnection => 0x0,
-                    QueuePairType::UnreliableConnection => 0x1,
-                    QueuePairType::UnreliableDatagram => 0x3,
+                    ibv_qp_type::IBV_QPT_RC => 0x0,
+                    ibv_qp_type::IBV_QPT_UC => 0x1,
+                    ibv_qp_type::IBV_QPT_UD => 0x3,
                     #[allow(unreachable_patterns)]
                     _ => return Err("invalid queue pair type"),
                 });
@@ -193,26 +176,26 @@ impl QueuePair {
                 // TODO: protection domain
                 context.set_cqn_send(self.send_cq_number);
                 // RC needs remote read
-                if self.qp_type == QueuePairType::ReliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC {
                     // TODO: this might have been set in an earlier call
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_ACCESS_FLAGS));
                     context.set_remote_read(attr.qp_access_flags.contains(ibv_access_flags::IBV_ACCESS_REMOTE_READ));
                 }
                 // RC and UC need remote write
-                if self.qp_type == QueuePairType::ReliableConnection || self.qp_type == QueuePairType::UnreliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC || self.qp_type == ibv_qp_type::IBV_QPT_UC {
                     // TODO: this might have been set in an earlier call
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_ACCESS_FLAGS));
                     context.set_remote_write(attr.qp_access_flags.contains(ibv_access_flags::IBV_ACCESS_REMOTE_WRITE));
                 }
                 // RC needs remote atomic
-                if self.qp_type == QueuePairType::ReliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC {
                     // TODO: this might have been set in an earlier call
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_ACCESS_FLAGS));
                     context.set_remote_atomic(attr.qp_access_flags.contains(ibv_access_flags::IBV_ACCESS_REMOTE_ATOMIC));
                 }
                 context.set_cqn_receive(self.receive_cq_number);
                 // UD needs qkey
-                if self.qp_type == QueuePairType::UnreliableDatagram {
+                if self.qp_type == ibv_qp_type::IBV_QPT_UD {
                     // TODO: this might have been set in an earlier call
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_QKEY));
                     context.set_qkey(attr.qkey);
@@ -275,7 +258,7 @@ impl QueuePair {
                 context.set_msg_max(caps.log_max_msg());
 
                 // TODO: required parameters for RC and UC: next_recv_psn, qos_vport, roce_mode,
-                if self.qp_type == QueuePairType::ReliableConnection || self.qp_type == QueuePairType::UnreliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC || self.qp_type == ibv_qp_type::IBV_QPT_UC {
                     // TODO: this might have been set in an earlier call
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_DEST_QPN));
                     context.set_remote_qpn(attr.dest_qp_num);
@@ -284,7 +267,7 @@ impl QueuePair {
                 }
 
                 // TODO: required parameters for RC: ric
-                if self.qp_type == QueuePairType::ReliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC {
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_MAX_DEST_RD_ATOMIC));
                     // TODO: check if the devices supports that many outstanding read/atomic operations
                     context.set_rra_max_checked(attr.max_dest_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|_| "rra_max out of bounds")?;
@@ -301,14 +284,14 @@ impl QueuePair {
 
                 // set the optional parameters
                 // TODO: vsd
-                if self.qp_type == QueuePairType::ReliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC {
                     if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_MIN_RNR_TIMER) {
                         // TODO: check encoding
                         context.set_min_rnr_nak(attr.min_rnr_timer);
                         param_mask.insert(OptionalParameterMask::MIN_RNR_NAK);
                     }
                 }
-                if self.qp_type == QueuePairType::UnreliableDatagram {
+                if self.qp_type == ibv_qp_type::IBV_QPT_UD {
                     if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_QKEY) {
                         context.set_qkey(attr.qkey);
                         param_mask.insert(OptionalParameterMask::QKEY);
@@ -318,7 +301,7 @@ impl QueuePair {
                     context.set_primary_pkey_index(attr.pkey_index.try_into().unwrap());
                     param_mask.insert(OptionalParameterMask::PKEY_INDEX);
                 }
-                if self.qp_type == QueuePairType::ReliableConnection || self.qp_type == QueuePairType::UnreliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC || self.qp_type == ibv_qp_type::IBV_QPT_UC {
                     if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_ACCESS_FLAGS) {
                         context.set_remote_write(attr.qp_access_flags.contains(ibv_access_flags::IBV_ACCESS_REMOTE_WRITE));
                         param_mask.insert(OptionalParameterMask::REMOTE_WRITE);
@@ -343,7 +326,7 @@ impl QueuePair {
             // or just stay in the current state
             (ibv_qp_state::IBV_QPS_INIT, true, ibv_qp_state::IBV_QPS_INIT) | (ibv_qp_state::IBV_QPS_INIT, false, _) => {
                 // can update qkey for UD
-                if self.qp_type == QueuePairType::UnreliableDatagram {
+                if self.qp_type == ibv_qp_type::IBV_QPT_UD {
                     if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_QKEY) {
                         context.set_qkey(attr.qkey);
                         param_mask.insert(OptionalParameterMask::QKEY);
@@ -355,7 +338,7 @@ impl QueuePair {
                     param_mask.insert(OptionalParameterMask::PKEY_INDEX);
                 }
                 // can update access flags for RC and UC
-                if self.qp_type == QueuePairType::ReliableConnection || self.qp_type == QueuePairType::UnreliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC || self.qp_type == ibv_qp_type::IBV_QPT_UC {
                     if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_ACCESS_FLAGS) {
                         context.set_remote_write(attr.qp_access_flags.contains(ibv_access_flags::IBV_ACCESS_REMOTE_WRITE));
                         context.set_remote_atomic(attr.qp_access_flags.contains(ibv_access_flags::IBV_ACCESS_REMOTE_ATOMIC));
@@ -369,7 +352,7 @@ impl QueuePair {
             (ibv_qp_state::IBV_QPS_RTR, true, ibv_qp_state::IBV_QPS_RTS) => {
                 // set required fields
                 // TODO: ack_req_freq, next_send_psn, retry_count
-                if self.qp_type == QueuePairType::ReliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC {
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_MAX_QP_RD_ATOMIC));
                     // TODO: check if the devices supports that many outstanding read/atomic operations
                     context.set_sra_max_checked(attr.max_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|_| "sra_max out of bounds")?;
@@ -382,14 +365,14 @@ impl QueuePair {
                 // TODO: rate_limit_index
                 // TODO: if an alternate path was loaded, we should set
                 // path migration state to REARM
-                if self.qp_type == QueuePairType::ReliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC {
                     if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_MIN_RNR_TIMER) {
                         // TODO: check encoding
                         context.set_min_rnr_nak(attr.min_rnr_timer);
                         param_mask.insert(OptionalParameterMask::MIN_RNR_NAK);
                     }
                 }
-                if self.qp_type == QueuePairType::UnreliableDatagram {
+                if self.qp_type == ibv_qp_type::IBV_QPT_UD {
                     if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_QKEY) {
                         context.set_qkey(attr.qkey);
                         param_mask.insert(OptionalParameterMask::QKEY);
@@ -399,7 +382,7 @@ impl QueuePair {
                     context.set_primary_pkey_index(attr.pkey_index.try_into().unwrap());
                     param_mask.insert(OptionalParameterMask::PKEY_INDEX);
                 }
-                if self.qp_type == QueuePairType::ReliableConnection || self.qp_type == QueuePairType::UnreliableConnection {
+                if self.qp_type == ibv_qp_type::IBV_QPT_RC || self.qp_type == ibv_qp_type::IBV_QPT_UC {
                     if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_ACCESS_FLAGS) {
                         context.set_remote_write(attr.qp_access_flags.contains(ibv_access_flags::IBV_ACCESS_REMOTE_WRITE));
                         param_mask.insert(OptionalParameterMask::REMOTE_WRITE);
@@ -536,7 +519,7 @@ impl QueuePair {
             wqe_offset += size_of::<WqeControlSegment>();
             let mut wqe_size = size_of::<WqeControlSegment>();
             match self.qp_type {
-                QueuePairType::ReliableConnection | QueuePairType::UnreliableConnection => {
+                ibv_qp_type::IBV_QPT_RC | ibv_qp_type::IBV_QPT_UC => {
                     // extra segments are only required for RDMA
                     if curr.opcode == ibv_wr_opcode::IBV_WR_RDMA_READ || curr.opcode == ibv_wr_opcode::IBV_WR_RDMA_WRITE {
                         let wqe: &mut WqeRemoteAddressSegment = memory.0.as_type_mut(wqe_offset)?;
@@ -545,7 +528,7 @@ impl QueuePair {
                         wqe_size += size_of::<WqeRemoteAddressSegment>();
                     }
                 }
-                QueuePairType::UnreliableDatagram => {
+                ibv_qp_type::IBV_QPT_UD => {
                     let wqe: &mut WqeDatagramSegment = memory.0.as_type_mut(wqe_offset)?;
                     *wqe = WqeDatagramSegment::from_wr(&curr.wr)?;
                     wqe_offset += size_of::<WqeDatagramSegment>();
@@ -731,7 +714,7 @@ struct WorkQueue {
 
 impl WorkQueue {
     /// Compute the size of the receive queue and return it.
-    fn new_receive_queue(hca_caps: &Capabilities, ib_caps: &mut QueuePairCapabilities) -> Result<Self, &'static str> {
+    fn new_receive_queue(hca_caps: &Capabilities, ib_caps: &mut ibv_qp_cap) -> Result<Self, &'static str> {
         // check the RQ size before proceeding
         if ib_caps.max_recv_wr > ((1 << u32::from(hca_caps.log_max_qp_sz())) - IB_SQ_MAX_SPARE)
             || ib_caps.max_recv_sge > hca_caps.max_sg_sq().into()
@@ -771,7 +754,7 @@ impl WorkQueue {
     }
 
     /// Compute the size of the receive queue and return it.
-    fn new_send_queue(hca_caps: &Capabilities, ib_caps: &mut QueuePairCapabilities, qp_type: QueuePairType) -> Result<Self, &'static str> {
+    fn new_send_queue(hca_caps: &Capabilities, ib_caps: &mut ibv_qp_cap, qp_type: ibv_qp_type::Type) -> Result<Self, &'static str> {
         // check the SQ size before proceeding
         if ib_caps.max_send_wr > ((1 << u32::from(hca_caps.log_max_qp_sz())) - IB_SQ_MAX_SPARE)
             || ib_caps.max_send_sge > hca_caps.max_sg_sq().into()
@@ -881,15 +864,15 @@ impl WorkQueue {
     }
 }
 
-fn send_wqe_overhead(qp_type: QueuePairType) -> u32 {
+fn send_wqe_overhead(qp_type: ibv_qp_type::Type) -> u32 {
     // UD WQEs must have a datagram segment.
     // RC and UC WQEs might have a remote address segment.
     // MLX WQEs need two extra inline data segments (for the UD header and space
     // for the ICRC).
     match qp_type {
-        QueuePairType::UnreliableDatagram => size_of::<WqeControlSegment>() + size_of::<WqeDatagramSegment>(),
-        QueuePairType::UnreliableConnection => size_of::<WqeControlSegment>() + size_of::<WqeRemoteAddressSegment>(),
-        QueuePairType::ReliableConnection => {
+        ibv_qp_type::IBV_QPT_UD => size_of::<WqeControlSegment>() + size_of::<WqeDatagramSegment>(),
+        ibv_qp_type::IBV_QPT_UC => size_of::<WqeControlSegment>() + size_of::<WqeRemoteAddressSegment>(),
+        ibv_qp_type::IBV_QPT_RC => {
             size_of::<WqeControlSegment>() /* + size_of::<WqeMaskedAtomicSegment>() */
             + size_of::<WqeRemoteAddressSegment>()
         }

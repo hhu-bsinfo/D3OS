@@ -12,7 +12,15 @@ use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use zerocopy::{AsBytes, BigEndian, FromBytes, U64};
 use crate::memory;
-use super::{cmd::{CommandInterface, Opcode}, fw::{Capabilities, VirtualPhysicalMapping}, profile::{get_mgm_entry_size, Profile}, queue_pair::QueuePair, utils, utils::MappedPages, AccessFlags, Offsets};
+use super::{
+    cmd::{CommandInterface, Opcode},
+    fw::{Capabilities, VirtualPhysicalMapping},
+    profile::{get_mgm_entry_size, Profile},
+    queue_pair::QueuePair,
+    utils,
+    utils::MappedPages,
+    Offsets,
+};
 
 pub(super) const ICM_PAGE_SHIFT: u8 = 12;
 
@@ -340,7 +348,8 @@ impl MrTable {
     ///
     /// This is used by ibv_reg_mr.
     pub(super) fn alloc_dmpt<T>(
-        &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, data: &mut [T], queue_pair: Option<&QueuePair>, access: AccessFlags,
+        &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, data: &mut [T], queue_pair: Option<&QueuePair>,
+        access: ibv_access_flags,
     ) -> Result<(u32, usize, u32, u32), &'static str> {
         let size = data.len() * size_of::<T>();
         let address = utils::get_physical_address(VirtAddr::from_ptr(data.as_ptr()));
@@ -369,13 +378,13 @@ impl MrTable {
         dmpt.set_region(true);
         // local read is always allowed
         dmpt.set_local_read(true);
-        if access.contains(AccessFlags::LOCAL_WRITE) {
+        if access.contains(ibv_access_flags::IBV_ACCESS_LOCAL_WRITE) {
             dmpt.set_local_write(true);
         }
-        if access.contains(AccessFlags::REMOTE_READ) {
+        if access.contains(ibv_access_flags::IBV_ACCESS_REMOTE_READ) {
             dmpt.set_remote_read(true);
         }
-        if access.contains(AccessFlags::REMOTE_WRITE) {
+        if access.contains(ibv_access_flags::IBV_ACCESS_REMOTE_WRITE) {
             dmpt.set_remote_write(true);
         }
         let dmpt_index = dmpt.index();
