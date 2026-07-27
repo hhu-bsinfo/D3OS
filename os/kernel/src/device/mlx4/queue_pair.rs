@@ -151,10 +151,16 @@ impl QueuePair {
         let mut context = QueuePairContext::new();
         let mut param_mask = OptionalParameterMask::empty();
 
+        let next_qp_state = if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_STATE) {
+            Some(attr.qp_state)
+        } else {
+            None
+        };
+
         // get the right state transition
-        let opcode = match (self.state, attr_mask.contains(ibv_qp_attr_mask::IBV_QP_STATE), attr.qp_state) {
+        let opcode = match (self.state, next_qp_state) {
             // initialize
-            (ibv_qp_state::IBV_QPS_RESET, true, ibv_qp_state::IBV_QPS_INIT) => {
+            (ibv_qp_state::IBV_QPS_RESET, Some(ibv_qp_state::IBV_QPS_INIT)) => {
                 // save the port number for later on
                 // In earlier versions of the API, the port number was required
                 // to be set as part of this transition. This is no longer the
@@ -238,10 +244,10 @@ impl QueuePair {
 
             // or just stay in the current state
             // We can't even set anything here.
-            (ibv_qp_state::IBV_QPS_RESET, false, _) => Opcode::Any2RstQp,
+            (ibv_qp_state::IBV_QPS_RESET, None) => return Ok(()),
 
             // init -> rtr
-            (ibv_qp_state::IBV_QPS_INIT, true, ibv_qp_state::IBV_QPS_RTR) => {
+            (ibv_qp_state::IBV_QPS_INIT, Some(ibv_qp_state::IBV_QPS_RTR)) => {
                 // we need the port number for this transition
                 if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_PORT) {
                     self.port_number = Some(attr.port_num);
@@ -324,7 +330,7 @@ impl QueuePair {
             }
 
             // or just stay in the current state
-            (ibv_qp_state::IBV_QPS_INIT, true, ibv_qp_state::IBV_QPS_INIT) | (ibv_qp_state::IBV_QPS_INIT, false, _) => {
+            (ibv_qp_state::IBV_QPS_INIT, Some(ibv_qp_state::IBV_QPS_INIT)) | (ibv_qp_state::IBV_QPS_INIT, None) => {
                 // can update qkey for UD
                 if self.qp_type == ibv_qp_type::IBV_QPT_UD {
                     if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_QKEY) {
@@ -348,8 +354,7 @@ impl QueuePair {
                 Opcode::Init2InitQp
             }
 
-            // rtr -> rts
-            (ibv_qp_state::IBV_QPS_RTR, true, ibv_qp_state::IBV_QPS_RTS) => {
+            (ibv_qp_state::IBV_QPS_RTR, Some(ibv_qp_state::IBV_QPS_RTS)) => {
                 // set required fields
                 // TODO: ack_req_freq, next_send_psn, retry_count
                 if self.qp_type == ibv_qp_type::IBV_QPT_RC {
@@ -383,6 +388,7 @@ impl QueuePair {
                     param_mask.insert(OptionalParameterMask::PKEY_INDEX);
                 }
                 if self.qp_type == ibv_qp_type::IBV_QPT_RC || self.qp_type == ibv_qp_type::IBV_QPT_UC {
+                    // TODO: remote_read and remote_atomic are invalid optional parameters for UC
                     if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_ACCESS_FLAGS) {
                         context.set_remote_write(attr.qp_access_flags.contains(ibv_access_flags::IBV_ACCESS_REMOTE_WRITE));
                         param_mask.insert(OptionalParameterMask::REMOTE_WRITE);
@@ -394,37 +400,43 @@ impl QueuePair {
                 }
                 Opcode::Rtr2RtsQp
             }
-            // interestingly, there's no Rtr2RtrQp
-            // but we could emulate it by calling UpdateQp
+
+            // interestingly, there's no Rtr2RtrQp, but we could emulate it by calling UpdateQp
+            (ibv_qp_state::IBV_QPS_RTR, None) => {
+                unimplemented!()
+            }
 
             // we can modify values in rts
-            (ibv_qp_state::IBV_QPS_RTS, true, ibv_qp_state::IBV_QPS_RTS) | (ibv_qp_state::IBV_QPS_RTS, false, _) => {
-                todo!()
+            (ibv_qp_state::IBV_QPS_RTS, Some(ibv_qp_state::IBV_QPS_RTS)) | (ibv_qp_state::IBV_QPS_RTS, None)  => {
+                unimplemented!()
             }
 
             // ignore SQD for now
-            (ibv_qp_state::IBV_QPS_RTS, true, ibv_qp_state::IBV_QPS_SQD) => {
+            (ibv_qp_state::IBV_QPS_RTS, Some(ibv_qp_state::IBV_QPS_SQD)) => {
                 unimplemented!()
             }
-            (ibv_qp_state::IBV_QPS_SQD, true, ibv_qp_state::IBV_QPS_RTS) => {
+            (ibv_qp_state::IBV_QPS_SQD, Some(ibv_qp_state::IBV_QPS_RTS)) => {
                 unimplemented!()
             }
-            (ibv_qp_state::IBV_QPS_SQD, true, ibv_qp_state::IBV_QPS_SQD) | (ibv_qp_state::IBV_QPS_SQD, false, _) => {
+            (ibv_qp_state::IBV_QPS_SQD, Some(ibv_qp_state::IBV_QPS_SQD)) | (ibv_qp_state::IBV_QPS_SQD, None) => {
                 unimplemented!()
             }
 
             // resetting is always possible
-            (_, true, ibv_qp_state::IBV_QPS_RESET) => Opcode::Any2RstQp,
-            // nothing else is possible
-            _ => return Err("invalid state transition"),
+            (_, Some(ibv_qp_state::IBV_QPS_RESET)) => Opcode::Any2RstQp,
+            (ibv_qp_state::IBV_QPS_RESET, Some(_)) => return Err("Can not go from RESET to the supplied State"),
+            (ibv_qp_state::IBV_QPS_INIT, Some(_)) => return Err("Can not go from INIT to the supplied State"),
+            (ibv_qp_state::IBV_QPS_RTR, Some(_)) => return Err("Can not go from RTR to the supplied State"),
+            (ibv_qp_state::IBV_QPS_RTS, Some(_)) => return Err("Can not go from RTS to the supplied State"),
+            (ibv_qp_state::IBV_QPS_SQD, Some(_)) => return Err("Can not go from SQD to the supplied State"),
         };
         // actually execute the command
         let mut input = StateTransitionCommandParameter::new_zeroed();
         input.opt_param_mask.set(param_mask.bits());
         input.qpc_data = context.into_bytes();
         let _: () = cmd.execute_command(opcode, (), input.as_bytes(), self.number)?;
-        if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_STATE) {
-            self.state = attr.qp_state;
+        if let Some(state) = next_qp_state {
+            self.state = state;
             trace!("QP {} is now in {:?}", self.number, self.state);
         }
         // TODO: perhaps check if this worked
