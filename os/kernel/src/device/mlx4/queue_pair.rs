@@ -27,7 +27,7 @@ use strum_macros::FromRepr;
 use tock_registers::{interfaces::Writeable, registers::WriteOnly};
 use x86_64::{PhysAddr, VirtAddr};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
-
+use rdma::uverbs_uapi::{ReceiveWorkRequest, SendWorkRequest};
 use super::{
     cmd::{CommandInterface, Opcode},
     completion_queue::CompletionQueue,
@@ -276,7 +276,7 @@ impl QueuePair {
                 if self.qp_type == ibv_qp_type::IBV_QPT_RC {
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_MAX_DEST_RD_ATOMIC));
                     // TODO: check if the devices supports that many outstanding read/atomic operations
-                    context.set_rra_max_checked(attr.max_dest_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|err| "rra_max out of bounds")?;
+                    context.set_rra_max_checked(attr.max_dest_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|_| "rra_max out of bounds")?;
                 }
 
                 // TODO: required parameters for all types: rate_limit_index
@@ -360,7 +360,7 @@ impl QueuePair {
                 if self.qp_type == ibv_qp_type::IBV_QPT_RC {
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_MAX_QP_RD_ATOMIC));
                     // TODO: check if the devices supports that many outstanding read/atomic operations
-                    context.set_sra_max_checked(attr.max_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|err| "sra_max out of bounds")?;
+                    context.set_sra_max_checked(attr.max_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|_| "sra_max out of bounds")?;
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_RNR_RETRY));
                     context.set_rnr_retry(attr.rnr_retry);
                     assert!(attr_mask.contains(ibv_qp_attr_mask::IBV_QP_TIMEOUT));
@@ -452,31 +452,30 @@ impl QueuePair {
     /// Post a work request to receive data.
     ///
     /// This is used by ibv_post_recv.
-    pub(super) fn post_receive(&mut self, wr: &mut ibv_recv_wr) -> Result<(), &'static str> {
+    pub(super) fn post_receive(&mut self, wrs: &[ReceiveWorkRequest]) -> Result<(), &'static str> {
         if self.state != ibv_qp_state::IBV_QPS_RTR && self.state != ibv_qp_state::IBV_QPS_RTS {
             return Err("queue pair cannot receive in this state");
         }
         let mut index = self.rq.head;
-        let mut current = Some(wr);
         let mut num_req = 0;
-        while current.is_some() {
-            let curr = current.take().unwrap();
+        for curr in wrs {
             // make sure that we're not overflowing
             if self.rq.would_overflow(num_req) {
                 return Err("receive queue would overflow");
             }
             // check that this work request is not too big
-            if u32::try_from(curr.num_sge).unwrap() > self.rq.max_gs {
+            if u32::try_from(curr.sges.len()).unwrap() > self.rq.max_gs {
                 return Err("work request has too many sges");
             }
             let mut sge_index = 0;
-            for sge in &curr.sg_list {
+            for sge in &curr.sges {
                 let elem: &mut WqeDataSegment = self.rq.get_element(self.memory.as_mut().unwrap(), index + sge_index)?;
                 elem.copy_from_sge(sge)?;
                 sge_index += 1;
             }
 
-            // write wr id, so that cp can recover it
+            // FIXME: use rq instead of sq to update_id
+            // write wr id, so that completion queue can recover it
             self.sq.update_id(index as usize, curr.wr_id);
 
             // fill the last one
@@ -484,15 +483,8 @@ impl QueuePair {
             *last_elem = WqeDataSegment::last();
             num_req += 1;
             index = index.wrapping_add(1);
-            // TODO: support multiple work requests
-            current = unsafe {
-                if !curr.next.is_null() {
-                    Some(&mut *curr.next)
-                } else {
-                    None
-                }
-            };
         }
+
         // return if we don't have anything to do
         if num_req == 0 {
             return Ok(());
@@ -511,25 +503,25 @@ impl QueuePair {
     ///
     /// This is used by ibv_post_send.
     pub(super) fn post_send(
-        &mut self, caps: &Capabilities, doorbells: &mut [MappedPages], blueflame: Option<&mut [MappedPages]>, wr: &mut ibv_send_wr,
+        &mut self, caps: &Capabilities, doorbells: &mut [MappedPages], blueflame: Option<&mut [MappedPages]>, wrs: &[SendWorkRequest],
     ) -> Result<(), &'static str> {
         if self.state != ibv_qp_state::IBV_QPS_RTS {
             return Err("queue pair cannot send in this state");
         }
         // TODO: the Nautilus driver uses sq.next_wqe
         let mut index = self.sq.head;
-        let mut current = Some(wr);
         let mut num_req = 0;
         let mut chain_size = 1;
         let memory = self.memory.as_mut().unwrap();
-        while current.is_some() {
-            let curr = current.take().unwrap();
+
+        let mut peekable = wrs.iter().peekable();
+        while let Some(curr) = peekable.next() {
             // make sure that we're not overflowing
             if self.sq.would_overflow(num_req) {
                 return Err("send queue would overflow");
             }
             // check that this work request is not too big
-            if u32::try_from(curr.num_sge).unwrap() > self.sq.max_gs {
+            if u32::try_from(curr.sges.len()).unwrap() > self.sq.max_gs {
                 return Err("work request has too many sges");
             }
             let ctrl_addr = {
@@ -567,8 +559,8 @@ impl QueuePair {
             // Write data segments in reverse order, so as to overwrite
             // cacheline stamp last within each cacheline. This avoids issues
             // with WQE prefetching.
-            wqe_offset += (usize::try_from(curr.num_sge).unwrap() - 1) * size_of::<WqeDataSegment>();
-            for sge in curr.sg_list.iter().rev() {
+            wqe_offset += (usize::try_from(curr.sges.len()).unwrap() - 1) * size_of::<WqeDataSegment>();
+            for sge in curr.sges.iter().rev() {
                 let elem: &mut WqeDataSegment = memory.0.as_type_mut(wqe_offset)?;
                 elem.copy_from_sge(sge)?;
                 wqe_offset -= size_of::<WqeDataSegment>();
@@ -597,7 +589,7 @@ impl QueuePair {
             // We can improve latency by not stamping the last send queue WQE
             // until after ringing the doorbell, so only stamp here if there are
             // still more WQEs to post.
-            if !curr.next.is_null() {
+            if peekable.peek().is_none() {
                 self.sq.stamp_wqe(memory, index + self.sq.spare_wqes.unwrap())?;
             }
 
@@ -614,13 +606,6 @@ impl QueuePair {
             num_req += 1;
             index = index.wrapping_add(1);
             // TODO: support multiple work requests ; Done
-            current = unsafe {
-                if !curr.next.is_null() {
-                    Some(&mut *curr.next)
-                } else {
-                    None
-                }
-            };
         }
         // return if we don't have anything to do
         if num_req == 0 {
@@ -729,6 +714,7 @@ struct QueuePairDoorbell {
     receive_wqe_index: WriteOnly<u32>,
 }
 
+// TODO: why not use a struct instea of a tuple for WorkQueueMeta
 type WorkQueueMeta<U, T> = (U, T);
 
 #[derive(Debug)]

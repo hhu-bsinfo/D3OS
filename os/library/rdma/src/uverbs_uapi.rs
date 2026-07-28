@@ -1,12 +1,11 @@
-#![allow(non_camel_case_types)]
-
-use num_enum::TryFromPrimitive;
+use alloc::vec::Vec;
+use bincode::{Decode, Encode};
 
 use super::ib_core::*;
 
-#[repr(u8)]
-#[derive(Debug, Copy, Clone, TryFromPrimitive)]
-pub enum UverbsInnerCmd {
+#[repr(u64)]
+#[derive(Debug, Copy, Clone)]
+pub enum UverbsCmd {
     // Completion queue operations
     CreateCq       = 1,
     DestroyCq      = 2,
@@ -31,127 +30,74 @@ pub enum UverbsInnerCmd {
     QueryDevices   = 15,
 }
 
-type MagicHeader  = u16;
-type CommandSize  = u16;
-type MinorPresent = u8;
-type CommandNum   = u8;
-
-pub enum UverbsCmd {
-    Call(UverbsInnerCmd, CommandNum, CommandSize, MagicHeader, MinorPresent)
-}
-
-// Define bit widths for each field
-pub const UVERBS_CMD_BITS: u64 = 8;
-pub const UVERBS_NR_BITS: u64 = 8;
-pub const UVERBS_SIZE_BITS: u64 = 16;
-pub const UVERBS_MAGIC_BITS: u64 = 16;
-pub const UVERBS_MINOR_PRESENT_BITS: u64 = 1;
-
-// Masks
-pub const UVERBS_CMD_MASK: u64 = (1 << UVERBS_CMD_BITS) - 1;
-pub const UVERBS_NR_MASK: u64 = (1 << UVERBS_NR_BITS) - 1;
-pub const UVERBS_SIZE_MASK: u64 = (1 << UVERBS_SIZE_BITS) - 1;
-pub const UVERBS_MAGIC_MASK: u64 = (1 << UVERBS_MAGIC_BITS) - 1;
-pub const UVERBS_MINOR_PRESENT_MASK: u64 = (1 << UVERBS_MINOR_PRESENT_BITS) - 1;
-
-pub const UVERBS_SIZE_SHIFT_IN_PLACE: u64 = UVERBS_CMD_BITS + UVERBS_NR_BITS;
-pub const UVERBS_SIZE_MASK_IN_PLACE: u64 = 0xFFFF << UVERBS_SIZE_SHIFT_IN_PLACE;
-
-pub const UVERBS_MAGIC: u16 = 0xABCD;
-pub const UVERBS_MINOR_NOT_PRESENT: u8 = 0;
-pub const UVERBS_MINOR_PRESENT: u8 = 1;
-
 pub const UVERBS_MAX_USER_TRUST_SIZE: usize = 0x06400000; // allow user space to allocate up to 100MB
 pub const UVERBS_MAX_USER_WC_REQ: usize = 16000;
 pub const UVERBS_MAX_QUERY_DEVICES_REQ: usize = 10;
 
 const CHAR_BUF: &[u8] = &[0u8; 64];
 
-pub const UVERBS_CMD_QUERY_DEVICES: usize = UverbsCmd::Call(UverbsInnerCmd::QueryDevices, 1, 0, UVERBS_MAGIC, UVERBS_MINOR_NOT_PRESENT).encode();
-pub const UVERBS_CMD_QUERY_DEVICE: usize = UverbsCmd::Call(UverbsInnerCmd::QueryDevice, 2, size_of::<ibv_device_attr_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_QUERY_PORT: usize = UverbsCmd::Call(UverbsInnerCmd::QueryPort, 3, size_of::<ibv_port_attr_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_REGISTER_MR: usize = UverbsCmd::Call(UverbsInnerCmd::RegMr, 4, size_of::<ibv_mr_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_SET_MR_SIZE: usize = UverbsCmd::Call(UverbsInnerCmd::SetMrSize, 5, size_of::<usize>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_CREATE_CQ: usize = UverbsCmd::Call(UverbsInnerCmd::CreateCq, 6, size_of::<ibv_cq_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_CREATE_QP: usize = UverbsCmd::Call(UverbsInnerCmd::CreateQp, 7, size_of::<ibv_qp_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_MODIFY_QP: usize = UverbsCmd::Call(UverbsInnerCmd::ModifyQp, 8, size_of::<ibv_qp_modify_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_POLL_CQ: usize = UverbsCmd::Call(UverbsInnerCmd::PollCq, 9, size_of::<ibv_cq_poll_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_POST_SEND: usize = UverbsCmd::Call(UverbsInnerCmd::OpPostSend, 10, size_of::<ibv_qp_post_send_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_POST_RECV: usize = UverbsCmd::Call(UverbsInnerCmd::OpPostRecv, 11, size_of::<ibv_qp_post_recv_container>() as u16, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_DESTROY_CQ: usize = UverbsCmd::Call(UverbsInnerCmd::DestroyCq, 12, 0, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_DESTROY_QP: usize = UverbsCmd::Call(UverbsInnerCmd::DestroyQp, 13, 0, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-pub const UVERBS_CMD_DEREGISTER_MR: usize = UverbsCmd::Call(UverbsInnerCmd::DeregMr, 14, 0, UVERBS_MAGIC, UVERBS_MINOR_PRESENT).encode();
-
-#[macro_export]
-macro_rules! UVERBS_CMD_SIZE {
-    ($cmd:expr) => {
-        (($cmd & $crate::uverbs_uapi::UVERBS_SIZE_MASK_IN_PLACE) >> $crate::uverbs_uapi::UVERBS_SIZE_SHIFT_IN_PLACE) as usize
-    };
+/// A region of user memory, described by its start address and its size in bytes.
+///
+/// The uverbs system call takes two of these: one for the request (in) and one
+/// for the response (out) buffer. An empty slice (address and size zero) means
+/// that the command does not use that direction.
+#[repr(C)]
+#[derive(Default, Debug, Copy, Clone)]
+pub struct UserSlice {
+    pub address: u64,
+    pub size: usize,
 }
 
-type UverbsCmdEnc = usize;
-type UverbsCmdSupportedSize = usize;
+impl UserSlice {
+    pub const EMPTY: Self = Self { address: 0, size: 0 };
 
-pub trait TypeSize {
-    const S: usize;
-}
+    pub fn new(address: u64, size: usize) -> Self {
+        Self { address, size }
+    }
 
-impl TypeSize for ibv_device_attr {
-    const S: usize = CHAR_BUF.len();
-}
+    pub fn from_ref<T>(value: &T) -> Self {
+        Self { address: value as *const T as u64, size: size_of::<T>() }
+    }
 
-impl TypeSize for ibv_port_attr_container {
-    const S: usize = size_of::<u8>();
-}
+    pub fn from_mut<T>(value: &mut T) -> Self {
+        Self { address: value as *mut T as u64, size: size_of::<T>() }
+    }
 
-impl TypeSize for ibv_mr_container {
-    const S: usize = UVERBS_MAX_USER_TRUST_SIZE;
-}
+    pub fn from_slice<T>(slice: &[T]) -> Self {
+        Self { address: slice.as_ptr() as u64, size: size_of_val(slice) }
+    }
 
-impl TypeSize for ibv_qp_container {
-    const S: usize = size_of::<ibv_qp_cap>();
-}
+    pub fn from_mut_slice<T>(slice: &mut [T]) -> Self {
+        Self { address: slice.as_mut_ptr() as u64, size: size_of_val(slice) }
+    }
 
-impl TypeSize for ibv_qp_modify_container {
-    const S: usize = size_of::<ibv_qp_attr>();
-}
+    pub fn is_empty(&self) -> bool {
+        self.address == 0 || self.size == 0
+    }
 
-impl TypeSize for ibv_cq_poll_container {
-    const S: usize = size_of::<ibv_wc>() * UVERBS_MAX_USER_WC_REQ;
-}
-
-impl TypeSize for ibv_qp_post_send_container {
-    const S: usize = size_of::<ibv_send_wr>();
-}
-
-impl TypeSize for ibv_qp_post_recv_container {
-    const S: usize = size_of::<ibv_recv_wr>();
+    /// How many elements of type `T` fit into this slice.
+    pub fn capacity<T>(&self) -> usize {
+        self.size / size_of::<T>()
+    }
 }
 
 #[repr(C)]
-pub struct ibv_device_attr_container {
-    pub fw_ver: [u8; ibv_device_attr::S],
-    pub phys_port_cnt: u8
-}
-
-#[repr(C)]
-pub struct ibv_port_attr_container {
-    pub ibv_port_attr: ibv_port_attr,
+#[derive(Debug, Copy, Clone)]
+pub struct QueryPortRequest {
     pub port_num: u8
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_mr_container {
+#[derive(Default, Copy, Clone)]
+pub struct CreateMrRequest {
     pub ibv_access_flags: ibv_access_flags,
     pub data_ptr: *mut u8,
     pub len: usize,
-    pub ibv_mr_res: ibv_mr_res
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_mr_res {
+#[derive(Default, Copy, Clone)]
+pub struct CreateMrResponse {
     pub index: u32,
     pub addr: usize,
     pub lkey: u32,
@@ -159,56 +105,44 @@ pub struct ibv_mr_res {
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_cq_container {
+#[derive(Default, Copy, Clone)]
+pub struct CreateCqRequest {
     pub cq_entries: i32,
-    pub cq_num: u32
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_cq_poll_container {
-    pub wc: *mut ibv_wc,
-    pub wc_len: usize,
+#[derive(Default, Copy, Clone)]
+pub struct CreateCqResponse {
+    pub cq_num: u32
+}
+
+
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct PollCqRequest {
     pub cq_num: u32,
 }
 
 #[repr(C)]
-pub struct ibv_qp_container {
+#[derive(Copy, Clone)]
+pub struct CreateQpRequest {
     pub qp_type: ibv_qp_type::Type,
     pub send_cq_num: u32,
     pub recv_cq_num: u32,
-    pub ib_caps: *mut ibv_qp_cap,
-    pub qp_num: u32
+    pub ib_caps: ibv_qp_cap,
 }
 
-impl Default for ibv_qp_container {
-    fn default() -> Self {
-        Self { 
-            qp_type: ibv_qp_type::IBV_QPT_RC, // just place holder
-            send_cq_num: Default::default(), 
-            recv_cq_num: Default::default(), 
-            ib_caps: Default::default(), 
-            qp_num: Default::default() 
-        }
-    }
+#[derive(Copy, Clone)]
+pub struct CreateQpResponse {
+    pub qp_num: u32,
 }
 
 #[repr(C)]
-pub struct ibv_qp_modify_container {
+#[derive(Copy, Clone)]
+pub struct ModifyQpRequest {
     pub qp_num: u32,
-    pub attr: *const ibv_qp_attr,
+    pub attr: ibv_qp_attr,
     pub attr_mask: ibv_qp_attr_mask
-}
-
-impl Default for ibv_qp_modify_container {
-    fn default() -> Self {
-        Self { 
-            qp_num: Default::default(), 
-            attr: Default::default(), 
-            attr_mask: ibv_qp_attr_mask::IBV_QP_PORT // just place holder
-        }
-    }
 }
 
 impl Default for ibv_send_wr {
@@ -217,8 +151,7 @@ impl Default for ibv_send_wr {
             wr_id: Default::default(), 
             next: Default::default(), 
             sg_list: Default::default(), 
-            num_sge: Default::default(), 
-            opcode: ibv_wr_opcode::IBV_WR_SEND, 
+            opcode: ibv_wr_opcode::IBV_WR_SEND,
             send_flags: ibv_send_flags::SIGNALED, 
             __bindgen_anon_1: Default::default(), 
             wr: Default::default(), 
@@ -233,112 +166,43 @@ impl Default for ibv_recv_wr {
             wr_id: Default::default(), 
             next: Default::default(), 
             sg_list: Default::default(), 
-            num_sge: Default::default() 
         }
     }
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_qp_post_send_container {
-    pub ibv_send_wr: *mut ibv_send_wr,
-    pub qp_num: u32
+#[derive(Clone, Default, Encode, Decode)]
+pub struct PostSendRequest {
+    pub qp_num: u32,
+    pub wrs: Vec<SendWorkRequest>,
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct ibv_qp_post_recv_container {
-    pub ibv_recv_wr: *mut ibv_recv_wr,
-    pub qp_num: u32
+#[derive(Clone, Encode, Decode)]
+pub struct SendWorkRequest {
+    pub wr_id: u64,
+    pub sges: Vec<ibv_sge>,
+    pub opcode: ibv_wr_opcode,
+    pub send_flags: ibv_send_flags,
+    pub wr: ibv_send_wr_wr,
 }
 
-impl From<(u32, usize, u32, u32)> for ibv_mr_res {
+
+#[repr(C)]
+#[derive(Clone, Encode, Decode)]
+pub struct PostReceiveRequest {
+    pub qp_num: u32,
+    pub wrs: Vec<ReceiveWorkRequest>,
+}
+
+#[derive(Clone, Encode, Decode)]
+pub struct ReceiveWorkRequest {
+    pub wr_id: u64,
+    pub sges: Vec<ibv_sge>,
+}
+
+impl From<(u32, usize, u32, u32)> for CreateMrResponse {
     fn from(value: (u32, usize, u32, u32)) -> Self {
-        ibv_mr_res { index: value.0, addr: value.1, lkey: value.2, rkey: value.3 }
+        CreateMrResponse { index: value.0, addr: value.1, lkey: value.2, rkey: value.3 }
     }
-}
-
-impl UverbsCmd {
-    /// Encode into a single u64
-    pub const fn encode(&self) -> usize {
-        match self {
-            UverbsCmd::Call(cmd, seq, size, magic, minor) => {
-                let inner_cmd = *cmd as u64 & UVERBS_CMD_MASK;
-                let cmd_num = *seq as u64 & UVERBS_NR_MASK;
-                let size_u64 = *size as u64 & UVERBS_SIZE_MASK;
-                let magic_u64 = *magic as u64 & UVERBS_MAGIC_MASK;
-                let minor_u64 = *minor as u64 & UVERBS_MINOR_PRESENT_MASK;
-
-                ((minor_u64 << (UVERBS_SIZE_BITS + UVERBS_NR_BITS + UVERBS_CMD_BITS + UVERBS_MAGIC_BITS)) |
-                (magic_u64 << (UVERBS_SIZE_BITS + UVERBS_NR_BITS + UVERBS_CMD_BITS)) |
-                (size_u64 << (UVERBS_NR_BITS + UVERBS_CMD_BITS)) |
-                (cmd_num << UVERBS_CMD_BITS) |
-                inner_cmd) as usize
-            }
-        }
-    }
-
-    /// Decode from u64
-    pub fn decode(encoded: u64) -> Self {
-        let cmd_num = (encoded & UVERBS_CMD_MASK) as u8;
-        let seq = ((encoded >> UVERBS_CMD_BITS) & UVERBS_NR_MASK) as u8;
-        let size = ((encoded >> (UVERBS_CMD_BITS + UVERBS_NR_BITS)) & UVERBS_SIZE_MASK) as u16;
-        let magic = ((encoded >> (UVERBS_CMD_BITS + UVERBS_NR_BITS + UVERBS_SIZE_BITS)) & UVERBS_MAGIC_MASK) as u16;
-        let minor = ((encoded >> (UVERBS_CMD_BITS + UVERBS_NR_BITS + UVERBS_SIZE_BITS + UVERBS_MAGIC_BITS)) & UVERBS_MINOR_PRESENT_MASK) as u8;
-
-        UverbsCmd::Call(UverbsInnerCmd::try_from(cmd_num).unwrap(), seq, size, magic, minor)
-    }
-
-    /// Accessors
-    pub fn cmd(&self) -> UverbsInnerCmd {
-        match self {
-            UverbsCmd::Call(cmd, _, _, _, _) => *cmd,
-        }
-    }
-
-    pub fn seq(&self) -> u8 {
-        match self {
-            UverbsCmd::Call(_, seq, _, _, _) => *seq,
-        }
-    }
-
-    pub fn size(&self) -> u16 {
-        match self {
-            UverbsCmd::Call(_, _, size, _, _) => *size,
-        }
-    }
-
-    pub fn magic(&self) -> u16 {
-        match self {
-            UverbsCmd::Call(_, _, _, magic, _) => *magic,
-        }
-    }
-
-    pub fn decompose(&self) -> (UverbsInnerCmd, u8, u16, u16, u8) {
-        match self {
-            UverbsCmd::Call(cmd, seq, size, magic, minor) => (*cmd, *seq, *size, *magic, *minor),
-        }
-    }
-}
-
-/// Accessors work from the encoded value
-pub fn cmd(encoded: u64) -> UverbsInnerCmd {
-    let cmd_num = (encoded & UVERBS_CMD_MASK) as u8;
-    UverbsInnerCmd::try_from(cmd_num).unwrap()
-}
-
-pub fn seq(encoded: u64) -> u8 {
-    ((encoded >> UVERBS_CMD_BITS) & UVERBS_NR_MASK) as u8
-}
-
-pub fn size(encoded: u64) -> u32 {
-    ((encoded >> (UVERBS_NR_BITS + UVERBS_CMD_BITS)) & UVERBS_SIZE_MASK) as u32
-}
-
-pub fn magic(encoded: u64) -> u16 {
-    ((encoded >> (UVERBS_SIZE_BITS + UVERBS_NR_BITS + UVERBS_CMD_BITS)) & UVERBS_MAGIC_MASK) as u16
-}
-
-pub fn minor_present(encoded: u64) -> u8 {
-    ((encoded >> (UVERBS_SIZE_BITS + UVERBS_NR_BITS + UVERBS_CMD_BITS + UVERBS_MINOR_PRESENT_BITS)) & UVERBS_MINOR_PRESENT_MASK) as u8
 }

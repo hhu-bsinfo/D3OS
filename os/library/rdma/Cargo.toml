@@ -8,4 +8,5 @@ authors = [ "Sandro Jose Leal Miudo" ]
 # External depencies
 bitflags = "2.9.0"
 strum_macros = "0.26"
+bincode = { version = "2.0.1", default-features = false, features = ["alloc", "derive"]}
 num_enum = { version = "0.5", default-features = false }

@@ -5,6 +5,10 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use bincode::{BorrowDecode, Decode, Encode};
+use bincode::de::{BorrowDecoder, Decoder};
+use bincode::enc::Encoder;
+use bincode::error::{DecodeError, EncodeError};
 use bitflags::bitflags;
 use strum_macros::FromRepr;
 
@@ -47,7 +51,7 @@ bitflags! {
 
 #[derive(Clone, Copy)]
 pub struct ibv_device {
-    pub nic: usize,
+    pub handle: usize,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -69,7 +73,7 @@ pub enum ibv_mtu {
     Mtu4096 = 5,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, FromRepr)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, FromRepr)]
 #[repr(i32)]
 pub enum ibv_port_state {
     #[default]
@@ -81,7 +85,7 @@ pub enum ibv_port_state {
     IBV_PORT_ACTIVE_DEFER = 5,
 }
 
-#[derive(Debug, Default, FromRepr)]
+#[derive(Debug, Default, Copy, Clone, FromRepr)]
 #[repr(u8)]
 pub enum PhysicalPortState {
     #[default]
@@ -100,13 +104,13 @@ pub struct ibv_gid {
     pub raw: [u8; 16],
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct ibv_global_route {
     pub dgid: ibv_gid,
     pub hop_limit: u8,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct ibv_ah_attr {
     pub grh: ibv_global_route,
     pub dlid: u16,
@@ -116,7 +120,7 @@ pub struct ibv_ah_attr {
     pub port_num: u8,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct ibv_qp_attr {
     pub qp_state: ibv_qp_state,
     pub path_mtu: ibv_mtu,
@@ -142,6 +146,7 @@ pub struct ibv_qp_attr {
 
 
 bitflags! {
+    #[derive(Clone, Copy)]
     pub struct ibv_qp_attr_mask: u32 {
         const IBV_QP_STATE = 1 << 0;
         const IBV_QP_ACCESS_FLAGS = 1 << 3;
@@ -163,7 +168,7 @@ bitflags! {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct ibv_port_attr {
     pub state: ibv_port_state,
     pub max_mtu: ibv_mtu,
@@ -191,7 +196,6 @@ pub struct ibv_send_wr {
     pub wr_id: u64,
     pub next: *mut ibv_send_wr,
     pub sg_list: Vec<ibv_sge>,
-    pub num_sge: i32,
     pub opcode: ibv_wr_opcode,
     pub send_flags: ibv_send_flags,
     pub __bindgen_anon_1: (),
@@ -200,7 +204,7 @@ pub struct ibv_send_wr {
     pub __bindgen_anon_2: (),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Encode, Decode)]
 pub enum ibv_send_wr_wr {
     rdma {
         /// Start address of remote memory buffer
@@ -233,7 +237,7 @@ impl Default for ibv_send_wr_wr {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Encode, Decode)]
 pub struct ibv_send_wr_wr_ah {
     pub port: u32,
     pub dlid: u16,
@@ -245,10 +249,9 @@ pub struct ibv_recv_wr {
     pub wr_id: u64,
     pub next: *mut ibv_recv_wr,
     pub sg_list: Vec<ibv_sge>,
-    pub num_sge: i32,
 }
 
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone, Encode, Decode)]
 pub enum ibv_wr_opcode {
     IBV_WR_RDMA_WRITE,
     IBV_WR_SEND,
@@ -265,7 +268,27 @@ bitflags! {
     }
 }
 
-#[derive(Debug)]
+impl Encode for ibv_send_flags {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        bincode::Encode::encode(&self.0.0, encoder)
+    }
+}
+
+impl<Context> Decode<Context> for ibv_send_flags {
+    fn decode<D: Decoder<Context = Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
+        ibv_send_flags::from_bits(bincode::Decode::decode(decoder)?)
+            .ok_or(DecodeError::Other("failed to decode ibv_send_flags"))
+    }
+}
+
+impl<'de, Context> BorrowDecode<'de, Context> for ibv_send_flags {
+    fn borrow_decode<D: BorrowDecoder<'de, Context=Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
+        ibv_send_flags::from_bits(bincode::BorrowDecode::borrow_decode(decoder)?)
+            .ok_or(DecodeError::Other("failed to decode ibv_send_flags"))
+    }
+}
+
+#[derive(Debug, Copy, Clone, Encode, Decode)]
 pub struct ibv_sge {
     pub addr: u64,
     pub length: u32,

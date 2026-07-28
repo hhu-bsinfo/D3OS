@@ -15,6 +15,7 @@ mod queue_pair;
 mod utils;
 
 use alloc::vec::Vec;
+use core::slice::Iter;
 use cmd::CommandInterface;
 use completion_queue::CompletionQueue;
 use event_queue::{EventQueue, init_eqs};
@@ -37,6 +38,8 @@ use profile::Profile;
 
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
+use bitflags::bitflags;
+use rdma::uverbs_uapi::{ReceiveWorkRequest, SendWorkRequest};
 
 /// Vendor ID for Mellanox
 pub const MLX_VEND: u16 = 0x15b3;
@@ -53,20 +56,20 @@ pub const fn devices_supported() -> usize {
 }
 
 #[inline(always)]
-pub fn device_in_range(minor: usize) -> bool {
-    (DEVICE_START..=DEVICE_END).contains(&minor)
+pub fn device_in_range(handle: usize) -> bool {
+    (DEVICE_START..=DEVICE_END).contains(&handle)
 }
 
 #[inline(always)]
-pub fn minor_to_idx(minor: usize) -> usize {
-    minor - DEVICE_START
+pub fn device_handle_to_idx(handle: usize) -> usize {
+    handle - DEVICE_START
 }
 
-static MINOR: AtomicUsize = AtomicUsize::new(DEVICE_START);
+static CURRENT_DEVICE_HANDLE: AtomicUsize = AtomicUsize::new(DEVICE_START);
 static DEV_LIST: Once<Mutex<Vec<ConnectX3Nic>>> = Once::new();
 
-fn next_minor() -> usize {
-    MINOR.fetch_add(1, Relaxed)
+fn next_device_handle() -> usize {
+    CURRENT_DEVICE_HANDLE.fetch_add(1, Relaxed)
 }
 
 /// List of all initialized ConnectX-3 NICs
@@ -91,7 +94,7 @@ pub struct ConnectX3Nic {
     cqs: Vec<CompletionQueue>,
     qps: Vec<QueuePair>,
     ports: Vec<Port>,
-    pub minor: usize,
+    pub handle: usize,
 }
 
 /// Functions that setup the struct.
@@ -102,7 +105,7 @@ impl ConnectX3Nic {
     /// # Arguments
     /// * `mlx3_pci_dev`: Contains the pci device information.
     pub fn init(mlx3_pci_dev: &RwLock<EndpointHeader>) -> Result<usize, &'static str> {
-        if MINOR.load(Relaxed) > DEVICE_END {
+        if CURRENT_DEVICE_HANDLE.load(Relaxed) > DEVICE_END {
             return Err("Max devices reached !");
         }
 
@@ -167,7 +170,7 @@ impl ConnectX3Nic {
 
         let ports = hca.init_ports(&mut cmd, &capabilities, offsets.base_qpn)?;
 
-        let minor = next_minor();
+        let handle = next_device_handle();
 
         let nic = Self {
             cmd,
@@ -184,10 +187,10 @@ impl ConnectX3Nic {
             cqs: Vec::new(),
             qps: Vec::new(),
             ports,
-            minor,
+            handle,
         };
         get_dev_list().lock().push(nic);
-        Ok(minor)
+        Ok(handle)
     }
 
     /// Get statistics about the device.
@@ -310,7 +313,7 @@ impl ConnectX3Nic {
     /// Post a work request to receive data.
     ///
     /// This is used by ibv_post_recv.
-    pub fn post_receive(&mut self, qp_number: u32, wr: &mut ibv_recv_wr) -> Result<(), &'static str> {
+    pub fn post_receive(&mut self, qp_number: u32, wr: &[ReceiveWorkRequest]) -> Result<(), &'static str> {
         let qp = self.qps.iter_mut().find(|qp| qp.number() == qp_number).ok_or("invalid queue pair number")?;
         qp.post_receive(wr)
     }
@@ -318,7 +321,7 @@ impl ConnectX3Nic {
     /// Post a work request to send data.
     ///
     /// This is used by ibv_post_send.
-    pub fn post_send(&mut self, qp_number: u32, wr: &mut ibv_send_wr) -> Result<(), &'static str> {
+    pub fn post_send(&mut self, qp_number: u32, wr: &[SendWorkRequest]) -> Result<(), &'static str> {
         let qp = self.qps.iter_mut().find(|qp| qp.number() == qp_number).ok_or("invalid queue pair number")?;
         // TODO: check if blue flame is available
         qp.post_send(&mut self.capabilities, &mut self.doorbells, Some(&mut self.blueflame), wr)

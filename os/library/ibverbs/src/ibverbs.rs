@@ -1441,13 +1441,10 @@ impl<'res> QueuePair<'res> {
                 sg_list.push(sge);
             }
 
-            let num_sge = sg_list.len() as i32;
-
             let wr_inner = Box::new(ffi::ibv_recv_wr {
                 wr_id,
                 next,
                 sg_list,
-                num_sge,
             });
 
             next = Box::into_raw(wr_inner);
