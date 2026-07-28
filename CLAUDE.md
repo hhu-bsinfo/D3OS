@@ -48,6 +48,17 @@ cd os/kernel && cargo make --no-workspace clippy
 cd os/application/<name> && cargo make --no-workspace check
 ```
 
+Caveat: these per-crate invocations currently don't work (observed in a `D3OS-worktrees/*` checkout, but the
+cause isn't worktree-specific). `--no-workspace` makes cargo-make resolve `CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY`
+to the crate directory,
+so it looks for `os/kernel/d3os_kernel.json` instead of the repo-root one and aborts with "target path ... is
+not a valid file". Passing the target spec by hand
+(`cargo check -Z build-std=core,alloc -Z build-std-features=compiler-builtins-mem --target ../../d3os_kernel.json --lib`)
+gets past that but then fails building the `getrandom` dependency ("target is not supported", missing
+`backends::fill_inner`) — that failure is pre-existing and unrelated to whatever you changed. Until this is
+fixed, type-check kernel/library changes with a full `cargo make --no-workspace image` from the repo root
+instead; it compiles the kernel (with `infiniband_mlx4` on by default) and every application.
+
 ### Debugging
 
 ```bash
