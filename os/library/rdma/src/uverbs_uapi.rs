@@ -36,38 +36,48 @@ pub const UVERBS_MAX_QUERY_DEVICES_REQ: usize = 10;
 
 const CHAR_BUF: &[u8] = &[0u8; 64];
 
+/// A region of user memory, described by its start address and its size in bytes.
+///
+/// The uverbs system call takes two of these: one for the request (in) and one
+/// for the response (out) buffer. An empty slice (address and size zero) means
+/// that the command does not use that direction.
 #[repr(C)]
 #[derive(Default, Debug, Copy, Clone)]
-pub struct UserMemory {
-    pub in_address: u64,
-    pub out_address: u64,
-    pub in_size: u32,
-    pub out_size: u32,
+pub struct UserSlice {
+    pub address: u64,
+    pub size: usize,
 }
 
-impl UserMemory {
-    pub fn with_in_from_ref<T>(mut self, in_ref: &T) -> Self {
-        self.in_address = in_ref as *const T as u64;
-        self.in_size = size_of::<T>() as u32;
-        self
+impl UserSlice {
+    pub const EMPTY: Self = Self { address: 0, size: 0 };
+
+    pub fn new(address: u64, size: usize) -> Self {
+        Self { address, size }
     }
 
-    pub fn with_in_from_slice<T>(mut self, in_slice: &[T]) -> Self {
-        self.in_address = in_slice.as_ptr() as u64;
-        self.in_size = (in_slice.len() * size_of::<T>()) as u32;
-        self
+    pub fn from_ref<T>(value: &T) -> Self {
+        Self { address: value as *const T as u64, size: size_of::<T>() }
     }
 
-    pub fn with_out_from_ref<T>(mut self, out_ref: &mut T) -> Self {
-        self.out_address = out_ref as *mut T as u64;
-        self.out_size = size_of::<T>() as u32;
-        self
+    pub fn from_mut<T>(value: &mut T) -> Self {
+        Self { address: value as *mut T as u64, size: size_of::<T>() }
     }
 
-    pub fn with_out_from_slice<T>(mut self, out_slice: &mut [T]) -> Self {
-        self.out_address = out_slice.as_mut_ptr() as u64;
-        self.out_size = (out_slice.len() * size_of::<T>()) as u32;
-        self
+    pub fn from_slice<T>(slice: &[T]) -> Self {
+        Self { address: slice.as_ptr() as u64, size: size_of_val(slice) }
+    }
+
+    pub fn from_mut_slice<T>(slice: &mut [T]) -> Self {
+        Self { address: slice.as_mut_ptr() as u64, size: size_of_val(slice) }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.address == 0 || self.size == 0
+    }
+
+    /// How many elements of type `T` fit into this slice.
+    pub fn capacity<T>(&self) -> usize {
+        self.size / size_of::<T>()
     }
 }
 
