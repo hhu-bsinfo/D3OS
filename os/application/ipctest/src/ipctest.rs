@@ -65,7 +65,7 @@ pub fn main() {
         loop {
             match concurrent::ipc::receive() {
                 Some(msg) => {
-                    println!("Received Message: {:?}", msg.message());
+                    println!("Received Message: {:?}", msg);
                     break;
                 },
                 None => {}

@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use core::ptr;
 use core::sync::atomic::{AtomicI16, AtomicU16, Ordering};
 use syscall::{SystemCall, return_vals::SyscallResult, syscall};
@@ -5,19 +6,19 @@ use uuid::Uuid;
 
 // Schnittstelle für Interprozesskommunikation
 
-pub const MESSAGE_SIZE: usize = 0x100;
+pub const MESSAGE_SIZE: usize = 0x100 - 0x18;
 const MAX_NUM_MESSAGES: usize = 8; // !this needs to be a power of 2!
 
 pub struct IpcQueue {
     writer_idx: AtomicU16,
     reader_idx: AtomicU16,
     mailbox: [AtomicI16; MAX_NUM_MESSAGES],
-    data: [[u8; MESSAGE_SIZE]; MAX_NUM_MESSAGES],
+    data: [IpcMessage; MAX_NUM_MESSAGES],
 }
 
 impl IpcQueue {
     
-    pub fn send(&mut self, data: &[u8]) -> bool {
+    pub fn send(&mut self, data: &[u8], sender_pid: Uuid, sender_tid: usize) -> bool {
 
         // 1. check if there is space in the queue
         if self.space_left() == 0 { return false }
@@ -29,7 +30,11 @@ impl IpcQueue {
             Ok(_) => {
                 // 3. write message into memory
                 let msg_len = core::cmp::min(data.len(), MESSAGE_SIZE);
-                self.data[writer_idx][..msg_len].copy_from_slice(&data[..msg_len]);
+                if let Some(msg) = self.data.get_mut(writer_idx) {
+                    msg.data[..msg_len].copy_from_slice(&data[..msg_len]);
+                    msg.sender_pid = sender_pid;
+                    msg.sender_tid = sender_tid;
+                }
                 self.mailbox[writer_idx].store(msg_len as i16, Ordering::SeqCst);
                 true
             }
@@ -37,7 +42,7 @@ impl IpcQueue {
         }
     }
 
-    pub fn receive(&'static self) -> Option<IpcMessageData> {
+    pub fn receive(&'static self) -> Option<&IpcMessage> {
 
         // 1. check for any messages
         if self.messages_left() == 0 { return None }
@@ -54,7 +59,9 @@ impl IpcQueue {
             return None;
         }
 
-        Some(IpcMessageData { data: &self.data[reader_idx], msg_len: msg_len as usize, queue_ptr: ptr::from_ref(&self.mailbox[reader_idx]) })
+        self.data.get(reader_idx)
+
+        //Some(IpcMessageData { data: &self.data[reader_idx], msg_len: msg_len as usize, queue_ptr: ptr::from_ref(&self.mailbox[reader_idx]) })
     }
 
     pub fn writer_idx(&self) -> &AtomicU16 {
@@ -74,7 +81,7 @@ impl IpcQueue {
     }
 
     pub fn new() -> Self {
-        Self { writer_idx: AtomicU16::new(0), reader_idx: AtomicU16::new(0), mailbox: [const { AtomicI16::new(0) }; _], data: [[0; MESSAGE_SIZE]; MAX_NUM_MESSAGES] }
+        Self { writer_idx: AtomicU16::new(0), reader_idx: AtomicU16::new(0), mailbox: [const { AtomicI16::new(0) }; _], data: [IpcMessage::new(); MAX_NUM_MESSAGES] }
     }
 }
 
@@ -105,6 +112,34 @@ impl Drop for IpcMessageData {
     }
 }
 
+pub struct IpcMessageWrapper {
+    data: IpcMessageData,
+    sender_pid: Uuid,
+    sender_tid: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IpcMessage {
+    data: [u8; MESSAGE_SIZE],
+    sender_pid: Uuid,
+    sender_tid: usize,
+}
+
+impl IpcMessage {
+    pub fn new() -> Self {
+        Self { data: [0; MESSAGE_SIZE], sender_pid: Uuid::nil(), sender_tid: 0 }
+    }
+    pub fn data(&self) -> &[u8; MESSAGE_SIZE] {
+        &self.data
+    }
+}
+
+impl Default for IpcMessage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
 pub fn init_queue() {
@@ -124,12 +159,12 @@ pub fn send(pid: Uuid, tid: usize, message: &[u8]) -> SyscallResult {
     syscall(SystemCall::IpcSend, &[pid1 as usize, pid2 as usize, tid, msg_ptr as usize, msg_len])
 }
 
-pub fn receive() -> Option<IpcMessageData> {
+pub fn receive() -> Option<&'static IpcMessage> {
     let ipc_queue = unsafe { (USER_SPACE_MAILBOX_START as *const IpcQueue).as_ref() };
     ipc_queue.and_then(|iq| iq.receive())
 }
 
-pub fn receive_blocking(timeout_ms: usize) -> Result<IpcMessageData, syscall::return_vals::Errno> {
+pub fn receive_blocking(timeout_ms: usize) -> Result<&'static IpcMessage, syscall::return_vals::Errno> {
     match syscall(SystemCall::IpcReceiveBlocking, &[timeout_ms]) {
         Ok(_) => receive().ok_or(syscall::return_vals::Errno::EEXIST),
         Err(e) => Err(e),

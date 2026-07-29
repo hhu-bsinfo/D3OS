@@ -8,7 +8,7 @@ static WAIT_QUEUE: WaitQueue = WaitQueue::new();
 
 pub extern "sysv64" fn sys_ipc_send(pid1: u64, pid2: u64, tid: usize, msg_ptr: *const u8, msg_len: usize) -> isize {
     
-    let _pid = Uuid::from_u64_pair(pid1, pid2);
+    let pid = Uuid::from_u64_pair(pid1, pid2);
 
     if let Some(thread) = scheduler().thread(tid) {
         let vas = &thread.process().virtual_address_space;
@@ -16,7 +16,7 @@ pub extern "sysv64" fn sys_ipc_send(pid1: u64, pid2: u64, tid: usize, msg_ptr: *
             if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_mut() } {
             
                 let message = unsafe { core::slice::from_raw_parts(msg_ptr, msg_len) };
-                let res = ipc_queue.send(message);
+                let res = ipc_queue.send(message, pid, tid);
 
                 if res {
                     return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(message.len()));
