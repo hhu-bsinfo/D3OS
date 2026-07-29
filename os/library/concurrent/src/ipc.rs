@@ -1,12 +1,21 @@
-use core::fmt::Debug;
-use core::ptr;
+use core::fmt::{Debug, Display};
 use core::sync::atomic::{AtomicI16, AtomicU16, Ordering};
 use syscall::{SystemCall, return_vals::SyscallResult, syscall};
 use uuid::Uuid;
 
 // Schnittstelle für Interprozesskommunikation
 
-pub const MESSAGE_SIZE: usize = 0x100 - 0x18;
+pub struct IpcSyscallParams {
+    pub pid: Uuid,
+    pub tid: usize,
+    pub data_ptr: *const u8,
+    pub data_len: usize,
+    pub tag_ptr: *const u8,
+    pub tag_len: usize,
+}
+
+const MESSAGE_TAG_LEN: usize = 0x10;
+pub const MESSAGE_SIZE: usize = 0x100 - (size_of::<Uuid>() + size_of::<usize>() + MESSAGE_TAG_LEN);
 const MAX_NUM_MESSAGES: usize = 8; // !this needs to be a power of 2!
 
 pub struct IpcQueue {
@@ -18,7 +27,7 @@ pub struct IpcQueue {
 
 impl IpcQueue {
     
-    pub fn send(&mut self, data: &[u8], sender_pid: Uuid, sender_tid: usize) -> bool {
+    pub fn send(&mut self, data: &[u8], sender_pid: Uuid, sender_tid: usize, tag: &str) -> bool {
 
         // 1. check if there is space in the queue
         if self.space_left() == 0 { return false }
@@ -29,20 +38,24 @@ impl IpcQueue {
         match self.mailbox[writer_idx].compare_exchange(0, -1, Ordering::SeqCst, Ordering::SeqCst) {
             Ok(_) => {
                 // 3. write message into memory
-                let msg_len = core::cmp::min(data.len(), MESSAGE_SIZE);
                 if let Some(msg) = self.data.get_mut(writer_idx) {
+                    let msg_len = core::cmp::min(data.len(), MESSAGE_SIZE);
                     msg.data[..msg_len].copy_from_slice(&data[..msg_len]);
                     msg.sender_pid = sender_pid;
                     msg.sender_tid = sender_tid;
+                    let tag_len = core::cmp::min(tag.len(), MESSAGE_TAG_LEN);
+                    msg.tag[..tag_len].copy_from_slice(&tag.as_bytes()[..tag_len]);
+                    self.mailbox[writer_idx].store(msg_len as i16, Ordering::SeqCst);
+                    true
+                } else {
+                    false
                 }
-                self.mailbox[writer_idx].store(msg_len as i16, Ordering::SeqCst);
-                true
             }
             Err(_) => false,
         }
     }
 
-    pub fn receive(&'static self) -> Option<&IpcMessage> {
+    pub fn receive(&'static self) -> Option<&'static IpcMessage> {
 
         // 1. check for any messages
         if self.messages_left() == 0 { return None }
@@ -112,22 +125,17 @@ impl Drop for IpcMessageData {
     }
 }
 
-pub struct IpcMessageWrapper {
-    data: IpcMessageData,
-    sender_pid: Uuid,
-    sender_tid: usize,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct IpcMessage {
     data: [u8; MESSAGE_SIZE],
     sender_pid: Uuid,
     sender_tid: usize,
+    tag: [u8; MESSAGE_TAG_LEN],
 }
 
 impl IpcMessage {
     pub fn new() -> Self {
-        Self { data: [0; MESSAGE_SIZE], sender_pid: Uuid::nil(), sender_tid: 0 }
+        Self { data: [0; MESSAGE_SIZE], sender_pid: Uuid::nil(), sender_tid: 0, tag: [0; MESSAGE_TAG_LEN] }
     }
     pub fn data(&self) -> &[u8; MESSAGE_SIZE] {
         &self.data
@@ -137,6 +145,12 @@ impl IpcMessage {
 impl Default for IpcMessage {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Display for IpcMessage {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "(pid: {:?}, tid: {}, {}): {:?}", self.sender_pid, self.sender_tid, core::str::from_utf8(&self.tag).unwrap_or("ERR"), self.data)
     }
 }
 
@@ -150,13 +164,18 @@ pub fn init_queue() {
     }
 }
 
-pub fn send(pid: Uuid, tid: usize, message: &[u8]) -> SyscallResult {
-    
-    let (pid1, pid2) = pid.as_u64_pair();
-    let msg_ptr = message.as_ptr();
-    let msg_len = message.len();
+pub fn send(pid: Uuid, tid: usize, tag: &str, message: &[u8]) -> SyscallResult {
 
-    syscall(SystemCall::IpcSend, &[pid1 as usize, pid2 as usize, tid, msg_ptr as usize, msg_len])
+    let params = IpcSyscallParams {
+        pid,
+        tid,
+        data_ptr: message.as_ptr(),
+        data_len: message.len(),
+        tag_ptr: tag.as_ptr(),
+        tag_len: tag.len(),
+    };
+
+    syscall(SystemCall::IpcSend, &[core::ptr::from_ref(&params) as usize])
 }
 
 pub fn receive() -> Option<&'static IpcMessage> {

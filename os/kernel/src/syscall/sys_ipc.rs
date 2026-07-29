@@ -1,22 +1,25 @@
-use concurrent::ipc::IpcQueue;
+use concurrent::ipc::{IpcQueue, IpcSyscallParams};
 use syscall::return_vals::{self, SyscallResult};
-use uuid::Uuid;
 
 use crate::{consts, process::core_local_storage::scheduler, sync::wait_queue::WaitQueue, timer};
 
 static WAIT_QUEUE: WaitQueue = WaitQueue::new();
 
-pub extern "sysv64" fn sys_ipc_send(pid1: u64, pid2: u64, tid: usize, msg_ptr: *const u8, msg_len: usize) -> isize {
+pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isize {
+
+    let params = unsafe { &*params_ptr };
     
-    let pid = Uuid::from_u64_pair(pid1, pid2);
+    let pid = params.pid;
+    let tid = params.tid;
 
     if let Some(thread) = scheduler().thread(tid) {
         let vas = &thread.process().virtual_address_space;
         if let Some(ipc_queue_ptr) = vas.translate_ptr_mut(consts::USER_SPACE_MAILBOX_START as *mut IpcQueue) {
             if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_mut() } {
             
-                let message = unsafe { core::slice::from_raw_parts(msg_ptr, msg_len) };
-                let res = ipc_queue.send(message, pid, tid);
+                let message = unsafe { core::slice::from_raw_parts(params.data_ptr, params.data_len) };
+                let tag = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.tag_ptr, params.tag_len)) };
+                let res = ipc_queue.send(message, pid, tid, tag);
 
                 if res {
                     return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(message.len()));
