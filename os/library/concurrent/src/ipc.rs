@@ -16,7 +16,8 @@ pub struct IpcSyscallParams {
 }
 
 const MESSAGE_TAG_LEN: usize = 0x10;
-pub const MESSAGE_SIZE: usize = 0x100 - (size_of::<Uuid>() + size_of::<usize>() + MESSAGE_TAG_LEN);
+//pub const MESSAGE_DATA_SIZE: usize = 0x100 - (size_of::<Uuid>() + size_of::<usize>() + MESSAGE_TAG_LEN);
+pub const MESSAGE_DATA_SIZE: usize = 0x100;
 const MAX_NUM_MESSAGES: usize = 8; // !this needs to be a power of 2!
 
 pub struct IpcQueue {
@@ -40,7 +41,7 @@ impl IpcQueue {
             Ok(_) => {
                 // 3. write message into memory
                 if let Some(msg) = self.data.get_mut(writer_idx) {
-                    let msg_len = core::cmp::min(data.len(), MESSAGE_SIZE);
+                    let msg_len = core::cmp::min(data.len(), MESSAGE_DATA_SIZE);
                     msg.data[..msg_len].copy_from_slice(&data[..msg_len]);
                     msg.sender_pid = sender_pid;
                     msg.sender_tid = sender_tid;
@@ -128,7 +129,7 @@ impl Deref for IpcMessageWrapper {
 
 #[derive(Debug, Clone, Copy)]
 pub struct IpcMessage {
-    data: [u8; MESSAGE_SIZE],
+    data: [u8; MESSAGE_DATA_SIZE],
     sender_pid: Uuid,
     sender_tid: usize,
     tag: [u8; MESSAGE_TAG_LEN],
@@ -136,9 +137,9 @@ pub struct IpcMessage {
 
 impl IpcMessage {
     pub fn new() -> Self {
-        Self { data: [0; MESSAGE_SIZE], sender_pid: Uuid::nil(), sender_tid: 0, tag: [0; MESSAGE_TAG_LEN] }
+        Self { data: [0; MESSAGE_DATA_SIZE], sender_pid: Uuid::nil(), sender_tid: 0, tag: [0; MESSAGE_TAG_LEN] }
     }
-    pub fn data(&self) -> &[u8; MESSAGE_SIZE] {
+    pub fn data(&self) -> &[u8; MESSAGE_DATA_SIZE] {
         &self.data
     }
 }
@@ -155,6 +156,25 @@ impl Display for IpcMessage {
     }
 }
 
+pub trait IpcMessageContent {
+    fn to_bytes(&self) -> &[u8];
+}
+
+impl IpcMessageContent for &[u8] {
+    fn to_bytes(&self) -> &[u8] {
+        self
+    }
+}
+
+impl IpcMessageContent for &[usize] {
+    fn to_bytes(&self) -> &[u8] {
+        let ptr = self.as_ptr() as *const u8;
+        let l = core::mem::size_of_val(*self);
+        // alignment should be safe, because usize alignment should always include u8 alignment
+        unsafe { core::slice::from_raw_parts(ptr, l) }
+    }
+}
+
 const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
 pub fn init_queue() {
@@ -165,7 +185,12 @@ pub fn init_queue() {
     }
 }
 
-pub fn send(pid: Uuid, tid: usize, tag: &str, message: &[u8]) -> SyscallResult {
+pub fn send<T: IpcMessageContent>(pid: Uuid, tid: usize, tag: &str, message: &T) -> SyscallResult {
+    let bytes = message.to_bytes();
+    send_internal(pid, tid, tag, bytes)
+}
+
+pub fn send_internal(pid: Uuid, tid: usize, tag: &str, message: &[u8]) -> SyscallResult {
 
     let params = IpcSyscallParams {
         pid,
