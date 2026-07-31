@@ -1,4 +1,5 @@
 use core::fmt::{Debug, Display};
+use core::ops::Deref;
 use core::sync::atomic::{AtomicI16, AtomicU16, Ordering};
 use syscall::{SystemCall, return_vals::SyscallResult, syscall};
 use uuid::Uuid;
@@ -55,7 +56,7 @@ impl IpcQueue {
         }
     }
 
-    pub fn receive(&'static self) -> Option<&'static IpcMessage> {
+    pub fn receive(&'static self) -> Option<IpcMessageWrapper> {
 
         // 1. check for any messages
         if self.messages_left() == 0 { return None }
@@ -72,7 +73,8 @@ impl IpcQueue {
             return None;
         }
 
-        self.data.get(reader_idx)
+        // pust Message into Wrapper to enable automatic clearing of the queue, once the value is dropped
+        self.data.get(reader_idx).map(|msg| IpcMessageWrapper { msg, queue_ptr: &self.mailbox[reader_idx] })
 
         //Some(IpcMessageData { data: &self.data[reader_idx], msg_len: msg_len as usize, queue_ptr: ptr::from_ref(&self.mailbox[reader_idx]) })
     }
@@ -105,23 +107,22 @@ impl Default for IpcQueue {
 }
 
 /// type used for receiving messages, and dropping them after use
-pub struct IpcMessageData {
-    data: &'static [u8],
-    msg_len: usize,
-    queue_ptr: *const AtomicI16,
+pub struct IpcMessageWrapper {
+    pub msg: &'static IpcMessage,
+    queue_ptr: &'static AtomicI16,
 }
 
-impl IpcMessageData {
-    pub fn message(&self) -> &[u8] {
-        &self.data[..self.msg_len]
+impl Drop for IpcMessageWrapper {
+    fn drop(&mut self) {
+        self.queue_ptr.store(0, Ordering::SeqCst);
     }
 }
 
-impl Drop for IpcMessageData {
-    fn drop(&mut self) {
-        unsafe {
-            (*self.queue_ptr).store(0, Ordering::SeqCst);
-        }
+impl Deref for IpcMessageWrapper {
+    type Target = IpcMessage;
+
+    fn deref(&self) -> &Self::Target {
+        self.msg
     }
 }
 
@@ -178,12 +179,12 @@ pub fn send(pid: Uuid, tid: usize, tag: &str, message: &[u8]) -> SyscallResult {
     syscall(SystemCall::IpcSend, &[core::ptr::from_ref(&params) as usize])
 }
 
-pub fn receive() -> Option<&'static IpcMessage> {
+pub fn receive() -> Option<IpcMessageWrapper> {
     let ipc_queue = unsafe { (USER_SPACE_MAILBOX_START as *const IpcQueue).as_ref() };
     ipc_queue.and_then(|iq| iq.receive())
 }
 
-pub fn receive_blocking(timeout_ms: usize) -> Result<&'static IpcMessage, syscall::return_vals::Errno> {
+pub fn receive_blocking(timeout_ms: usize) -> Result<IpcMessageWrapper, syscall::return_vals::Errno> {
     match syscall(SystemCall::IpcReceiveBlocking, &[timeout_ms]) {
         Ok(_) => receive().ok_or(syscall::return_vals::Errno::EEXIST),
         Err(e) => Err(e),
