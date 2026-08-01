@@ -24,7 +24,7 @@ use strum_macros::FromRepr;
 use tock_registers::{interfaces::Writeable, registers::WriteOnly};
 
 use super::{
-    cmd::{CommandInterface, Opcode},
+    cmd::{CommandInterface, InputParam, OutputParam, Opcode},
     device::{uar_index_to_hw, PAGE_SHIFT},
     event_queue::EventQueue,
     fw::{Capabilities, DoorbellPage},
@@ -88,7 +88,7 @@ impl CompletionQueue {
         ctx.set_log_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
         ctx.set_mtt_base_addr(mtt);
         ctx.set_doorbell_record_addr(doorbell_address.as_u64());
-        let _: () = cmd.execute_command(Opcode::Sw2HwCq, (), &ctx.bytes[..], number.try_into().unwrap())?;
+        cmd.execute_command(Opcode::Sw2HwCq, None, InputParam::Mailbox(&ctx.bytes), Some(number.try_into().unwrap()), OutputParam::Empty)?;
 
         let cq = Self {
             number,
@@ -108,7 +108,7 @@ impl CompletionQueue {
     /// Destroy this completion queue.
     pub(super) fn destroy(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         // TODO: should make sure to undo all card state tied to this CQ
-        cmd.execute_command::<_, _, ()>(Opcode::Hw2SwCq, (), (), self.number.try_into().unwrap())?;
+        cmd.execute_command(Opcode::Hw2SwCq, None, InputParam::Empty, Some(self.number.try_into().unwrap()), OutputParam::Empty)?;
         // actually free the mememory
         self.memory.take().unwrap();
         Ok(())
@@ -135,8 +135,9 @@ impl CompletionQueue {
 
     /// Query this completion queue for debugging purposes.
     pub(super) fn query(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
-        let bytes: MappedPages = cmd.execute_command(Opcode::QueryCq, (), (), self.number)?;
-        let ctx = CompletionQueueContext::from_bytes(bytes.as_slice(0, size_of::<CompletionQueueContext>())?.try_into().unwrap());
+        cmd.execute_command(Opcode::QueryCq, None, InputParam::Empty, Some(self.number), OutputParam::Mailbox)?;
+        let ctx_bytes: &[u8; size_of::<CompletionQueueContext>()] = unsafe { cmd.output_mailbox_as_ref() };
+        let ctx = CompletionQueueContext::from_bytes(*ctx_bytes);
         trace!("current CQ state: {ctx:?}");
         Ok(())
     }

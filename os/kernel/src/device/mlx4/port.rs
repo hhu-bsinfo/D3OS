@@ -10,8 +10,7 @@ use modular_bitfield_msb::{
 };
 use rdma::{PhysicalPortState, ibv_mtu, ibv_port_attr, ibv_port_state};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
-use super::cmd::{CommandInterface, MadIfcOpcodeModifier, Opcode, SetPortOpcodeModifier};
-use super::utils::MappedPages;
+use super::cmd::{CommandInterface, InputParam, MadIfcOpcodeModifier, Opcode, OutputParam, SetPortOpcodeModifier};
 use log::{debug, trace, warn};
 
 #[derive(Debug)]
@@ -52,14 +51,14 @@ impl Port {
         set_port_input.set_mtu_cap(mtu as u8);
         for vl_cap_shift in (0..=3).rev() {
             set_port_input.set_vl_cap(1 << vl_cap_shift);
-            let _: () = cmd.execute_command(Opcode::SetPort, SetPortOpcodeModifier::IB, &set_port_input.bytes[..], number.into())?;
+            cmd.execute_command(Opcode::SetPort, Some(SetPortOpcodeModifier::IB.into()), InputParam::Mailbox(&set_port_input.bytes), Some(number.into()), OutputParam::Empty)?;
         }
 
         // get the current state
         port.query(cmd)?;
 
         // finally, bring the port up
-        let _: () = cmd.execute_command(Opcode::InitPort, (), (), number.into())?;
+        cmd.execute_command(Opcode::InitPort, None, InputParam::Empty, Some(number.into()), OutputParam::Empty)?;
         // and update the state again
         port.query(cmd)?;
         trace!("initialized {port:?}");
@@ -70,7 +69,7 @@ impl Port {
     }
 
     pub(super) fn close(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
-        let _: () = cmd.execute_command(Opcode::ClosePort, (), (), self.number.into())?;
+        cmd.execute_command(Opcode::ClosePort, None, InputParam::Empty, Some(self.number.into()), OutputParam::Empty)?;
         self.open = false;
         Ok(())
     }
@@ -100,10 +99,9 @@ impl Port {
     /// Actually query the port.
     fn query_single(&mut self, cmd: &mut CommandInterface) -> Result<ibv_port_attr, &'static str> {
         // QUERY_PORT gives us some details
-        let page: MappedPages = cmd.execute_command(Opcode::QueryPort, (), (), self.number.into())?;
-        self.capabilities = Some(PortCapabilities::from_bytes(
-            page.as_slice(0, size_of::<PortCapabilities>())?.try_into().unwrap(),
-        ));
+        cmd.execute_command(Opcode::QueryPort, None, InputParam::Empty, Some(self.number.into()), OutputParam::Mailbox)?;
+        let caps_bytes: &[u8; size_of::<PortCapabilities>()] = unsafe { cmd.output_mailbox_as_ref() };
+        self.capabilities = Some(PortCapabilities::from_bytes(*caps_bytes));
 
         // MAD_IFC gives us even more
         const MGMT_CLASS_SUBN_LID_ROUTED: u8 = 0x1;
@@ -119,8 +117,9 @@ impl Port {
         madifc_input.method = MGMT_METHOD_GET;
         madifc_input.attr_id = SMP_ATTR_PORT_INFO.into();
         madifc_input.attr_mod = u32::from(self.number).into();
-        let madifc_output_page: MappedPages = cmd.execute_command(Opcode::MadIfc, madifc_modifier, madifc_input.as_bytes(), self.number.into())?;
-        self.madifc_output = Some(madifc_output_page.as_type::<MadPacket>(0)?.clone());
+        cmd.execute_command(Opcode::MadIfc, Some(madifc_modifier.into()), InputParam::Mailbox(madifc_input.as_bytes()), Some(self.number.into()), OutputParam::Mailbox)?;
+        let madifc_output: &MadPacket = unsafe { cmd.output_mailbox_as_ref() };
+        self.madifc_output = Some(madifc_output.clone());
         let madifc_output_data = MadPacketData::from_bytes(self.madifc_output.as_ref().unwrap().data);
 
         // finally, format it nicely for the application

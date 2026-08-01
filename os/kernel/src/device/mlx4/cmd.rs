@@ -3,19 +3,22 @@
 
 use core::sync::atomic::{compiler_fence, Ordering};
 
-use super::utils::{OperationArgs, Operations};
+use super::utils::{OperationArgs, Operations, PageToFrameMapping};
 use crate::device::mlx4::utils;
-use crate::{
-    device::mlx4::utils::{CopyOperation, FillOperation},
-    memory::PAGE_SIZE,
-};
+use crate::memory::PAGE_SIZE;
 use alloc::boxed::Box;
+use core::fmt::{Debug, Formatter};
+use core::ops::{BitAnd, BitOr, BitOrAssign, Not, Shl, Shr};
 use bitflags::bitflags;
-use log::trace;
+use log::{debug, error, trace};
 use strum_macros::{FromRepr, IntoStaticStr};
 use tock_registers::interfaces::{Readable, Writeable};
-use tock_registers::register_bitfields;
+use tock_registers::{register_bitfields, register_bitmasks,};
 use tock_registers::registers::{ReadWrite, WriteOnly};
+use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
+use x86_64::structures::paging::frame::PhysFrameRange;
+use x86_64::structures::paging::page::PageRange;
+use zerocopy::AsBytes;
 
 const HCR_BASE: usize = 0x80680;
 const HCR_OPMOD_SHIFT: u32 = 12;
@@ -95,18 +98,6 @@ pub(super) enum Opcode {
     // Ethernet specific commands
 }
 
-/// a modifier for the opcode
-pub(super) trait OpcodeModifier {
-    fn get(self) -> u8;
-}
-
-/// No modifier.
-impl OpcodeModifier for () {
-    fn get(self) -> u8 {
-        0
-    }
-}
-
 #[repr(u8)]
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -117,8 +108,8 @@ pub(super) enum MadDemuxOpcodeModifier {
     QueryRestrictions = 0x2,
 }
 
-impl OpcodeModifier for MadDemuxOpcodeModifier {
-    fn get(self) -> u8 {
+impl Into<u8> for MadDemuxOpcodeModifier {
+    fn into(self) -> u8 {
         self as u8
     }
 }
@@ -131,8 +122,8 @@ bitflags! {
     }
 }
 
-impl OpcodeModifier for MadIfcOpcodeModifier {
-    fn get(self) -> u8 {
+impl Into<u8> for MadIfcOpcodeModifier {
+    fn into(self) -> u8 {
         self.bits()
     }
 }
@@ -146,14 +137,16 @@ pub(super) enum SetPortOpcodeModifier {
     BEACON = 0x4,
 }
 
-impl OpcodeModifier for SetPortOpcodeModifier {
-    fn get(self) -> u8 {
+impl Into<u8> for SetPortOpcodeModifier {
+    fn into(self) -> u8 {
         self as u8
     }
 }
 
 pub(super) struct CommandInterface {
     hcr: &'static mut Hcr,
+    input_mailbox: CmdMailbox,
+    output_mailbox: CmdMailbox,
     exp_toggle: u32,
 }
 
@@ -188,121 +181,58 @@ struct Hcr {
     status_opcode: ReadWrite<u32, StatusOpcode::Register>,
 }
 
-type MailboxAllocation = Option<utils::PageToFrameMapping>;
-
-/// An input of a command.
-///
-/// This can be either `()` for commands that take no input,
-/// `u64` for commands that take immediate input or
-/// `&[u8]` for commands that take a mailbox.
-pub(super) trait InputParameter {
-    /// Possibly allocate.
-    ///
-    /// This will do if the input is not a mailbox.
-    fn allocate(&self) -> MailboxAllocation;
-
-    /// Get the value as u64.
-    ///
-    /// This is 0 for (), the value for u64 and the address of the allocated
-    /// page for &[u8].
-    fn as_param(&self, allocation: &MailboxAllocation) -> u64;
+pub struct CmdMailbox {
+    page: Page<Size4KiB>,
+    frame: PhysFrame,
 }
 
-impl InputParameter for () {
-    fn allocate(&self) -> MailboxAllocation {
-        None
+impl CmdMailbox {
+    fn allocate() -> Option<Self> {
+        match utils::create_cont_mapping_with_dma_flags(1).ok()?.fetch_in_frame() {
+            Ok((pages, frame)) => {
+                Some(Self {
+                    page: pages.into_range().start,
+                    frame
+                })
+            }
+            Err(e) => {
+                error!("{e}");
+                None
+            }
+        }
     }
 
-    fn as_param(&self, allocation: &MailboxAllocation) -> u64 {
-        assert!(allocation.is_none());
-        0
-    }
-}
-impl InputParameter for u64 {
-    fn allocate(&self) -> MailboxAllocation {
-        None
+    /// Clears the Mailbox
+    #[inline]
+    fn clear(&mut self) {
+        unsafe {
+            core::ptr::write_bytes(self.page.start_address().as_mut_ptr::<u8>(), 0, self.page.size() as usize);
+        }
     }
 
-    fn as_param(&self, allocation: &MailboxAllocation) -> u64 {
-        assert!(allocation.is_none());
-        *self
-    }
-}
-impl InputParameter for &[u8] {
-    fn allocate(&self) -> MailboxAllocation {
-        let mut operation_container = Operations::default();
-
-        let (mapped_pages, physical) = utils::create_cont_mapping_with_dma_flags(1).expect("").fetch_in_addr().expect("");
-        let data = utils::start_page_as_mut_ptr::<u8>(mapped_pages.into_range().start);
-
-        operation_container.add_operation(Box::new(FillOperation {}), OperationArgs::Fill(0u8, data, PAGE_SIZE));
-        operation_container.add_operation(Box::new(CopyOperation {}), OperationArgs::Copy(self, data, self.len()));
-
-        operation_container.perform();
-
-        Some((mapped_pages, physical))
+    #[inline]
+    fn as_bytes(&self) -> &[u8] {
+        unsafe { core::slice::from_raw_parts(self.page.start_address().as_ptr::<u8>(), self.page.size() as usize) }
     }
 
-    fn as_param(&self, allocation: &MailboxAllocation) -> u64 {
-        let (_page, address) = allocation.as_ref().unwrap();
-        address.as_u64()
+    #[inline]
+    pub fn copy_from_bytes(&mut self, bytes: &[u8]) {
+        assert!(bytes.len() <= self.page.size() as usize);
+        unsafe { core::ptr::copy_nonoverlapping(bytes.as_ptr(), self.page.start_address().as_mut_ptr::<u8>(), bytes.len()) }
     }
+
 }
 
-/// An output of a command.
-///
-/// This can be either `()` for commands that produce no output,
-/// `u64` for commands that produce immediate input or
-/// `MappedPages` for commands that write to a mailbox.
-pub(super) trait OutputParameter {
-    /// Possibly allocate.
-    ///
-    /// This will do if the output is not a mailbox.
-    fn allocate() -> MailboxAllocation;
-
-    /// Parse the result of a command's execution.
-    fn from_result(value: u64, output_allocation: MailboxAllocation) -> Self;
+pub(super) enum InputParam<'a> {
+    Empty,
+    Immediate(u64),
+    Mailbox(&'a [u8]),
 }
 
-impl OutputParameter for () {
-    fn allocate() -> MailboxAllocation {
-        None
-    }
-
-    fn from_result(_value: u64, output_allocation: MailboxAllocation) -> Self {
-        // one could think that value == 0, but that's not always the case
-        assert!(output_allocation.is_none());
-        ()
-    }
-}
-impl OutputParameter for u64 {
-    fn allocate() -> MailboxAllocation {
-        None
-    }
-
-    fn from_result(value: u64, output_allocation: MailboxAllocation) -> Self {
-        assert!(output_allocation.is_none());
-        value
-    }
-}
-impl OutputParameter for utils::MappedPages {
-    fn allocate() -> MailboxAllocation {
-        let mut operation_container = Operations::default();
-        let (mapped_pages, physical) = utils::create_cont_mapping_with_dma_flags(1).expect("").fetch_in_addr().expect("");
-        let data = utils::start_page_as_mut_ptr::<u8>(mapped_pages.into_range().start);
-
-        operation_container.add_operation(Box::new(FillOperation {}), OperationArgs::Fill(0u8, data, PAGE_SIZE));
-
-        operation_container.perform();
-
-        Some((mapped_pages, physical))
-    }
-
-    fn from_result(_value: u64, output_allocation: MailboxAllocation) -> Self {
-        let (page, _physical) = output_allocation.unwrap();
-        // one could think that value == physical.value() but that's not the case
-        page
-    }
+pub(super) enum OutputParam {
+    Empty,
+    Immediate,
+    Mailbox,
 }
 
 impl CommandInterface {
@@ -310,25 +240,30 @@ impl CommandInterface {
         let hcr_ptr = config_regs.as_type_mut::<Hcr>(HCR_BASE)? as *mut Hcr;
         let hcr = unsafe { &mut *hcr_ptr };
 
-        Ok(Self { hcr, exp_toggle: 1 })
+        let input_mailbox = CmdMailbox::allocate().ok_or("failed to allocate input mailbox")?;
+        let output_mailbox = CmdMailbox::allocate().ok_or("failed to allocate output mailbox")?;
+
+        Ok(Self {
+            hcr,
+            exp_toggle: 1,
+            input_mailbox,
+            output_mailbox
+        })
     }
 
     /// Post a command and wait for its completion.
     ///
-    /// Input and output can be either `()` (for opcodes that take no input or
-    /// give no output), bytes / pages (for opcodes that read from or write to
-    /// mailboxes or u64 (for opcodes the operate on immediate values).
+    /// Input and Output are optional can either be a Mail or an immediate u64 value depending on the cmd.
+    /// If Output is set to Immediate the Result will contain the value otherwise None is returned inside the Result.
+    ///
+    /// Input has to be written to input_mailbox using input_mailbox_as_mut
+    /// Output mailbox is clear before executing the command
     ///
     /// ## Safety
     ///
     /// This function does not check whether the specified opcode takes the
     /// provided type of input or output.
-    pub(super) fn execute_command<M, I, O>(&mut self, opcode: Opcode, opcode_modifier: M, input: I, input_modifier: u32) -> Result<O, ReturnStatus>
-    where
-        M: OpcodeModifier,
-        I: InputParameter,
-        O: OutputParameter,
-    {
+    pub(super) fn execute_command(&mut self, opcode: Opcode, opcode_modifier: Option<u8>, input: InputParam, input_modifier: Option<u32>, output: OutputParam) -> Result<Option<u64>, ReturnStatus> {
         // TODO: timeout
         trace!("executing command: {opcode:?}");
 
@@ -337,54 +272,80 @@ impl CommandInterface {
             trace!("wait until the previous command is done");
         }
 
-        // allocate memory
-        let input_allocation = input.allocate();
-        let input_param = input.as_param(&input_allocation);
-        let output_allocation = O::allocate();
-        let output_param = if let Some((_, output_address)) = output_allocation {
-            output_address.as_u64()
-        } else {
-            0
+        let input_param = match input {
+            InputParam::Empty => 0,
+            InputParam::Immediate(v) => v,
+            InputParam::Mailbox(s) => {
+                self.input_mailbox.clear();
+                self.input_mailbox.copy_from_bytes(s);
+                self.input_mailbox.frame.start_address().as_u64()
+            },
         };
+
+        let (output_mailbox, immediate)  = match output {
+            OutputParam::Empty => (0_u64, false),
+            OutputParam::Immediate => (0, true),
+            OutputParam::Mailbox => {
+                self.output_mailbox.clear();
+                (self.output_mailbox.frame.start_address().as_u64(), false)
+            }
+        };
+
         // post the command
         self.hcr.in_param_h.set(((input_param >> 32) as u32).to_be());
         self.hcr.in_param_l.set((input_param as u32).to_be());
-        self.hcr.in_mod.set(input_modifier.to_be());
-        self.hcr.out_param_h.set(((output_param >> 32) as u32).to_be());
-        self.hcr.out_param_l.set((output_param as u32).to_be());
+        self.hcr.in_mod.set(input_modifier.unwrap_or(0).to_be());
+        self.hcr.out_param_h.set(((output_mailbox >> 32) as u32).to_be());
+        self.hcr.out_param_l.set((output_mailbox as u32).to_be());
         self.hcr.token.set((POLL_TOKEN << 16).to_be());
         compiler_fence(Ordering::SeqCst);
         let status_opcode = (1 << HCR_GO_BIT)
             | (self.exp_toggle << HCR_T_BIT)
             | (0 << HCR_E_BIT) // TODO: event
-            | ((opcode_modifier.get() as u32) << HCR_OPMOD_SHIFT)
+            | ((opcode_modifier.unwrap_or(0) as u32) << HCR_OPMOD_SHIFT)
             | opcode as u16 as u32;
         self.hcr.status_opcode.set(status_opcode.to_be());
         self.exp_toggle ^= 1;
 
         trace!("polling for completion");
-        // poll for it
         while self.is_pending() {}
 
-        // check the status
         let status_opcode = u32::from_be(self.hcr.status_opcode.get());
         let status = ReturnStatus::from_repr(status_opcode >> 24).expect("return status invalid");
         trace!("status: {status:?}");
-        let out_param_h = u32::from_be(self.hcr.out_param_h.get()) as u64;
-        let out_param_l = u32::from_be(self.hcr.out_param_l.get()) as u64;
-        let out_param: u64 = out_param_h << 32 | out_param_l ;
-        trace!("out_param: 0x{out_param:x}");
+
         match status {
-            // on success, return the result
-            ReturnStatus::Ok => Ok(O::from_result(out_param, output_allocation)),
-            // else, return the status
-            err => Err(err),
+            ReturnStatus::Ok => {
+                if immediate {
+                    let out_param_h = u32::from_be(self.hcr.out_param_h.get()) as u64;
+                    let out_param_l = u32::from_be(self.hcr.out_param_l.get()) as u64;
+                    let out_param = out_param_h << 32 | out_param_l;
+                    trace!("out_param: 0x{out_param:x}");
+                    Ok(Some(out_param))
+                } else {
+                    Ok(None)
+                }
+            }
+            err => Err(err)
         }
     }
 
     fn is_pending(&self) -> bool {
         let status = u32::from_be(self.hcr.status_opcode.get());
         status & (1 << HCR_GO_BIT) != 0 || (status & (1 << HCR_T_BIT)) == self.exp_toggle
+    }
+
+    /// Reinterpret the output mailbox's contents as `&T`.
+    ///
+    /// ## Safety
+    ///
+    /// `T` must match the layout written by the device and fit within one page.
+    pub(super) unsafe fn output_mailbox_as_ref<T>(&self) -> &T {
+        unsafe { &*self.output_mailbox.as_bytes().as_ptr().cast::<T>() }
+    }
+
+    pub(super) fn output_mailbox_as_bytes(&self) -> &[u8] {
+        self.output_mailbox.as_bytes()
     }
 
 }

@@ -20,7 +20,7 @@ use strum_macros::FromRepr;
 use tock_registers::interfaces::Writeable;
 
 use super::{
-    cmd::{CommandInterface, Opcode},
+    cmd::{CommandInterface, InputParam, Opcode, OutputParam},
     device::PAGE_SHIFT,
     fw::{Capabilities, DoorbellPage},
     icm::{MrTable, ICM_PAGE_SHIFT},
@@ -100,7 +100,7 @@ impl EventQueue {
         }
         ctx.set_log_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
         ctx.set_mtt_base_addr(mtt);
-        let _: () = cmd.execute_command(Opcode::Sw2HwEq, (), &ctx.bytes[..], number.try_into().unwrap())?;
+        cmd.execute_command(Opcode::Sw2HwEq, None, InputParam::Mailbox(&ctx.bytes), Some(number.try_into().unwrap()), OutputParam::Empty)?;
 
         let async_ev_mask = AsyncEventMask::empty();
         let eq = Self {
@@ -123,11 +123,12 @@ impl EventQueue {
         // TODO: unmask IRQ
         self.async_ev_mask = AsyncEventMask::all();
         let unmap = false;
-        let _: () = cmd.execute_command(
+        cmd.execute_command(
             Opcode::MapEq,
-            (),
-            self.async_ev_mask.bits(),
-            ((unmap as u32) << 31) | u32::try_from(self.number).unwrap(),
+            None,
+            InputParam::Immediate(self.async_ev_mask.bits()),
+            Some(((unmap as u32) << 31) | u32::try_from(self.number).unwrap()),
+            OutputParam::Empty,
         )?;
         Ok(())
     }
@@ -135,11 +136,12 @@ impl EventQueue {
     /// Unmap all events from this EQ.
     fn unmap(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         let unmap = true;
-        let _: () = cmd.execute_command(
+        cmd.execute_command(
             Opcode::MapEq,
-            (),
-            self.async_ev_mask.bits(),
-            ((unmap as u32) << 31) | u32::try_from(self.number).unwrap(),
+            None,
+            InputParam::Immediate(self.async_ev_mask.bits()),
+            Some(((unmap as u32) << 31) | u32::try_from(self.number).unwrap()),
+            OutputParam::Empty,
         )?;
         self.async_ev_mask = AsyncEventMask::empty();
         Ok(())
@@ -150,7 +152,7 @@ impl EventQueue {
         if !self.async_ev_mask.is_empty() {
             self.unmap(cmd)?;
         }
-        let _: () = cmd.execute_command(Opcode::Hw2SwEq, (), (), self.number.try_into().unwrap())?;
+        cmd.execute_command(Opcode::Hw2SwEq, None, InputParam::Empty, Some(self.number.try_into().unwrap()), OutputParam::Empty)?;
         // actually free the memory
         self.memory.take().unwrap();
         Ok(())

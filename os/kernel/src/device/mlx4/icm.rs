@@ -11,6 +11,7 @@ use rdma::ibv_access_flags;
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use zerocopy::{AsBytes, BigEndian, FromBytes, U64};
+use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::memory;
 use super::{
     cmd::{CommandInterface, Opcode},
@@ -18,7 +19,6 @@ use super::{
     profile::{get_mgm_entry_size, Profile},
     queue_pair::QueuePair,
     utils,
-    utils::MappedPages,
     Offsets,
 };
 
@@ -51,7 +51,7 @@ impl MappedIcmAuxiliaryArea {
     /// Unmaps the area from the card.
     pub(super) fn unmap(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         trace!("unmapping ICM auxiliary area...");
-        let _: () = cmd.execute_command(Opcode::UnmapIcmAux, (), (), 0)?;
+        cmd.execute_command(Opcode::UnmapIcmAux, None, InputParam::Empty, None, OutputParam::Empty)?;
         trace!("successfully unmapped ICM auxiliary area");
         // actually free the memory
         while let Some(frame_range) = self.frame_ranges.pop() {
@@ -337,7 +337,7 @@ impl MrTable {
             for i in 0..chunk {
                 write_cmd.entries[usize::try_from(i).unwrap()].set((data_address.as_u64() + (i + start_index) * PAGE_SIZE as u64) | MTT_FLAG_PRESENT);
             }
-            let _: () = cmd.execute_command(Opcode::WriteMtt, (), write_cmd.as_bytes(), chunk.try_into().unwrap())?;
+            cmd.execute_command(Opcode::WriteMtt, None, InputParam::Mailbox(write_cmd.as_bytes()), Some(chunk.try_into().unwrap()), OutputParam::Empty)?;
             num_entries -= chunk;
             start_index += chunk;
         }
@@ -388,10 +388,12 @@ impl MrTable {
             dmpt.set_remote_write(true);
         }
         let dmpt_index = dmpt.index();
-        let _: () = cmd.execute_command(Opcode::Sw2HwMpt, (), &dmpt.into_bytes()[..], dmpt_index)?;
+        cmd.execute_command(Opcode::Sw2HwMpt, None, InputParam::Mailbox(&dmpt.bytes), Some(dmpt_index), OutputParam::Empty)?;
         // get the updated version back
-        let dmpt_output_page: MappedPages = cmd.execute_command(Opcode::QueryMpt, (), (), dmpt_index)?;
-        let dmpt = DmptEntry::from_bytes(dmpt_output_page.as_slice(0, size_of::<DmptEntry>())?.try_into().unwrap());
+        cmd.execute_command(Opcode::QueryMpt, None, InputParam::Empty, Some(dmpt_index), OutputParam::Mailbox)?;
+        let mut dmpt_bytes = [0u8; size_of::<DmptEntry>()];
+        dmpt_bytes.copy_from_slice(&cmd.output_mailbox_as_bytes()[..size_of::<DmptEntry>()]);
+        let mut dmpt = DmptEntry::from_bytes(dmpt_bytes);
         assert_eq!(dmpt_index, dmpt.index());
         trace!("memory region of size {} with mem key {} created successfully", dmpt.length(), dmpt.key(),);
         // dmpt.lkey() would be the lkey if we were using protection domains.
@@ -446,7 +448,7 @@ impl MemoryRegion {
     fn destroy(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         let dmpt = self.dmpt.take().unwrap();
         // TODO: free ICM space
-        let _: () = cmd.execute_command(Opcode::Hw2SwMpt, (), (), dmpt.index())?;
+        cmd.execute_command(Opcode::Hw2SwMpt, None, InputParam::Empty, Some(dmpt.index()), OutputParam::Empty)?;
         Ok(())
     }
 }
@@ -592,7 +594,7 @@ impl MappedIcm {
                 phys_pointer += 1 << align;
                 virt_pointer += 1 << align;
             }
-            let _: () = cmd.execute_command(Opcode::MapIcm, (), vpms.as_bytes(), chunk.try_into().unwrap())?;
+            cmd.execute_command(Opcode::MapIcm, None, InputParam::Mailbox(vpms.as_bytes()), Some(chunk.try_into().unwrap()), OutputParam::Empty)?;
             num_entries -= chunk;
         }
         Ok(Self {
@@ -604,7 +606,7 @@ impl MappedIcm {
 
     /// Unmaps the area from the card.
     pub(super) fn unmap(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
-        let _: () = cmd.execute_command(Opcode::UnmapIcm, (), self.card_virtual, self.num_pages)?;
+        cmd.execute_command(Opcode::UnmapIcm, None, InputParam::Immediate(self.card_virtual), Some(self.num_pages), OutputParam::Empty)?;
         // actually free the memory
         self.memory.take().unwrap();
         Ok(())
