@@ -18,7 +18,7 @@ pub struct IpcSyscallParams {
 const MESSAGE_TAG_LEN: usize = 0x10;
 //pub const MESSAGE_DATA_SIZE: usize = 0x100 - (size_of::<Uuid>() + size_of::<usize>() + MESSAGE_TAG_LEN);
 pub const MESSAGE_DATA_SIZE: usize = 0x100;
-const MAX_NUM_MESSAGES: usize = 8; // !this needs to be a power of 2! also this can not be smaller than 4
+const MAX_NUM_MESSAGES: usize = 32; // !this needs to be a power of 2! also this can not be smaller than 4
 
 pub struct IpcQueue {
     writer_idx: AtomicU16,
@@ -91,7 +91,7 @@ impl IpcQueue {
     }
 
     pub fn new() -> Self {
-        Self { writer_idx: AtomicU16::new(0), reader_idx: AtomicU16::new(0), mailbox: [const { AtomicI16::new(0) }; _], data: [IpcMessage::new(); MAX_NUM_MESSAGES] }
+        Self { writer_idx: AtomicU16::new(0), reader_idx: AtomicU16::new(0), mailbox: [const { AtomicI16::new(0) }; MAX_NUM_MESSAGES], data: [IpcMessage::new(); MAX_NUM_MESSAGES] }
     }
 }
 

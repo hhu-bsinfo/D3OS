@@ -118,7 +118,7 @@ pub fn main() {
         loop {
             while let Some(msg) = ipc::receive() {
                 let number = *msg.data_as_usize();
-                //println!("Received Message: {}", number);
+                println!("Received Message: {}", number);
                 if number == 100 {
                     println!("Successfully received 100 messages! Sending STOP signal to {}!", loop_send_tid);
                     ipc::send(Uuid::nil(), loop_send_tid, "TEXT", "STOP");
@@ -132,7 +132,7 @@ pub fn main() {
                     return;
                 }
             }
-            //thread::sleep(4_000);
+            thread::sleep(400);
         }
     } else if command == "loop_send" {
 
@@ -160,13 +160,13 @@ pub fn main() {
             let res = ipc::send(target_pid, target_tid, tag, i);
             match res {
                 Ok(_) => {
-                    //println!("Send Message: {} with {} errors", i, errors);
+                    println!("Send Message: {} with {} errors", i, errors);
                     i += 1;
                 },
                 //Err(err) => println!("Error sending message: {} [{:?}]", i, err),
                 Err(_) => errors += 1,
             }
-            //thread::sleep(333);
+            thread::sleep(400);
         }
     }
 }
