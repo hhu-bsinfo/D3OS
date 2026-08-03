@@ -1,4 +1,4 @@
-use pci_types::{Bar, ConfigRegionAccess, EndpointHeader};
+use pci_types::{Bar, ConfigRegionAccess};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::{Page, PageRange};
 use x86_64::structures::paging::{PageTableFlags, PhysFrame, Size4KiB};
@@ -9,63 +9,10 @@ use x86_64::{PhysAddr, VirtAddr};
 
 use core::mem;
 
-use alloc::boxed::Box;
 use alloc::slice;
-use alloc::vec::Vec;
 use crate::memory::vma::VmaType;
 
-type FillValues = (u8, *mut u8, usize);
-type CopyValues<'a> = (&'a [u8], *mut u8, usize);
-
 pub type PageToFrameMapping = (MappedPages, PhysAddr);
-
-const OPERATION_COPY: u8 = 1;
-const OPERATION_FILL: u8 = 2;
-
-pub enum OperationArgs<'a> {
-    Fill(u8, *mut u8, usize),
-    Copy(&'a [u8], *mut u8, usize),
-}
-
-pub trait Operation {
-    fn run(&self, args: &OperationArgs);
-    fn key(&self) -> u8;
-}
-
-impl Operation for FillOperation {
-    fn run(&self, args: &OperationArgs) {
-        if let OperationArgs::Fill(a, b, c) = args {
-            fill_pages(*a, *b, *c)
-        } else {
-            panic!("wrong args for FillOperation")
-        }
-    }
-    fn key(&self) -> u8 {
-        OPERATION_FILL
-    }
-}
-
-impl Operation for CopyOperation {
-    fn run(&self, args: &OperationArgs) {
-        if let OperationArgs::Copy(a, b, c) = args {
-            copy_pages(*a, *b, *c)
-        } else {
-            panic!("wrong args for CopyOperation")
-        }
-    }
-    fn key(&self) -> u8 {
-        OPERATION_COPY
-    }
-}
-
-pub(super) struct FillOperation {}
-
-pub(super) struct CopyOperation {}
-
-#[derive(Default)]
-pub(super) struct Operations<'a> {
-    operation_container: Vec<(Box<dyn Operation>, OperationArgs<'a>)>,
-}
 
 #[derive(Clone, Copy, Debug)]
 pub struct MappedPages {
@@ -258,27 +205,6 @@ impl MappedPages {
 
     pub fn into_range(&self) -> PageRange<Size4KiB> {
         self.range
-    }
-}
-
-impl<'a> Operations<'a> {
-    pub fn add_operation(&mut self, operation: Box<dyn Operation>, operation_value: OperationArgs<'a>) {
-        self.operation_container.push((operation, operation_value));
-    }
-
-    pub fn perform_and_flush(&mut self) {
-        for (operation, operation_value) in self.operation_container.iter() {
-            operation.run(operation_value);
-        }
-
-        self.operation_container.clear();
-        self.operation_container.shrink_to_fit();
-    }
-
-    pub fn perform(self) {
-        for (operation, operation_value) in self.operation_container.into_iter() {
-            operation.run(&operation_value);
-        }
     }
 }
 
