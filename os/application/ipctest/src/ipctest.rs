@@ -6,8 +6,7 @@ extern crate alloc;
 use alloc::string::ToString;
 use alloc::{format, string::String, vec::Vec};
 use alloc::vec;
-use concurrent::ipc::MESSAGE_DATA_SIZE;
-use concurrent::{process, thread};
+use concurrent::{ipc::{self, MESSAGE_DATA_SIZE}, process, thread};
 use runtime::*;
 use terminal::println;
 use uuid::Uuid;
@@ -58,17 +57,17 @@ pub fn main() {
             .map(|r| r.unwrap())
             .collect();
 
-        let res = concurrent::ipc::send(target_pid, target_tid, tag, &args_numbers.as_slice());
+        let res = ipc::send(target_pid, target_tid, tag, args_numbers.as_slice());
 
-        //let res = concurrent::ipc::send_small(Uuid::from_u128(0), target_tid, args.get(3).and_then(|s| str::parse::<u64>(&s).ok()).unwrap_or(42));
+        //let res = ipc::send_small(Uuid::from_u128(0), target_tid, args.get(3).and_then(|s| str::parse::<u64>(&s).ok()).unwrap_or(42));
         match res {
             Ok(_) => println!("Send message successfully"),
             Err(err) => println!("Error sending message: {:?}", err),
         }
     } else if command == "receive" {
-        concurrent::ipc::init_queue();
+        ipc::init_queue();
         loop {
-            match concurrent::ipc::receive() {
+            match ipc::receive() {
                 Some(msg) => {
                     println!("Received Message: {}", *msg);
                     break;
@@ -89,36 +88,51 @@ pub fn main() {
             thread::start_application("ipctest", vec!["pingpong_internal", &tid_target]);
         }
     } else if command == "pingpong_internal" {
-        concurrent::ipc::init_queue();
-        concurrent::ipc::send(Uuid::nil(), str::parse::<usize>(&args[2]).unwrap(), "USIZE", &[thread.id()].as_slice());
+        ipc::init_queue();
+        ipc::send(Uuid::nil(), str::parse::<usize>(&args[2]).unwrap(), "USIZE", thread.id());
         loop {
-            match concurrent::ipc::receive() {
+            match ipc::receive() {
                 Some(msg) => {
                     let ping = unsafe { (*(msg.data().as_ptr() as *const [usize; MESSAGE_DATA_SIZE / 8]))[0] };
                     println!("[{}] Received Message: {}", thread.id(), ping);
                     let pong = ping * 2;
-                    concurrent::ipc::send(Uuid::nil(), str::parse::<usize>(&args[2]).unwrap(), "USIZE", &[pong].as_slice());
+                    ipc::send(Uuid::nil(), str::parse::<usize>(&args[2]).unwrap(), "USIZE", pong);
                 },
                 None => {}
             }
             thread::sleep(1_000);
         }
     } else if command == "loop" {
-        concurrent::ipc::init_queue();
+        ipc::init_queue();
 
         let mut args_send = Vec::new();
         args_send.push("loop_send");
-        let current_pid = format!("{}", process::current().id());
+        let current_pid = format!("{}", process.id());
         let current_tid = format!("{}", thread.id());
         args_send.push(&current_pid);
         args_send.push(&current_tid);
-        thread::start_application("ipctest", args_send);
+        let loop_send_tid = thread::start_application("ipctest", args_send).unwrap().id();
+
+        let mut prev = 0;
 
         loop {
-            while let Some(msg) = concurrent::ipc::receive() {
-                println!("Received Message: {}", msg.data_as_usizes()[0]);
+            while let Some(msg) = ipc::receive() {
+                let number = *msg.data_as_usize();
+                //println!("Received Message: {}", number);
+                if number == 100 {
+                    println!("Successfully received 100 messages! Sending STOP signal to {}!", loop_send_tid);
+                    ipc::send(Uuid::nil(), loop_send_tid, "TEXT", "STOP");
+                    return;
+                }
+                if prev + 1 == number {
+                    prev = number;
+                } else {
+                    println!("Error in message order! Sending STOP signal to {}!", loop_send_tid);
+                    ipc::send(Uuid::nil(), loop_send_tid, "TEXT", "STOP");
+                    return;
+                }
             }
-            thread::sleep(4_000);
+            //thread::sleep(4_000);
         }
     } else if command == "loop_send" {
 
@@ -127,14 +141,32 @@ pub fn main() {
         let target_pid = args.get(2).and_then(|s| Uuid::parse_str(&s).ok()).unwrap_or(Uuid::nil());
         let target_tid = args.get(3).and_then(|s| str::parse::<usize>(&s).ok()).unwrap_or(0);
         let tag = "USIZE";
+        let mut errors = 0;
 
         loop {
-            let res = concurrent::ipc::send(target_pid, target_tid, tag, &[i].as_slice());
-            match res {
-                Ok(_) => i += 1,
-                Err(err) => println!("Error sending message: {} [{:?}]", i, err),
+
+            // check for stop signal
+            if let Some(msg) = ipc::receive() {
+                
+                let msg_tag = msg.tag();
+                let msg_data = msg.data_as_str();
+
+                if msg_tag == "TEXT" && msg_data == "STOP" {
+                    println!("Received STOP signal ({} errors in total), exiting...", errors);
+                    break;
+                }
             }
-            thread::sleep(333);
+
+            let res = ipc::send(target_pid, target_tid, tag, i);
+            match res {
+                Ok(_) => {
+                    //println!("Send Message: {} with {} errors", i, errors);
+                    i += 1;
+                },
+                //Err(err) => println!("Error sending message: {} [{:?}]", i, err),
+                Err(_) => errors += 1,
+            }
+            //thread::sleep(333);
         }
     }
 }

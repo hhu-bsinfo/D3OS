@@ -18,7 +18,7 @@ pub struct IpcSyscallParams {
 const MESSAGE_TAG_LEN: usize = 0x10;
 //pub const MESSAGE_DATA_SIZE: usize = 0x100 - (size_of::<Uuid>() + size_of::<usize>() + MESSAGE_TAG_LEN);
 pub const MESSAGE_DATA_SIZE: usize = 0x100;
-const MAX_NUM_MESSAGES: usize = 8; // !this needs to be a power of 2!
+const MAX_NUM_MESSAGES: usize = 8; // !this needs to be a power of 2! also this can not be smaller than 4
 
 pub struct IpcQueue {
     writer_idx: AtomicU16,
@@ -34,24 +34,23 @@ impl IpcQueue {
         let writer_idx = self.writer_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
 
         // 2. check (and lock) mailbox entry
-        match self.mailbox[writer_idx].compare_exchange(0, -1, Ordering::SeqCst, Ordering::SeqCst) {
-            Ok(_) => {
-                // 3. write message into memory
-                if let Some(msg) = self.data.get_mut(writer_idx) {
-                    let msg_len = core::cmp::min(data.len(), MESSAGE_DATA_SIZE);
-                    msg.data[..msg_len].copy_from_slice(&data[..msg_len]);
-                    msg.sender_pid = sender_pid;
-                    msg.sender_tid = sender_tid;
-                    let tag_len = core::cmp::min(tag.len(), MESSAGE_TAG_LEN);
-                    msg.tag[..tag_len].copy_from_slice(&tag.as_bytes()[..tag_len]);
-                    self.mailbox[writer_idx].store(msg_len as i16, Ordering::SeqCst);
-                    true
-                } else {
-                    false
-                }
+        if self.mailbox[writer_idx].compare_exchange(0, -1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            // 3. write message into memory
+            if let Some(msg) = self.data.get_mut(writer_idx) {
+                let msg_len = core::cmp::min(data.len(), MESSAGE_DATA_SIZE);
+                msg.data[..msg_len].copy_from_slice(&data[..msg_len]);
+                msg.data_len = msg_len;
+                msg.sender_pid = sender_pid;
+                msg.sender_tid = sender_tid;
+                let tag_len = core::cmp::min(tag.len(), MESSAGE_TAG_LEN);
+                msg.tag[..tag_len].copy_from_slice(&tag.as_bytes()[..tag_len]);
+                self.mailbox[writer_idx].store(msg_len as i16, Ordering::SeqCst);
+                return true;
             }
-            Err(_) => false,
         }
+
+        self.writer_idx().store(writer_idx as u16, Ordering::SeqCst);
+        false
     }
 
     pub fn receive(&'static self) -> Option<IpcMessageWrapper> {
@@ -125,6 +124,7 @@ impl Deref for IpcMessageWrapper {
 #[derive(Debug, Clone, Copy)]
 pub struct IpcMessage {
     data: [u8; MESSAGE_DATA_SIZE],
+    data_len: usize,
     sender_pid: Uuid,
     sender_tid: usize,
     tag: [u8; MESSAGE_TAG_LEN],
@@ -132,15 +132,37 @@ pub struct IpcMessage {
 
 impl IpcMessage {
     pub fn new() -> Self {
-        Self { data: [0; MESSAGE_DATA_SIZE], sender_pid: Uuid::nil(), sender_tid: 0, tag: [0; MESSAGE_TAG_LEN] }
+        Self { data: [0; MESSAGE_DATA_SIZE], data_len: 0, sender_pid: Uuid::nil(), sender_tid: 0, tag: [0; MESSAGE_TAG_LEN] }
     }
-    pub fn data(&self) -> &[u8; MESSAGE_DATA_SIZE] {
-        &self.data
+    pub fn is_empty(&self) -> bool {
+        self.data_len == 0
     }
-    pub fn data_as_usizes(&self) -> &[usize] {
+    pub fn tag(&self) -> &str {
+        str_from_ut8_nul_terminated(&self.tag)
+    }
+    pub fn data(&self) -> &[u8] {
+        &self.data[..self.data_len]
+    }
+    pub fn data_as_usize(&self) -> &usize {
+        let ptr = self.data().as_ptr() as *const usize;
+        unsafe { ptr.as_ref().unwrap() }
+    }
+    pub fn data_as_usize_slice(&self) -> &[usize] {
         let ptr = self.data().as_ptr() as *const usize;
         let l = self.data.len() / size_of::<usize>();
         unsafe { core::slice::from_raw_parts(ptr, l) }
+    }
+    pub fn data_as_str(&self) -> &str {
+        str::from_utf8(self.data()).unwrap_or("UTF8_ERROR")
+        //str_from_ut8_nul_terminated(&self.data)
+    }
+}
+
+fn str_from_ut8_nul_terminated(bytes: &[u8]) -> &str {
+    let first_nul = bytes.iter().position(|c| *c == b'\0').unwrap_or(bytes.len());
+    match core::str::from_utf8(bytes) {
+        Ok(tag_str) => &tag_str[..first_nul],
+        Err(_) => "UTF8_ERROR",
     }
 }
 
@@ -152,10 +174,12 @@ impl Default for IpcMessage {
 
 impl Display for IpcMessage {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "(pid: {:?}, tid: {}, {}): {:?}", self.sender_pid, self.sender_tid, core::str::from_utf8(&self.tag).unwrap_or("ERR"), self.data)
+        write!(f, "(pid: {:?}, tid: {}, {}): {:?}", self.sender_pid, self.sender_tid, self.tag(), self.data)
     }
 }
 
+/// Trait for variable types which may be send as message content
+/// this should effectively only be implemented for references --> the data needs to exist long enough to be copied into the receiver
 pub trait IpcMessageContent {
     fn to_bytes(&self) -> &[u8];
 }
@@ -175,6 +199,21 @@ impl IpcMessageContent for &[usize] {
     }
 }
 
+impl IpcMessageContent for usize {
+    fn to_bytes(&self) -> &[u8] {
+        // cast an usize into an u8 array
+        let ptr = core::ptr::from_ref(self) as *const u8;
+        let l = size_of::<usize>();
+        unsafe { core::slice::from_raw_parts(ptr, l) }
+    }
+}
+
+impl IpcMessageContent for &str {
+    fn to_bytes(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
 const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
 pub fn init_queue() {
@@ -185,7 +224,7 @@ pub fn init_queue() {
     }
 }
 
-pub fn send<T: IpcMessageContent>(pid: Uuid, tid: usize, tag: &str, message: &T) -> SyscallResult {
+pub fn send<T: IpcMessageContent>(pid: Uuid, tid: usize, tag: &str, message: T) -> SyscallResult {
     let bytes = message.to_bytes();
     send_internal(pid, tid, tag, bytes)
 }
