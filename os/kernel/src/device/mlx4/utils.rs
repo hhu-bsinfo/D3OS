@@ -1,4 +1,4 @@
-use pci_types::{ConfigRegionAccess, EndpointHeader};
+use pci_types::{Bar, ConfigRegionAccess, EndpointHeader};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::{Page, PageRange};
 use x86_64::structures::paging::{PageTableFlags, PhysFrame, Size4KiB};
@@ -12,6 +12,7 @@ use core::mem;
 use alloc::boxed::Box;
 use alloc::slice;
 use alloc::vec::Vec;
+use crate::memory::vma::VmaType;
 
 type FillValues = (u8, *mut u8, usize);
 type CopyValues<'a> = (&'a [u8], *mut u8, usize);
