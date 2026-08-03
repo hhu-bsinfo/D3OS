@@ -119,12 +119,18 @@ impl ConnectX3Nic {
         mlx3_pci_dev.update_command(config_space, |creg| creg & !CommandRegister::MEMORY_ENABLE);
 
         // map the Global Device Configuration registers
-        let mut config_regs = utils::pci_map_bar_mem(&mlx3_pci_dev, 0, config_space)?;
-        trace!("mlx3 configuration registers: {:?}", config_regs);
+        let mut config_regs = utils::pci_map_bar_mem(
+            mlx3_pci_dev.bar(0, config_space).ok_or("No config regs (BAR 0)")?, 
+            "mlx4-config-regs"
+        );
+        trace!("mlx4 configuration registers: {:?}", config_regs);
 
         // map the User Access Region
-        let user_access_region = utils::pci_map_bar_mem(&mlx3_pci_dev, 2, &config_space)?;
-        trace!("mlx3 user access region: {:?}", user_access_region);
+        let user_access_region = utils::pci_map_bar_mem(
+            mlx3_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)")?, 
+            "mlx4-uar"
+        );
+        trace!("mlx4 user access region: {:?}", user_access_region);
 
         // set the memory space bit for this PciDevice
         // set the bus mastering bit for this PciDevice, which allows it to use DMA

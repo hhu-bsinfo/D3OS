@@ -367,31 +367,6 @@ impl VirtualAddressSpace {
         self.page_tables.map(page_range, space, flags);
     }
 
-    // this is adapted since we used the older version, and made the infiniband compatible with this call
-    pub fn map_io(&self, _frames: PhysFrameRange) {
-        // self.add_vma(VirtualMemoryArea::new(pages, mem_type));
-        // self.page_tables.map_physical(frames, pages, space, flags);
-
-        self.page_tables.map_io(_frames);
-
-        let start_address = VirtAddr::new(_frames.start.start_address().as_u64());
-        let end_address = VirtAddr::new(_frames.end.start_address().as_u64());
-
-        let p_range = Page::range(
-            Page::from_start_address(start_address).unwrap(),
-            Page::from_start_address(end_address).unwrap());
-
-        let v_area = VirtualMemoryArea::new_with_tag(
-            MemorySpace::Kernel,
-            p_range,
-            VmaType::DeviceMemory,
-            "dev-mem");
-
-        let mut vmas = self.virtual_memory_areas.write();
-
-        vmas.insert(start_address, Arc::new(v_area));
-    }
-
     fn access_ok(&self, addr: VirtAddr, len: usize) -> bool {
         if len == 0 {
             return false;
@@ -456,10 +431,6 @@ impl VirtualAddressSpace {
     /// Get physical address of root page table
     pub fn page_table_address(&self) -> PhysAddr {
         self.page_tables.page_table_address()
-    }
-
-    pub fn translate(&self, addr:VirtAddr) -> PhysAddr {
-        self.page_tables.translate(addr).unwrap_or(PhysAddr::zero())
     }
 
     /// Dump all virtual memory areas of this address space

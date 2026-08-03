@@ -333,28 +333,22 @@ pub fn set_dma_flags(page_range: PageRange<Size4KiB>) {
         .set_flags(page_range, PageTableFlags::NO_EXECUTE | PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
 }
 
-pub fn set_mmio_flags(frame_range: PhysFrameRange<Size4KiB>) {
-    process_manager().write().current_process().virtual_address_space.map_io(frame_range);
-}
-
 pub fn get_physical_address(addr: VirtAddr) -> PhysAddr {
-    process_manager().read().current_process().virtual_address_space.translate(addr)
+    process_manager().read().current_process().virtual_address_space.get_phys(addr.as_u64()).unwrap_or(PhysAddr::zero())
 }
 
-pub fn pci_map_bar_mem(mlx3_pci_dev: &EndpointHeader, slot: u8, config_access: &impl ConfigRegionAccess) -> Result<MappedPages, &'static str> {
-    let (address, size) = mlx3_pci_dev.bar(slot, config_access).ok_or("Error bar 0 (64-bit Mem)")?.unwrap_mem();
-
-    let start_frame = PhysFrame::<Size4KiB>::from_start_address(PhysAddr::new(address as u64)).unwrap();
-    let end_frame = PhysFrame::<Size4KiB>::containing_address(PhysAddr::new((address + size) as u64)) + 1;
-
-    let frame_range = PhysFrame::<Size4KiB>::range(start_frame, end_frame);
-    set_mmio_flags(frame_range);
-
-    let page_range = mapped_pages_from_frames(frame_range);
-
-    let page_to_frame = PageToFrameRange::from_frame(page_range, start_frame);
-
-    Ok(page_to_frame.fetch_in_addr().unwrap().0)
+pub fn pci_map_bar_mem(bar: Bar, tag: &str) -> MappedPages {
+    let (address, size) = bar.unwrap_mem();
+    let end_address = address + size;
+    let process = process_manager().write().current_process();
+    let pages = process.virtual_address_space.kernel_map_devm_identity(
+        address as u64,
+        end_address as u64,
+        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, 
+        VmaType::DeviceMemory,
+        tag
+    );
+    MappedPages::from(pages)
 }
 
 pub fn create_cont_mapping_with_dma_flags(frame_count: usize) -> Result<PageToFrameRange, &'static str> {
