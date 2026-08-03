@@ -66,8 +66,9 @@ impl CoreLocalStorage {
         &self.local_apic.as_ref().expect("Local Apic not initialized")
     }
 
-    pub fn init_apic(&mut self, kernel_core: bool) {
-        self.local_apic = Some(Apic::new_local_apic(kernel_core));
+    pub fn init_apic(&mut self, is_bp: bool) {
+        assert_eq!(is_bp, self.id == 0);
+        self.local_apic = Some(Apic::new_local_apic(is_bp));
     }
 
     /// Tries to receive a MessageItem from the inbox.
