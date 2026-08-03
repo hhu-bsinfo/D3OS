@@ -103,5 +103,38 @@ pub fn main() {
             }
             thread::sleep(1_000);
         }
+    } else if command == "loop" {
+        concurrent::ipc::init_queue();
+
+        let mut args_send = Vec::new();
+        args_send.push("loop_send");
+        let current_pid = format!("{}", process::current().id());
+        let current_tid = format!("{}", thread.id());
+        args_send.push(&current_pid);
+        args_send.push(&current_tid);
+        thread::start_application("ipctest", args_send);
+
+        loop {
+            while let Some(msg) = concurrent::ipc::receive() {
+                println!("Received Message: {}", msg.data_as_usizes()[0]);
+            }
+            thread::sleep(4_000);
+        }
+    } else if command == "loop_send" {
+
+        let mut i = 1 as usize;
+
+        let target_pid = args.get(2).and_then(|s| Uuid::parse_str(&s).ok()).unwrap_or(Uuid::nil());
+        let target_tid = args.get(3).and_then(|s| str::parse::<usize>(&s).ok()).unwrap_or(0);
+        let tag = "USIZE";
+
+        loop {
+            let res = concurrent::ipc::send(target_pid, target_tid, tag, &[i].as_slice());
+            match res {
+                Ok(_) => i += 1,
+                Err(err) => println!("Error sending message: {} [{:?}]", i, err),
+            }
+            thread::sleep(333);
+        }
     }
 }

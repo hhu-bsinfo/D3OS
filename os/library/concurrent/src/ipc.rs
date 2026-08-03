@@ -31,9 +31,6 @@ impl IpcQueue {
     
     pub fn send(&mut self, data: &[u8], sender_pid: Uuid, sender_tid: usize, tag: &str) -> bool {
 
-        // 1. check if there is space in the queue
-        if self.space_left() == 0 { return false }
-
         let writer_idx = self.writer_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
 
         // 2. check (and lock) mailbox entry
@@ -59,25 +56,23 @@ impl IpcQueue {
 
     pub fn receive(&'static self) -> Option<IpcMessageWrapper> {
 
-        // 1. check for any messages
-        if self.messages_left() == 0 { return None }
-
-        //let writer_idx = self.writer_idx().load(Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
+        // iter until writer_idx to check for any new messages
         let reader_idx = self.reader_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
-
+        
+        // lock mailbox slot
         let msg_len = self.mailbox[reader_idx].swap(-1, Ordering::SeqCst);
 
-        // check if reached 'invalid' (i.e. either currently being written, or already read msg)
-        if msg_len <= 0 {
+        // check if found valid message
+        if msg_len > 0 {
+            // put Message into Wrapper to enable automatic clearing of the queue, once the value is dropped
+            self.data.get(reader_idx).map(|msg| IpcMessageWrapper { msg, queue_ptr: &self.mailbox[reader_idx] })
+        } else {
+            // free mailbox slot again
+            self.mailbox[reader_idx].store(msg_len, Ordering::SeqCst);
             // reset reader idx
             self.reader_idx().store(reader_idx as u16, Ordering::SeqCst);
-            return None;
+            None
         }
-
-        // pust Message into Wrapper to enable automatic clearing of the queue, once the value is dropped
-        self.data.get(reader_idx).map(|msg| IpcMessageWrapper { msg, queue_ptr: &self.mailbox[reader_idx] })
-
-        //Some(IpcMessageData { data: &self.data[reader_idx], msg_len: msg_len as usize, queue_ptr: ptr::from_ref(&self.mailbox[reader_idx]) })
     }
 
     pub fn writer_idx(&self) -> &AtomicU16 {
@@ -141,6 +136,11 @@ impl IpcMessage {
     }
     pub fn data(&self) -> &[u8; MESSAGE_DATA_SIZE] {
         &self.data
+    }
+    pub fn data_as_usizes(&self) -> &[usize] {
+        let ptr = self.data().as_ptr() as *const usize;
+        let l = self.data.len() / size_of::<usize>();
+        unsafe { core::slice::from_raw_parts(ptr, l) }
     }
 }
 
