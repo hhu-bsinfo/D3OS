@@ -344,7 +344,7 @@ impl Apic {
             info!("   Local APIC registers at: {:#x}", lapic_registers_phys_addr);
             let process = process_manager().read().kernel_process().unwrap();
 
-            let _lapic_registers_page = process.virtual_address_space.kernel_map_devm_identity(
+            process.virtual_address_space.kernel_map_devm_identity(
                 lapic_registers_phys_addr,
                 lapic_registers_phys_addr + PAGE_SIZE as u64,
                 PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
@@ -372,7 +372,7 @@ impl Apic {
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
             VmaType::DeviceMemory,
             "ioapic",
-        );
+        ).start;
 
         unsafe {
             let mut io_apic = IoApic::new(ioapic_registers_page.start_address().as_u64());

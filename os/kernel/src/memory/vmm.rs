@@ -481,7 +481,7 @@ impl VirtualAddressSpace {
     /// `start_phys_addr` must be page aligned. \
     /// `end_phys_addr` must be greater than `start_phys_addr` but no need to be page aligned. If it is not page aligned, it will be aligned up. \
     /// A vma ist created using the parameters `typ` and `tag`.
-    pub fn kernel_map_devm_identity(&self, start_phys_addr: u64, end_phys_addr: u64, flags: PageTableFlags, typ: VmaType, tag: &str) -> Page {
+    pub fn kernel_map_devm_identity(&self, start_phys_addr: u64, end_phys_addr: u64, flags: PageTableFlags, typ: VmaType, tag: &str) -> PageRange {
         assert!(end_phys_addr > start_phys_addr, "'end_phys_addr' must be larger than 'start_phys_addr'");
 
         // Calc page frame range (needed for mapping))
@@ -511,7 +511,7 @@ impl VirtualAddressSpace {
         // Now we do the mapping
         self.map_pfr_for_vma(&vma, pfr, flags).expect("map_pfr_for_vma failed in map_devmem_identity");
 
-        pr.start
+        pr
     }
 
     /// Alloc `num_pf` page frames, en bloc, identity mapped in kernel space.
