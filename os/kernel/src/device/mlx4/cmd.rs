@@ -3,7 +3,6 @@
 
 use core::sync::atomic::{compiler_fence, Ordering};
 
-use super::utils::{OperationArgs, Operations, PageToFrameMapping};
 use crate::device::mlx4::utils;
 use crate::memory::PAGE_SIZE;
 use alloc::boxed::Box;
@@ -15,10 +14,13 @@ use strum_macros::{FromRepr, IntoStaticStr};
 use tock_registers::interfaces::{Readable, Writeable};
 use tock_registers::{register_bitfields, register_bitmasks,};
 use tock_registers::registers::{ReadWrite, WriteOnly};
-use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
+use x86_64::PhysAddr;
+use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame, Size4KiB};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use zerocopy::AsBytes;
+use crate::memory::vma::VmaType;
+use crate::process_manager;
 
 const HCR_BASE: usize = 0x80680;
 const HCR_OPMOD_SHIFT: u32 = 12;
@@ -183,44 +185,56 @@ struct Hcr {
 
 pub struct CmdMailbox {
     page: Page<Size4KiB>,
-    frame: PhysFrame,
 }
 
 impl CmdMailbox {
     fn allocate() -> Option<Self> {
-        match utils::create_cont_mapping_with_dma_flags(1).ok()?.fetch_in_frame() {
-            Ok((pages, frame)) => {
-                Some(Self {
-                    page: pages.into_range().start,
-                    frame
-                })
-            }
-            Err(e) => {
-                error!("{e}");
-                None
-            }
+        let kernel_process = process_manager().write().kernel_process()?;
+        let pages = kernel_process.virtual_address_space.kernel_alloc_map_identity(
+            1,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
+            VmaType::DeviceMemory,
+            "mlx_mailbox");
+        if pages.is_empty() {
+            return None;
         }
+        Some(Self {
+            page: pages.start
+        })
     }
 
     /// Clears the Mailbox
     #[inline]
     fn clear(&mut self) {
-        unsafe {
-            core::ptr::write_bytes(self.page.start_address().as_mut_ptr::<u8>(), 0, self.page.size() as usize);
-        }
+        self.as_bytes_mut().fill(0);
     }
 
     #[inline]
     fn as_bytes(&self) -> &[u8] {
-        unsafe { core::slice::from_raw_parts(self.page.start_address().as_ptr::<u8>(), self.page.size() as usize) }
+        let ptr = self.page.start_address().as_ptr::<u8>();
+        let size = self.page.size() as usize;
+        unsafe { core::slice::from_raw_parts(ptr, size) }
     }
 
     #[inline]
-    pub fn copy_from_bytes(&mut self, bytes: &[u8]) {
-        assert!(bytes.len() <= self.page.size() as usize);
-        unsafe { core::ptr::copy_nonoverlapping(bytes.as_ptr(), self.page.start_address().as_mut_ptr::<u8>(), bytes.len()) }
+    fn as_bytes_mut(&mut self) -> &mut [u8] {
+        let ptr = self.page.start_address().as_mut_ptr::<u8>();
+        let size = self.page.size() as usize;
+        unsafe { core::slice::from_raw_parts_mut(ptr, size) }
     }
 
+
+    #[inline]
+    pub fn copy_from_bytes(&mut self, bytes: &[u8]) {
+        assert!(bytes.len() <= self.as_bytes().len());
+        let count = bytes.len();
+        self.as_bytes_mut()[..count].copy_from_slice(bytes);
+    }
+
+    fn phys_addr(&self) -> PhysAddr {
+        // SAFETY: We expect the page to be identity mapped
+        PhysAddr::new(self.page.start_address().as_u64())
+    }
 }
 
 pub(super) enum InputParam<'a> {
@@ -278,7 +292,7 @@ impl CommandInterface {
             InputParam::Mailbox(s) => {
                 self.input_mailbox.clear();
                 self.input_mailbox.copy_from_bytes(s);
-                self.input_mailbox.frame.start_address().as_u64()
+                self.input_mailbox.phys_addr().as_u64()
             },
         };
 
@@ -287,7 +301,7 @@ impl CommandInterface {
             OutputParam::Immediate => (0, true),
             OutputParam::Mailbox => {
                 self.output_mailbox.clear();
-                (self.output_mailbox.frame.start_address().as_u64(), false)
+                (self.output_mailbox.phys_addr().as_u64(), false)
             }
         };
 
