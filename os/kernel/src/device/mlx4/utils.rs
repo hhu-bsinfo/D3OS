@@ -10,6 +10,7 @@ use core::mem;
 
 use crate::memory::vma::VmaType;
 use alloc::slice;
+use log::error;
 
 pub type PageToFrameMapping = (MappedPages, PhysAddr);
 
@@ -63,7 +64,9 @@ impl MappedPages {
         let start_bound_vaddr = unsafe { start_vaddr.add(offset) };
         let end_bound_vaddr = unsafe { start_vaddr.add(offset + size) };
 
-        if end_bound_vaddr >= end_vaddr {
+        if end_bound_vaddr > end_vaddr {
+            error!("{:?}", self);
+            error!("Out of bounds: offset = {:x}, size = {:x}", offset, size);
             return Err("Doesn't fit within pages")
         }
 
@@ -102,7 +105,7 @@ impl MappedPages {
         let end_vaddr = self.range.end.start_address().as_ptr::<u8>();
         let target_vaddr = addr.as_ptr::<u8>();
 
-        if target_vaddr <= start_vaddr || end_vaddr <= target_vaddr {
+        if target_vaddr < start_vaddr || end_vaddr <= target_vaddr {
             return None;
         }
 
