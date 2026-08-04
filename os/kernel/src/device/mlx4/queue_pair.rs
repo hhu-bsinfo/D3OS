@@ -28,6 +28,7 @@ use tock_registers::{interfaces::Writeable, registers::WriteOnly};
 use x86_64::{PhysAddr, VirtAddr};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use rdma::uverbs_uapi::{ReceiveWorkRequest, SendWorkRequest};
+use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use super::{
     cmd::{CommandInterface, Opcode},
     completion_queue::CompletionQueue,
@@ -128,8 +129,8 @@ impl QueuePair {
 
     /// Query this queue pair.
     pub(super) fn query(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
-        let page: MappedPages = cmd.execute_command(Opcode::QueryQp, (), (), self.number)?;
-        let transition: &StateTransitionCommandParameter = page.as_type(0)?;
+        cmd.execute_command(Opcode::QueryQp, None, InputParam::Empty, Some(self.number), OutputParam::Mailbox)?;
+        let transition: &StateTransitionCommandParameter = unsafe { cmd.output_mailbox_as_ref() };
         let context = QueuePairContext::from_bytes(transition.qpc_data);
         trace!("Queue Pair Context: {context:?}");
         Ok(())
@@ -440,7 +441,7 @@ impl QueuePair {
         let mut input = StateTransitionCommandParameter::new_zeroed();
         input.opt_param_mask.set(param_mask.bits());
         input.qpc_data = context.into_bytes();
-        let _: () = cmd.execute_command(opcode, (), input.as_bytes(), self.number)?;
+        cmd.execute_command(opcode, None, InputParam::Mailbox(input.as_bytes()), Some(self.number), OutputParam::Empty)?;
         if let Some(state) = next_qp_state {
             self.state = state;
             trace!("QP {} is now in {:?}", self.number, self.state);
