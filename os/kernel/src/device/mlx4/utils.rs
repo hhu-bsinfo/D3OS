@@ -1,5 +1,5 @@
 use pci_types::{Bar, ConfigRegionAccess};
-use x86_64::structures::paging::page::{Page, PageRange};
+use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{PageTableFlags, PhysFrame, Size4KiB};
 
 use crate::memory::PAGE_SIZE;
@@ -13,11 +13,7 @@ use alloc::slice;
 
 pub type PageToFrameMapping = (MappedPages, PhysAddr);
 
-#[derive(Clone, Copy, Debug)]
-pub struct MappedPages {
-    range: PageRange<Size4KiB>,
-}
-
+#[derive(Debug)]
 pub struct PageToFrameRange {
     mapped_pages: MappedPages,
     start_frame: PhysFrame<Size4KiB>,
@@ -38,116 +34,79 @@ impl PageToFrameRange {
 }
 
 // wrapper type around page range, to mark mapped allocated pages
+#[derive(Clone, Copy, Debug)]
+pub struct MappedPages {
+    range: PageRange<Size4KiB>,
+}
+
 impl MappedPages {
     pub fn from(page_range: PageRange<Size4KiB>) -> Self {
         Self { range: page_range }
     }
 
-    // the function handling is completly adapted from Theseus
-    // remove the trait bound FromBytes, and allow T to be any type
-    pub fn as_type_mut<T>(&mut self, byte_offset: usize) -> Result<&mut T, &'static str> {
-        let size = mem::size_of::<T>();
-        if byte_offset % mem::align_of::<T>() != 0 {
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe { core::slice::from_raw_parts(self.range.start.start_address().as_ptr(), self.range.size() as usize) }
+    }
+    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+        unsafe { core::slice::from_raw_parts_mut(self.range.start.start_address().as_mut_ptr(), self.range.size() as usize) }
+    }
+
+    #[inline]
+    fn check_align_bounds(&self, offset: usize, size: usize, algin: usize) -> Result<*const u8, &'static str> {
+        if offset % algin != 0 {
             return Err("Not aligned properly");
         }
 
-        // assuming not out of bound
-        let start_vaddr = start_page_as_ptr::<u8>(self.range.start);
-        let end_vaddr = start_page_as_ptr::<u8>(self.range.end);
+        let start_vaddr = self.range.start.start_address().as_ptr::<u8>();
+        let end_vaddr = self.range.end.start_address().as_ptr::<u8>();
 
-        let end_bound_vaddr = unsafe { start_vaddr.add(byte_offset + size) };
+        let start_bound_vaddr = unsafe { start_vaddr.add(offset) };
+        let end_bound_vaddr = unsafe { start_vaddr.add(offset + size) };
 
-        if end_vaddr < end_bound_vaddr {
-            return Err("Doesn't fit within pages");
+        if end_bound_vaddr >= end_vaddr {
+            return Err("Doesn't fit within pages")
         }
 
-        let t = unsafe { &mut *(start_vaddr.add(byte_offset) as *mut T) };
+        Ok(start_bound_vaddr)
+    }
 
+    // remove the trait bound FromBytes, and allow T to be any type
+    pub fn as_type_mut<T>(&mut self, byte_offset: usize) -> Result<&mut T, &'static str> {
+        let ptr = self.check_align_bounds(byte_offset, size_of::<T>(), align_of::<T>())?;
+        let t = unsafe { &mut *(ptr as *mut T) };
         Ok(t)
     }
 
     pub fn as_type<T>(&self, byte_offset: usize) -> Result<&T, &'static str> {
-        let size = mem::size_of::<T>();
-        if byte_offset % mem::align_of::<T>() != 0 {
-            return Err("Not aligned properly");
-        }
-
-        // assuming not out of bound
-        let start_vaddr = start_page_as_ptr::<u8>(self.range.start);
-        let end_vaddr = start_page_as_ptr::<u8>(self.range.end);
-
-        let end_bound_vaddr = unsafe { start_vaddr.add(byte_offset + size) };
-
-        if end_vaddr < end_bound_vaddr {
-            return Err("Doesn't fit within pages");
-        }
-
-        let t = unsafe { &*(start_vaddr.add(byte_offset) as *const T) };
-
+        let ptr = self.check_align_bounds(byte_offset, size_of::<T>(), align_of::<T>())?;
+        let t = unsafe { &*(ptr as *const T) };
         Ok(t)
     }
 
-    // the function handling is completly adapted from Theseus
     pub fn as_slice<T>(&self, byte_offset: usize, length: usize) -> Result<&[T], &'static str> {
         let size_in_bytes = length.checked_mul(mem::size_of::<T>()).ok_or("overflow")?;
-
-        if byte_offset % mem::align_of::<T>() != 0 {
-            return Err("not aligned properly");
-        }
-
-        let start_vaddr = start_page_as_ptr::<u8>(self.range.start);
-        let end_vaddr = start_page_as_ptr::<u8>(self.range.end);
-
-        let end_bound_vaddr = unsafe { start_vaddr.add(byte_offset + size_in_bytes) };
-
-        if end_vaddr < end_bound_vaddr {
-            return Err("Doesn't fit within pages");
-        }
-
-        let start_data_vaddr = unsafe { start_vaddr.add(byte_offset) };
-
-        let slc = unsafe { slice::from_raw_parts(start_data_vaddr as *const T, length) };
-
+        let ptr = self.check_align_bounds(byte_offset, size_in_bytes, align_of::<T>())?;
+        let slc = unsafe { slice::from_raw_parts(ptr as *const T, length) };
         Ok(slc)
     }
 
     pub fn as_slice_mut<T>(&mut self, byte_offset: usize, length: usize) -> Result<&mut [T], &'static str> {
         let size_in_bytes = length.checked_mul(mem::size_of::<T>()).ok_or("overflow")?;
-
-        if byte_offset % mem::align_of::<T>() != 0 {
-            return Err("not aligned properly");
-        }
-
-        let start_vaddr = start_page_as_ptr::<u8>(self.range.start);
-        let end_vaddr = start_page_as_ptr::<u8>(self.range.end);
-
-        let end_bound_vaddr: *const u8 = unsafe { start_vaddr.add(byte_offset + size_in_bytes) };
-
-        if end_vaddr < end_bound_vaddr {
-            return Err("Doesn't fit within pages");
-        }
-
-        let start_data_vaddr = unsafe { start_vaddr.add(byte_offset) };
-
-        let slc = unsafe { slice::from_raw_parts_mut(start_data_vaddr as *mut T, length) };
-
+        let ptr = self.check_align_bounds(byte_offset, size_in_bytes, align_of::<T>())?;
+        let slc = unsafe { slice::from_raw_parts_mut(ptr as *mut T, length) };
         Ok(slc)
     }
 
     pub fn offset_of_address(&self, addr: VirtAddr) -> Option<usize> {
-        let start_vaddr = start_page_as_ptr::<u8>(self.range.start);
-        let end_vaddr = start_page_as_ptr::<u8>(self.range.end);
+        let start_vaddr = self.range.start.start_address().as_ptr::<u8>();
+        let end_vaddr = self.range.end.start_address().as_ptr::<u8>();
         let target_vaddr = addr.as_ptr::<u8>();
 
-        if target_vaddr >= end_vaddr {
+        if target_vaddr <= start_vaddr || end_vaddr <= target_vaddr {
             return None;
         }
 
         let offset = unsafe { target_vaddr.offset_from(start_vaddr) };
-
-        if offset < 0 {
-            return None;
-        }
 
         Some(offset as usize)
     }
@@ -163,10 +122,6 @@ impl MappedPages {
 
 pub fn pages_required(bytes: usize) -> usize {
     (bytes + PAGE_SIZE - 1) / PAGE_SIZE
-}
-
-pub fn start_page_as_ptr<T>(page: Page<Size4KiB>) -> *const T {
-    page.start_address().as_ptr::<T>()
 }
 
 pub fn get_physical_address(addr: VirtAddr) -> PhysAddr {
