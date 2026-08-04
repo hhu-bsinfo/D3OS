@@ -4,21 +4,15 @@
 use core::sync::atomic::{compiler_fence, Ordering};
 
 use crate::device::mlx4::utils;
-use crate::memory::PAGE_SIZE;
-use alloc::boxed::Box;
-use core::fmt::{Debug, Formatter};
-use core::ops::{BitAnd, BitOr, BitOrAssign, Not, Shl, Shr};
+use core::fmt::Debug;
 use bitflags::bitflags;
-use log::{debug, error, trace};
+use log::trace;
 use strum_macros::{FromRepr, IntoStaticStr};
 use tock_registers::interfaces::{Readable, Writeable};
-use tock_registers::{register_bitfields, register_bitmasks,};
+use tock_registers::register_bitfields;
 use tock_registers::registers::{ReadWrite, WriteOnly};
 use x86_64::PhysAddr;
-use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame, Size4KiB};
-use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::page::PageRange;
-use zerocopy::AsBytes;
+use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB};
 use crate::memory::vma::VmaType;
 use crate::process_manager;
 
