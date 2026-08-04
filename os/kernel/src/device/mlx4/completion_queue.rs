@@ -10,7 +10,6 @@ use core::{
 use super::queue_pair::{QueuePair, QueuePairOpcode};
 use super::utils;
 use super::utils::{MappedPages, PageToFrameMapping};
-use crate::device::mlx4::utils::{FillOperation, OperationArgs};
 use crate::memory::PAGE_SIZE;
 use alloc::boxed::Box;
 use log::{error, trace, warn};
@@ -58,15 +57,12 @@ impl CompletionQueue {
         let uar_idx = offsets.alloc_scq_db();
         let num_pages = (usize::try_from(num_entries).unwrap() * size_of::<CompletionQueueEntry>()).next_multiple_of(PAGE_SIZE) / PAGE_SIZE;
 
-        let mut operation_container = utils::Operations::default();
         let size = num_pages * PAGE_SIZE + size_of::<CompletionQueueEntry>() - 1;
         let mapped_page_to_frame = utils::create_cont_mapping_with_dma_flags(utils::pages_required(size))?.fetch_in_addr()?;
 
-        let bytes = utils::start_page_as_mut_ptr::<u8>(mapped_page_to_frame.0.into_range().start);
-
-        operation_container.add_operation(Box::new(FillOperation {}), OperationArgs::Fill(0u8, bytes, size));
-
-        operation_container.perform();
+        // clear buffer
+        let pages = mapped_page_to_frame.0.page_range();
+        unsafe { core::ptr::write_bytes(pages.start.start_address().as_mut_ptr::<u8>(), 0, pages.size() as usize) };
 
         let mtt = memory_regions.alloc_mtt(cmd, caps, num_pages, mapped_page_to_frame.1)?;
         let (mut doorbell_page, doorbell_address) =

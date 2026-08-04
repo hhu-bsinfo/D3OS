@@ -7,7 +7,6 @@ use core::{
     sync::atomic::{compiler_fence, Ordering}, u32,
 };
 
-use crate::device::mlx4::utils::FillOperation;
 use crate::memory::PAGE_SIZE;
 use alloc::boxed::Box;
 use alloc::{vec, vec::Vec};
@@ -26,9 +25,11 @@ use rdma::{
 use strum_macros::FromRepr;
 use tock_registers::{interfaces::Writeable, registers::WriteOnly};
 use x86_64::{PhysAddr, VirtAddr};
+use x86_64::structures::paging::PageTableFlags;
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use rdma::uverbs_uapi::{ReceiveWorkRequest, SendWorkRequest};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
+use crate::process_manager;
 use super::{
     cmd::{CommandInterface, Opcode},
     completion_queue::CompletionQueue,
@@ -36,7 +37,7 @@ use super::{
     fw::{Capabilities, DoorbellPage},
     icm::{MrTable, ICM_PAGE_SHIFT},
     utils,
-    utils::{MappedPages, OperationArgs, Operations},
+    utils::MappedPages,
     Offsets,
 };
 
@@ -95,12 +96,11 @@ impl QueuePair {
             sq.offset = 0;
         }
         let buf_size = (rq.size() + sq.size()).try_into().unwrap();
-        let mut operation_container = Operations::default();
         let mapped_page_to_frame = utils::create_cont_mapping_with_dma_flags(utils::pages_required(buf_size))?.fetch_in_addr()?;
-        let bytes = utils::start_page_as_mut_ptr::<u8>(mapped_page_to_frame.0.into_range().start);
+
         // zero the queue
-        operation_container.add_operation(Box::new(FillOperation {}), OperationArgs::Fill(0u8, bytes, buf_size));
-        operation_container.perform();
+        let pages = mapped_page_to_frame.0.page_range();
+        unsafe { core::ptr::write_bytes(pages.start.start_address().as_mut_ptr::<u8>(), 0, pages.size() as usize) };
 
         let mtt = memory_regions.alloc_mtt(cmd, caps, buf_size / PAGE_SIZE, mapped_page_to_frame.1)?;
         let (mut doorbell_page, doorbell_address) =
