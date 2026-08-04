@@ -661,7 +661,7 @@ impl Capabilities {
         let mut doorbells = Vec::new();
         let mut blueflame = Vec::new();
 
-        let uar_range = uar.into_range();
+        let uar_range = uar.page_range();
         let take_n = uar_range.len() - 1; // exclude last page
 
         for (idx, page) in &mut uar_range.enumerate().take(take_n as usize) {

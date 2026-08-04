@@ -115,7 +115,7 @@ impl MappedPages {
         !self.range.is_empty()
     }
 
-    pub fn into_range(&self) -> PageRange<Size4KiB> {
+    pub fn page_range(&self) -> PageRange<Size4KiB> {
         self.range
     }
 }
