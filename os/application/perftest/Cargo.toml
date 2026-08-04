@@ -20,4 +20,5 @@ runtime = { path = "../../library/runtime" }
 network = { path = "../../library/network" }
 
 core3 = { version = "0.1", default-features = false }
+log = "0.4.29"
 #smoltcp = { version = "0.12", default-features = false, features = ["proto-ipv4"] }

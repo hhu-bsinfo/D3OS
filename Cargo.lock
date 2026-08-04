@@ -1339,6 +1339,7 @@ version = "0.0.1"
 dependencies = [
  "core3",
  "ibverbs",
+ "log",
  "network",
  "rdma",
  "runtime",

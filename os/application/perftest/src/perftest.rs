@@ -1,5 +1,6 @@
 #![no_std]
 
+use log::error;
 use runtime::env::args;
 
 mod read_bw;
@@ -11,5 +12,8 @@ extern crate alloc;
 pub fn main() {
     let args = args();
     let config = read_bw::Config::default();
-    read_bw::run(config).unwrap();
+    match read_bw::run(config) {
+        Ok(_) => {}
+        Err(e) => error!("failed to run bandwidth: {}", e),
+    }
 }

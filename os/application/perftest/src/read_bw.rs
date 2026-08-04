@@ -68,7 +68,27 @@ pub fn run(cfg: Config) -> io::Result<()> {
     let max_rd_atomic = MAX_RD_ATOMIC.min(cfg.tx_depth as u8);
     let cap = ibv_qp_cap { max_send_wr: 1, max_recv_wr: 1, max_send_sge: 1, max_recv_sge: 1, max_inline_data: 0 };
 
-    let qp = pd.create_qp(&cq, &cq, ibv_qp_type::IBV_QPT_RC, cap)
+    match &cfg.server.clone() {
+        Some(host) => {
+            let (qp, my_info) = build_qp(&cfg, &pd, &cq, &mut mr, max_rd_atomic, cap)?;
+            run_client(cfg, qp, my_info, host)
+        }
+        None => run_server(cfg, &pd, &cq, &mut mr, max_rd_atomic, cap),
+    }
+}
+
+/// Builds and prepares a fresh queue pair, along with the `PeerInfo` a peer
+/// needs to connect to it. Each accepted connection gets its own queue pair,
+/// since a `PreparedQueuePair` is consumed by `handshake`.
+fn build_qp<'res>(
+    cfg: &Config,
+    pd: &'res ibverbs::ProtectionDomain<'res>,
+    cq: &'res ibverbs::CompletionQueue<'res>,
+    mr: &mut LocalMemoryRegion<'_, u8>,
+    max_rd_atomic: u8,
+    cap: ibv_qp_cap,
+) -> io::Result<(ibverbs::PreparedQueuePair<'res>, PeerInfo)> {
+    let qp = pd.create_qp(cq, cq, ibv_qp_type::IBV_QPT_RC, cap)
         //.set_gid_index(cfg.gid_index)
         .allow_remote_rw()
         // Both sides set max_rd_atomic / max_dest_rd_atomic so that either
@@ -88,36 +108,41 @@ pub fn run(cfg: Config) -> io::Result<()> {
         rkey: remote.rkey,
     };
 
-    match &cfg.server.clone() {
-        Some(host) => run_client(cfg, qp, my_info, host),
-        None => run_server(cfg, qp, my_info),
-    }
+    Ok((qp, my_info))
 }
 
 fn run_server(
     cfg: Config,
-    prepared: ibverbs::PreparedQueuePair,
-    my_info: PeerInfo,
+    pd: &ibverbs::ProtectionDomain,
+    cq: &ibverbs::CompletionQueue,
+    mr: &mut LocalMemoryRegion<'_, u8>,
+    max_rd_atomic: u8,
+    cap: ibv_qp_cap,
 ) -> io::Result<()> {
     let listen_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), cfg.port);
     let mut listener = TcpListener::bind(SocketAddr::V4(listen_addr)).unwrap();
     println!("Waiting for client to connect on {} ...", listen_addr);
 
-    let mut stream = listener.accept().unwrap();
-    println!("Client connected from {}", stream.peer_addr());
+    // Keep accepting new clients forever, one at a time, each with its own
+    // freshly-built queue pair.
+    loop {
+        let mut stream = listener.accept().unwrap();
+        println!("Client connected from {}", stream.peer_addr());
 
-    // Handshake: client sends first, server responds.
-    let client_info = PeerInfo::read_from(&mut stream).unwrap();
-    my_info.write_to(&mut stream).unwrap();
+        let (prepared, my_info) = build_qp(&cfg, pd, cq, mr, max_rd_atomic, cap)?;
 
-    // Connect the QP to the client.
-    let mut _qp = prepared.handshake(endpoint_from_peer(&client_info)).unwrap();
-    println!("QP connected – waiting for client to finish the test ...");
+        // Handshake: client sends first, server responds.
+        let client_info = PeerInfo::read_from(&mut stream).unwrap();
+        my_info.write_to(&mut stream).unwrap();
 
-    // Wait for client's end-of-test signal.
-    comm::sync(&mut stream).unwrap();
-    println!("Done.");
-    Ok(())
+        // Connect the QP to the client.
+        let mut _qp = prepared.handshake(endpoint_from_peer(&client_info)).unwrap();
+        println!("QP connected – waiting for client to finish the test ...");
+
+        // Wait for client's end-of-test signal.
+        comm::sync(&mut stream).unwrap();
+        println!("Done. Waiting for next client ...");
+    }
 }
 
 fn run_client(
