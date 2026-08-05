@@ -624,10 +624,19 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
     "mov [rdi], rsp",
 
     // Set rsp0 of kernel stack in tss (third parameter 'next_rsp0_end')
+    // Interrupts must stay disabled across the swapgs pair: this function is also reached with
+    // interrupts enabled (voluntary switches via 'sleep()'/'block()'), and an interrupt arriving
+    // between the two swapgs instructions does its own swapgs on entry. That makes the total number
+    // of swaps odd and leaves the gs bases inverted for this core from then on.
+    // 'pushf'/'popf' keeps the interrupt flag as it was, so the path coming from an interrupt
+    // handler (where interrupts are already disabled) is unaffected.
+    "pushf",
+    "cli",
     "swapgs", // Setup core local storage access via gs base
     "mov rax, gs:[{CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX}]", // Load pointer to rsp0 entry of tss into rax
     "mov [rax], rdx", // Set rsp0 entry in tss to 'next_rsp0_end' (third parameter)
     "swapgs", // Restore gs base
+    "popf",
 
     // Switch address space (fourth parameter 'next_cr3')
     "mov cr3, rcx",
