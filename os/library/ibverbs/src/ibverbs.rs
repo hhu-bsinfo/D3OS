@@ -94,6 +94,9 @@ pub use ffi::ibv_wc;
 #[cfg(feature = "serialize")]
 use bincode::{Decode, Encode};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
 pub use ffi::ibv_access_flags;
 
@@ -899,6 +902,7 @@ pub struct PreparedQueuePair<'res> {
 /// These methods read the array as big endian, regardless of native cpu
 /// endianness.
 #[cfg_attr(feature = "serialize", derive(Encode, Decode))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[repr(transparent)]
 pub struct Gid {
@@ -954,6 +958,7 @@ impl AsMut<ffi::ibv_gid> for Gid {
 /// Internally, this contains the `QueuePair`'s `qp_num`, as well as the context's `lid` and `gid`.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serialize", derive(Encode, Decode))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct QueuePairEndpoint {
     /// the `QueuePair`'s `qp_num`
     pub num: u32,
