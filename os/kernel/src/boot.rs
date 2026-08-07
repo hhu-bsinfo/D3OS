@@ -24,7 +24,7 @@ use crate::memory::{dram, nvmem, PAGE_SIZE};
 use crate::process::thread::Thread;
 use crate::syscall::{sys_vmem, syscall_dispatcher};
 use crate::{
-    acpi_tables, allocator, apic, gdt, get_initrd_frames,
+    acpi_tables, allocator, apic, calibrate, gdt, get_initrd_frames,
     efi_services_available, init_acpi_tables, init_apic, init_boot_info,
     init_cpu_info, init_initrd, init_lfb, init_lfb_info, init_pci,
     init_serial_port, init_tty, keyboard, logger, mouse,
@@ -289,6 +289,12 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Enable interrupts
     info!("Enabling interrupts");
     interrupts::enable();
+
+    // Calibrate the TSC-to-microsecond conversion factor used by `get_time_in_us()` /
+    // the `GetTimeInUs` syscall. Needs the timer interrupt actively ticking, so this must run
+    // after interrupts are enabled.
+    info!("Calibrating TSC");
+    calibrate(100);
 
     // Initialize EFI runtime service (if available and not done already during memory initialization)
     if uefi::table::system_table_raw().is_none() {
