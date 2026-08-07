@@ -31,6 +31,7 @@ members = [
     "os/application/cat",
     "os/application/svc_dummy",
     "os/application/service_manager",
+    "os/application/task_manager",
 ]
 
 # [profile.release]

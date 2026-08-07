@@ -18,6 +18,7 @@ use core::result::Result;
 
 use core::{fmt};
 use naming::shared_types::{DirEntry, FileType, OpenOptions};
+use spin::{Once, RwLock};
 use syscall::return_vals::Errno;
 
 use super::stat::Mode;
@@ -26,9 +27,17 @@ use super::traits::{DirectoryObject, FileObject, FileSystem, NamedObject};
 
 use crate::process_manager;
 use crate::device::apic::now_ticks;
-use crate::memory::dram;
+use crate::memory::{dram};
 
 use alloc::format;
+
+static PROC_SERVICES_CONTENT: Once<Arc<RwLock<String>>> = Once::new();
+
+fn proc_services_content() -> Arc<RwLock<String>> {
+    PROC_SERVICES_CONTENT
+        .call_once(|| Arc::new(RwLock::new(String::new())))
+        .clone()
+}
 
 
 pub struct ProcFs {
@@ -77,6 +86,10 @@ impl DirectoryObject for ProcDir {
             Ok(NamedObject::FileObject(
                 Arc::new(ProcMemInfoFile {})
             ))
+        } else if name == "services" {
+            Ok(NamedObject::FileObject(
+                Arc::new(ProcServicesFile {})
+            ))
         } else {
             Err(Errno::ENOENT) // Return error if the file is not found
         }
@@ -89,6 +102,7 @@ impl DirectoryObject for ProcDir {
             ("ps", FileType::Regular),
             ("ticks", FileType::Regular),
             ("meminfo", FileType::Regular),
+            ("services", FileType::Regular),
         ];
 
         // first return all Files
@@ -281,6 +295,54 @@ impl FileObject for ProcPsFile {
 impl fmt::Debug for ProcPsFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProcPsFile").finish()
+    }
+}
+
+//-----------------------------------------------------------------------------------------------//
+// ProcServicesFile
+pub struct ProcServicesFile {}
+
+impl FileObject for ProcServicesFile {
+    fn read(&self, buf: &mut [u8], offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
+        let shared_content = proc_services_content();
+        let content = shared_content.read();
+        let data = content.as_bytes();
+
+        if offset > data.len() {
+            return Ok(0);
+        }
+
+        let len = if data.len() - offset < buf.len() {data.len() - offset} else {buf.len()};
+        buf[0..len].clone_from_slice(&data[offset..offset + len]);
+        Ok(len)
+    }
+
+    fn stat(&self) -> Result<Stat, Errno> {
+        Err(Errno::ENOTSUP)
+    }
+
+    fn write(&self, buf: &[u8], offset: usize, _options: OpenOptions) -> Result<usize, Errno> {
+        let text = core::str::from_utf8(buf).map_err(|_| Errno::EBADSTR)?;
+        let shared_content = proc_services_content();
+        let mut content = shared_content.write();
+        
+
+        if offset == 0 {
+            content.clear();
+        } 
+        
+        else {
+            content.truncate(offset);
+        }
+
+        content.push_str(text);
+        Ok(buf.len())
+    }
+}
+
+impl fmt::Debug for ProcServicesFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProcServicesFile").finish()
     }
 }
 

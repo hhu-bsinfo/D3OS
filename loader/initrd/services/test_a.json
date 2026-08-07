@@ -5,6 +5,6 @@
   "enabled": true,
   "targets": ["any"],
   "restart": "on_failure",
-  "heartbeat": true,
+  "heartbeat": false,
   "require_all": ["terminal"]
 }

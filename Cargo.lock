@@ -1713,6 +1713,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "task_manager"
+version = "0.1.0"
+dependencies = [
+ "naming",
+ "runtime",
+ "terminal",
+]
+
+[[package]]
 name = "terminal"
 version = "0.1.0"
 dependencies = [

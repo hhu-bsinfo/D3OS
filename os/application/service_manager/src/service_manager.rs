@@ -17,6 +17,7 @@ use log::error;
 use time::systime;
 
 const HEARTBEAT_DIR: &str = "/heartbeat";           // Ort für die Heartbeat-Dateien
+const PROC_SERVICES_PATH: &str = "/proc/services";  // Ort für die Service-Status-Datei, die vom TaskManager gelesen wird
 const HEARTBEAT_INTERVAL_MS: usize = 2_000;         // Wie oft Heartbeats gesendet werden
 const WATCHDOG_TICK_INTERVAL_MS: usize = 1_000;    // Intervall für den Watchdog-Tick
 const HEARTBEAT_TIMEOUT_MS: usize = 5_000;         // Wie alt ein Heartbeat sein darf, bevor der Watchdog Alarm schlägt
@@ -32,6 +33,17 @@ struct HeartbeatState {     // Merken uns für jeden Service das letzte Signal +
 }
 
 type HeartbeatMap = BTreeMap<String, HeartbeatState>;   // Service Name -> HeartbeatState
+
+// Stellt den aktuellen Status aller Services dar. Wird im TaskManager verwendet um Statusinformationen anzuzeigen
+#[derive(Debug, Clone)]
+struct ServiceStatusEntry {
+    binary: String,
+    state: ServiceState,
+    heartbeat: bool,
+    restart: RestartPolicy,
+}
+
+type ServiceStatusMap = BTreeMap<String, ServiceStatusEntry>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BootTarget {   // Um zu wissen welcher Service gestartet werden soll
@@ -77,6 +89,29 @@ enum ServiceState {     // Alle möglichen Zustände eines Service
     Maintenance,
 }
 
+impl ServiceState {
+    const fn as_str(self) -> &'static str {
+        match self {
+            ServiceState::Uninitialized => "uninitialized",
+            ServiceState::Disabled => "disabled",
+            ServiceState::Offline => "offline",
+            ServiceState::Online => "online",
+            ServiceState::Degraded => "degraded",
+            ServiceState::Maintenance => "maintenance",
+        }
+    }
+}
+
+impl RestartPolicy {
+    const fn as_str(self) -> &'static str {
+        match self {
+            RestartPolicy::Never => "never",
+            RestartPolicy::Always => "always",
+            RestartPolicy::OnFailure => "on_failure",
+        }
+    }
+}
+
 fn is_running_state(state: ServiceState) -> bool {
     matches!(state, ServiceState::Online | ServiceState::Degraded)
 }
@@ -114,15 +149,12 @@ enum ManifestTarget {
 fn default_true() -> bool {
     true
 }
-
 fn default_false() -> bool {
     false
 }
-
 fn default_restart_policy() -> RestartPolicy {
     RestartPolicy::OnFailure
 }
-
 fn default_restart_on() -> RestartOn {
     RestartOn::Restart
 }
@@ -224,6 +256,56 @@ struct Service {
     state: ServiceState,
 }
 
+fn render_service_snapshot(statuses: &ServiceStatusMap) -> String {
+    let mut content = String::new();
+    content.push_str(&alloc::format!("{:<18} {:<12} {:<18} {:<10} {:<12}\n",
+        "SERVICE", "STATE", "BINARY", "HEARTBEAT", "RESTART"));
+
+    for (name, status) in statuses.iter() {
+        content.push_str(&alloc::format!("{:<18} {:<12} {:<18} {:<10} {:<12}\n",
+            name, status.state.as_str(),status.binary, if status.heartbeat {"yes"} else {"no"}, status.restart.as_str(),));
+    }
+
+    content
+}
+
+// Schreibt die aktuelle ServiceStatusMap in /proc/services, damit andere Prozesse sie lesen können (z.B. TaskManager)
+fn publish_service_snapshot(service_states: &Arc<Mutex<ServiceStatusMap>>) {
+    let snapshot = {
+        let statuses = service_states.lock();
+        render_service_snapshot(&statuses)
+    };
+
+    if let Ok(fh) = naming::open(PROC_SERVICES_PATH, OpenOptions::WRITEONLY) {
+        let _ = naming::seek(fh, 0, SeekOrigin::Start);
+        let _ = naming::write(fh, snapshot.as_bytes());
+        let _ = naming::close(fh);
+    }
+}
+
+fn update_service_state(service_states: &Arc<Mutex<ServiceStatusMap>>, name: &str, state: ServiceState) {
+    {
+        let mut statuses = service_states.lock();
+        if let Some(entry) = statuses.get_mut(name) {
+            entry.state = state;
+        }
+    }
+
+    publish_service_snapshot(service_states);
+}
+
+// Initialisiert die ServiceStatusMap für den TaskManager
+fn init_service_status_map(services: &[Service]) -> Arc<Mutex<ServiceStatusMap>> {
+    let mut statuses = BTreeMap::new();
+    for service in services {
+        statuses.insert(service.manifest.name.clone(),ServiceStatusEntry {binary: service.manifest.binary.clone(), state: service.state, heartbeat: service.manifest.heartbeat, restart: service.manifest.restart});
+    }
+
+    let service_states = Arc::new(Mutex::new(statuses));
+    publish_service_snapshot(&service_states);
+    service_states
+}
+
 fn should_restart(policy: RestartPolicy, exit_code: usize) -> bool {
     match policy {
         RestartPolicy::Never => false,
@@ -264,7 +346,7 @@ fn ensure_heartbeat_file(service_name: &str) -> String {
     hb_path
 }
 
-fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>) {
+fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>, service_states: Arc<Mutex<ServiceStatusMap>>) {
     let _ = thread::create(move || {
         let mut buf = [0u8; 8];
 
@@ -301,15 +383,19 @@ fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>) {
                 error!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
                 println!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
                 if should_restart(restart, 1) {
+                    update_service_state(&service_states, &name, ServiceState::Degraded);
                     println!("svc: killing {} (tid={}) after missed heartbeat", name, thread_id);
                     thread::Thread::from_id(thread_id).kill();
+                } 
+                else {
+                    update_service_state(&service_states, &name, ServiceState::Maintenance);
                 }
             }
         }
     });
 }
 
-fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heartbeats: Arc<Mutex<HeartbeatMap>>) {
+fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heartbeats: Arc<Mutex<HeartbeatMap>>, service_states: Arc<Mutex<ServiceStatusMap>>) {
     loop {
         let exit_code = match child.join() {
             Ok(code) => code,
@@ -325,7 +411,15 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heart
             heartbeat_remove(&heartbeats, &manifest.name);
         }
 
-        if !should_restart(manifest.restart, exit_code) {
+        let restart = should_restart(manifest.restart, exit_code);
+        if restart || exit_code == 0 {
+            update_service_state(&service_states, &manifest.name, ServiceState::Offline);
+        } 
+        else {
+            update_service_state(&service_states, &manifest.name, ServiceState::Maintenance);
+        }
+
+        if !restart {
             println!("svc: {} not restarting (policy={:?})", manifest.name, manifest.restart);
             break;
         }
@@ -339,6 +433,7 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heart
             Some(new_child) => {
                 //println!("svc: {} online (tid={})", manifest.name, new_child.id());
                 child = new_child;
+                update_service_state(&service_states, &manifest.name, ServiceState::Online);
                 if manifest.heartbeat {
                     let heartbeat_path = ensure_heartbeat_file(&manifest.name);
                     let heartbeat_fh = naming::open(&heartbeat_path, OpenOptions::READONLY).ok();
@@ -346,6 +441,7 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heart
                 }
             }
             None => {
+                update_service_state(&service_states, &manifest.name, ServiceState::Maintenance);
                 println!("svc: {} entered maintenance (restart exec failed)", manifest.name);
                 break;
             }
@@ -409,7 +505,7 @@ fn can_start_now(service: &Service, services: &[Service]) -> bool {
     true
 }
 
-fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap>>) -> bool {
+fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap>>, service_states: &Arc<Mutex<ServiceStatusMap>>) -> bool {
     println!("svc: start {} -> {}", service.manifest.name, service.manifest.binary);
     let heartbeat_path = if service.manifest.heartbeat {
         Some(ensure_heartbeat_file(&service.manifest.name))
@@ -425,15 +521,17 @@ fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap
         Some(child) => {
             let manifest = service.manifest.clone();
             let heartbeats = heartbeats.clone();
+            let service_states = service_states.clone();
 
             service.state = ServiceState::Online;
+            update_service_state(&service_states, &service.manifest.name, ServiceState::Online);
             println!("svc: {} online (tid={})", service.manifest.name, child.id());
 
             if manifest.heartbeat {
                 heartbeat_register(&heartbeats, &manifest.name, child.id(), manifest.restart, heartbeat_fh);
             }
 
-            let _ = thread::create(move || supervise_service(manifest, child, heartbeats));
+            let _ = thread::create(move || supervise_service(manifest, child, heartbeats, service_states));
             true
         }
         None => {
@@ -441,6 +539,7 @@ fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap
                 let _ = naming::close(handle);
             }
             service.state = ServiceState::Maintenance;
+            update_service_state(service_states, &service.manifest.name, ServiceState::Maintenance);
             println!("svc: {} entered maintenance (exec failed)", service.manifest.name);
             false
         }
@@ -448,7 +547,7 @@ fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap
 }
 
 // Geht über alle Services und starte alle die, die dürfen (Offline + Abhängigkeiten erfüllt)
-fn start_eligible_services(services: &mut [Service], start_order: &mut Vec<String>, heartbeats: &Arc<Mutex<HeartbeatMap>>) -> usize {
+fn start_eligible_services(services: &mut [Service], start_order: &mut Vec<String>, heartbeats: &Arc<Mutex<HeartbeatMap>>, service_states: &Arc<Mutex<ServiceStatusMap>>) -> usize {
     let mut started = 0;
     for i in 0..services.len() {
         if services[i].state != ServiceState::Offline {
@@ -459,7 +558,7 @@ fn start_eligible_services(services: &mut [Service], start_order: &mut Vec<Strin
             continue;
         }
 
-        let ok = start_service_once(&mut services[i], heartbeats);
+        let ok = start_service_once(&mut services[i], heartbeats, service_states);
         if ok {
             start_order.push(services[i].manifest.name.clone());
         }
@@ -469,11 +568,11 @@ fn start_eligible_services(services: &mut [Service], start_order: &mut Vec<Strin
 }
 
 // Schleife, bis alle Services gestartet wurden. 
-fn start_services_with_dependencies(services: &mut [Service], heartbeats: &Arc<Mutex<HeartbeatMap>>) {
+fn start_services_with_dependencies(services: &mut [Service], heartbeats: &Arc<Mutex<HeartbeatMap>>, service_states: &Arc<Mutex<ServiceStatusMap>>) {
     let mut start_order: Vec<String> = Vec::new();
 
     loop {
-        let started_now = start_eligible_services(services, &mut start_order, heartbeats);
+        let started_now = start_eligible_services(services, &mut start_order, heartbeats, service_states);
         if started_now == 0 {   // Nichts mehr gestaret, also entweder alle online oder Zyklus
             break;
         }
@@ -618,9 +717,9 @@ pub fn main() {
     let mut services: Vec<Service> = if !manifests.is_empty() {
         manifests
             .into_iter()
-            .filter(|m| m.enabled && m.targets.matches_boot_target(boot_target))
+            .filter(|m| m.targets.matches_boot_target(boot_target))
             .map(|m| Service {
-                state: ServiceState::Offline,
+                state: if m.enabled {ServiceState::Offline} else {ServiceState::Disabled},
                 manifest: m,
             })
             .collect()
@@ -667,11 +766,13 @@ pub fn main() {
         out
     };
 
+    let service_states = init_service_status_map(&services);
+
     let heartbeats: Arc<Mutex<HeartbeatMap>> = Arc::new(Mutex::new(BTreeMap::new()));
-    let any_heartbeat = services.iter().any(|s| s.manifest.heartbeat);
+    let any_heartbeat = services.iter().any(|s| s.manifest.enabled && s.manifest.heartbeat);
     if any_heartbeat {
         let _ = naming::mkdir(HEARTBEAT_DIR);
-        start_watchdog(heartbeats.clone());
+        start_watchdog(heartbeats.clone(), service_states.clone());
         println!("svc: watchdog enabled (dir={}, interval={}ms, timeout={}ms)", HEARTBEAT_DIR, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS);
     }
 
@@ -679,7 +780,7 @@ pub fn main() {
         println!("service_manager: nothing enabled for this boot target; dropping to idle loop");
     } 
     else {
-        start_services_with_dependencies(&mut services, &heartbeats);
+        start_services_with_dependencies(&mut services, &heartbeats, &service_states);
     }
 
     loop {

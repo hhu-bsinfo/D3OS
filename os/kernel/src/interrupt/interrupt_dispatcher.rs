@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ops::Deref;
 use core::ptr;
-use log::{error, info, trace};
+use log::{error, info, trace, warn};
 use spin::Mutex;
 use x86_64::registers::control::Cr2;
 use x86_64::{PrivilegeLevel, set_general_handler};
@@ -194,7 +194,10 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
     let fault_addr = Cr2::read().expect("Invalid address in CR2 during page fault");
     let thread = scheduler().try_get_current_thread();
     if thread.is_none() {
-        panic!("Page Fault, cannot get lock to scheduler\nError code: [{:?}]\nAddress: [0x{:0>16x}]", error, fault_addr);
+        // if we don't have access to the scheduler, delay handling the page fault
+        // the application will access again, causing a new page fault
+        warn!("Page Fault at 0x{:0>16x} (code: {:?}), cannot get lock to scheduler", fault_addr, error);
+        return;
     }
 
     let thread = thread.unwrap();
