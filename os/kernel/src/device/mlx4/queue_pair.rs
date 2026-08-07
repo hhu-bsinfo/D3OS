@@ -475,9 +475,8 @@ impl QueuePair {
                 sge_index += 1;
             }
 
-            // FIXME: use rq instead of sq to update_id
             // write wr id, so that completion queue can recover it
-            self.sq.update_id(index as usize, curr.wr_id);
+            self.rq.update_id(index as usize, curr.wr_id);
 
             // fill the last one
             let last_elem: &mut WqeDataSegment = self.rq.get_element(self.memory.as_mut().unwrap(), index + sge_index)?;
