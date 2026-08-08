@@ -675,6 +675,7 @@ name = "ibping"
 version = "0.1.0"
 dependencies = [
  "ibverbs",
+ "rdma",
  "runtime",
  "terminal",
 ]
