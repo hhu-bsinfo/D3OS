@@ -336,12 +336,12 @@ impl MrTable {
         let addr = (self.reserved_mtts + self.offset) * caps.mtt_entry_sz() as u64;
         self.offset += pages.len();
 
-        let kernel_process = process_manager().read().kernel_process().unwrap();
+        let process = process_manager().read().current_process();
         const MTT_FLAG_PRESENT: u64 = 1;
         // Write the entries straight into the ICM memory backing the table. The WRITE_MTT command is
         // only used there when the device is a virtual function, which cannot reach ICM itself.
         for (i, page) in pages.enumerate() {
-            let physical = match kernel_process.virtual_address_space.get_phys(page.start_address().as_u64()) {
+            let physical = match process.virtual_address_space.get_phys(page.start_address().as_u64()) {
                 Some(phys_addr) => phys_addr.as_u64(),
                 None => {
                     error!("page {:?} is not mapped", page);
