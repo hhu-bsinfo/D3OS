@@ -15,8 +15,10 @@ syscall = { path = "../../library/syscall" }
 
 # external depencies
 bincode = { version = "2.0.1", optional = true, default-features = false, features = ["derive", "alloc"] }
+serde = { version = "1.0.219", optional = true, default-features = false, features = ["derive", "alloc"] }
 core3 = { version = "0.1", default-features = false }
 
 [features]
 default = ["serialize"]
 serialize = ["dep:bincode"]
+serde = ["dep:serde"]

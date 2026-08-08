@@ -30,7 +30,8 @@ members = [
     "os/application/cat",
     "os/application/infiniband-diags/*",
     "os/application/perftest",
-    "os/application/rdma/mlx4"
+    "os/application/rdma/mlx4",
+    "os/application/rdma-bench"
 ]
 
 # [profile.release]

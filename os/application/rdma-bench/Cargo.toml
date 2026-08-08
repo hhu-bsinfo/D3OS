@@ -1,0 +1,30 @@
+[package]
+edition = "2024"
+name = "rdma-bench"
+version = "0.1.0"
+authors = ["Julius Armbruester <julius.armbruester@hhu.de>"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/rdma_bench.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+terminal = { path = "../../library/terminal" }
+ibverbs = { path = "../../library/ibverbs", features = ["serde"] }
+rdma = { path = "../../library/rdma" }
+runtime = { path = "../../library/runtime" }
+network = { path = "../../library/network" }
+time = { path = "../../library/time" }
+concurrent = { path = "../../library/concurrent" }
+cpu_core = { package = "cpu-core", path = "../../library/cpu" }
+
+# External dependencies
+core3 = { version = "0.1", default-features = false }
+serde = { version = "1.0.219", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1.0.109", default-features = false, features = ["alloc"] }
+libm = "0.2.8"
+log = "0.4.29"

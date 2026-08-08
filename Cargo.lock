@@ -697,6 +697,7 @@ dependencies = [
  "core3",
  "mm",
  "rdma",
+ "serde",
  "syscall",
 ]
 
@@ -1606,6 +1607,25 @@ dependencies = [
  "bitflags 2.10.0",
  "num_enum 0.5.11",
  "strum_macros",
+]
+
+[[package]]
+name = "rdma-bench"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "core3",
+ "cpu-core",
+ "ibverbs",
+ "libm",
+ "log",
+ "network",
+ "rdma",
+ "runtime",
+ "serde",
+ "serde_json",
+ "terminal",
+ "time",
 ]
 
 [[package]]

@@ -1,0 +1,54 @@
+pub mod accuracy;
+pub mod bandwidth;
+pub mod latency;
+
+use crate::cli::{Mode, Transport};
+use crate::comm::Conn;
+use crate::error::{other, Result};
+use ibverbs::{ibv_wc, CompletionQueue, ProtectionDomain, QueuePair};
+
+/// How long a receive/wait loop will wait for progress from the peer before giving up. Needed
+/// because UC acknowledges and retransmits nothing, so a message the fabric drops produces no
+/// completion on either side to signal the loss.
+pub const IDLE_TIMEOUT_US: usize = 2_000_000;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Role {
+    Client,
+    Server,
+}
+
+/// The authority on which (transport, mode) combinations are usable, checked during the
+/// handshake so an unimplemented combination is rejected before any RDMA resources are built.
+pub fn supported(transport: Transport, _mode: Mode) -> bool {
+    match transport {
+        Transport::Rc | Transport::Uc => true,
+        Transport::Ud => false,
+    }
+}
+
+pub fn completion_error(wc: &ibv_wc) -> Result<()> {
+    if let Some((status, vendor_err)) = wc.error() {
+        terminal::println!("work completion error: {:?} vendor_err={}", status, vendor_err);
+        return Err(other("work completion error"));
+    }
+    Ok(())
+}
+
+pub fn run(
+    mode: Mode,
+    pd: &ProtectionDomain,
+    cq: &CompletionQueue,
+    qp: &mut QueuePair,
+    conn: &Conn,
+    role: Role,
+    msg_size: usize,
+    iterations: usize,
+    tx_depth: usize,
+) -> Result<()> {
+    match mode {
+        Mode::Bandwidth => bandwidth::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
+        Mode::Latency => latency::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
+        Mode::Accuracy => accuracy::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
+    }
+}
