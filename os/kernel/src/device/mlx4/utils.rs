@@ -145,8 +145,6 @@ pub fn pci_map_bar_mem(bar: Bar, tag: &str) -> MappedPages {
     MappedPages::from(pages)
 }
 
-}
-
 pub fn create_cont_mapping_with_dma_flags(frame_count: usize) -> Result<PageToFrameRange, &'static str> {
     if frame_count == 0 {
         return Err("frame_count must not be zero");
