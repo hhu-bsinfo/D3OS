@@ -17,7 +17,7 @@ use x86_64::VirtAddr;
 /// user_in describes the parameters provided by the user
 /// user_out describes a user buffer for return values
 pub fn uverbs_ctl(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: UserSlice) -> SyscallResult {
-    debug!("Uverbs device:{}, cmd:{:?}, in:{:?}, out:{:?}", device_handle, cmd, user_in, user_out);
+    //debug!("Uverbs device:{}, cmd:{:?}, in:{:?}, out:{:?}", device_handle, cmd, user_in, user_out);
 
     let requires_device_handle = match cmd {
         UverbsCmd::QueryDevices => false,
@@ -75,22 +75,29 @@ pub fn uverbs_ctl(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user
             let wc_len = user_out.capacity::<ibv_wc>();
             let supported_len = wc_len.min(UVERBS_MAX_USER_WC_REQ);
             let mut wc_buf = Vec::with_capacity(supported_len);
-            let wc_count = uverbs_poll_cq(device_handle, req.cq_num, &mut wc_buf).map_err(log_error_and_invalid)?;
-            copy_slice_to_user(user_out, &wc_buf[..wc_count])
+            let wc_count = uverbs_poll_cq(device_handle, req.cq_num, &mut wc_buf).map_err(|msg| {
+                error!("PollCq failed for cq_num={} (wc capacity {}): {}", req.cq_num, supported_len, msg);
+                Errno::EINVAL
+            })?;
+            if wc_count == 0 {
+                Ok(0)
+            } else {
+                copy_slice_to_user(user_out, &wc_buf[..wc_count])
+            }
         }
         // for now we just check the ibv_send_wr struct, not the internal pointers it points to which
         // needs to be done to prevent security issues !
         UverbsCmd::OpPostSend => {
             let buf = copy_vec_from_user(user_in)?;
             let (req,_): (PostSendRequest, usize)  = bincode::decode_from_slice(&buf, bincode::config::standard()).map_err(|_| Errno::EINVAL)?;
-            uverbs_post_send(device_handle, &req).map_err(log_error_and_invalid);
+            uverbs_post_send(device_handle, &req).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         // same as above
         UverbsCmd::OpPostRecv => {
             let buf = copy_vec_from_user(user_in)?;
             let (req,_): (PostReceiveRequest, usize) = bincode::decode_from_slice(&buf, bincode::config::standard()).map_err(|_| Errno::EINVAL)?;
-            uverbs_post_recv(device_handle, &req).map_err(log_error_and_invalid);
+            uverbs_post_recv(device_handle, &req).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::DestroyCq => {
@@ -128,7 +135,10 @@ fn copy_from_user<T: Copy>(user_in: UserSlice) -> Result<T, Errno> {
     let process = process_manager().read().current_process();
     let mut req = MaybeUninit::<T>::uninit();
     unsafe { process.virtual_address_space.copy_bytes_from_user(req.as_mut_ptr() as *mut u8, VirtAddr::new(user_in.address), size) }
-        .map_err(|_| Errno::EFAULT)?;
+        .map_err(|_| {
+            error!("copy_from_user failed: address={:#x}, size={} (requested {})", user_in.address, size, user_in.size);
+            Errno::EFAULT
+        })?;
     Ok(unsafe { req.assume_init() })
 }
 
@@ -138,7 +148,10 @@ fn copy_vec_from_user(user_in: UserSlice) -> Result<Vec<u8>, Errno> {
     let process = process_manager().read().current_process();
     let mut buf = vec![0u8; user_in.size];
     unsafe { process.virtual_address_space.copy_bytes_from_user(buf.as_mut_ptr(), VirtAddr::new(user_in.address), buf.len()) }
-        .map_err(|_| Errno::EFAULT)?;
+        .map_err(|_| {
+            error!("copy_vec_from_user failed: address={:#x}, size={}", user_in.address, buf.len());
+            Errno::EFAULT
+        })?;
     Ok(buf)
 }
 
@@ -151,7 +164,10 @@ fn copy_to_user<T: Copy>(user_out: UserSlice, resp: &T) -> SyscallResult {
 
     let process = process_manager().read().current_process();
     unsafe { process.virtual_address_space.copy_bytes_to_user(VirtAddr::new(user_out.address), resp as *const T as *const _, size) }
-        .map_err(|_| Errno::EFAULT)
+        .map_err(|_| {
+            error!("copy_to_user failed: address={:#x}, size={} (buffer {})", user_out.address, size, user_out.size);
+            Errno::EFAULT
+        })
         .map(|()| 0)
 }
 
@@ -164,6 +180,9 @@ fn copy_slice_to_user<T: Copy>(user_out: UserSlice, resp: &[T]) -> SyscallResult
 
     let process = process_manager().read().current_process();
     unsafe { process.virtual_address_space.copy_bytes_to_user(VirtAddr::new(user_out.address), resp.as_ptr() as *const u8, size) }
-        .map_err(|_| Errno::EFAULT)
+        .map_err(|_| {
+            error!("copy_slice_to_user failed: address={:#x}, size={} (buffer {}, {} elements)", user_out.address, size, user_out.size, resp.len());
+            Errno::EFAULT
+        })
         .map(|()| resp.len())
 }

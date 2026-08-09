@@ -19,7 +19,7 @@ pub use rdma::{
 pub(crate) use rdma::ibv_device;
 use rdma::uverbs_uapi::{CreateCqRequest, PollCqRequest, CreateMrRequest, CreateMrResponse, QueryPortRequest, CreateQpRequest, ModifyQpRequest, PostSendRequest, UVERBS_MAX_QUERY_DEVICES_REQ, CreateCqResponse, CreateQpResponse, ReceiveWorkRequest, PostReceiveRequest, UserSlice, SendWorkRequest, UverbsCmd};
 use rdma::uverbs_uapi::UverbsCmd::{CreateCq, CreateQp, DeregMr, DestroyCq, DestroyQp, ModifyQp, OpPostRecv, OpPostSend, PollCq, QueryDevice, QueryDevices, QueryPort, RegMr};
-use syscall::return_vals::SyscallResult;
+use syscall::return_vals::{Errno, SyscallResult};
 
 pub fn uverbs(
     device_fd: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: UserSlice,
@@ -34,6 +34,38 @@ pub fn uverbs(
         user_out.address as usize,
         user_out.size,
     ])
+}
+
+/// Converts a failed uverbs syscall's `Errno` into an `io::Error` that keeps that errno visible
+/// (as opposed to `Error::from(ErrorKind::Other)`, which collapses every failure into the
+/// indistinguishable, message-less `Kind(Other)`).
+fn uverbs_error(errno: Errno) -> Error {
+    let msg = match errno {
+        Errno::EUNKN => "uverbs: unknown error",
+        Errno::ENOENT => "uverbs: no such file or directory",
+        Errno::ENOHANDLES => "uverbs: no more free handles",
+        Errno::EBADF => "uverbs: bad file descriptor",
+        Errno::EACCES => "uverbs: permission denied",
+        Errno::EEXIST => "uverbs: file/directory exists",
+        Errno::ENOTDIR => "uverbs: not a directory",
+        Errno::EINVAL => "uverbs: invalid argument",
+        Errno::EINVALH => "uverbs: invalid handle",
+        Errno::ENOTEMPTY => "uverbs: directory not empty",
+        Errno::EBADSTR => "uverbs: bad string",
+        Errno::EBUSY => "uverbs: device busy",
+        Errno::ENOTSUP => "uverbs: operation not supported",
+        Errno::ECONNRESET => "uverbs: connection reset by peer",
+        Errno::ERDONLY => "uverbs: read-only file system",
+        Errno::EAGAIN => "uverbs: resource unavailable",
+        Errno::ESRCH => "uverbs: no such thread",
+        Errno::EOF => "uverbs: end of file",
+        Errno::EPIPE => "uverbs: broken pipe",
+        Errno::ENOMEM => "uverbs: not enough space / cannot allocate memory",
+        Errno::EISDIR => "uverbs: is a directory",
+        Errno::EFAULT => "uverbs: fault occurred",
+        Errno::ENOCMD => "uverbs: no such command",
+    };
+    Error::new(ErrorKind::Other, msg)
 }
 
 pub struct ibv_context_ops {
@@ -146,7 +178,7 @@ pub fn ibv_get_device_list() -> Result<Vec<ibv_device>> {
             unsafe { devices.set_len(count) };
             Ok(unsafe { mem::transmute::<_,Vec<ibv_device>>(devices) })
         }
-        Err(_) => Err(Error::from(ErrorKind::Other))
+        Err(e) => Err(uverbs_error(e))
     }
 }
 
@@ -185,7 +217,7 @@ pub fn ibv_query_device(context: &ibv_context) -> Result<ibv_device_attr> {
 
     match uverbs(device_handle, QueryDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp)) {
         Ok(_) => Ok(unsafe { resp.assume_init() }),
-        Err(_) => Err(Error::from(ErrorKind::Other))
+        Err(e) => Err(uverbs_error(e))
     }
 }
 
@@ -200,7 +232,7 @@ pub fn ibv_query_port(context: &ibv_context, port_num: u8) -> Result<ibv_port_at
     let mut resp = MaybeUninit::<ibv_port_attr>::uninit();
     match uverbs(device_handle, QueryPort, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp)) {
         Ok(_) => Ok(unsafe { resp.assume_init() }),
-        Err(_) => Err(Error::from(ErrorKind::Other))
+        Err(e) => Err(uverbs_error(e))
     }
 }
 
@@ -244,7 +276,7 @@ pub fn ibv_reg_mr<'pd>(
             let CreateMrResponse { index,lkey, rkey } = unsafe { resp.assume_init() };
             Ok(ibv_mr { pd, index, addr: ptr.addr(), length: len, lkey, rkey })
         },
-        Err(_) => Err(Error::from(ErrorKind::Other))
+        Err(e) => Err(uverbs_error(e))
     }
 }
 
@@ -277,7 +309,7 @@ pub fn ibv_create_cq(
             let resp = unsafe { resp.assume_init() };
             Ok( ibv_cq { context, number: resp.cq_num, _cq_context: cq_context, } )
         },
-        Err(_) => Err(Error::from(ErrorKind::Other))
+        Err(e) => Err(uverbs_error(e))
     }
 }
 
@@ -310,7 +342,7 @@ pub fn ibv_create_qp<'ctx, 'cq>(
                 recv_cq,
             })
         },
-        Err(_) => Err(Error::from(ErrorKind::Other))
+        Err(e) => Err(uverbs_error(e))
     }
 
 }
@@ -330,7 +362,7 @@ pub fn ibv_modify_qp(
 
     match uverbs(device_handle, ModifyQp, UserSlice::from_ref(&req), UserSlice::EMPTY) {
         Ok(_) => Ok(()),
-        Err(_) => Err(Error::from(ErrorKind::Other))
+        Err(e) => Err(uverbs_error(e))
     }
 }
 
@@ -346,7 +378,7 @@ fn ibv_poll_cq(
 
     match uverbs(device_handle, PollCq, UserSlice::from_ref(&req), UserSlice::from_mut_slice(wc)) {
         Ok(wc_count) => Ok(wc_count.try_into().unwrap()),
-        Err(_) => Err(Error::from(ErrorKind::Other))
+        Err(e) => Err(uverbs_error(e))
     }
 }
 
@@ -376,7 +408,7 @@ unsafe fn ibv_post_send(
 
     match uverbs(device_handle, OpPostSend, UserSlice::from_ref(&req), UserSlice::EMPTY) {
         Ok(_) => Ok(()),
-        Err(_) => Err(Error::from(ErrorKind::Other))
+        Err(e) => Err(uverbs_error(e))
     }
 }
 
@@ -406,7 +438,7 @@ unsafe fn ibv_post_recv(
 
     match uverbs(device_handle, OpPostRecv, UserSlice::from_slice(&req_vec), UserSlice::EMPTY) {
         Ok(_) => Ok(()),
-        Err(_) => Err(Error::from(ErrorKind::Other))
+        Err(e) => Err(uverbs_error(e))
     }
 }
 
