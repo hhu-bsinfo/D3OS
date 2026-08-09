@@ -103,6 +103,9 @@ impl QueuePair {
         unsafe { core::ptr::write_bytes(pages.start.start_address().as_mut_ptr::<u8>(), 0, pages.size() as usize) };
 
         let mtt = memory_regions.alloc_mtt_for_pages(cmd, caps, mapped_page_to_frame.0.page_range())?;
+
+        // NOTE: ibverbs does not allocate a complete page for one Doorbell, instead it uses a shared allocator
+        //       in the device context for all Doorbells. This Allocator only allocates pages if it ran out of memory
         let (mut doorbell_page, doorbell_address) =
             utils::create_cont_mapping_with_dma_flags(utils::pages_required(size_of::<QueuePairDoorbell>()))?.fetch_in_addr()?;
         let doorbell: &mut QueuePairDoorbell = doorbell_page.as_type_mut(0)?;
