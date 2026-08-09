@@ -86,7 +86,7 @@ impl EventQueue {
         }
         let mapped_page_to_frame = utils::create_cont_mapping_with_dma_flags(utils::pages_required(num_pages * PAGE_SIZE + EQE_SIZE - 1))?.fetch_in_addr()?;
 
-        let mtt = memory_regions.alloc_mtt(cmd, caps, num_pages, mapped_page_to_frame.1)?;
+        let mtt = memory_regions.alloc_mtt_for_pages(cmd, caps, mapped_page_to_frame.0.page_range())?;
         // TODO: register interrupt correctly
         // TODO: Should use MSI-X instead of legacy INTs
         let intr_vector = base_vector.and_then(|_| todo!());

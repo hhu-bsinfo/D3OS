@@ -2,7 +2,9 @@ use core::mem::size_of;
 
 use crate::memory::PAGE_SIZE;
 use alloc::vec::Vec;
-use log::trace;
+use core::cmp::min;
+use core::intrinsics::offset;
+use log::{debug, info, trace};
 use modular_bitfield_msb::{
     bitfield,
     prelude::{B10, B11, B21, B24, B28, B3, B4, B40, B7},
@@ -10,9 +12,12 @@ use modular_bitfield_msb::{
 use rdma::ibv_access_flags;
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
+use x86_64::structures::paging::page::PageRange;
+use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
 use zerocopy::{AsBytes, BigEndian, FromBytes, U64};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
-use crate::memory;
+use crate::device::mlx4::utils::{get_physical_address, MappedPages};
+use crate::{memory, process_manager};
 use super::{
     cmd::{CommandInterface, Opcode},
     fw::{Capabilities, VirtualPhysicalMapping},
@@ -313,33 +318,33 @@ impl MrTable {
     }
 
     /// Allocate MTT entries for an existing buffer.
-    pub(crate) fn alloc_mtt(
-        &mut self, cmd: &mut CommandInterface, caps: &Capabilities, num_entries: usize, data_address: PhysAddr,
-    ) -> Result<u64, &'static str> {
-        let mut num_entries: u64 = num_entries.try_into().unwrap();
-        assert_ne!(num_entries, 0);
+    /// Returns the byte offset in the global mtt to the first entry
+    pub(crate) fn alloc_mtt_for_pages(&mut self, cmd: &mut CommandInterface, caps: &Capabilities, pages: PageRange) -> Result<u64, &'static str> {
+        assert!(!pages.is_empty());
+        info!("Create MTT mappings for {:?}", pages);
         // get the next free entry
         let addr = (self.reserved_mtts + self.offset) * caps.mtt_entry_sz() as u64;
-        self.offset += num_entries;
+        self.offset += pages.len();
+
+        let mut data_addresses: Vec<u64> = Vec::new();
+        for page in pages {
+            data_addresses.push(get_physical_address(page.start_address()).as_u64())
+        }
 
         // send it to the card
         const MTT_FLAG_PRESENT: u64 = 1;
+        const CHUNK_SIZE: usize = 510;
         // we could possibly also write single entries, but this is way slower
         // and also doesn't work sometimes
         let mut start_index = 0;
-        while num_entries > 0 {
-            let mut chunk: u64 = (PAGE_SIZE / size_of::<u64>() - 2).try_into().unwrap();
-            if num_entries < chunk {
-                chunk = num_entries;
-            }
+        for chunk in data_addresses.chunks(CHUNK_SIZE) {
             let mut write_cmd = WriteMttCommand::new_zeroed();
             write_cmd.offset.set(addr + start_index);
-            for i in 0..chunk {
-                write_cmd.entries[usize::try_from(i).unwrap()].set((data_address.as_u64() + (i + start_index) * PAGE_SIZE as u64) | MTT_FLAG_PRESENT);
+            for (entry, addr) in write_cmd.entries.iter_mut().zip(chunk) {
+                entry.set(addr | MTT_FLAG_PRESENT);
             }
-            cmd.execute_command(Opcode::WriteMtt, None, InputParam::Mailbox(write_cmd.as_bytes()), Some(chunk.try_into().unwrap()), OutputParam::Empty)?;
-            num_entries -= chunk;
-            start_index += chunk;
+            cmd.execute_command(Opcode::WriteMtt, None, InputParam::Mailbox(write_cmd.as_bytes()), Some(chunk.len().try_into().unwrap()), OutputParam::Empty)?;
+            start_index += chunk.len() as u64;
         }
         Ok(addr)
     }
@@ -350,17 +355,14 @@ impl MrTable {
     pub(super) fn alloc_dmpt<T>(
         &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, data: &mut [T], queue_pair: Option<&QueuePair>,
         access: ibv_access_flags,
-    ) -> Result<(u32, usize, u32, u32), &'static str> {
+    ) -> Result<(u32, u32, u32), &'static str> {
+        assert!(!data.is_empty());
         let size = data.len() * size_of::<T>();
-        let address = utils::get_physical_address(VirtAddr::from_ptr(data.as_ptr()));
-        //println!("Physical address = {:x} => is aligend = {}", address, address.is_aligned(PAGE_SIZE as u64));
+        let addr = VirtAddr::from_ptr(data.as_ptr());
+        let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size as u64) + 1);
 
-        let mut num_pages = size / PAGE_SIZE;
-        if num_pages == 0 {
-            num_pages = 1;
-        }
         // TODO: check if icm has sufficient space available for the new dmpt entry
-        let mtt = self.alloc_mtt(cmd, caps, num_pages, address)?;
+        let mtt = self.alloc_mtt_for_pages(cmd, caps, pages)?;
         let mut dmpt = DmptEntry::new();
         dmpt.set_key(offsets.alloc_dmpt().try_into().unwrap());
         dmpt.set_rae(true);
@@ -368,12 +370,12 @@ impl MrTable {
             dmpt.set_bound_to_qp(true);
             dmpt.set_qp_number(qp.number().try_into().unwrap());
         }
-        dmpt.set_start(address.as_u64().try_into().unwrap());
+        dmpt.set_start(pages.start.start_address().as_u64());
         dmpt.set_length(size.try_into().unwrap());
-        dmpt.set_entity_size(PAGE_SIZE.ilog2()); // used PAGE_SIZE mappings in the mtt,
+        dmpt.set_entity_size(pages.start.size() as u32); // used PAGE_SIZE mappings in the mtt,
                                                  // hence the granularity also has to match PAGE_SIZE, setting to buffer size doesn't make sense !
         dmpt.set_mtt_addr(mtt);
-        dmpt.set_mtt_size(num_pages.try_into().unwrap());
+        dmpt.set_mtt_size(pages.len() as u32);
         dmpt.set_mio(true);
         dmpt.set_region(true);
         // local read is always allowed
@@ -403,7 +405,7 @@ impl MrTable {
         let dmpt_key = dmpt.key();
 
         self.regions.push(MemoryRegion { dmpt: Some(dmpt) });
-        Ok((dmpt_index, address.as_u64() as usize, dmpt_lkey, dmpt_key))
+        Ok((dmpt_index, dmpt_lkey, dmpt_key))
     }
 
     /// Tear down all memory regions.
@@ -505,7 +507,9 @@ struct DmptEntry {
     #[skip]
     pd: B24,
     #[skip(getters)]
+    /// Start Address - Virtual Address where this region/window starts
     start: u64,
+    /// Region/Window Length
     length: u64,
     #[skip]
     lkey: u32,

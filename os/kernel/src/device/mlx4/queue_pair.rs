@@ -102,7 +102,7 @@ impl QueuePair {
         let pages = mapped_page_to_frame.0.page_range();
         unsafe { core::ptr::write_bytes(pages.start.start_address().as_mut_ptr::<u8>(), 0, pages.size() as usize) };
 
-        let mtt = memory_regions.alloc_mtt(cmd, caps, buf_size / PAGE_SIZE, mapped_page_to_frame.1)?;
+        let mtt = memory_regions.alloc_mtt_for_pages(cmd, caps, mapped_page_to_frame.0.page_range())?;
         let (mut doorbell_page, doorbell_address) =
             utils::create_cont_mapping_with_dma_flags(utils::pages_required(size_of::<QueuePairDoorbell>()))?.fetch_in_addr()?;
         let doorbell: &mut QueuePairDoorbell = doorbell_page.as_type_mut(0)?;

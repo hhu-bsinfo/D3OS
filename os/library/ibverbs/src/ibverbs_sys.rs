@@ -89,7 +89,7 @@ impl Drop for ibv_cq<'_> {
 pub struct ibv_mr<'pd> {
     pd: &'pd ibv_pd<'pd>,
     index: u32,
-    /// physical address
+    /// virtual address
     pub addr: usize,
     pub length: usize,
     pub lkey: u32,
@@ -222,24 +222,27 @@ pub fn ibv_alloc_pd(context: &ibv_context) -> Result<ibv_pd<'_>> {
 }
 
 /// Register a memory region
-pub fn ibv_reg_mr<'pd, T>(
-    pd: &'pd ibv_pd<'_>, data: &mut [T], access: ibv_access_flags,
+pub fn ibv_reg_mr<'pd>(
+    pd: &'pd ibv_pd<'_>, ptr: *mut u8, len: usize, access: ibv_access_flags,
 ) -> Result<ibv_mr<'pd>> {
+    if len == 0 {
+        return Err(Error::from(ErrorKind::InvalidInput))
+    }
+
     let device_handle = pd.context.device_handle();
 
     let req = CreateMrRequest {
         ibv_access_flags: access,
-        data_ptr: data.as_mut_ptr().cast(),
-        len: data.len(),
+        data_ptr: ptr,
+        len,
     };
 
     let mut resp = MaybeUninit::<CreateMrResponse>::uninit();
 
     match uverbs(device_handle, RegMr, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp)) {
         Ok(_) => {
-            let CreateMrResponse { index, addr, lkey, rkey } = unsafe { resp.assume_init() };
-            let length = data.len();
-            Ok(ibv_mr { pd, index, addr, length, lkey, rkey })
+            let CreateMrResponse { index,lkey, rkey } = unsafe { resp.assume_init() };
+            Ok(ibv_mr { pd, index, addr: ptr.addr(), length: len, lkey, rkey })
         },
         Err(_) => Err(Error::from(ErrorKind::Other))
     }

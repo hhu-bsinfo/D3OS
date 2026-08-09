@@ -76,8 +76,6 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ops::Range;
 use core::ptr;
-use mm::MmapFlags;
-use mm::mmap;
 
 use ibverbs_sys as ffi;
 
@@ -1229,27 +1227,12 @@ impl<'ctx> ProtectionDomain<'ctx> {
     ///  - `EINVAL`: Invalid access value.
     ///  - `ENOMEM`: Not enough resources (either in operating system or in RDMA device) to
     ///    complete this operation.
-    pub fn allocate<'pd, T>(
-        &'pd self,
-        n: usize,
-    ) -> io::Result<LocalMemoryRegion<'pd, T>> {
+    pub fn allocate<'pd, T: Sized + Copy + Default>(&'pd self, n: usize) -> io::Result<LocalMemoryRegion<'pd, T>> {
         assert!(n > 0);
         assert!(mem::size_of::<T>() > 0);
 
-        let size = n * mem::size_of::<T>();
-
-        // fault in, reducing latency ; map at 40 TB
-        let data_ptr = mmap(
-            40 * 1024 * 1024 * 1024 * 1024, size,
-            MmapFlags::ANONYMOUS | MmapFlags::POPULATE | MmapFlags::ALLOC_AT )
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "allocation failed"))?;
-
-        let mut data = unsafe {
-            Vec::from_raw_parts(
-                data_ptr.as_mut_ptr() as *mut T,
-                n,
-                n)
-        };
+        let mut data = Vec::with_capacity(n);
+        data.resize(n, T::default());
 
         let access = ffi::ibv_access_flags::IBV_ACCESS_LOCAL_WRITE
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_WRITE
@@ -1257,7 +1240,8 @@ impl<'ctx> ProtectionDomain<'ctx> {
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_ATOMIC;
         let mr = ffi::ibv_reg_mr(
             &self.pd,
-            data.as_mut_slice(),
+            data.as_mut_ptr() as *mut _,
+            data.len() * mem::size_of::<T>(),
             access,
         )?;
 
