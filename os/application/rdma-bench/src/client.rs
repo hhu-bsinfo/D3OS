@@ -1,4 +1,3 @@
-use log::debug;
 use terminal::println;
 use crate::bench::{self, Role};
 use crate::cli::ClientArgs;

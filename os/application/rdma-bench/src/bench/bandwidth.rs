@@ -7,8 +7,6 @@ use crate::bench::{self, Role, IDLE_TIMEOUT_US};
 use crate::comm::Conn;
 use crate::error::Result;
 use alloc::vec;
-use libm::sin;
-use log::{debug, trace};
 use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
 use rdma::ibv_send_flags;
 use time::get_time_in_us;

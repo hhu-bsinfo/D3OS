@@ -129,6 +129,12 @@ impl Conn {
                 sleep(RETRY_MS);
             }
         }
+        // `write` only hands the bytes to the network stack; there is no flush in the `network`
+        // API to wait on them actually leaving. After a barrier the caller goes straight into a
+        // tight completion-polling loop and stops touching the socket, so give the stack a chance
+        // to transmit before that happens — otherwise the peer waits on a byte that is sitting in
+        // a send buffer.
+        sleep(RETRY_MS);
         Ok(())
     }
 
