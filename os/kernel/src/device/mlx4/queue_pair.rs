@@ -1103,7 +1103,6 @@ struct QueuePairContext {
     state: B4,
     #[skip]
     __: B4,
-    #[skip(getters)]
     service_type: u8,
     #[skip]
     __: B3,
@@ -1118,21 +1117,16 @@ struct QueuePairContext {
     msg_max: B5,
     #[skip]
     __: bool,
-    #[skip(getters)]
     log_rq_size: B4,
-    #[skip(getters)]
     log_rq_stride: B3,
     #[skip(getters)]
     sq_no_prefetch: bool,
-    #[skip(getters)]
     log_sq_size: B4,
-    #[skip(getters)]
     log_sq_stride: B3,
     #[skip(getters)]
     roce_mode: B2,
     #[skip]
     __: bool,
-    #[skip(getters)]
     reserved_lkey: bool,
     #[skip]
     __: B12,
@@ -1143,7 +1137,6 @@ struct QueuePairContext {
     local_qpn: B24,
     #[skip]
     __: u8,
-    #[skip(getters)]
     remote_qpn: B24,
     // nested bitfields are only allowed to be 128 bits
     // and nesting bitfields makes them little endian
@@ -1157,13 +1150,10 @@ struct QueuePairContext {
     primary_pkey_index: B7,
     #[skip]
     __: u8,
-    #[skip(getters)]
     primary_grh: bool,
     #[skip(getters)]
     primary_mlid: B7,
-    #[skip(getters)]
     primary_rlid: u16,
-    #[skip(getters)]
     primary_ack_timeout: B5,
     #[skip]
     __: B4,
@@ -1241,7 +1231,6 @@ struct QueuePairContext {
     sra_max: B3,
     #[skip]
     __: B5,
-    #[skip(getters)]
     rnr_retry: B3,
     #[skip]
     __: B53,
@@ -1275,7 +1264,6 @@ struct QueuePairContext {
     remote_atomic: bool,
     #[skip]
     __: B16,
-    #[skip(getters)]
     min_rnr_nak: B5,
     #[skip(getters)]
     next_recv_psn: B24,
@@ -1288,12 +1276,10 @@ struct QueuePairContext {
     #[skip(getters)]
     cqn_receive: B24,
     /// The last three bits must be zero.
-    #[skip(getters)]
     db_record_addr: u64,
     qkey: u32,
     #[skip]
     __: u8,
-    #[skip(getters)]
     srqn: B24,
     #[skip]
     __: u8,
@@ -1319,7 +1305,6 @@ struct QueuePairContext {
     #[skip]
     __: u16,
     /// The last three bits must be zero.
-    #[skip(getters)]
     mtt_base_addr: B40,
     #[skip]
     __: u128,
@@ -1338,6 +1323,19 @@ impl core::fmt::Debug for QueuePairContext {
             .field("QP Number", &self.local_qpn())
             .field("Send Counter", &self.sq_wqe_counter())
             .field("Receive Counter", &self.rq_wqe_counter())
+            .field("service type", &self.service_type())
+            .field("remote QPN", &self.remote_qpn())
+            .field("primary rlid", &self.primary_rlid())
+            .field("primary grh", &self.primary_grh())
+            .field("primary ack timeout", &self.primary_ack_timeout())
+            .field("rnr retry", &self.rnr_retry())
+            .field("min rnr nak", &self.min_rnr_nak())
+            .field("log sq size/stride", &(self.log_sq_size(), self.log_sq_stride()))
+            .field("log rq size/stride", &(self.log_rq_size(), self.log_rq_stride()))
+            .field("srqn", &self.srqn())
+            .field("reserved lkey", &self.reserved_lkey())
+            .field("mtt base addr", &self.mtt_base_addr())
+            .field("db record addr", &self.db_record_addr())
             .finish_non_exhaustive()
     }
 }
