@@ -973,10 +973,19 @@ impl<'res> PreparedQueuePair<'res> {
     pub fn endpoint(&self) -> QueuePairEndpoint {
         let num = self.qp.qp.qp_num;
 
+        // A peer that receives a GID here enables global routing and puts a GRH on every packet
+        // it sends us. `ibv_query_gid` is still a stub returning an all-zero GID, and the mlx4
+        // driver hardcodes `primary_grh = false` in the queue pair context, so advertising one
+        // would ask the peer to address us by a GID we neither know nor honour — its packets
+        // would go undelivered and it would fail with IBV_WC_RETRY_EXC_ERR. Advertise a GID only
+        // once we actually have one; until then the connection is LID-routed, which is what the
+        // driver programs anyway.
+        let gid = (self.ctx.gid.raw != [0u8; 16]).then_some(self.ctx.gid);
+
         QueuePairEndpoint {
             num,
             lid: self.ctx.port_attr.lid,
-            gid: Some(self.ctx.gid),
+            gid,
         }
     }
 
