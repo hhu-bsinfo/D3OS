@@ -406,7 +406,10 @@ unsafe fn ibv_post_send(
         wrs,
     };
 
-    match uverbs(device_handle, OpPostSend, UserSlice::from_ref(&req), UserSlice::EMPTY) {
+    let req_vec = bincode::encode_to_vec(req, bincode::config::standard())
+        .map_err(|_| Error::from(ErrorKind::Other))?;
+
+    match uverbs(device_handle, OpPostSend, UserSlice::from_slice(&req_vec), UserSlice::EMPTY) {
         Ok(_) => Ok(()),
         Err(e) => Err(uverbs_error(e))
     }
