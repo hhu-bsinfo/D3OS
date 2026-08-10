@@ -74,7 +74,7 @@ pub fn uverbs_ctl(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user
             let req: PollCqRequest = copy_from_user(user_in)?;
             let wc_len = user_out.capacity::<ibv_wc>();
             let supported_len = wc_len.min(UVERBS_MAX_USER_WC_REQ);
-            let mut wc_buf = Vec::with_capacity(supported_len);
+            let mut wc_buf = vec![ibv_wc::default(); supported_len];
             let wc_count = uverbs_poll_cq(device_handle, req.cq_num, &mut wc_buf).map_err(|msg| {
                 error!("PollCq failed for cq_num={} (wc capacity {}): {}", req.cq_num, supported_len, msg);
                 Errno::EINVAL
