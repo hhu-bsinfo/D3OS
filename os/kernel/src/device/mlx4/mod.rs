@@ -328,8 +328,8 @@ impl ConnectX3Nic {
     /// This is used by ibv_post_send.
     pub fn post_send(&mut self, qp_number: u32, wr: &[SendWorkRequest]) -> Result<(), &'static str> {
         let qp = self.qps.iter_mut().find(|qp| qp.number() == qp_number).ok_or("invalid queue pair number")?;
-        // TODO: check if blue flame is available
-        qp.post_send(&mut self.capabilities, &mut self.doorbells, Some(&mut self.blueflame), wr)
+        // TODO: check if blue flame is available. Then set self.blueflame
+        qp.post_send(&mut self.capabilities, &mut self.doorbells, None, wr)
     }
 
     /// Create a memory region and return its index, physical address, lkey and rkey.
