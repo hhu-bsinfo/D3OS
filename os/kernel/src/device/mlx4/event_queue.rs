@@ -45,7 +45,11 @@ pub(super) fn init_eqs(
     }
     // map all events to the first (and only) event queue
     eqs[0].map(cmd)?;
-    eqs[0].ring(doorbells, true)?;
+    // Leave the queue disarmed: `EventQueue::new` is called with no IRQ above, so nothing handles
+    // the card's interrupts. Arming it means every event raises an interrupt that is never
+    // acknowledged, which livelocks the system once completions start arriving. The queue is
+    // drained by polling from `CompletionQueue::poll` instead.
+    eqs[0].ring(doorbells, false)?;
     Ok(eqs)
 }
 
@@ -172,13 +176,22 @@ impl EventQueue {
         Ok(())
     }
 
-    /// Handle events.
+    /// Handle events, returning how many were consumed.
     ///
-    /// This can be called manually (polling) or from an interrupt.
-    pub(super) fn handle_events(&mut self, doorbells: &mut [MappedPages]) -> Result<(), &'static str> {
+    /// This can be called manually (polling) or from an interrupt. `arm` decides whether the
+    /// queue is left armed for interrupts afterwards; a caller polling in a loop wants `false`,
+    /// both to avoid re-arming thousands of times a second and to leave the card's interrupt
+    /// behaviour exactly as `init_eqs` set it up.
+    pub(super) fn handle_events(&mut self, doorbells: &mut [MappedPages], arm: bool) -> Result<usize, &'static str> {
+        // Bound the work per call. A ring whose ownership bits were never initialised reads as
+        // `num_entries` back-to-back "events", which would otherwise all be drained inside a
+        // single completion poll.
+        const MAX_EVENTS_PER_CALL: usize = 16;
+        let mut handled = 0;
         let mut set_ci: u32 = 0;
-        loop {
+        while handled < MAX_EVENTS_PER_CALL {
             if self.poll_one()? {
+                handled += 1;
                 set_ci += 1;
                 if set_ci >= NUM_SPARE_EQE {
                     self.ring(doorbells, false)?;
@@ -189,8 +202,12 @@ impl EventQueue {
                 break;
             }
         }
-        self.ring(doorbells, true)?;
-        Ok(())
+        // Only touch the doorbell when there is something to report, so a polling caller does not
+        // turn every iteration into an MMIO write.
+        if handled > 0 || arm {
+            self.ring(doorbells, arm)?;
+        }
+        Ok(handled)
     }
 
     /// Poll this event queue for one event.

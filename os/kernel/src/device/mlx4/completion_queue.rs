@@ -142,18 +142,18 @@ impl CompletionQueue {
     ///
     /// This is used by ibv_poll_cq.
     pub(super) fn poll(
-        &mut self, _eqs: &mut [EventQueue], qps: &mut [QueuePair], _doorbells: &mut [MappedPages], wc: &mut [ibv_wc],
+        &mut self, eqs: &mut [EventQueue], qps: &mut [QueuePair], doorbells: &mut [MappedPages], wc: &mut [ibv_wc],
     ) -> Result<usize, &'static str> {
-        // the event queue should be polled async and not while polling here !!!
-        // consider moving to seperate thread or impl. interrupts !
-
-        // try to poll the assiociated event queue first
-        /*if let Some(eq_number) = self.eq_number {
+        // Drain the associated event queue first. Ideally this happens asynchronously or from an
+        // interrupt rather than on the polling path, but until interrupts are wired up this is
+        // the only place events are ever looked at. Left unarmed so the card's interrupt
+        // behavior stays as `init_eqs` configured it.
+        if let Some(eq_number) = self.eq_number {
             eqs.iter_mut()
                 .find(|eq| eq.number() == eq_number)
                 .ok_or("invalid event queue number")?
-                .handle_events(doorbells)?;
-        }*/
+                .handle_events(doorbells, false)?;
+        }
         let mut completions = 0;
         // poll one for as long as there are elements
         while completions < wc.len() {
