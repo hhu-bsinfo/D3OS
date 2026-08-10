@@ -23,6 +23,7 @@ pub mod ibv_qp_type {
     pub use Type::IBV_QPT_UD;
 }
 
+#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct ibv_qp_cap {
     pub max_send_wr: u32,
@@ -99,17 +100,20 @@ pub enum PhysicalPortState {
     PhyTest = 7,
 }
 
+#[repr(C)]
 #[derive(Default, Clone, Copy)]
 pub struct ibv_gid {
     pub raw: [u8; 16],
 }
 
+#[repr(C)]
 #[derive(Default, Clone, Copy)]
 pub struct ibv_global_route {
     pub dgid: ibv_gid,
     pub hop_limit: u8,
 }
 
+#[repr(C)]
 #[derive(Default, Clone, Copy)]
 pub struct ibv_ah_attr {
     pub grh: ibv_global_route,
@@ -120,6 +124,7 @@ pub struct ibv_ah_attr {
     pub port_num: u8,
 }
 
+#[repr(C)]
 #[derive(Default, Clone, Copy)]
 pub struct ibv_qp_attr {
     pub qp_state: ibv_qp_state,
@@ -168,6 +173,7 @@ bitflags! {
     }
 }
 
+#[repr(C)]
 #[derive(Default, Clone, Copy)]
 pub struct ibv_port_attr {
     pub state: ibv_port_state,
@@ -288,6 +294,7 @@ impl<'de, Context> BorrowDecode<'de, Context> for ibv_send_flags {
     }
 }
 
+#[repr(C)]
 #[derive(Debug, Copy, Clone, Encode, Decode)]
 pub struct ibv_sge {
     pub addr: u64,
