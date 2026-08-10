@@ -127,10 +127,6 @@ pub fn pages_required(bytes: usize) -> usize {
     (bytes + PAGE_SIZE - 1) / PAGE_SIZE
 }
 
-pub fn get_physical_address(addr: VirtAddr) -> PhysAddr {
-    process_manager().read().current_process().virtual_address_space.get_phys(addr.as_u64()).unwrap_or(PhysAddr::zero())
-}
-
 pub fn pci_map_bar_mem(bar: Bar, tag: &str) -> MappedPages {
     let (address, size) = bar.unwrap_mem();
     let end_address = address + size;

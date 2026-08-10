@@ -990,8 +990,14 @@ struct WqeDataSegment {
 impl WqeDataSegment {
     /// Copy information from an sge.
     fn copy_from_sge(&mut self, sge: &ibv_sge) -> Result<(), &'static str> {
+        let phys_addr = process_manager()
+            .read()
+            .current_process()
+            .virtual_address_space
+            .get_phys(sge.addr)
+            .ok_or("address not mapped")?;
         self.lkey.set(sge.lkey);
-        self.addr.set(utils::get_physical_address(VirtAddr::new(sge.addr)).as_u64());
+        self.addr.set(phys_addr.as_u64());
         // sending needs a barrier here before writing the byte_count
         // field to make sure that all the data is visible before the
         // byte_count field is set. Otherwise, if the segment begins a new
