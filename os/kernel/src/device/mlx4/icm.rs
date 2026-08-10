@@ -4,19 +4,18 @@ use crate::memory::PAGE_SIZE;
 use alloc::vec::Vec;
 use core::cmp::min;
 use core::intrinsics::offset;
-use log::{debug, info, trace};
+use log::{error, info, trace};
 use modular_bitfield_msb::{
     bitfield,
     prelude::{B10, B11, B21, B24, B28, B3, B4, B40, B7},
 };
+use zerocopy::AsBytes;
 use rdma::ibv_access_flags;
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
-use zerocopy::{AsBytes, BigEndian, FromBytes, U64};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
-use crate::device::mlx4::utils::{get_physical_address, MappedPages};
 use crate::{memory, process_manager};
 use super::{
     cmd::{CommandInterface, Opcode},
@@ -28,6 +27,8 @@ use super::{
 };
 
 pub(super) const ICM_PAGE_SHIFT: u8 = 12;
+const TABLE_CHUNK_SIZE: usize = 1 << 18;
+
 
 #[repr(u64)]
 #[derive(Default, Clone, Copy)]
@@ -210,7 +211,6 @@ impl MappedIcmAuxiliaryArea {
     fn init_icm_table(&self, cmd: &mut CommandInterface, obj_size: u16, obj_num: usize, reserved: usize, virt: u64) -> Result<IcmTable, &'static str> {
         // We allocate in as big chunks as we can,
         // up to a maximum of 256 KB per chunk.
-        const TABLE_CHUNK_SIZE: usize = 1 << 18;
         trace!("Creating icm table of {} objects with size {} at {:016x}, reserved = {}", obj_num, obj_size, virt, reserved);
 
         let table_size = obj_size as usize * obj_num;
@@ -264,6 +264,16 @@ struct IcmTable {
 }
 
 impl IcmTable {
+    /// Resolve a byte offset within this table to the host memory backing it.
+    ///
+    /// ICM is ordinary host memory that the card reads by DMA, so the driver can update table
+    /// entries in place.
+    fn host_bytes_mut(&mut self, byte_offset: usize, len: usize) -> Result<&mut [u8], &'static str> {
+        let chunk = self.icm.get_mut(byte_offset / TABLE_CHUNK_SIZE).ok_or("table offset is beyond the mapped ICM")?;
+        let memory = chunk.memory.as_mut().ok_or("ICM chunk has no memory")?;
+        memory.0.as_slice_mut(byte_offset % TABLE_CHUNK_SIZE, len)
+    }
+
     fn unmap(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         while let Some(icm) = self.icm.pop() {
             icm.unmap(cmd)?;
@@ -319,33 +329,31 @@ impl MrTable {
 
     /// Allocate MTT entries for an existing buffer.
     /// Returns the byte offset in the global mtt to the first entry
-    pub(crate) fn alloc_mtt_for_pages(&mut self, cmd: &mut CommandInterface, caps: &Capabilities, pages: PageRange) -> Result<u64, &'static str> {
+    pub(crate) fn alloc_mtt_for_pages(&mut self, caps: &Capabilities, pages: PageRange) -> Result<u64, &'static str> {
         assert!(!pages.is_empty());
         info!("Create MTT mappings for {:?}", pages);
-        // get the next free entry
+        // get the next free entry. The Linux driver uses a buddy allocator for MTT
         let addr = (self.reserved_mtts + self.offset) * caps.mtt_entry_sz() as u64;
         self.offset += pages.len();
 
-        let mut data_addresses: Vec<u64> = Vec::new();
-        for page in pages {
-            data_addresses.push(get_physical_address(page.start_address()).as_u64())
-        }
-
-        // send it to the card
+        let kernel_process = process_manager().read().kernel_process().unwrap();
         const MTT_FLAG_PRESENT: u64 = 1;
-        const CHUNK_SIZE: usize = 510;
-        // we could possibly also write single entries, but this is way slower
-        // and also doesn't work sometimes
-        let mut start_index = 0;
-        for chunk in data_addresses.chunks(CHUNK_SIZE) {
-            let mut write_cmd = WriteMttCommand::new_zeroed();
-            write_cmd.offset.set(addr + start_index);
-            for (entry, addr) in write_cmd.entries.iter_mut().zip(chunk) {
-                entry.set(addr | MTT_FLAG_PRESENT);
-            }
-            cmd.execute_command(Opcode::WriteMtt, None, InputParam::Mailbox(write_cmd.as_bytes()), Some(chunk.len().try_into().unwrap()), OutputParam::Empty)?;
-            start_index += chunk.len() as u64;
+        // Write the entries straight into the ICM memory backing the table. The WRITE_MTT command is
+        // only used there when the device is a virtual function, which cannot reach ICM itself.
+        for (i, page) in pages.enumerate() {
+            let physical = match kernel_process.virtual_address_space.get_phys(page.start_address().as_u64()) {
+                Some(phys_addr) => phys_addr.as_u64(),
+                None => {
+                    error!("page {:?} is not mapped", page);
+                    return Err("page not mapped");
+                }
+            };
+            let byte_offset = addr as usize + i * caps.mtt_entry_sz() as usize;
+            let entry = self.mtt_table.host_bytes_mut(byte_offset, size_of::<u64>())?;
+            entry.copy_from_slice(&(physical | MTT_FLAG_PRESENT).to_be_bytes());
         }
+        // Make sure the entries are in memory before anything points the card at them.
+        core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
         Ok(addr)
     }
 
@@ -362,7 +370,7 @@ impl MrTable {
         let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size as u64) + 1);
 
         // TODO: check if icm has sufficient space available for the new dmpt entry
-        let mtt = self.alloc_mtt_for_pages(cmd, caps, pages)?;
+        let mtt = self.alloc_mtt_for_pages(caps, pages)?;
         let mut dmpt = DmptEntry::new();
         dmpt.set_key(offsets.alloc_dmpt().try_into().unwrap());
         dmpt.set_rae(true);
@@ -427,17 +435,6 @@ impl MrTable {
         let dmpt = self.regions.remove(idx);
         dmpt.destroy(cmd)
     }
-}
-
-/// the struct passed to WriteMtt
-#[derive(AsBytes, FromBytes)]
-#[repr(C, packed)]
-struct WriteMttCommand {
-    offset: U64<BigEndian>,
-    _reserved: u64,
-    /// the physical address, except for the last three bits
-    /// (those must be zero); the last bit is the present bit
-    entries: [U64<BigEndian>; 510],
 }
 
 /// This is a wrapper around DmptEntry, so that we can implement Drop.

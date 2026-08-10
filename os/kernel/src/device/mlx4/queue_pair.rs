@@ -78,7 +78,7 @@ impl QueuePair {
     ///
     /// This is similar to creating a completion queue or an event queue.
     pub(super) fn new(
-        cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable, qp_type: ibv_qp_type::Type,
+        caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable, qp_type: ibv_qp_type::Type,
         send_cq: &CompletionQueue, receive_cq: &CompletionQueue, ib_caps: &mut ibv_qp_cap,
     ) -> Result<Self, &'static str> {
         let number = offsets.alloc_qpn().try_into().unwrap();
@@ -102,7 +102,7 @@ impl QueuePair {
         let pages = mapped_page_to_frame.0.page_range();
         unsafe { core::ptr::write_bytes(pages.start.start_address().as_mut_ptr::<u8>(), 0, pages.size() as usize) };
 
-        let mtt = memory_regions.alloc_mtt_for_pages(cmd, caps, mapped_page_to_frame.0.page_range())?;
+        let mtt = memory_regions.alloc_mtt_for_pages(caps, mapped_page_to_frame.0.page_range())?;
 
         // NOTE: ibverbs does not allocate a complete page for one Doorbell, instead it uses a shared allocator
         //       in the device context for all Doorbells. This Allocator only allocates pages if it ran out of memory

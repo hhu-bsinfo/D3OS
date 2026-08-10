@@ -281,7 +281,6 @@ impl ConnectX3Nic {
             .find(|cq| cq.number() == receive_cq_number)
             .ok_or("invalid receive completion queue number")?;
         let qp = QueuePair::new(
-            &mut self.cmd,
             &mut self.capabilities,
             &mut self.offsets,
             self.icm_tables.memory_regions(),
