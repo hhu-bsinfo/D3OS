@@ -36,7 +36,12 @@ condition = { files_modified = { input = [
     "${LIBRARY_DIRECTORY}/runtime/Cargo.toml", "${LIBRARY_DIRECTORY}/runtime/src/**/*.rs",
     "${LIBRARY_DIRECTORY}/terminal/Cargo.toml", "${LIBRARY_DIRECTORY}/terminal/src/**/*.rs",
     "${LIBRARY_DIRECTORY}/concurrent/Cargo.toml", "${LIBRARY_DIRECTORY}/concurrent/src/**/*.rs",
-    "${LIBRARY_DIRECTORY}/syscall/Cargo.toml", "${LIBRARY_DIRECTORY}/syscall/src/**/*.rs" ], output = [ "${BUILD_DIRECTORY}/librdma_bench*" ] } }
+    "${LIBRARY_DIRECTORY}/syscall/Cargo.toml", "${LIBRARY_DIRECTORY}/syscall/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/ibverbs/Cargo.toml", "${LIBRARY_DIRECTORY}/ibverbs/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/rdma/Cargo.toml", "${LIBRARY_DIRECTORY}/rdma/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/network/Cargo.toml", "${LIBRARY_DIRECTORY}/network/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/time/Cargo.toml", "${LIBRARY_DIRECTORY}/time/src/**/*.rs",
+    "${LIBRARY_DIRECTORY}/cpu/Cargo.toml", "${LIBRARY_DIRECTORY}/cpu/src/**/*.rs" ], output = [ "${BUILD_DIRECTORY}/librdma_bench*" ] } }
 
 [tasks.link]
 command = "${LINKER}"
