@@ -473,17 +473,26 @@ impl QueuePair {
             }
             let mut sge_index = 0;
             for sge in &curr.sges {
-                let elem: &mut WqeDataSegment = self.rq.get_element(self.memory.as_mut().unwrap(), index + sge_index)?;
+                let elem = self.rq.get_data_segment(self.memory.as_mut().unwrap(), index, sge_index)?;
                 elem.copy_from_sge(sge)?;
                 sge_index += 1;
             }
 
-            // write wr id, so that completion queue can recover it
+            // Write the wr id and the chain size, so that the completion queue can recover them.
+            // Every receive WQE produces its own completion, so a chain is always a single WQE
+            // long — but it still has to be recorded: `poll_one` advances the receive queue's
+            // tail by this value, so leaving it at zero means the tail never moves and the queue
+            // reports an overflow after `max_post` posts no matter how many completed.
             self.rq.update_id(index as usize, curr.wr_id);
+            self.rq.update_chain_size(index as usize, 1);
 
-            // fill the last one
-            let last_elem: &mut WqeDataSegment = self.rq.get_element(self.memory.as_mut().unwrap(), index + sge_index)?;
-            *last_elem = WqeDataSegment::last();
+            // Terminate the scatter list, but only if this work request left a segment of the
+            // WQE unused — a full one needs no terminator, and writing one would spill into the
+            // next WQE and invalidate a receive buffer that is still (or about to be) posted.
+            if sge_index < self.rq.max_gs {
+                let last_elem = self.rq.get_data_segment(self.memory.as_mut().unwrap(), index, sge_index)?;
+                *last_elem = WqeDataSegment::last();
+            }
             num_req += 1;
             index = index.wrapping_add(1);
         }
@@ -843,6 +852,21 @@ impl WorkQueue {
     fn update_chain_size(&mut self, wqe_idx: usize, batch_size: u32) {
         let idx = wqe_idx & ((self.wqe_cnt - 1) as usize);
         self.meta[idx].1 = batch_size;
+    }
+
+    /// Get the `sge_index`th data segment of the WQE at `index`.
+    ///
+    /// A receive WQE holds `max_gs` data segments, so unlike [`Self::get_element`] this
+    /// addresses within a single WQE — adding the segment index to the WQE index would land in
+    /// the following WQE instead.
+    fn get_data_segment<'e>(
+        &self, memory: &'e mut utils::PageToFrameMapping, index: u32, sge_index: u32,
+    ) -> Result<&'e mut WqeDataSegment, &'static str> {
+        // wrap around
+        let index = index & (self.wqe_cnt - 1);
+        let (pages, _address) = memory;
+        let offset = self.offset + (index << self.wqe_shift) + sge_index * u32::try_from(size_of::<WqeDataSegment>()).unwrap();
+        pages.as_type_mut(offset.try_into().unwrap())
     }
 
     /// Get an element of this work queue.
