@@ -240,7 +240,7 @@ impl QueuePair {
                 for i in 0..self.sq.wqe_cnt {
                     let ctrl: &mut WqeControlSegment = self.sq.get_element(memory, i)?;
                     ctrl.owner_opcode = (1 << 31).into();
-                    ctrl.vlan_cv_f_ds = u32::to_be(1 << (self.sq.wqe_shift - 4)).into();
+                    ctrl.vlan_cv_f_ds = (1 << (self.sq.wqe_shift - 4)).into();
                     self.sq.stamp_wqe(memory, i)?;
                 }
                 Opcode::Rst2InitQp
@@ -601,7 +601,7 @@ impl QueuePair {
             // We can improve latency by not stamping the last send queue WQE
             // until after ringing the doorbell, so only stamp here if there are
             // still more WQEs to post.
-            if peekable.peek().is_none() {
+            if peekable.peek().is_some() {
                 self.sq.stamp_wqe(memory, index + self.sq.spare_wqes.unwrap())?;
             }
 
@@ -932,6 +932,7 @@ fn send_wqe_overhead(qp_type: ibv_qp_type::Type) -> u32 {
 #[repr(C)]
 struct WqeControlSegment {
     owner_opcode: U32<BigEndian>,
+    /// DS: WQE size in octowords (16-byte units)
     vlan_cv_f_ds: U32<BigEndian>,
     flags: U32<BigEndian>,
     flags2: U32<BigEndian>,
