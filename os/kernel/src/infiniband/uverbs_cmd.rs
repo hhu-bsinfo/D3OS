@@ -25,8 +25,8 @@ pub fn uverbs_query_port(device_handle: usize, port_num: u8) -> Result<ibv_port_
 pub fn uverbs_register_mem_region(device_handle: usize, access_flags: ibv_access_flags, user_data_ref: &mut [u8]) -> Result<CreateMrResponse, &'static str> {
     get_dev_list().lock().get_mut(device_handle_to_idx(device_handle)).unwrap()
         .create_mr(user_data_ref, access_flags)
-        .map(|(index, lkey, rkey)| {
-            CreateMrResponse { index, lkey, rkey, }
+        .map(|d| {
+            CreateMrResponse { handle: d.handle(), lkey: d.lkey(), rkey: d.rkey() }
         })
         .map_err(|_| "failed to create memory region")
 }

@@ -297,6 +297,8 @@ impl<'de, Context> BorrowDecode<'de, Context> for ibv_send_flags {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Encode, Decode)]
 pub struct ibv_sge {
+    /// Virtual address it is translated using the region (dMPT) identified by the lkey. If lkey 
+    /// is a reserved lkey address translation is bypassed, so addr should be a physical address
     pub addr: u64,
     pub length: u32,
     pub lkey: u32,

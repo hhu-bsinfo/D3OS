@@ -40,6 +40,7 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use bitflags::bitflags;
 use rdma::uverbs_uapi::{ReceiveWorkRequest, SendWorkRequest};
+use crate::device::mlx4::icm::DataMemoryProtectionTable;
 
 /// Vendor ID for Mellanox
 pub const MLX_VEND: u16 = 0x15b3;
@@ -120,14 +121,14 @@ impl ConnectX3Nic {
 
         // map the Global Device Configuration registers
         let mut config_regs = utils::pci_map_bar_mem(
-            mlx3_pci_dev.bar(0, config_space).ok_or("No config regs (BAR 0)")?, 
+            mlx3_pci_dev.bar(0, config_space).ok_or("No config regs (BAR 0)")?,
             "mlx4-config-regs"
         );
         trace!("mlx4 configuration registers: {:?}", config_regs);
 
         // map the User Access Region
         let user_access_region = utils::pci_map_bar_mem(
-            mlx3_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)")?, 
+            mlx3_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)")?,
             "mlx4-uar"
         );
         trace!("mlx4 user access region: {:?}", user_access_region);
@@ -335,7 +336,7 @@ impl ConnectX3Nic {
     /// Create a memory region and return its index, physical address, lkey and rkey.
     ///
     /// This is used by ibv_reg_mr.
-    pub fn create_mr<T>(&mut self, data: &mut [T], access: ibv_access_flags) -> Result<(u32, u32, u32), &'static str> {
+    pub fn create_mr<T>(&mut self, data: &mut [T], access: ibv_access_flags) -> Result<DataMemoryProtectionTable, &'static str> {
         // TODO: this fails for large memory regions (>= 64 MB)
         self.icm_tables.memory_regions().alloc_dmpt(
             &mut self.cmd,

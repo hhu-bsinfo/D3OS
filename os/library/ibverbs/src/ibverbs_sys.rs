@@ -120,7 +120,7 @@ impl Drop for ibv_cq<'_> {
 
 pub struct ibv_mr<'pd> {
     pd: &'pd ibv_pd<'pd>,
-    index: u32,
+    handle: u32,
     /// virtual address
     pub addr: usize,
     pub length: usize,
@@ -131,7 +131,7 @@ pub struct ibv_mr<'pd> {
 impl Drop for ibv_mr<'_> {
     fn drop(&mut self) {
         let device_handle = self.pd.context.device_handle();
-        uverbs(device_handle, DeregMr, UserSlice::from_ref(&self.index), UserSlice::EMPTY)
+        uverbs(device_handle, DeregMr, UserSlice::from_ref(&self.handle), UserSlice::EMPTY)
             .expect("failed to destroy memory region");
     }
 }
@@ -273,8 +273,8 @@ pub fn ibv_reg_mr<'pd>(
 
     match uverbs(device_handle, RegMr, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp)) {
         Ok(_) => {
-            let CreateMrResponse { index,lkey, rkey } = unsafe { resp.assume_init() };
-            Ok(ibv_mr { pd, index, addr: ptr.addr(), length: len, lkey, rkey })
+            let CreateMrResponse { handle, lkey, rkey } = unsafe { resp.assume_init() };
+            Ok(ibv_mr { pd, handle, addr: ptr.addr(), length: len, lkey, rkey })
         },
         Err(e) => Err(uverbs_error(e))
     }

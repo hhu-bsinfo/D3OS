@@ -29,7 +29,6 @@ use x86_64::structures::paging::PageTableFlags;
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use rdma::uverbs_uapi::{ReceiveWorkRequest, SendWorkRequest};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
-use crate::process_manager;
 use super::{
     cmd::{CommandInterface, Opcode},
     completion_queue::CompletionQueue,
@@ -990,14 +989,12 @@ struct WqeDataSegment {
 impl WqeDataSegment {
     /// Copy information from an sge.
     fn copy_from_sge(&mut self, sge: &ibv_sge) -> Result<(), &'static str> {
-        let phys_addr = process_manager()
-            .read()
-            .current_process()
-            .virtual_address_space
-            .get_phys(sge.addr)
-            .ok_or("address not mapped")?;
+        // The address stays virtual: the lkey names a memory region whose MPT
+        // start address is virtual as well, and the card resolves the address
+        // through that region's MTT. (Translating to a physical address here
+        // would only be right for the reserved lkey, which bypasses the MPT.)
         self.lkey.set(sge.lkey);
-        self.addr.set(phys_addr.as_u64());
+        self.addr.set(sge.addr);
         // sending needs a barrier here before writing the byte_count
         // field to make sure that all the data is visible before the
         // byte_count field is set. Otherwise, if the segment begins a new

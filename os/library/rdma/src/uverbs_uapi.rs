@@ -98,7 +98,7 @@ pub struct CreateMrRequest {
 #[repr(C)]
 #[derive(Default, Copy, Clone)]
 pub struct CreateMrResponse {
-    pub index: u32,
+    pub handle: u32,
     pub lkey: u32,
     pub rkey: u32
 }

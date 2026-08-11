@@ -4,7 +4,7 @@ use crate::memory::PAGE_SIZE;
 use alloc::vec::Vec;
 use core::cmp::min;
 use core::intrinsics::offset;
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
 use modular_bitfield_msb::{
     bitfield,
     prelude::{B10, B11, B21, B24, B28, B3, B4, B40, B7},
@@ -316,6 +316,28 @@ pub(super) struct MrTable {
     regions: Vec<MemoryRegion>,
     // TODO
 }
+
+/// Also called dMPT
+pub(crate) struct DataMemoryProtectionTable {
+    handle: u32,
+    lkey: u32,
+    rkey: u32,
+}
+
+impl DataMemoryProtectionTable{
+    pub fn handle(&self) -> u32 {
+        self.handle
+    }
+
+    pub fn lkey(&self) -> u32 {
+        self.lkey
+    }
+
+    pub fn rkey(&self) -> u32 {
+        self.rkey
+    }
+}
+
 impl MrTable {
     fn new(mtt_table: IcmTable, dmpt_table: IcmTable, reserved_mtts: u64) -> Self {
         Self {
@@ -331,7 +353,7 @@ impl MrTable {
     /// Returns the byte offset in the global mtt to the first entry
     pub(crate) fn alloc_mtt_for_pages(&mut self, caps: &Capabilities, pages: PageRange) -> Result<u64, &'static str> {
         assert!(!pages.is_empty());
-        info!("Create MTT mappings for {:?}", pages);
+        debug!("Create MTT mappings for {:?}", pages);
         // get the next free entry. The Linux driver uses a buddy allocator for MTT
         let addr = (self.reserved_mtts + self.offset) * caps.mtt_entry_sz() as u64;
         self.offset += pages.len();
@@ -363,11 +385,12 @@ impl MrTable {
     pub(super) fn alloc_dmpt<T>(
         &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, data: &mut [T], queue_pair: Option<&QueuePair>,
         access: ibv_access_flags,
-    ) -> Result<(u32, u32, u32), &'static str> {
+    ) -> Result<DataMemoryProtectionTable, &'static str> {
         assert!(!data.is_empty());
         let size = data.len() * size_of::<T>();
         let addr = VirtAddr::from_ptr(data.as_ptr());
         let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size as u64) + 1);
+        debug!("Create dMTP for addr: 0x{:016x}, size: 0x{:x}", addr, size);
 
         // TODO: check if icm has sufficient space available for the new dmpt entry
         let mtt = self.alloc_mtt_for_pages(caps, pages)?;
@@ -378,10 +401,10 @@ impl MrTable {
             dmpt.set_bound_to_qp(true);
             dmpt.set_qp_number(qp.number().try_into().unwrap());
         }
-        dmpt.set_start(pages.start.start_address().as_u64());
+        // I don't know if this should be start of the pages and length be the size in bytes all pages cover
+        dmpt.set_start(addr.as_u64());
         dmpt.set_length(size.try_into().unwrap());
-        dmpt.set_entity_size(pages.start.size() as u32); // used PAGE_SIZE mappings in the mtt,
-                                                 // hence the granularity also has to match PAGE_SIZE, setting to buffer size doesn't make sense !
+        dmpt.set_entity_size(pages.start.size().ilog2());
         dmpt.set_mtt_addr(mtt);
         dmpt.set_mtt_size(pages.len() as u32);
         dmpt.set_mio(true);
@@ -406,14 +429,19 @@ impl MrTable {
         let mut dmpt = DmptEntry::from_bytes(dmpt_bytes);
         assert_eq!(dmpt_index, dmpt.index());
         trace!("memory region of size {} with mem key {} created successfully", dmpt.length(), dmpt.key(),);
-        // dmpt.lkey() would be the lkey if we were using protection domains.
-        // Just put the reserved lkey here, so that addresses are physical.
-        let dmpt_lkey = caps.reserved_lkey();
-        // .key is the rkey
-        let dmpt_key = dmpt.key();
+
+        // The `lkey` field of the entry is owned by the firmware and is not a
+        // usable key (Linux writes a zero there and never reads it back). The
+        // memory key doubles as both the local and the remote key.
+        let lkey = dmpt.key();
+        let rkey = dmpt.key();
 
         self.regions.push(MemoryRegion { dmpt: Some(dmpt) });
-        Ok((dmpt_index, dmpt_lkey, dmpt_key))
+        Ok(DataMemoryProtectionTable {
+            handle: dmpt_index,
+            lkey,
+            rkey,
+        })
     }
 
     /// Tear down all memory regions.
@@ -508,6 +536,7 @@ struct DmptEntry {
     start: u64,
     /// Region/Window Length
     length: u64,
+    /// Written by the firmware; must be zero when handing the entry over.
     #[skip]
     lkey: u32,
     #[skip]
@@ -528,6 +557,10 @@ struct DmptEntry {
     #[skip]
     __: B11,
     #[skip(getters)]
+    /// Page/Block size:
+    /// If block_mode == 0, it is log2 of page_size
+    /// if block_mode == 1, it is block_size
+    /// Minimum value 512
     entity_size: B21,
     #[skip]
     __: B11,
