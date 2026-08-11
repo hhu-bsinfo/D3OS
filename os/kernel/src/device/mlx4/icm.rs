@@ -401,7 +401,11 @@ impl MrTable {
         // TODO: check if icm has sufficient space available for the new dmpt entry
         let mtt = self.alloc_mtt_for_pages(caps, pages)?;
         let mut dmpt = DmptEntry::new();
-        dmpt.set_key(offsets.alloc_dmpt().try_into().unwrap());
+        // The allocator hands out the table index directly. Passing it through `set_key` would
+        // rotate it (`key_to_hw_index`) into a small number — 256 became 1, 512 became 2 — and
+        // every one of those lands inside the range the firmware reserved for itself, silently
+        // overwriting the card's own memory regions one per registration.
+        dmpt.set_index(offsets.alloc_dmpt().try_into().unwrap());
         dmpt.set_rae(true);
         if let Some(qp) = queue_pair {
             dmpt.set_bound_to_qp(true);
@@ -585,14 +589,13 @@ struct DmptEntry {
 }
 
 impl DmptEntry {
-    /// Get the memory key.
+    /// Get the memory key this entry's index corresponds to.
+    ///
+    /// This is `hw_index_to_key` in the reference driver: the key is derived from the index, and
+    /// the card recovers the index from a key in a work request by rotating it back. Only the
+    /// index may be handed to `SW2HW_MPT`, and only the key may be handed to an application.
     fn key(&self) -> u32 {
         self.index() >> 24 | self.index() << 8
-    }
-
-    /// Set the memory key.
-    fn set_key(&mut self, key: u32) {
-        self.set_index(key << 24 | key >> 8)
     }
 }
 

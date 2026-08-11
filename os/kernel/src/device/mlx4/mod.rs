@@ -536,10 +536,15 @@ impl Offsets {
         res
     }
 
-    /// Allocate a dmpt offset.
+    /// Allocate an entry in the data memory protection table.
+    ///
+    /// This is an *index* into that table, which is why it starts above the entries the firmware
+    /// reserved for itself and counts up by one. The memory key the application gets is derived
+    /// from it (`DmptEntry::key`), not the other way around.
+    /// TODO: add mechanism to free dmpt, e.g. a bit map
     pub(in crate::device::mlx4) fn alloc_dmpt(&mut self) -> usize {
         let res = self.next_dmpt;
-        self.next_dmpt += 256;
+        self.next_dmpt += 1;
         res
     }
 }

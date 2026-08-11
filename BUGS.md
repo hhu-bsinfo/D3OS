@@ -206,6 +206,110 @@ with a comment explaining why the list has to stay complete.
 edit before this fix may not have been in the image that was tested. The same pattern likely
 affects the non-RDMA applications in the tree.
 
+## 7. Memory regions overwrote the firmware's own, taking the port down after ~8 runs
+
+**Symptom.** After a few runs the port is in state `Initializing`, seen both from D3OS and from
+`ib1`. Every RDMA application then fails at `ibv_open_device`, because `Context::with_device`
+refuses a port that is not `ACTIVE` or `ARMED`. It happened after 8 runs at a 64 KB message size
+and after 7 at 64 bytes.
+
+**Cause.** `alloc_dmpt` allocated an entry in the data memory protection table by handing the
+allocator's number to `DmptEntry::set_key`:
+
+```rust
+// os/kernel/src/device/mlx4/icm.rs — before
+dmpt.set_key(offsets.alloc_dmpt().try_into().unwrap());   // 256, 512, 768, ...
+```
+
+`set_key` applies `key_to_hw_index`, which rotates by 8 bits — so 256 became index **1**, 512
+became **2**, and so on, one further entry per registered memory region. The card reports
+`reserved MPTs: 256`: indices 0 to 255 belong to the firmware. Every memory region D3OS ever
+registered was therefore programmed on top of one of the firmware's own, with `SW2HW_MPT` given
+the index and returning `Ok` each time.
+
+The reference driver goes the other way round. `mlx4_mr_alloc` allocates an *index* from a bitmap
+initialised with `dev->caps.reserved_mrws` as its lower bound and derives the key from it with
+`hw_index_to_key`; only the index is ever passed to `SW2HW_MPT`, and only the key is ever handed
+to an application.
+
+Runs 1 to 7 overwrote entries the firmware was not using at that moment. Run 8 reached one it
+was, and the port went down on the next `post_send`.
+
+**Fix.** Allocate the index directly — `Offsets::alloc_dmpt` counts up by one from
+`1 << log2_rsvd_mrws` instead of by 256, and `alloc_dmpt` calls `set_index`. `set_key` is gone;
+`key()` remains, since the key is derived from the index and not the reverse.
+
+**How it was found.** Two things, in order. Decoding the async event queue produced `port 1 is
+now down`, and draining it after every verb pinned it to `OpPostSend`. Then the memory key in the
+log gave the index away: run 7 logged `mem key 1792`, run 8 `mem key 2048`, and those are
+`hw_index_to_key(7)` and `hw_index_to_key(8)` — the driver was working at the very bottom of a
+table whose first 256 entries were not its own.
+
+### What the symptom looked like before that was understood
+
+**The port state is the aftermath, not the fault.** The card posts a port-down event in the
+middle of a run:
+
+```
+[70.020] Create dMTP for addr: 0x00003f0000000078, size: 0x10000
+[70.020] Create MTT mappings for PageRange { 0x3f0000000000 .. 0x3f0000011000 }   (17 pages)
+[70.022] memory region of size 69632 with mem key 2816 created successfully
+[70.050] WRN  port 1 is now down
+[70.529] ERR  work completion error: (QPN 74, WQE 0, syndrome TransportRetryExceededError)
+[70.530] ERR  ... WQE 1..31, syndrome WrFlushError
+```
+
+The port was healthy 180 ms earlier — `device::open()` only succeeds on an `ACTIVE`/`ARMED`
+port — and the queue pair had reached RTS with every command returning `Ok`. The transport
+retry error on WQE 0 is the consequence: the send went out onto a port that was already going
+down, and the other 31 work requests flushed behind it.
+
+**The subnet manager's view matches exactly.** From `opensm.0xe41d2d030017fda1.log` on `ib1` for
+the same boot:
+
+```
+13:17:21  SM port is down / Entering DISCOVERING state    <- D3OS boots, resets the card
+13:17:41  SM port is up / MASTER / SUBNET UP
+13:17:51 .. 13:18:31  SUBNET UP                          <- five clean sweeps, D3OS answers
+13:18:42  ERR 3113: MAD completed in error (IB_TIMEOUT): SubnGet(NodeInfo)
+          drop_mgr_remove_port: Removed port GUID:0xf452140300784231 LID range [2,2]
+13:18:52 .. 13:27:52  the same timeout every 10 s, forever
+```
+
+The first `NodeInfo` timeout coincides with the port-down event. Since D3OS creates no QP0 and
+has no MAD agent, `NodeInfo` is answered by the HCA firmware's own SMA — so once the port is
+down, nothing answers, OpenSM drops the node, and because nothing in D3OS ever re-initialises a
+port it stays in `Initializing` for the rest of the session.
+
+**What it is not.**
+
+- Not a wedged card: `QueryPort`, `MadIfc`, `Hw2SwMpt`, `Any2RstQp` and `Hw2SwCq` all still
+  return `Ok` afterwards. The firmware is alive; only the link is gone.
+- Not a rejected DMA: `ib2` runs the card through VFIO, and its `dmesg` has no DMAR/IOMMU fault,
+  no PCIe AER error and no vfio error for any of the failing runs. (This only rules out a target
+  *outside* guest RAM — VFIO maps all of it.)
+- Not a subnet-manager problem: OpenSM is running throughout and sweeps every 10 s.
+- Not recoverable by the driver: the port stays down until QEMU exits and the host's `mlx4_core`
+  re-initialises the card, which always succeeds — consistent with the damage being to state the
+  firmware holds in ICM.
+
+The instrumentation that made all of this visible is worth keeping: the async event queue is now
+decoded rather than discarded, it is drained after every verb so an event is logged next to the
+operation that provoked it, the internal error buffer (`err_bar 0 + 0x1f020`, 16 words) is polled
+the way `mlx4_catas` does, and `alloc_mtt_for_pages` reads its entries back out of ICM and
+rejects a translation that is zero or unaligned.
+
+## 8. Error on Linux Client
+**Symptom.** When running `rdma-bench server` the linux client still sometimes reports an error
+`error: WC error: 13 vendor_err=135`. The error occurred after 3 successful runs. It may be related to Bug 7
+
+**Ruled out.** The queue pair context reads back `rnr_retry 6, min_rnr_nak 16, ack timeout 16`
+after the transition to RTS, so those values do reach the card. Status 13 also means the packets
+arrived at a live queue pair whose receive queue was empty, which is the opposite of bug 7's dead
+port — so unless the two coincide, this is a separate fault. The open candidates are the receive
+window running dry (`bench/bandwidth.rs` posts `tx_depth` receives and reposts one per
+completion) and the receive queue's tail drifting away from the card's.
+
 ---
 
 ## Smaller defects fixed along the way
@@ -266,6 +370,11 @@ Not fixed, in rough order of how soon they will matter.
   `handle_events` before looking for completions, because nothing else ever consumes the ring
   and it would otherwise fill. That is one extra memory read per `ibv_poll_cq`, on the hot path,
   and it belongs on a separate thread or behind interrupts before latency is measured.
+- **The special queue pair base is derived from the wrong capability.** `Offsets::init` computes
+  `base_qpn` — where QP0 and QP1 live — from `log2_rsvd_cqs`, while `next_qpn` starts at
+  `1 << log2_rsvd_qps` and only ever increases, since queue pair numbers are never reused. If the
+  two ranges overlap, the ordinary allocator eventually hands out QP0, which would look exactly
+  like the card refusing to answer the subnet manager after N runs.
 - **BlueFlame is disabled.** `USE_BLUEFLAME` in `device/mlx4/mod.rs` is `false`. Because
   `post_send` took that path for *every* single work request post, the ordinary doorbell path
   had never been exercised. It is worth re-enabling and testing separately now that the doorbell
