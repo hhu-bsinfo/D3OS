@@ -184,6 +184,7 @@ impl CompletionQueue {
             compiler_fence(Ordering::SeqCst);
             wc.qp_num = cqe.qp_number();
             if let Some(qp) = qps.iter_mut().find(|qp| qp.number() == cqe.qp_number()) {
+                qp.check_wqe_index(cqe.wqe_index().into(), cqe.is_send());
                 let chain_size = qp.query_chain_size(cqe.wqe_index() as usize, cqe.is_send());
                 if cqe.is_send() {
                     qp.advance_send_queue_by(chain_size);

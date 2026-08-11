@@ -20,9 +20,11 @@ use cmd::CommandInterface;
 use completion_queue::CompletionQueue;
 use event_queue::{EventQueue, init_eqs};
 use fw::{Capabilities, Hca, MappedFirmwareArea};
+use byteorder::BigEndian;
 use icm::MappedIcmTables;
-use log::trace;
+use log::{error, trace, warn};
 use pci_types::{CommandRegister, EndpointHeader};
+use zerocopy::U32;
 
 use rdma::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_type, ibv_recv_wr, ibv_send_wr, ibv_wc};
 
@@ -95,6 +97,11 @@ pub struct ConnectX3Nic {
     cqs: Vec<CompletionQueue>,
     qps: Vec<QueuePair>,
     ports: Vec<Port>,
+    /// Set once the internal error buffer has been dumped, so it is reported once and not on
+    /// every poll afterwards.
+    internal_error_reported: bool,
+    /// Counts down to the next check of the internal error buffer, see [`Self::poll_cq`].
+    internal_error_countdown: u32,
     pub handle: usize,
 }
 
@@ -194,6 +201,8 @@ impl ConnectX3Nic {
             cqs: Vec::new(),
             qps: Vec::new(),
             ports,
+            internal_error_reported: false,
+            internal_error_countdown: 0,
             handle,
         };
         get_dev_list().lock().push(nic);
@@ -212,10 +221,90 @@ impl ConnectX3Nic {
         })
     }
 
+    /// Drain the event queue, returning how many events were handled.
+    ///
+    /// The card reports a port going down, a queue pair failing or its own internal errors as
+    /// events, and the only path that used to consume them was `CompletionQueue::poll`. That
+    /// makes an event's log timestamp the moment it was *noticed*, not the moment it happened,
+    /// which is useless for attributing a failure to the operation that caused it. Draining
+    /// after every verb costs one read of the ring when it is empty and gives that attribution
+    /// back.
+    pub fn drain_events(&mut self) -> usize {
+        let Some(eq) = self.eqs.first_mut() else {
+            return 0;
+        };
+        match eq.handle_events(&mut self.doorbells, false) {
+            Ok(handled) => handled,
+            Err(e) => {
+                warn!("draining the event queue failed: {e}");
+                0
+            }
+        }
+    }
+
+    /// Read the card's internal error buffer and report it if it is not empty.
+    ///
+    /// The card signals a fatal internal error by writing it into a buffer in one of its BARs
+    /// and then going quiet. It keeps the link up, but stops serving MADs, so the subnet
+    /// manager's `SubnGet(NodeInfo)` times out, it drops the port from the subnet, and the port
+    /// is left in the `Initializing` state with nothing in our own log to explain it. The
+    /// reference driver maps this buffer and polls it every five seconds
+    /// (`mlx4_start_catas_poll`); this is the same check, driven from the paths that run
+    /// regularly here.
+    ///
+    /// Returns whether an error was found.
+    pub fn check_internal_error(&mut self) -> bool {
+        let (bar, offset, size) = self.firmware.internal_error_buffer();
+        if size == 0 {
+            // Say so rather than returning quietly: otherwise a wrong QUERY_FW offset and a
+            // healthy card look exactly the same in the log.
+            self.report_once(format_args!("the firmware reports no internal error buffer, so it cannot be checked"));
+            return false;
+        }
+        // The buffer is in BAR 0 on this card, which is already mapped as the configuration
+        // registers. Reaching any other BAR would mean mapping it first.
+        if bar != 0 {
+            self.report_once(format_args!("internal error buffer is in BAR {bar}, which is not mapped"));
+            return false;
+        }
+        // `MappedPages` is `Copy`, so take one to read through while `self` stays available for
+        // the reporting below.
+        let config_regs = self.config_regs;
+        let words: &[U32<BigEndian>] = match config_regs.as_slice(offset, size) {
+            Ok(words) => words,
+            Err(e) => {
+                self.report_once(format_args!("cannot read the internal error buffer at {offset:#x} ({size} words): {e}"));
+                return false;
+            }
+        };
+        if words.iter().all(|word| word.get() == 0) {
+            return false;
+        }
+        if !self.internal_error_reported {
+            self.internal_error_reported = true;
+            error!("the card reported an internal error:");
+            for (i, word) in words.iter().enumerate() {
+                error!("  internal error buffer[{:02}] = {:#010x}", i, word.get());
+            }
+        }
+        true
+    }
+
+    /// Log a problem with the internal error buffer itself, but only the first time.
+    fn report_once(&mut self, message: core::fmt::Arguments) {
+        if !self.internal_error_reported {
+            self.internal_error_reported = true;
+            warn!("{}", message);
+        }
+    }
+
     /// Get statistics about a port.
     ///
     /// This is used by ibv_query_port.
     pub fn query_port(&mut self, port_num: u8) -> Result<ibv_port_attr, &'static str> {
+        // Cheap enough to do on every query, and this is the call that notices a port dropping
+        // back to `Initializing` — the two belong in the same log.
+        self.check_internal_error();
         let port: Option<&mut Port> = self.ports.get_mut(port_num as usize - 1);
         if let Some(port) = port {
             port.query(&mut self.cmd)
@@ -248,6 +337,16 @@ impl ConnectX3Nic {
     ///
     /// This is used by ibv_poll_cq.
     pub fn poll_cq(&mut self, number: u32, wc: &mut [ibv_wc]) -> Result<usize, &'static str> {
+        // This is the only path that runs continuously while a benchmark is going, so it is
+        // where an internal error has to be noticed. Reading the buffer is an MMIO access, so
+        // it happens on a countdown rather than on every poll.
+        const INTERNAL_ERROR_CHECK_INTERVAL: u32 = 4096;
+        if self.internal_error_countdown == 0 {
+            self.internal_error_countdown = INTERNAL_ERROR_CHECK_INTERVAL;
+            self.check_internal_error();
+        } else {
+            self.internal_error_countdown -= 1;
+        }
         let cq = self.cqs.iter_mut().find(|cq| cq.number() == number).ok_or("invalid completion queue number")?;
         cq.poll(&mut self.eqs, &mut self.qps, &mut self.doorbells, wc)
     }

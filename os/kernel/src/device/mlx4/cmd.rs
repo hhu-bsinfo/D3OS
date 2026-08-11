@@ -6,7 +6,7 @@ use core::sync::atomic::{compiler_fence, Ordering};
 use crate::device::mlx4::utils;
 use core::fmt::Debug;
 use bitflags::bitflags;
-use log::trace;
+use log::{trace, warn};
 use strum_macros::{FromRepr, IntoStaticStr};
 use tock_registers::interfaces::{Readable, Writeable};
 use tock_registers::register_bitfields;
@@ -14,7 +14,7 @@ use tock_registers::registers::{ReadWrite, WriteOnly};
 use x86_64::PhysAddr;
 use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB};
 use crate::memory::vma::VmaType;
-use crate::process_manager;
+use crate::{get_time_in_us, process_manager};
 
 const HCR_BASE: usize = 0x80680;
 const HCR_OPMOD_SHIFT: u32 = 12;
@@ -24,7 +24,7 @@ const HCR_GO_BIT: u32 = 23;
 const POLL_TOKEN: u32 = 0xffff;
 
 #[repr(u16)]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
 pub(super) enum Opcode {
     // initialization and general commands
@@ -276,9 +276,7 @@ impl CommandInterface {
         trace!("executing command: {opcode:?}");
 
         // wait until the previous command is done
-        while self.is_pending() {
-            trace!("wait until the previous command is done");
-        }
+        self.wait_while_pending(opcode, "the previous command");
 
         let input_param = match input {
             InputParam::Empty => 0,
@@ -316,7 +314,7 @@ impl CommandInterface {
         self.exp_toggle ^= 1;
 
         trace!("polling for completion");
-        while self.is_pending() {}
+        self.wait_while_pending(opcode, "the command");
 
         let status_opcode = u32::from_be(self.hcr.status_opcode.get());
         let status = ReturnStatus::from_repr(status_opcode >> 24).expect("return status invalid");
@@ -335,6 +333,30 @@ impl CommandInterface {
                 }
             }
             err => Err(err)
+        }
+    }
+
+    /// Spin until the card hands the command register back, reporting if that takes long.
+    ///
+    /// The firmware serves the subnet manager's MADs as well as our commands, and the subnet
+    /// manager gives up on a MAD after a few hundred milliseconds and then drops the port from
+    /// the subnet. A command that holds the card for that long is therefore not just slow, it is
+    /// enough to take the port down. There is still no timeout here, so a command that never
+    /// completes hangs the kernel silently; at least it now says so first.
+    fn wait_while_pending(&mut self, opcode: Opcode, what: &str) {
+        /// How long the card may take before it is reported.
+        const SLOW_COMMAND_US: u64 = 10_000;
+
+        let start = get_time_in_us();
+        let mut reported = false;
+        while self.is_pending() {
+            if !reported && get_time_in_us() - start > SLOW_COMMAND_US {
+                reported = true;
+                warn!("waiting for {what} ({opcode:?}) for more than {} ms", SLOW_COMMAND_US / 1000);
+            }
+        }
+        if reported {
+            warn!("{what} ({opcode:?}) took {} ms", (get_time_in_us() - start) / 1000);
         }
     }
 

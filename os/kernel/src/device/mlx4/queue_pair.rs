@@ -13,7 +13,7 @@ use alloc::{vec, vec::Vec};
 use alloc::string::ToString;
 use bitflags::bitflags;
 use byteorder::BigEndian;
-use log::trace;
+use log::{error, trace};
 use modular_bitfield_msb::{
     bitfield,
     prelude::{B12, B16, B17, B19, B2, B20, B24, B3, B4, B40, B48, B5, B53, B56, B6, B7},
@@ -464,6 +464,21 @@ impl QueuePair {
         for curr in wrs {
             // make sure that we're not overflowing
             if self.rq.would_overflow(num_req) {
+                // The tail only moves when completions are polled, so this is as likely to mean
+                // the driver has lost track of it as it is to mean the queue is genuinely full.
+                // Print both ends of the queue to tell those apart: a tail that has stopped
+                // moving while completions keep arriving is the driver's bug, and it makes the
+                // peer see RNR NAKs from here on.
+                error!(
+                    "QP {}: receive queue would overflow: head {}, tail {}, in flight {}, posting {}, max_post {}, wqe_cnt {}",
+                    self.number,
+                    self.rq.head,
+                    self.rq.tail,
+                    self.rq.head.wrapping_sub(self.rq.tail),
+                    num_req,
+                    self.rq.max_post,
+                    self.rq.wqe_cnt,
+                );
                 return Err("receive queue would overflow");
             }
             // check that this work request is not too big
@@ -655,6 +670,37 @@ impl QueuePair {
         Ok(())
     }
 
+    /// Check the work queue element index the card reports against the one we expect next.
+    ///
+    /// The reference driver takes the card's index as the truth
+    /// (`wq->tail += (u16)(wqe_ctr - (u16)wq->tail)` in `mlx4_ib_poll_one`), while this driver
+    /// advances the tail by the chain size it recorded when the work request was posted. Those
+    /// two agree only as long as every completion is seen exactly once. If they drift apart the
+    /// queue reports an overflow while the card still has room — and on the receive side that
+    /// means we stop posting receives and the peer starts seeing RNR NAKs.
+    ///
+    /// Only the first disagreement per queue is logged: by then everything after it is suspect,
+    /// and logging goes out over the serial console, which is slow enough to cause the very
+    /// stalls being investigated.
+    pub(super) fn check_wqe_index(&mut self, wqe_index: u32, is_send: bool) {
+        let number = self.number;
+        let wq = if is_send { &mut self.sq } else { &mut self.rq };
+        if wq.divergence_reported {
+            return;
+        }
+        let expected = wq.tail & (wq.wqe_cnt - 1);
+        let reported = wqe_index & (wq.wqe_cnt - 1);
+        if expected != reported {
+            wq.divergence_reported = true;
+            error!(
+                "QP {number}: card reports a {} completion for WQE {reported}, driver expected {expected} (head {}, tail {})",
+                if is_send { "send" } else { "receive" },
+                wq.head,
+                wq.tail,
+            );
+        }
+    }
+
     /// Advance the tail of the receive queue.
     ///
     /// This is called on work completion.
@@ -739,6 +785,9 @@ struct WorkQueue {
     head: u32,
     tail: u32,
     meta: Vec<WorkQueueMeta<u64, u32>>,
+    /// Set once this queue's tail has been seen to disagree with the card, see
+    /// [`QueuePair::check_wqe_index`]. Only the first disagreement is worth logging.
+    divergence_reported: bool,
 }
 
 impl WorkQueue {
@@ -779,6 +828,7 @@ impl WorkQueue {
             head: 0,
             tail: 0,
             meta: vec![(0u64, 0u32); wqe_cnt as usize],
+            divergence_reported: false,
         })
     }
 
@@ -819,6 +869,7 @@ impl WorkQueue {
             head: 0,
             tail: 0,
             meta: vec![(0u64, 0u32); wqe_cnt as usize],
+            divergence_reported: false,
         })
     }
 

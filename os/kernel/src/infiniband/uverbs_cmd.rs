@@ -70,6 +70,16 @@ pub fn uverbs_post_recv(device_handle: usize, req: &PostReceiveRequest) -> Resul
         .post_receive(req.qp_num, &req.wrs)
 }
 
+/// Drain the device's event queue, returning how many events were handled.
+///
+/// See [`ConnectX3Nic::drain_events`]: this runs after every verb so that an event the card
+/// posts is logged next to the operation that provoked it.
+pub fn uverbs_drain_events(device_handle: usize) -> usize {
+    get_dev_list().lock()
+        .get_mut(device_handle_to_idx(device_handle)).unwrap()
+        .drain_events()
+}
+
 pub fn uverbs_destroy(device_handle: usize, destroy_spec_fn: fn(&mut ConnectX3Nic, u32) -> Result<(), &'static str>, x_num: u32) -> Result<(), &'static str> {
     let mut device_list = get_dev_list().lock();
     let device = device_list.get_mut(device_handle_to_idx(device_handle)).unwrap();

@@ -370,6 +370,12 @@ impl MrTable {
                     return Err("page not mapped");
                 }
             };
+            // A zero or unaligned translation would point the card at memory that is not the
+            // buffer, and the card gives no indication when that happens.
+            if physical == 0 || physical % PAGE_SIZE as u64 != 0 {
+                error!("page {:?} resolved to the invalid physical address {physical:#x}", page);
+                return Err("invalid physical address for MTT entry");
+            }
             let byte_offset = addr as usize + i * caps.mtt_entry_sz() as usize;
             let entry = self.mtt_table.host_bytes_mut(byte_offset, size_of::<u64>())?;
             entry.copy_from_slice(&(physical | MTT_FLAG_PRESENT).to_be_bytes());
@@ -401,7 +407,9 @@ impl MrTable {
             dmpt.set_bound_to_qp(true);
             dmpt.set_qp_number(qp.number().try_into().unwrap());
         }
-        // I don't know if this should be start of the pages and length be the size in bytes all pages cover
+        // This is the start of the region (not the start of the first page of mtt)
+        // The offset in the first mtt page (fbo) is taken from the mtt_fbo field if fbo_en=1.
+        // When fbo_en=0, fbo is calculated as: start_addr & (2^(entity_size-1))
         dmpt.set_start(addr.as_u64());
         dmpt.set_length(size.try_into().unwrap());
         dmpt.set_entity_size(pages.start.size().ilog2());

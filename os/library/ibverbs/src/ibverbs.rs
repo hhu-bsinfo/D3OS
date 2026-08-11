@@ -244,6 +244,17 @@ impl<'devlist> Device<'devlist> {
         Context::with_device(&self.0)
     }
 
+    /// Query this device's port without opening a full context.
+    ///
+    /// [`Self::open`] refuses any port that is not `ACTIVE` or `ARMED`, which is right for
+    /// anything that intends to transfer data but useless for diagnostics: it means the port
+    /// cannot be inspected exactly when something has gone wrong with it. This skips both that
+    /// check and the GID query (whose result is only defined for an active port).
+    pub fn port_attr(&self) -> io::Result<ffi::ibv_port_attr> {
+        let ctx = ffi::ibv_open_device(&self.0)?;
+        ffi::ibv_query_port(&ctx, PORT_NUM)
+    }
+
     /// Returns a string of the name, which is associated with this RDMA device.
     ///
     /// This name is unique within a specific machine (the same name cannot be assigned to more

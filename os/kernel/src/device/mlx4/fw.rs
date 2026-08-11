@@ -17,7 +17,7 @@ use modular_bitfield_msb::{
 use rdma::ibv_mtu;
 use x86_64::structures::paging::{page::Page, Size4KiB};
 use x86_64::structures::paging::frame::PhysFrameRange;
-use zerocopy::{AsBytes, FromBytes, U16, U64};
+use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use crate::memory;
 use super::{
     cmd::{CommandInterface, InputParam, MadDemuxOpcodeModifier, Opcode, OutputParam},
@@ -28,18 +28,29 @@ use super::{
     utils::MappedPages,
 };
 
+/// The output of QUERY_FW.
+///
+/// The offsets are the ones the reference driver uses in `mlx4_QUERY_FW`; every field is
+/// commented with the one it has to land on, because the padding between them is what keeps
+/// them there.
 #[derive(Clone, FromBytes)]
 #[repr(C, packed)]
 pub(super) struct Firmware {
-    pages: U16<BigEndian>,
-    pub(super) major: U16<BigEndian>,
-    pub(super) sub_minor: U16<BigEndian>,
-    pub(super) minor: U16<BigEndian>,
-    _padding1: u16,
-    ix_rev: U16<BigEndian>,
-    _padding2: [u8; 22], // contains the build timestamp
-    clr_int_base: U64<BigEndian>,
-    clr_int_bar: u8,
+    pages: U16<BigEndian>,           // 0x00
+    pub(super) major: U16<BigEndian>, // 0x02
+    pub(super) sub_minor: U16<BigEndian>, // 0x04
+    pub(super) minor: U16<BigEndian>, // 0x06
+    _padding1: u16,                  // 0x08, holds the PPF id
+    ix_rev: U16<BigEndian>,          // 0x0a, the command interface revision
+    _padding2: [u8; 0x14],           // 0x0c, contains the max command count and the build timestamp
+    clr_int_base: U64<BigEndian>,    // 0x20
+    clr_int_bar: u8,                 // 0x28
+    _padding3: [u8; 7],              // 0x29
+    /// Offset of the internal error buffer within `err_bar`.
+    err_start_offset: U64<BigEndian>, // 0x30
+    /// Size of the internal error buffer, in 32-bit words.
+    err_size: U32<BigEndian>,        // 0x38
+    err_bar: u8,                     // 0x3c
     // many fields follow
 }
 
@@ -49,8 +60,17 @@ impl Firmware {
         cmd.execute_command(Opcode::QueryFw, None, InputParam::Empty, None, OutputParam::Mailbox)?;
         let mut fw = unsafe { cmd.output_mailbox_as_ref::<Firmware>() }.clone();
         fw.clr_int_bar = (fw.clr_int_bar >> 6) * 2;
+        fw.err_bar = (fw.err_bar >> 6) * 2;
         debug!("got firmware info: {fw:?}");
         Ok(fw)
+    }
+
+    /// Where the card reports internal errors: `(BAR, byte offset in that BAR, size in 32-bit
+    /// words)`.
+    ///
+    /// See [`super::ConnectX3Nic::check_internal_error`] for why this matters.
+    pub(super) fn internal_error_buffer(&self) -> (u8, usize, usize) {
+        (self.err_bar, self.err_start_offset.get() as usize, self.err_size.get() as usize)
     }
 
     pub(super) fn map_area(&self, cmd: &mut CommandInterface) -> Result<MappedFirmwareArea, &'static str> {
@@ -80,6 +100,9 @@ impl core::fmt::Debug for Firmware {
         f.debug_struct("Firmware")
             .field("clr_int_bar", &self.clr_int_bar)
             .field("clr_int_base", &format_args!("{:#x}", self.clr_int_base))
+            .field("err_bar", &self.err_bar)
+            .field("err_start_offset", &format_args!("{:#x}", self.err_start_offset.get()))
+            .field("err_size", &self.err_size.get())
             .field("version", &self.version())
             .field("ix_rev", &self.ix_rev.get())
             .field(
