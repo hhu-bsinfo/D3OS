@@ -131,5 +131,5 @@ fn report(msg_size: usize, iterations: usize, tx_depth: usize, elapsed_us: usize
     let bw_gbps = bytes * 8.0 / secs / 1e9;
     let msg_rate_mpps = iterations as f64 / secs / 1e6;
     terminal::println!("{:>8}  {:>12}  {:>10}  {:>18}  {:>14}", "#bytes", "#iterations", "tx_depth", "BW avg[Gb/sec]", "MsgRate[Mpps]");
-    terminal::println!("{:>8}  {:>12}  {:>10}  {:>18.2}  {:>14.6}", msg_size, iterations, tx_depth, bw_gbps, msg_rate_mpps);
+    terminal::println!("{:>8}  {:>12}  {:>10}  {:>18.6}  {:>14.6}", msg_size, iterations, tx_depth, bw_gbps, msg_rate_mpps);
 }
