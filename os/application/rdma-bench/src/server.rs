@@ -48,5 +48,8 @@ fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &Conn) -> Resul
     let ClientEndpoint { endpoint: remote_endpoint } = conn.recv_msg()?;
     let mut qp = prepared.handshake(remote_endpoint)?;
 
-    bench::run(req.mode, pd, &cq, &mut qp, conn, Role::Server, req.msg_size, req.iterations, req.tx_depth)
+    // The server side is the passive peer in every mode, so its report carries no numbers of its
+    // own — whatever it has to say it has already printed.
+    bench::run(req.mode, pd, &cq, &mut qp, conn, Role::Server, req.msg_size, req.iterations, req.tx_depth)?;
+    Ok(())
 }

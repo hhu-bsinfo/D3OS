@@ -6,6 +6,7 @@
 use crate::bench::{self, Role, IDLE_TIMEOUT_US};
 use crate::comm::Conn;
 use crate::error::Result;
+use crate::report::{BandwidthStats, Report};
 use alloc::vec;
 use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
 use rdma::ibv_send_flags;
@@ -20,7 +21,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     let mut mr = pd.allocate::<u8>(msg_size)?;
 
     match role {
@@ -37,7 +38,7 @@ fn send(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     conn.sync()?; // wait for "ready"
     let t0 = get_time_in_us();
 
@@ -68,8 +69,7 @@ fn send(
     let elapsed_us = get_time_in_us() - t0;
     conn.sync()?;
 
-    report(msg_size, iterations, tx_depth, elapsed_us);
-    Ok(())
+    Ok(Report::Bandwidth(BandwidthStats { msg_size, iterations, tx_depth, elapsed_us }))
 }
 
 fn receive(
@@ -80,7 +80,7 @@ fn receive(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     let window = tx_depth.min(iterations);
     for i in 0..window {
         unsafe { qp.post_receive(mr, vec![vec![0..msg_size]], vec![i as u64])? };
@@ -122,14 +122,5 @@ fn receive(
     } else {
         terminal::println!("received {} messages", completed);
     }
-    Ok(())
-}
-
-fn report(msg_size: usize, iterations: usize, tx_depth: usize, elapsed_us: usize) {
-    let secs = elapsed_us as f64 / 1_000_000.0;
-    let bytes = iterations as f64 * msg_size as f64;
-    let bw_gbps = bytes * 8.0 / secs / 1e9;
-    let msg_rate_mpps = iterations as f64 / secs / 1e6;
-    terminal::println!("{:>8}  {:>12}  {:>10}  {:>18}  {:>14}", "#bytes", "#iterations", "tx_depth", "BW avg[Gb/sec]", "MsgRate[Mpps]");
-    terminal::println!("{:>8}  {:>12}  {:>10}  {:>18.6}  {:>14.6}", msg_size, iterations, tx_depth, bw_gbps, msg_rate_mpps);
+    Ok(Report::Peer)
 }

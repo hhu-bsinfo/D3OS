@@ -12,6 +12,7 @@
 use crate::bench::{self, Role, IDLE_TIMEOUT_US};
 use crate::comm::{AccuracyReport, Conn};
 use crate::error::{other, Result};
+use crate::report::Report;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Range;
@@ -57,7 +58,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     if iterations == 0 {
         return Err(other("accuracy mode requires at least one iteration"));
     }
@@ -82,7 +83,7 @@ fn send(
     msg_size: usize,
     iterations: usize,
     window: usize,
-) -> Result<()> {
+) -> Result<Report> {
     for seq in 0..window {
         let range = slot_range(seq, msg_size);
         fill_payload(&mut mr[range.clone()], seq as u64);
@@ -117,8 +118,7 @@ fn send(
     conn.sync()?; // "everything I was going to send has left the queue"
 
     let report: AccuracyReport = conn.recv_msg()?;
-    print_report(&report);
-    Ok(())
+    Ok(Report::Accuracy(report))
 }
 
 fn receive(
@@ -129,7 +129,7 @@ fn receive(
     msg_size: usize,
     iterations: usize,
     window: usize,
-) -> Result<()> {
+) -> Result<Report> {
     for slot in 0..window {
         let range = slot_range(slot, msg_size);
         unsafe { qp.post_receive(mr, vec![vec![range]], vec![slot as u64])? };
@@ -179,7 +179,7 @@ fn receive(
 
     conn.sync()?; // matches the sender's "everything I was going to send has left the queue"
     conn.send_msg(&report)?;
-    Ok(())
+    Ok(Report::Peer)
 }
 
 /// Classifies one received message: header-too-short/out-of-range sequence numbers are
@@ -225,23 +225,4 @@ fn check(got: &[u8], expected: &mut [u8], msg_size: usize, seen: &mut [bool], re
     }
     report.correct_bytes += correct_bytes;
     report.correct_bits += correct_bits;
-}
-
-fn print_report(report: &AccuracyReport) {
-    let total_bytes = (report.sent * report.msg_size) as f64;
-    let byte_acc = report.correct_bytes as f64 / total_bytes * 100.0;
-    let bit_acc = report.correct_bits as f64 / (total_bytes * 8.0) * 100.0;
-
-    terminal::println!(
-        "{:>8}  {:>12}  {:>10}  {:>8}  {:>6}  {:>10}  {:>12}  {:>12}",
-        "#bytes", "#iterations", "#received", "#lost", "#dup", "#corrupt", "ByteAcc[%]", "BitAcc[%]"
-    );
-    terminal::println!(
-        "{:>8}  {:>12}  {:>10}  {:>8}  {:>6}  {:>10}  {:>12.4}  {:>12.4}",
-        report.msg_size, report.sent, report.received, report.lost, report.duplicated, report.corrupted, byte_acc, bit_acc
-    );
-
-    if report.unidentifiable > 0 || report.truncated > 0 {
-        terminal::println!("unidentifiable: {}, truncated: {}", report.unidentifiable, report.truncated);
-    }
 }

@@ -5,6 +5,7 @@ pub mod latency;
 use crate::cli::{Mode, Transport};
 use crate::comm::Conn;
 use crate::error::{other, Result};
+use crate::report::Report;
 use ibverbs::{ibv_wc, CompletionQueue, ProtectionDomain, QueuePair};
 
 /// How long a receive/wait loop will wait for progress from the peer before giving up. Needed
@@ -45,7 +46,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     match mode {
         Mode::Bandwidth => bandwidth::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
         Mode::Latency => latency::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),

@@ -5,6 +5,7 @@
 use crate::bench::{self, Role, IDLE_TIMEOUT_US};
 use crate::comm::Conn;
 use crate::error::Result;
+use crate::report::{LatencyStats, Report};
 use alloc::vec;
 use alloc::vec::Vec;
 use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
@@ -23,7 +24,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     _tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     // Two separate buffers: reusing one for both directions would let the echo overwrite bytes
     // the outgoing send is still reading.
     let mut send_mr = pd.allocate::<u8>(msg_size)?;
@@ -61,7 +62,7 @@ fn ping(
     conn: &Conn,
     msg_size: usize,
     iterations: usize,
-) -> Result<()> {
+) -> Result<Report> {
     let mut wc = vec![ibv_wc::default(); 4];
     let mut samples: Vec<f64> = Vec::with_capacity(iterations);
 
@@ -91,8 +92,7 @@ fn ping(
     }
     conn.sync()?; // both sides done
 
-    report(msg_size, &samples);
-    Ok(())
+    Ok(Report::Latency(LatencyStats::from_samples(msg_size, &samples)))
 }
 
 fn pong(
@@ -103,7 +103,7 @@ fn pong(
     conn: &Conn,
     msg_size: usize,
     iterations: usize,
-) -> Result<()> {
+) -> Result<Report> {
     let mut wc = vec![ibv_wc::default(); 4];
     let mut echoed = 0usize;
 
@@ -123,42 +123,5 @@ fn pong(
     conn.sync()?; // both sides done
 
     terminal::println!("echoed {} of {} messages", echoed, iterations);
-    Ok(())
-}
-
-/// Nearest-rank percentiles over sorted samples, matching `perftest`'s `ib_send_lat` layout.
-fn report(msg_size: usize, samples: &[f64]) {
-    if samples.is_empty() {
-        terminal::println!("no samples collected");
-        return;
-    }
-
-    let mut sorted = samples.to_vec();
-    sorted.sort_by(f64::total_cmp);
-
-    let n = sorted.len();
-    let avg = sorted.iter().sum::<f64>() / n as f64;
-    let stdev = if n > 1 {
-        libm::sqrt(sorted.iter().map(|s| libm::pow(s - avg, 2f64)).sum::<f64>() / (n - 1) as f64)
-    } else {
-        0.0
-    };
-    let percentile = |p: f64| sorted[(libm::ceil((n as f64) * p) as usize).clamp(1, n) - 1];
-
-    terminal::println!(
-        "{:>8}  {:>12}  {:>12}  {:>12}  {:>16}  {:>12}  {:>14}  {:>10}  {:>12}",
-        "#bytes", "#iterations", "t_min[usec]", "t_max[usec]", "t_typical[usec]", "t_avg[usec]", "t_stdev[usec]", "99%[usec]", "99.9%[usec]"
-    );
-    terminal::println!(
-        "{:>8}  {:>12}  {:>12.2}  {:>12.2}  {:>16.2}  {:>12.2}  {:>14.2}  {:>10.2}  {:>12.2}",
-        msg_size,
-        n,
-        sorted[0],
-        sorted[n - 1],
-        percentile(0.50),
-        avg,
-        stdev,
-        percentile(0.99),
-        percentile(0.999)
-    );
+    Ok(Report::Peer)
 }
