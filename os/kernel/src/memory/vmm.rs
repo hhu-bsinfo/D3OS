@@ -635,15 +635,15 @@ impl VirtualAddressSpace {
         }
     }
 
-    /// Check if the given `address` is within a VMA of the given type `vma_type` in this address space.
+    /// Check if the given `address` is within a VMA in this address space.
     /// Helper function using in interrupt_dispatcher.rs to check if a page fault address is within a stack or heap VMA.
-    pub fn is_address_within_vma(&self, address: u64, vma_type: VmaType) -> Option<Arc<VirtualMemoryArea>> {
+    pub fn is_address_within_vma(&self, address: u64) -> Option<Arc<VirtualMemoryArea>> {
         let areas = self.virtual_memory_areas.read();
         let vaddr = VirtAddr::new(address); // or however you construct a VirtAddr from u64
 
         // Find the closest VMA with start <= address
         if let Some((_, vma)) = areas.range(..=vaddr).next_back() {
-            if vaddr < vma.end() && vma.typ == vma_type {
+            if vaddr < vma.end() {
                 return Some(Arc::clone(vma));
             }
         }

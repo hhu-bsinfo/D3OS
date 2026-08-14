@@ -15,11 +15,10 @@ extern crate alloc;
 pub mod env;
 
 use concurrent::{process, thread};
-use mm::MmapFlags;
+use mm::{mmap, MmapFlags};
 use core::panic::PanicInfo;
 use terminal::println;
 use linked_list_allocator::LockedHeap;
-use syscall::{syscall, SystemCall};
 
 unsafe extern "C" {
     fn main(argc: isize, argv: *const *const u8) -> isize;
@@ -37,14 +36,10 @@ fn panic(info: &PanicInfo) -> ! {
 
 #[unsafe(no_mangle)]
 extern "sysv64" fn entry() {
-    syscall(SystemCall::MapMemory, &[
-        env::HEAP_START, 
-        env::HEAP_SIZE,
-        MmapFlags::ALLOC_AT.bits() as usize
-        ]).expect("Could not create user heap.");
+    let heap = mmap(env::HEAP_START, env::HEAP_SIZE, MmapFlags::empty()).expect("Could not create user heap.");
 
     unsafe {
-        ALLOCATOR.lock().init(env::HEAP_START as *mut u8, env::HEAP_SIZE);
+        ALLOCATOR.lock().init(heap.as_mut_ptr(), heap.len());
     }
 
     thread::init_thread_environment();
