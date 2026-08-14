@@ -45,7 +45,7 @@ pub extern "sysv64" fn sys_map_memory(start: usize, size: usize, options: usize)
 
     let m_flags = MmapFlags::from_bits_truncate(options as u8);
 
-    let start_page = if m_flags.contains(MmapFlags::ALLOC_AT) {
+    let start_page = if start != 0 {
         let start_addr = VirtAddr::new(start.try_into().unwrap());
         Some(Page::containing_address(start_addr))
     } else {
@@ -60,28 +60,26 @@ pub extern "sysv64" fn sys_map_memory(start: usize, size: usize, options: usize)
         (VmaType::Heap, "heap")
     };
 
-    let vma = process.virtual_address_space.alloc_vma(
+    let Some(vma) = process.virtual_address_space.alloc_vma(
         start_page,
         num_pages as u64,
         MemorySpace::User,
         vma_type,
         vma_tag,
-    );
-
-    let Some(vma_u) = vma else {
-        return Errno::EUNKN as isize;
+    ) else {
+        return Errno::EUNKN as isize
     };
 
     if m_flags.contains(MmapFlags::POPULATE) {
-        let complete_range = vma_u.range();
+        let complete_range = vma.range();
         process.virtual_address_space.map_partial_vma(
-            &vma_u, 
+            &vma,
             complete_range, 
             MemorySpace::User, 
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
     }
 
-    vma_u.start().as_u64() as isize
+    vma.start().as_u64() as isize
 }
 
 pub extern "sysv64" fn sys_map_frame_buffer(fb_info_user: *mut FramebufferInfo) -> isize {

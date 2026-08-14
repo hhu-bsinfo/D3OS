@@ -11,7 +11,6 @@ bitflags! {
     pub struct MmapFlags: u8 {
         const ANONYMOUS = 0x01;
         const POPULATE  = 0x02; // fault in
-        const ALLOC_AT  = 0x04; // instead of passing 0 as start, this marks if it has a start address or not
     }
 }
 
