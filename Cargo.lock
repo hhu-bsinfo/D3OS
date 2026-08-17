@@ -21,7 +21,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94476c7ef97af4c4d998b3f422c1b01d5211aad57c80ed200baf148d1f1efab6"
 dependencies = [
  "bit_field",
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "log",
 ]
 
@@ -154,9 +154,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.10.0"
+version = "2.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
+checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
 name = "built"
@@ -307,27 +307,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "derive_more"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a9b99b9cbbe49445b21764dc0625032a89b145a2642e67603e1c936f5458d05"
-dependencies = [
- "derive_more-impl",
-]
-
-[[package]]
-name = "derive_more-impl"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.115",
- "unicode-xid",
-]
-
-[[package]]
 name = "displaydoc"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -368,6 +347,12 @@ name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
+
+[[package]]
+name = "elf"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55dd888a213fc57e957abf2aa305ee3e8a28dbe05687a251f33b637cd46b0070"
 
 [[package]]
 name = "embedded-io"
@@ -472,7 +457,7 @@ version = "0.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b88256088d75a56f8ecfa070513a775dd9107f6530ef14919dac831af9cfe2b"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "libc 0.2.181",
  "libgit2-sys",
  "log",
@@ -779,7 +764,7 @@ checksum = "865e8a58ae8e24d2c4412c31344afa1d302a3740ad67528c10f50d6876cdcf55"
 name = "input"
 version = "0.1.0"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "pc-keyboard",
  "stream",
  "syscall",
@@ -835,7 +820,7 @@ version = "0.1.0"
 dependencies = [
  "acpi",
  "bitfield-struct 0.1.8",
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "built",
  "chrono",
  "drawer",
@@ -1067,26 +1052,27 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "multiboot2"
-version = "0.23.1"
+version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43fcee184de68e344a888bc4f2b9d6b2f2f527cae8cedbb4d62a4df727d1ceae"
+checksum = "6760efa924ec07b86ae4de352624143d08424b7a040a9fcb808c1421e63718dd"
 dependencies = [
- "bitflags 2.10.0",
- "derive_more",
+ "bitflags 2.13.1",
+ "elf",
  "log",
  "multiboot2-common",
- "ptr_meta 0.2.0",
- "uefi-raw 0.8.0",
+ "ptr_meta",
+ "thiserror",
+ "uefi-raw 0.15.1",
 ]
 
 [[package]]
 name = "multiboot2-common"
-version = "0.2.1"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbabf8d9980d55576ba487924fa0b9a467fc0012b996b93d2319904f168ed8ab"
+checksum = "4d86c2ae21d6c7d8d42085137f7aaeee2849ea5b18b88a9d83146a1d33ce2fab"
 dependencies = [
- "derive_more",
- "ptr_meta 0.2.0",
+ "ptr_meta",
+ "thiserror",
 ]
 
 [[package]]
@@ -1212,7 +1198,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0c2a105c657261a938ff68ee231c199a3d80eef33976004829de761ef5b1a9b"
 dependencies = [
  "bit_field",
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
 ]
 
 [[package]]
@@ -1336,7 +1322,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f6774deba7b969f90614d67c65be0e0c1232d4078332800d6e68a15ecc8a4f3"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "itertools",
 ]
 
@@ -1400,31 +1386,11 @@ dependencies = [
 
 [[package]]
 name = "ptr_meta"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcada80daa06c42ed5f48c9a043865edea5dc44cbf9ac009fda3b89526e28607"
-dependencies = [
- "ptr_meta_derive 0.2.0",
-]
-
-[[package]]
-name = "ptr_meta"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b9a0cf95a1196af61d4f1cbdab967179516d9a4a4312af1f31948f8f6224a79"
 dependencies = [
- "ptr_meta_derive 0.3.1",
-]
-
-[[package]]
-name = "ptr_meta_derive"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bca9224df2e20e7c5548aeb5f110a0f3b77ef05f8585139b7148b59056168ed2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
+ "ptr_meta_derive",
 ]
 
 [[package]]
@@ -1443,7 +1409,7 @@ name = "pulldown-cmark"
 version = "0.13.0"
 source = "git+https://github.com/pulldown-cmark/pulldown-cmark.git#287fcf9c117ca4eb555ecf2cc5e7c131c01d7b24"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "hashbrown 0.15.5",
  "memchr",
  "unicase",
@@ -1485,7 +1451,7 @@ version = "11.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "498cd0dc59d73224351ee52a95fee0f1a617a2eae0e7d9d720cc622c73a54186"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
 ]
 
 [[package]]
@@ -1790,7 +1756,7 @@ version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac9ee8b664c9f1740cd813fea422116f8ba29997bb7c878d1940424889802897"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "log",
  "num-traits",
 ]
@@ -1997,10 +1963,10 @@ version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c25038e420a68d30a0e8002a3b51c075ad2342f5ae7a2383f042bd41fef73272"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "cfg-if",
  "log",
- "ptr_meta 0.3.1",
+ "ptr_meta",
  "ucs2",
  "uefi-macros",
  "uefi-raw 0.10.0",
@@ -2020,22 +1986,21 @@ dependencies = [
 
 [[package]]
 name = "uefi-raw"
-version = "0.8.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b463030b802e1265a3800fab24df95d3229c202c2e408832a206f05b4d1496ca"
+checksum = "d246ed5d6fd71c0331f0ac774a6aefb6cb9170a46f83148cacc70b09f82c87bb"
 dependencies = [
- "bitflags 2.10.0",
- "ptr_meta 0.2.0",
+ "bitflags 2.13.1",
  "uguid",
 ]
 
 [[package]]
 name = "uefi-raw"
-version = "0.10.0"
+version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d246ed5d6fd71c0331f0ac774a6aefb6cb9170a46f83148cacc70b09f82c87bb"
+checksum = "1a36f49db0b04a8dfd246a26ddf8d2526a2ffd8cf946ae7fe603fd0c5fbd2786"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "uguid",
 ]
 
@@ -2134,7 +2099,7 @@ name = "virtio-drivers"
 version = "0.12.0"
 source = "git+https://github.com/hhu-bsinfo/virtio-drivers.git?rev=f127bb0e9f3d71142ed1354e88c76b419261f8f3#f127bb0e9f3d71142ed1354e88c76b419261f8f3"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "embedded-io 0.6.1",
  "enumn",
  "log",
@@ -2240,7 +2205,7 @@ version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe"
 dependencies = [
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "hashbrown 0.15.5",
  "indexmap",
  "semver",
@@ -2462,7 +2427,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d66ea20e9553b30172b5e831994e35fbde2d165325bec84fc43dbf6f4eb9cb2"
 dependencies = [
  "anyhow",
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "indexmap",
  "log",
  "serde",
@@ -2518,7 +2483,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c101112411baafbb4bf8d33e4c4a80ab5b02d74d2612331c61e8192fc9710491"
 dependencies = [
  "bit_field",
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "rustversion",
  "volatile",
 ]
@@ -2530,7 +2495,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7841fa0098ceb15c567d93d3fae292c49e10a7662b4936d5f6a9728594555ba"
 dependencies = [
  "bit_field",
- "bitflags 2.10.0",
+ "bitflags 2.13.1",
  "const_fn",
  "rustversion",
  "volatile",

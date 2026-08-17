@@ -34,7 +34,7 @@ virtio = { package = "virtio-drivers", git = "https://github.com/hhu-bsinfo/virt
 spin = "0.12"
 x86_64 = "0.15.2"
 linked_list_allocator = { version = "0.10.6", features = ["alloc_ref"] }
-multiboot2 = "0.23.1"
+multiboot2 = "0.25"
 ps2 = { git = "https://github.com/lnx00/ps2-rs.git" }
 pc-keyboard = "0.8.0"
 chrono = { version = "0.4.40", default-features = false, features = ["alloc"] }
