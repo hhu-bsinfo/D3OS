@@ -1752,9 +1752,9 @@ dependencies = [
 
 [[package]]
 name = "tar-no-std"
-version = "0.3.5"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac9ee8b664c9f1740cd813fea422116f8ba29997bb7c878d1940424889802897"
+checksum = "4ce14e67325dafcde4b79b521f01769db00660c87e3ed4ad9da8006fcee272bf"
 dependencies = [
  "bitflags 2.13.1",
  "log",
