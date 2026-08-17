@@ -11,7 +11,6 @@
 #![feature(abi_x86_interrupt)]
 #![feature(cell_get_cloned)]
 #![feature(map_try_insert)]
-#![feature(ptr_as_ref_unchecked)]
 #![no_std]
 
 use crate::device::apic::Apic;

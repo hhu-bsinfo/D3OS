@@ -1111,9 +1111,9 @@ dependencies = [
 
 [[package]]
 name = "printf-compat"
-version = "0.3.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f6774deba7b969f90614d67c65be0e0c1232d4078332800d6e68a15ecc8a4f3"
+checksum = "613142bc127747febf3eae56e000f1be431756a6eaa8d3f060f9144d938e798c"
 dependencies = [
  "bitflags 2.13.1",
  "itertools",
