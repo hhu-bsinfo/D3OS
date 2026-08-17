@@ -339,6 +339,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "doom"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "concurrent",
+ "graphic",
+ "libc 0.1.0",
+ "pc-keyboard",
+ "runtime",
+ "spin 0.10.0",
+ "terminal",
+ "time",
+]
+
+[[package]]
 name = "drawer"
 version = "0.1.0"
 dependencies = [
