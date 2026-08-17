@@ -60,4 +60,4 @@ uefi-raw = "0.15"
 uefi = { version = "0.39", features = ["alloc"] }
 
 [build-dependencies]
-built = { version = "0.7.7", features = ["chrono", "git2"] }
+built = { version = "0.8", features = ["chrono", "git2"] }
