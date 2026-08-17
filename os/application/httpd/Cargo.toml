@@ -13,7 +13,7 @@ bench = false
 
 [dependencies]
 httparse = { version = "1.10", default-features = false }
-infer = { version = "0.3", default-features = false }
+infer = { version = "0.22", default-features = false }
 # Local dependencies
 runtime = { path = "../../library/runtime" }
 network = { path = "../../library/network" }
