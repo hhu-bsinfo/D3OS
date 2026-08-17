@@ -46,7 +46,6 @@ use spin::{Mutex, MutexGuard, Once};
 use thingbuf::mpsc::{Sender};
 use crate::device::apic::get_apic_id;
 use crate::device::cpu::{disable_int_nested, enable_int_nested};
-use crate::ipi::send_fixed_to_apic;
 use crate::process::core_local_storage::{cls, current_core_id, scheduler, tss_static};
 
 // thread IDs
@@ -1056,12 +1055,12 @@ pub struct PerCpuRef {
     rq_len: AtomicU32,
     resched_flag: AtomicBool,
     tx: Sender<Option<MessageItem>>,    // producers (remote cores)
-    apic_id: AtomicUsize,
+    apic_id: AtomicU32,
 }
 unsafe impl Sync for PerCpuRef {}
 impl PerCpuRef { pub fn new(tx: Sender<Option<MessageItem>>) -> Self {
     Self { rq_len: AtomicU32::new(0), resched_flag: AtomicBool::new(false),
-        tx, apic_id: AtomicUsize::new(0) } } }
+        tx, apic_id: AtomicU32::new(0) } } }
 
 
 /// Wrapper enum to store either a runnable thread or a small cross-core command.
@@ -1106,7 +1105,7 @@ pub fn set_inbox_apic_id(id: usize) {
 }
 
 /// Returns the apic_id of the core with the given id
-pub fn per_cpu_apic_id(cpu_id: usize) -> usize {
+pub fn per_cpu_apic_id(cpu_id: usize) -> u32 {
     per_cpu_ref(cpu_id).apic_id.load(Ordering::Acquire)
 }
 
@@ -1179,7 +1178,7 @@ pub fn drain_inbox_into_ready(max: usize, state: &mut ReadyState) {
 
 /// Sends a Reschedule IPI to wake the core with the given id up, if it was idle.
 fn send_reschedule_ipi(target_id: usize) {
-    send_fixed_to_apic(per_cpu_apic_id(target_id),0xf1)
+    apic().send_reschedule(per_cpu_apic_id(target_id))
 }
 /// Owner function to set the reschedule flag of the current core.
 pub fn set_resched_flag() {

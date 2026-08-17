@@ -9,7 +9,7 @@
 */
 use crate::device::apic::get_cpu_count;
 use crate::process::core_local_storage::{init_gdt_for_this_core, install_gs_base, scheduler, scheduler_start};
-use crate::{consts, ipi, per_cpu_init};
+use crate::{consts, per_cpu_init};
 use crate::device::pit::Timer;
 use crate::device::ps2::{Keyboard, Mouse};
 use crate::device::{cpu, virtio};
@@ -648,7 +648,7 @@ fn start_ap_processors() {
     let boot_ap_start = boot_ap_start();
 
     // send Init-IPI to all APs
-    ipi::send_init();
+    apic().send_init();
 
     // wait at least 100ms
     timer().wait(100);
@@ -657,5 +657,5 @@ fn start_ap_processors() {
     let vector: u8 = (boot_ap_start.addr() >> 12).try_into().unwrap();
 
     info!("   Sending STARTUP IPI #1");
-    ipi::send_startup(vector as u8);
+    apic().send_startup(vector);
 }

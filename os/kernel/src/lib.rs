@@ -42,7 +42,6 @@ use acpi::AcpiTables;
 use alloc::string::String;
 use alloc::sync::Arc;
 use x86_64::instructions::interrupts;
-use core::fmt::{Arguments, Display};
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
 use device::tty::{TtyInput, TtyOutput};
@@ -78,7 +77,6 @@ pub mod storage;
 pub mod syscall;
 pub mod sync;
 pub mod boot_ap;
-pub mod ipi;
 
 pub mod built_info {
     // The file has been placed there by the build script

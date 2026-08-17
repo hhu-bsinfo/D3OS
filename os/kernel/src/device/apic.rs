@@ -446,6 +446,33 @@ impl Apic {
             ticks_per_ms
         }
     }
+
+    /// Send an init inter-process interrupt to all application processors.
+    pub fn send_init(&self) {
+        let mut local_apic = local_apic_static()
+            .expect("local APIC not initialized")
+            .try_lock()
+            .expect("failed to acquire lock for the local APIC");
+        unsafe { local_apic.send_init_ipi_all() };
+    }
+
+    /// Send a start-up inter-process interrupt to all application processors.
+    pub fn send_startup(&self, vector: u8) {
+        let mut local_apic = local_apic_static()
+            .expect("local APIC not initialized")
+            .try_lock()
+            .expect("failed to acquire lock for the local APIC");
+        unsafe { local_apic.send_sipi_all(vector) };
+    }
+
+    /// Send a reschedule inter-process interrupt to a specific application processor.
+    pub fn send_reschedule(&self, dest: u32) {
+        let mut local_apic = local_apic_static()
+            .expect("local APIC not initialized")
+            .try_lock()
+            .expect("failed to acquire lock for the local APIC");
+        unsafe { local_apic.send_ipi(InterruptVector::Reschedule as u8, dest) };
+    }
 }
 
 /// returns cpu count with bootstrap processor included
@@ -479,9 +506,9 @@ pub fn get_cpu_count() -> usize {
 
 /// returns this cpu's apic id
 /// needed to init perCpu global variables
-pub fn get_apic_id() -> usize {
+pub fn get_apic_id() -> u32 {
     if let Some(feat) = CpuId::new().get_feature_info() {
-        feat.initial_local_apic_id() as usize
+        feat.initial_local_apic_id().into()
     }
     else{
         error!("Problem while reading CPU ID features! APIC ID WILL BE SET TO 1!");
