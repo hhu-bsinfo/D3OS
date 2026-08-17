@@ -16,5 +16,5 @@ terminal = { path = "../terminal" }
 naming = { path = "../../library/naming" }
 
 # External dependencies
-spin = "0.10.0"
+spin = "0.12"
 printf-compat = { version = "0.3.0", default-features = false }

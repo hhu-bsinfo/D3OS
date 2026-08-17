@@ -31,7 +31,7 @@ input = { path = "../library/input", default-features = false }
 virtio = { package = "virtio-drivers", git = "https://github.com/hhu-bsinfo/virtio-drivers.git", rev = "f127bb0e9f3d71142ed1354e88c76b419261f8f3" }
 
 # External depencies
-spin = "0.9.8"
+spin = "0.12"
 x86_64 = "0.15.2"
 linked_list_allocator = { version = "0.10.6", features = ["alloc_ref"] }
 multiboot2 = "0.23.1"

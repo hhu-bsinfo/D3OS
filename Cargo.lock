@@ -232,7 +232,7 @@ name = "concurrent"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "spin 0.10.0",
+ "spin 0.12.2",
  "syscall",
  "time",
  "uuid",
@@ -348,7 +348,7 @@ dependencies = [
  "libc 0.1.0",
  "pc-keyboard",
  "runtime",
- "spin 0.10.0",
+ "spin 0.12.2",
  "terminal",
  "time",
 ]
@@ -359,7 +359,7 @@ version = "0.1.0"
 dependencies = [
  "graphic",
  "nolock",
- "spin 0.9.8",
+ "spin 0.12.2",
  "syscall",
 ]
 
@@ -856,7 +856,7 @@ dependencies = [
  "raw-cpuid 11.6.0",
  "smallmap",
  "smoltcp",
- "spin 0.9.8",
+ "spin 0.12.2",
  "stream",
  "syscall",
  "system_info",
@@ -898,7 +898,7 @@ version = "0.1.0"
 dependencies = [
  "naming",
  "printf-compat",
- "spin 0.10.0",
+ "spin 0.12.2",
  "syscall",
  "terminal",
 ]
@@ -1034,7 +1034,7 @@ dependencies = [
  "concurrent",
  "graphic",
  "runtime",
- "spin 0.9.8",
+ "spin 0.12.2",
  "terminal",
  "time",
 ]
@@ -1118,7 +1118,7 @@ dependencies = [
  "postcard",
  "runtime",
  "serde",
- "spin 0.10.0",
+ "spin 0.12.2",
  "terminal",
  "time",
 ]
@@ -1226,7 +1226,7 @@ dependencies = [
  "naming",
  "pc-keyboard",
  "runtime",
- "spin 0.10.0",
+ "spin 0.12.2",
  "terminal",
  "time",
 ]
@@ -1638,7 +1638,7 @@ dependencies = [
  "log",
  "naming",
  "runtime",
- "spin 0.10.0",
+ "spin 0.12.2",
  "syscall",
  "terminal",
 ]
@@ -1699,9 +1699,9 @@ dependencies = [
 
 [[package]]
 name = "spin"
-version = "0.10.0"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
+checksum = "8abadc99fd9c7bbb7d0ca2b31d72a067d0c0dcd7aad25ab8cac71ba91417694b"
 dependencies = [
  "lock_api",
 ]
@@ -1803,7 +1803,7 @@ dependencies = [
  "logger",
  "num_enum",
  "pc-keyboard",
- "spin 0.9.8",
+ "spin 0.12.2",
  "stream",
  "syscall",
 ]
@@ -1823,7 +1823,7 @@ dependencies = [
  "num_enum",
  "pc-keyboard",
  "runtime",
- "spin 0.10.0",
+ "spin 0.12.2",
  "stream",
  "syscall",
  "system_info",
@@ -2263,7 +2263,7 @@ dependencies = [
  "pc-keyboard",
  "pulldown-cmark",
  "runtime",
- "spin 0.9.8",
+ "spin 0.12.2",
  "syntax",
  "terminal",
  "text_buffer",
