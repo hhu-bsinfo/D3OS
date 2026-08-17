@@ -12,7 +12,7 @@ doctest = false
 bench = false
 
 [dependencies]
-pc-keyboard = "0.8"
+pc-keyboard = "0.9"
 # Local dependencies
 runtime = { path = "../../library/runtime" }
 terminal = { path = "../../library/terminal" }
