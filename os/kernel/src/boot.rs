@@ -491,7 +491,7 @@ fn multiboot2_search_memory_map(multiboot2_addr: *const BootInformationHeader) -
             uefi::boot::set_image_handle(image_handle);
 
             info!("Exiting EFI boot services to obtain runtime system table and memory map");
-            memory_map = uefi::boot::exit_boot_services(MemoryType::LOADER_DATA);
+            memory_map = uefi::boot::exit_boot_services(None);
         }
 
         scan_efi_memory_map(&memory_map);
@@ -535,13 +535,10 @@ fn scan_efi_multiboot2_memory_map(memory_map: &EFIMemoryMapTag) {
     info!("Searching memory map for available regions");
     memory_map
         .memory_areas()
-        .filter(|area| {
-            area.ty.0 == MemoryType::CONVENTIONAL.0
-                || area.ty.0 == MemoryType::LOADER_CODE.0
-                || area.ty.0 == MemoryType::LOADER_DATA.0
-                || area.ty.0 == MemoryType::BOOT_SERVICES_CODE.0
-                || area.ty.0 == MemoryType::BOOT_SERVICES_DATA.0
-        }) // .0 necessary because of different version dependencies to uefi-crate
+        .filter(|area| matches!(
+            area.ty,
+            MemoryType::CONVENTIONAL | MemoryType::LOADER_CODE | MemoryType::LOADER_DATA | MemoryType::BOOT_SERVICES_CODE | MemoryType::BOOT_SERVICES_DATA,
+        ))
         .for_each(|area| {
             if area.virt_start != 0 {
                 warn!("ignoring memory area with virtual address");
@@ -564,13 +561,10 @@ fn scan_efi_memory_map(memory_map: &dyn MemoryMap) {
     info!("Searching memory map for available regions");
     memory_map
         .entries()
-        .filter(|area| {
-            area.ty == MemoryType::CONVENTIONAL
-                || area.ty == MemoryType::LOADER_CODE
-                || area.ty == MemoryType::LOADER_DATA
-                || area.ty == MemoryType::BOOT_SERVICES_CODE
-                || area.ty == MemoryType::BOOT_SERVICES_DATA
-        })
+        .filter(|area| matches!(
+            area.ty,
+            MemoryType::CONVENTIONAL | MemoryType::LOADER_CODE | MemoryType::LOADER_DATA | MemoryType::BOOT_SERVICES_CODE | MemoryType::BOOT_SERVICES_DATA,
+        ))
         .for_each(|area| {
             if area.virt_start != 0 {
                 warn!("ignoring memory area with virtual address");

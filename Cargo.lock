@@ -849,7 +849,7 @@ dependencies = [
  "terminal",
  "thingbuf",
  "uefi",
- "uefi-raw 0.10.0",
+ "uefi-raw",
  "uuid",
  "virtio-drivers",
  "x2apic",
@@ -1062,7 +1062,7 @@ dependencies = [
  "multiboot2-common",
  "ptr_meta",
  "thiserror",
- "uefi-raw 0.15.1",
+ "uefi-raw",
 ]
 
 [[package]]
@@ -1795,7 +1795,6 @@ dependencies = [
  "system_info",
  "terminal",
  "time",
- "uefi",
 ]
 
 [[package]]
@@ -1959,9 +1958,9 @@ dependencies = [
 
 [[package]]
 name = "uefi"
-version = "0.34.1"
+version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c25038e420a68d30a0e8002a3b51c075ad2342f5ae7a2383f042bd41fef73272"
+checksum = "a58ad7512f7c38b58aa536c3839dbb1d5a122d14a7e2245b06ded49edcb7585a"
 dependencies = [
  "bitflags 2.13.1",
  "cfg-if",
@@ -1969,29 +1968,19 @@ dependencies = [
  "ptr_meta",
  "ucs2",
  "uefi-macros",
- "uefi-raw 0.10.0",
+ "uefi-raw",
  "uguid",
 ]
 
 [[package]]
 name = "uefi-macros"
-version = "0.18.1"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3dad47b3af8f99116c0f6d4d669c439487d9aaf1c8d9480d686cda6f3a8aa23"
+checksum = "4687412b5ac74d245d5bfb1733ede50c31be19bf8a4b6a967a29b451bab49e67"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.115",
-]
-
-[[package]]
-name = "uefi-raw"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d246ed5d6fd71c0331f0ac774a6aefb6cb9170a46f83148cacc70b09f82c87bb"
-dependencies = [
- "bitflags 2.13.1",
- "uguid",
 ]
 
 [[package]]
