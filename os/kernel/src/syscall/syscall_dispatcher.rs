@@ -21,7 +21,7 @@ use super::sys_concurrent::{
     sys_process_count, sys_process_execute_binary, sys_process_exit,
     sys_process_id, sys_thread_count, sys_process_status, 
     sys_thread_create, sys_thread_exit, sys_thread_id, sys_thread_join, 
-    sys_thread_kill, sys_thread_sleep, sys_thread_switch,
+    sys_thread_kill, sys_thread_sleep, sys_thread_switch, sys_core_id,
 };
 use super::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
 use super::sys_input::{sys_read_keyboard, sys_read_mouse};
@@ -112,6 +112,7 @@ impl SyscallTable {
                 sys_thread_exit as *const _,
                 sys_thread_kill as *const _,
                 sys_thread_count as *const _,
+                sys_core_id as *const _,
                 sys_get_system_time as *const _,
                 sys_get_date as *const _,
                 sys_set_date as *const _,

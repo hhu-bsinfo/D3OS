@@ -13,6 +13,7 @@ members = [
     "os/application/heaptest",
     "os/application/threadtest",
     "os/application/filetest",
+    "os/application/mandelbrot",
     "os/application/nc",
     "os/application/ping",
     "os/application/ip",
