@@ -11,7 +11,7 @@ use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
 use smoltcp::socket;
 use smoltcp::socket::{dhcpv4, dns, icmp, tcp, udp};
 use smoltcp::time::Instant;
-use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint};
+use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint, Ipv6Cidr};
 use spin::{Once, RwLock};
 use crate::device::rtl8139::Rtl8139;
 use crate::process::core_local_storage::scheduler;
@@ -62,8 +62,10 @@ pub fn init() {
         
         // Set up network interface
         let time = timer().systime_ms();
-        let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
+        let hw_addr = HardwareAddress::from(rtl8139.read_mac_address());
+        let mut conf = iface::Config::new(hw_addr);
         conf.random_seed = time as u64;
+        conf.slaac = true;
 
         // The Smoltcp interface struct wants a mutable reference to the device.
         // However, the RTL8139 driver is designed to work with shared references.
@@ -72,7 +74,14 @@ pub fn init() {
         // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
         // since it does not modify the device itself.)
         let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-        add_interface(Interface::new(conf, device, Instant::from_millis(time as i64)));
+        let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
+        interface.update_ip_addrs(|addrs| {
+            // https://github.com/smoltcp-rs/smoltcp/blob/main/src/iface/interface/tests/ipv6.rs
+            let ll_prefix = Ipv6Cidr::new(Ipv6Cidr::LINK_LOCAL_PREFIX.address(), 64);
+            let local_addr = Ipv6Cidr::from_link_prefix(&ll_prefix, hw_addr).unwrap();
+            addrs.push(local_addr.into()).expect("failed to add link-local address");
+        });
+        add_interface(interface);
 
         let sockets = SOCKETS.get().expect("Socket set not initialized!");
         let current_process = process_manager().read().current_process();
@@ -453,14 +462,18 @@ fn poll_sockets() -> Option<()> {
         match event {
             dhcpv4::Event::Deconfigured => {
                 info!("lost DHCP lease");
-                interface.update_ip_addrs(|addrs| addrs.clear());
+                // remove all IPv4 addresses
+                interface.update_ip_addrs(|addrs|
+                    addrs.retain(|addr| matches!(addr, IpCidr::Ipv6(_)))
+                );
                 interface.routes_mut().remove_default_ipv4_route();
             },
             dhcpv4::Event::Configured(config) => {
                 info!("acquired DHCP lease:");
                 info!("IP address: {}", config.address);
                 interface.update_ip_addrs(|addrs| {
-                    addrs.clear();
+                    // remove all other IPv4 addresses
+                    addrs.retain(|addr| matches!(addr, IpCidr::Ipv6(_)));
                     addrs.push(IpCidr::Ipv4(config.address)).unwrap();
                 });
 
@@ -504,7 +517,7 @@ fn poll_sockets() -> Option<()> {
             // Only remove TCP sockets that have fully traversed the state machine to the CLOSED state.
             socket::Socket::Tcp(s) => s.state() == tcp::State::Closed,
             // UDP sockets are stateless so whe can remove them immediately
-            socket::Socket::Udp(s) => true,
+            socket::Socket::Udp(_s) => true,
             _ => false,
         };
 
