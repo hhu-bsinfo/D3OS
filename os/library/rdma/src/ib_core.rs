@@ -15,6 +15,7 @@ use strum_macros::FromRepr;
 pub mod ibv_qp_type {
     #[derive(Clone, Copy, PartialEq, Debug)]
     #[non_exhaustive]
+    #[repr(u8)]
     pub enum Type {
         IBV_QPT_RC, IBV_QPT_UC, IBV_QPT_UD,
     }

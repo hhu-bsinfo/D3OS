@@ -101,6 +101,7 @@ pub use ffi::ibv_access_flags;
 /// Because `std::slice::SliceIndex` is still unstable, we follow @alexcrichton's suggestion in
 /// https://github.com/rust-lang/rust/issues/35729 and implement it ourselves.
 pub mod sliceindex;
+mod mlx4;
 
 /// Get list of available RDMA devices.
 ///

@@ -14,8 +14,8 @@ mod profile;
 mod queue_pair;
 mod utils;
 
+use alloc::format;
 use alloc::vec::Vec;
-use core::slice::Iter;
 use cmd::CommandInterface;
 use completion_queue::CompletionQueue;
 use event_queue::{EventQueue, init_eqs};
@@ -23,10 +23,10 @@ use fw::{Capabilities, Hca, MappedFirmwareArea};
 use byteorder::BigEndian;
 use icm::MappedIcmTables;
 use log::{error, trace, warn};
-use pci_types::{CommandRegister, EndpointHeader};
+use pci_types::{Bar, CommandRegister, EndpointHeader};
 use zerocopy::U32;
 
-use rdma::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_type, ibv_recv_wr, ibv_send_wr, ibv_wc};
+use rdma::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_type};
 
 use crate::pci_bus;
 use port::Port;
@@ -40,9 +40,13 @@ use profile::Profile;
 
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
-use bitflags::bitflags;
-use rdma::uverbs_uapi::{ReceiveWorkRequest, SendWorkRequest};
+use x86_64::PhysAddr;
+use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
+use crate::device::mlx4::fw::DoorbellPage;
 use crate::device::mlx4::icm::DataMemoryProtectionTable;
+use crate::memory::{MemorySpace, PAGE_SIZE};
+use crate::memory::vma::VmaType;
+use crate::process::process::Process;
 
 /// Vendor ID for Mellanox
 pub const MLX_VEND: u16 = 0x15b3;
@@ -90,8 +94,6 @@ pub struct ConnectX3Nic {
     offsets: Offsets,
     icm_tables: MappedIcmTables,
     hca: Hca,
-    doorbells: Vec<MappedPages>,
-    blueflame: Vec<MappedPages>,
     eqs: Vec<EventQueue>,
     // TODO: find some way to bind this to the relevant EQ
     cqs: Vec<CompletionQueue>,
@@ -100,8 +102,10 @@ pub struct ConnectX3Nic {
     /// Set once the internal error buffer has been dumped, so it is reported once and not on
     /// every poll afterwards.
     internal_error_reported: bool,
-    /// Counts down to the next check of the internal error buffer, see [`Self::poll_cq`].
+    /// Counts down to the next check of the internal error buffer, see [`Self::drain_events`].
     internal_error_countdown: u32,
+    identity_mapped_uar: MappedPages,
+    uar_bf_bar: Bar,
     pub handle: usize,
 }
 
@@ -132,13 +136,6 @@ impl ConnectX3Nic {
             "mlx4-config-regs"
         );
         trace!("mlx4 configuration registers: {:?}", config_regs);
-
-        // map the User Access Region
-        let user_access_region = utils::pci_map_bar_mem(
-            mlx3_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)")?,
-            "mlx4-uar"
-        );
-        trace!("mlx4 user access region: {:?}", user_access_region);
 
         // set the memory space bit for this PciDevice
         // set the bus mastering bit for this PciDevice, which allows it to use DMA
@@ -172,9 +169,17 @@ impl ConnectX3Nic {
         // give us the interrupt pin
         hca.query_adapter(&mut cmd)?;
 
-        // get the doorbells and the BlueFlame section
-        let (mut doorbells, blueflame) = capabilities.get_doorbells_and_blueflame(user_access_region)?;
-        let eqs = init_eqs(&mut cmd, &mut doorbells, &capabilities, &mut offsets, icm_tables.memory_regions())?;
+        let uar_bf_bar = mlx3_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)")?;
+        trace!("mlx4 User Access Region (UAR) Bar : {:?}", uar_bf_bar);
+
+        // Identity Mapping of the UAR pages. This is only relevant for the kernel, mainly for EQ
+        // Doorbells. A UAR page also has to be mapped individually for each process that open this
+        // device and should not be shared with different processes
+        let mut identity_mapped_uar = utils::pci_map_bar_mem(uar_bf_bar, "mlx4-uar");
+
+        // The first 128 UAR pages are reserved for EQs
+        let eq_doorbells: &mut [DoorbellPage] = identity_mapped_uar.as_slice_mut(0, 128)?;
+        let eqs = init_eqs(&mut cmd, eq_doorbells, &capabilities, &mut offsets, icm_tables.memory_regions())?;
 
         hca.config_mad_demux(&mut cmd, &capabilities)?;
 
@@ -195,8 +200,6 @@ impl ConnectX3Nic {
             offsets,
             icm_tables,
             hca,
-            doorbells,
-            blueflame,
             eqs,
             cqs: Vec::new(),
             qps: Vec::new(),
@@ -204,6 +207,8 @@ impl ConnectX3Nic {
             internal_error_reported: false,
             internal_error_countdown: 0,
             handle,
+            uar_bf_bar,
+            identity_mapped_uar
         };
         get_dev_list().lock().push(nic);
         Ok(handle)
@@ -221,19 +226,90 @@ impl ConnectX3Nic {
         })
     }
 
+    /// Map a single UAR page (used for ringing SQ/CQ doorbells) into `process`'s address space.
+    ///
+    /// Shared by QP creation (which also maps a BlueFlame page via [`Self::map_bf`]) and CQ
+    /// creation (which only needs the UAR page).
+    fn map_uar(&self, uar_idx: usize, process: &Process, label: &str) -> Result<Page, &'static str> {
+        if uar_idx < self.capabilities.num_rsvd_uars() as usize {
+            return Err("UAR is reserved");
+        }
+
+        if uar_idx > self.capabilities.num_uars() {
+            return Err("UAR index out of range");
+        }
+
+        // TODO: add bitmap to check if uar is already mapped
+
+        let (addr, _size) = self.uar_bf_bar.unwrap_mem();
+
+        let uar_addr = addr + PAGE_SIZE * uar_idx;
+        let uar_frame = PhysFrame::from_start_address(PhysAddr::new(uar_addr as u64)).map_err(|_| "UAR page not aligned")?;
+        let uar_vma = process.virtual_address_space.alloc_vma(
+            None,
+            1,
+            MemorySpace::User,
+            VmaType::DeviceMemory,
+            label,
+        ).ok_or("Failed to allocate VMA for UAR")?;
+        process.virtual_address_space.map_pfr_for_vma(
+            &uar_vma,
+            PhysFrame::range(uar_frame, uar_frame + 1),
+            PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE | PageTableFlags::NO_CACHE,
+        ).map_err(|_| "Failed to map UAR")?;
+        Ok(uar_vma.range.start)
+    }
+
+    /// Map the BlueFlame page paired with UAR `uar_idx` into `process`'s address space.
+    ///
+    /// Used only by QP creation; CQs only need [`Self::map_uar`].
+    fn map_bf(&self, uar_idx: usize, process: &Process) -> Result<Page, &'static str> {
+        assert!(self.capabilities.bf(), "Blueflame is not supported");
+        let (addr, _size) = self.uar_bf_bar.unwrap_mem();
+        // The BlueFlame region follows the whole UAR doorbell region (`num_uars()` pages), one
+        // BF page per UAR.
+        let bf_addr = addr + self.capabilities.num_uars() * PAGE_SIZE + PAGE_SIZE * uar_idx;
+        let bf_frame = PhysFrame::from_start_address(PhysAddr::new(bf_addr as u64)).map_err(|_| "BF page not aligned")?;
+        let bf_vma = process.virtual_address_space.alloc_vma(
+            None,
+            1,
+            MemorySpace::User,
+            VmaType::DeviceMemory,
+            format!("bf-{uar_idx}",).as_str()
+        ).ok_or("Failed to allocate VMA for BF")?;
+        process.virtual_address_space.map_pfr_for_vma(
+            &bf_vma,
+            PhysFrame::range(bf_frame, bf_frame + 1),
+            PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE | PageTableFlags::NO_CACHE,
+        ).map_err(|_| "Failed to map BF")?;
+        Ok(bf_vma.range.start)
+    }
+
     /// Drain the event queue, returning how many events were handled.
     ///
     /// The card reports a port going down, a queue pair failing or its own internal errors as
-    /// events, and the only path that used to consume them was `CompletionQueue::poll`. That
-    /// makes an event's log timestamp the moment it was *noticed*, not the moment it happened,
-    /// which is useless for attributing a failure to the operation that caused it. Draining
-    /// after every verb costs one read of the ring when it is empty and gives that attribution
-    /// back.
+    /// events. Draining after every verb costs one read of the ring when it is empty and
+    /// attributes an event to the operation that caused it. Now that posting and polling both
+    /// happen directly from userspace against mapped memory, without going through a syscall,
+    /// userspace also drives this directly (rate-limited, see `UverbsCmd::DrainEvents`) so
+    /// events still get noticed during an otherwise syscall-free hot loop.
+    ///
+    /// This is also where the internal error buffer gets checked (an MMIO read, so also
+    /// rate-limited, see [`Self::internal_error_countdown`]) since it used to run from the same
+    /// place `CompletionQueue::poll` did.
     pub fn drain_events(&mut self) -> usize {
+        const INTERNAL_ERROR_CHECK_INTERVAL: u32 = 4096;
+        if self.internal_error_countdown == 0 {
+            self.internal_error_countdown = INTERNAL_ERROR_CHECK_INTERVAL;
+            self.check_internal_error();
+        } else {
+            self.internal_error_countdown -= 1;
+        }
         let Some(eq) = self.eqs.first_mut() else {
             return 0;
         };
-        match eq.handle_events(&mut self.doorbells, false) {
+        let eq_doorbells: &mut [DoorbellPage] = self.identity_mapped_uar.as_slice_mut(0, 128).unwrap();
+        match eq.handle_events(eq_doorbells, false) {
             Ok(handled) => handled,
             Err(e) => {
                 warn!("draining the event queue failed: {e}");
@@ -313,42 +389,22 @@ impl ConnectX3Nic {
         }
     }
 
-    /// Create a completion queue and return its number.
+    /// Create a completion queue and return its number, plus the UAR doorbell page mapped into
+    /// the calling process.
     ///
-    /// This is used by ibv_create_cq.
-    pub fn create_cq(&mut self, min_num_entries: i32) -> Result<u32, &'static str> {
+    /// This is used by ibv_create_cq. `buffer` and `doorbell_ptr` are userspace-owned and
+    /// -mapped; polling and CQE parsing happen entirely in userspace against them, so from here
+    /// on the kernel only needs the buffer for building its MTT.
+    pub fn create_cq(&mut self, min_num_entries: i32, buffer: *const u8, doorbell_ptr: *const u64) -> Result<(u32, *mut u8), &'static str> {
         // TODO min_num_entries should be u32
-        let mut cq = CompletionQueue::new(
-            &mut self.cmd,
-            &mut self.capabilities,
-            &mut self.offsets,
-            self.icm_tables.memory_regions(),
-            self.eqs.get(0),
-            min_num_entries.try_into().unwrap(),
-        )?;
-        cq.arm(&mut self.doorbells)?;
+        let mut cq = CompletionQueue::new(self, min_num_entries.try_into().unwrap(), buffer, doorbell_ptr)?;
+        let doorbells = self.identity_mapped_uar.as_slice_mut(0, self.capabilities.num_uars())?;
+        cq.arm(doorbell_ptr as *mut u64, doorbells)?;
         cq.query(&mut self.cmd)?;
         let number = cq.number();
+        let doorbell_page = cq.uar_page_ptr();
         self.cqs.push(cq);
-        Ok(number)
-    }
-
-    /// Poll a completion queue and return the number of new completions.
-    ///
-    /// This is used by ibv_poll_cq.
-    pub fn poll_cq(&mut self, number: u32, wc: &mut [ibv_wc]) -> Result<usize, &'static str> {
-        // This is the only path that runs continuously while a benchmark is going, so it is
-        // where an internal error has to be noticed. Reading the buffer is an MMIO access, so
-        // it happens on a countdown rather than on every poll.
-        const INTERNAL_ERROR_CHECK_INTERVAL: u32 = 4096;
-        if self.internal_error_countdown == 0 {
-            self.internal_error_countdown = INTERNAL_ERROR_CHECK_INTERVAL;
-            self.check_internal_error();
-        } else {
-            self.internal_error_countdown -= 1;
-        }
-        let cq = self.cqs.iter_mut().find(|cq| cq.number() == number).ok_or("invalid completion queue number")?;
-        cq.poll(&mut self.eqs, &mut self.qps, &mut self.doorbells, wc)
+        Ok((number, doorbell_page))
     }
 
     /// Destroy a completion queue.
@@ -367,31 +423,36 @@ impl ConnectX3Nic {
     /// Create a queue pair and return its number.
     ///
     /// This is used by ibv_create_qp.
-    pub fn create_qp(
-        &mut self, qp_type: ibv_qp_type::Type, send_cq_number: u32, receive_cq_number: u32, ib_caps: &mut ibv_qp_cap,
-    ) -> Result<u32, &'static str> {
-        let send_cq = self
-            .cqs
-            .iter()
-            .find(|cq| cq.number() == send_cq_number)
-            .ok_or("invalid send completion queue number")?;
-        let receive_cq = self
-            .cqs
-            .iter()
-            .find(|cq| cq.number() == receive_cq_number)
-            .ok_or("invalid receive completion queue number")?;
+    /// Create a queue pair and return its number, plus the UAR and BlueFlame pages mapped into
+    /// the calling process.
+    pub fn create_qp(&mut self,
+                     qp_type: ibv_qp_type::Type,
+                     send_cq_number: u32,
+                     receive_cq_number: u32,
+                     buffer: *const u8,
+                     doorbell_ptr: *const u32,
+                     log_sq_bb_count: u8,
+                     log_sq_stride: u8,
+                     log_rq_wqe_count: u8,
+                     log_rq_stride: u8,
+    ) -> Result<(u32, *mut u8, *mut u8), &'static str> {
         let qp = QueuePair::new(
-            &mut self.capabilities,
-            &mut self.offsets,
-            self.icm_tables.memory_regions(),
+            self,
             qp_type,
-            send_cq,
-            receive_cq,
-            ib_caps,
+            send_cq_number,
+            receive_cq_number,
+            buffer,
+            doorbell_ptr,
+            log_sq_bb_count,
+            log_sq_stride,
+            log_rq_wqe_count,
+            log_rq_stride,
         )?;
         let number = qp.number();
+        let doorbell_page = qp.uar_page_ptr();
+        let blueflame_page = qp.bf_page_ptr();
         self.qps.push(qp);
-        Ok(number)
+        Ok((number, doorbell_page, blueflame_page))
     }
 
     /// Modify a queue pair.
@@ -413,23 +474,6 @@ impl ConnectX3Nic {
         let qp = self.qps.remove(index);
         qp.destroy(&mut self.cmd, &mut self.capabilities)?;
         Ok(())
-    }
-
-    /// Post a work request to receive data.
-    ///
-    /// This is used by ibv_post_recv.
-    pub fn post_receive(&mut self, qp_number: u32, wr: &[ReceiveWorkRequest]) -> Result<(), &'static str> {
-        let qp = self.qps.iter_mut().find(|qp| qp.number() == qp_number).ok_or("invalid queue pair number")?;
-        qp.post_receive(wr)
-    }
-
-    /// Post a work request to send data.
-    ///
-    /// This is used by ibv_post_send.
-    pub fn post_send(&mut self, qp_number: u32, wr: &[SendWorkRequest]) -> Result<(), &'static str> {
-        let qp = self.qps.iter_mut().find(|qp| qp.number() == qp_number).ok_or("invalid queue pair number")?;
-        // TODO: check if blue flame is available. Then set self.blueflame
-        qp.post_send(&mut self.capabilities, &mut self.doorbells, None, wr)
     }
 
     /// Create a memory region and return its index, physical address, lkey and rkey.
@@ -480,7 +524,7 @@ struct Offsets {
     next_qpn: usize,
     next_dmpt: usize,
     next_eqn: usize,
-    next_sqc_doorbell_index: usize,
+    next_uar_index: usize,
     // TODO: EventQueue does not seem to need this.
     // Should it use this to be more similar to QueuePair?
     _next_eq_doorbell_index: usize,
@@ -500,7 +544,7 @@ impl Offsets {
             next_dmpt: 1 << caps.log2_rsvd_mrws(),
             next_eqn: caps.num_rsvd_eqs().into(),
             // For SQ and CQ Uar Doorbell index starts from 128
-            next_sqc_doorbell_index: 128,
+            next_uar_index: 128,
             // Each UAR has 4 EQ doorbells; so if a UAR is reserved,
             // then we can't use any EQs whose doorbell falls on that page,
             // even if the EQ itself isn't reserved.
@@ -530,9 +574,10 @@ impl Offsets {
     }
 
     /// Allocate a doorbell for SCQs.
-    pub(in crate::device::mlx4) fn alloc_scq_db(&mut self) -> usize {
-        let res = self.next_sqc_doorbell_index;
-        self.next_sqc_doorbell_index += 1;
+    pub(in crate::device::mlx4) fn alloc_uar(&mut self) -> usize {
+        // FIXME: can overflow
+        let res = self.next_uar_index;
+        self.next_uar_index += 1;
         res
     }
 

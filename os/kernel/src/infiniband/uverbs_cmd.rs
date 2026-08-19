@@ -1,7 +1,7 @@
 use crate::device::mlx4::{get_dev_list, device_handle_to_idx, ConnectX3Nic};
 use alloc::vec::Vec;
-use rdma::uverbs_uapi::{CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, ModifyQpRequest, PostReceiveRequest, PostSendRequest};
-use rdma::{ibv_access_flags, ibv_device, ibv_device_attr, ibv_port_attr, ibv_wc};
+use rdma::uverbs_uapi::{CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, CreateQpResponse, ModifyQpRequest};
+use rdma::{ibv_access_flags, ibv_device, ibv_device_attr, ibv_port_attr};
 
 pub fn uverbs_query_devices(max_len: usize) -> Vec<ibv_device> {
     get_dev_list().lock().iter()
@@ -32,17 +32,27 @@ pub fn uverbs_register_mem_region(device_handle: usize, access_flags: ibv_access
 }
 
 pub fn uverbs_create_cq<'cq>(device_handle: usize, cq_container: &'cq CreateCqRequest) -> Result<CreateCqResponse, &'static str> {
-    let cq_num = get_dev_list().lock()
+    let (cq_num, doorbell_page) = get_dev_list().lock()
         .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .create_cq(cq_container.cq_entries)?;
-    Ok(CreateCqResponse { cq_num })
+        .create_cq(cq_container.cq_entries, cq_container.buffer, cq_container.doorbell_ptr)?;
+    Ok(CreateCqResponse { cq_num, doorbell_page })
 }
 
-pub fn uverbs_create_qp<'qp>(device_handle: usize, qp_container: &CreateQpRequest) -> Result<u32, &'static str> {
-    let mut caps = qp_container.ib_caps;
-    get_dev_list().lock()
+pub fn uverbs_create_qp<'qp>(device_handle: usize, req: &CreateQpRequest) -> Result<CreateQpResponse, &'static str> {
+    let (qp_num, doorbell_page, blueflame_page) = get_dev_list().lock()
         .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .create_qp(qp_container.qp_type, qp_container.send_cq_num, qp_container.recv_cq_num, &mut caps)
+        .create_qp(
+            req.qp_type,
+            req.send_cq_num,
+            req.recv_cq_num,
+            req.buffer,
+            req.doorbell_ptr,
+            req.log_sq_bb_count,
+            req.log_sq_stride,
+            req.log_rq_wqe_count,
+            req.log_rq_stride,
+        )?;
+    Ok(CreateQpResponse { qp_num, doorbell_page, blueflame_page })
 }
 
 pub fn uverbs_modify_qp(device_handle: usize, qp_modify_container: ModifyQpRequest) -> Result<(), &'static str> {
@@ -52,28 +62,11 @@ pub fn uverbs_modify_qp(device_handle: usize, qp_modify_container: ModifyQpReque
     )
 }
 
-pub fn uverbs_poll_cq(device_handle: usize, cq_num: u32, wc: &mut [ibv_wc]) -> Result<usize, &'static str> {
-    get_dev_list().lock()
-        .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .poll_cq(cq_num, wc)
-}
-
-pub fn uverbs_post_send(device_handle: usize, req: &PostSendRequest) -> Result<(), &'static str> {
-    get_dev_list().lock()
-        .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .post_send(req.qp_num, &req.wrs)
-}
-
-pub fn uverbs_post_recv(device_handle: usize, req: &PostReceiveRequest) -> Result<(), &'static str> {
-    get_dev_list().lock()
-        .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .post_receive(req.qp_num, &req.wrs)
-}
-
 /// Drain the device's event queue, returning how many events were handled.
 ///
-/// See [`ConnectX3Nic::drain_events`]: this runs after every verb so that an event the card
-/// posts is logged next to the operation that provoked it.
+/// See [`ConnectX3Nic::drain_events`]. Posting and polling now happen entirely in userspace
+/// against mapped memory, without a syscall per operation, so userspace calls this itself
+/// (rate-limited) from its poll loop instead of it piggybacking on another verb.
 pub fn uverbs_drain_events(device_handle: usize) -> usize {
     get_dev_list().lock()
         .get_mut(device_handle_to_idx(device_handle)).unwrap()

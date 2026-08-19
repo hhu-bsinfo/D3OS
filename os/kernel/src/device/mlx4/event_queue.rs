@@ -18,7 +18,7 @@ use modular_bitfield_msb::{
 };
 use strum_macros::FromRepr;
 use tock_registers::interfaces::Writeable;
-
+use tock_registers::registers::WriteOnly;
 use super::{
     cmd::{CommandInterface, InputParam, Opcode, OutputParam},
     device::PAGE_SHIFT,
@@ -34,7 +34,7 @@ const NUM_SPARE_EQE: u32 = 0x80;
 /// This creates all of the EQs ahead of time,
 /// passes their ownership to the hardware and calls MapEq.
 pub(super) fn init_eqs(
-    cmd: &mut CommandInterface, doorbells: &mut [MappedPages], caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable,
+    cmd: &mut CommandInterface, doorbells: &mut [DoorbellPage], caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable,
 ) -> Result<Vec<EventQueue>, &'static str> {
     const NUM_EQS: usize = 1;
     let mut eqs = Vec::with_capacity(NUM_EQS);
@@ -166,10 +166,10 @@ impl EventQueue {
     /// doorbell.
     ///
     /// If armed, events will generate interrupts.
-    fn ring(&mut self, doorbells: &mut [MappedPages], arm: bool) -> Result<(), &'static str> {
+    fn ring(&mut self, doorbells: &mut [DoorbellPage], arm: bool) -> Result<(), &'static str> {
         // for the EQ number n the relevant doorbell is in
         // DoorbellPage (n / 4) and eq (n % 4)
-        let doorbell: &mut DoorbellPage = doorbells[self.number / 4].as_type_mut(0)?;
+        let doorbell: &mut DoorbellPage = &mut doorbells[self.number / 4];
         doorbell.eqs[self.number % 4].val.set(((self.consumer_index & 0xffffff) | (arm as u32) << 31).to_be());
         // We still want ordering, just not swabbing, so add a barrier
         compiler_fence(Ordering::SeqCst);
@@ -182,7 +182,7 @@ impl EventQueue {
     /// queue is left armed for interrupts afterwards; a caller polling in a loop wants `false`,
     /// both to avoid re-arming thousands of times a second and to leave the card's interrupt
     /// behaviour exactly as `init_eqs` set it up.
-    pub(super) fn handle_events(&mut self, doorbells: &mut [MappedPages], arm: bool) -> Result<usize, &'static str> {
+    pub(super) fn handle_events(&mut self, doorbells: &mut [DoorbellPage], arm: bool) -> Result<usize, &'static str> {
         // Bound the work per call. A ring whose ownership bits were never initialised reads as
         // `num_entries` back-to-back "events", which would otherwise all be drained inside a
         // single completion poll.

@@ -694,11 +694,18 @@ name = "ibverbs"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "bitflags 2.10.0",
  "core3",
+ "log",
  "mm",
+ "modular-bitfield-msb",
  "rdma",
  "serde",
+ "spin 0.9.8",
+ "strum_macros",
  "syscall",
+ "tock-registers",
+ "zerocopy 0.5.2",
 ]
 
 [[package]]

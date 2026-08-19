@@ -152,9 +152,9 @@ pub fn detach(ptr:*mut u8) -> isize {
     let table = shm_tables().write();
 
     // get vma of current process for pointer (error if no vma for pointer)
-    let vma = match process.virtual_address_space.is_address_within_vma(ptr as u64, VmaType::SharedMemory { id: 0 }) {
-        Some(vma) => vma,
-        None => return Errno::EINVAL.into()
+    let vma = match process.virtual_address_space.is_address_within_vma(ptr as u64) {
+        Some(vma) if vma.typ == VmaType::SharedMemory { id: 0 } => vma,
+        _ => return Errno::EINVAL.into()
     };
 
     // get shm_id from vma (error if vma not of type shm)
