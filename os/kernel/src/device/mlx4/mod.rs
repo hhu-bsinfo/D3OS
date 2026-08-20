@@ -28,7 +28,7 @@ use zerocopy::U32;
 
 use rdma::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_type};
 
-use crate::pci_bus;
+use crate::{pci_bus, process_manager};
 use port::Port;
 use queue_pair::QueuePair;
 use spin::{Mutex, Once, RwLock};
@@ -235,7 +235,7 @@ impl ConnectX3Nic {
             return Err("UAR is reserved");
         }
 
-        if uar_idx > self.capabilities.num_uars() {
+        if uar_idx >= self.capabilities.num_uars() {
             return Err("UAR index out of range");
         }
 
@@ -264,7 +264,18 @@ impl ConnectX3Nic {
     ///
     /// Used only by QP creation; CQs only need [`Self::map_uar`].
     fn map_bf(&self, uar_idx: usize, process: &Process) -> Result<Page, &'static str> {
-        assert!(self.capabilities.bf(), "Blueflame is not supported");
+        if !self.capabilities.bf() {
+            return Err("Blueflame is not supported");
+        }
+
+        if uar_idx < self.capabilities.num_rsvd_uars() as usize {
+            return Err("UAR is reserved");
+        }
+
+        if uar_idx >= self.capabilities.num_uars() {
+            return Err("UAR index out of range");
+        }
+
         let (addr, _size) = self.uar_bf_bar.unwrap_mem();
         // The BlueFlame region follows the whole UAR doorbell region (`num_uars()` pages), one
         // BF page per UAR.
@@ -435,6 +446,16 @@ impl ConnectX3Nic {
                      log_rq_wqe_count: u8,
                      log_rq_stride: u8,
     ) -> Result<(u32, *mut u8, *mut u8), &'static str> {
+        let process = process_manager().read().current_process();
+        let send_cq = self.cqs.iter().find(|cq| cq.number() == send_cq_number).ok_or("invalid send completion queue number")?;
+        if send_cq.owner() != process.id() {
+            return Err("send completion queue is owned by another process");
+        }
+        let receive_cq = self.cqs.iter().find(|cq| cq.number() == receive_cq_number).ok_or("invalid receive completion queue number")?;
+        if receive_cq.owner() != process.id() {
+            return Err("receive completion queue is owned by another process");
+        }
+
         let qp = QueuePair::new(
             self,
             qp_type,
@@ -459,6 +480,9 @@ impl ConnectX3Nic {
     /// This is used by ibv_modify_qp.
     pub fn modify_qp(&mut self, number: u32, attr: &ibv_qp_attr, attr_mask: ibv_qp_attr_mask) -> Result<(), &'static str> {
         let qp = self.qps.iter_mut().find(|qp| qp.number() == number).ok_or("invalid queue pair number")?;
+        if qp.owner() != process_manager().read().current_process().id() {
+            return Err("queue pair is owned by another process");
+        }
         qp.modify(&mut self.cmd, &mut self.capabilities, attr, attr_mask)
     }
 
@@ -470,6 +494,9 @@ impl ConnectX3Nic {
             .enumerate()
             .find(|(_, qp)| qp.number() == number)
             .ok_or("queue pair not found")?;
+        if self.qps[index].owner() != process_manager().read().current_process().id() {
+            return Err("queue pair is owned by another process");
+        }
         let qp = self.qps.remove(index);
         qp.destroy(&mut self.cmd, &mut self.capabilities)?;
         Ok(())

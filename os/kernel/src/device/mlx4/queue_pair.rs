@@ -22,6 +22,7 @@ use rdma::{
 use strum_macros::FromRepr;
 use tock_registers::registers::WriteOnly;
 use x86_64::{PhysAddr, VirtAddr};
+use uuid::Uuid;
 use x86_64::structures::paging::{Page, Size4KiB};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
@@ -39,6 +40,7 @@ const fn ib_sq_headroom(shift: u32) -> u32 {
 #[derive(Debug)]
 pub(super) struct QueuePair {
     number: u32,
+    owner: Uuid,
     state: ibv_qp_state,
     qp_type: ibv_qp_type::Type,
     port_number: Option<u8>,
@@ -78,6 +80,22 @@ impl QueuePair {
         log_rq_wqe_count: u8,
         log_rq_stride: u8,
     ) -> Result<Self, &'static str> {
+        if log_sq_stride < 4 || log_rq_stride < 4 {
+            return Err("stride is not multiple of 16 bytes");
+        }
+
+        // Bound WQE counts against the HCA's max QP size and guard the `buffer_size` shifts
+        // below from overflowing.
+        let log_max_qp_sz = dev.capabilities.log_max_qp_sz();
+        if log_sq_bb_count > log_max_qp_sz || log_rq_wqe_count > log_max_qp_sz {
+            return Err("WQE count exceeds the HCA's max QP size");
+        }
+        if log_sq_bb_count.checked_add(log_sq_stride).is_none_or(|shift| shift >= 64)
+            || log_rq_wqe_count.checked_add(log_rq_stride).is_none_or(|shift| shift >= 64)
+        {
+            return Err("QP buffer size overflows");
+        }
+
         let number = dev.offsets.alloc_qpn().try_into().unwrap();
 
         let process = process_manager().read().current_process();
@@ -89,7 +107,9 @@ impl QueuePair {
         let buffer_size: u64 = (1 << (log_sq_bb_count + log_sq_stride)) + (1 << (log_rq_wqe_count + log_rq_stride));
         let buffer_addr = VirtAddr::from_ptr(buffer);
 
-        assert_eq!(buffer.addr() % 64, 0, "buffer is not aligned to 64");
+        if buffer.addr() % 64 != 0 {
+            return Err("buffer is not aligned to 64");
+        }
         let start: Page<Size4KiB> = Page::containing_address(buffer_addr);
         let end = start + buffer_size.div_ceil(start.size());
         let mtt = Some(dev.icm_tables.memory_regions().alloc_mtt_for_pages(&dev.capabilities, Page::range(start, end))?);
@@ -102,6 +122,7 @@ impl QueuePair {
 
         let qp = Self {
             number,
+            owner: process.id(),
             state: ibv_qp_state::IBV_QPS_RESET,
             qp_type,
             port_number: None,
@@ -216,7 +237,8 @@ impl QueuePair {
                 // TODO: sq_wqe_counter, rq_wqe_counter, is
                 // TODO: hs, vsd, rss for UD
                 context.set_sq_no_prefetch(false);
-                // TODO: page_offset, pkey_index, disable_pkey_check
+                context.set_page_offset(self.page_offset);
+                // TODO: pkey_index, disable_pkey_check
                 // TOODO: rss context for UD
                 context.set_log_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
                 context.set_mtt_base_addr(self.mtt.ok_or("queue pair has no MTT")?);
@@ -459,6 +481,11 @@ impl QueuePair {
     /// Get the number of this queue pair.
     pub(super) fn number(&self) -> u32 {
         self.number
+    }
+
+    /// The process that created this queue pair.
+    pub(super) fn owner(&self) -> Uuid {
+        self.owner
     }
 
     /// The UAR page mapped into the calling process, for userspace to ring the SQ doorbell from
@@ -1014,6 +1041,8 @@ struct QueuePairContext {
     __: u8,
     #[skip(getters)]
     ssn: B24,
+
+    // 0x00090
     #[skip]
     __: u8,
     #[skip(getters)]
@@ -1027,7 +1056,15 @@ struct QueuePairContext {
     #[skip(getters)]
     remote_atomic: bool,
     #[skip]
-    __: B16,
+    __: bool,
+    #[skip(getters)]
+    page_offset: B6,
+    #[skip]
+    __: B6,
+
+    // 0x00094
+    #[skip]
+    __: B3,
     min_rnr_nak: B5,
     #[skip(getters)]
     next_recv_psn: B24,

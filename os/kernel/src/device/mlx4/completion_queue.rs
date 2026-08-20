@@ -9,6 +9,7 @@ use modular_bitfield_msb::{
     bitfield,
     specifiers::{B2, B24, B3, B40, B48, B5, B6},
 };
+use uuid::Uuid;
 use x86_64::structures::paging::{Page, Size4KiB};
 
 use crate::process_manager;
@@ -28,6 +29,7 @@ const CQE_SIZE: usize = 32;
 #[derive(Debug)]
 pub(super) struct CompletionQueue {
     number: u32,
+    owner: Uuid,
     uar_page: Page<Size4KiB>,
     // TODO: deallocate mtt properly, see the equivalent TODO on `queue_pair::QueuePair`.
     mtt: Option<u64>,
@@ -47,7 +49,9 @@ impl CompletionQueue {
         let process = process_manager().read().current_process();
         let uar_page = dev.map_uar(uar_idx, &process, alloc::format!("cq-uar-{uar_idx}").as_str())?;
 
-        assert_eq!(buffer.addr() % crate::memory::PAGE_SIZE, 0, "CQE buffer is not page aligned");
+        if buffer.addr() % crate::memory::PAGE_SIZE != 0 {
+            return Err("CQE buffer is not page aligned");
+        }
         let size = usize::try_from(num_entries).unwrap() * CQE_SIZE;
         let start: Page<Size4KiB> = Page::containing_address(x86_64::VirtAddr::from_ptr(buffer));
         let end = start + u64::try_from(size.next_multiple_of(crate::memory::PAGE_SIZE) / crate::memory::PAGE_SIZE).unwrap();
@@ -73,12 +77,19 @@ impl CompletionQueue {
 
         let cq = Self {
             number,
+            owner: process.id(),
             uar_page,
             mtt: Some(mtt),
             eq_number,
         };
         trace!("created new CQ: {:?}", cq);
         Ok(cq)
+    }
+
+    /// The process that created this completion queue, i.e. the only process allowed to bind a
+    /// queue pair to it.
+    pub(super) fn owner(&self) -> Uuid {
+        self.owner
     }
 
     /// The UAR page mapped into the calling process, for userspace to ring the arm doorbell
