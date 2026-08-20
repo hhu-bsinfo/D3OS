@@ -2,17 +2,13 @@
 //! completion queues. Furthermore its functions can consume and print
 //! completion queue elements.
 
-use core::{
-    mem::size_of,
-    sync::atomic::{compiler_fence, Ordering},
-};
+use core::mem::size_of;
 
 use log::trace;
 use modular_bitfield_msb::{
     bitfield,
     specifiers::{B2, B24, B3, B40, B48, B5, B6},
 };
-use tock_registers::{interfaces::Writeable, registers::WriteOnly};
 use x86_64::structures::paging::{Page, Size4KiB};
 
 use crate::process_manager;
@@ -20,7 +16,6 @@ use crate::process_manager;
 use super::{
     cmd::{CommandInterface, InputParam, OutputParam, Opcode},
     device::{uar_index_to_hw, PAGE_SHIFT},
-    fw::DoorbellPage,
     icm::ICM_PAGE_SHIFT,
     ConnectX3Nic,
 };
@@ -33,21 +28,18 @@ const CQE_SIZE: usize = 32;
 #[derive(Debug)]
 pub(super) struct CompletionQueue {
     number: u32,
-    uar_idx: usize,
     uar_page: Page<Size4KiB>,
     // TODO: deallocate mtt properly, see the equivalent TODO on `queue_pair::QueuePair`.
     mtt: Option<u64>,
-    arm_sequence_number: u32,
-    consumer_index: u32,
     // TODO: bind the lifetime to the one of the event queue
     eq_number: Option<usize>,
 }
 
 impl CompletionQueue {
     /// Create a new completion queue over a userspace-owned, -mmap'd `buffer` and
-    /// `doorbell_ptr` (a two-word `CompletionQueueDoorbell` record). The kernel only builds the
-    /// MTT for the buffer and runs the CMD-interface transition; polling and CQE parsing happen
-    /// entirely in userspace against the mapped memory from here on.
+    /// `doorbell_ptr` (a two-word consumer-index/arm-index doorbell record). The kernel only
+    /// builds the MTT for the buffer and runs the CMD-interface transition; polling, CQE parsing
+    /// and arming happen entirely in userspace against the mapped memory from here on.
     pub(super) fn new(dev: &mut ConnectX3Nic, num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64) -> Result<Self, &'static str> {
         let number: u32 = dev.offsets.alloc_cqn().try_into().unwrap();
         let uar_idx = dev.offsets.alloc_uar();
@@ -65,8 +57,6 @@ impl CompletionQueue {
             .get_phys(doorbell_ptr as u64)
             .ok_or("doorbell not mapped to physical address")?;
 
-        let arm_sequence_number = 1;
-        let consumer_index = 0;
 
         let mut ctx = CompletionQueueContext::new();
         ctx.set_log_size(num_entries.ilog2().try_into().unwrap());
@@ -83,11 +73,8 @@ impl CompletionQueue {
 
         let cq = Self {
             number,
-            uar_idx,
             uar_page,
             mtt: Some(mtt),
-            arm_sequence_number,
-            consumer_index,
             eq_number,
         };
         trace!("created new CQ: {:?}", cq);
@@ -106,29 +93,6 @@ impl CompletionQueue {
         cmd.execute_command(Opcode::Hw2SwCq, None, InputParam::Empty, Some(self.number.try_into().unwrap()), OutputParam::Empty)?;
         // TODO: deallocate mtt properly
         let _ = self.mtt.take();
-        Ok(())
-    }
-
-    /// Arm this completion queue by writing the consumer index to the appropriate doorbell.
-    ///
-    /// This is one-time control-path work done at creation, so it stays in the kernel: the
-    /// event-driven (as opposed to polling) completion model this would support isn't used by
-    /// this driver, but leaving the initial arm here matches what the reference driver does and
-    /// costs nothing on the (userspace) polling hot path.
-    pub(super) fn arm(&mut self, doorbell_ptr: *mut u64, doorbells: &mut [DoorbellPage]) -> Result<(), &'static str> {
-        const _DOORBELL_REQUEST_NOTIFICATION_SOLICITED: u32 = 0x1;
-        const DOORBELL_REQUEST_NOTIFICATION: u32 = 0x2;
-        let sn = self.arm_sequence_number & 3;
-        let ci = self.consumer_index & 0xffffff;
-        let cmd = DOORBELL_REQUEST_NOTIFICATION;
-        let doorbell_record = unsafe { &mut *doorbell_ptr.cast::<CompletionQueueDoorbell>() };
-        doorbell_record.arm_consumer_index.set((sn << 28 | cmd << 24 | ci).to_be());
-        // Make sure that the doorbell record in host memory is
-        // written before ringing the doorbell via PCI MMIO.
-        compiler_fence(Ordering::SeqCst);
-        let doorbell: &mut DoorbellPage = &mut doorbells[self.uar_idx];
-        doorbell.cq_sn_cmd_num.set((sn << 28 | cmd << 24 | self.number).to_be());
-        doorbell.cq_consumer_index.set(ci.to_be());
         Ok(())
     }
 
@@ -209,15 +173,4 @@ struct CompletionQueueContext {
     // the last three bits must be zero
     #[skip(getters)]
     doorbell_record_addr: u64,
-}
-
-/// The doorbell record layout, kept here since the kernel still writes the initial
-/// `arm_consumer_index` at CQ creation (see [`CompletionQueue::arm`]). CQE parsing itself
-/// (including this record's `update_consumer_index` half) moved to
-/// `os/library/ibverbs/src/mlx4/completion_queue.rs`.
-// PRM: "CQ DoorBell Records are aligned on an 8B boundary."
-#[repr(C, align(8))]
-struct CompletionQueueDoorbell {
-    update_consumer_index: WriteOnly<u32>,
-    arm_consumer_index: WriteOnly<u32>,
 }

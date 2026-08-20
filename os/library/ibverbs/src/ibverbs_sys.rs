@@ -97,6 +97,7 @@ const IBV_CONTEXT_OPS: ibv_context_ops = ibv_context_ops {
 pub struct ibv_context {
     pub ops: ibv_context_ops,
     device_handle: usize,
+    // TODO: add support for different device types, i.e. mlx5, iWARP, RoCE
     mlx4: mlx4::Device,
 }
 

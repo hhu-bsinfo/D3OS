@@ -1,8 +1,10 @@
 //! Userspace-owned completion queue: creation still goes through the kernel (it needs to build
 //! an MTT for the CQE buffer and run the `Sw2HwCq` CMD-interface transition), but polling and
 //! CQE parsing happen entirely against the mapped buffer from here on, without a syscall per
-//! poll. This mirrors the kernel's former `os/kernel/src/device/mlx4/completion_queue.rs`
-//! `poll`/`poll_one`/`get_next_cqe_sw`, which were deleted from the kernel once this moved here.
+//! poll. Arming goes through the UAR page the kernel maps into this process at creation, so it
+//! needs no syscall either. This mirrors the kernel's former
+//! `os/kernel/src/device/mlx4/completion_queue.rs` `poll`/`poll_one`/`get_next_cqe_sw`/`arm`,
+//! which were deleted from the kernel once this moved here.
 
 use core::mem::MaybeUninit;
 use core::sync::atomic::{compiler_fence, Ordering};
@@ -24,7 +26,7 @@ use tock_registers::registers::WriteOnly;
 use crate::ffi::uverbs;
 
 use super::Device;
-use super::queue_pair::QueuePairOpcode;
+use super::queue_pair::{DoorbellPage, QueuePairOpcode};
 
 /// Size in bytes of a hardware completion queue entry. CX3 also supports a 64 B format, but this
 /// driver always uses the 32 B one.
@@ -45,6 +47,8 @@ pub struct CompletionQueue {
     num_entries: u32,
     buffer: &'static mut [u8],
     doorbell: *mut CompletionQueueDoorbell,
+    doorbell_page: *mut DoorbellPage,
+    arm_sequence_number: u32,
     consumer_index: u32,
     poll_count: u32,
 }
@@ -79,15 +83,41 @@ impl CompletionQueue {
             Err(_) => return Err("could not create cq"),
         };
 
-        Ok(Self {
+        let mut cq = Self {
             device_handle,
             number: resp.cq_num,
             num_entries,
             buffer,
             doorbell: doorbell_ptr,
+            doorbell_page: resp.doorbell_page.cast(),
+            arm_sequence_number: 1,
             consumer_index: 0,
             poll_count: 0,
-        })
+        };
+        // The event-driven completion model this enables isn't used by this driver (everything
+        // polls), but the initial arm matches what the reference driver does and costs nothing on
+        // the polling hot path.
+        cq.arm();
+        Ok(cq)
+    }
+
+    /// Arm this completion queue by writing the consumer index to the doorbell record and then
+    /// ringing the UAR doorbell.
+    ///
+    /// This is used by ibv_req_notify_cq.
+    pub fn arm(&mut self) {
+        const _DOORBELL_REQUEST_NOTIFICATION_SOLICITED: u32 = 0x1;
+        const DOORBELL_REQUEST_NOTIFICATION: u32 = 0x2;
+        let sn = self.arm_sequence_number & 3;
+        let ci = self.consumer_index & 0xffffff;
+        let cmd = DOORBELL_REQUEST_NOTIFICATION;
+        unsafe { &*self.doorbell }.arm_consumer_index.set((sn << 28 | cmd << 24 | ci).to_be());
+        // Make sure that the doorbell record in host memory is
+        // written before ringing the doorbell via PCI MMIO.
+        compiler_fence(Ordering::SeqCst);
+        let doorbell_page = unsafe { &*self.doorbell_page };
+        doorbell_page.cq_sn_cmd_num.set((sn << 28 | cmd << 24 | self.number).to_be());
+        doorbell_page.cq_consumer_index.set(ci.to_be());
     }
 
     /// Get the number of this completion queue.

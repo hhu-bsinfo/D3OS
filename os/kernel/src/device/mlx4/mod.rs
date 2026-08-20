@@ -393,13 +393,12 @@ impl ConnectX3Nic {
     /// the calling process.
     ///
     /// This is used by ibv_create_cq. `buffer` and `doorbell_ptr` are userspace-owned and
-    /// -mapped; polling and CQE parsing happen entirely in userspace against them, so from here
-    /// on the kernel only needs the buffer for building its MTT.
+    /// -mapped; polling, CQE parsing and arming happen entirely in userspace against them (the
+    /// latter through the returned UAR page), so from here on the kernel only needs the buffer
+    /// for building its MTT.
     pub fn create_cq(&mut self, min_num_entries: i32, buffer: *const u8, doorbell_ptr: *const u64) -> Result<(u32, *mut u8), &'static str> {
         // TODO min_num_entries should be u32
         let mut cq = CompletionQueue::new(self, min_num_entries.try_into().unwrap(), buffer, doorbell_ptr)?;
-        let doorbells = self.identity_mapped_uar.as_slice_mut(0, self.capabilities.num_uars())?;
-        cq.arm(doorbell_ptr as *mut u64, doorbells)?;
         cq.query(&mut self.cmd)?;
         let number = cq.number();
         let doorbell_page = cq.uar_page_ptr();
