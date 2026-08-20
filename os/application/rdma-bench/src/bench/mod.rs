@@ -1,6 +1,7 @@
 pub mod accuracy;
 pub mod bandwidth;
 pub mod latency;
+pub mod rdma;
 
 use crate::cli::{Mode, Transport};
 use crate::comm::Conn;
@@ -21,10 +22,13 @@ pub enum Role {
 
 /// The authority on which (transport, mode) combinations are usable, checked during the
 /// handshake so an unimplemented combination is rejected before any RDMA resources are built.
-pub fn supported(transport: Transport, _mode: Mode) -> bool {
-    match transport {
-        Transport::Rc | Transport::Uc => true,
-        Transport::Ud => false,
+pub fn supported(transport: Transport, mode: Mode) -> bool {
+    match (transport, mode) {
+        (Transport::Ud, _) => false,
+        // RDMA READ is not in UC's transport-service repertoire (IBTA 1.2.1, table 44) — UC has
+        // RDMA WRITE but no read/atomics.
+        (Transport::Uc, Mode::RdmaRead) => false,
+        (Transport::Rc | Transport::Uc, _) => true,
     }
 }
 
@@ -51,5 +55,11 @@ pub fn run(
         Mode::Bandwidth => bandwidth::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
         Mode::Latency => latency::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
         Mode::Accuracy => accuracy::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
+        Mode::RdmaWrite => {
+            rdma::run(rdma::Direction::Write, pd, cq, qp, conn, role, msg_size, iterations, tx_depth)
+        }
+        Mode::RdmaRead => {
+            rdma::run(rdma::Direction::Read, pd, cq, qp, conn, role, msg_size, iterations, tx_depth)
+        }
     }
 }

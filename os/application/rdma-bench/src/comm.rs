@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 use concurrent::thread::sleep;
 use core::cell::RefCell;
 use core::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
-use ibverbs::QueuePairEndpoint;
+use ibverbs::{QueuePairEndpoint, RemoteMemoryRegion};
 use network::{TcpListener, TcpStream};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -39,6 +39,14 @@ pub enum HandshakeAck {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ClientEndpoint {
     pub endpoint: QueuePairEndpoint,
+}
+
+/// Sent from the rdma-write/rdma-read responder to the initiator once its buffer is registered,
+/// authorizing the initiator's HCA to write/read it directly without any further involvement from
+/// the responder's CPU.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RemoteBufferInfo {
+    pub remote: RemoteMemoryRegion<u8>,
 }
 
 /// Sent from the accuracy-mode receiver back to the sender once its drain loop finishes.

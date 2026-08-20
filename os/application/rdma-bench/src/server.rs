@@ -41,7 +41,7 @@ fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &Conn) -> Resul
     }
 
     let cq = ctx.create_cq((2 * req.tx_depth) as i32, 0)?;
-    let prepared = transport::build(req.transport, pd, &cq, req.tx_depth)?;
+    let prepared = transport::build(req.transport, req.mode, pd, &cq, req.tx_depth)?;
     let local_endpoint = prepared.endpoint();
     conn.send_msg(&HandshakeAck::Ok { endpoint: local_endpoint })?;
 

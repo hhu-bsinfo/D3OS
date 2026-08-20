@@ -1161,6 +1161,7 @@ impl<'pd, T> LocalMemoryRegion<'pd, T> {
 /// Having this information authorizes direct memory access to a memory region.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serialize", derive(Encode, Decode))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RemoteMemoryRegion<T> {
     /// the remote pointer
     pub addr: u64,

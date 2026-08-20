@@ -139,7 +139,7 @@ fn run_suite(ctx: &Context, pd: &ProtectionDomain, args: &ClientArgs) -> Result<
 fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams, verbose: bool) -> Result<Report> {
     let cq = ctx.create_cq((2 * params.tx_depth) as i32, 0)?;
 
-    let prepared = transport::build(params.transport, pd, &cq, params.tx_depth)?;
+    let prepared = transport::build(params.transport, params.mode, pd, &cq, params.tx_depth)?;
     let local_endpoint = prepared.endpoint();
 
     let conn = comm::connect(params.host, params.port)?;

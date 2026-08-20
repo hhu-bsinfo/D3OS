@@ -14,7 +14,8 @@ const USAGE: &str = concat!(
     "                         [--mode M[,M..]] [--size N[,N..]] [--min-size N] [--max-size N]\n",
     "                         [--iterations N] [--tx-depth N]\n",
     "\n",
-    "--mode selects bandwidth, latency and/or accuracy; left out, all three run.\n",
+    "--mode selects bandwidth, latency, accuracy, rdma-write and/or rdma-read; left out, all\n",
+    "five run.\n",
     "--size selects explicit message sizes; left out, the client sweeps every power of two from\n",
     "--min-size to --max-size. So a client without --mode and --size runs the complete suite and\n",
     "prints one table per mode. Every (mode, size) pair opens its own connection, so unless the\n",
@@ -57,18 +58,30 @@ pub enum Mode {
     Bandwidth,
     Latency,
     Accuracy,
+    /// One-sided RDMA WRITE bandwidth: the client drives a window of writes into a buffer the
+    /// server merely exposes, so the server's CPU never sees a completion.
+    RdmaWrite,
+    /// One-sided RDMA READ bandwidth, same shape as `RdmaWrite` but pulling instead of pushing.
+    /// Not supported on UC — only RC has RDMA READ in its transport-service repertoire.
+    RdmaRead,
 }
 
 impl Mode {
     /// Every mode, in the order a suite runs them.
-    pub const ALL: [Mode; 3] = [Mode::Bandwidth, Mode::Latency, Mode::Accuracy];
+    pub const ALL: [Mode; 5] =
+        [Mode::Bandwidth, Mode::Latency, Mode::Accuracy, Mode::RdmaWrite, Mode::RdmaRead];
 
     fn parse(s: &str) -> Result<Self, String> {
         match s {
             "bandwidth" => Ok(Mode::Bandwidth),
             "latency" => Ok(Mode::Latency),
             "accuracy" => Ok(Mode::Accuracy),
-            _ => Err(format!("unknown mode '{}': expected bandwidth, latency, or accuracy", s)),
+            "rdma-write" => Ok(Mode::RdmaWrite),
+            "rdma-read" => Ok(Mode::RdmaRead),
+            _ => Err(format!(
+                "unknown mode '{}': expected bandwidth, latency, accuracy, rdma-write, or rdma-read",
+                s
+            )),
         }
     }
 
@@ -77,6 +90,8 @@ impl Mode {
             Mode::Bandwidth => "bandwidth",
             Mode::Latency => "latency",
             Mode::Accuracy => "accuracy",
+            Mode::RdmaWrite => "rdma-write",
+            Mode::RdmaRead => "rdma-read",
         }
     }
 
