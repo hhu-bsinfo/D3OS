@@ -14,6 +14,7 @@ use modular_bitfield_msb::{
     bitfield,
     specifiers::{B1, B10, B104, B11, B12, B15, B2, B20, B22, B24, B25, B27, B3, B31, B36, B4, B42, B45, B5, B6, B63, B7, B72, B88, B91},
 };
+use pci_types::Bar;
 use rdma::ibv_mtu;
 use x86_64::structures::paging::{page::Page, Size4KiB};
 use x86_64::structures::paging::frame::PhysFrameRange;
@@ -508,7 +509,7 @@ pub(super) struct Capabilities {
     rc: bool,
 
     #[skip(setters)]
-    num_rsvd_uars: B4,
+    pub(super) num_rsvd_uars: B4,
     #[skip]
     __: B6,
     #[skip(setters)]
@@ -672,31 +673,14 @@ impl Capabilities {
         }
     }
 
-    fn num_uars(&self) -> usize {
-        usize::try_from(self.uar_size()).unwrap() / PAGE_SIZE
+    // Number of UAR pages
+    pub fn num_uars(&self) -> usize {
+        self.uar_size() / PAGE_SIZE
     }
 
-    fn uar_size(&self) -> u64 {
+    // Size of the User Access Region (UAR) in Bytes
+    pub fn uar_size(&self) -> usize {
         1 << (self.uar_sz() + 20)
-    }
-
-    pub(super) fn get_doorbells_and_blueflame(&self, uar: MappedPages) -> Result<(Vec<MappedPages>, Vec<MappedPages>), &'static str> {
-        let mut doorbells = Vec::new();
-        let mut blueflame = Vec::new();
-
-        let uar_range = uar.page_range();
-        let take_n = uar_range.len() - 1; // exclude last page
-
-        for (idx, page) in &mut uar_range.enumerate().take(take_n as usize) {
-            let mapped_page = MappedPages::from(Page::<Size4KiB>::range(page, page + 1));
-            if idx <= self.num_uars() {
-                doorbells.push(mapped_page);
-            } else {
-                blueflame.push(mapped_page);
-            }
-        }
-
-        Ok((doorbells, blueflame))
     }
 }
 

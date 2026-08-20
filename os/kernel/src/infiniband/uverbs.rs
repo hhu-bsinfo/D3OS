@@ -1,15 +1,12 @@
 use super::uverbs_cmd::*;
 use crate::device::mlx4::{device_in_range, ConnectX3Nic};
 use crate::process_manager;
-use alloc::vec;
-use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core::slice::from_raw_parts_mut;
-use log::{debug, error};
-use rdma::uverbs_uapi::{PostReceiveRequest, QueryPortRequest, UserSlice, UVERBS_MAX_USER_WC_REQ};
-use rdma::{ibv_device, ibv_wc, uverbs_uapi::{
-    CreateCqRequest, CreateMrRequest, CreateQpRequest, ModifyQpRequest,
-    PollCqRequest, PostSendRequest, UverbsCmd,
+use log::error;
+use rdma::uverbs_uapi::{QueryPortRequest, UserSlice};
+use rdma::{ibv_device, uverbs_uapi::{
+    CreateCqRequest, CreateMrRequest, CreateQpRequest, ModifyQpRequest, UverbsCmd,
 }};
 use syscall::return_vals::{Errno, SyscallResult};
 use x86_64::VirtAddr;
@@ -77,42 +74,16 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
         }
         UverbsCmd::CreateQp => {
             let req: CreateQpRequest = copy_from_user(user_in)?;
-            let qp_num = uverbs_create_qp(device_handle, &req).map_err(log_error_and_invalid)?;
-            copy_to_user(user_out, &qp_num)
+            let resp = uverbs_create_qp(device_handle, &req).map_err(log_error_and_invalid)?;
+            copy_to_user(user_out, &resp)
         }
         UverbsCmd::ModifyQp => {
             let req: ModifyQpRequest = copy_from_user(user_in)?;
             uverbs_modify_qp(device_handle, req).map_err(log_error_and_invalid)?;
             Ok(0)
         }
-        UverbsCmd::PollCq => {
-            let req: PollCqRequest = copy_from_user(user_in)?;
-            let wc_len = user_out.capacity::<ibv_wc>();
-            let supported_len = wc_len.min(UVERBS_MAX_USER_WC_REQ);
-            let mut wc_buf = vec![ibv_wc::default(); supported_len];
-            let wc_count = uverbs_poll_cq(device_handle, req.cq_num, &mut wc_buf).map_err(|msg| {
-                error!("PollCq failed for cq_num={} (wc capacity {}): {}", req.cq_num, supported_len, msg);
-                Errno::EINVAL
-            })?;
-            if wc_count == 0 {
-                Ok(0)
-            } else {
-                copy_slice_to_user(user_out, &wc_buf[..wc_count])
-            }
-        }
-        // for now we just check the ibv_send_wr struct, not the internal pointers it points to which
-        // needs to be done to prevent security issues !
-        UverbsCmd::OpPostSend => {
-            let buf = copy_vec_from_user(user_in)?;
-            let (req,_): (PostSendRequest, usize)  = bincode::decode_from_slice(&buf, bincode::config::standard()).map_err(|_| Errno::EINVAL)?;
-            uverbs_post_send(device_handle, &req).map_err(log_error_and_invalid)?;
-            Ok(0)
-        }
-        // same as above
-        UverbsCmd::OpPostRecv => {
-            let buf = copy_vec_from_user(user_in)?;
-            let (req,_): (PostReceiveRequest, usize) = bincode::decode_from_slice(&buf, bincode::config::standard()).map_err(|_| Errno::EINVAL)?;
-            uverbs_post_recv(device_handle, &req).map_err(log_error_and_invalid)?;
+        UverbsCmd::DrainEvents => {
+            uverbs_drain_events(device_handle);
             Ok(0)
         }
         UverbsCmd::DestroyCq => {
@@ -155,19 +126,6 @@ fn copy_from_user<T: Copy>(user_in: UserSlice) -> Result<T, Errno> {
             Errno::EFAULT
         })?;
     Ok(unsafe { req.assume_init() })
-}
-
-#[inline]
-fn copy_vec_from_user(user_in: UserSlice) -> Result<Vec<u8>, Errno> {
-    assert_ne!(user_in.address, 0);
-    let process = process_manager().read().current_process();
-    let mut buf = vec![0u8; user_in.size];
-    unsafe { process.virtual_address_space.copy_bytes_from_user(buf.as_mut_ptr(), VirtAddr::new(user_in.address), buf.len()) }
-        .map_err(|_| {
-            error!("copy_vec_from_user failed: address={:#x}, size={}", user_in.address, buf.len());
-            Errno::EFAULT
-        })?;
-    Ok(buf)
 }
 
 #[inline]

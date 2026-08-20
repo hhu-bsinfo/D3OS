@@ -9,6 +9,7 @@ use alloc::{boxed::Box, string::{String, ToString}, vec, vec::{Vec}};
 use core::mem;
 use core::mem::MaybeUninit;
 use core3::io::{Error, ErrorKind, Result as Result};
+use spin::Mutex;
 pub use rdma::{
     __be64, ibv_access_flags, ibv_ah_attr, ibv_device_attr, ibv_gid, ibv_mtu,
     ibv_port_attr, ibv_port_state,
@@ -17,9 +18,10 @@ pub use rdma::{
     ibv_wr_opcode, ibv_wc, ibv_wc_opcode, ibv_wc_status,
 };
 pub(crate) use rdma::ibv_device;
-use rdma::uverbs_uapi::{CreateCqRequest, PollCqRequest, CreateMrRequest, CreateMrResponse, QueryPortRequest, CreateQpRequest, ModifyQpRequest, PostSendRequest, UVERBS_MAX_QUERY_DEVICES_REQ, CreateCqResponse, CreateQpResponse, ReceiveWorkRequest, PostReceiveRequest, UserSlice, SendWorkRequest, UverbsCmd};
-use rdma::uverbs_uapi::UverbsCmd::{CreateCq, CreateQp, DeregMr, DestroyCq, DestroyQp, ModifyQp, OpPostRecv, OpPostSend, PollCq, QueryDevice, QueryDevices, QueryPort, RegMr};
+use rdma::uverbs_uapi::{CreateMrRequest, CreateMrResponse, QueryPortRequest, ModifyQpRequest, UVERBS_MAX_QUERY_DEVICES_REQ, ReceiveWorkRequest, UserSlice, SendWorkRequest, UverbsCmd};
+use rdma::uverbs_uapi::UverbsCmd::{DeregMr, DestroyCq, DestroyQp, ModifyQp, QueryDevice, QueryDevices, QueryPort, RegMr};
 use syscall::return_vals::{Errno, SyscallResult};
+use crate::mlx4;
 
 pub fn uverbs(
     device_fd: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: UserSlice,
@@ -84,7 +86,8 @@ pub struct ibv_context_ops {
     ) -> Result<()>>,
 }
 
-// TODO: bypass syscall with data-path (fast-path) using UAR and Doorbell page
+// These bypass the syscall for the data-path (fast-path), posting/polling directly against
+// memory mapped in by `CreateCq`/`CreateQp`; see `crate::mlx4`.
 const IBV_CONTEXT_OPS: ibv_context_ops = ibv_context_ops {
     poll_cq: Some(ibv_poll_cq),
     post_send: Some(ibv_post_send),
@@ -94,6 +97,8 @@ const IBV_CONTEXT_OPS: ibv_context_ops = ibv_context_ops {
 pub struct ibv_context {
     pub ops: ibv_context_ops,
     device_handle: usize,
+    // TODO: add support for different device types, i.e. mlx5, iWARP, RoCE
+    mlx4: mlx4::Device,
 }
 
 impl ibv_context {
@@ -108,6 +113,7 @@ pub struct ibv_cq<'ctx> {
     number: u32,
     /// Consumer-supplied context returned for completion events
     _cq_context: isize,
+    cq: Mutex<mlx4::completion_queue::CompletionQueue>,
 }
 
 impl Drop for ibv_cq<'_> {
@@ -206,7 +212,11 @@ pub fn ibv_get_device_guid(_device: &ibv_device) -> Result<__be64> {
 
 /// Initialize device for use
 pub fn ibv_open_device(device: &ibv_device) -> Result<ibv_context> {
-    Ok(ibv_context { device_handle: device.handle, ops: IBV_CONTEXT_OPS, })
+    Ok(ibv_context {
+        device_handle: device.handle,
+        ops: IBV_CONTEXT_OPS,
+        mlx4: mlx4::Device::new(device.handle),
+    })
 }
 
 /// Get device properties
@@ -296,55 +306,29 @@ pub fn ibv_create_cq(
     assert!(channel.is_none());
     assert_eq!(comp_vector, 0);
 
-    let device_handle = context.device_handle();
-
-    let req = CreateCqRequest {
-        cq_entries: cqe,
-    };
-
-    let mut resp = MaybeUninit::<CreateCqResponse>::uninit();
-
-    match uverbs(device_handle, CreateCq, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp)) {
-        Ok(_) => {
-            let resp = unsafe { resp.assume_init() };
-            Ok( ibv_cq { context, number: resp.cq_num, _cq_context: cq_context, } )
-        },
-        Err(e) => Err(uverbs_error(e))
-    }
+    let cq = mlx4::completion_queue::CompletionQueue::create(context.device_handle(), cqe)
+        .map_err(|_| Error::from(ErrorKind::Other))?;
+    let number = cq.number();
+    Ok(ibv_cq { context, number, _cq_context: cq_context, cq: Mutex::new(cq) })
 }
 
 /// Create a queue pair.
 pub fn ibv_create_qp<'ctx, 'cq>(
-    pd: &'ctx ibv_pd<'_>, qp_init_attr: &mut ibv_qp_init_attr<'cq, 'ctx>,
+    _pd: &'ctx ibv_pd<'_>, qp_init_attr: &mut ibv_qp_init_attr<'cq, 'ctx>,
 ) -> Result<ibv_qp<'ctx, 'cq>> {
     let send_cq = qp_init_attr.send_cq;
     let recv_cq = qp_init_attr.recv_cq;
     assert!(core::ptr::eq(send_cq.context, recv_cq.context));
 
-    let device_handle = pd.context.device_handle();
+    let qp_num = send_cq.context.mlx4.create_qp(send_cq.number, recv_cq.number, qp_init_attr.qp_type, qp_init_attr.cap)
+        .map_err(|_| Error::from(ErrorKind::Other))?;
 
-    let req = CreateQpRequest {
-        qp_type: qp_init_attr.qp_type,
-        send_cq_num: send_cq.number,
-        recv_cq_num: recv_cq.number,
-        ib_caps: qp_init_attr.cap,
-    };
-
-    let mut resp = MaybeUninit::<CreateQpResponse>::uninit();
-
-    match uverbs(device_handle, CreateQp, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp)) {
-        Ok(_) => {
-            let resp = unsafe { resp.assume_init() };
-            Ok(ibv_qp {
-                ops: &IBV_CONTEXT_OPS,
-                qp_num: resp.qp_num,
-                send_cq,
-                recv_cq,
-            })
-        },
-        Err(e) => Err(uverbs_error(e))
-    }
-
+    Ok(ibv_qp {
+        ops: &IBV_CONTEXT_OPS,
+        qp_num,
+        send_cq,
+        recv_cq,
+    })
 }
 
 /// Modify a queue pair.
@@ -361,33 +345,38 @@ pub fn ibv_modify_qp(
     };
 
     match uverbs(device_handle, ModifyQp, UserSlice::from_ref(&req), UserSlice::EMPTY) {
-        Ok(_) => Ok(()),
+        Ok(_) => {
+            // The kernel just updated its own `QueuePair::state` from this transition; mirror it
+            // into the mlx4 registry too, since `post_send`/`post_recv` check the copy there
+            // (posting no longer round-trips through the kernel to see this).
+            if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_STATE) {
+                qp.send_cq.context.mlx4.set_qp_state(qp.qp_num, attr.qp_state)
+                    .map_err(|_| Error::from(ErrorKind::Other))?;
+            }
+            Ok(())
+        }
         Err(e) => Err(uverbs_error(e))
     }
 }
 
 /// poll a completion queue (CQ)
+///
+/// This reads directly from the CQE buffer mapped in by `ibv_create_cq` — no syscall per poll.
 fn ibv_poll_cq(
     cq: &ibv_cq<'_>, wc: &mut [ibv_wc],
 ) -> Result<i32> {
-    let device_handle = cq.context.device_handle();
-
-    let req = PollCqRequest {
-        cq_num: cq.number,
-    };
-
-    match uverbs(device_handle, PollCq, UserSlice::from_ref(&req), UserSlice::from_mut_slice(wc)) {
-        Ok(wc_count) => Ok(wc_count.try_into().unwrap()),
-        Err(e) => Err(uverbs_error(e))
-    }
+    cq.cq.lock().poll(&cq.context.mlx4, wc)
+        .map(|count| count.try_into().unwrap())
+        .map_err(|_| Error::from(ErrorKind::Other))
 }
 
 /// post a list of work requests (WRs) to a send queue
+///
+/// This posts directly into the WQE buffer mapped in by `ibv_create_qp` and rings the SQ
+/// doorbell — no syscall per post.
 unsafe fn ibv_post_send(
     qp: &mut ibv_qp<'_, '_>, wr: &mut ibv_send_wr,
 ) -> Result<()> {
-    let device_handle = qp.send_cq.context.device_handle();
-
     let mut wrs = Vec::new();
     let mut cur = Some(wr);
     while let Some(wr) = cur {
@@ -401,26 +390,16 @@ unsafe fn ibv_post_send(
         cur = wr.next.as_mut();
     }
 
-    let req = PostSendRequest {
-        qp_num: qp.qp_num,
-        wrs,
-    };
-
-    let req_vec = bincode::encode_to_vec(req, bincode::config::standard())
-        .map_err(|_| Error::from(ErrorKind::Other))?;
-
-    match uverbs(device_handle, OpPostSend, UserSlice::from_slice(&req_vec), UserSlice::EMPTY) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(uverbs_error(e))
-    }
+    qp.send_cq.context.mlx4.post_send(qp.qp_num, &wrs).map_err(|_| Error::from(ErrorKind::Other))
 }
 
 /// post a list of work requests (WRs) to a receive queue
+///
+/// This posts directly into the WQE buffer mapped in by `ibv_create_qp` and updates the RQ
+/// doorbell record — no syscall per post.
 unsafe fn ibv_post_recv(
     qp: &mut ibv_qp<'_, '_>, wr: &mut ibv_recv_wr,
 ) -> Result<()> {
-    let device_handle = qp.recv_cq.context.device_handle();
-
     let mut wrs = Vec::new();
     let mut cur = Some(wr);
     while let Some(wr) = cur {
@@ -431,18 +410,7 @@ unsafe fn ibv_post_recv(
         cur = unsafe { wr.next.as_mut() };
     }
 
-    let req = PostReceiveRequest {
-        qp_num: qp.qp_num,
-        wrs,
-    };
-
-    let req_vec = bincode::encode_to_vec(req, bincode::config::standard())
-        .map_err(|_| Error::from(ErrorKind::Other))?;
-
-    match uverbs(device_handle, OpPostRecv, UserSlice::from_slice(&req_vec), UserSlice::EMPTY) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(uverbs_error(e))
-    }
+    qp.recv_cq.context.mlx4.post_receive(qp.qp_num, &wrs).map_err(|_| Error::from(ErrorKind::Other))
 }
 
 pub fn ibv_send_wr_builder(wr_id: u64, opcode: ibv_wr_opcode, send_flags: ibv_send_flags,

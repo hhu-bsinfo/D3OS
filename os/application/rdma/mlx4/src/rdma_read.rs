@@ -1,7 +1,7 @@
 use super::{session, handshake, integrity};
 use mm::{MmapFlags, mmap};
 use ibverbs::{
-    devices, LocalMemoryRegion
+    devices,
 };
 use rdma::ibv_send_flags;
 use super::bench;
@@ -17,7 +17,7 @@ pub fn invoke(config: RunConfig) {
     let context_buffer = mmap(
         30 * 1024 * 1024 * 1024 * 1024,
         CONTEXT_BUFFER_SIZE,
-        MmapFlags::ANONYMOUS | MmapFlags::POPULATE | MmapFlags::ALLOC_AT,
+        MmapFlags::ANONYMOUS | MmapFlags::POPULATE,
     )
     .expect("mmap failed");
 
@@ -89,7 +89,7 @@ pub fn invoke(config: RunConfig) {
         println!("Performing RDMA read...");
 
         if config.only_test {
-            let result = unsafe { qp.rdma_read(
+            let _ = unsafe { qp.rdma_read(
                 &mut remote_mr,
                 vec![0..alloc_mem as u64],
                 &mut rdma_session.mr,

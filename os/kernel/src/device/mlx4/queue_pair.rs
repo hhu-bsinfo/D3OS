@@ -4,41 +4,30 @@
 
 use core::{
     mem::size_of,
-    sync::atomic::{compiler_fence, Ordering}, u32,
+    sync::atomic::{compiler_fence, Ordering},
 };
 
-use crate::memory::PAGE_SIZE;
-use alloc::boxed::Box;
 use alloc::{vec, vec::Vec};
-use alloc::string::ToString;
 use bitflags::bitflags;
 use byteorder::BigEndian;
-use log::{error, trace};
+use log::trace;
 use modular_bitfield_msb::{
     bitfield,
     prelude::{B12, B16, B17, B19, B2, B20, B24, B3, B4, B40, B48, B5, B53, B56, B6, B7},
 };
 use rdma::{
-    ibv_access_flags, ibv_mtu, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_state, ibv_qp_type, ibv_recv_wr, ibv_send_flags, ibv_send_wr, ibv_send_wr_wr,
-    ibv_sge, ibv_wr_opcode,
+    ibv_access_flags, ibv_mtu, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_state, ibv_qp_type, ibv_send_flags, ibv_send_wr_wr,
+    ibv_sge,
 };
 use strum_macros::FromRepr;
-use tock_registers::{interfaces::Writeable, registers::WriteOnly};
+use tock_registers::registers::WriteOnly;
 use x86_64::{PhysAddr, VirtAddr};
-use x86_64::structures::paging::PageTableFlags;
+use uuid::Uuid;
+use x86_64::structures::paging::{Page, Size4KiB};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
-use rdma::uverbs_uapi::{ReceiveWorkRequest, SendWorkRequest};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
-use super::{
-    cmd::{CommandInterface, Opcode},
-    completion_queue::CompletionQueue,
-    device::{uar_index_to_hw, PAGE_SHIFT},
-    fw::{Capabilities, DoorbellPage},
-    icm::{MrTable, ICM_PAGE_SHIFT},
-    utils,
-    utils::MappedPages,
-    Offsets,
-};
+use crate::process_manager;
+use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, ConnectX3Nic};
 
 const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
 const IB_MAX_HEADROOM: u32 = 2048;
@@ -51,21 +40,24 @@ const fn ib_sq_headroom(shift: u32) -> u32 {
 #[derive(Debug)]
 pub(super) struct QueuePair {
     number: u32,
+    owner: Uuid,
     state: ibv_qp_state,
     qp_type: ibv_qp_type::Type,
     port_number: Option<u8>,
-    // TODO: this seems deprecated
-    _is_special: bool,
-    sq: WorkQueue,
-    rq: WorkQueue,
     // TODO: bind the lifetime to the one of the completion queues
     send_cq_number: u32,
     receive_cq_number: u32,
-    memory: Option<utils::PageToFrameMapping>,
     uar_idx: usize,
-    doorbell_page: MappedPages,
+    uar_page: Page<Size4KiB>,
+    bf_page: Page<Size4KiB>,
+    mtt: Option<u64>,
+    /// In units of 64 bytes
+    page_offset: u8,
     doorbell_address: PhysAddr,
-    mtt: u64,
+    log_sq_bb_count: u8,
+    log_sq_stride: u8,
+    log_rq_wqe_count: u8,
+    log_rq_stride: u8,
 }
 
 impl QueuePair {
@@ -77,53 +69,75 @@ impl QueuePair {
     ///
     /// This is similar to creating a completion queue or an event queue.
     pub(super) fn new(
-        caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable, qp_type: ibv_qp_type::Type,
-        send_cq: &CompletionQueue, receive_cq: &CompletionQueue, ib_caps: &mut ibv_qp_cap,
+        dev: &mut ConnectX3Nic,
+        qp_type: ibv_qp_type::Type,
+        send_cq_number: u32,
+        receive_cq_number: u32,
+        buffer: *const u8,
+        doorbell_ptr: *const u32,
+        log_sq_bb_count: u8,
+        log_sq_stride: u8,
+        log_rq_wqe_count: u8,
+        log_rq_stride: u8,
     ) -> Result<Self, &'static str> {
-        let number = offsets.alloc_qpn().try_into().unwrap();
-        let uar_idx = offsets.alloc_scq_db();
-        let state = ibv_qp_state::IBV_QPS_RESET;
-        let send_cq_number = send_cq.number();
-        let receive_cq_number = receive_cq.number();
-        let mut rq = WorkQueue::new_receive_queue(caps, ib_caps)?;
-        let mut sq = WorkQueue::new_send_queue(caps, ib_caps, qp_type)?;
-        if rq.wqe_shift > sq.wqe_shift {
-            rq.offset = 0;
-            sq.offset = rq.size();
-        } else {
-            rq.offset = sq.size();
-            sq.offset = 0;
+        if log_sq_stride < 4 || log_rq_stride < 4 {
+            return Err("stride is not multiple of 16 bytes");
         }
-        let buf_size = (rq.size() + sq.size()).try_into().unwrap();
-        let mapped_page_to_frame = utils::create_cont_mapping_with_dma_flags(utils::pages_required(buf_size))?.fetch_in_addr()?;
 
-        // zero the queue
-        let pages = mapped_page_to_frame.0.page_range();
-        unsafe { core::ptr::write_bytes(pages.start.start_address().as_mut_ptr::<u8>(), 0, pages.size() as usize) };
+        // Bound WQE counts against the HCA's max QP size and guard the `buffer_size` shifts
+        // below from overflowing.
+        let log_max_qp_sz = dev.capabilities.log_max_qp_sz();
+        if log_sq_bb_count > log_max_qp_sz || log_rq_wqe_count > log_max_qp_sz {
+            return Err("WQE count exceeds the HCA's max QP size");
+        }
+        if log_sq_bb_count.checked_add(log_sq_stride).is_none_or(|shift| shift >= 64)
+            || log_rq_wqe_count.checked_add(log_rq_stride).is_none_or(|shift| shift >= 64)
+        {
+            return Err("QP buffer size overflows");
+        }
 
-        let mtt = memory_regions.alloc_mtt_for_pages(caps, mapped_page_to_frame.0.page_range())?;
+        let number = dev.offsets.alloc_qpn().try_into().unwrap();
 
-        // NOTE: ibverbs does not allocate a complete page for one Doorbell, instead it uses a shared allocator
-        //       in the device context for all Doorbells. This Allocator only allocates pages if it ran out of memory
-        let (mut doorbell_page, doorbell_address) =
-            utils::create_cont_mapping_with_dma_flags(utils::pages_required(size_of::<QueuePairDoorbell>()))?.fetch_in_addr()?;
-        let doorbell: &mut QueuePairDoorbell = doorbell_page.as_type_mut(0)?;
-        doorbell.receive_wqe_index.set(0_u32.to_be());
+        let process = process_manager().read().current_process();
+        // TODO: UAR is allocated a device open
+        let uar_idx = dev.offsets.alloc_uar();
+        let uar = dev.map_uar(uar_idx, &process, alloc::format!("uar-{uar_idx}").as_str())?;
+        let bf = dev.map_bf(uar_idx, &process)?;
+
+        let buffer_size: u64 = (1 << (log_sq_bb_count + log_sq_stride)) + (1 << (log_rq_wqe_count + log_rq_stride));
+        let buffer_addr = VirtAddr::from_ptr(buffer);
+
+        if buffer.addr() % 64 != 0 {
+            return Err("buffer is not aligned to 64");
+        }
+        let start: Page<Size4KiB> = Page::containing_address(buffer_addr);
+        let end = start + buffer_size.div_ceil(start.size());
+        let mtt = Some(dev.icm_tables.memory_regions().alloc_mtt_for_pages(&dev.capabilities, Page::range(start, end))?);
+        // Offset from the first page in units of 64 bytes
+        let page_offset: u8 = ((buffer_addr - start.start_address()) >> 6) as u8;
+
+        let doorbell_address = process.virtual_address_space
+            .get_phys(doorbell_ptr as u64)
+            .ok_or("doorbell not mapped to physical address")?;
+
         let qp = Self {
             number,
-            state,
+            owner: process.id(),
+            state: ibv_qp_state::IBV_QPS_RESET,
             qp_type,
             port_number: None,
-            _is_special: false,
-            sq,
-            rq,
             send_cq_number,
             receive_cq_number,
-            memory: Some(mapped_page_to_frame),
             uar_idx,
-            doorbell_page,
-            doorbell_address,
+            uar_page: uar,
+            bf_page: bf,
             mtt,
+            page_offset,
+            doorbell_address,
+            log_sq_bb_count,
+            log_sq_stride,
+            log_rq_wqe_count,
+            log_rq_stride,
         };
         trace!("created new QP: {qp:?}");
         Ok(qp)
@@ -212,12 +226,10 @@ impl QueuePair {
                 // TODO: RC and UD need srq
                 // TODO: RC and UD need srqn
                 // TODO: fre
-                assert_ne!(self.sq.wqe_cnt, 0);
-                context.set_log_sq_size(self.sq.wqe_cnt.ilog2().try_into().unwrap());
-                assert_ne!(self.rq.wqe_cnt, 0);
-                context.set_log_rq_size(self.rq.wqe_cnt.ilog2().try_into().unwrap());
-                context.set_log_sq_stride((self.sq.wqe_shift - 4).try_into().unwrap());
-                context.set_log_rq_stride((self.rq.wqe_shift - 4).try_into().unwrap());
+                context.set_log_sq_size(self.log_sq_bb_count);
+                context.set_log_rq_size(self.log_rq_wqe_count);
+                context.set_log_sq_stride(self.log_sq_stride - 4);
+                context.set_log_rq_stride(self.log_rq_stride - 4);
                 // since we can't allocate protection domains,
                 // allow using the reserved lkey to refer directly to physical
                 // addresses
@@ -225,23 +237,18 @@ impl QueuePair {
                 // TODO: sq_wqe_counter, rq_wqe_counter, is
                 // TODO: hs, vsd, rss for UD
                 context.set_sq_no_prefetch(false);
-                // TODO: page_offset, pkey_index, disable_pkey_check
+                context.set_page_offset(self.page_offset);
+                // TODO: pkey_index, disable_pkey_check
                 // TOODO: rss context for UD
                 context.set_log_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
-                context.set_mtt_base_addr(self.mtt);
+                context.set_mtt_base_addr(self.mtt.ok_or("queue pair has no MTT")?);
                 context.set_db_record_addr(self.doorbell_address.as_u64().try_into().unwrap());
 
-                // Before passing a kernel QP to the HW, make sure that the
-                // ownership bits of the send queue are set and the SQ headroom
-                // is stamped so that the hardware doesn't start processing
-                // stale work requests.
-                let memory = self.memory.as_mut().unwrap();
-                for i in 0..self.sq.wqe_cnt {
-                    let ctrl: &mut WqeControlSegment = self.sq.get_element(memory, i)?;
-                    ctrl.owner_opcode = (1 << 31).into();
-                    ctrl.vlan_cv_f_ds = (1 << (self.sq.wqe_shift - 4)).into();
-                    self.sq.stamp_wqe(memory, i)?;
-                }
+                // The send queue's ownership bits and headroom stamping must be initialized
+                // before the HW takes ownership of the buffer; since userspace now owns the
+                // buffer, that init happens in `mlx4::QueuePair::create` before this transition
+                // is requested.
+
                 Opcode::Rst2InitQp
             }
 
@@ -452,287 +459,6 @@ impl QueuePair {
         Ok(())
     }
 
-    /// Post a work request to receive data.
-    ///
-    /// This is used by ibv_post_recv.
-    pub(super) fn post_receive(&mut self, wrs: &[ReceiveWorkRequest]) -> Result<(), &'static str> {
-        if self.state != ibv_qp_state::IBV_QPS_RTR && self.state != ibv_qp_state::IBV_QPS_RTS {
-            return Err("queue pair cannot receive in this state");
-        }
-        let mut index = self.rq.head;
-        let mut num_req = 0;
-        for curr in wrs {
-            // make sure that we're not overflowing
-            if self.rq.would_overflow(num_req) {
-                // The tail only moves when completions are polled, so this is as likely to mean
-                // the driver has lost track of it as it is to mean the queue is genuinely full.
-                // Print both ends of the queue to tell those apart: a tail that has stopped
-                // moving while completions keep arriving is the driver's bug, and it makes the
-                // peer see RNR NAKs from here on.
-                error!(
-                    "QP {}: receive queue would overflow: head {}, tail {}, in flight {}, posting {}, max_post {}, wqe_cnt {}",
-                    self.number,
-                    self.rq.head,
-                    self.rq.tail,
-                    self.rq.head.wrapping_sub(self.rq.tail),
-                    num_req,
-                    self.rq.max_post,
-                    self.rq.wqe_cnt,
-                );
-                return Err("receive queue would overflow");
-            }
-            // check that this work request is not too big
-            if u32::try_from(curr.sges.len()).unwrap() > self.rq.max_gs {
-                return Err("work request has too many sges");
-            }
-            let mut sge_index = 0;
-            for sge in &curr.sges {
-                let elem = self.rq.get_data_segment(self.memory.as_mut().unwrap(), index, sge_index)?;
-                elem.copy_from_sge(sge)?;
-                sge_index += 1;
-            }
-
-            // Write the wr id and the chain size, so that the completion queue can recover them.
-            // Every receive WQE produces its own completion, so a chain is always a single WQE
-            // long — but it still has to be recorded: `poll_one` advances the receive queue's
-            // tail by this value, so leaving it at zero means the tail never moves and the queue
-            // reports an overflow after `max_post` posts no matter how many completed.
-            self.rq.update_id(index as usize, curr.wr_id);
-            self.rq.update_chain_size(index as usize, 1);
-
-            // Terminate the scatter list, but only if this work request left a segment of the
-            // WQE unused — a full one needs no terminator, and writing one would spill into the
-            // next WQE and invalidate a receive buffer that is still (or about to be) posted.
-            if sge_index < self.rq.max_gs {
-                let last_elem = self.rq.get_data_segment(self.memory.as_mut().unwrap(), index, sge_index)?;
-                *last_elem = WqeDataSegment::last();
-            }
-            num_req += 1;
-            index = index.wrapping_add(1);
-        }
-
-        // return if we don't have anything to do
-        if num_req == 0 {
-            return Ok(());
-        }
-        self.rq.head = self.rq.head.wrapping_add(num_req);
-        // make sure that the descriptors are written before the doorbell
-        compiler_fence(Ordering::SeqCst);
-        let doorbell: &mut QueuePairDoorbell = self.doorbell_page.as_type_mut(0)?;
-        doorbell.receive_wqe_index.set(
-            (self.rq.head as u16 as u32).to_be(), // wrap around at u16::MAX
-        );
-        Ok(())
-    }
-
-    /// Post a work request to send data.
-    ///
-    /// This is used by ibv_post_send.
-    pub(super) fn post_send(
-        &mut self, caps: &Capabilities, doorbells: &mut [MappedPages], blueflame: Option<&mut [MappedPages]>, wrs: &[SendWorkRequest],
-    ) -> Result<(), &'static str> {
-        if self.state != ibv_qp_state::IBV_QPS_RTS {
-            return Err("queue pair cannot send in this state");
-        }
-        // TODO: the Nautilus driver uses sq.next_wqe
-        let mut index = self.sq.head;
-        let mut num_req = 0;
-        let mut chain_size = 1;
-        let memory = self.memory.as_mut().unwrap();
-
-        let mut peekable = wrs.iter().peekable();
-        while let Some(curr) = peekable.next() {
-            // make sure that we're not overflowing
-            if self.sq.would_overflow(num_req) {
-                return Err("send queue would overflow");
-            }
-            // check that this work request is not too big
-            if u32::try_from(curr.sges.len()).unwrap() > self.sq.max_gs {
-                return Err("work request has too many sges");
-            }
-            let ctrl_addr = {
-                let ctrl: &mut WqeControlSegment = self.sq.get_element(memory, index)?;
-                ctrl.vlan_cv_f_ds = 0.into();
-                let wqe_segment_flags: WqeControlSegmentFlags = curr.send_flags.into();
-                ctrl.flags = wqe_segment_flags.bits().into();
-                //ctrl.flags = WqeControlSegmentFlags::CQ_UPDATE.bits().into();
-                ctrl.flags2 = 0.into();
-                VirtAddr::new(ctrl as *mut WqeControlSegment as u64)
-            };
-            let mut wqe_offset = memory.0.offset_of_address(ctrl_addr).unwrap();
-            wqe_offset += size_of::<WqeControlSegment>();
-            let mut wqe_size = size_of::<WqeControlSegment>();
-            match self.qp_type {
-                ibv_qp_type::IBV_QPT_RC | ibv_qp_type::IBV_QPT_UC => {
-                    // extra segments are only required for RDMA
-                    if curr.opcode == ibv_wr_opcode::IBV_WR_RDMA_READ || curr.opcode == ibv_wr_opcode::IBV_WR_RDMA_WRITE {
-                        let wqe: &mut WqeRemoteAddressSegment = memory.0.as_type_mut(wqe_offset)?;
-                        *wqe = WqeRemoteAddressSegment::from_wr(&curr.wr)?;
-                        wqe_offset += size_of::<WqeRemoteAddressSegment>();
-                        wqe_size += size_of::<WqeRemoteAddressSegment>();
-                    }
-                }
-                ibv_qp_type::IBV_QPT_UD => {
-                    let wqe: &mut WqeDatagramSegment = memory.0.as_type_mut(wqe_offset)?;
-                    *wqe = WqeDatagramSegment::from_wr(&curr.wr)?;
-                    wqe_offset += size_of::<WqeDatagramSegment>();
-                    wqe_size += size_of::<WqeDatagramSegment>();
-                }
-                #[allow(unreachable_patterns)]
-                _ => return Err("invalid queue pair type"),
-            }
-
-            // Write data segments in reverse order, so as to overwrite
-            // cacheline stamp last within each cacheline. This avoids issues
-            // with WQE prefetching.
-            wqe_offset += (usize::try_from(curr.sges.len()).unwrap() - 1) * size_of::<WqeDataSegment>();
-            for sge in curr.sges.iter().rev() {
-                let elem: &mut WqeDataSegment = memory.0.as_type_mut(wqe_offset)?;
-                elem.copy_from_sge(sge)?;
-                wqe_offset -= size_of::<WqeDataSegment>();
-                wqe_size += size_of::<WqeDataSegment>();
-            }
-
-            // Possibly overwrite stamping in cacheline with LSO segment
-            // only after making sure all data segments are written.
-            compiler_fence(Ordering::SeqCst);
-            let ctrl: &mut WqeControlSegment = self.sq.get_element(memory, index)?;
-            ctrl.vlan_cv_f_ds = u32::try_from(wqe_size / 16).unwrap().into();
-            // Make sure descriptor is fully written before setting ownership
-            // bit (because HW can start executing as soon as we do).
-            compiler_fence(Ordering::SeqCst);
-            // TODO: opcode check
-            let opcode = match curr.opcode {
-                ibv_wr_opcode::IBV_WR_RDMA_WRITE => QueuePairOpcode::RdmaWrite,
-                ibv_wr_opcode::IBV_WR_SEND => QueuePairOpcode::Send,
-                ibv_wr_opcode::IBV_WR_RDMA_READ => QueuePairOpcode::RdmaRead,
-            } as u32;
-            let owner = match index & self.sq.wqe_cnt {
-                0 => 0,
-                _ => 1 << 31,
-            };
-            ctrl.owner_opcode = (owner | opcode).into();
-            // We can improve latency by not stamping the last send queue WQE
-            // until after ringing the doorbell, so only stamp here if there are
-            // still more WQEs to post.
-            if peekable.peek().is_some() {
-                self.sq.stamp_wqe(memory, index + self.sq.spare_wqes.unwrap())?;
-            }
-
-            if curr.send_flags.contains(ibv_send_flags::SIGNALED) {
-                // write wr id, so that completion queue poll can recover it
-                self.sq.update_id(index as usize, curr.wr_id);
-                self.sq.update_chain_size(index as usize, chain_size);
-
-                chain_size = 1;
-            } else {
-                chain_size += 1;
-            }
-
-            num_req += 1;
-            index = index.wrapping_add(1);
-            // TODO: support multiple work requests ; Done
-        }
-        // return if we don't have anything to do
-        if num_req == 0 {
-            return Ok(());
-        }
-        // TODO: bf fails for RDMA writes
-        if blueflame.is_some() && caps.bf() && num_req == 1 {
-            index -= 1;
-            let (size, ctrl_address) = {
-                let ctrl: &mut WqeControlSegment = self.sq.get_element(memory, index)?;
-                ctrl.owner_opcode.set(ctrl.owner_opcode.get() | ((self.sq.head & 0xffff) << 8));
-                ctrl.vlan_cv_f_ds.set(ctrl.vlan_cv_f_ds.get() | (self.number << 8));
-                let ctrl_address = VirtAddr::new(ctrl as *mut WqeControlSegment as u64);
-                (ctrl.size().try_into().unwrap(), ctrl_address)
-            };
-            let ctrl_offset = memory.0.offset_of_address(ctrl_address).ok_or("control segment has invalid address")?;
-            // Make sure that descriptor is written to memory
-            // before writing to BlueFlame page.
-            compiler_fence(Ordering::SeqCst);
-            // the UAR determines which BlueFlame page we can use
-            // we just use the first register (0..bf_reg_size)
-            // each register consists of two buffers (bf_reg_size/2)
-            // which we have to alternate between
-            let bf_reg: &mut [u64] = blueflame.unwrap()[self.uar_idx].as_slice_mut((index as usize % 2) * (caps.bf_reg_size() / 2), caps.bf_reg_size() / 8)?;
-            let src = memory.0.as_slice(ctrl_offset, size)?;
-            bf_reg[..size].copy_from_slice(src);
-            // TODO: will this work when mixing BF and normal sends?
-        } else {
-            // Make sure that descriptors are written before doorbell.
-            compiler_fence(Ordering::SeqCst);
-            let doorbell: &mut DoorbellPage = doorbells[self.uar_idx].as_type_mut(0)?;
-            doorbell.send_queue_number.set((self.number << 8).to_be());
-        }
-        self.sq.stamp_wqe(memory, index + self.sq.spare_wqes.unwrap() - 1)?;
-        self.sq.head = self.sq.head.wrapping_add(num_req);
-        Ok(())
-    }
-
-    /// Check the work queue element index the card reports against the one we expect next.
-    ///
-    /// The reference driver takes the card's index as the truth
-    /// (`wq->tail += (u16)(wqe_ctr - (u16)wq->tail)` in `mlx4_ib_poll_one`), while this driver
-    /// advances the tail by the chain size it recorded when the work request was posted. Those
-    /// two agree only as long as every completion is seen exactly once. If they drift apart the
-    /// queue reports an overflow while the card still has room — and on the receive side that
-    /// means we stop posting receives and the peer starts seeing RNR NAKs.
-    ///
-    /// Only the first disagreement per queue is logged: by then everything after it is suspect,
-    /// and logging goes out over the serial console, which is slow enough to cause the very
-    /// stalls being investigated.
-    pub(super) fn check_wqe_index(&mut self, wqe_index: u32, is_send: bool) {
-        let number = self.number;
-        let wq = if is_send { &mut self.sq } else { &mut self.rq };
-        if wq.divergence_reported {
-            return;
-        }
-        let expected = wq.tail & (wq.wqe_cnt - 1);
-        let reported = wqe_index & (wq.wqe_cnt - 1);
-        if expected != reported {
-            wq.divergence_reported = true;
-            error!(
-                "QP {number}: card reports a {} completion for WQE {reported}, driver expected {expected} (head {}, tail {})",
-                if is_send { "send" } else { "receive" },
-                wq.head,
-                wq.tail,
-            );
-        }
-    }
-
-    /// Advance the tail of the receive queue.
-    ///
-    /// This is called on work completion.
-    #[inline(always)]
-    pub(super) fn advance_receive_queue_by(&mut self, by: u32) {
-        self.rq.tail += by;
-    }
-
-    /// Advance the tail of the send queue.
-    ///
-    /// This is called on work completion.
-    #[inline(always)]
-    pub(super) fn advance_send_queue_by(&mut self, by: u32) {
-        self.sq.tail += by;
-    }
-
-    #[inline(always)]
-    pub fn query_wr_id(&self, wqe_idx: usize, is_send: bool) -> u64 {
-        if is_send {
-            return self.sq.get_id(wqe_idx);
-        }
-        self.rq.get_id(wqe_idx)
-    }
-
-    #[inline(always)]
-    pub fn query_chain_size(&self, wqe_idx: usize, is_send: bool) -> u32 {
-        if is_send {
-            return self.sq.get_chain_size(wqe_idx);
-        }
-        self.rq.get_chain_size(wqe_idx)
-    }
-
     /// Destroy this queue pair.
     pub(super) fn destroy(mut self, cmd: &mut CommandInterface, caps: &Capabilities) -> Result<(), &'static str> {
         trace!("destroying QP {}..", self.number);
@@ -747,8 +473,8 @@ impl QueuePair {
                 ibv_qp_attr_mask::IBV_QP_STATE,
             )?;
         }
-        // actually free the memory
-        self.memory.take().unwrap();
+        // TODO: deallocate mtt properly
+        let _ = self.mtt.take();
         Ok(())
     }
 
@@ -756,11 +482,28 @@ impl QueuePair {
     pub(super) fn number(&self) -> u32 {
         self.number
     }
+
+    /// The process that created this queue pair.
+    pub(super) fn owner(&self) -> Uuid {
+        self.owner
+    }
+
+    /// The UAR page mapped into the calling process, for userspace to ring the SQ doorbell from
+    /// directly.
+    pub(super) fn uar_page_ptr(&self) -> *mut u8 {
+        self.uar_page.start_address().as_mut_ptr()
+    }
+
+    /// The BlueFlame page mapped into the calling process, for userspace to post sends through
+    /// directly.
+    pub(super) fn bf_page_ptr(&self) -> *mut u8 {
+        self.bf_page.start_address().as_mut_ptr()
+    }
 }
 
 impl Drop for QueuePair {
     fn drop(&mut self) {
-        if self.memory.is_some() {
+        if self.mtt.is_some() {
             panic!("please destroy instead of dropping")
         }
     }
@@ -1298,6 +1041,8 @@ struct QueuePairContext {
     __: u8,
     #[skip(getters)]
     ssn: B24,
+
+    // 0x00090
     #[skip]
     __: u8,
     #[skip(getters)]
@@ -1311,7 +1056,15 @@ struct QueuePairContext {
     #[skip(getters)]
     remote_atomic: bool,
     #[skip]
-    __: B16,
+    __: bool,
+    #[skip(getters)]
+    page_offset: B6,
+    #[skip]
+    __: B6,
+
+    // 0x00094
+    #[skip]
+    __: B3,
     min_rnr_nak: B5,
     #[skip(getters)]
     next_recv_psn: B24,

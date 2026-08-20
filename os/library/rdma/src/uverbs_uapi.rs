@@ -9,15 +9,19 @@ pub enum UverbsCmd {
     // Completion queue operations
     CreateCq       = 1,
     DestroyCq      = 2,
-    PollCq         = 3,
+    // Polling and CQE parsing happen entirely in userspace against the mapped CQE buffer now;
+    // there is no kernel-side handler for this anymore.
+    // PollCq      = 3,
 
     // Queue pair operations
     CreateQp       = 4,
     ModifyQp       = 5,
     QueryQp        = 6,
     DestroyQp      = 7,
-    OpPostSend     = 8,
-    OpPostRecv     = 9,
+    // Posting happens entirely in userspace against the mapped WQE buffer now; there is no
+    // kernel-side handler for these anymore.
+    // OpPostSend  = 8,
+    // OpPostRecv  = 9,
 
     // Memory region operations
     RegMr          = 10,
@@ -28,6 +32,12 @@ pub enum UverbsCmd {
     QueryDevice    = 13,
     QueryPort      = 14,
     QueryDevices   = 15,
+
+    /// Drain the device's event queue (port-down/QP-error/internal-error notifications). Since
+    /// posting and polling no longer go through the kernel on every operation, userspace calls
+    /// this itself, rate-limited, from its poll loop instead of relying on it piggybacking on
+    /// another verb.
+    DrainEvents    = 16,
 }
 
 pub const UVERBS_MAX_USER_TRUST_SIZE: usize = 0x06400000; // allow user space to allocate up to 100MB
@@ -104,36 +114,53 @@ pub struct CreateMrResponse {
 }
 
 #[repr(C)]
-#[derive(Default, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct CreateCqRequest {
     pub cq_entries: i32,
+
+    // mlx4 specific, under linux this is an opaque driver_data[]: the userspace-owned, -mmap'd
+    // CQE ring and its consumer-index/arm-index doorbell record. The kernel only builds an MTT
+    // over `buffer` and runs the CMD-interface transition; polling and CQE parsing happen
+    // entirely in userspace against these from here on.
+    pub buffer: *const u8,
+    /// CQ doorbell records are aligned on an 8 B boundary per the PRM.
+    pub doorbell_ptr: *const u64,
 }
 
-#[repr(C)]
-#[derive(Default, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct CreateCqResponse {
-    pub cq_num: u32
-}
-
-
-#[repr(C)]
-#[derive(Default, Copy, Clone)]
-pub struct PollCqRequest {
     pub cq_num: u32,
+    /// The UAR page mapped into the calling process, for ringing the arm doorbell.
+    pub doorbell_page: *mut u8,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateQpRequest {
-    pub qp_type: ibv_qp_type::Type,
+    pub _pd_handle: u32,
     pub send_cq_num: u32,
     pub recv_cq_num: u32,
-    pub ib_caps: ibv_qp_cap,
+    pub qp_type: ibv_qp_type::Type,
+    pub _sq_sig_all: u8,
+    pub _reserved: u16,
+
+    // mlx4 specific, under linux this is an opaque driver_data[]
+    pub buffer: *const u8,
+    pub doorbell_ptr: *const u32,
+    pub log_sq_bb_count: u8,
+    pub log_sq_stride: u8,
+    pub inline_recv_size: u16,
+
+    // these fields are not part of the linux uverbs struct, but are calculated based on the capabilities
+    pub log_rq_wqe_count: u8,
+    pub log_rq_stride: u8,
 }
 
 #[derive(Copy, Clone)]
 pub struct CreateQpResponse {
     pub qp_num: u32,
+    pub doorbell_page: *mut u8,
+    pub blueflame_page: *mut u8,
 }
 
 #[repr(C)]
@@ -170,13 +197,6 @@ impl Default for ibv_recv_wr {
 }
 
 #[repr(C)]
-#[derive(Clone, Default, Encode, Decode)]
-pub struct PostSendRequest {
-    pub qp_num: u32,
-    pub wrs: Vec<SendWorkRequest>,
-}
-
-#[repr(C)]
 #[derive(Clone, Encode, Decode)]
 pub struct SendWorkRequest {
     pub wr_id: u64,
@@ -186,13 +206,6 @@ pub struct SendWorkRequest {
     pub wr: ibv_send_wr_wr,
 }
 
-
-#[repr(C)]
-#[derive(Clone, Encode, Decode)]
-pub struct PostReceiveRequest {
-    pub qp_num: u32,
-    pub wrs: Vec<ReceiveWorkRequest>,
-}
 
 #[derive(Clone, Encode, Decode)]
 pub struct ReceiveWorkRequest {

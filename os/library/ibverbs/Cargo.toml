@@ -17,6 +17,13 @@ syscall = { path = "../../library/syscall" }
 bincode = { version = "2.0.1", optional = true, default-features = false, features = ["derive", "alloc"] }
 serde = { version = "1.0.219", optional = true, default-features = false, features = ["derive", "alloc"] }
 core3 = { version = "0.1", default-features = false }
+zerocopy = "0.5.2"
+spin = "0.9.8"
+tock-registers = "0.10.1"
+bitflags = "2.9.0"
+modular-bitfield-msb = "0.11.2"
+strum_macros = "0.26"
+log = "0.4.26"
 
 [features]
 default = ["serialize"]
