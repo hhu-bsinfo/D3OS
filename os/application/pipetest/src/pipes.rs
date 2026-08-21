@@ -5,14 +5,13 @@ extern crate alloc;
 mod test1;
 mod test2;
 
+#[allow(unused_imports, reason = "contains global_allocator")]
+use runtime::*;
 
-use naming::shared_types::OpenOptions;
-use naming::{close, mkfifo, open, read, write};
+use naming::mkfifo;
 use syscall::return_vals::Errno;
 
 use concurrent::{thread,process};
-#[allow(unused_imports)]
-use runtime::*;
 use terminal::println;
 
 

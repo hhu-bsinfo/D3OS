@@ -10,7 +10,6 @@ use libc::*;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::ffi::{c_char, c_int, CStr};
-use core::sync::atomic::{AtomicUsize, Ordering};
 use chrono::TimeDelta;
 use pc_keyboard::{KeyCode, KeyEvent, KeyState};
 use spin::Mutex;

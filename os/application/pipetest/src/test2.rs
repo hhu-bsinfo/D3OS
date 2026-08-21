@@ -1,16 +1,10 @@
-#![no_std]
-
 extern crate alloc;
 
 use naming::shared_types::OpenOptions;
-use naming::{close, mkfifo, open, read, write};
-use syscall::return_vals::Errno;
+use naming::{close, open, read};
 use alloc::vec::Vec;
-use alloc::string::String;
 
-use concurrent::{thread,process};
-#[allow(unused_imports)]
-use runtime::*;
+use concurrent::thread;
 use terminal::println;
 
 const FIFO_PATH: &str = "/mypipe";
