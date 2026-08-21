@@ -288,10 +288,11 @@ impl Scheduler {
         else {
             // Scheduler is initialized, so we can block the calling thread
             let thread = self.current_thread();
-            let wakeup_time = timer().systime_ms() + ms;
+            thread.set_state(ThreadState::Sleeping);
             
             {
                 // Execute in own block, so that the lock is released automatically (block() does not return)
+                let wakeup_time = timer().systime_ms() + ms;
                 let mut sleep_list = self.sleep_list.lock();
                 sleep_list.push((thread, wakeup_time));
             }
@@ -313,6 +314,7 @@ impl Scheduler {
         else {
             // Scheduler is initialized, so we can block the calling thread
             let thread = self.current_thread();
+            thread.set_state(ThreadState::Blocked);
             {
                 // Execute in own block, so that the lock is released automatically (block() does not return)
                 let mut block_list = self.blocked_list.lock();
@@ -355,6 +357,7 @@ impl Scheduler {
 
         let state = self.get_ready_state();
         let thread = self.current_thread();
+        thread.set_state(ThreadState::Blocked);
         {
             // Execute in own block, so that the lock is released automatically (block() does not return)
             let mut join_map = self.join_map.lock();
@@ -379,6 +382,7 @@ impl Scheduler {
 
         if let Some(join_list) = join_map.get_mut(&thread_id) {
             for thread in join_list {
+                thread.set_state(ThreadState::Running);
                 ready_state.ready_queue.push_front(Arc::clone(thread));
                 inc_rq_len();
             }
@@ -391,6 +395,7 @@ impl Scheduler {
     pub fn exit(&self) -> ! {
         let mut ready_state = self.get_ready_state();
         let current = self.current_thread();
+        current.set_state(ThreadState::Exited);
 
         // Mark dead globally *before* waking joiners, so joiners racing in will observe "dead"
         mark_thread_dead(current.id());
@@ -588,6 +593,8 @@ impl Scheduler {
             thread.set_state(ThreadState::Running);
             return;
         }
+
+        thread.set_state(ThreadState::Blocked);
 
         {
             let mut block_list = self.blocked_list.lock();
@@ -945,6 +952,7 @@ impl Scheduler {
 
                 if let Some(join_list) = join_map.get_mut(&tid) {
                     for waiter in join_list.drain(..) {
+                        waiter.set_state(ThreadState::Running);
                         state.ready_queue.push_front(waiter);
                         inc_rq_len();
                     }
@@ -960,6 +968,7 @@ impl Scheduler {
                     .iter().position(|t| t.id() == tid && t.process().id() == pid)
                 {
                     let thread = blocked_list.remove(pos);
+                    thread.set_state(ThreadState::Running);
                     state.ready_queue.push_front(thread);
                     inc_rq_len();
                 }
