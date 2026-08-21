@@ -131,3 +131,20 @@ Also take a look at that script and fill in the constants at the top.
 
 If you want to run D3OS on a different device, build with `cargo make --no-workspace image` and copy over `qemu-pci.sh`, `RELEASEX64_OVMF.fd` and `d3os.img`.
 Run it with `./qemu-pci.sh -bios RELEASEX64_OVMF.fd -hda d3os.img`.
+
+## Pass ConnectX-3 Card to VM
+
+In order to test the MLX4 Driver you need to pass a real ConnectX-3 card through to QEMU. There is a script which looks for a ConnectX-3 card in your system and passes it to QEMU.
+It may be necessary to change some constants (`SLOT_ID`, `DEVICE_ID` and `DEVICES_TO_REMOVE`) in the script depending on your system configuration.
+The script does some initial QEMU configuration but requires you to provide an image via standard QEMU parameters. 
+To run a local `d3os.img` with VNC on port 5091 run:
+```bash
+./scripts/run-mlx4.sh -drive format=raw,file=d3os.img -vnc :1
+```
+
+During development, it may be cumbersome to always copy the image to all servers. For that http boot is a good option.
+Just run an HTTP file server on the development machine, like `caddy file-server --browse`. Then on the servers with InfiniBand cards run:
+```bash
+./scripts/run-mlx4.sh -snapshot -hda http://$DEVHOST/$PATH_TO_IMG
+```
+
