@@ -49,7 +49,7 @@ pub fn get_free_frames() -> usize {
 }
 
 
-/// Wrapper functions for the page frame allocator in `frames.rs` or `frames_lf.rs` (news lockfree implementation)
+// ### Wrapper functions for the page frame allocator in `frames.rs` or `frames_lf.rs` (news lockfree implementation) ###
 
 /// Wrapper function
 pub fn init() {

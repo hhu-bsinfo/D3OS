@@ -105,7 +105,7 @@ impl View {
         if i == rel_caret.unwrap_or(usize::MAX) {
             buffer.draw_line(x, y, x, y + font.char_height * font.scale, YELLOW);
         }
-        return (Vertex { x: x, y: y }, new_lines);
+        return (Vertex { x, y }, new_lines);
     }
     fn render_simple(
         document: &Document,

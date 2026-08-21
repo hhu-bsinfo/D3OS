@@ -16,7 +16,7 @@ type Comparator = unsafe extern "C" fn(*const c_void, *const c_void) -> c_int;
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn bsearch(key: *const c_void, base: *const c_void, count: c_size_t, size: c_size_t, comp: Comparator) -> *const c_void {
-    if base == ptr::null() || count == 0 || size == 0 {
+    if base.is_null() || count == 0 || size == 0 {
         return ptr::null();
     }
 

@@ -195,7 +195,7 @@ impl Paging {
         
         // If we are at the end of the top level page directory, we need to print the last detected area
         if level == 4 {
-            let end_address = entry_address + 1 << (12 + level * 9);
+            let end_address = (entry_address + 1) << (12 + level * 9);
             area.check(end_address);
         }
     }

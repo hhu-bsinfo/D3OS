@@ -35,7 +35,7 @@ impl Permissions {
 /// Create or open a shared memory region with the given name and size. \
 /// Returns an id for the shared memory region, which can be used to attach it into the virtual address space. 
 pub fn shm_open(name: &str, size:usize, create: bool) -> Result<usize, Errno> {
-    return syscall(SystemCall::ShmOpen, &[name.as_bytes().as_ptr() as usize, name.len(), size, create as usize]);
+    syscall(SystemCall::ShmOpen, &[name.as_bytes().as_ptr() as usize, name.len(), size, create as usize])
 }
 
 /// Attach the shared memory region with the given id into the virtual address space. \

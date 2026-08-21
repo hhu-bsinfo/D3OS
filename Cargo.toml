@@ -21,7 +21,7 @@ members = [
     "os/application/peanut-gb",
     "os/application/pipetest",
     "os/application/ps",
-     "os/application/window_manager",
+    "os/application/window_manager",
     "os/application/terminal_emulator",
     "os/application/keytest",
     "os/application/netperf",

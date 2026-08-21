@@ -163,8 +163,8 @@ pub fn test1_run() {
         reader_thread();
     });
 
-    let res = reader.unwrap().join();
-    let res = writer.unwrap().join();
+    reader.unwrap().join();
+    writer.unwrap().join();
 
     println!("TEST1: OK");
 }

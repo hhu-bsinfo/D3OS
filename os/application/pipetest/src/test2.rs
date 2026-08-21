@@ -66,8 +66,8 @@ pub fn test2_run() {
         reader_thread();
     });
 
-    let res = reader.unwrap().join();
-    let res = writer.unwrap().join();
+    reader.unwrap().join();
+    writer.unwrap().join();
 
     println!("TEST2: OK");
 }

@@ -87,21 +87,21 @@ impl<'s> TextBuffer<'s> {
     pub fn undo(&mut self) -> Result<(), TextBufferError> {
         match self.history.pop() {
             Some(o) => match o {
-                Operation::Insert(la, _) => return self._delete(la, UndoRedoOperation::Undo),
-                Operation::Delete(la, c) => return self._insert(la, c, UndoRedoOperation::Undo),
+                Operation::Insert(la, _) => self._delete(la, UndoRedoOperation::Undo),
+                Operation::Delete(la, c) => self._insert(la, c, UndoRedoOperation::Undo),
             },
-            None => return Ok(()),
-        };
+            None => Ok(()),
+        }
     }
 
     pub fn redo(&mut self) -> Result<(), TextBufferError> {
         match self.redo.pop() {
             Some(o) => match o {
-                Operation::Insert(la, _) => return self._delete(la, UndoRedoOperation::Redo),
-                Operation::Delete(la, c) => return self._insert(la, c, UndoRedoOperation::Redo),
+                Operation::Insert(la, _) => self._delete(la, UndoRedoOperation::Redo),
+                Operation::Delete(la, c) => self._insert(la, c, UndoRedoOperation::Redo),
             },
-            None => return Ok(()),
-        };
+            None => Ok(()),
+        }
     }
 
     pub fn insert(&mut self, logical_adress: usize, c: char) -> Result<(), TextBufferError> {

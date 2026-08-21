@@ -26,12 +26,12 @@ impl RectData {
     }
 
     pub fn sub_border(&self) -> Self {
-        let mut new_rect = self.clone();
+        let mut new_rect = RectData::clone(self);
         new_rect.top_left += Vertex::new(1, 1);
         new_rect.width -= 2;
         new_rect.height -= 2;
 
-        return new_rect;
+        new_rect
     }
 
     /// Scale this RectData to fit into the new window size
@@ -46,11 +46,11 @@ impl RectData {
         let scale_y = f64::from(new_window.height) / f64::from(old_window.height);
         let min_dim = min_dim.unwrap_or((0, 0));
 
-        return RectData {
+        RectData {
             top_left: self.top_left,
             width: ((f64::from(self.width) * scale_x) as u32).max(min_dim.0),
             height: ((f64::from(self.height) * scale_y) as u32).max(min_dim.1),
-        };
+        }
     }
 
     pub fn intersects(&self, other: &RectData) -> bool {

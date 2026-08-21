@@ -16,7 +16,7 @@ pub struct AliasEntry {
     pub(crate) value: String,
 }
 
-const INITIAL_ALIASES: &'static [(&'static str, &'static str)] = &[
+const INITIAL_ALIASES: &[(&str, &str)] = &[
     ("hhu", "Heinrich Heine Universitaet"),
     ("hi", "Hello there"),
     ("d3", "cargo make --no-workspace"),
