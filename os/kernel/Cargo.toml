@@ -32,12 +32,11 @@ virtio = { package = "virtio-drivers", git = "https://github.com/hhu-bsinfo/virt
 concurrent = { path = "../library/concurrent", default-features = false }
 
 # External depencies
-spin = "0.9.8"
+spin = "0.12"
 x86_64 = "0.15.2"
 linked_list_allocator = { version = "0.10.6", features = ["alloc_ref"] }
-multiboot2 = "0.23.1"
 ps2 = { git = "https://github.com/lnx00/ps2-rs.git" }
-pc-keyboard = "0.8.0"
+pc-keyboard = "0.9"
 chrono = { version = "0.4.40", default-features = false, features = ["alloc"] }
 nolock = { version = "0.4.1", default-features = false, features = ["queues"] }
 thingbuf = { version = "0.1", default-features = false, features = ["alloc"] }
@@ -45,19 +44,21 @@ acpi = "5.2.0"
 x2apic = "0.5.0"
 raw-cpuid = "11.2.0"
 smallmap = "1.4.2"
-uefi-raw = "0.10.0"
-uefi = { version = "0.34.1", features = ["alloc"] }
 log = "0.4.26"
-goblin = { version = "0.9.3", default-features = false, features = ["elf32", "elf64", "endian_fd"]}
-tar-no-std = "0.3.3"
+goblin = { version = "0.10", default-features = false, features = ["elf32", "elf64", "endian_fd"]}
+tar-no-std = "0.5"
 pci_types = "0.10.0"
 bitflags = "2.9.0"
-smoltcp = { version = "0.12.0", default-features = false, features = ["alloc", "log", "proto-ipv6", "socket-dhcpv4", "socket-udp", "socket-tcp", "socket-icmp", "socket-dns", "dns-max-result-count-4", "dns-max-server-count-4"] }
+smoltcp = { version = "0.14", default-features = false, features = ["alloc", "log", "proto-ipv6", "socket-dhcpv4", "proto-ipv6-slaac", "socket-udp", "socket-tcp", "socket-icmp", "socket-dns", "dns-max-result-count-4", "dns-max-server-count-4"] }
 mbrs = { version = "0.3.1", default-features = false, features = ["no-std"] }
-bitfield-struct = "0.1"
 num_enum = { version = "0.7.3", default-features = false }
-llfree = { git = "https://github.com/luhsra/llfree-rs", default-features = false }
+llfree = { git = "https://github.com/luhsra/llfree-rs", default-features = false, rev = "da75cc496c5dfcaac84a2814f12477a0b1bca3ba" }
 uuid = { version = "1.23.1", default-features = false, features = ["v7"] }
 
+# these three need to be updated in sync
+multiboot2 = "0.25"
+uefi-raw = "0.15"
+uefi = { version = "0.39", features = ["alloc"] }
+
 [build-dependencies]
-built = { version = "0.7.7", features = ["chrono", "git2"] }
+built = { version = "0.8", features = ["chrono", "git2"] }

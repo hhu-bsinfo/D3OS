@@ -38,6 +38,7 @@ pub enum SystemCall {
     ThreadExit,
     ThreadKill,
     ThreadCount,
+    CoreId,
     GetSystemTime,
     GetDate,
     SetDate,

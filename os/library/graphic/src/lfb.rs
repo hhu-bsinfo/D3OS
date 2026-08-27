@@ -231,7 +231,7 @@ impl LFB {
         bg_color: Color,
         c: char,
     ) -> u32 {
-        return match get_glyph(c) {
+        match get_glyph(c) {
             Some(glyph) => {
                 let mut x_offset = 0;
                 let mut y_offset = 0;
@@ -259,7 +259,7 @@ impl LFB {
                 glyph.get_width() as u32
             }
             None => 0,
-        };
+        }
     }
 
     pub fn draw_string(&mut self, x: u32, y: u32, fg_color: Color, bg_color: Color, string: &str) {
@@ -410,7 +410,7 @@ impl LFB {
         for i in 0..height {
             for j in 0..width {
                 let color = data[(i * width + j) as usize];
-                self.draw_pixel(x + j as u32, y + i as u32, color);
+                self.draw_pixel(x + j, y + i, color);
             }
         }
     }

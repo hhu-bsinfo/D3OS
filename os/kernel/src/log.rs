@@ -16,7 +16,7 @@ use graphic::ansi;
 use log::debug;
 use stream::OutputStream;
 use core::fmt::Write;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::ptr;

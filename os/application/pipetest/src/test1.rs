@@ -1,14 +1,11 @@
-#![no_std]
-
 extern crate alloc;
 
 use naming::shared_types::OpenOptions;
-use naming::{close, mkfifo, open, read, write};
-use syscall::return_vals::Errno;
+use naming::{close, open, read, write};
 use alloc::vec::Vec;
 use alloc::string::String;
 
-use concurrent::{thread,process};
+use concurrent::thread;
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::println;
@@ -166,8 +163,8 @@ pub fn test1_run() {
         reader_thread();
     });
 
-    let res = reader.unwrap().join();
-    let res = writer.unwrap().join();
+    reader.unwrap().join();
+    writer.unwrap().join();
 
     println!("TEST1: OK");
 }

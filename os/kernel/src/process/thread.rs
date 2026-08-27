@@ -34,7 +34,6 @@
    ║ Author: Fabian Ruhland & Michael Schoettner, 04.01.2026, HHU            ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-use alloc::alloc::alloc;
 use crate::consts::MAIN_USER_STACK_START;
 use crate::consts::MAX_USER_STACK_SIZE;
 use crate::consts::USER_SPACE_ENV_START;
@@ -50,10 +49,10 @@ use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
 use crate::{process_manager, tss};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::alloc::Layout;
+use log::debug;
 use core::arch::naked_asm;
 use core::ptr;
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use goblin::elf::Elf;
 use goblin::elf64;
 use log::error;
@@ -105,7 +104,21 @@ pub struct Thread {
     entry: extern "sysv64" fn(),
     state: AtomicU8,
     wake_pending: AtomicBool, // false => allowed to block; true => do NOT block (wake pending)
-    xsave_state: XSaveState
+    xsave_state: XSaveState,
+    cls_references: AtomicUsize,
+}
+
+impl core::fmt::Debug for Thread {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f
+            .debug_struct("Thread")
+            .field("id", &self.id)
+            .field("process", &self.process)
+            .field("user_kickoff", &self.user_kickoff)
+            .field("entry", &self.entry)
+            .field("state", &self.state)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Stacks {
@@ -144,7 +157,8 @@ impl Thread {
             entry,
             state: AtomicU8::new(ThreadState::Created.as_u8()),
             wake_pending: AtomicBool::new(false),
-            xsave_state: XSaveState::new()
+            xsave_state: XSaveState::new(),
+            cls_references: AtomicUsize::default(),
         };
 
         thread.prepare_kernel_stack();
@@ -212,7 +226,8 @@ impl Thread {
             entry,
             state: AtomicU8::new(ThreadState::Created.as_u8()),
             wake_pending: AtomicBool::new(false),
-            xsave_state: XSaveState::new()
+            xsave_state: XSaveState::new(),
+            cls_references: AtomicUsize::default(),
         };
 
         thread.prepare_kernel_stack();
@@ -261,6 +276,7 @@ impl Thread {
         let next_rsp0 = next.stacks.lock().old_rsp0.as_u64();
         let next_rsp0_end = next.kernel_stack_addr().as_u64();
         let next_address_space = next.process.virtual_address_space.page_table_address().as_u64();
+        debug!("switching from {:?} to {:?} (cr3: 0x{:x})", current, next, next_address_space);
 
         unsafe {
             thread_switch(current_rsp0, next_rsp0, next_rsp0_end, next_address_space);
@@ -567,6 +583,31 @@ impl Thread {
         // no wake pending -> block is allowed
         true
     }
+
+    /// Increase the number of core local storage references.
+    /// 
+    /// See [`can_migrate`] for details.
+    pub(super) fn incr_cls_ref(&self) {
+        self.cls_references.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Decrease the number of core local storage references.
+    /// 
+    /// See [`can_migrate`] for details.
+    pub(super) fn decr_cls_ref(&self) {
+        let prev = self.cls_references.fetch_sub(1, Ordering::SeqCst);
+        // we can't destroy more references than we created
+        assert!(prev > 0);
+    }
+
+    /// Check if this thread can be migrated to a different CPU core.
+    /// 
+    /// They usually can, unless they hold a reference to the core local storage.
+    /// In that case, the thread would access the wrong (old) one after the
+    /// migration.
+    pub(super) fn can_migrate(&self) -> bool {
+        self.cls_references.load(Ordering::SeqCst) == 0 
+    }
 }
 
 /// Low-level function for starting a thread in kernel mode
@@ -581,10 +622,10 @@ unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
         "mov cr0, rax",
 
         // Load registers from prepared stack
-        "pop rax",
-        "wrgsbase rax",
-        "pop rax",
-        "wrfsbase rax",
+        // load the user gs, but don't make it active,
+        // since the new thread will still be in kernel code
+        "swapgs", "pop rax", "wrgsbase rax", "swapgs",
+        "pop rax", "wrfsbase rax",
         "pop rbp",
         "pop rdi", // 'old_rsp0' is here
         "pop rsi",
@@ -613,7 +654,8 @@ unsafe extern "C" fn thread_user_start(old_rsp0: u64, entry: extern "sysv64" fn(
     naked_asm!(
         "mov rsp, rdi", // Load 'old_rsp' (first parameter)
         "mov rdi, rsi", // Second parameter becomes first parameter for 'kickoff_user_thread()'
-        "iretq"         // Switch to user-mode
+        "swapgs",       // switch to the (empty) user gs
+        "iretq",        // Switch to user-mode
     )
 }
 
@@ -639,16 +681,17 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
     "push rdi",
     "push rbp",
     "rdfsbase rax", "push rax",
-    "rdgsbase rax", "push rax",
+    // we are in the kernel right now, but the kernel's GS is per core,
+    // so there is no need to save that. Save the user GS instead.
+    "swapgs", "rdgsbase rax", "push rax", "swapgs",
+    
 
     // Save stack pointer in 'current_rsp0' (first parameter)
     "mov [rdi], rsp",
 
     // Set rsp0 of kernel stack in tss (third parameter 'next_rsp0_end')
-    "swapgs", // Setup core local storage access via gs base
     "mov rax, gs:[{CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX}]", // Load pointer to rsp0 entry of tss into rax
     "mov [rax], rdx", // Set rsp0 entry in tss to 'next_rsp0_end' (third parameter)
-    "swapgs", // Restore gs base
 
     // Switch address space (fourth parameter 'next_cr3')
     "mov cr3, rcx",
@@ -660,7 +703,9 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
 
     // Load registers of next thread by using 'next_rsp0' (second parameter)
     "mov rsp, rsi",
-    "pop rax", "wrgsbase rax",
+    // load the next user gs but don't make it active,
+    // since the next thread will still be in kernel code
+    "swapgs", "pop rax", "wrgsbase rax", "swapgs",
     "pop rax", "wrfsbase rax",
     "pop rbp",
     "pop rdi",

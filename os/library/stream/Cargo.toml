@@ -10,4 +10,4 @@ doctest = false
 bench = false
 
 [dependencies]
-pc-keyboard = "0.8.0"
+pc-keyboard = "0.9"

@@ -48,7 +48,7 @@ impl Canvas {
             rel_rect_data,
             orig_rect_data,
             styling: styling.unwrap_or_default(),
-            buffer: buffer,
+            buffer,
             scaling_mode,
             scale_factor: 1.0,
             input: Rc::new(input.unwrap_or_else(|| Box::new(|_| {}))),

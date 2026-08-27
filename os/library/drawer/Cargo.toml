@@ -18,5 +18,5 @@ userspace = ["dep:syscall", "dep:spin", "dep:nolock"]
 syscall = { path = "../syscall", optional = true }
 graphic = { path = "../graphic" }
 
-spin = { version = "0.9.8", optional = true }
+spin = { version = "0.12", optional = true }
 nolock = { version = "0.4.1", default-features = false, features = ["queues"], optional = true }

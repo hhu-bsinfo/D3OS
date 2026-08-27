@@ -35,20 +35,20 @@ pub struct Theme {
     pub suggestion: &'static str,
 }
 
-const DEFAULT: &'static str = "";
-const LIME: &'static str = "\x1b[38;2;0;255;0m";
-const LIME_ACCENT: &'static str = "\x1b[38;2;0;200;0m";
-const GOLD: &'static str = "\x1b[38;2;255;215;0m";
-const PALE_BLUE: &'static str = "\x1b[38;2;192;192;255m";
-const GRAY: &'static str = "\x1b[38;2;128;128;128m";
-const RED: &'static str = "\x1b[38;2;255;0;0m";
-const MUTED_RED: &'static str = "\x1b[38;2;200;80;80m";
-const ORANGE: &'static str = "\x1b[38;2;255;165;0m";
-const PURPLE: &'static str = "\x1b[38;2;128;0;128m";
-const YELLOW: &'static str = "\x1b[38;2;255;255;0m";
-const TAN: &'static str = "\x1b[38;2;210;180;140m";
-const D3OS_BLUE: &'static str = "\x1b[38;2;0;106;179m";
-const D3OS_GREEN: &'static str = "\x1b[38;2;140;177;16m";
+const DEFAULT: &str = "";
+const LIME: &str = "\x1b[38;2;0;255;0m";
+const LIME_ACCENT: &str = "\x1b[38;2;0;200;0m";
+const GOLD: &str = "\x1b[38;2;255;215;0m";
+const PALE_BLUE: &str = "\x1b[38;2;192;192;255m";
+const GRAY: &str = "\x1b[38;2;128;128;128m";
+const RED: &str = "\x1b[38;2;255;0;0m";
+const MUTED_RED: &str = "\x1b[38;2;200;80;80m";
+const ORANGE: &str = "\x1b[38;2;255;165;0m";
+const PURPLE: &str = "\x1b[38;2;128;0;128m";
+const YELLOW: &str = "\x1b[38;2;255;255;0m";
+const TAN: &str = "\x1b[38;2;210;180;140m";
+const D3OS_BLUE: &str = "\x1b[38;2;0;106;179m";
+const D3OS_GREEN: &str = "\x1b[38;2;140;177;16m";
 
 pub const DEBUG_THEME: Theme = Theme {
     id: "debug",
