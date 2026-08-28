@@ -6,26 +6,28 @@
 //! `os/kernel/src/device/mlx4/completion_queue.rs` `poll`/`poll_one`/`get_next_cqe_sw`/`arm`,
 //! which were deleted from the kernel once this moved here.
 
+use alloc::sync::Arc;
 use core::mem::MaybeUninit;
-use core::sync::atomic::{compiler_fence, Ordering};
-
+use core::sync::atomic::{compiler_fence, AtomicU32, Ordering};
+use core3::io;
+use core3::io::{Error, ErrorKind};
 use log::{error, warn};
 use modular_bitfield_msb::{
     bitfield,
     prelude::{B4, B7, B12},
     specifiers::{B5, B24},
 };
+use spin::Mutex;
 use mm::{mmap, MmapFlags, PAGE_SIZE};
-use rdma::{ibv_wc, ibv_wc_flags, ibv_wc_opcode, ibv_wc_status};
+use rdma::ib_core::{ibv_wc, ibv_wc_flags, ibv_wc_opcode, ibv_wc_status};
 use rdma::uverbs_uapi::{CreateCqRequest, CreateCqResponse, UserSlice};
-use rdma::uverbs_uapi::UverbsCmd::{CreateCq, DrainEvents};
+use rdma::uverbs_uapi::UverbsCmd::{CreateCq, DestroyCq, DrainEvents};
 use strum_macros::FromRepr;
 use tock_registers::interfaces::Writeable;
 use tock_registers::registers::WriteOnly;
-
-use crate::ffi::uverbs;
-
-use super::Device;
+use crate::cmd::uverbs;
+use crate::provider::IbvCompletionQueue;
+use super::Mlx4Context;
 use super::queue_pair::{DoorbellPage, QueuePairOpcode};
 
 /// Size in bytes of a hardware completion queue entry. CX3 also supports a 64 B format, but this
@@ -42,29 +44,68 @@ const CQE_SIZE: usize = 32;
 const DRAIN_EVENTS_INTERVAL: u32 = 4096;
 
 pub struct CompletionQueue {
-    device_handle: usize,
+    context: Arc<Mlx4Context>,
     number: u32,
     num_entries: u32,
     buffer: &'static mut [u8],
     doorbell: *mut CompletionQueueDoorbell,
     doorbell_page: *mut DoorbellPage,
     arm_sequence_number: u32,
-    consumer_index: u32,
-    poll_count: u32,
+    consumer_index: Mutex<u32>,
+    poll_count: AtomicU32,
+}
+
+impl IbvCompletionQueue for CompletionQueue {
+    /// Get the number of this completion queue.
+    fn number(&self) -> u32 {
+        self.number
+    }
+
+
+    /// Poll this completion queue and return the number of new completions.
+    ///
+    /// This is used by ibv_poll_cq. `device` is the shared registry of live queue pairs used to
+    /// resolve a CQE's `wr_id` and advance the queue pair's tail.
+    fn poll(&self, wc: &mut [ibv_wc]) -> io::Result<usize> {
+        let poll_count = self.poll_count.fetch_add(1, Ordering::AcqRel);
+        let mut consumer_index = self.consumer_index.lock();
+        if (poll_count + 1) % DRAIN_EVENTS_INTERVAL == 0 {
+            let _ = uverbs(self.context.device_handle(), DrainEvents, UserSlice::EMPTY, UserSlice::EMPTY);
+        }
+
+        let mut completions = 0;
+        while completions < wc.len() {
+            if self.poll_one(*consumer_index,&mut wc[completions])? {
+                *consumer_index += 1;
+                completions += 1;
+            } else {
+                break;
+            }
+        }
+        unsafe { &*self.doorbell }.update_consumer_index.set((*consumer_index & 0xffffff).to_be());
+        Ok(completions)
+    }
+}
+
+impl Drop for CompletionQueue {
+    fn drop(&mut self) {
+        uverbs(self.context.device_handle, DestroyCq, UserSlice::from_ref(&self.number), UserSlice::EMPTY)
+            .expect("failed to destroy completion queue");
+    }
 }
 
 impl CompletionQueue {
-    /// Create a new completion queue with at least `min_num_entries` entries.
-    ///
-    /// This is used by ibv_create_cq.
-    pub fn create(device_handle: usize, min_num_entries: i32) -> Result<Self, &'static str> {
-        let num_entries = u32::try_from(min_num_entries).map_err(|_| "cq_entries must be positive")?.next_power_of_two().max(1);
+    pub fn create(context: Arc<Mlx4Context>, min_num_entries: i32) -> io::Result<Self> {
+        let num_entries = u32::try_from(min_num_entries)
+            .map_err(|_| Error::new(ErrorKind::InvalidInput, "cq_entries must be positive"))?
+            .next_power_of_two().max(1);
         let size = num_entries as usize * CQE_SIZE;
-        let buffer = mmap(0, size.next_multiple_of(PAGE_SIZE), MmapFlags::empty()).map_err(|_| "failed to allocate CQE buffer")?;
+        let buffer = mmap(0, size.next_multiple_of(PAGE_SIZE), MmapFlags::empty())
+            .map_err(|_| Error::new(ErrorKind::Other, "failed to allocate CQE buffer"))?;
         buffer.fill(0);
 
         let doorbell_ptr: *mut CompletionQueueDoorbell = mmap(0, size_of::<CompletionQueueDoorbell>(), MmapFlags::empty())
-            .map_err(|_| "failed to allocate CQ doorbell")?
+            .map_err(|_| Error::new(ErrorKind::Other, "failed to allocate CQ doorbell"))?
             .as_mut_ptr()
             .cast();
         unsafe {
@@ -78,21 +119,19 @@ impl CompletionQueue {
             doorbell_ptr: doorbell_ptr.cast(),
         };
         let mut resp = MaybeUninit::<CreateCqResponse>::uninit();
-        let resp = match uverbs(device_handle, CreateCq, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp)) {
-            Ok(_) => unsafe { resp.assume_init() },
-            Err(_) => return Err("could not create cq"),
-        };
+        uverbs(context.device_handle(), CreateCq, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        let resp = unsafe { resp.assume_init() };
 
         let mut cq = Self {
-            device_handle,
+            context,
             number: resp.cq_num,
             num_entries,
             buffer,
             doorbell: doorbell_ptr,
             doorbell_page: resp.doorbell_page.cast(),
             arm_sequence_number: 1,
-            consumer_index: 0,
-            poll_count: 0,
+            consumer_index: Mutex::new(0),
+            poll_count: AtomicU32::new(0),
         };
         // The event-driven completion model this enables isn't used by this driver (everything
         // polls), but the initial arm matches what the reference driver does and costs nothing on
@@ -109,7 +148,7 @@ impl CompletionQueue {
         const _DOORBELL_REQUEST_NOTIFICATION_SOLICITED: u32 = 0x1;
         const DOORBELL_REQUEST_NOTIFICATION: u32 = 0x2;
         let sn = self.arm_sequence_number & 3;
-        let ci = self.consumer_index & 0xffffff;
+        let ci = *self.consumer_index.lock() & 0xffffff;
         let cmd = DOORBELL_REQUEST_NOTIFICATION;
         unsafe { &*self.doorbell }.arm_consumer_index.set((sn << 28 | cmd << 24 | ci).to_be());
         // Make sure that the doorbell record in host memory is
@@ -120,55 +159,27 @@ impl CompletionQueue {
         doorbell_page.cq_consumer_index.set(ci.to_be());
     }
 
-    /// Get the number of this completion queue.
-    pub fn number(&self) -> u32 {
-        self.number
-    }
-
-    /// Poll this completion queue and return the number of new completions.
-    ///
-    /// This is used by ibv_poll_cq. `device` is the shared registry of live queue pairs used to
-    /// resolve a CQE's `wr_id` and advance the queue pair's tail.
-    pub fn poll(&mut self, device: &Device, wc: &mut [ibv_wc]) -> Result<usize, &'static str> {
-        self.poll_count = self.poll_count.wrapping_add(1);
-        if self.poll_count % DRAIN_EVENTS_INTERVAL == 0 {
-            let _ = uverbs(self.device_handle, DrainEvents, UserSlice::EMPTY, UserSlice::EMPTY);
-        }
-
-        let mut completions = 0;
-        while completions < wc.len() {
-            if self.poll_one(device, &mut wc[completions])? {
-                completions += 1;
-            } else {
-                break;
-            }
-        }
-        unsafe { &*self.doorbell }.update_consumer_index.set((self.consumer_index & 0xffffff).to_be());
-        Ok(completions)
-    }
-
     /// Poll this completion queue for one work completion.
     ///
     /// Return true if there are more.
     #[allow(unreachable_patterns)]
-    fn poll_one(&mut self, device: &Device, wc: &mut ibv_wc) -> Result<bool, &'static str> {
+    fn poll_one(&self, index: u32, wc: &mut ibv_wc) -> io::Result<bool> {
         const CQE_OPCODE_ERROR: u8 = 0x1e;
         // clear the wc first
         *wc = ibv_wc::default();
-        if let Some(cqe) = self.get_next_cqe_sw() {
-            self.consumer_index += 1;
+        if let Some(cqe) = self.get_cqe_sw(index) {
             // Make sure we read CQ entry contents after we've checked the
             // ownership bit.
             compiler_fence(Ordering::SeqCst);
             wc.qp_num = cqe.qp_number();
-            match device.resolve_completion(cqe.qp_number(), cqe.wqe_index().into(), cqe.is_send()) {
+            match self.context.resolve_completion(cqe.qp_number(), cqe.wqe_index().into(), cqe.is_send()) {
                 Some(wr_id) => wc.wr_id = wr_id,
                 None => warn!("completion has invalid queue pair number {}", cqe.qp_number()),
             }
             if cqe.opcode() == CQE_OPCODE_ERROR {
                 let checksum_bytes = cqe.checksum().to_be_bytes();
                 let vendor_err_syndrome = checksum_bytes[0];
-                let syndrome = Syndrome::from_repr(checksum_bytes[1]).ok_or("invalid error syndrome")?;
+                let syndrome = Syndrome::from_repr(checksum_bytes[1]).ok_or(Error::new(ErrorKind::Other, "invalid error syndrome"))?;
                 error!(
                     "work completion error: (QPN {}, WQE index {}, vendor syndrome {}, syndrome {:?}, opcode {})",
                     cqe.qp_number(),
@@ -185,7 +196,7 @@ impl CompletionQueue {
                 // drained, which otherwise only happens every `DRAIN_EVENTS_INTERVAL` polls — far
                 // too rare to catch it before a short-lived benchmark run already aborted on this
                 // exact completion. Force an out-of-band drain right here instead.
-                let _ = uverbs(self.device_handle, DrainEvents, UserSlice::EMPTY, UserSlice::EMPTY);
+                let _ = uverbs(self.context.device_handle, DrainEvents, UserSlice::EMPTY, UserSlice::EMPTY);
                 wc.status = match syndrome {
                     Syndrome::LocalLengthError => ibv_wc_status::IBV_WC_LOC_LEN_ERR,
                     Syndrome::LocalQpOperationError => ibv_wc_status::IBV_WC_LOC_QP_OP_ERR,
@@ -208,7 +219,7 @@ impl CompletionQueue {
             wc.status = ibv_wc_status::IBV_WC_SUCCESS;
             wc.wc_flags = ibv_wc_flags::empty();
             if cqe.is_send() {
-                let opcode = QueuePairOpcode::from_repr(cqe.opcode().into()).ok_or("invalid opcode")?;
+                let opcode = QueuePairOpcode::from_repr(cqe.opcode().into()).ok_or(Error::new(ErrorKind::Other, "invalid opcode"))?;
                 match opcode {
                     QueuePairOpcode::RdmaWrite => {
                         wc.opcode = ibv_wc_opcode::IBV_WC_RDMA_WRITE;
@@ -245,7 +256,7 @@ impl CompletionQueue {
                     _ => {}
                 }
             } else {
-                let opcode = ReceiveOpcode::from_repr(cqe.opcode().into()).ok_or("invalid opcode")?;
+                let opcode = ReceiveOpcode::from_repr(cqe.opcode().into()).ok_or(Error::new(ErrorKind::Other, "invalid opcode"))?;
                 wc.byte_len = cqe.byte_cnt();
                 match opcode {
                     ReceiveOpcode::RdmaWriteImm => {
@@ -282,9 +293,8 @@ impl CompletionQueue {
         }
     }
 
-    /// Get the next element.
-    fn get_next_cqe_sw(&self) -> Option<CompletionQueueEntry> {
-        let index = self.consumer_index;
+    /// Get the CQE at `index` if it is owned by software
+    fn get_cqe_sw(&self, index: u32) -> Option<CompletionQueueEntry> {
         let offset = usize::try_from(index & (self.num_entries - 1)).unwrap() * CQE_SIZE;
         let cqe_bytes: [u8; CQE_SIZE] = self.buffer[offset..offset + CQE_SIZE].try_into().unwrap();
         let cqe = CompletionQueueEntry::from_bytes(cqe_bytes);

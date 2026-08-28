@@ -9,7 +9,7 @@ use crate::report::{LatencyStats, Report};
 use alloc::vec;
 use alloc::vec::Vec;
 use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
-use rdma::ibv_send_flags;
+use ibverbs::ffi::ibv_send_flags;
 use time::get_time_in_us;
 
 const WR_SEND: u64 = 1;

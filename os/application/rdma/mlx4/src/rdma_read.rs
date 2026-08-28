@@ -1,9 +1,7 @@
 use super::{session, handshake, integrity};
 use mm::{MmapFlags, mmap};
-use ibverbs::{
-    devices,
-};
-use rdma::ibv_send_flags;
+use ibverbs::devices;
+use ibverbs::ffi::ibv_send_flags;
 use super::bench;
 use super::*;
 use alloc::{vec};

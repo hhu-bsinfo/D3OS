@@ -3,7 +3,7 @@ use super::session::RdmaSession;
 use alloc::{vec, vec::Vec};
 use core::ops::Range;
 use cpu_core::flush_cache;
-use rdma::ibv_send_flags;
+use ibverbs::ffi::ibv_send_flags;
 use ibverbs::{CompletionQueue, LocalMemoryRegion, QueuePair, RemoteMemoryRegion};
 use spin::Once;
 use terminal::println;
@@ -97,8 +97,8 @@ fn send_flags_init() -> [Vec<ibv_send_flags>; BATCHES] {
 
 // cloning generates a bit of overhead, but for now we'll leave it that way !
 pub fn rdma_bench(
-    rdma_type: SpecRdmaType, benchmark_type: Benchmark, alloc_mem: usize, qp: &mut QueuePair<'_>, mr: &mut LocalMemoryRegion<'_, u8>,
-    remote_mr: &mut RemoteMemoryRegion<u8>, cq_send: &CompletionQueue<'_>, expected_packet: Option<&[u8]>,
+    rdma_type: SpecRdmaType, benchmark_type: Benchmark, alloc_mem: usize, qp: &mut QueuePair, mr: &mut LocalMemoryRegion<'_, u8>,
+    remote_mr: &mut RemoteMemoryRegion<u8>, cq_send: &CompletionQueue, expected_packet: Option<&[u8]>,
 ) {
     LOCAL_RANGES.call_once(local_range_init);
     REMOTE_RANGES.call_once(remote_range_init);

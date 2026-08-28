@@ -9,7 +9,7 @@ use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
 use alloc::vec;
 use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
-use rdma::ibv_send_flags;
+use ibverbs::ffi::ibv_send_flags;
 use time::get_time_in_us;
 
 pub fn run(

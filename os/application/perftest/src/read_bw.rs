@@ -5,7 +5,7 @@ use core3::io;
 use core3::io::ErrorKind;
 use ibverbs::{ibv_qp_type, Gid, LocalMemoryRegion, QueuePairEndpoint};
 use network::{TcpListener, TcpStream};
-use rdma::ibv_qp_cap;
+use rdma::ib_core::ibv_qp_cap;
 use terminal::println;
 
 use crate::comm::{self, PeerInfo};
@@ -81,9 +81,9 @@ pub fn run(cfg: Config) -> io::Result<()> {
 /// needs to connect to it. Each accepted connection gets its own queue pair,
 /// since a `PreparedQueuePair` is consumed by `handshake`.
 fn build_qp<'res>(
-    cfg: &Config,
+    _cfg: &Config,
     pd: &'res ibverbs::ProtectionDomain<'res>,
-    cq: &'res ibverbs::CompletionQueue<'res>,
+    cq: &'res ibverbs::CompletionQueue,
     mr: &mut LocalMemoryRegion<'_, u8>,
     max_rd_atomic: u8,
     cap: ibv_qp_cap,
@@ -161,7 +161,7 @@ fn run_client(
     let server_info = PeerInfo::read_from(&mut stream).expect("cannot read info from server");
 
     // Connect the QP to the server.
-    let mut qp = prepared.handshake(endpoint_from_peer(&server_info))?;
+    let _qp = prepared.handshake(endpoint_from_peer(&server_info))?;
 
     //let (bw_gbps, msg_rate_mpps) = bw_loop(&mut qp, &mut mr, &mut cq, &cfg)?;
 

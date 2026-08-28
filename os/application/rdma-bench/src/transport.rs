@@ -1,8 +1,8 @@
 use crate::cli::{Mode, Transport};
 use crate::error::Result;
 use ibverbs::{CompletionQueue, PreparedQueuePair, ProtectionDomain};
-use rdma::ibv_qp_cap;
-use rdma::ibv_qp_type::Type;
+use ibverbs::ffi::ibv_qp_cap;
+use ibverbs::ffi::ibv_qp_type::Type;
 
 /// Builds a queue pair of the requested transport type, ready to be handshaked with a remote
 /// endpoint.
@@ -10,7 +10,7 @@ pub fn build<'res>(
     transport: Transport,
     mode: Mode,
     pd: &'res ProtectionDomain<'res>,
-    cq: &'res CompletionQueue<'res>,
+    cq: &'res CompletionQueue,
     tx_depth: usize,
 ) -> Result<PreparedQueuePair<'res>> {
     let cap = ibv_qp_cap {

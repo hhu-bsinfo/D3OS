@@ -1,7 +1,7 @@
 use ibverbs::{Context, ProtectionDomain, LocalMemoryRegion, CompletionQueue, QueuePairBuilder};
 use ibverbs::sliceindex::SliceIndex;
 use ibverbs::{ibv_qp_type::Type, ibv_wc};
-use rdma::ibv_qp_cap;
+use ibverbs::ffi::ibv_qp_cap;
 use core::ops;
 use core::slice::from_raw_parts_mut;
 use terminal::println;
@@ -10,8 +10,8 @@ pub struct RdmaSession<'ctx, 'pd> {
     pub ctx: &'ctx Context,
     pub pd: &'pd ProtectionDomain<'ctx>,
     pub mr: LocalMemoryRegion<'pd, u8>,
-    pub cq_send: CompletionQueue<'ctx>,
-    pub cq_recv: CompletionQueue<'ctx>,
+    pub cq_send: CompletionQueue,
+    pub cq_recv: CompletionQueue,
 }
 
 impl<'ctx, 'pd> RdmaSession<'ctx, 'pd> {
@@ -34,8 +34,8 @@ impl<'ctx, 'pd> RdmaSession<'ctx, 'pd> {
 
     pub fn create_qp(
         pd: &'pd ProtectionDomain<'ctx>,
-        cq_send: &'ctx CompletionQueue<'ctx>,
-        cq_recv: &'ctx CompletionQueue<'ctx>,
+        cq_send: &'ctx CompletionQueue,
+        cq_recv: &'ctx CompletionQueue,
         allow_remote_rw: bool,
         max_send_wr: u32,
         max_recv_wr: u32,
@@ -65,7 +65,7 @@ impl<'ctx, 'pd> RdmaSession<'ctx, 'pd> {
         builder
     } */
 
-    pub fn poll_cq<const N: usize>(cq_send: &'ctx CompletionQueue<'ctx>, wait_until: usize) {
+    pub fn poll_cq<const N: usize>(cq_send: &'ctx CompletionQueue, wait_until: usize) {
         let mut wc = [ibv_wc::default(); N];
         let mut completed = 0;
 

@@ -1,6 +1,3 @@
-use alloc::vec::Vec;
-use bincode::{Decode, Encode};
-
 use super::ib_core::*;
 
 #[repr(u64)]
@@ -194,21 +191,4 @@ impl Default for ibv_recv_wr {
             sg_list: Default::default(), 
         }
     }
-}
-
-#[repr(C)]
-#[derive(Clone, Encode, Decode)]
-pub struct SendWorkRequest {
-    pub wr_id: u64,
-    pub sges: Vec<ibv_sge>,
-    pub opcode: ibv_wr_opcode,
-    pub send_flags: ibv_send_flags,
-    pub wr: ibv_send_wr_wr,
-}
-
-
-#[derive(Clone, Encode, Decode)]
-pub struct ReceiveWorkRequest {
-    pub wr_id: u64,
-    pub sges: Vec<ibv_sge>,
 }

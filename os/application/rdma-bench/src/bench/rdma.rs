@@ -16,7 +16,7 @@ use crate::report::{BandwidthStats, Report};
 use alloc::vec;
 use core::ops::Range;
 use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, RemoteMemoryRegion};
-use rdma::ibv_send_flags;
+use ibverbs::ffi::ibv_send_flags;
 use time::get_time_in_us;
 
 #[derive(Copy, Clone, Debug)]

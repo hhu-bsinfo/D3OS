@@ -15,7 +15,6 @@ bench = false
 # Local dependencies
 terminal = { path = "../../library/terminal" }
 ibverbs = { path = "../../library/ibverbs", features = ["serde"] }
-rdma = { path = "../../library/rdma" }
 runtime = { path = "../../library/runtime" }
 network = { path = "../../library/network" }
 time = { path = "../../library/time" }

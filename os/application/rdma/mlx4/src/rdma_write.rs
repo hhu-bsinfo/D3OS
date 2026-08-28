@@ -6,7 +6,7 @@ use concurrent::thread::sleep;
 use core::net::SocketAddr;
 use core::{arch::x86_64::_mm_mfence};
 use cpu_core::flush_cache;
-use rdma::ibv_send_flags;
+use ibverbs::ffi::ibv_send_flags;
 use ibverbs::devices;
 
 pub fn invoke(config: RunConfig) {

@@ -675,7 +675,6 @@ name = "ibping"
 version = "0.1.0"
 dependencies = [
  "ibverbs",
- "rdma",
  "runtime",
  "terminal",
 ]
@@ -1627,7 +1626,6 @@ dependencies = [
  "libm",
  "log",
  "network",
- "rdma",
  "runtime",
  "serde",
  "serde_json",
@@ -1645,13 +1643,9 @@ dependencies = [
  "crc32fast",
  "ibverbs",
  "mm",
- "naming",
  "network",
- "rdma",
  "runtime",
- "smoltcp",
  "spin 0.9.8",
- "syscall",
  "terminal",
  "time",
 ]

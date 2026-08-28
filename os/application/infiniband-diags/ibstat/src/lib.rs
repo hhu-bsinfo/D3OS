@@ -1,7 +1,8 @@
 #![no_std]
 
-use terminal::{print, println};
 use ibverbs::devices;
+use terminal::println;
+#[allow(unused_imports)]
 use runtime::*;
 
 pub fn invoke() {

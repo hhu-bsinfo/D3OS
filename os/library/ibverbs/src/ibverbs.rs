@@ -68,18 +68,18 @@
 #![allow(clippy::doc_markdown)]
 
 extern crate alloc;
-mod ibverbs_sys;
 
+use crate::provider::{get_available_devices, get_device_name, open_device, IbvCompletionQueue, IbvContext, IbvQueuePair, QpInitAttr, ReceiveWorkRequest, SendWorkRequest};
 use core::convert::TryInto;
-use core::ffi::CStr;
 use core::marker::PhantomData;
 use core::mem;
 use core::ops::Range;
-use core::ptr;
+use core::ops::{Deref, DerefMut};
 
-use ibverbs_sys as ffi;
+pub use rdma::ib_core as ffi;
 
-use alloc::{boxed::Box, ffi::CString, vec::Vec};
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core3::io;
 
 const PORT_NUM: u8 = 1;
@@ -98,10 +98,12 @@ use serde::{Deserialize, Serialize};
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
 pub use ffi::ibv_access_flags;
 
+
 /// Because `std::slice::SliceIndex` is still unstable, we follow @alexcrichton's suggestion in
 /// https://github.com/rust-lang/rust/issues/35729 and implement it ourselves.
 pub mod sliceindex;
-mod mlx4;
+pub mod cmd;
+mod provider;
 
 /// Get list of available RDMA devices.
 ///
@@ -111,8 +113,7 @@ mod mlx4;
 ///  - `ENOMEM`: Insufficient memory to complete the operation.
 ///  - `ENOSYS`: No kernel support for RDMA.
 pub fn devices() -> io::Result<DeviceList> {
-    let devices = ffi::ibv_get_device_list()?;
-    Ok(DeviceList(devices))
+    Ok(DeviceList(get_available_devices()?))
 }
 
 /// List of available RDMA devices.
@@ -252,8 +253,7 @@ impl<'devlist> Device<'devlist> {
     /// cannot be inspected exactly when something has gone wrong with it. This skips both that
     /// check and the GID query (whose result is only defined for an active port).
     pub fn port_attr(&self) -> io::Result<ffi::ibv_port_attr> {
-        let ctx = ffi::ibv_open_device(&self.0)?;
-        ffi::ibv_query_port(&ctx, PORT_NUM)
+        open_device(&self.0)?.query_port(PORT_NUM)
     }
 
     /// Returns a string of the name, which is associated with this RDMA device.
@@ -279,10 +279,8 @@ impl<'devlist> Device<'devlist> {
     ///    - `nes` - Intel, Intel-NE family
     ///  - an *index* that helps to differentiate between several devices from the same vendor and
     ///    family in the same computer
-    pub fn name(&self) -> Option<&'devlist CStr> {
-        let name_str = ffi::ibv_get_device_name(&self.0)?;
-        let cstring = CString::new(name_str).ok()?;
-        Some(Box::leak(cstring.into_boxed_c_str()))
+    pub fn name(&self) -> Option<&str> {
+        get_device_name(&self.0)
     }
 
     /// Returns the Global Unique IDentifier (GUID) of this RDMA device.
@@ -297,10 +295,7 @@ impl<'devlist> Device<'devlist> {
     ///
     ///  - `EMFILE`: Too many files are opened by this process.
     pub fn guid(&self) -> io::Result<Guid> {
-        let guid_int = ffi::ibv_get_device_guid(&self.0)?;
-        let guid: Guid = guid_int.into();
-        assert!(!guid.is_reserved());
-        Ok(guid)
+        todo!("implement guid")
     }
 
     /// Returns stable IB device index as it is assigned by the kernel
@@ -308,14 +303,13 @@ impl<'devlist> Device<'devlist> {
     ///
     ///  - `ENOTSUP`: Stable index is not supported
     pub fn index(&self) -> io::Result<i32> {
-        let idx = ffi::ibv_get_device_index(&self.0)?;
-        Ok(idx)
+        todo!("implement index")
     }
 }
 
 /// An RDMA context bound to a device.
 pub struct Context {
-    ctx: ffi::ibv_context,
+    inner: Arc<dyn IbvContext>,
     port_attr: ffi::ibv_port_attr,
     gid: Gid,
 }
@@ -327,7 +321,7 @@ impl Context {
     /// Opens a context for the given device, and queries its port and gid.
     fn with_device(dev: &ffi::ibv_device) -> io::Result<Context> {
 
-        let ctx = ffi::ibv_open_device(dev)?;
+        let ctx = open_device(dev)?;
 
         // TODO: from http://www.rdmamojo.com/2012/07/21/ibv_query_port/
         //
@@ -336,10 +330,7 @@ impl Context {
         //   recommended avoiding saving the result of this query, or to flush them when a new SM
         //   (re)configures the subnet.
         //
-        let port_attr = ffi::ibv_query_port(
-            &ctx,
-            PORT_NUM,
-        )?;
+        let port_attr = ctx.query_port(PORT_NUM)?;
 
         // From http://www.rdmamojo.com/2012/08/02/ibv_query_gid/:
         //
@@ -357,11 +348,10 @@ impl Context {
             }
         }
 
-        // let mut gid = ffi::ibv_gid::default();
-        let gid = ffi::ibv_query_gid(&ctx, PORT_NUM, 0)?.into();
+        let gid = ctx.query_gid(PORT_NUM, 0)?.into();
 
         Ok(Context {
-            ctx,
+            inner: Arc::from(ctx),
             port_attr,
             gid,
         })
@@ -386,19 +376,15 @@ impl Context {
     ///
     ///  - `EINVAL`: Invalid `min_cq_entries` (must be `1 <= cqe <= dev_cap.max_cqe`).
     ///  - `ENOMEM`: Not enough resources to complete this operation.
-    pub fn create_cq(&self, min_cq_entries: i32, id: isize) -> io::Result<CompletionQueue<'_>> {
-        let cq = ffi::ibv_create_cq(
-            &self.ctx,
+    pub fn create_cq(&self, min_cq_entries: i32, id: isize) -> io::Result<CompletionQueue> {
+        let cq = self.inner.clone().create_cq(
             min_cq_entries,
             id,
             None,
             0,
         )?;
 
-        Ok(CompletionQueue {
-            ops: &self.ctx.ops,
-            cq,
-        })
+        Ok(CompletionQueue { inner: Arc::from(cq), })
     }
 
     /// Allocate a protection domain (PDs) for the device's context.
@@ -409,29 +395,28 @@ impl Context {
     /// can work together. If several objects were created using PD1, and others were created using
     /// PD2, working with objects from group1 together with objects from group2 will not work.
     pub fn alloc_pd(&self) -> io::Result<ProtectionDomain<'_>> {
-        let pd = ffi::ibv_alloc_pd(&self.ctx)?;
-        Ok(ProtectionDomain { ctx: self, pd })
+        //let pd = self.inner.alloc_pd()
+        Ok(ProtectionDomain { ctx: self })
     }
 
-    pub fn query_port<'ctx>(&'ctx self) -> &'ctx ffi::ibv_port_attr{
+    pub fn query_port(&self) -> &ffi::ibv_port_attr {
         &self.port_attr
     }
 
-    pub fn query_device(&self) -> Result<ffi::ibv_device_attr, io::Error> {
-        ffi::ibv_query_device(&self.ctx)
+    pub fn query_device(&self) -> io::Result<ffi::ibv_device_attr> {
+        self.inner.query_device()
     }
 }
 
 /// A completion queue that allows subscribing to the completion of queued sends and receives.
-pub struct CompletionQueue<'ctx> {
-    ops: &'ctx ffi::ibv_context_ops,
-    cq: ffi::ibv_cq<'ctx>,
+pub struct CompletionQueue {
+    inner: Arc<dyn IbvCompletionQueue>,
 }
 
-unsafe impl<'a> Send for CompletionQueue<'a> {}
-unsafe impl<'a> Sync for CompletionQueue<'a> {}
+unsafe impl Send for CompletionQueue {}
+unsafe impl Sync for CompletionQueue {}
 
-impl<'ctx> CompletionQueue<'ctx> {
+impl CompletionQueue {
     /// Poll for (possibly multiple) work completions.
     ///
     /// A Work Completion indicates that a Work Request in a Work Queue, and all of the outstanding
@@ -463,10 +448,7 @@ impl<'ctx> CompletionQueue<'ctx> {
         //   (hold more Work Completions than the CQ size). In case of an CQ overrun, the async
         //   event `IBV_EVENT_CQ_ERR` will be triggered, and the CQ cannot be used anymore.
         //
-        let n = self.ops.poll_cq.as_ref().unwrap()(
-            &self.cq,
-            completions,
-        )?;
+        let n = self.inner.poll(completions)?;
 
         if n < 0 {
             Err(io::Error::new(io::ErrorKind::Other, "ibv_poll_cq failed"))
@@ -486,8 +468,8 @@ pub struct QueuePairBuilder<'res> {
     ctx: isize,
     pd: &'res ProtectionDomain<'res>,
 
-    send: &'res CompletionQueue<'res>,
-    recv: &'res CompletionQueue<'res>,
+    send: &'res CompletionQueue,
+    recv: &'res CompletionQueue,
 
     cap: ffi::ibv_qp_cap,
 
@@ -529,8 +511,8 @@ impl<'res> QueuePairBuilder<'res> {
     /// associated with an SRQ
     fn new<'scq, 'rcq, 'pd, 'ctx>(
         pd: &'pd ProtectionDomain<'ctx>,
-        send: &'scq CompletionQueue<'ctx>,
-        recv: &'rcq CompletionQueue<'ctx>,
+        send: &'scq CompletionQueue,
+        recv: &'rcq CompletionQueue,
         qp_type: ffi::ibv_qp_type::Type,
         cap: ffi::ibv_qp_cap
     ) -> QueuePairBuilder<'res>
@@ -814,21 +796,24 @@ impl<'res> QueuePairBuilder<'res> {
     ///  - `ENOSYS`: QP with this Transport Service Type isn't supported by this RDMA device.
     ///  - `EPERM`: Not enough permissions to create a QP with this Transport Service Type.
     pub fn build(&self) -> io::Result<PreparedQueuePair<'res>> {
-        let mut attr = ffi::ibv_qp_init_attr {
+
+        let attr = QpInitAttr {
             qp_context: 0,
-            send_cq: &self.send.cq,
-            recv_cq: &self.recv.cq,
+            send_cq: self.send.inner.as_ref(),
+            recv_cq: self.recv.inner.as_ref(),
             srq: None,
             cap: self.cap,
             qp_type: self.qp_type,
             sq_sig_all: 0,
         };
 
-        let qp = ffi::ibv_create_qp(&self.pd.pd, &mut attr)?;
+        // TODO: add pd parameter
+        let inner = self.pd.ctx.inner.clone().create_qp(&attr)?;
+
         Ok(PreparedQueuePair {
             ctx: self.pd.ctx,
             qp: QueuePair {
-                qp,
+                inner,
             },
             access: self.access,
             timeout: self.timeout,
@@ -869,7 +854,7 @@ impl<'res> QueuePairBuilder<'res> {
 /// ```
 pub struct PreparedQueuePair<'res> {
     ctx: &'res Context,
-    qp: QueuePair<'res>,
+    qp: QueuePair,
 
     // carried from builder
     /// only valid for RC and UC
@@ -983,7 +968,7 @@ impl<'res> PreparedQueuePair<'res> {
     ///
     /// This endpoint will need to be communicated to the `QueuePair` on the remote end.
     pub fn endpoint(&self) -> QueuePairEndpoint {
-        let num = self.qp.qp.qp_num;
+        let num = self.qp.inner.number();
 
         // A peer that receives a GID here enables global routing and puts a GRH on every packet
         // it sends us. `ibv_query_gid` is still a stub returning an all-zero GID, and the mlx4
@@ -1032,7 +1017,7 @@ impl<'res> PreparedQueuePair<'res> {
     ///  - `ENOMEM`: Not enough resources to complete this operation.
     ///
     /// [RDMAmojo]: http://www.rdmamojo.com/2014/01/18/connecting-queue-pairs/
-    pub fn handshake(mut self, remote: QueuePairEndpoint) -> io::Result<QueuePair<'res>> {
+    pub fn handshake(mut self, remote: QueuePairEndpoint) -> io::Result<QueuePair> {
         // init and associate with port
         let mut attr = ffi::ibv_qp_attr {
             qp_state: ffi::ibv_qp_state::IBV_QPS_INIT,
@@ -1047,7 +1032,7 @@ impl<'res> PreparedQueuePair<'res> {
             attr.qp_access_flags = access;
             mask |= ffi::ibv_qp_attr_mask::IBV_QP_ACCESS_FLAGS;
         }
-        ffi::ibv_modify_qp(&mut self.qp.qp, &attr, mask)?;
+        self.qp.inner.modify(&attr, mask)?;
 
         // set ready to receive
         let mut attr = ffi::ibv_qp_attr {
@@ -1089,7 +1074,7 @@ impl<'res> PreparedQueuePair<'res> {
             attr.rq_psn = rq_psn;
             mask |= ffi::ibv_qp_attr_mask::IBV_QP_RQ_PSN;
         }
-        ffi::ibv_modify_qp(&mut self.qp.qp, &attr, mask)?;
+        self.qp.inner.modify(&attr, mask)?;
 
         // set ready to send
         let mut attr = ffi::ibv_qp_attr {
@@ -1114,7 +1099,7 @@ impl<'res> PreparedQueuePair<'res> {
             attr.max_rd_atomic = max_rd_atomic;
             mask |= ffi::ibv_qp_attr_mask::IBV_QP_MAX_QP_RD_ATOMIC;
         }
-        ffi::ibv_modify_qp(&mut self.qp.qp, &attr, mask)?;
+        self.qp.inner.modify(&attr, mask)?;
 
         Ok(self.qp)
     }
@@ -1122,14 +1107,20 @@ impl<'res> PreparedQueuePair<'res> {
 
 /// A (local) memory region that has been registered for use with RDMA.
 pub struct LocalMemoryRegion<'pd, T> {
-    mr: ffi::ibv_mr<'pd>,
+    pd: &'pd ProtectionDomain<'pd>,
+    metadata: MemoryRegionMetadata,
     data: Vec<T>,
+}
+
+pub struct MemoryRegionMetadata {
+    handle: u32,
+    lkey: u32,
+    rkey: u32,
 }
 
 unsafe impl<'pd, T> Send for LocalMemoryRegion<'pd, T> {}
 unsafe impl<'pd, T> Sync for LocalMemoryRegion<'pd, T> {}
 
-use core::ops::{Deref, DerefMut};
 
 impl<'pd, T> Deref for LocalMemoryRegion<'pd, T> {
     type Target = [T];
@@ -1148,9 +1139,9 @@ impl<'pd, T> LocalMemoryRegion<'pd, T> {
     /// Get the remote authentication used to allow direct remote access to this memory region.
     pub fn remote(&mut self) -> RemoteMemoryRegion<T> {
         RemoteMemoryRegion {
-            addr: self.mr.addr as u64,
-            len: self.mr.length,
-            rkey: self.mr.rkey,
+            addr: self.data.as_mut_ptr() as u64,
+            len: self.data.len() * mem::size_of::<T>(),
+            rkey: self.metadata.rkey,
             phantom: PhantomData {},
         }
     }
@@ -1176,7 +1167,6 @@ pub struct RemoteMemoryRegion<T> {
 /// A protection domain for a device's context.
 pub struct ProtectionDomain<'ctx> {
     ctx: &'ctx Context,
-    pd: ffi::ibv_pd<'ctx>,
 }
 
 unsafe impl<'a> Sync for ProtectionDomain<'a> {}
@@ -1198,8 +1188,8 @@ impl<'ctx> ProtectionDomain<'ctx> {
     /// the resulting `QueuePair`.
     pub fn create_qp<'pd, 'scq, 'rcq, 'res>(
         &'pd self,
-        send: &'scq CompletionQueue<'ctx>,
-        recv: &'rcq CompletionQueue<'ctx>,
+        send: &'scq CompletionQueue,
+        recv: &'rcq CompletionQueue,
         qp_type: ffi::ibv_qp_type::Type,
         cap: ffi::ibv_qp_cap
     ) -> QueuePairBuilder<'res>
@@ -1249,7 +1239,7 @@ impl<'ctx> ProtectionDomain<'ctx> {
     ///  - `EINVAL`: Invalid access value.
     ///  - `ENOMEM`: Not enough resources (either in operating system or in RDMA device) to
     ///    complete this operation.
-    pub fn allocate<'pd, T: Sized + Copy + Default>(&'pd self, n: usize) -> io::Result<LocalMemoryRegion<'pd, T>> {
+    pub fn allocate<T: Sized + Copy + Default>(&self, n: usize) -> io::Result<LocalMemoryRegion<T>> {
         assert!(n > 0);
         assert!(mem::size_of::<T>() > 0);
 
@@ -1260,8 +1250,8 @@ impl<'ctx> ProtectionDomain<'ctx> {
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_WRITE
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_READ
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_ATOMIC;
-        let mr = ffi::ibv_reg_mr(
-            &self.pd,
+
+        let metadata = self.ctx.inner.reg_mr(
             data.as_mut_ptr() as *mut _,
             data.len() * mem::size_of::<T>(),
             access,
@@ -1275,7 +1265,11 @@ impl<'ctx> ProtectionDomain<'ctx> {
         // places this rkey as the rkey field of struct ibv_send_wr passed to the ibv_post_send
         // function.
 
-        Ok(LocalMemoryRegion { mr, data })
+        Ok(LocalMemoryRegion {
+            pd: self,
+            metadata,
+            data
+        })
     }
 }
 
@@ -1286,14 +1280,14 @@ impl<'ctx> ProtectionDomain<'ctx> {
 /// which is maintained by the network stack and doesn't have a physical resource behind it. A QP
 /// is a resource of an RDMA device and a QP number can be used by one process at the same time
 /// (similar to a socket that is associated with a specific TCP or UDP port number)
-pub struct QueuePair<'res> {
-    qp: ffi::ibv_qp<'res, 'res>,
+pub struct QueuePair {
+    inner: Arc<dyn IbvQueuePair>,
 }
 
-unsafe impl<'a> Send for QueuePair<'a> {}
-unsafe impl<'a> Sync for QueuePair<'a> {}
+unsafe impl Send for QueuePair {}
+unsafe impl Sync for QueuePair {}
 
-impl<'res> QueuePair<'res> {
+impl QueuePair {
     /// Posts a linked list of Work Requests (WRs) to the Send Queue of this Queue Pair.
     ///
     /// Generates a HW-specific Send Request for the memory at `mr[range]`, and adds it to the tail
@@ -1339,8 +1333,7 @@ impl<'res> QueuePair<'res> {
             ranges.len() == wr_ids.len(),
             "local ranges, and wr ids must have the same size!");
 
-        let mut next: *mut ffi::ibv_send_wr = ptr::null_mut();
-        wr_ids.reverse();
+        let mut wrs = Vec::new();
 
         for wr_id in wr_ids {
             let mut sg_list = Vec::new();
@@ -1352,23 +1345,19 @@ impl<'res> QueuePair<'res> {
                 let sge = ffi::ibv_sge {
                     addr: l.as_ptr() as u64,
                     length: mem::size_of_val(l) as u32,
-                    lkey: mr.mr.lkey,
+                    lkey: mr.metadata.lkey,
                 };
                 sg_list.push(sge);
             }
 
-            let wr_inner = ffi::ibv_send_wr_builder(
+            wrs.push(SendWorkRequest {
                 wr_id,
-                ffi::ibv_wr_opcode::IBV_WR_SEND,
-                wr_send_flags,
-                Default::default(),
-                next,
-                sg_list);
-
-            next = Box::into_raw(wr_inner);
+                sges: sg_list,
+                opcode: ffi::ibv_wr_opcode::IBV_WR_SEND,
+                send_flags: wr_send_flags,
+                wr: Default::default(),
+            });
         }
-
-        let wr = unsafe { &mut *next };
 
         // TODO:
         //
@@ -1384,12 +1373,7 @@ impl<'res> QueuePair<'res> {
         // ... However, if the IBV_SEND_INLINE flag was set, the  buffer  can  be reused
         // immediately after the call returns.
 
-        let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, wr)? };
-
-        while !next.is_null() {
-            let _next = unsafe { Box::from_raw(next) };
-            next = _next.next;
-        }
+        let _bad_wr = unsafe { self.inner.post_send(wrs.as_mut_slice())? };
 
         Ok(())
     }
@@ -1437,8 +1421,7 @@ impl<'res> QueuePair<'res> {
             ranges.len() == wr_ids.len(),
             "local ranges, and wr ids must have the same size!");
 
-        let mut next: *mut ffi::ibv_recv_wr = ptr::null_mut();
-        wr_ids.reverse();
+        let mut wrs = Vec::new();
 
         for wr_id in wr_ids {
             let mut sg_list = Vec::new();
@@ -1449,21 +1432,17 @@ impl<'res> QueuePair<'res> {
                 let sge = ffi::ibv_sge {
                     addr: l.as_ptr() as u64,
                     length: mem::size_of_val(l) as u32,
-                    lkey: mr.mr.lkey,
+                    lkey: mr.metadata.lkey,
                 };
                 sg_list.push(sge);
             }
 
-            let wr_inner = Box::new(ffi::ibv_recv_wr {
+            wrs.push(ReceiveWorkRequest {
                 wr_id,
-                next,
-                sg_list,
+                sges: sg_list,
             });
-
-            next = Box::into_raw(wr_inner);
         }
 
-        let wr = unsafe { &mut *next };
 
         // TODO:
         //
@@ -1477,7 +1456,7 @@ impl<'res> QueuePair<'res> {
         // means that in all cases, the actual data of the incoming message will start at an offset
         // of 40 bytes into the buffer(s) in the scatter list.
 
-        let _bad_wr = self.qp.ops.post_recv.as_ref().unwrap()(&mut self.qp, wr)?;
+        let _bad_wr = self.inner.post_receive(wrs.as_mut_slice())?;
         Ok(())
     }
 
@@ -1606,8 +1585,7 @@ impl<'res> QueuePair<'res> {
             && (wr_ids.len() == send_flags.len()),
             "remote ranges, local ranges, and wr ids must have the same size!");
 
-        let mut next: *mut ffi::ibv_send_wr = ptr::null_mut();
-        wr_ids.reverse();
+        let mut wrs = Vec::new();
 
         for wr_id in wr_ids {
             let mut sg_list = Vec::new();
@@ -1639,7 +1617,7 @@ impl<'res> QueuePair<'res> {
                 let sge = ffi::ibv_sge {
                     addr: l.as_ptr() as u64,
                     length: mem::size_of_val(l) as u32,
-                    lkey: local_mr.mr.lkey,
+                    lkey: local_mr.metadata.lkey,
                 };
                 local_c += l.len();
                 sg_list.push(sge);
@@ -1652,21 +1630,18 @@ impl<'res> QueuePair<'res> {
                 ));
             }
 
-            let wr_inner = ffi::ibv_send_wr_builder(
+            wrs.push(SendWorkRequest {
                 wr_id,
+                sges: sg_list,
                 opcode,
-                wr_send_flags,
-                ffi::ibv_send_wr_wr::rdma {
+                send_flags: wr_send_flags,
+                wr: ffi::ibv_send_wr_wr::rdma {
                     remote_addr: remote_start,
                     rkey: remote_mr.rkey,
                 },
-                next,
-                sg_list);
-
-            next = Box::into_raw(wr_inner);
+            });
         }
 
-        let wr = unsafe { &mut *next };
 
         // TODO:
         //
@@ -1682,12 +1657,7 @@ impl<'res> QueuePair<'res> {
         // ... However, if the IBV_SEND_INLINE flag was set, the  buffer  can  be reused
         // immediately after the call returns.
 
-        let _bad_wr = unsafe { self.qp.ops.post_send.as_ref().unwrap()(&mut self.qp, wr)? };
-
-        while !next.is_null() {
-            let _next = unsafe { Box::from_raw(next) };
-            next = _next.next;
-        }
+        let _bad_wr = unsafe { self.inner.post_send(wrs.as_mut_slice())? };
 
         Ok(())
     }
