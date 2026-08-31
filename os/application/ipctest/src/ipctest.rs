@@ -49,7 +49,6 @@ pub fn main() {
 
         let target_pid = args.get(2).and_then(|s| Uuid::parse_str(&s).ok()).unwrap_or(Uuid::nil());
         let target_tid = args.get(3).and_then(|s| str::parse::<usize>(&s).ok()).unwrap_or(0);
-        let tag = args.get(4).map(|s| s.as_str()).unwrap_or("SIMPLE");
 
         let args_numbers: Vec<_> = args.iter().skip(5)
             .map(|s| str::parse::<usize>(&s))
@@ -57,7 +56,7 @@ pub fn main() {
             .map(|r| r.unwrap())
             .collect();
 
-        let res = ipc::send(target_pid, target_tid, tag, args_numbers.as_slice());
+        let res = ipc::send(target_pid, target_tid, args_numbers.as_slice());
 
         //let res = ipc::send_small(Uuid::from_u128(0), target_tid, args.get(3).and_then(|s| str::parse::<u64>(&s).ok()).unwrap_or(42));
         match res {
@@ -89,14 +88,14 @@ pub fn main() {
         }
     } else if command == "pingpong_internal" {
         ipc::init_queue();
-        ipc::send(Uuid::nil(), str::parse::<usize>(&args[2]).unwrap(), "USIZE", thread.id());
+        ipc::send(Uuid::nil(), str::parse::<usize>(&args[2]).unwrap(), thread.id());
         loop {
             match ipc::receive() {
                 Some(msg) => {
                     let ping = unsafe { (*(msg.data().as_ptr() as *const [usize; MESSAGE_DATA_SIZE / 8]))[0] };
                     println!("[{}] Received Message: {}", thread.id(), ping);
                     let pong = ping * 2;
-                    ipc::send(Uuid::nil(), str::parse::<usize>(&args[2]).unwrap(), "USIZE", pong);
+                    ipc::send(Uuid::nil(), str::parse::<usize>(&args[2]).unwrap(), pong);
                 },
                 None => {}
             }
@@ -121,14 +120,14 @@ pub fn main() {
                 println!("Received Message: {}", number);
                 if number == 100 {
                     println!("Successfully received 100 messages! Sending STOP signal to {}!", loop_send_tid);
-                    ipc::send(Uuid::nil(), loop_send_tid, "TEXT", "STOP");
+                    ipc::send(Uuid::nil(), loop_send_tid, "STOP");
                     return;
                 }
                 if prev + 1 == number {
                     prev = number;
                 } else {
                     println!("Error in message order! Sending STOP signal to {}!", loop_send_tid);
-                    ipc::send(Uuid::nil(), loop_send_tid, "TEXT", "STOP");
+                    ipc::send(Uuid::nil(), loop_send_tid, "STOP");
                     return;
                 }
             }
@@ -140,7 +139,6 @@ pub fn main() {
 
         let target_pid = args.get(2).and_then(|s| Uuid::parse_str(&s).ok()).unwrap_or(Uuid::nil());
         let target_tid = args.get(3).and_then(|s| str::parse::<usize>(&s).ok()).unwrap_or(0);
-        let tag = "USIZE";
         let mut errors = 0;
 
         loop {
@@ -157,7 +155,7 @@ pub fn main() {
                 }
             }
 
-            let res = ipc::send(target_pid, target_tid, tag, i);
+            let res = ipc::send(target_pid, target_tid, i);
             match res {
                 Ok(_) => {
                     println!("Send Message: {} with {} errors", i, errors);

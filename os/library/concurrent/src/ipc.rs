@@ -1,6 +1,7 @@
 use core::fmt::{Debug, Display};
 use core::ops::Deref;
 use core::sync::atomic::{AtomicI16, AtomicU16, Ordering};
+use alloc::format;
 use syscall::{SystemCall, return_vals::SyscallResult, syscall};
 use uuid::Uuid;
 
@@ -174,7 +175,12 @@ impl Default for IpcMessage {
 
 impl Display for IpcMessage {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "(pid: {:?}, tid: {}, {}): {:?}", self.sender_pid, self.sender_tid, self.tag(), self.data)
+        let content = match self.tag() {
+            "STRING" => self.data_as_str(),
+            "USIZE" => &format!("{:?}", self.data_as_usize_slice()),
+            _ => &format!("{:?}", self.data),
+        };
+        write!(f, "(pid: {:?}, tid: {}, {}): {:?}", self.sender_pid, self.sender_tid, self.tag(), content)
     }
 }
 
@@ -182,11 +188,15 @@ impl Display for IpcMessage {
 /// this should effectively only be implemented for references --> the data needs to exist long enough to be copied into the receiver
 pub trait IpcMessageContent {
     fn to_bytes(&self) -> &[u8];
+    fn tag(&self) -> &str;
 }
 
 impl IpcMessageContent for &[u8] {
     fn to_bytes(&self) -> &[u8] {
         self
+    }
+    fn tag(&self) -> &str {
+        "SIMPLE"
     }
 }
 
@@ -197,6 +207,9 @@ impl IpcMessageContent for &[usize] {
         // alignment should be safe, because usize alignment should always include u8 alignment
         unsafe { core::slice::from_raw_parts(ptr, l) }
     }
+    fn tag(&self) -> &str {
+        "USIZE"
+    }
 }
 
 impl IpcMessageContent for usize {
@@ -206,11 +219,17 @@ impl IpcMessageContent for usize {
         let l = size_of::<usize>();
         unsafe { core::slice::from_raw_parts(ptr, l) }
     }
+    fn tag(&self) -> &str {
+        "USIZE"
+    }
 }
 
 impl IpcMessageContent for &str {
     fn to_bytes(&self) -> &[u8] {
         self.as_bytes()
+    }
+    fn tag(&self) -> &str {
+        "STRING"
     }
 }
 
@@ -224,7 +243,12 @@ pub fn init_queue() {
     }
 }
 
-pub fn send<T: IpcMessageContent>(pid: Uuid, tid: usize, tag: &str, message: T) -> SyscallResult {
+pub fn send<T: IpcMessageContent>(pid: Uuid, tid: usize, message: T) -> SyscallResult {
+    let bytes = message.to_bytes();
+    send_internal(pid, tid, message.tag(), bytes)
+}
+
+pub fn send_with_tag<T: IpcMessageContent>(pid: Uuid, tid: usize, tag: &str, message: T) -> SyscallResult {
     let bytes = message.to_bytes();
     send_internal(pid, tid, tag, bytes)
 }
