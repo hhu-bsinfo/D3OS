@@ -19,7 +19,7 @@ use time::systime;
 const HEARTBEAT_DIR: &str = "/heartbeat";           // Ort für die Heartbeat-Dateien
 const PROC_SERVICES_PATH: &str = "/proc/services";  // Ort für die Service-Status-Datei, die vom TaskManager gelesen wird
 const HEARTBEAT_INTERVAL_MS: usize = 2_000;         // Wie oft Heartbeats gesendet werden
-const WATCHDOG_TICK_INTERVAL_MS: usize = 1_000;    // Intervall für den Watchdog-Tick
+const WATCHDOG_TICK_INTERVAL_MS: usize = 1_000;    // Wie oft Heartbeats geprüft werden
 const HEARTBEAT_TIMEOUT_MS: usize = 5_000;         // Wie alt ein Heartbeat sein darf, bevor der Watchdog Alarm schlägt
 
 #[derive(Debug, Clone, Copy)]
@@ -46,42 +46,14 @@ struct ServiceStatusEntry {
 type ServiceStatusMap = BTreeMap<String, ServiceStatusEntry>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BootTarget {   // Um zu wissen welcher Service gestartet werden soll
+enum BootTarget {   // In boot.rs wird zwischen Terminal und GUI unterschieden beim booten
     Terminal,
     Gui,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Targets(u8);
-
-impl Targets {
-    const TERMINAL: u8 = 1 << 0;
-    const GUI: u8 = 1 << 1;
-    const ANY: u8 = Self::TERMINAL | Self::GUI;
-
-    const fn none() -> Self {
-        Self(0)
-    }
-
-    const fn any() -> Self {
-        Self(Self::ANY)
-    }
-
-    const fn has(self, bit: u8) -> bool {
-        (self.0 & bit) != 0
-    }
-
-    const fn matches_boot_target(self, target: BootTarget) -> bool {
-        match target {
-            BootTarget::Terminal => self.has(Self::TERMINAL),
-            BootTarget::Gui => self.has(Self::GUI),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ServiceState {     // Alle möglichen Zustände eines Service
-    Uninitialized,
     Disabled,
     Offline,
     Online,
@@ -90,9 +62,9 @@ enum ServiceState {     // Alle möglichen Zustände eines Service
 }
 
 impl ServiceState {
+    // String Mappings für die Ausgabe beim TaskManager
     const fn as_str(self) -> &'static str {
         match self {
-            ServiceState::Uninitialized => "uninitialized",
             ServiceState::Disabled => "disabled",
             ServiceState::Offline => "offline",
             ServiceState::Online => "online",
@@ -127,15 +99,6 @@ enum RestartPolicy {    // Wie umgehen mit Service-Ausfällen?
 }
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum RestartOn {    // steht im paper, aber ich verstehe den Zweck noch nicht ganz
-    None,
-    Error,
-    Restart,
-    Refresh,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -155,9 +118,7 @@ fn default_false() -> bool {
 fn default_restart_policy() -> RestartPolicy {
     RestartPolicy::OnFailure
 }
-fn default_restart_on() -> RestartOn {
-    RestartOn::Restart
-}
+
 
 #[derive(Debug, Clone, Deserialize)]
 struct ServiceManifestJson {
@@ -177,9 +138,6 @@ struct ServiceManifestJson {
     #[serde(default = "default_restart_policy")]
     restart: RestartPolicy,
 
-    #[serde(default = "default_restart_on")]
-    restart_on: RestartOn,
-
     #[serde(default = "default_false")]
     heartbeat: bool,
 
@@ -195,36 +153,13 @@ struct ServiceManifestJson {
 
 impl ServiceManifestJson {
     fn into_manifest(self) -> ServiceManifest {
-        let mut target_bits = Targets::none();
-
-        if self.targets.is_empty() {
-            target_bits = Targets::any();
-        } 
-        else {
-            for t in &self.targets {
-                match t {
-                    ManifestTarget::Terminal => target_bits.0 |= Targets::TERMINAL,
-                    ManifestTarget::Gui => target_bits.0 |= Targets::GUI,
-                    ManifestTarget::Any => {
-                        target_bits = Targets::any();
-                        break;
-                    }
-                }
-            }
-
-            if target_bits.0 == 0 {
-                target_bits = Targets::any();
-            }
-        }
-
         ServiceManifest {
             name: self.name,
             binary: self.binary,
             args: self.args,
             enabled: self.enabled,
-            targets: target_bits,
+            targets: self.targets,
             restart: self.restart,
-            restart_on: self.restart_on,
             heartbeat: self.heartbeat,
             require_all: self.require_all,
             require_any: self.require_any,
@@ -240,9 +175,8 @@ struct ServiceManifest {
     binary: String,
     args: Vec<String>,
     enabled: bool,
-    targets: Targets,
+    targets: Vec<ManifestTarget>,
     restart: RestartPolicy,
-    restart_on: RestartOn,
     heartbeat: bool,
     require_all: Vec<String>,
     require_any: Vec<String>,
@@ -342,10 +276,11 @@ fn heartbeat_remove(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str) {
 
 fn ensure_heartbeat_file(service_name: &str) -> String {
     let hb_path = alloc::format!("{}/{}", HEARTBEAT_DIR, service_name);
-    let _ = naming::touch(&hb_path);        // Statt Pipies, jetzt tmpfs nutzen (Dateien)
+    let _ = naming::touch(&hb_path);        // TempFS nutzen (Dateien)
     hb_path
 }
 
+// Prüft die Heartbeats aller Services (welche Heartbeats aktiviert haben). Wenn ein Service zu lange kein Heartbeat gesendet hat, wird er entweder gekillt (bei RestartPolicy Always oder OnFailure) oder in den Maintenance Zustand versetzt (bei RestartPolicy Never)
 fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>, service_states: Arc<Mutex<ServiceStatusMap>>) {
     let _ = thread::create(move || {
         let mut buf = [0u8; 8];
@@ -354,7 +289,7 @@ fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>, service_states: Arc<Mute
             thread::sleep(WATCHDOG_TICK_INTERVAL_MS);
             let now = systime().num_milliseconds() as usize;
 
-            let mut missed: Vec<(String, usize, usize, RestartPolicy)> = Vec::new();
+            let mut missed: Vec<(String, usize, usize)> = Vec::new();
             let mut map = heartbeats.lock();
             for (name, state) in map.iter_mut() {
                 if let Some(handle) = state.handle {
@@ -363,6 +298,7 @@ fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>, service_states: Arc<Mute
                         if n == buf.len() {
                             let marker = u64::from_le_bytes(buf);
                             if marker != state.last_marker {
+                                //println!("Watchdog hat neuen Marker von {} gelesen: {}", name, marker);
                                 state.last_marker = marker;
                                 state.last_seen_ms = now;
                                 state.reported = false;
@@ -373,28 +309,24 @@ fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>, service_states: Arc<Mute
 
                 let age = now.saturating_sub(state.last_seen_ms);
                 if age >= HEARTBEAT_TIMEOUT_MS && !state.reported {
-                    missed.push((name.clone(), age / 1000, state.thread_id, state.restart));
+                    missed.push((name.clone(), age / 1000, state.thread_id));
                     state.reported = true;
                 }
             }
             drop(map);
 
-            for (name, age, thread_id, restart) in missed {
+            for (name, age, thread_id) in missed {
                 error!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
                 println!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
-                if should_restart(restart, 1) {
-                    update_service_state(&service_states, &name, ServiceState::Degraded);
-                    println!("svc: killing {} (tid={}) after missed heartbeat", name, thread_id);
-                    thread::Thread::from_id(thread_id).kill();
-                } 
-                else {
-                    update_service_state(&service_states, &name, ServiceState::Maintenance);
-                }
+                update_service_state(&service_states, &name, ServiceState::Degraded);
+                println!("svc: killing {} (tid={}) after missed heartbeat", name, thread_id);
+                thread::Thread::from_id(thread_id).kill();
             }
         }
     });
 }
 
+// Service starten und überwachen. Wenn er abstürzt, wird er je nach RestartPolicy neu gestartet oder in den Maintenance Zustand versetzt
 fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heartbeats: Arc<Mutex<HeartbeatMap>>, service_states: Arc<Mutex<ServiceStatusMap>>) {
     loop {
         let exit_code = match child.join() {
@@ -454,12 +386,11 @@ fn service_state_by_name(services: &[Service], name: &str) -> Option<ServiceStat
 }
 
 // - exclude_all: nicht starten, solange irgendeiner davon läuft
-// - require_all: erst starten, wenn alle davon laufen
+// - require_all: erst starten, wenn alle davon laufen. Alle Dienste müssen im Online oder Degraded Zustand sein, damit der Service gestartet werden kann.
 // - require_any: erst starten, wenn mindestens einer davon läuft (falls die Liste nicht leer ist)
 // - optional_all: wie require_all, aber nur falls der Service überhaupt existiert; fehlt er, wird er ignoriert
-// Alle Dienste in require_all müssen im Online oder Degraded Zustand sein, damit der Service gestartet werden kann.
+// Prüft, ob die Abhängigkeiten für einen Service erfüllt sind
 fn can_start_now(service: &Service, services: &[Service]) -> bool {
-    // exclude_all: don't start while excluded services are running.
     for dep in &service.manifest.exclude_all {
         if let Some(dep_state) = service_state_by_name(services, dep.as_str()) {
             if is_running_state(dep_state) {
@@ -665,18 +596,12 @@ fn load_service_manifests() -> Vec<ServiceManifest> {
 }
 
 // Hilfsmethode zum Debuggen, um die geladenen Manifeste zu überprüfen (wird später entfernt)
+/* 
 fn print_manifest(m: &ServiceManifest) {
-    println!("svc: manifest name={} binary={} enabled={} restart={:?} restart_on={:?}",
-        m.name, m.binary, m.enabled, m.restart, m.restart_on);
-    println!("svc:   targets_bits=0x{:x} args={} require_all={} require_any={} optional_all={} exclude_all={}",
-        m.targets.0,
-        m.args.len(),
-        m.require_all.len(),
-        m.require_any.len(),
-        m.optional_all.len(),
-        m.exclude_all.len(),
-    );
+    println!("svc: manifest name={} binary={} enabled={} restart={:?}", m.name, m.binary, m.enabled, m.restart);
+    println!("svc:   targets={:?} args={} require_all={} require_any={} optional_all={} exclude_all={}", m.targets, m.args.len(), m.require_all.len(), m.require_any.len(), m.optional_all.len(), m.exclude_all.len());
 }
+*/
 
 fn parse_boot_target() -> BootTarget {
     let mut args = env::args();
@@ -686,10 +611,6 @@ fn parse_boot_target() -> BootTarget {
         match arg.as_str() {
             "--gui" => return BootTarget::Gui,
             "--terminal" => return BootTarget::Terminal,
-            "--help" | "-h" => {
-                println!("Usage: service_manager [--gui|--terminal]");
-                return BootTarget::Terminal;
-            }
             _ => {
                 println!("service_manager: ignoring unknown arg: {}", arg);
             }
@@ -717,7 +638,12 @@ pub fn main() {
     let mut services: Vec<Service> = if !manifests.is_empty() {
         manifests
             .into_iter()
-            .filter(|m| m.targets.matches_boot_target(boot_target))
+            .filter(|m| {
+                m.targets.is_empty() 
+                || m.targets.contains(&ManifestTarget::Any)
+                || (boot_target == BootTarget::Terminal && m.targets.contains(&ManifestTarget::Terminal))
+                || (boot_target == BootTarget::Gui && m.targets.contains(&ManifestTarget::Gui))
+            })
             .map(|m| Service {
                 state: if m.enabled {ServiceState::Offline} else {ServiceState::Disabled},
                 manifest: m,
@@ -725,6 +651,7 @@ pub fn main() {
             .collect()
     } 
     else {
+        // Fallback: Wenn keine Manifest-Dateien angelegt wurden in /loader/initrd/services, wird das Terminal oder die GUI-Services basierend auf dem Boot-Target gestartet
         let terminal_enabled = boot_target == BootTarget::Terminal;
         let gui_enabled = boot_target == BootTarget::Gui;
 
@@ -736,9 +663,8 @@ pub fn main() {
                 binary: "terminal_emulator".to_string(),
                 args: Vec::new(),
                 enabled: terminal_enabled,
-                targets: Targets::any(),
+                targets: alloc::vec![ManifestTarget::Any],
                 restart: RestartPolicy::OnFailure,
-                restart_on: RestartOn::Restart,
                 heartbeat: false,
                 require_all: Vec::new(),
                 require_any: Vec::new(),
@@ -753,9 +679,8 @@ pub fn main() {
                 binary: "window_manager".to_string(),
                 args: Vec::new(),
                 enabled: gui_enabled,
-                targets: Targets::any(),
+                targets: alloc::vec![ManifestTarget::Any],
                 restart: RestartPolicy::OnFailure,
-                restart_on: RestartOn::Restart,
                 heartbeat: false,
                 require_all: Vec::new(),
                 require_any: Vec::new(),

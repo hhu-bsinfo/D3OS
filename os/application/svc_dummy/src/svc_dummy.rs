@@ -10,6 +10,7 @@ use runtime::*;
 use terminal::println;
 use time::systime;
 
+// Sucht Zuweisungen mit = und gibt den Wert zurück, z.B. --sleep-ms=5000
 fn arg_value<'a>(args: &'a [String], key: &str) -> Option<&'a str> {
     for arg in args {
         if let Some(v) = arg.strip_prefix(key) {
@@ -19,6 +20,7 @@ fn arg_value<'a>(args: &'a [String], key: &str) -> Option<&'a str> {
     None
 }
 
+// Sucht nach Flags ohne = und gibt dann true zurück, z.B. --quiet
 fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
@@ -30,7 +32,7 @@ pub fn main() {
     let label = arg_value(&args, "--label=").unwrap_or("svc_dummy");
     let service_name = arg_value(&args, "--service-name=").unwrap_or(label);
     let heartbeat_path = arg_value(&args, "--heartbeat-path=").unwrap_or("/heartbeat");
-    let quiet = has_flag(&args, "--quiet") || has_flag(&args, "--no-print");
+    let print = has_flag(&args, "--print");
     let initial_sleep_ms: usize = arg_value(&args, "--initial-sleep-ms=")
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(10_000);
@@ -46,13 +48,13 @@ pub fn main() {
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|&v| v != 0);
 
-    let no_heartbeat = has_flag(&args, "--no-heartbeat") || has_flag(&args, "--disable-heartbeat");
+    let no_heartbeat = has_flag(&args, "--no-heartbeat");
 
     let hang_after_ms: Option<usize> = arg_value(&args, "--hang-after-ms=")
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|&v| v != 0);
 
-    let panic_on_start = has_flag(&args, "--panic") || has_flag(&args, "--crash");
+    let panic_on_start = has_flag(&args, "--panic");
     let panic_after_ms: Option<usize> = arg_value(&args, "--panic-after-ms=")
         .and_then(|v| v.parse::<usize>().ok());
 
@@ -80,7 +82,7 @@ pub fn main() {
         thread::exit_with_code(0);
     }
 
-    let heartbeat_fh = if !no_heartbeat && heartbeat_ms.is_some() {     // Pipe öffnen, um Nachrichten an den Service Manager zu senden
+    let heartbeat_fh = if !no_heartbeat && heartbeat_ms.is_some() {     // TempFS Datei öffnen, um Nachrichten an den Service Manager zu senden
         match naming::open(heartbeat_path, OpenOptions::WRITEONLY) {
             Ok(fh) => Some(fh),
             Err(_) => None,
@@ -107,7 +109,7 @@ pub fn main() {
             let _ = naming::write(fh, &heartbeat_value.to_le_bytes());     // Heartbeat normal senden
         }
 
-        if !quiet {
+        if print {
             println!("svc_dummy: hi from {}", label);
         }
 

@@ -6,7 +6,7 @@
   "targets": ["terminal"],
   "restart": "on_failure",
   "restart_on": "restart",
-  "require_all": ["terminal", "test_a"],
+  "require_all": ["terminal"],
   "require_any": [],
   "optional_all": [],
   "exclude_all": []

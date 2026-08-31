@@ -1,10 +1,10 @@
 {
   "name": "test_a",
   "binary": "svc_dummy",
-  "args": ["--label=A", "--initial-sleep-ms=500", "--sleep-ms=1000", "--quiet", "--no-heartbeat"],
+  "args": ["--label=A", "--initial-sleep-ms=500", "--sleep-ms=1000", "--no-heartbeat"],
   "enabled": true,
   "targets": ["any"],
-  "restart": "on_failure",
-  "heartbeat": false,
+  "restart": "never",
+  "heartbeat": true,
   "require_all": ["terminal"]
 }
