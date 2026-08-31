@@ -14,8 +14,8 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
 
     if let Some(thread) = scheduler().thread(tid) {
         let vas = &thread.process().virtual_address_space;
-        if let Some(ipc_queue_ptr) = vas.translate_ptr_mut(consts::USER_SPACE_MAILBOX_START as *mut IpcQueue) {
-            if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_mut() } {
+        if let Some(ipc_queue_ptr) = vas.translate_ptr(consts::USER_SPACE_MAILBOX_START as *mut IpcQueue) {
+            if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_ref() } {
             
                 let message = unsafe { core::slice::from_raw_parts(params.data_ptr, params.data_len) };
                 let tag = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.tag_ptr, params.tag_len)) };

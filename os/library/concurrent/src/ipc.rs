@@ -30,14 +30,17 @@ pub struct IpcQueue {
 
 impl IpcQueue {
     
-    pub fn send(&mut self, data: &[u8], sender_pid: Uuid, sender_tid: usize, tag: &str) -> bool {
+    pub fn send(&self, data: &[u8], sender_pid: Uuid, sender_tid: usize, tag: &str) -> bool {
 
+        // 1. increment writer idx
         let writer_idx = self.writer_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
 
         // 2. check (and lock) mailbox entry
         if self.mailbox[writer_idx].compare_exchange(0, -1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            // 3. write message into memory
-            if let Some(msg) = self.data.get_mut(writer_idx) {
+            // 3. get msg as mut
+            //    -> this is sound because we ensure we are the sole thread accessing this message, using the atomic variable above
+            if let Some(msg) = self.data.get(writer_idx).and_then(|msg| unsafe { core::ptr::from_ref(msg).cast_mut().as_mut() }) {
+                // 4. write message
                 let msg_len = core::cmp::min(data.len(), MESSAGE_DATA_SIZE);
                 msg.data[..msg_len].copy_from_slice(&data[..msg_len]);
                 msg.data_len = msg_len;
