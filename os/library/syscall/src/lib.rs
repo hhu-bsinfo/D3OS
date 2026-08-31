@@ -73,6 +73,7 @@ pub enum SystemCall {
     ShmAttach,
     ShmDetach,
     ShmUnlink,
+    IpcRegister,
     IpcSend,
     IpcReceiveBlocking,
 }

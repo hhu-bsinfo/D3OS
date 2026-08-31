@@ -8,8 +8,8 @@ use uuid::Uuid;
 // Schnittstelle für Interprozesskommunikation
 
 pub struct IpcSyscallParams {
-    pub pid: Uuid,
-    pub tid: usize,
+    pub service_name_ptr: *const u8,
+    pub service_name_len: usize,
     pub data_ptr: *const u8,
     pub data_len: usize,
     pub tag_ptr: *const u8,
@@ -21,6 +21,7 @@ const MESSAGE_TAG_LEN: usize = 0x10;
 pub const MESSAGE_DATA_SIZE: usize = 0x100;
 const MAX_NUM_MESSAGES: usize = 32; // !this needs to be a power of 2! also this can not be smaller than 4
 
+#[derive(Debug)]
 pub struct IpcQueue {
     writer_idx: AtomicU16,
     reader_idx: AtomicU16,
@@ -30,7 +31,7 @@ pub struct IpcQueue {
 
 impl IpcQueue {
     
-    pub fn send(&self, data: &[u8], sender_pid: Uuid, sender_tid: usize, tag: &str) -> bool {
+    pub fn send(&self, tag: &str, data: &[u8]) -> bool {
 
         // 1. increment writer idx
         let writer_idx = self.writer_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
@@ -44,8 +45,6 @@ impl IpcQueue {
                 let msg_len = core::cmp::min(data.len(), MESSAGE_DATA_SIZE);
                 msg.data[..msg_len].copy_from_slice(&data[..msg_len]);
                 msg.data_len = msg_len;
-                msg.sender_pid = sender_pid;
-                msg.sender_tid = sender_tid;
                 let tag_len = core::cmp::min(tag.len(), MESSAGE_TAG_LEN);
                 msg.tag[..tag_len].copy_from_slice(&tag.as_bytes()[..tag_len]);
                 self.mailbox[writer_idx].store(msg_len as i16, Ordering::SeqCst);
@@ -238,29 +237,33 @@ impl IpcMessageContent for &str {
 
 const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
-pub fn init_queue() {
+pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, syscall::return_vals::Errno> {
+    // TODO what happens when we register multiple endpoints / multiple services for this endpoint
     let mailbox_start = USER_SPACE_MAILBOX_START as *const u8;
     let ipc_queue_ptr = mailbox_start as *mut IpcQueue;
     unsafe { 
         ipc_queue_ptr.write(IpcQueue::new());
     }
+    let name_ptr = svc_name.as_ptr();
+    let name_len = svc_name.len();
+    syscall(SystemCall::IpcRegister, &[name_ptr as usize, name_len])
 }
 
-pub fn send<T: IpcMessageContent>(pid: Uuid, tid: usize, message: T) -> SyscallResult {
+pub fn send<T: IpcMessageContent>(service: &str, message: T) -> SyscallResult {
     let bytes = message.to_bytes();
-    send_internal(pid, tid, message.tag(), bytes)
+    send_internal(service, message.tag(), bytes)
 }
 
-pub fn send_with_tag<T: IpcMessageContent>(pid: Uuid, tid: usize, tag: &str, message: T) -> SyscallResult {
+pub fn send_with_tag<T: IpcMessageContent>(service: &str, tag: &str, message: T) -> SyscallResult {
     let bytes = message.to_bytes();
-    send_internal(pid, tid, tag, bytes)
+    send_internal(service, tag, bytes)
 }
 
-pub fn send_internal(pid: Uuid, tid: usize, tag: &str, message: &[u8]) -> SyscallResult {
+pub fn send_internal(service: &str, tag: &str, message: &[u8]) -> SyscallResult {
 
     let params = IpcSyscallParams {
-        pid,
-        tid,
+        service_name_ptr: service.as_ptr(),
+        service_name_len: service.len(),
         data_ptr: message.as_ptr(),
         data_len: message.len(),
         tag_ptr: tag.as_ptr(),

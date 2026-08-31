@@ -11,9 +11,10 @@ TOWBOOT_URL = "https://github.com/hhuOS/towboot/releases/download/v${TOWBOOT_VER
 TAR = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "tar", mapping = { "macos" = "gtar" } }
 LINKER = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "ld", mapping = { "macos" = "x86_64-elf-ld" } }
 QEMU_AUDIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "pa", mapping = { "macos" = "coreaudio" } }
-QEMU_DISPLAY = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gtk,gl=on,zoom-to-fit=off", mapping = { "macos" = "cocoa" } }
+QEMU_DISPLAY = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gtk,gl=on,zoom-to-fit=on", mapping = { "macos" = "cocoa" } }
 QEMU_VIRTIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "virtio-vga-gl", mapping = { "macos" = "virtio-vga" } }
 RUSTFLAGS="--cfg getrandom_backend=\"rdrand\""
+QEMU_NUM_CPUS = 4
 
 #VIRGL_DEBUG = "all"
 #GALLIUM_DEBUG = "trace"
@@ -32,7 +33,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
     "-cpu", "Haswell,fsgsbase",
-    "-smp", "4", # 4 CPUs
+    "-smp", "${QEMU_NUM_CPUS}",
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "d",
     "-vga", "none",
@@ -79,7 +80,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
     "-cpu", "Haswell",
-    "-smp", "4", # 4 CPUs
+    "-smp", "${QEMU_NUM_CPUS}",
     "-bios", "${WSL_BIOS_PATH}",
     "-boot", "d",
     "-vga", "std",
@@ -117,7 +118,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
     "-cpu", "Haswell",
-    "-smp", "1", # 4 CPUs
+    "-smp", "${QEMU_NUM_CPUS}",
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "c",
     "-vga", "none",
