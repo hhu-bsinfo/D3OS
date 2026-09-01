@@ -10,7 +10,7 @@ pub struct Application {
 /// Add new applications here.
 ///
 /// Author: Sebastian Keller
-pub const APPLICATION_REGISTRY: &'static [Application] = &[
+pub const APPLICATION_REGISTRY: &[Application] = &[
     //////////////////////
     // Debug
     Application {
@@ -126,11 +126,6 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
         key_value_pair: &[],
     },
     Application {
-        namespace: "legacy_shell",
-        single_value: &[],
-        key_value_pair: &[],
-    },
-    Application {
         namespace: "ls",
         single_value: &[],
         key_value_pair: &[],
@@ -162,5 +157,10 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
             ("-n", &["100M"]),
             ("-b", &["10M"]),
         ],
-    }
+    },
+    Application {
+        namespace: "httpd",
+        single_value: &[],
+        key_value_pair: &[],
+    },
 ];

@@ -13,7 +13,7 @@ pub struct Server {
 impl Server {
     /// Blocks until a client connects to the specified host and port.
     pub fn listen(config: Cli) -> Result<Server, NetworkError> {
-        let listener = TcpListener::bind(SocketAddr::new(config.host, config.port))?;
+        let mut listener = TcpListener::bind(SocketAddr::new(config.host, config.port))?;
 
         println!("-------------------------------------------");
         println!("Server listening on {}, port {}", config.host, config.port);

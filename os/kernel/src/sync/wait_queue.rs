@@ -12,19 +12,19 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-use alloc::collections::VecDeque;
+use alloc::{collections::VecDeque, vec::Vec};
+use uuid::Uuid;
 
-use crate::scheduler;
-use crate::sync::irqsave_spinlock::IrqSaveSpinlock;
+use crate::{process::core_local_storage::scheduler, sync::irqsave_spinlock::IrqSaveSpinlock};
 
 pub struct WaitQueue {
-    queue: IrqSaveSpinlock<VecDeque<(usize, usize)>>,
+    queue: IrqSaveSpinlock<VecDeque<(Uuid, usize)>>,
 }
 
 impl WaitQueue {
     pub fn new() -> WaitQueue {
         WaitQueue {
-            queue: IrqSaveSpinlock::new(VecDeque::<(usize, usize)>::new()),
+            queue: IrqSaveSpinlock::new(VecDeque::<(Uuid, usize)>::new()),
         }
     }
 
@@ -33,8 +33,7 @@ impl WaitQueue {
     where
         F: FnMut() -> bool,
     {
-        //        info!("WaitQueue::wait");
-        let (pid, tid) = scheduler().current_ids();
+        let ids = scheduler().current_ids();
 
         loop {
             if pred() {
@@ -49,60 +48,53 @@ impl WaitQueue {
                     return;
                 }
 
-                guard.push_back((pid, tid));
-
-                // park after we are visible to notifiers
-                scheduler().park_current();
+                // register current thread with the WaitQueue
+                guard.push_back(ids);
             }
 
-            scheduler().yield_now(); 
+            scheduler().block();
         }
-
-        // info!("WaitQueue::wait: Thread with PID={}, TID={} is now waiting, message = {}", pid, tid, message);
-
-        // // Check predicate without acquiring the queue lock.
-        // // The scheduler will block us, as long as no `notify_one` and `notify_all` have arrived
-        // // But even after waking up we need to check for spurious wakeups, so we loop here.
-        // loop {
-        //     if pred() {
-        //         return;
-        //     }
-        //     core::hint::spin_loop();
-        // }
-
     }
 
     /// Wake up exactly one waiter (if any). Returns true if someone was woken up.
     pub fn notify_one(&self) -> bool {
-        //  info!("WaitQueue::notify_one");
-
         let mut guard = self.queue.lock();
+        
+        let mut unblocked_success_idx = None;
 
-        while let Some((pid, tid)) = guard.pop_front() {
-            if scheduler().unblock(pid, tid) {
-                // info!("WaitQueue::notify_one: found a waiter");
-                return true;
+        // check queue until one thread is successfully unblocked
+        for (idx, (pid, tid)) in guard.iter().enumerate() {
+            if scheduler().unblock(*pid, *tid) {
+                unblocked_success_idx = Some(idx);
+                break;
             }
-            // else: stale waiter (killed/exited) -> keep going
         }
-        //    info!("WaitQueue::notify_one: no waiter found");
 
-        false
+        match unblocked_success_idx {
+            Some(idx) => guard.remove(idx).is_some(),
+            None => false
+        }
     }
 
     /// Wake up all waiters currently queued.
     /// Returns the number of threads actually unblocked (stale entries are ignored).
     pub fn notify_all(&self) -> usize {
         let mut guard = self.queue.lock();
-        let mut woke = 0;
+        
+        let mut unblocked_success_tids = Vec::new();
 
-        while let Some((pid, tid)) = guard.pop_front() {
-            if scheduler().unblock(pid, tid) {
-                woke += 1;
+        // check queue and try to unblock waiting threads
+        for (pid, tid) in guard.iter() {
+            if scheduler().unblock(*pid, *tid) {
+                unblocked_success_tids.push(*tid);
             }
-            // else: stale waiter (killed/exited) -> ignore
         }
 
-        woke
+        let prev_len = guard.len();
+        // remove successfully unblocked threads from the queue
+        guard.retain(|(_pid, tid)| !unblocked_success_tids.contains(tid));
+        let num_removed = prev_len - guard.len();
+
+        num_removed
     }
 }

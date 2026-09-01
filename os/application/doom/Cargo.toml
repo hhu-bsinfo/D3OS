@@ -21,6 +21,6 @@ graphic = { path = "../../library/graphic" }
 libc = { path = "../../library/libc" }
 
 # External dependencies
-spin = "0.10.0"
-pc-keyboard = "0.8.0"
+spin = "0.12"
+pc-keyboard = "0.9"
 chrono = { version = "0.4.43", default-features = false, features = ["alloc"] }

@@ -125,7 +125,7 @@ pub extern "sysv64" fn sys_seek(cap_handle: usize, offset: usize, origin: usize)
     }
 
     Errno::EACCES as isize
-}
+
 
 pub extern "sysv64" fn sys_close(cap_handle: usize) -> isize {
     let current_thread = scheduler().current_thread();

@@ -173,7 +173,7 @@ fn start_server(config: Cli) {
                 if client_config.parallel_streams > 1 {
                     run_tcp_parallel(&server, role, client_config, local_addr)
                 } else {
-                    let listener = TcpListener::bind(local_addr).expect("failed to bind tcp socket");
+                    let mut listener = TcpListener::bind(local_addr).expect("failed to bind tcp socket");
                     let socket = listener.accept().expect("failed to accept tcp connection");
 
                     // Synchronize start so that the receiver is ready before the sender starts
@@ -345,8 +345,8 @@ fn connect_tcp_streams<C: Coordinator>(coordinator: &C, config: Cli) -> Vec<TcpS
 fn accept_tcp_streams<C: Coordinator>(coordinator: &C, config: Cli, local_addr: SocketAddr) -> Vec<TcpStream> {
     let mut sockets = Vec::with_capacity(config.parallel_streams as usize);
 
+    let mut listener = TcpListener::bind(local_addr).expect("failed to bind tcp socket");
     for stream_id in 0..config.parallel_streams {
-        let listener = TcpListener::bind(local_addr).expect("failed to bind tcp socket");
         // Signal the client that the server is ready to accept the next stream
         coordinator.signal_stream_ready(stream_id);
         let socket = listener.accept().expect("failed to accept tcp connection");

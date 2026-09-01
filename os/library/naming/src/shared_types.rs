@@ -31,6 +31,7 @@ pub enum SeekOrigin {
     Start = 1,
     End = 2,
     Current = 4,
+    Current = 4,
 }
 
 /// File types
@@ -41,6 +42,7 @@ pub enum FileType {
     NamedPipe = 1,
     Directory = 4,
     Regular = 8,
+    Link = 16,
     Link = 16,
 }
 

@@ -126,7 +126,7 @@ impl Bitmap {
         bg_color: Color,
         c: char,
     ) -> u32 {
-        return match get_glyph(c) {
+        match get_glyph(c) {
             Some(glyph) => {
                 let mut x_offset = 0;
                 let mut y_offset = 0;
@@ -154,7 +154,7 @@ impl Bitmap {
                 glyph.get_width() as u32
             }
             None => 0,
-        };
+        }
     }
 
     // Julius Drodofsky

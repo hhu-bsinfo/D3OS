@@ -38,6 +38,7 @@ pub enum SystemCall {
     ThreadExit,
     ThreadKill,
     ThreadCount,
+    CoreId,
     GetSystemTime,
     GetDate,
     SetDate,
@@ -84,7 +85,6 @@ pub const NUM_SYSCALLS: usize = mem::variant_count::<SystemCall>() as usize;
 ///
 /// Description:
 ///    All syscalls are fired here. Parameters are passed in
-
 ///    registers according to the AMD 64 bit ABI.
 ///
 /// Return: Result \

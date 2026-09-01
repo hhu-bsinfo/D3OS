@@ -88,6 +88,7 @@ impl Terminal for LFBTerminal {
 }
 
 impl LFBTerminal {
+
     pub fn new(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: u8) -> Self {
         Self {
             display: Mutex::new(DisplayState::new(buffer, pitch, width, height, bpp)),
@@ -278,6 +279,7 @@ impl LFBTerminal {
 
         LFBTerminal::draw_status_bar(display);
         display.lfb.flush();
+        
     }
 
     fn position(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState, pos: (u16, u16)) {
@@ -333,6 +335,7 @@ impl LFBTerminal {
 
         LFBTerminal::draw_status_bar(display);
         display.lfb.flush();
+         
     }
 
     fn clear_screen_to_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
@@ -371,6 +374,7 @@ impl LFBTerminal {
 
         LFBTerminal::draw_status_bar(display);
         display.lfb.flush();
+        
     }
 
     fn clear_screen_from_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
@@ -408,6 +412,7 @@ impl LFBTerminal {
 
         LFBTerminal::draw_status_bar(display);
         display.lfb.flush();
+        
     }
 
     fn clear_line(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
@@ -439,6 +444,7 @@ impl LFBTerminal {
             LFBTerminal::draw_status_bar(display);
         }
         display.lfb.flush();
+        
     }
 
     fn clear_line_to_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
@@ -471,6 +477,7 @@ impl LFBTerminal {
             LFBTerminal::draw_status_bar(display);
         }
         display.lfb.flush();
+        
     }
 
     fn clear_line_from_cursor(display: &mut DisplayState, cursor: &mut CursorState, color: &mut ColorState) {
@@ -503,6 +510,7 @@ impl LFBTerminal {
             LFBTerminal::draw_status_bar(display);
         }
         display.lfb.flush();
+        
     }
 
     fn handle_ansi_color(color: &mut ColorState, params: &Params) {

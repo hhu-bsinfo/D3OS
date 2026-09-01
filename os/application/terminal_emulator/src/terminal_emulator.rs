@@ -59,7 +59,7 @@ impl TerminalEmulator {
             output_observer: OutputObserver::new(terminal.clone()),
             cursor: Cursor::new(terminal.clone()),
             operator: Operator::new(),
-            event_handler: event_handler,
+            event_handler,
             status_bar: StatusBar::new(terminal),
         }
     }

@@ -1,18 +1,20 @@
 [package]
 edition = "2024"
-name = "mkdir"
+name = "logtest"
 version = "0.1.0"
 authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
 
 [lib]
 crate-type = ["staticlib"]
-path = "src/mkdir.rs"
+path = "src/logtest.rs"
 test = false
 doctest = false
 bench = false
 
 [dependencies]
 # Local dependencies
-terminal = { path = "../../library/terminal" }
 runtime = { path = "../../library/runtime" }
-naming = { path = "../../library/naming" }
+terminal = { path = "../../library/terminal" }
+concurrent = { path = "../../library/concurrent" }
+logger = { path = "../../library/logger" }
+log = "0.4.26"

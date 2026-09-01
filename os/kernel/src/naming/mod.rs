@@ -3,5 +3,8 @@ pub mod stat;
 
 mod open_objects;
 mod tmpfs;
-pub(crate) mod lookup;
-pub(crate) mod traits;
+mod lookup;
+mod traits;
+
+mod procfs;
+mod mount;

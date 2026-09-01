@@ -3,13 +3,13 @@ use alloc::sync::Arc;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use stream::{DecodedInputStream, RawInputStream};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use nolock::queues::{DequeueError, mpmc};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use ps2::{Controller, KeyboardType, MouseType};
 use ps2::error::{ControllerError, KeyboardError, MouseError};
 use pc_keyboard::layouts::{AnyLayout, De105Key};
-use pc_keyboard::{DecodedKey, Error as PcError, HandleControl, KeyEvent, Keyboard as PcKeyboard, ScancodeSet1, ScancodeSet2};
+use pc_keyboard::{DecodedKey, Error as PcError, HandleControl, KeyEvent, PS2Keyboard, ScancodeSet1, ScancodeSet2};
 use spin::{Mutex, MutexGuard};
 use spin::once::Once;
 use crate::{apic, interrupt_dispatcher};
@@ -30,8 +30,8 @@ pub struct Keyboard {
 }
 
 enum KeyboardDecoder {
-    Set1(PcKeyboard<AnyLayout, ScancodeSet1>),
-    Set2(PcKeyboard<AnyLayout, ScancodeSet2>),
+    Set1(PS2Keyboard<AnyLayout, ScancodeSet1>),
+    Set2(PS2Keyboard<AnyLayout, ScancodeSet2>),
 }
 
 impl KeyboardDecoder {
@@ -54,15 +54,16 @@ struct KeyboardInterruptHandler {
     keyboard: Arc<Keyboard>,
 }
 
+
 impl Keyboard {
     fn new(controller: Arc<Mutex<Controller>>, buffer_cap: usize, scancode_set: u8) -> Result<Self, KeyboardError> {
         let decoder = match scancode_set {
-            1 => KeyboardDecoder::Set1(PcKeyboard::new(
+            1 => KeyboardDecoder::Set1(PS2Keyboard::new(
                 ScancodeSet1::new(),
                 AnyLayout::De105Key(De105Key),
                 HandleControl::Ignore,
             )),
-            2 => KeyboardDecoder::Set2(PcKeyboard::new(
+            2 => KeyboardDecoder::Set2(PS2Keyboard::new(
                 ScancodeSet2::new(),
                 AnyLayout::De105Key(De105Key),
                 HandleControl::Ignore,
@@ -95,8 +96,13 @@ impl Keyboard {
             Err(DequeueError::Closed) => panic!("Keyboard stream closed!"),
             Err(DequeueError::Empty) => return (decoder, None),
         };
-        let key_event = decoder.add_byte(scancode).unwrap();
-        (decoder, key_event)
+        match decoder.add_byte(scancode) {
+            Ok(key_event) => (decoder, key_event),
+            Err(e) => {
+                warn!("failed to parse scancode {scancode}: {e:?}");
+                (decoder, None)
+            },
+        }
     }
 }
 

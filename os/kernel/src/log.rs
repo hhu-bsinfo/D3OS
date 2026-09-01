@@ -1,3 +1,4 @@
+use crate::D3OSStaticString;
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: log                                                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
@@ -15,7 +16,7 @@ use graphic::ansi;
 use log::debug;
 use stream::OutputStream;
 use core::fmt::Write;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::ptr;
@@ -90,26 +91,29 @@ impl log::Log for Logger {
             if let Some(serial) = &self.serial {
                 // this could become garbled if we had multiple threads,
                 // but we do not have them at this point
-                serial.write_str(ansi::FOREGROUND_CYAN);
 
-                serial.write_str("[0.000]");
-                serial.write_str(ansi_color(level));
-                serial.write_str("[");
-                serial.write_str(level_token(level));
-                serial.write_str("]");
-                serial.write_str(ansi::FOREGROUND_MAGENTA);
-                serial.write_str("[");
-                serial.write_str(file);
-                serial.write_str("] ");
-                serial.write_str(ansi::FOREGROUND_DEFAULT);
+                let mut static_string: D3OSStaticString<256> = D3OSStaticString::new();
 
-                if allocator().is_initialized() {
-                    serial.write_str(record.args().to_string().as_str());
+                let systime = if allocator().is_initialized() && !allocator().is_locked() {
+                    timer().systime_ms()
                 } else {
-                    serial.write_str(record.args().as_str().unwrap_or("Formatted messages are not supported before heap initialization!"));
-                }
+                    0
+                };
+                let seconds = systime / 1000;
+                let fraction = systime % 1000;
+                writeln!(
+                    static_string,
+                    "{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}]{} {}",
+                    ansi::FOREGROUND_CYAN, seconds, fraction, ansi_color(level),
+                    level_token(level),ansi::FOREGROUND_MAGENTA, file, line,
+                    ansi::FOREGROUND_DEFAULT, record.args()
+                ).unwrap();
 
-                serial.write_str("\n");
+                if let Ok(log_message_str) = static_string.as_str() {
+                    serial.write_str(log_message_str);
+                } else {
+                    serial.write_str("UTF-8 error in log message!");
+                }
             }
         }
     }

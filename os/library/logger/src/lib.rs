@@ -31,14 +31,14 @@ impl Log for Logger {
             SystemCall::Log,
             &[message.as_bytes().as_ptr() as usize, message.len(), level as usize],
         )
-        .expect(&format!("Unable to log {}", message));
+        .unwrap_or_else(|_| panic!("Unable to log {}", message));
     }
 
     fn flush(&self) {}
 }
 
 impl Logger {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             level: Level::Debug,
         }

@@ -10,6 +10,7 @@
 use super::stat::Mode;
 use super::stat::Stat;
 use super::traits::{DirectoryObject, FileObject, FileSystem, NamedObject, PipeObject};
+use crate::process::core_local_storage::scheduler;
 use crate::sync::wait_queue::WaitQueue;
 use crate::scheduler;
 use alloc::string::{String, ToString};
@@ -556,7 +557,7 @@ impl PipeObject for Pipe {
 
             // Write one byte
             match pq.wx.try_enqueue(buf[total_written]) {
-                Ok(_) => {
+                Ok(_byte) => {
                     // We wrote a byte
                     self.count.fetch_add(1, Ordering::SeqCst);
                     total_written += 1;

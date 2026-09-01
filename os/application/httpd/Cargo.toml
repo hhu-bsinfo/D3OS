@@ -1,0 +1,22 @@
+[package]
+name = "httpd"
+version = "0.1.0"
+edition = "2024"
+authors = ["Niklas Sombert <niklas.sombert@uni-duesseldorf.de"]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/httpd.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+httparse = { version = "1.10", default-features = false }
+infer = { version = "0.22", default-features = false }
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+network = { path = "../../library/network" }
+terminal = { path = "../../library/terminal" }
+naming = { path = "../../library/naming" }
+concurrent = { path = "../../library/concurrent" }

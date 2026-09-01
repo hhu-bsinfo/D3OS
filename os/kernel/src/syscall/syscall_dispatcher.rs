@@ -3,11 +3,9 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Low-level dispatcher for system calls.                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Fabian Ruhland, 25.8.2025, HHU                                  ║
+   ║ Author: Fabian Ruhland, 26.12.2025, HHU                                 ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-
-
 
 use core::arch::{asm, naked_asm};
 use core::mem::size_of;
@@ -15,33 +13,47 @@ use core::ops::Deref;
 use core::ptr;
 use syscall::NUM_SYSCALLS;
 use x86_64::registers::control::{Efer, EferFlags};
-use x86_64::registers::model_specific::{KernelGsBase, LStar, SFMask, Star};
+use x86_64::registers::model_specific::{LStar, SFMask, Star};
 use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 
 use crate::capabilities::capability::CapabilityFlags;
 use crate::{core_local_storage, scheduler, tss};
 use log::{error, info};
+
+use crate::process::core_local_storage::init_tss_cls;
 use x86_64::registers::rflags::RFlags;
 
+use super::sys_concurrent::{
+    sys_process_count, sys_process_execute_binary, sys_process_exit,
+    sys_process_id, sys_thread_count, sys_process_status, 
+    sys_thread_create, sys_thread_exit, sys_thread_id, sys_thread_join, 
+    sys_thread_kill, sys_thread_sleep, sys_thread_switch, sys_core_id,
+};
+use super::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
+use super::sys_input::{sys_read_keyboard, sys_read_mouse};
+use super::sys_logger::sys_log;
+use super::sys_naming::{
+    sys_close, sys_cd, sys_cwd, sys_mkdir, sys_mkfifo, sys_open, sys_read,
+    sys_readdir, sys_seek, sys_touch, sys_write,
+};
+use super::sys_net::{
+    sys_sock_accept, sys_sock_bind, sys_sock_close, sys_sock_connect,
+    sys_get_ip_adresses, sys_sock_open, sys_sock_receive, sys_sock_send,
+    sys_sock_can_recv, sys_sock_can_send
+};
+use super::sys_system_info::sys_map_build_info;
+use super::sys_terminal::{
+    sys_terminal_check_input_state, sys_terminal_read_input,
+    sys_terminal_read_output, sys_terminal_write_input,
+    sys_terminal_write_output,
+};
+use super::sys_time::{sys_get_date, sys_get_system_time, sys_set_date};
+use super::sys_vmem::{sys_map_memory, sys_map_frame_buffer};
+use super::sys_shm::{sys_shm_attach, sys_shm_detach, sys_shm_open, sys_shm_unlink};
 
-pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
-pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
-
-#[repr(C, packed)]
-pub struct CoreLocalStorage {
-    tss_rsp0_ptr: VirtAddr,
-    user_rsp: VirtAddr,
-}
-
-impl CoreLocalStorage {
-    pub const fn new() -> Self {
-        Self {
-            tss_rsp0_ptr: VirtAddr::zero(),
-            user_rsp: VirtAddr::zero(),
-        }
-    }
-}
+pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x08;    //2nd pointer in struct
+pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x10;        //3rd pointer in struct
 
 pub fn init() {
     info!("Initializing system calls");
@@ -70,10 +82,8 @@ pub fn init() {
     // The CPU clears every flag that is set in the SFMask register
     SFMask::write(RFlags::INTERRUPT_FLAG);
 
-    // Initialize core local storage (accessible via 'swapgs')
-    let mut core_local_storage = core_local_storage().lock();
-    core_local_storage.tss_rsp0_ptr = VirtAddr::new(ptr::from_ref(tss().lock().deref()) as u64 + size_of::<u32>() as u64);
-    KernelGsBase::write(VirtAddr::new(ptr::from_ref(core_local_storage.deref()) as u64));
+    // Initialize TSS rsp0 in core local storage (accessible via gs)
+    init_tss_cls();
 }
 
 #[unsafe(naked)]
@@ -94,7 +104,6 @@ unsafe extern "sysv64" fn syscall_handler() {
     "mov rsp, gs:[{CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX}]", // Load pointer to rsp0 entry of tss from core local storage
     "mov rsp, [rsp]", // Dereference rsp0 pointer to switch to kernel stack
     "push gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}]", // Store user rip on kernel stack (core local storage might be overwritten, when a thread switch occurs during system call execution)
-    "swapgs", // Restore gs base
 
     // Store registers according to System V AMD64 ABI
     // (except rax, which is used for system call ID and return value)
@@ -148,9 +157,12 @@ unsafe extern "sysv64" fn syscall_handler() {
     "pop rdi",
     "pop rdx",
     "pop rcx", // Contains rip for returning to ring 3
+
     //"pop rbx",
 
     "call rax", // Call system call function pointer
+    // Call system call handler, corresponding to ID (in rax)
+    //"call [{SYSCALL_TABLE} + 8 * rax]",
 
     // Restore registers
     // "pop r15", // the 0 from above
@@ -174,11 +186,15 @@ unsafe extern "sysv64" fn syscall_handler() {
     "pop rsp", // Restore rsp from kernel stack
 
     // Return to Ring 3
+
+    "swapgs", // Restore user gs base
+
     // Interrupts will be enabled automatically, because rflags is restored from r11
     "sysretq",
     NUM_SYSCALLS = const NUM_SYSCALLS,
     CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX,
     CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX,
+    SYSCALL_TABLE = sym SYSCALL_TABLE
     );
 }
 

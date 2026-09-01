@@ -21,10 +21,12 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::{PhysAddr, VirtAddr};
 
-use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
+use crate::process::core_local_storage::scheduler;
+use crate::{apic, interrupt_dispatcher, pci_bus, process_manager};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::memory::{vmm, PAGE_SIZE};
+use crate::memory::PAGE_SIZE;
+use crate::memory;
 
 // Maximum Ethernet frame size without FCS
 const MAX_ETHERNET_FRAME_SIZE: usize = 1514;
@@ -188,7 +190,7 @@ impl TransmitDescriptor {
 
 impl ReceiveBuffer {
     pub fn new() -> Self {
-        let receive_memory = unsafe { vmm::alloc_frames(BUFFER_PAGES) };
+        let receive_memory = memory::alloc_frames(BUFFER_PAGES);
         let receive_buffer = unsafe { Vec::from_raw_parts(receive_memory.start.start_address().as_u64() as *mut u8, BUFFER_SIZE, BUFFER_SIZE) };
         Self { index: 0, data: receive_buffer }
     }
@@ -208,7 +210,7 @@ unsafe impl Allocator for PacketAllocator {
         }
 
         let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64)).expect("PacketAllocator may only be used with page frames!");
-        unsafe { vmm::free_frames(PhysFrameRange { start, end: start + 1 }); }
+        memory::free_frames(PhysFrameRange { start, end: start + 1 }); 
     }
 }
 
@@ -244,7 +246,7 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
         let tx_len = len.max(MIN_ETHERNET_FRAME_SIZE);
 
         // Allocate physical memory for the packet (DMA only works with physical addresses)
-        let phys_buffer = unsafe { vmm::alloc_frames(1) };
+        let phys_buffer = memory::alloc_frames(1);
         let pages = PageRange {
             start: Page::from_start_address(VirtAddr::new(phys_buffer.start.start_address().as_u64())).unwrap(),
             end: Page::from_start_address(VirtAddr::new(phys_buffer.end.start_address().as_u64())).unwrap()
@@ -354,11 +356,11 @@ impl InterruptHandler for Rtl8139InterruptHandler {
         unsafe { status_reg.write(status.bits()); }
 
         // Handle transmit by freeing allocated buffers
-        if status.contains(Interrupt::TRANSMIT_OK) && !vmm::frame_allocator_locked() {
+        if status.contains(Interrupt::TRANSMIT_OK) && !memory::frame_allocator_locked() {
             let mut queue = self.device.send_queue.0.lock();
             let mut buffer = queue.try_dequeue();
             while buffer.is_ok() {
-                unsafe { vmm::free_frames(buffer.unwrap()); }
+                memory::free_frames(buffer.unwrap()); 
                 buffer = queue.try_dequeue();
             }
         }
@@ -379,7 +381,7 @@ impl Rtl8139 {
 
         // Make sure bus master and memory space are enabled for MMIO register access
         pci_device.update_command(pci_config_space, |command| {
-            command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE)
+            command.bitor(CommandRegister::BUS_MASTER_ENABLE | CommandRegister::IO_ENABLE | CommandRegister::MEMORY_ENABLE)
         });
 
         // Read register base address from BAR0
@@ -393,7 +395,7 @@ impl Rtl8139 {
         let kernel_process = process_manager().read().kernel_process().unwrap();
         let recv_buffers = mpmc::bounded::scq::queue(RECV_QUEUE_CAP);
         for _ in 0..RECV_QUEUE_CAP {
-            let phys_frame = unsafe { vmm::alloc_frames(1) };
+            let phys_frame = memory::alloc_frames(1);
             let pages = PageRange {
                 start: Page::from_start_address(VirtAddr::new(phys_frame.start.start_address().as_u64())).unwrap(),
                 end: Page::from_start_address(VirtAddr::new(phys_frame.end.start_address().as_u64())).unwrap()

@@ -14,6 +14,8 @@ pub const MAIN_USER_STACK_START: usize = USER_SPACE_ENV_START + 0x40000000;  // 
 pub const KERNEL_STACK_PAGES: usize = 64;
 pub const STACK_ENTRY_SIZE: usize = 8;  
 
-pub const KERNEL_HEAP_PAGES: usize = 0x700; // number of heap pages for the kernel heap
+// number of heap pages for the kernel heap (16 MiB)
+// should be a power of two because of the frame allocator
+pub const KERNEL_HEAP_PAGES: usize = 0x1000; 
 
 pub const MAX_SHM_SIZE: usize = 0x100000;  // 1 MiB

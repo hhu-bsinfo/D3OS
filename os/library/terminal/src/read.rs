@@ -64,10 +64,10 @@ pub fn read_fluid() -> Option<DecodedKey> {
         return Some(DecodedKey::Unicode(key as char));
     }
     if key_type == DecodedKeyType::RawKey {
-        return Some(DecodedKey::RawKey(unsafe { core::mem::transmute(key) }));
+        return Some(DecodedKey::RawKey(unsafe { core::mem::transmute::<u8, pc_keyboard::KeyCode>(key) }));
     }
 
-    return None;
+    None
 }
 
 /// Read from terminal in raw mode.

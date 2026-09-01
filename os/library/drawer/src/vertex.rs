@@ -98,9 +98,8 @@ impl Display for Vertex {
 
 impl PartialOrd for Vertex {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        (self.x, self.y).partial_cmp(&(other.x, other.y))
+        Some(self.cmp(other))
     }
-    
 }
 
 impl Eq for Vertex {}

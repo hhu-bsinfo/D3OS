@@ -15,7 +15,9 @@ extern crate bitflags;
 
 pub mod shared_types;
 
+#[cfg(feature = "userspace")]
 use alloc::string::String;
+#[cfg(feature = "userspace")]
 use alloc::ffi::CString;
 
 use shared_types::{DirEntry, FileType, RawDirent, Capability, OpenOptions, SeekOrigin};
@@ -34,6 +36,7 @@ pub fn open(cap_handle: Capability, flags: OpenOptions) -> Result<Capability, Er
     ]) {
         Ok(cap_handle) => Ok(Capability::new(cap_handle)),
         Err(e) => Err(e),
+
     }
 }
 
@@ -105,6 +108,7 @@ pub fn readdir(_fh: Capability) -> Result<Option<DirEntry>, Errno> {
     */
 }
 
+#[cfg(feature = "userspace")]
 impl DirEntry {
     pub fn from_dirent(dirent: &RawDirent) -> Option<Self> {
         // Convert d_type to a FileType enum

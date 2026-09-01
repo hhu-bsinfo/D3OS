@@ -13,6 +13,7 @@
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use uuid::Uuid;
 use core::alloc::{AllocError, Allocator, Layout};
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;
@@ -29,7 +30,7 @@ use crate::process::process::Process;
 
 /// Allocate memory for a kernel stack for a thread with the given `pid` and `tid`.
 /// A VMA is created in the address space of `process`.
-pub fn alloc_kernel_stack(process: &Arc<Process>, pid: usize, tid: usize, tag_str: &str) -> Vec<u64, StackAllocator> {
+pub fn alloc_kernel_stack(process: &Arc<Process>, pid: Uuid, tid: usize, tag_str: &str) -> Vec<u64, StackAllocator> {
 
     // Allocate physical frames for the kernel stack
     let start_page = process.virtual_address_space.kernel_alloc_map_identity(
@@ -60,7 +61,7 @@ pub fn alloc_kernel_stack(process: &Arc<Process>, pid: usize, tid: usize, tag_st
 
 /// Allocate page range for a user stack for a thread with the given `pid` and `tid`. \
 /// The first page begins at `start_addr` and the size of the stack is `size_in_bytes`.
-pub fn alloc_user_stack(pid: usize, tid: usize, start_addr: usize, size_in_bytes: usize) -> Vec<u64, StackAllocator> {
+pub fn alloc_user_stack(pid: Uuid, tid: usize, start_addr: usize, size_in_bytes: usize) -> Vec<u64, StackAllocator> {
     // Create Vec for user stack (backed by stack allocator)
     unsafe {
         Vec::from_raw_parts_in(
@@ -73,14 +74,14 @@ pub fn alloc_user_stack(pid: usize, tid: usize, start_addr: usize, size_in_bytes
 }
 
 pub struct StackAllocator {
-    pid: usize, // process id the stack belongs to
+    pid: Uuid, // process id the stack belongs to
     tid: usize, // thread id the stack belongs to
     start_addr: AtomicUsize, // start address of the first page used for the stack
     end_addr: AtomicUsize,   // end address of the last page used for the stack
 }
 
 impl StackAllocator {
-    pub fn new(pid: usize, tid: usize, start_addr: usize, end_addr: usize) -> Self {
+    pub fn new(pid: Uuid, tid: usize, start_addr: usize, end_addr: usize) -> Self {
         // Ensure that start_addr and end_addr are page-aligned
         StackAllocator {
             pid,
@@ -94,7 +95,7 @@ impl StackAllocator {
         self.tid
     }
 
-    pub fn get_pid(&self) -> usize {
+    pub fn get_pid(&self) -> Uuid {
         self.pid
     }
 

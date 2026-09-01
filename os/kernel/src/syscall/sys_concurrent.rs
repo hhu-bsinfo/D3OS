@@ -6,8 +6,9 @@
    ║ Author: Fabian Ruhland, 04.01.2026, HHU                                 ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+use crate::process::core_local_storage::{current_core_id, scheduler};
 use crate::process::thread::{ProcessLoadError, Thread};
-use crate::{process_manager, scheduler};
+use crate::{process_manager};
 use alloc::format;
 use alloc::slice;
 use alloc::sync::Arc;
@@ -17,8 +18,11 @@ use core::str::from_utf8;
 use syscall::return_vals::{self, Errno};
 use x86_64::VirtAddr;
 
-pub extern "sysv64" fn sys_process_id() -> isize {
-    process_manager().read().current_process().id() as isize
+pub extern "sysv64" fn sys_process_id(destination: *mut u128) -> isize {
+    unsafe { destination.write(
+        process_manager().read().current_process().id().as_u128()
+    ) };
+    0
 }
 
 pub extern "sysv64" fn sys_process_exit() -> ! {
@@ -78,6 +82,10 @@ pub extern "sysv64" fn sys_thread_exit() -> ! {
 
 pub extern "sysv64" fn sys_thread_count() -> isize {
     scheduler().active_thread_ids().len() as isize
+}
+
+pub extern "sysv64" fn sys_core_id() -> isize {
+    current_core_id() as isize
 }
 
 pub unsafe extern "sysv64" fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize, args: *const Vec<&str>) -> isize {

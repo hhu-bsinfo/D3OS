@@ -1,19 +1,38 @@
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::MemorySpace;
-use crate::memory::vmm;
+use crate::memory;
 use crate::memory::vma::VmaType;
-use crate::{apic, idt, interrupt_dispatcher, scheduler};
+use crate::process::core_local_storage::scheduler;
+use crate::{apic, idt, interrupt_dispatcher};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use x86_64::registers::segmentation::GS;
 use core::ops::Deref;
 use core::ptr;
-use log::{error, info, trace};
+use log::{error, info, trace, warn};
 use spin::Mutex;
 use x86_64::registers::control::Cr2;
-use x86_64::set_general_handler;
+use x86_64::{PrivilegeLevel, set_general_handler};
 use x86_64::structures::idt::InterruptStackFrame;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags};
+
+
+//----PROCFS SUPPORT ------------------------------------------------------------------------//
+// needed to know, if a request was in User- or Kernel-Mode
+// ONLY WORKS ON SINGLE CORE, IF MULTICORE IS PLANNED THIS NEEDS TO BE DEFINED FOR EACH CPU
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::Ordering::Relaxed;
+
+static LAST_IRQ_FROM_USER: AtomicBool = AtomicBool::new(false);
+
+pub fn last_irq_from_user() -> bool {
+    LAST_IRQ_FROM_USER.load(Ordering::Relaxed)
+}
+//------------------------------------------------------------------------------------------//
+
+
+
 
 #[repr(u8)]
 #[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
@@ -65,6 +84,7 @@ pub enum InterruptVector {
     // Possibly some other interrupts supported by IO APICs
 
     // Local APIC interrupts (247 - 254)
+    Reschedule = 0xf1, // dedicated reschedule IPI
     Cmci = 0xf8,
     ApicTimer = 0xf9,
     Thermal = 0xfa,
@@ -123,6 +143,7 @@ impl TryFrom<u8> for InterruptVector {
             value if value == InterruptVector::PrimaryAta as u8 => Ok(InterruptVector::PrimaryAta),
             value if value == InterruptVector::SecondaryAta as u8 => Ok(InterruptVector::SecondaryAta),
 
+            value if value == InterruptVector::Reschedule as u8 => Ok(InterruptVector::Reschedule),
             value if value == InterruptVector::Cmci as u8 => Ok(InterruptVector::Cmci),
             value if value == InterruptVector::ApicTimer as u8 => Ok(InterruptVector::ApicTimer),
             value if value == InterruptVector::Thermal as u8 => Ok(InterruptVector::Thermal),
@@ -153,6 +174,7 @@ pub fn setup_idt() {
     set_general_handler!(&mut idt, handle_exception, 0..31);
     set_general_handler!(&mut idt, handle_interrupt, 32..255);
     set_general_handler!(&mut idt, handle_page_fault, 14);
+    set_general_handler!(&mut idt, handle_fpu_interrupt, 7);
 
     unsafe {
         // We need to obtain a static reference to the IDT for the following operation.
@@ -163,7 +185,27 @@ pub fn setup_idt() {
     }
 }
 
+// gets called once during interrupt initialization (after dispatcher exists)
+pub fn install_reschedule_ipi_handler() {
+    interrupt_dispatcher().assign(InterruptVector::Reschedule, Box::new(crate::interrupt::interrupt_handler::ReschedIpiHandler));
+}
+
+//Similar method for Application Cores
+#[unsafe(no_mangle)]
+pub extern "C" fn setup_ap_idt() {
+    let idt = idt().lock();
+    unsafe {
+        let idt_ref = ptr::from_ref(idt.deref()).as_ref().unwrap();
+        idt_ref.load();
+    }
+}
+
+/// Interrupt handler for CPU exceptions
+/// 
+/// Currently, there is not much to handle here:
+/// This function just panics with a (hopefully helpful) error message.
 fn handle_exception(frame: InterruptStackFrame, index: u8, error: Option<u64>) {
+    unsafe { maybe_swapgs(&frame) };
     panic!(
         "CPU Exception: [{} - {:?}]\nError code: [{:?}]\n{:?}",
         index,
@@ -173,11 +215,21 @@ fn handle_exception(frame: InterruptStackFrame, index: u8, error: Option<u64>) {
     );
 }
 
+/// Interrupt handler for page faults
+/// 
+/// If page faults occur on the heap or stack of an application,
+/// this is fine and part of the lazy memory mapping.
+/// If they occur on anything else, this will just panic.
 fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>) {
+    unsafe { maybe_swapgs(&frame) };
     let fault_addr = Cr2::read().expect("Invalid address in CR2 during page fault");
     let thread = scheduler().try_get_current_thread();
     if thread.is_none() {
-        panic!("Page Fault, cannot get lock to scheduler\nError code: [{:?}]\nAddress: [0x{:0>16x}]", error, fault_addr);
+        // if we don't have access to the scheduler, delay handling the page fault
+        // the application will access again, causing a new page fault
+        warn!("Page Fault at 0x{:0>16x} (code: {:?}), cannot get lock to scheduler", fault_addr, error);
+        unsafe { maybe_swapgs(&frame) };
+        return;
     }
 
     let thread = thread.unwrap();
@@ -192,11 +244,11 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
             .virtual_address_space
             .is_address_within_vma(fault_addr.as_u64(), VmaType::UserStack)
         {
-            if vmm::frame_allocator_locked() {
+            if memory::frame_allocator_locked() {
                 panic!("Page Fault, cannot get lock to frame allocator\nError code: [{:?}]\nAddress: [0x{:0>16x}]", error, fault_addr);
             }
-
-            thread.process().virtual_address_space.map_partial_vma(
+            let proc = thread.process();
+            proc.virtual_address_space.map_partial_vma(
                 &stack,
                 PageRange {
                     start: fault_page,
@@ -205,22 +257,32 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
                 MemorySpace::User,
                 PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
             );
+
+            // ProcFS, Count new pages, used for calculating mem-usage
+            proc.account_rss();
+
+            unsafe { maybe_swapgs(&frame) };
             return ;
         }
 
 
         // Check if page fault occurred inside a user heap
         if let Some(heap) = thread.process().virtual_address_space.is_address_within_vma(fault_addr.as_u64(), VmaType::Heap) {
-            if vmm::frame_allocator_locked() {
+            if memory::frame_allocator_locked() {
                 panic!("Page Fault, cannot get lock to frame allocator\nError code: [{:?}]\nAddress: [0x{:0>16x}]", error, fault_addr);
             }
-
-            thread.process().virtual_address_space.map_partial_vma(
+            let proc = thread.process();
+            proc.virtual_address_space.map_partial_vma(
                 &heap,
                 PageRange { start: fault_page, end: fault_page + 1 },
                 MemorySpace::User,
                 PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
             );
+            
+            // ProcFS, count new pages, used for calculating mem-usage
+            proc.account_rss();
+
+            unsafe { maybe_swapgs(&frame) };
             return ;
         }
     }
@@ -229,8 +291,38 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
     panic!("Page Fault!\nError code: [{:?}]\nAddress: [0x{:0>16x}]\n{:?}", error, fault_addr, frame);
 }
 
-fn handle_interrupt(_frame: InterruptStackFrame, index: u8, _error: Option<u64>) {
-    interrupt_dispatcher().dispatch(index);
+fn handle_fpu_interrupt(frame: InterruptStackFrame, _index: u8, _error: Option<u64>) {
+    unsafe { maybe_swapgs(&frame) };
+    scheduler().switch_fpu_context();
+    unsafe { maybe_swapgs(&frame) };
+}
+
+/// main interrupt handler
+/// 
+/// This mainly used for device drivers registered with [`InterruptDispatcher::assign`].
+fn handle_interrupt(frame: InterruptStackFrame, index: u8, _error: Option<u64>) {
+    unsafe { maybe_swapgs(&frame) };
+    interrupt_dispatcher().dispatch(&frame, index);
+    unsafe { maybe_swapgs(&frame) };
+}
+
+/// Both applications and kernel use GS to access a core- / thread-local struct.
+/// We can use `swapgs` at userspace-kernel boundaries to make sure that GS has
+/// the correct pointer. This is obvious on syscalls and a little trickier on
+/// context switches, but interrupts may or may not cross a privilege boundary.
+/// This function calls `swapgs`, but only if the interrupt happened during
+/// execution of usermode code.
+/// 
+/// ## Safety
+/// 
+/// Calling this function is unsafe, because having the wrong value in GS
+/// leads to dereferencing a wrong pointer. This may even lead to triple faults.
+unsafe fn maybe_swapgs(frame: &InterruptStackFrame) {
+    if frame.code_segment.rpl() == PrivilegeLevel::Ring0 {
+        // nothing to do here
+        return;
+    }
+    unsafe { GS::swap(); }
 }
 
 impl InterruptDispatcher {
@@ -250,7 +342,7 @@ impl InterruptDispatcher {
         }
     }
 
-    pub fn dispatch(&self, interrupt: u8) {
+    pub fn dispatch(&self, frame: &InterruptStackFrame, interrupt: u8) {
         // if we log the timer interrupt, it just spams the log and nothing else happens
         if interrupt != 32 {
             trace!("handling interrupt {interrupt}");
@@ -273,6 +365,12 @@ impl InterruptDispatcher {
 
         if handler_vec.as_ref().unwrap().is_empty() {
             error!("Interrupt Dispatcher: No handler registered for interrupt [{interrupt}]!");
+        }
+
+        // ProcFS, saving the Mode (Kernel or User) for the ApicTimer
+        if interrupt == InterruptVector::ApicTimer as u8 { 
+            let from_user =  frame.code_segment.rpl() == PrivilegeLevel::Ring3;
+            LAST_IRQ_FROM_USER.store(from_user, Relaxed);
         }
 
         for handler in handler_vec.unwrap().iter_mut() {

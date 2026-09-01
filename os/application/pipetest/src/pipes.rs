@@ -2,18 +2,22 @@
 
 extern crate alloc;
 
+mod test1;
+mod test2;
+
 use naming::shared_types::{OpenOptions, Capability};
 use naming::{mkfifo, open, read, write, ROOT, SHARED_PIPE};
 
-use concurrent::thread;
-#[allow(unused_imports)]
+#[allow(unused_imports, reason = "contains global_allocator")]
 use runtime::*;
 use terminal::{print, println};
 use capabilities::*;
 use concurrent::thread::{current, sleep};
 
-const PIPE: &str = "/mypipe";
+
 const NR_OF_ITERATIONS: u32 = 6;
+const FIFO_PATH: &str = "/mypipe";
+
 
 fn writer_thread() {
     sleep(500);
@@ -176,4 +180,10 @@ pub fn main() {
     }
 
     println!("named pipe demo: done");
+
+
+    //test1::test1_run();
+    
+    //test2::test2_run();
+    //TODO: integrate the tests again, next to capability tests
 }

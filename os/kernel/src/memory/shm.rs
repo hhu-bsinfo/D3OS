@@ -17,7 +17,8 @@ use x86_64::structures::paging::{frame::PhysFrameRange};
 use alloc::{collections::BTreeMap, string::{String}};
 use alloc::sync::Arc;
 use spin::{Once, RwLock};
-use crate::{consts::MAX_SHM_SIZE, memory::{MemorySpace, PAGE_SIZE, vma::VmaType, vmm}, process_manager};
+use crate::memory;
+use crate::{consts::MAX_SHM_SIZE, memory::{MemorySpace, PAGE_SIZE, vma::VmaType}, process_manager};
 
 struct SharedMemoryEntry {
     size:usize,
@@ -78,7 +79,7 @@ pub fn open(name: String, size:usize, create: bool) -> isize {
 
         // allocate enough frames for size
         let frame_count = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-        let frames = unsafe { vmm::alloc_frames(frame_count) };
+        let frames = memory::alloc_frames(frame_count);
 
         // generate id for shm entry
         let id = table.next_free_id.fetch_add(1, Ordering::SeqCst);
@@ -151,13 +152,16 @@ pub fn detach(ptr:*mut u8) -> isize {
     let table = shm_tables().write();
 
     // get vma of current process for pointer (error if no vma for pointer)
-    let vma = match process.virtual_address_space.is_address_within_vma(ptr as u64, VmaType::SharedMemory { id: 0 }) {
+    let vma = match process.virtual_address_space.vma_for_address(ptr as u64) {
         Some(vma) => vma,
         None => return Errno::EINVAL.into()
     };
 
-    // get shm_id from vma (error if vma not of type shm)
-    let id = if let VmaType::SharedMemory { id} = vma.typ { id } else { return Errno::EINVAL.into(); };
+    // get shm_id from vma (error if vma is not shared memory)
+    let id = match vma.typ {
+        VmaType::SharedMemory { id } => id,
+        _ => return Errno::EINVAL.into(),
+    };
 
     // remove vma from virtual adress space of process
     process.virtual_address_space.unmap_vma(vma, false);
@@ -218,6 +222,6 @@ fn delete(id: usize) {
 
     // free physical frames
     let frames = entry.frames;
-    unsafe { vmm::free_frames(frames) };
+    memory::free_frames(frames);
     //info!("SHM Frames freed");
 }

@@ -106,8 +106,10 @@ Examples:
         let mut message = read();
         message.push('\n');
         match socket {
-            Socket::Udp(ref sock) => sock.send_to(message.as_bytes(), addr).expect("failed to send char"),
-            Socket::Tcp(ref sock) => sock.write(message.as_bytes()).expect("failed to send char"),
+            Socket::Udp(ref sock) => sock.send_to(message.as_bytes(), addr)
+                .expect("failed to send char"),
+            Socket::Tcp(ref sock) => sock.write(message.as_bytes())
+                .expect("failed to send char"),
         };
         let len = match socket {
             Socket::Udp(ref sock) => sock.recv_from(&mut buf).expect("failed to receive char").0,
