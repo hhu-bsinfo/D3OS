@@ -409,7 +409,8 @@ impl ConnectX3Nic {
     /// for building its MTT.
     pub fn create_cq(&mut self, min_num_entries: i32, buffer: *const u8, doorbell_ptr: *const u64) -> Result<(u32, *mut u8), &'static str> {
         // TODO min_num_entries should be u32
-        let mut cq = CompletionQueue::new(self, min_num_entries.try_into().unwrap(), buffer, doorbell_ptr)?;
+        let process = process_manager().read().current_process();
+        let mut cq = CompletionQueue::new(self, process, min_num_entries.try_into().unwrap(), buffer, doorbell_ptr)?;
         cq.query(&mut self.cmd)?;
         let number = cq.number();
         let doorbell_page = cq.uar_page_ptr();
@@ -419,15 +420,25 @@ impl ConnectX3Nic {
 
     /// Destroy a completion queue.
     pub fn destroy_cq(&mut self, number: u32) -> Result<(), &'static str> {
-        let (index, _) = self
+        let process = process_manager().read().current_process();
+        let index = self
             .cqs
             .iter()
-            .enumerate()
-            .find(|(_, cq)| cq.number() == number)
+            .position(|cq| cq.number() == number && cq.owner() == process.id())
             .ok_or("completion queue not found")?;
         let cq = self.cqs.remove(index);
+        // FIXME: this could result in a race condition, when the qp list is modified by another thread
+        if cq.number() != number {
+            error!("The removed completion queue number does not match with the provided");
+            self.cqs.push(cq);
+            return Err("could not remove queue pair")
+        }
         cq.destroy(&mut self.cmd)?;
         Ok(())
+    }
+
+    fn find_cq(&self, number: u32, process: &Process) -> Option<&CompletionQueue> {
+        self.cqs.iter().find(|cq| cq.number() == number && cq.owner() == process.id())
     }
 
     /// Create a queue pair and return its number.
@@ -447,20 +458,15 @@ impl ConnectX3Nic {
                      log_rq_stride: u8,
     ) -> Result<(u32, *mut u8, *mut u8), &'static str> {
         let process = process_manager().read().current_process();
-        let send_cq = self.cqs.iter().find(|cq| cq.number() == send_cq_number).ok_or("invalid send completion queue number")?;
-        if send_cq.owner() != process.id() {
-            return Err("send completion queue is owned by another process");
-        }
-        let receive_cq = self.cqs.iter().find(|cq| cq.number() == receive_cq_number).ok_or("invalid receive completion queue number")?;
-        if receive_cq.owner() != process.id() {
-            return Err("receive completion queue is owned by another process");
-        }
+        let send_cq = self.find_cq(send_cq_number, &process).ok_or("send completion queue not found")?;
+        let receive_cq = self.find_cq(receive_cq_number, &process).ok_or("receive completion queue not found")?;
 
         let qp = QueuePair::new(
             self,
+            process,
             qp_type,
-            send_cq_number,
-            receive_cq_number,
+            send_cq.number(),
+            receive_cq.number(),
             buffer,
             doorbell_ptr,
             log_sq_bb_count,
@@ -479,25 +485,28 @@ impl ConnectX3Nic {
     ///
     /// This is used by ibv_modify_qp.
     pub fn modify_qp(&mut self, number: u32, attr: &ibv_qp_attr, attr_mask: ibv_qp_attr_mask) -> Result<(), &'static str> {
-        let qp = self.qps.iter_mut().find(|qp| qp.number() == number).ok_or("invalid queue pair number")?;
-        if qp.owner() != process_manager().read().current_process().id() {
-            return Err("queue pair is owned by another process");
-        }
+        let process = process_manager().read().current_process();
+        let qp = self.qps.iter_mut()
+            .find(|qp| qp.number() == number && qp.owner() == process.id())
+            .ok_or("queue pair not found")?;
         qp.modify(&mut self.cmd, &mut self.capabilities, attr, attr_mask)
     }
 
     /// Destroy a queue pair.
     pub fn destroy_qp(&mut self, number: u32) -> Result<(), &'static str> {
-        let (index, _) = self
+        let process = process_manager().read().current_process();
+        let index = self
             .qps
             .iter()
-            .enumerate()
-            .find(|(_, qp)| qp.number() == number)
+            .position(|qp| qp.number() == number && qp.owner() == process.id())
             .ok_or("queue pair not found")?;
-        if self.qps[index].owner() != process_manager().read().current_process().id() {
-            return Err("queue pair is owned by another process");
+        let qp = self.qps.swap_remove(index);
+        // FIXME: this could result in a race condition, when the qp list is modified by another thread
+        if qp.number() != number {
+            error!("The removed queue pair number does not match with the provided");
+            self.qps.push(qp);
+            return Err("could not remove queue pair")
         }
-        let qp = self.qps.remove(index);
         qp.destroy(&mut self.cmd, &mut self.capabilities)?;
         Ok(())
     }
@@ -519,6 +528,7 @@ impl ConnectX3Nic {
 
     /// Destroy a memory region.
     pub fn destroy_mr(&mut self, index: u32) -> Result<(), &'static str> {
+        /// TODO add protection, that one process can not destroy a mr of another
         self.icm_tables.memory_regions().destroy(&mut self.cmd, index)
     }
 }

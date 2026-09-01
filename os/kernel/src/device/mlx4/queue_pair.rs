@@ -8,6 +8,7 @@ use core::{
 };
 
 use alloc::{vec, vec::Vec};
+use alloc::sync::Arc;
 use bitflags::bitflags;
 use byteorder::BigEndian;
 use log::trace;
@@ -26,6 +27,7 @@ use uuid::Uuid;
 use x86_64::structures::paging::{Page, Size4KiB};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
+use crate::process::process::Process;
 use crate::process_manager;
 use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, ConnectX3Nic};
 
@@ -70,6 +72,7 @@ impl QueuePair {
     /// This is similar to creating a completion queue or an event queue.
     pub(super) fn new(
         dev: &mut ConnectX3Nic,
+        process: Arc<Process>,
         qp_type: ibv_qp_type::Type,
         send_cq_number: u32,
         receive_cq_number: u32,
@@ -98,7 +101,6 @@ impl QueuePair {
 
         let number = dev.offsets.alloc_qpn().try_into().unwrap();
 
-        let process = process_manager().read().current_process();
         // TODO: UAR is allocated a device open
         let uar_idx = dev.offsets.alloc_uar();
         let uar = dev.map_uar(uar_idx, &process, alloc::format!("uar-{uar_idx}").as_str())?;
