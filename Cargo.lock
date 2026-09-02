@@ -164,6 +164,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
+name = "capabilities"
+version = "0.1.0"
+dependencies = [
+ "naming",
+ "syscall",
+ "terminal",
+]
+
+[[package]]
 name = "cat"
 version = "0.1.0"
 dependencies = [
@@ -702,6 +711,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
+name = "legacy_shell"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "naming",
+ "runtime",
+ "syscall",
+ "terminal",
+]
+
+[[package]]
 name = "libc"
 version = "0.1.0"
 dependencies = [
@@ -1077,6 +1097,7 @@ dependencies = [
 name = "pipetest"
 version = "0.1.0"
 dependencies = [
+ "capabilities",
  "concurrent",
  "naming",
  "runtime",
