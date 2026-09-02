@@ -224,12 +224,13 @@ impl Scheduler {
         debug!("Scheduler::thread: Searching for thread id {}", thread_id);
         
         // First check if it's the current thread
-        let state = self.ready_state.lock();
-        if let Some(current) = state.current_thread.as_ref() {
+        if let Some(current) = self.try_current_thread() {
             if current.id() == thread_id {
-                return Some(Arc::clone(current));
+                return Some(current);
             }
         }
+        
+        let state = self.ready_state.lock();
         
         // Check ready queue
         if let Some(thread) = state.ready_queue

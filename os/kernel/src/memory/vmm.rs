@@ -55,6 +55,7 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB};
 
+use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::cpu;
 use crate::memory;
 use crate::memory::dram;
@@ -105,7 +106,7 @@ pub fn pfr_from_pr_identity(pr: PageRange) -> PhysFrameRange {
 static FREE_FRAMES: AtomicUsize = AtomicUsize::new(0);                   // number of bytes currently in the pipe
 
 pub fn init_total_free_frames() {
-    FREE_FRAMES.store(frames::get_total_free_frames(), Ordering::SeqCst);
+    FREE_FRAMES.store(memory::get_total_free_frames(), Ordering::SeqCst);
 }
 
 pub fn get_free_frames() -> usize {

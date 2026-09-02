@@ -21,7 +21,7 @@ use crate::capabilities::capability::CapabilityFlags;
 use crate::tss;
 use log::{error, info};
 
-use crate::process::core_local_storage::init_tss_cls;
+use crate::process::core_local_storage::{init_tss_cls, scheduler};
 use x86_64::registers::rflags::RFlags;
 
 use super::sys_concurrent::{
