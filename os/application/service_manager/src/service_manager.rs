@@ -1,3 +1,7 @@
+// Ich habe beim Erstellen des Codes KI als Hilfsmittel verwendet.
+// Dies beeinhaltet die syntaktische Ausformulierung in Rust, Code Refactoring, sowie das Debuggen und die Fehlersuche
+
+
 #![no_std]
 #[allow(unused_imports)]
 extern crate alloc;
@@ -28,7 +32,6 @@ struct HeartbeatState {     // Merken uns für jeden Service das letzte Signal +
     last_marker: u64,
     reported: bool,
     thread_id: usize,
-    restart: RestartPolicy,
     handle: Option<usize>,
 }
 
@@ -85,13 +88,18 @@ impl RestartPolicy {
 }
 
 fn is_running_state(state: ServiceState) -> bool {
-    matches!(state, ServiceState::Online | ServiceState::Degraded)
+    if state == ServiceState::Online  || state == ServiceState::Degraded {
+        true
+    } 
+    else {
+        false
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 #[derive(Deserialize)]
-#[serde(rename_all = "snake_case")] // Automatisch in snake_case umwandeln fürs leichtere parsen
+#[serde(rename_all = "snake_case")] // Automatisch in snake_case umwandeln fürs leichteres parsen
 enum RestartPolicy {    // Wie umgehen mit Service-Ausfällen?
     Never,
     Always,
@@ -260,9 +268,9 @@ fn build_effective_args(manifest: &ServiceManifest) -> Vec<String> {
     args
 }
 // Heartsbeats registrieren oder entfernen
-fn heartbeat_register(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str, thread_id: usize, restart: RestartPolicy, handle: Option<usize>) {
+fn heartbeat_register(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str, thread_id: usize, handle: Option<usize>) {
     let mut map = heartbeats.lock();
-    map.insert(name.to_string(), HeartbeatState {last_seen_ms: systime().num_milliseconds() as usize, last_marker: u64::MAX, reported: false, thread_id, restart, handle});
+    map.insert(name.to_string(), HeartbeatState {last_seen_ms: systime().num_milliseconds() as usize, last_marker: u64::MAX, reported: false, thread_id, handle});
 }
 
 fn heartbeat_remove(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str) {
@@ -317,9 +325,9 @@ fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>, service_states: Arc<Mute
 
             for (name, age, thread_id) in missed {
                 error!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
-                println!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
+                //println!("svc: watchdog missed heartbeat from {} (age={}s)", name, age);
                 update_service_state(&service_states, &name, ServiceState::Degraded);
-                println!("svc: killing {} (tid={}) after missed heartbeat", name, thread_id);
+                //println!("svc: killing {} (tid={}) after missed heartbeat", name, thread_id);
                 thread::Thread::from_id(thread_id).kill();
             }
         }
@@ -337,7 +345,7 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heart
             }
         };
 
-        println!("svc: {} exited (code={})", manifest.name, exit_code);
+        //println!("svc: {} exited (code={})", manifest.name, exit_code);
 
         if manifest.heartbeat {
             heartbeat_remove(&heartbeats, &manifest.name);
@@ -352,13 +360,13 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heart
         }
 
         if !restart {
-            println!("svc: {} not restarting (policy={:?})", manifest.name, manifest.restart);
+            //println!("svc: {} not restarting (policy={:?})", manifest.name, manifest.restart);
             break;
         }
 
         thread::sleep(200); // Kurz Verzögern, um Crash-Loops zu vermeiden
 
-        println!("svc: restarting {} -> {}", manifest.name, manifest.binary);
+        //println!("svc: restarting {} -> {}", manifest.name, manifest.binary);
         let args = build_effective_args(&manifest);
         let args_vec: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         match thread::start_application(&manifest.binary, args_vec) {
@@ -369,7 +377,7 @@ fn supervise_service(manifest: ServiceManifest, mut child: thread::Thread, heart
                 if manifest.heartbeat {
                     let heartbeat_path = ensure_heartbeat_file(&manifest.name);
                     let heartbeat_fh = naming::open(&heartbeat_path, OpenOptions::READONLY).ok();
-                    heartbeat_register(&heartbeats, &manifest.name, child.id(), manifest.restart, heartbeat_fh);
+                    heartbeat_register(&heartbeats, &manifest.name, child.id(), heartbeat_fh);
                 }
             }
             None => {
@@ -437,7 +445,7 @@ fn can_start_now(service: &Service, services: &[Service]) -> bool {
 }
 
 fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap>>, service_states: &Arc<Mutex<ServiceStatusMap>>) -> bool {
-    println!("svc: start {} -> {}", service.manifest.name, service.manifest.binary);
+    //println!("svc: start {} -> {}", service.manifest.name, service.manifest.binary);
     let heartbeat_path = if service.manifest.heartbeat {
         Some(ensure_heartbeat_file(&service.manifest.name))
     } 
@@ -456,10 +464,10 @@ fn start_service_once(service: &mut Service, heartbeats: &Arc<Mutex<HeartbeatMap
 
             service.state = ServiceState::Online;
             update_service_state(&service_states, &service.manifest.name, ServiceState::Online);
-            println!("svc: {} online (tid={})", service.manifest.name, child.id());
+            //println!("svc: {} online (tid={})", service.manifest.name, child.id());
 
             if manifest.heartbeat {
-                heartbeat_register(&heartbeats, &manifest.name, child.id(), manifest.restart, heartbeat_fh);
+                heartbeat_register(&heartbeats, &manifest.name, child.id(), heartbeat_fh);
             }
 
             let _ = thread::create(move || supervise_service(manifest, child, heartbeats, service_states));
@@ -509,12 +517,14 @@ fn start_services_with_dependencies(services: &mut [Service], heartbeats: &Arc<M
         }
     }
 
+    /* 
     if !start_order.is_empty() {
         println!("svc: start order ({}):", start_order.len());
         for name in &start_order {
             println!("svc:   {}", name);
         }
     }
+    */
 
     let remaining_offline = services.iter().filter(|s| s.state == ServiceState::Offline).count();
     if remaining_offline != 0 {
@@ -630,7 +640,7 @@ pub fn main() {
     //println!("service_manager: boot_target={:?}", boot_target);
 
     let manifests = load_service_manifests();
-    println!("svc: loaded {} manifest(s)", manifests.len());
+    //println!("svc: loaded {} manifest(s)", manifests.len());
     //for m in &manifests {
         //print_manifest(m);
     //}
@@ -698,7 +708,7 @@ pub fn main() {
     if any_heartbeat {
         let _ = naming::mkdir(HEARTBEAT_DIR);
         start_watchdog(heartbeats.clone(), service_states.clone());
-        println!("svc: watchdog enabled (dir={}, interval={}ms, timeout={}ms)", HEARTBEAT_DIR, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS);
+        //println!("svc: watchdog enabled (dir={}, interval={}ms, timeout={}ms)", HEARTBEAT_DIR, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS);
     }
 
     if services.is_empty() {

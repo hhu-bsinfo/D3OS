@@ -2,7 +2,7 @@
   "name": "test_b",
   "binary": "svc_dummy",
   "args": ["--label=B", "--initial-sleep-ms=500", "--sleep-ms=1000"],
-  "enabled": true,
+  "enabled": false,
   "targets": ["any"],
   "restart": "on_failure",
   "heartbeat": true,
