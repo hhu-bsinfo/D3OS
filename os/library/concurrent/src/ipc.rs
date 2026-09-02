@@ -2,8 +2,11 @@ use core::fmt::{Debug, Display};
 use core::ops::Deref;
 use core::sync::atomic::{AtomicI16, AtomicU16, Ordering};
 use alloc::format;
+use alloc::string::String;
 use syscall::{SystemCall, return_vals::SyscallResult, syscall};
 use uuid::Uuid;
+
+use crate::process;
 
 // Schnittstelle für Interprozesskommunikation
 
@@ -31,7 +34,7 @@ pub struct IpcQueue {
 
 impl IpcQueue {
     
-    pub fn send(&self, tag: &str, data: &[u8]) -> bool {
+    pub fn send(&self, tag: &str, data: &[u8], sender_pid: &Uuid) -> bool {
 
         // 1. increment writer idx
         let writer_idx = self.writer_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
@@ -45,6 +48,7 @@ impl IpcQueue {
                 let msg_len = core::cmp::min(data.len(), MESSAGE_DATA_SIZE);
                 msg.data[..msg_len].copy_from_slice(&data[..msg_len]);
                 msg.data_len = msg_len;
+                msg.sender_pid = *sender_pid;
                 let tag_len = core::cmp::min(tag.len(), MESSAGE_TAG_LEN);
                 msg.tag[..tag_len].copy_from_slice(&tag.as_bytes()[..tag_len]);
                 self.mailbox[writer_idx].store(msg_len as i16, Ordering::SeqCst);
@@ -130,12 +134,12 @@ pub struct IpcMessage {
     data_len: usize,
     sender_pid: Uuid,
     sender_tid: usize,
-    tag: [u8; MESSAGE_TAG_LEN],
+    tag: [u8; MESSAGE_TAG_LEN]
 }
 
 impl IpcMessage {
     pub fn new() -> Self {
-        Self { data: [0; MESSAGE_DATA_SIZE], data_len: 0, sender_pid: Uuid::nil(), sender_tid: 0, tag: [0; MESSAGE_TAG_LEN] }
+        Self { data: [0; _], data_len: 0, sender_pid: Uuid::nil(), sender_tid: 0, tag: [0; _] }
     }
     pub fn is_empty(&self) -> bool {
         self.data_len == 0
@@ -235,6 +239,15 @@ impl IpcMessageContent for &str {
     }
 }
 
+impl IpcMessageContent for &String {
+    fn to_bytes(&self) -> &[u8] {
+        self.as_bytes()
+    }
+    fn tag(&self) -> &str {
+        "STRING"
+    }
+}
+
 const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
 pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, syscall::return_vals::Errno> {
@@ -250,7 +263,7 @@ pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, syscall::return_va
 }
 
 pub fn send<T: IpcMessageContent>(service: &str, message: T) -> SyscallResult {
-    let bytes = message.to_bytes();
+    let bytes: &[u8] = message.to_bytes();
     send_internal(service, message.tag(), bytes)
 }
 
@@ -259,7 +272,16 @@ pub fn send_with_tag<T: IpcMessageContent>(service: &str, tag: &str, message: T)
     send_internal(service, tag, bytes)
 }
 
+pub fn answer<T: IpcMessageContent>(original_message: &IpcMessage, message: T) -> SyscallResult {
+    let bytes = message.to_bytes();
+    send_internal(&format!("callback-{}", original_message.sender_pid), message.tag(), bytes)
+}
+
 pub fn send_internal(service: &str, tag: &str, message: &[u8]) -> SyscallResult {
+
+    // register callback endpoint
+    let pid = process::current().id();
+    let _res = register_ipc_endpoint(&format!("callback-{}", pid));
 
     let params = IpcSyscallParams {
         service_name_ptr: service.as_ptr(),

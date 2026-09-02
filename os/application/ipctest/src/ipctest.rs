@@ -67,31 +67,38 @@ pub fn main() {
         }
     } else if command == "pingpong" {
 
-        let tid_start = thread.id() + 1;
+        // register self as pong
+        ipc::register_ipc_endpoint("ipctest_pong");
 
-        let num_pingpongs = 2;
+        // start ping
+        thread::start_application("ipctest", vec!["pingpong_ping"]);
 
-        for i in 0..num_pingpongs {
-            let d = (i + 1) % num_pingpongs;
-            let tid_target = format!("{}", tid_start + d);
-            thread::start_application("ipctest", vec!["pingpong_internal", &tid_target]);
-        }
-    } else if command == "pingpong_internal" {
-        let own_tid = thread.id();
-        let target_tid = str::parse::<usize>(&args[2]).unwrap();
-        ipc::register_ipc_endpoint(&format!("ipctest_recv_{}", own_tid));
-        ipc::send(&format!("ipctest_recv_{}", target_tid), thread.id());
+        // wait for ping
         loop {
-            match ipc::receive() {
-                Some(msg) => {
-                    let ping = unsafe { (*(msg.data().as_ptr() as *const [usize; MESSAGE_DATA_SIZE / 8]))[0] };
-                    println!("[{}] Received Message: {}", thread.id(), ping);
-                    let pong = ping * 2;
-                    ipc::send(&format!("ipctest_recv_{}", target_tid), pong);
-                },
-                None => {}
+            if let Some(msg) = ipc::receive() {
+                let ping = msg.data_as_usize();
+                if *ping > 100 { return; }
+                let pong = ping + 1;
+                println!("PONG! [{}]", pong);
+                ipc::answer(&msg, pong);
             }
-            thread::sleep(1_000);
+            thread::sleep(200);
+        }
+    } else if command == "pingpong_ping" {
+        // send first ping
+        println!("PING! [{}]", 1);
+        ipc::send("ipctest_pong", 1);
+
+        // wait for pong
+        loop {
+            if let Some(msg) = ipc::receive() {
+                let pong = msg.data_as_usize();
+                if *pong > 100 { return; }
+                let ping = pong + 1;
+                println!("PING! [{}]", ping);
+                ipc::answer(&msg, ping);
+            }
+            thread::sleep(200);
         }
     } else if command == "loop" {
 

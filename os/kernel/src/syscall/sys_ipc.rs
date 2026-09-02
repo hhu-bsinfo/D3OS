@@ -5,7 +5,7 @@ use concurrent::ipc::{IpcQueue, IpcSyscallParams};
 use naming::shared_types::OpenOptions;
 use syscall::return_vals::{self, SyscallResult};
 
-use crate::{consts, naming::api, sync::wait_queue::WaitQueue, timer};
+use crate::{consts, naming::api, process::core_local_storage::scheduler, sync::wait_queue::WaitQueue, timer};
 
 static WAIT_QUEUE: WaitQueue = WaitQueue::new();
 
@@ -43,7 +43,7 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
             
             let message = unsafe { core::slice::from_raw_parts(params.data_ptr, params.data_len) };
             let tag = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.tag_ptr, params.tag_len)) };
-            let res = ipc_queue.send(tag, message);
+            let res = ipc_queue.send(tag, message, &scheduler().current_thread().process().id());
 
             if res {
                 return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(message.len()));
