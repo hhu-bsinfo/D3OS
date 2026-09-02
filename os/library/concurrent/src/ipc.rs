@@ -323,7 +323,7 @@ pub struct ConstString<const T: usize> {
 
 impl <const T: usize> ConstString<T> {
     pub fn as_str(&self) -> &str {
-        str_from_ut8_nul_terminated(&self.buffer)
+        core::str::from_utf8(&self.buffer[..self.len]).unwrap_or("UTF8-ERROR")
     }
     pub fn len(&self) -> usize {
         self.len
@@ -348,14 +348,6 @@ impl <const T: usize> ConstString<T> {
         let l = core::cmp::min(space_left, s.len());
         self.buffer[..l].copy_from_slice(&s.as_bytes()[..l]);
         self.len = l;
-    }
-}
-
-fn str_from_ut8_nul_terminated(bytes: &[u8]) -> &str {
-    let first_nul = bytes.iter().position(|c| *c == b'\0').unwrap_or(bytes.len());
-    match core::str::from_utf8(bytes) {
-        Ok(tag_str) => &tag_str[..first_nul],
-        Err(_) => "UTF8-ERROR",
     }
 }
 
