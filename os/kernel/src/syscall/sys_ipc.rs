@@ -42,8 +42,9 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
         if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_ref() } {
             
             let message = unsafe { core::slice::from_raw_parts(params.data_ptr, params.data_len) };
-            let tag = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.tag_ptr, params.tag_len)) };
-            let res = ipc_queue.send(tag, message, &scheduler().current_thread().process().id());
+            let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
+            let msg_type = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_type_ptr, params.msg_type_len)) };
+            let res = ipc_queue.send(name, msg_type, message, &scheduler().current_thread().process().id());
 
             if res {
                 return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(message.len()));

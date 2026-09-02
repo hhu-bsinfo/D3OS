@@ -48,7 +48,7 @@ pub fn main() {
             .map(|r| r.unwrap())
             .collect();
 
-        let res = ipc::send("ipctest_recv", args_numbers.as_slice());
+        let res = ipc::send("ipctest_recv", "ipctest numbers", args_numbers.as_slice());
         match res {
             Ok(_) => println!("Send message successfully"),
             Err(err) => println!("Error sending message: {:?}", err),
@@ -80,14 +80,14 @@ pub fn main() {
                 if *ping > 100 { return; }
                 let pong = ping + 1;
                 println!("PONG! [{}]", pong);
-                ipc::answer(&msg, pong);
+                ipc::answer_with_name(&msg, "pong", pong);
             }
             thread::sleep(200);
         }
     } else if command == "pingpong_ping" {
         // send first ping
         println!("PING! [{}]", 1);
-        ipc::send("ipctest_pong", 1);
+        ipc::send("ipctest_pong", "ping", 1);
 
         // wait for pong
         loop {
@@ -96,7 +96,7 @@ pub fn main() {
                 if *pong > 100 { return; }
                 let ping = pong + 1;
                 println!("PING! [{}]", ping);
-                ipc::answer(&msg, ping);
+                ipc::answer_with_name(&msg, "ping", ping);
             }
             thread::sleep(200);
         }
@@ -118,14 +118,14 @@ pub fn main() {
                 println!("Received Message: {}", number);
                 if number == limit {
                     println!("Successfully received {} messages. Sending STOP signal and exiting...", limit);
-                    ipc::send("ipctest_send", "STOP");
+                    ipc::send("ipctest_send", "signal", "STOP");
                     return;
                 }
                 if prev + 1 == number {
                     prev = number;
                 } else {
                     println!("Error in message order. Sending STOP signal and exiting...");
-                    ipc::send("ipctest_send", "STOP");
+                    ipc::send("ipctest_send", "signal", "STOP");
                     return;
                 }
             }
@@ -151,7 +151,7 @@ pub fn main() {
                 }
             }
 
-            let res = ipc::send("ipctest_recv", i);
+            let res = ipc::send("ipctest_recv", "number", i);
             match res {
                 Ok(_) => {
                     println!("Send Message: {} with {} errors", i, errors);
