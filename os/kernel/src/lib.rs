@@ -65,6 +65,7 @@ extern crate llfree;
 #[macro_use]
 pub mod device;
 pub mod boot;
+pub mod capabilities;
 pub mod consts;
 pub mod interrupt;
 pub mod log;

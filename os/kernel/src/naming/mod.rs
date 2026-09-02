@@ -4,7 +4,7 @@ pub mod stat;
 mod open_objects;
 mod tmpfs;
 mod lookup;
-mod traits;
+pub mod traits;
 
 mod procfs;
 mod mount;

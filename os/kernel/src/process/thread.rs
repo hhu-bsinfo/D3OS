@@ -46,7 +46,7 @@ use crate::memory::vma::VmaType;
 use crate::process::process::Process;
 use crate::process::scheduler;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
-use crate::{process_manager, scheduler, tss};
+use crate::{process_manager, tss};
 use crate::capabilities::capability::{Capability, CapabilityFlags};
 use crate::capabilities::cspace::CSpace;
 use alloc::sync::Arc;

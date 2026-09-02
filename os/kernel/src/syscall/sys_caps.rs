@@ -1,5 +1,5 @@
 use crate::capabilities::capability::CapabilityFlags;
-use crate::scheduler;
+use crate::process::core_local_storage::scheduler;
 use log::{error, info, warn};
 use naming::shared_types::OpenOptions;
 

@@ -60,53 +60,54 @@ impl CSpace {
             sys_thread_exit as *const (),           // 17: ThreadExit
             sys_thread_kill as *const (),           // 18: ThreadKill
             sys_thread_count as *const (),          // 19: ThreadCount
-            // 20-22: Time
-            sys_get_system_time as *const (),       // 20: GetSystemTime
-            sys_get_date as *const (),              // 21: GetDate
-            sys_set_date as *const (),              // 22: SetDate
-            // 23-32: Naming/VFS
-            sys_open as *const (),                  // 23: Open
-            sys_read as *const (),                  // 24: Read
-            sys_write as *const (),                 // 25: Write
-            sys_seek as *const (),                  // 26: Seek
-            sys_close as *const (),                 // 27: Close
-            sys_mkdir as *const (),                 // 28: MkDir
-            sys_touch as *const (),                 // 29: Touch
-            sys_readdir as *const (),               // 30: Readdir
-            sys_cwd as *const (),                   // 31: Cwd
-            sys_cd as *const (),                    // 32: Cd
-            // 33-37: Network (basic)
-            sys_sock_open as *const (),             // 33: SockOpen
-            sys_sock_bind as *const (),             // 34: SockBind
-            sys_sock_accept as *const (),           // 35: SockAccept
-            sys_sock_connect as *const (),          // 36: SockConnect
-            sys_sock_send as *const (),             // 37: SockSend
-            // 38-42: Capabilities
-            sys_share_syscall_cap as *const (),     // 38: ShareSyscallCap
-            sys_revoke_syscall_cap as *const (),    // 39: RevokeSyscallCap
-            sys_share_naming_cap as *const (),      // 40: ShareNamingCap
-            sys_revoke_naming_cap as *const (),     // 41: RevokeNamingCap
-            sys_naming_len as *const (),            // 42: NamingLen
-            // 43-47: Network (extended)
-            sys_sock_can_send as *const (),         // 43: SockCanSend
-            sys_sock_receive as *const (),          // 44: SockReceive
-            sys_sock_can_recv as *const (),         // 45: SockCanReceive
-            sys_sock_close as *const (),            // 46: SockClose
-            sys_get_ip_adresses as *const (),       // 47: GetIpAddresses
-            // 48: Named pipe
-            sys_mkfifo as *const (),                // 48: Mkfifo
-            // 49-53: Graphics / Input / System
-            sys_write_graphic as *const (),         // 49: WriteGraphic
-            sys_get_graphic_resolution as *const (), // 50: GetGraphicResolution
-            sys_read_mouse as *const (),            // 51: MouseRead
-            sys_read_keyboard as *const (),         // 52: KeyboardRead
-            sys_map_build_info as *const (),        // 53: MapSystemInfo
-            sys_log as *const (),                   // 54: Log
-            // 55-58: Shared Memory
-            sys_shm_open as *const (),              // 55: ShmOpen
-            sys_shm_attach as *const (),            // 56: ShmAttach
-            sys_shm_detach as *const (),            // 57: ShmDetach
-            sys_shm_unlink as *const (),            // 58: ShmUnlink
+            sys_core_id as *const (),               // 20: CoreId
+            // 21-23: Time
+            sys_get_system_time as *const (),       // 21: GetSystemTime
+            sys_get_date as *const (),              // 22: GetDate
+            sys_set_date as *const (),              // 23: SetDate
+            // 24-32: Naming/VFS
+            sys_open as *const (),                  // 24: Open
+            sys_read as *const (),                  // 25: Read
+            sys_write as *const (),                 // 26: Write
+            sys_seek as *const (),                  // 27: Seek
+            sys_close as *const (),                 // 28: Close
+            sys_mkdir as *const (),                 // 29: MkDir
+            sys_touch as *const (),                 // 30: Touch
+            sys_readdir as *const (),               // 31: Readdir
+            sys_cwd as *const (),                   // 32: Cwd
+            sys_cd as *const (),                    // 33: Cd
+            // 34-37: Network (basic)
+            sys_sock_open as *const (),             // 34: SockOpen
+            sys_sock_bind as *const (),             // 35: SockBind
+            sys_sock_accept as *const (),           // 36: SockAccept
+            sys_sock_connect as *const (),          // 37: SockConnect
+            sys_sock_send as *const (),             // 38: SockSend
+            // 39-42: Capabilities
+            sys_share_syscall_cap as *const (),     // 39: ShareSyscallCap
+            sys_revoke_syscall_cap as *const (),    // 40: RevokeSyscallCap
+            sys_share_naming_cap as *const (),      // 41: ShareNamingCap
+            sys_revoke_naming_cap as *const (),     // 42: RevokeNamingCap
+            sys_naming_len as *const (),            // 43: NamingLen
+            // 44-47: Network (extended)
+            sys_sock_can_send as *const (),         // 44: SockCanSend
+            sys_sock_receive as *const (),          // 45: SockReceive
+            sys_sock_can_recv as *const (),         // 46: SockCanReceive
+            sys_sock_close as *const (),            // 47: SockClose
+            sys_get_ip_adresses as *const (),       // 48: GetIpAddresses
+            // 49: Named pipe
+            sys_mkfifo as *const (),                // 49: Mkfifo
+            // 50-54: Graphics / Input / System
+            sys_write_graphic as *const (),         // 50: WriteGraphic
+            sys_get_graphic_resolution as *const (), // 51: GetGraphicResolution
+            sys_read_mouse as *const (),            // 52: MouseRead
+            sys_read_keyboard as *const (),         // 53: KeyboardRead
+            sys_map_build_info as *const (),        // 54: MapSystemInfo
+            sys_log as *const (),                   // 55: Log
+            // 56-59: Shared Memory
+            sys_shm_open as *const (),              // 56: ShmOpen
+            sys_shm_attach as *const (),            // 57: ShmAttach
+            sys_shm_detach as *const (),            // 58: ShmDetach
+            sys_shm_unlink as *const (),            // 59: ShmUnlink
         ];
 
         let mut num = 0;

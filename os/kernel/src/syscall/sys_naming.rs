@@ -7,7 +7,7 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use crate::naming::api;
-use crate::scheduler;
+use crate::process::core_local_storage::scheduler;
 use alloc::slice;
 use alloc::string::{String, ToString};
 use core::ptr::slice_from_raw_parts;
@@ -125,8 +125,7 @@ pub extern "sysv64" fn sys_seek(cap_handle: usize, offset: usize, origin: usize)
     }
 
     Errno::EACCES as isize
-
-
+}
 pub extern "sysv64" fn sys_close(cap_handle: usize) -> isize {
     let current_thread = scheduler().current_thread();
     let mut cspace = current_thread.cspace.invoke_mut().unwrap();

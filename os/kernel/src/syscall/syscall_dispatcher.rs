@@ -18,7 +18,7 @@ use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 
 use crate::capabilities::capability::CapabilityFlags;
-use crate::{core_local_storage, scheduler, tss};
+use crate::tss;
 use log::{error, info};
 
 use crate::process::core_local_storage::init_tss_cls;
@@ -193,8 +193,7 @@ unsafe extern "sysv64" fn syscall_handler() {
     "sysretq",
     NUM_SYSCALLS = const NUM_SYSCALLS,
     CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX = const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX,
-    CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX,
-    SYSCALL_TABLE = sym SYSCALL_TABLE
+    CORE_LOCAL_STORAGE_USER_RSP_INDEX = const CORE_LOCAL_STORAGE_USER_RSP_INDEX
     );
 }
 

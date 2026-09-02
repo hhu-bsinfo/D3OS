@@ -176,7 +176,7 @@ impl ProcessManager {
         info!("=============================");
     }
     
-    pub fn process(&self, process_id: usize) -> Arc<Process> {
+    pub fn process(&self, process_id: Uuid) -> Arc<Process> {
         self.active_processes
             .iter()
             .find(|process| process.id() == process_id)

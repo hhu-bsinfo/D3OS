@@ -20,7 +20,7 @@ use alloc::string::String;
 #[cfg(feature = "userspace")]
 use alloc::ffi::CString;
 
-use shared_types::{DirEntry, FileType, RawDirent, Capability, OpenOptions, SeekOrigin};
+pub use shared_types::{DirEntry, FileType, RawDirent, Capability, OpenOptions, SeekOrigin};
 
 #[cfg(feature = "userspace")]
 use syscall::{SystemCall, return_vals::Errno, syscall};
