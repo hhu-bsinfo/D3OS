@@ -88,7 +88,7 @@ impl RestartPolicy {
 }
 
 fn is_running_state(state: ServiceState) -> bool {
-    if state == ServiceState::Online  || state == ServiceState::Degraded {
+    if state == ServiceState::Online  {
         true
     } 
     else {
@@ -436,9 +436,10 @@ fn can_start_now(service: &Service, services: &[Service]) -> bool {
         let Some(dep_state) = service_state_by_name(services, dep.as_str()) else {
             continue;
         };
-        if !is_running_state(dep_state) {
-            return false;
+        if dep_state == ServiceState::Online || dep_state == ServiceState::Disabled || dep_state == ServiceState::Maintenance {
+            continue;
         }
+        return false;
     }
 
     true
