@@ -87,7 +87,7 @@ impl RestartPolicy {
     }
 }
 
-fn is_running_state(state: ServiceState) -> bool {
+fn is_running_state(state: ServiceState) -> bool {  // Im Solaris Paper ist dies als Online oder Degraded definiert. Für meine Implementierung macht aber nur Online Sinn.
     if state == ServiceState::Online  {
         true
     } 
