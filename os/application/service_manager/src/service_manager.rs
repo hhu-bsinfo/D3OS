@@ -30,7 +30,7 @@ const HEARTBEAT_TIMEOUT_MS: usize = 5_000;         // Wie alt ein Heartbeat sein
 struct HeartbeatState {     // Merken uns für jeden Service das letzte Signal + ob schon ein Alarm/Neustart durchgeführt wurde + Datei handle
     last_seen_ms: usize,
     last_marker: u64,
-    reported: bool,
+    killed: bool,
     thread_id: usize,
     handle: Option<usize>,
 }
@@ -270,7 +270,7 @@ fn build_effective_args(manifest: &ServiceManifest) -> Vec<String> {
 // Heartsbeats registrieren oder entfernen
 fn heartbeat_register(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str, thread_id: usize, handle: Option<usize>) {
     let mut map = heartbeats.lock();
-    map.insert(name.to_string(), HeartbeatState {last_seen_ms: systime().num_milliseconds() as usize, last_marker: u64::MAX, reported: false, thread_id, handle});
+    map.insert(name.to_string(), HeartbeatState {last_seen_ms: systime().num_milliseconds() as usize, last_marker: u64::MAX, killed: false, thread_id, handle});
 }
 
 fn heartbeat_remove(heartbeats: &Arc<Mutex<HeartbeatMap>>, name: &str) {
@@ -309,16 +309,16 @@ fn start_watchdog(heartbeats: Arc<Mutex<HeartbeatMap>>, service_states: Arc<Mute
                                 //println!("Watchdog hat neuen Marker von {} gelesen: {}", name, marker);
                                 state.last_marker = marker;
                                 state.last_seen_ms = now;
-                                state.reported = false;
+                                state.killed = false;
                             }
                         }
                     }
                 }
 
                 let age = now.saturating_sub(state.last_seen_ms);
-                if age >= HEARTBEAT_TIMEOUT_MS && !state.reported {
+                if age >= HEARTBEAT_TIMEOUT_MS && !state.killed {
                     missed.push((name.clone(), age / 1000, state.thread_id));
-                    state.reported = true;
+                    state.killed = true;
                 }
             }
             drop(map);
