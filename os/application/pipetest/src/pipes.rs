@@ -12,7 +12,7 @@ use naming::{mkfifo, open, read, write, ROOT, SHARED_PIPE};
 use runtime::*;
 use terminal::{print, println};
 use capabilities::*;
-use concurrent::thread::{current, sleep};
+use concurrent::thread::{self, current, sleep};
 
 
 const NR_OF_ITERATIONS: u32 = 6;

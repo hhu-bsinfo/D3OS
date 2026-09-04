@@ -7,7 +7,7 @@ use core::{fmt::Display, net::{IpAddr, Ipv6Addr, SocketAddr}};
 use alloc::{collections::btree_map::BTreeMap, format, string::String, vec::Vec};
 use concurrent::thread;
 use httparse::{EMPTY_HEADER, Request};
-use naming::{open, read, shared_types::OpenOptions};
+use naming::{open, read, touch, ROOT, shared_types::OpenOptions};
 use network::{NetworkError, TcpListener, TcpStream};
 #[allow(unused_imports)]
 use runtime::*;
@@ -110,7 +110,8 @@ fn handle(request: Request, webroot: &str) -> Response {
                 request_path = "index.html";
             }
             let path = format!("{webroot}/{request_path}");
-            if let Ok(fh) = open(&path, OpenOptions::READONLY) {
+            if let Ok(cap) = touch(&path, OpenOptions::READONLY, ROOT) {
+                if let Ok(fh) = open(cap, OpenOptions::READONLY) {
                 let mut r = Response::new(StatusCode::Ok);
                 let mut buf: [u8; 4096] = [0; 4096];
                 loop {
@@ -134,6 +135,7 @@ fn handle(request: Request, webroot: &str) -> Response {
                     },
                 }.into());
                 return r;
+                }
             }
         }
         let mut r = Response::new(StatusCode::NotFound);

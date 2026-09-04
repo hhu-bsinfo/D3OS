@@ -33,7 +33,7 @@ fn print_usage() {
 */
 
 fn process_file(path_file: &str) {
-    let res = naming::open(path_file, OpenOptions::READONLY);
+    let res = naming::touch(path_file, OpenOptions::READONLY, naming::ROOT).and_then(|cap| naming::open(cap, OpenOptions::READONLY));
     if res.is_err() {
         print_usage();
         return;

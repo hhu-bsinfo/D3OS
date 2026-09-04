@@ -1,7 +1,7 @@
 extern crate alloc;
 
 use naming::shared_types::OpenOptions;
-use naming::{close, open, read};
+use naming::{close, mkfifo, open, read, ROOT};
 use alloc::vec::Vec;
 
 use concurrent::thread;
@@ -10,7 +10,7 @@ use terminal::println;
 const FIFO_PATH: &str = "/mypipe";
 
 fn writer_thread() {
-    let res = open(FIFO_PATH, OpenOptions::WRITEONLY);
+    let res = mkfifo("mypipe", OpenOptions::WRITEONLY, ROOT).and_then(|cap| open(cap, OpenOptions::WRITEONLY));
     if res.is_err() {
         println!("TEST2: open failed, error: {:?}", res);
         return;
@@ -22,7 +22,7 @@ fn writer_thread() {
 }
 
 fn reader_thread() {
-    let res = open(FIFO_PATH, OpenOptions::READONLY);
+    let res = mkfifo("mypipe", OpenOptions::READONLY, ROOT).and_then(|cap| open(cap, OpenOptions::READONLY));
     if res.is_err() {
         println!("TEST2: open failed, error: {:?}", res);
         return;

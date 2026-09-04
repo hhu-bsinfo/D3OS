@@ -3,6 +3,7 @@
 extern crate alloc;
 
 use naming::shared_types::{OpenOptions};
+use naming::{touch, ROOT};
 #[allow(unused_imports)]
 use runtime::*;
 use terminal::println;
@@ -11,8 +12,8 @@ use alloc::format;
 
 // test if /proc exists
 fn test_proc_root() {
-    match naming::open("/proc", OpenOptions::READONLY) {
-        Ok(fd) => println!("OK: /proc opened, fd={}", fd),
+    match touch("/proc", OpenOptions::READONLY, ROOT).and_then(|cap| naming::open(cap, OpenOptions::READONLY)) {
+        Ok(fd) => println!("OK: /proc opened, fd={:?}", fd),
         Err(e) => println!("FAIL: open(/proc) -> {:?}", e),
     }
 }
@@ -20,8 +21,8 @@ fn test_proc_root() {
 // test if /proc/<pid> exisits
 fn test_proc_pid(pid: usize) {
     let path = format!("/proc/{}", pid);
-    match naming::open(&path, OpenOptions::READONLY) {
-        Ok(fd) => println!("OK: {} opened (fd={})", path, fd),
+    match touch(&path, OpenOptions::READONLY, ROOT).and_then(|cap| naming::open(cap, OpenOptions::READONLY)) {
+        Ok(fd) => println!("OK: {} opened (fd={:?})", path, fd),
         Err(e) => println!("FAIL: open({}) -> {:?}", path, e),
     }
 }
@@ -30,7 +31,7 @@ fn test_proc_pid(pid: usize) {
 fn read_proc_status(pid: usize) {
     println!("NOW READING PROC_PID_STATUS");
     let path = format!("/proc/{}/status", pid);
-    let fd = naming::open(&path, OpenOptions::READONLY).expect("open failed");
+    let fd = touch(&path, OpenOptions::READONLY, ROOT).and_then(|cap| naming::open(cap, OpenOptions::READONLY)).expect("open failed");
 
     let mut buf = [0u8; 256];
     let n = naming::read(fd, &mut buf).expect("read failed");
@@ -46,7 +47,7 @@ fn read_proc_status(pid: usize) {
 fn read_proc_ps() {
     println!("NOW READING PROC_PS");
     let path = "/proc/ps";
-    let fd = naming::open(&path, OpenOptions::READONLY).expect("open failed");
+    let fd = touch(path, OpenOptions::READONLY, ROOT).and_then(|cap| naming::open(cap, OpenOptions::READONLY)).expect("open failed");
 
     let mut buf = [0u8; 256];
     let n = naming::read(fd, &mut buf).expect("read failed");
@@ -62,7 +63,7 @@ fn read_proc_ps() {
 fn read_proc_ticks() {
     println!("NOW READING PROC_TICKS");
     let path = "/proc/ticks";
-    let fd = naming::open(&path, OpenOptions::READONLY).expect("open failed");
+    let fd = touch(path, OpenOptions::READONLY, ROOT).and_then(|cap| naming::open(cap, OpenOptions::READONLY)).expect("open failed");
 
     let mut buf = [0u8; 256];
     let n = naming::read(fd, &mut buf).expect("read failed");
@@ -78,7 +79,7 @@ fn read_proc_ticks() {
 fn read_proc_meminfo() {
     println!("NOW READING PROC_MEMINFO");
     let path = "/proc/meminfo";
-    let fd = naming::open(&path, OpenOptions::READONLY).expect("open failed");
+    let fd = touch(path, OpenOptions::READONLY, ROOT).and_then(|cap| naming::open(cap, OpenOptions::READONLY)).expect("open failed");
 
     let mut buf = [0u8; 256];
     let n = naming::read(fd, &mut buf).expect("read failed");
