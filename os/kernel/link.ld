@@ -1,6 +1,7 @@
 ENTRY(start)
 
 PHDRS {
+    ap_boot PT_LOAD;
     text PT_LOAD;
     data PT_LOAD;
     bss PT_LOAD;
@@ -41,7 +42,7 @@ SECTIONS {
 		*(".boot_seg_ap")
 		*(".boot_seg_ap$")
 	    ___BOOT_AP_END__ = .;
-	}
+	} :ap_boot
 	
     /* the rest of the kernel code and data */
     . = 25M;
@@ -51,7 +52,7 @@ SECTIONS {
     .boot :
     {
         *(.multiboot2_sec)
-    }
+    } :text
     
     .text ALIGN (4K) :
     {
