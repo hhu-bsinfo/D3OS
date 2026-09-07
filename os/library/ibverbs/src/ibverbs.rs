@@ -91,7 +91,7 @@ pub use ffi::ibv_wc;
 
 #[cfg(feature = "serialize")]
 use bincode::{Decode, Encode};
-
+use log::error;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -395,8 +395,8 @@ impl Context {
     /// can work together. If several objects were created using PD1, and others were created using
     /// PD2, working with objects from group1 together with objects from group2 will not work.
     pub fn alloc_pd(&self) -> io::Result<ProtectionDomain<'_>> {
-        //let pd = self.inner.alloc_pd()
-        Ok(ProtectionDomain { ctx: self })
+        let pd = self.inner.alloc_pd()?;
+        Ok(ProtectionDomain { ctx: self, pd })
     }
 
     pub fn query_port(&self) -> &ffi::ibv_port_attr {
@@ -807,8 +807,7 @@ impl<'res> QueuePairBuilder<'res> {
             sq_sig_all: 0,
         };
 
-        // TODO: add pd parameter
-        let inner = self.pd.ctx.inner.clone().create_qp(&attr)?;
+        let inner = self.pd.ctx.inner.clone().create_qp(self.pd.pd, &attr)?;
 
         Ok(PreparedQueuePair {
             ctx: self.pd.ctx,
@@ -1167,10 +1166,19 @@ pub struct RemoteMemoryRegion<T> {
 /// A protection domain for a device's context.
 pub struct ProtectionDomain<'ctx> {
     ctx: &'ctx Context,
+    pd: u32,
 }
 
 unsafe impl<'a> Sync for ProtectionDomain<'a> {}
 unsafe impl<'a> Send for ProtectionDomain<'a> {}
+
+impl Drop for ProtectionDomain<'_> {
+    fn drop(&mut self) {
+        if let Err(e) = self.ctx.inner.dealloc_pd(self.pd) {
+            error!("Failed to drop PD: {}", e.into_inner().unwrap_or("unkown reason"))
+        };
+    }
+}
 
 impl<'ctx> ProtectionDomain<'ctx> {
     /// Creates a queue pair builder associated with this protection domain.
@@ -1252,6 +1260,7 @@ impl<'ctx> ProtectionDomain<'ctx> {
             | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_ATOMIC;
 
         let metadata = self.ctx.inner.reg_mr(
+            self.pd,
             data.as_mut_ptr() as *mut _,
             data.len() * mem::size_of::<T>(),
             access,

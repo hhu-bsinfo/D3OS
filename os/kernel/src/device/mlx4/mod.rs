@@ -14,6 +14,7 @@ mod profile;
 mod queue_pair;
 mod utils;
 
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::vec::Vec;
 use cmd::CommandInterface;
@@ -22,7 +23,7 @@ use event_queue::{EventQueue, init_eqs};
 use fw::{Capabilities, Hca, MappedFirmwareArea};
 use byteorder::BigEndian;
 use icm::MappedIcmTables;
-use log::{error, trace, warn};
+use log::{error, info, trace, warn};
 use pci_types::{Bar, CommandRegister, EndpointHeader};
 use zerocopy::U32;
 
@@ -40,6 +41,7 @@ use profile::Profile;
 
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
+use uuid::Uuid;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use crate::device::mlx4::fw::DoorbellPage;
@@ -94,6 +96,7 @@ pub struct ConnectX3Nic {
     offsets: Offsets,
     icm_tables: MappedIcmTables,
     hca: Hca,
+    pds: BTreeMap<ProtectionDomain, Uuid>, // Protection Domain -> Process id
     eqs: Vec<EventQueue>,
     // TODO: find some way to bind this to the relevant EQ
     cqs: Vec<CompletionQueue>,
@@ -200,6 +203,7 @@ impl ConnectX3Nic {
             offsets,
             icm_tables,
             hca,
+            pds: BTreeMap::new(),
             eqs,
             cqs: Vec::new(),
             qps: Vec::new(),
@@ -400,6 +404,37 @@ impl ConnectX3Nic {
         }
     }
 
+    fn validate_pd(&self, pd: &ProtectionDomain, process: &Process) -> Result<(), &'static str> {
+        if self.pds.get(&pd).map_or(false, |p| p.eq(&process.id())) {
+            Ok(())
+        } else {
+            Err("PD not found")
+        }
+    }
+
+    pub fn alloc_pd(&mut self) -> Result<ProtectionDomain, &'static str> {
+        // TODO: impl random pd sampling
+        let first = self.capabilities.num_rsvd_pds() as u32;
+        let count = 1 << self.capabilities.log_max_pd();
+        for pd in first..first +count {
+            if !self.pds.contains_key(&pd) {
+                let process = process_manager().read().current_process();
+                self.pds.insert(pd, process.id());
+                return Ok(pd)
+            }
+        }
+        Err("No protection domains available")
+    }
+
+    pub fn dealloc_pd(&mut self, pd: ProtectionDomain) -> Result<(), &'static str> {
+        // todo check if some qp or mr is register with this pd before allowing it to be deallocated
+        let process = process_manager().read().current_process();
+        self.validate_pd(&pd, &process)?;
+        self.pds.remove(&pd);
+        info!("deallocated PD {pd}");
+        Ok(())
+    }
+
     /// Create a completion queue and return its number, plus the UAR doorbell page mapped into
     /// the calling process.
     ///
@@ -447,6 +482,7 @@ impl ConnectX3Nic {
     /// Create a queue pair and return its number, plus the UAR and BlueFlame pages mapped into
     /// the calling process.
     pub fn create_qp(&mut self,
+                     pd: ProtectionDomain,
                      qp_type: ibv_qp_type::Type,
                      send_cq_number: u32,
                      receive_cq_number: u32,
@@ -458,6 +494,7 @@ impl ConnectX3Nic {
                      log_rq_stride: u8,
     ) -> Result<(u32, *mut u8, *mut u8), &'static str> {
         let process = process_manager().read().current_process();
+        self.validate_pd(&pd, &process)?;
         let send_cq = self.find_cq(send_cq_number, &process).ok_or("send completion queue not found")?;
         let receive_cq = self.find_cq(receive_cq_number, &process).ok_or("receive completion queue not found")?;
 
@@ -467,6 +504,7 @@ impl ConnectX3Nic {
             qp_type,
             send_cq.number(),
             receive_cq.number(),
+            pd,
             buffer,
             doorbell_ptr,
             log_sq_bb_count,
@@ -514,12 +552,14 @@ impl ConnectX3Nic {
     /// Create a memory region and return its index, physical address, lkey and rkey.
     ///
     /// This is used by ibv_reg_mr.
-    pub fn create_mr<T>(&mut self, data: &mut [T], access: ibv_access_flags) -> Result<DataMemoryProtectionTable, &'static str> {
+    pub fn create_mr<T>(&mut self, pd: ProtectionDomain, data: &mut [T], access: ibv_access_flags) -> Result<DataMemoryProtectionTable, &'static str> {
+        self.validate_pd(&pd, &process_manager().read().current_process())?;
         // TODO: this fails for large memory regions (>= 64 MB)
         self.icm_tables.memory_regions().alloc_dmpt(
             &mut self.cmd,
             &mut self.capabilities,
             &mut self.offsets,
+            pd,
             data,
             None,
             access,
@@ -629,3 +669,5 @@ impl Offsets {
         res
     }
 }
+
+pub type ProtectionDomain = u32;

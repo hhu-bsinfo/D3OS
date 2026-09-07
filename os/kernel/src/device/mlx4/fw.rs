@@ -556,12 +556,10 @@ pub(super) struct Capabilities {
     num_rsvd_mcgs: u8,
     #[skip]
     log_max_mcg: u8,
-    #[skip]
-    num_rsvd_pds: B4,
+    pub(super) num_rsvd_pds: B4,
     #[skip]
     __: B7,
-    #[skip]
-    log_max_pd: B5,
+    pub(super) log_max_pd: B5,
     #[skip]
     num_rsvd_xrcds: B4,
     #[skip]

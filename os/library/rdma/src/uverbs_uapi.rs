@@ -1,40 +1,44 @@
+use strum_macros::FromRepr;
 use super::ib_core::*;
 
 #[repr(u64)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, FromRepr)]
 pub enum UverbsCmd {
+    // Device operations
+    QueryDevice = 1,
+    QueryPort,
+    QueryDevices,
+
+    // Protection Domain operations
+    AllocPd,
+    DeallocPd,
+
     // Completion queue operations
-    CreateCq       = 1,
-    DestroyCq      = 2,
-    // Polling and CQE parsing happen entirely in userspace against the mapped CQE buffer now;
-    // there is no kernel-side handler for this anymore.
-    // PollCq      = 3,
+    CreateCq,
+    DestroyCq,
 
     // Queue pair operations
-    CreateQp       = 4,
-    ModifyQp       = 5,
-    QueryQp        = 6,
-    DestroyQp      = 7,
-    // Posting happens entirely in userspace against the mapped WQE buffer now; there is no
-    // kernel-side handler for these anymore.
-    // OpPostSend  = 8,
-    // OpPostRecv  = 9,
+    CreateQp,
+    ModifyQp,
+    QueryQp,
+    DestroyQp,
 
     // Memory region operations
-    RegMr          = 10,
-    DeregMr        = 11,
-    SetMrSize      = 12,
-
-    // Query
-    QueryDevice    = 13,
-    QueryPort      = 14,
-    QueryDevices   = 15,
+    RegMr,
+    DeregMr,
+    SetMrSize,
 
     /// Drain the device's event queue (port-down/QP-error/internal-error notifications). Since
     /// posting and polling no longer go through the kernel on every operation, userspace calls
     /// this itself, rate-limited, from its poll loop instead of relying on it piggybacking on
     /// another verb.
-    DrainEvents    = 16,
+    DrainEvents,
+
+    // Fallback data-path operations, if they are not supported by the user-space driver
+    //PollCq,
+    //PostSend,
+    //PostRecv,
+
 }
 
 pub const UVERBS_MAX_USER_TRUST_SIZE: usize = 0x06400000; // allow user space to allocate up to 100MB
@@ -96,7 +100,21 @@ pub struct QueryPortRequest {
 
 #[repr(C)]
 #[derive(Default, Copy, Clone)]
+pub struct AllocPdResponse {
+    pub pd: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct DeallocPdRequest {
+    pub pd: u32,
+}
+
+
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
 pub struct CreateMrRequest {
+    pub pd: u32,
     pub ibv_access_flags: ibv_access_flags,
     pub data_ptr: *mut u8,
     pub len: usize,
@@ -134,7 +152,7 @@ pub struct CreateCqResponse {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateQpRequest {
-    pub _pd_handle: u32,
+    pub pd: u32,
     pub send_cq_num: u32,
     pub recv_cq_num: u32,
     pub qp_type: ibv_qp_type::Type,

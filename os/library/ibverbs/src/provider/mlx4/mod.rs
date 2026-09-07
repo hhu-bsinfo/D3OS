@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core3::io;
 use core3::io::{Error, ErrorKind};
-use rdma::uverbs_uapi::{CreateMrRequest, CreateMrResponse, QueryPortRequest, UserSlice};
+use rdma::uverbs_uapi::{CreateMrRequest, CreateMrResponse, AllocPdResponse, DeallocPdRequest, QueryPortRequest, UserSlice, UverbsCmd};
 use rdma::ib_core::{ibv_access_flags, ibv_device_attr, ibv_gid, ibv_port_attr};
 use spin::Mutex;
 
@@ -16,7 +16,6 @@ use crate::provider::mlx4::completion_queue::CompletionQueue;
 use crate::provider::{IbvCompletionQueue, IbvContext, IbvQueuePair, QpInitAttr};
 use crate::MemoryRegionMetadata;
 use queue_pair::QueuePair;
-use rdma::uverbs_uapi::UverbsCmd::{DeregMr, QueryDevice, QueryPort, RegMr};
 
 /// A per-device registry of live queue pairs, shared between whichever `ibv_qp`s and `ibv_cq`s
 /// were created against this device.
@@ -69,14 +68,14 @@ impl Mlx4Context {
 impl IbvContext for Mlx4Context {
     fn query_device(&self) -> io::Result<ibv_device_attr> {
         let mut resp = MaybeUninit::<ibv_device_attr>::uninit();
-        uverbs(self.device_handle, QueryDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
+        uverbs(self.device_handle, UverbsCmd::QueryDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
         Ok(unsafe { resp.assume_init() })
     }
 
     fn query_port(&self, port_num: u8) -> io::Result<ibv_port_attr> {
         let req = QueryPortRequest { port_num };
         let mut resp = MaybeUninit::<ibv_port_attr>::uninit();
-        uverbs(self.device_handle, QueryPort, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        uverbs(self.device_handle, UverbsCmd::QueryPort, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
         Ok(unsafe { resp.assume_init() })
     }
 
@@ -85,8 +84,8 @@ impl IbvContext for Mlx4Context {
         Ok(ibv_gid { raw: [0; 16] })
     }
 
-    fn create_qp(self: Arc<Self>, attr: &QpInitAttr) -> io::Result<Arc<dyn IbvQueuePair>> {
-        let qp = Arc::new(QueuePair::create(self.clone(), attr)?);
+    fn create_qp(self: Arc<Self>, pd: u32, attr: &QpInitAttr) -> io::Result<Arc<dyn IbvQueuePair>> {
+        let qp = Arc::new(QueuePair::create(self.clone(), pd, attr)?);
         self.qps.lock().push(qp.clone());
         Ok(qp)
     }
@@ -99,19 +98,33 @@ impl IbvContext for Mlx4Context {
         Ok(Box::new(cq))
     }
 
-    fn reg_mr(&self, ptr: *mut u8, len: usize, access: ibv_access_flags) -> io::Result<MemoryRegionMetadata> {
+    fn alloc_pd(&self) -> io::Result<u32> {
+        let mut resp = MaybeUninit::<AllocPdResponse>::uninit();
+        uverbs(self.device_handle, UverbsCmd::AllocPd, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
+        let resp = unsafe { resp.assume_init() };
+        Ok(resp.pd)
+    }
+
+    fn dealloc_pd(&self, pd: u32) -> io::Result<()> {
+        let req = DeallocPdRequest { pd };
+        uverbs(self.device_handle, UverbsCmd::DeallocPd, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
+        Ok(())
+    }
+
+    fn reg_mr(&self, pd: u32, ptr: *mut u8, len: usize, access: ibv_access_flags) -> io::Result<MemoryRegionMetadata> {
         if len == 0 {
             return Err(Error::from(ErrorKind::InvalidInput))
         }
 
         let req = CreateMrRequest {
+            pd,
             ibv_access_flags: access,
             data_ptr: ptr,
             len,
         };
 
         let mut resp = MaybeUninit::<CreateMrResponse>::uninit();
-        uverbs(self.device_handle, RegMr, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        uverbs(self.device_handle, UverbsCmd::RegMr, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
         let CreateMrResponse { handle, lkey, rkey } = unsafe { resp.assume_init() };
         Ok(MemoryRegionMetadata {
             handle,
@@ -121,7 +134,7 @@ impl IbvContext for Mlx4Context {
     }
 
     fn dereg_mr(&self, meta: MemoryRegionMetadata) {
-        uverbs(self.device_handle, DeregMr, UserSlice::from_ref(&meta.handle), UserSlice::EMPTY)
+        uverbs(self.device_handle, UverbsCmd::DeregMr, UserSlice::from_ref(&meta.handle), UserSlice::EMPTY)
             .expect("failed to destroy memory region");
     }
 }

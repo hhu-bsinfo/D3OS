@@ -267,7 +267,7 @@ impl Drop for QueuePair {
 }
 
 impl QueuePair {
-    pub(crate) fn create(context: Arc<Mlx4Context>, attr: &QpInitAttr) -> io::Result<QueuePair> {
+    pub(crate) fn create(context: Arc<Mlx4Context>, pd: u32, attr: &QpInitAttr) -> io::Result<QueuePair> {
         let mut rq = WorkQueue::new_receive_queue(&context, &attr.cap)?;
         let mut sq = WorkQueue::new_send_queue(&context, &attr.cap, attr.qp_type)?;
 
@@ -307,7 +307,7 @@ impl QueuePair {
         }
 
         let req = CreateQpRequest {
-            _pd_handle: 0,
+            pd,
             qp_type: attr.qp_type,
             send_cq_num: attr.send_cq.number(),
             recv_cq_num: attr.recv_cq.number(),

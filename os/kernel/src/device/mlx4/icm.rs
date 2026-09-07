@@ -17,14 +17,7 @@ use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::{memory, process_manager};
-use super::{
-    cmd::{CommandInterface, Opcode},
-    fw::{Capabilities, VirtualPhysicalMapping},
-    profile::{get_mgm_entry_size, Profile},
-    queue_pair::QueuePair,
-    utils,
-    Offsets,
-};
+use super::{cmd::{CommandInterface, Opcode}, fw::{Capabilities, VirtualPhysicalMapping}, profile::{get_mgm_entry_size, Profile}, queue_pair::QueuePair, utils, Offsets, ProtectionDomain};
 
 pub(super) const ICM_PAGE_SHIFT: u8 = 12;
 const TABLE_CHUNK_SIZE: usize = 1 << 18;
@@ -389,7 +382,7 @@ impl MrTable {
     ///
     /// This is used by ibv_reg_mr.
     pub(super) fn alloc_dmpt<T>(
-        &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, data: &mut [T], queue_pair: Option<&QueuePair>,
+        &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, pd: ProtectionDomain, data: &mut [T], queue_pair: Option<&QueuePair>,
         access: ibv_access_flags,
     ) -> Result<DataMemoryProtectionTable, &'static str> {
         assert!(!data.is_empty());
@@ -407,6 +400,7 @@ impl MrTable {
         // overwriting the card's own memory regions one per registration.
         dmpt.set_index(offsets.alloc_dmpt().try_into().unwrap());
         dmpt.set_rae(true);
+        dmpt.set_pd(pd);
         if let Some(qp) = queue_pair {
             dmpt.set_bound_to_qp(true);
             dmpt.set_qp_number(qp.number().try_into().unwrap());
@@ -541,7 +535,6 @@ struct DmptEntry {
     rae: bool,
     #[skip]
     __: B4,
-    #[skip]
     pd: B24,
     #[skip(getters)]
     /// Start Address - Virtual Address where this region/window starts

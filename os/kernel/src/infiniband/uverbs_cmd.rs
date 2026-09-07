@@ -1,6 +1,6 @@
 use crate::device::mlx4::{get_dev_list, device_handle_to_idx, ConnectX3Nic};
 use alloc::vec::Vec;
-use rdma::uverbs_uapi::{CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, CreateQpResponse, ModifyQpRequest};
+use rdma::uverbs_uapi::{CreateCqRequest, CreateCqResponse, CreateMrResponse, AllocPdResponse, CreateQpRequest, CreateQpResponse, DeallocPdRequest, ModifyQpRequest};
 use rdma::{ibv_access_flags, ibv_device, ibv_device_attr, ibv_port_attr};
 
 pub fn uverbs_query_devices(max_len: usize) -> Vec<ibv_device> {
@@ -22,9 +22,9 @@ pub fn uverbs_query_port(device_handle: usize, port_num: u8) -> Result<ibv_port_
         .query_port(port_num)
 }
 
-pub fn uverbs_register_mem_region(device_handle: usize, access_flags: ibv_access_flags, user_data_ref: &mut [u8]) -> Result<CreateMrResponse, &'static str> {
+pub fn uverbs_register_mem_region(device_handle: usize, pd: u32, access_flags: ibv_access_flags, user_data_ref: &mut [u8]) -> Result<CreateMrResponse, &'static str> {
     get_dev_list().lock().get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .create_mr(user_data_ref, access_flags)
+        .create_mr(pd, user_data_ref, access_flags)
         .map(|d| {
             CreateMrResponse { handle: d.handle(), lkey: d.lkey(), rkey: d.rkey() }
         })
@@ -42,6 +42,7 @@ pub fn uverbs_create_qp<'qp>(device_handle: usize, req: &CreateQpRequest) -> Res
     let (qp_num, doorbell_page, blueflame_page) = get_dev_list().lock()
         .get_mut(device_handle_to_idx(device_handle)).unwrap()
         .create_qp(
+            req.pd,
             req.qp_type,
             req.send_cq_num,
             req.recv_cq_num,
@@ -78,6 +79,20 @@ pub fn uverbs_destroy(device_handle: usize, destroy_spec_fn: fn(&mut ConnectX3Ni
     let device = device_list.get_mut(device_handle_to_idx(device_handle)).unwrap();
     destroy_spec_fn(device, x_num)
 }
+
+pub fn uverbs_alloc_pd(device_handle: usize) -> Result<AllocPdResponse, &'static str> {
+    let mut device_list = get_dev_list().lock();
+    let device = device_list.get_mut(device_handle_to_idx(device_handle)).unwrap();
+    let pd = device.alloc_pd()?;
+    Ok(AllocPdResponse { pd })
+}
+
+pub fn uverbs_dealloc_qp(device_handle: usize, req: DeallocPdRequest) -> Result<(), &'static str> {
+    let mut device_list = get_dev_list().lock();
+    let device = device_list.get_mut(device_handle_to_idx(device_handle)).unwrap();
+    device.dealloc_pd(req.pd)
+}
+
 
 // todo; map user address region into user space, let user ring doorbell
 pub fn uverbs_mmap_uar() {}

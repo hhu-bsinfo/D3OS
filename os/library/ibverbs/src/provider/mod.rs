@@ -73,18 +73,18 @@ pub trait IbvContext {
     fn query_gid(&self, port_num: u8, index: i32) -> io::Result<ibv_gid>;
 
     // --- Queue Pair ---
-    fn create_qp(self: Arc<Self>, attr: &QpInitAttr) -> io::Result<Arc<dyn IbvQueuePair>>;
+    fn create_qp(self: Arc<Self>, pd: u32, attr: &QpInitAttr) -> io::Result<Arc<dyn IbvQueuePair>>;
     //fn query_qp();
 
     // --- Completion Queue ---
     fn create_cq(self: Arc<Self>, min_cpe: i32, cq_context: isize, channel: Option<()>, comp_vector: i32) -> io::Result<Box<dyn IbvCompletionQueue>>;
 
     // --- Protection Domain ---
-    //fn alloc_pd();
-    //fn delalloc_pd();
+    fn alloc_pd(&self) -> io::Result<u32>;
+    fn dealloc_pd(&self, pd: u32) -> io::Result<()>;
 
     // --- Memory Region ---
-    fn reg_mr(&self, ptr: *mut u8, len: usize, access: ibv_access_flags) -> io::Result<MemoryRegionMetadata>;
+    fn reg_mr(&self, pd: u32, ptr: *mut u8, len: usize, access: ibv_access_flags) -> io::Result<MemoryRegionMetadata>;
     fn dereg_mr(&self, meta: MemoryRegionMetadata);
 }
 

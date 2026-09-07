@@ -4,7 +4,7 @@ use crate::process_manager;
 use core::mem::MaybeUninit;
 use core::slice::from_raw_parts_mut;
 use log::error;
-use rdma::uverbs_uapi::{QueryPortRequest, UserSlice};
+use rdma::uverbs_uapi::{AllocPdResponse, DeallocPdRequest, QueryPortRequest, UserSlice};
 use rdma::{ibv_device, uverbs_uapi::{
     CreateCqRequest, CreateMrRequest, CreateQpRequest, ModifyQpRequest, UverbsCmd,
 }};
@@ -64,7 +64,7 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
             let mut req: CreateMrRequest = copy_from_user(user_in)?;
             // todo: use a custom type like UserSlice instead of slice
             let user_slice = unsafe { from_raw_parts_mut(req.data_ptr, req.len) };
-            let resp = uverbs_register_mem_region(device_handle, req.ibv_access_flags, user_slice).map_err(log_error_and_invalid)?;
+            let resp = uverbs_register_mem_region(device_handle, req.pd, req.ibv_access_flags, user_slice).map_err(log_error_and_invalid)?;
             copy_to_user(user_out, &resp)
         }
         UverbsCmd::CreateCq => {
@@ -103,6 +103,15 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
         }
         UverbsCmd::QueryQp => todo!("QueryQp"),
         UverbsCmd::SetMrSize => todo!("SetMrSize"),
+        UverbsCmd::AllocPd => {
+            let resp: AllocPdResponse = uverbs_alloc_pd(device_handle).map_err(log_error_and_invalid)?;
+            copy_to_user(user_out, &resp)
+        }
+        UverbsCmd::DeallocPd => {
+            let req: DeallocPdRequest = copy_from_user(user_in)?;
+            uverbs_dealloc_qp(device_handle, req).map_err(log_error_and_invalid)?;
+            Ok(0)
+        }
     }
 }
 

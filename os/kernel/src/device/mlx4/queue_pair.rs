@@ -29,7 +29,7 @@ use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::process::process::Process;
 use crate::process_manager;
-use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, ConnectX3Nic};
+use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, ConnectX3Nic, ProtectionDomain};
 
 const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
 const IB_MAX_HEADROOM: u32 = 2048;
@@ -46,6 +46,7 @@ pub(super) struct QueuePair {
     state: ibv_qp_state,
     qp_type: ibv_qp_type::Type,
     port_number: Option<u8>,
+    pd: ProtectionDomain,
     // TODO: bind the lifetime to the one of the completion queues
     send_cq_number: u32,
     receive_cq_number: u32,
@@ -74,6 +75,7 @@ impl QueuePair {
         dev: &mut ConnectX3Nic,
         process: Arc<Process>,
         qp_type: ibv_qp_type::Type,
+        pd: ProtectionDomain,
         send_cq_number: u32,
         receive_cq_number: u32,
         buffer: *const u8,
@@ -128,6 +130,7 @@ impl QueuePair {
             state: ibv_qp_state::IBV_QPS_RESET,
             qp_type,
             port_number: None,
+            pd,
             send_cq_number,
             receive_cq_number,
             uar_idx,
@@ -198,7 +201,7 @@ impl QueuePair {
                 });
                 context.set_path_migration_state(PATH_MIGRATION_STATE_MIGRATED);
                 context.set_usr_page(uar_index_to_hw(self.uar_idx).try_into().unwrap());
-                // TODO: protection domain
+                context.set_protection_domain(self.pd);
                 context.set_cqn_send(self.send_cq_number);
                 // RC needs remote read
                 if self.qp_type == ibv_qp_type::IBV_QPT_RC {
@@ -232,10 +235,7 @@ impl QueuePair {
                 context.set_log_rq_size(self.log_rq_wqe_count);
                 context.set_log_sq_stride(self.log_sq_stride - 4);
                 context.set_log_rq_stride(self.log_rq_stride - 4);
-                // since we can't allocate protection domains,
-                // allow using the reserved lkey to refer directly to physical
-                // addresses
-                context.set_reserved_lkey(true);
+                context.set_reserved_lkey(false);
                 // TODO: sq_wqe_counter, rq_wqe_counter, is
                 // TODO: hs, vsd, rss for UD
                 context.set_sq_no_prefetch(false);
@@ -903,7 +903,6 @@ struct QueuePairContext {
     path_migration_state: B2,
     #[skip]
     __: B19,
-    #[skip(getters)]
     protection_domain: B24,
     mtu: B3,
     #[skip(getters)]
