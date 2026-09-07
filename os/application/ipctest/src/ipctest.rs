@@ -3,9 +3,12 @@
 
 extern crate alloc;
 
+use core::fmt::Display;
+
 use alloc::string::ToString;
 use alloc::{format, string::String, vec::Vec};
 use alloc::vec;
+use concurrent::ipc::{ConstString, bytes_as_any};
 use concurrent::{ipc::{self, MESSAGE_DATA_SIZE}, process, thread};
 use runtime::*;
 use terminal::println;
@@ -162,5 +165,45 @@ pub fn main() {
             }
             thread::sleep(100);
         }
+    } else if command == "struct" {
+        
+        ipc::register_ipc_endpoint("ipctest_struct_recv");
+        thread::start_application("ipctest", vec!["struct_send"]);
+
+        thread::sleep(1500);
+
+        loop {
+            match ipc::receive() {
+                Some(msg) => {
+                    let my_struct: &MyStruct = unsafe { bytes_as_any(&*msg.data()) };
+                    println!("-- Receive --\n{:}", my_struct);
+                    break;
+                },
+                None => {}
+            }
+            thread::sleep(300);
+        }
+
+    } else if command == "struct_send" {
+        let my_struct = MyStruct {
+            a: 42,
+            b: -67,
+            c: ConstString::from("Hello World!"),
+        };
+        println!("-- Sender --\n{:}", my_struct);
+        ipc::send_struct("ipctest_struct_recv", "test", &my_struct);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MyStruct {
+    a: usize,
+    b: i16,
+    c: ConstString<32>,
+}
+
+impl Display for MyStruct {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "( a: {}, b: {}, c: {} )", self.a, self.b, self.c)
     }
 }

@@ -278,6 +278,12 @@ pub fn send_with_tag<T: IpcMessageContent>(service: &str, msg_name: &str, tag: &
     send_internal(service, msg_name, tag, bytes)
 }
 
+pub fn send_struct<T: Copy>(service: &str, msg_name: &str, message: &T) -> SyscallResult {
+    let bytes = unsafe { any_as_bytes(message) };
+    let tag = core::any::type_name_of_val(message);
+    send_internal(service, msg_name, tag, bytes)
+} 
+
 pub fn answer<T: IpcMessageContent>(original_message: &IpcMessage, message: T) -> SyscallResult {
     let bytes = message.to_bytes();
     send_internal(&format!("callback-{}", original_message.sender_pid), &format!("answer-{}", original_message.name), message.tag(), bytes)
@@ -318,6 +324,24 @@ pub fn receive_blocking(timeout_ms: usize) -> Result<IpcMessageWrapper, syscall:
         Ok(_) => receive().ok_or(syscall::return_vals::Errno::EEXIST),
         Err(e) => Err(e),
     }
+}
+
+/// Reinterprets an arbitrary struct T into bytes.
+///
+/// # Safety
+///
+/// Uses `core::slice::from_raw_parts internally`. Check its docs for the safety requirements.
+pub unsafe fn any_as_bytes<T>(any: &T) -> &[u8] {
+    unsafe { core::slice::from_raw_parts((any as *const T) as *const u8, size_of::<T>()) }
+}
+
+/// Reinterprets a byte slice into an arbitrary struct T.
+///
+/// # Safety
+///
+/// Manually dereferences the byte slice into the struct T. Will probably only work correctly when uses on a byte slice created by `any_as_bytes`.
+pub unsafe fn bytes_as_any<T>(bytes: &[u8]) -> &T {
+    unsafe { &*(bytes.as_ptr() as *const T) }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -378,6 +402,24 @@ impl<const T: usize> Default for ConstString<T> {
 impl <const T: usize> From<[u8; T]> for ConstString<T> {
     fn from(value: [u8; T]) -> Self {
         Self { buffer: value, len: value.len() }
+    }
+}
+
+impl <const T: usize> From<&str> for ConstString<T> {
+    fn from(value: &str) -> Self {
+        let mut buffer = [0_u8; T];
+        let l = core::cmp::min(value.len(), T);
+        buffer[..l].copy_from_slice(&value.as_bytes()[..l]);
+        Self { buffer, len: value.len() }
+    }
+}
+
+impl <const T: usize> From<&[u8]> for ConstString<T> {
+    fn from(value: &[u8]) -> Self {
+        let mut buffer = [0_u8; T];
+        let l = core::cmp::min(value.len(), T);
+        buffer[..l].copy_from_slice(&value[..l]);
+        Self { buffer, len: value.len() }
     }
 }
 

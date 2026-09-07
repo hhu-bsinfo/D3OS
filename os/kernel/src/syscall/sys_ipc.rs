@@ -1,9 +1,9 @@
 use core::str;
 
-use alloc::vec::Vec;
 use alloc::{format, slice};
-use concurrent::ipc::{IpcQueue, IpcSyscallParams};
-use naming::shared_types::{DirEntry, OpenOptions, RawDirent};
+use concurrent::ipc::{IpcQueue, IpcSyscallParams, MESSAGE_DATA_SIZE};
+use log::error;
+use naming::shared_types::OpenOptions;
 use syscall::return_vals::{self, SyscallResult};
 use uuid::Uuid;
 
@@ -64,6 +64,13 @@ pub fn remove_enpoints_for_process(process_id: &Uuid) {
 pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isize {
 
     let params = unsafe { &*params_ptr };
+            
+    let message = unsafe { core::slice::from_raw_parts(params.data_ptr, params.data_len) };
+
+    if message.len() > MESSAGE_DATA_SIZE {
+        error!("ipc message is to large, aborting...");
+        return return_vals::convert_syscall_result_to_ret_code(Err(return_vals::Errno::EINVAL));
+    }
     
     let service_name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.service_name_ptr, params.service_name_len)) };
     
@@ -77,8 +84,6 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
 
         let ipc_queue_ptr = service.ipc_queue_addr as *const IpcQueue;
         if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_ref() } {
-            
-            let message = unsafe { core::slice::from_raw_parts(params.data_ptr, params.data_len) };
             let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
             let msg_type = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_type_ptr, params.msg_type_len)) };
             let res = ipc_queue.send(name, msg_type, message, &scheduler().current_thread().process().id());
