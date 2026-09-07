@@ -136,6 +136,16 @@ pub fn close(object_handle: usize) -> Result<usize, Errno> {
     open_objects::close(object_handle)
 }
 
+/// Delete the named object referenced by `object_handle`.
+pub fn delete(object_handle: usize) -> Result<usize, Errno> {
+    open_objects::delete(object_handle)
+}
+
+/// List named objects in the provided directory.
+pub fn list_dir(dir_handle: usize) -> Result<Vec<(super::traits::NamedObject, String)>, Errno> {
+    open_objects::list_dir(dir_handle)
+}
+
 /// Create a directory for the given `path`. \
 /// Returns `Ok(0)` or `Err(errno)`
 pub fn mkdir(path: &str) -> Result<usize, Errno> {

@@ -262,6 +262,12 @@ pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, syscall::return_va
     syscall(SystemCall::IpcRegister, &[name_ptr as usize, name_len])
 }
 
+pub fn remove_ipc_endpoint(svc_name: &str) -> Result<usize, syscall::return_vals::Errno> {
+    let name_ptr = svc_name.as_ptr();
+    let name_len = svc_name.len();
+    syscall(SystemCall::IpcDelete, &[name_ptr as usize, name_len])
+}
+
 pub fn send<T: IpcMessageContent>(service: &str, msg_name: &str, message: T) -> SyscallResult {
     let bytes: &[u8] = message.to_bytes();
     send_internal(service, msg_name, message.tag(), bytes)
@@ -315,7 +321,7 @@ pub fn receive_blocking(timeout_ms: usize) -> Result<IpcMessageWrapper, syscall:
 }
 
 #[derive(Debug, Clone, Copy)]
-/// nul-terminated const sized string
+/// nul-terminated, const sized string
 pub struct ConstString<const T: usize> {
     buffer: [u8; T],
     len: usize,

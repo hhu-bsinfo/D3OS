@@ -1,11 +1,15 @@
 use core::str;
 
+use alloc::vec::Vec;
 use alloc::{format, slice};
 use concurrent::ipc::{IpcQueue, IpcSyscallParams};
-use naming::shared_types::OpenOptions;
+use naming::shared_types::{DirEntry, OpenOptions, RawDirent};
 use syscall::return_vals::{self, SyscallResult};
+use uuid::Uuid;
 
-use crate::{consts, naming::api, process::core_local_storage::scheduler, sync::wait_queue::WaitQueue, timer};
+use crate::naming::api as nameservice;
+use crate::naming::servicefs::ServiceObject;
+use crate::{consts, process::core_local_storage::scheduler, sync::wait_queue::WaitQueue, timer};
 
 static WAIT_QUEUE: WaitQueue = WaitQueue::new();
 
@@ -15,12 +19,45 @@ pub extern "sysv64" fn sys_ipc_register(name_ptr: *const u8, name_len: usize) ->
     let name = str::from_utf8(bytes).unwrap();
 
     // create a file in /svc/<name> to register this process' ipc endpoint
-    match api::open(&format!("/svc/{}", name), OpenOptions::CREATE) {
+    match nameservice::open(&format!("/svc/{}", name), OpenOptions::CREATE) {
         Ok(fh) => {
-            api::close(fh);
+            nameservice::close(fh);
             return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(0))
         }
         Err(err) => return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(err))
+    }
+}
+
+pub extern "sysv64" fn sys_ipc_delete(name_ptr: *const u8, name_len: usize) -> isize {
+    
+    let bytes = unsafe { slice::from_raw_parts(name_ptr, name_len) };
+    let name = str::from_utf8(bytes).unwrap();
+
+    // remove the file in /svc/<name> to delete this process' ipc endpoint
+    match nameservice::open(&format!("/svc/{}", name), OpenOptions::READWRITE) {
+        Ok(fh) => {
+            nameservice::delete(fh);
+            return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(0))
+        }
+        Err(err) => return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(err))
+    }
+}
+
+pub fn remove_enpoints_for_process(process_id: &Uuid) {
+    if let Ok(svc_fh) = nameservice::open("/svc", OpenOptions::DIRECTORY) {
+        // get all services
+        if let Ok(list) = nameservice::list_dir(svc_fh) {
+            for (_, name) in list {
+                if let Ok(fh) = nameservice::open(&format!("/svc/{}", name), OpenOptions::READWRITE) {
+                    let mut buf = [0_u8; core::mem::size_of::<ServiceObject>()];
+                    nameservice::read(fh, &mut buf);
+                    let service = unsafe { &(*(buf.as_ptr() as *const ServiceObject)).service };
+                    if service.owning_pid == *process_id {
+                        nameservice::delete(fh);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -30,15 +67,15 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
     
     let service_name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.service_name_ptr, params.service_name_len)) };
     
-    if let Ok(fh) = api::open(&format!("/svc/{}", service_name), OpenOptions::READONLY) {
+    if let Ok(fh) = nameservice::open(&format!("/svc/{}", service_name), OpenOptions::READONLY) {
 
-        // read usize using u8 buffer
-        let mut buf = [0_u8; 8];
-        let _res = api::read(fh, buf.as_mut_slice());
-        api::close(fh);
-        let ipc_queue_addr = usize::from_le_bytes(buf);
+        // read ServiceObject using u8 buffer
+        let mut buf = [0_u8; core::mem::size_of::<ServiceObject>()];
+        let _res = nameservice::read(fh, buf.as_mut_slice());
+        nameservice::close(fh);
+        let service = unsafe { &(*(buf.as_ptr() as *const ServiceObject)).service };
 
-        let ipc_queue_ptr = ipc_queue_addr as *const IpcQueue;
+        let ipc_queue_ptr = service.ipc_queue_addr as *const IpcQueue;
         if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_ref() } {
             
             let message = unsafe { core::slice::from_raw_parts(params.data_ptr, params.data_len) };

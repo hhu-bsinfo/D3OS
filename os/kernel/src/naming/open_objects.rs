@@ -9,6 +9,7 @@
 */
 
 use alloc::boxed::Box;
+use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::result::Result;
@@ -16,6 +17,8 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Once;
 use spin::rwlock::RwLock;
 use log::info;
+
+use crate::naming::traits::DirectoryObject;
 
 use super::lookup;
 use super::traits::NamedObject;
@@ -44,7 +47,7 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
     if result.is_err() {
         return Err(Errno::ENOENT);
     }
-    let found_named_object: NamedObject = result.unwrap();
+    let (found_named_object, parent_dir) = result.unwrap();
 
     // check if path is a directory and this was requested
     if flags.contains(OpenOptions::DIRECTORY) {
@@ -65,8 +68,11 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
         }
     }
 
+    // get object name from path
+    let object_name = lookup::get_filename_from_path(path).to_string();
+
     // try to allocate an new handle
-    get_open_object_table().allocate_handle(Arc::new(OpenedObject::new(Arc::new(found_named_object), AtomicUsize::new(0), flags)))
+    get_open_object_table().allocate_handle(Arc::new(OpenedObject::new(Arc::new(found_named_object), object_name, AtomicUsize::new(0), flags, parent_dir)))
 }
 
 pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
@@ -169,6 +175,28 @@ pub(super) fn close(fh: usize) -> Result<usize, Errno> {
     get_open_object_table().free_handle(fh)
 }
 
+/// delete an opened object and free its handle
+pub(super) fn delete(fh: usize) -> Result<usize, Errno> {
+    info!("delete called for fh={}", fh);
+    if let Ok(opened_object) = get_open_object_table().lookup_opened_object(fh) {
+        opened_object.delete();
+    }
+    get_open_object_table().free_handle(fh)
+}
+
+pub(super) fn list_dir(fh: usize) -> Result<Vec<(NamedObject, String)>, Errno> {
+    info!("lsdir called for fh={}", fh);
+    if let Ok(opened_object) = get_open_object_table().lookup_opened_object(fh) {
+        if let Ok(dir) = opened_object.named_object.as_dir() {
+            dir.list()
+        } else {
+            Err(Errno::ENOTDIR)
+        }
+    } else {
+        Err(Errno::EEXIST)
+    }
+}
+
 /*pub(super) fn dump() {
     get_open_object_table().lock().dump();
 }*/
@@ -256,12 +284,26 @@ fn get_open_object_table() -> Arc<OpenObjectTable> {
 /// (includes NamedObject, current position within object, and options)
 pub struct OpenedObject {
     named_object: Arc<NamedObject>,
+    name: String,
     pos: AtomicUsize, // current position within file or number of next DirEntry
     options: OpenOptions,
+    parent: Option<Arc<dyn DirectoryObject>>, // parent directory
 }
 
 impl OpenedObject {
-    pub fn new(named_object: Arc<NamedObject>, pos: AtomicUsize, options: OpenOptions) -> OpenedObject {
-        OpenedObject { named_object, pos, options }
+    pub fn new(named_object: Arc<NamedObject>, name: String, pos: AtomicUsize, options: OpenOptions, parent: Option<Arc<dyn DirectoryObject>>) -> OpenedObject {
+        OpenedObject { named_object, name, pos, options, parent }
+    }
+    pub fn delete(&self) -> Result<(), Errno> {
+        if let Some(parent_dir) = &self.parent {
+            match Arc::as_ref(&self.named_object) {
+                NamedObject::FileObject(_) => parent_dir.delete_file(&self.name),
+                NamedObject::PipeObject(_) => parent_dir.delete_pipe(&self.name),
+                NamedObject::DirectoryObject(_) => parent_dir.delete_dir(&self.name),
+            }
+        } else {
+            // TODO: allow deleting root directories
+            Err(Errno::EACCES)
+        }
     }
 }

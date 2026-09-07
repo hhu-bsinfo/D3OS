@@ -17,7 +17,7 @@ use syscall::return_vals::Errno;
 
 /// Resolves an absolute path into an `DirectoryLike`
 pub(super) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errno> {
-    match lookup_named_object(path)? {
+    match lookup_named_object(path)?.0 {
         NamedObject::DirectoryObject(dir) => Ok(dir),
         NamedObject::FileObject(_) => Err(Errno::ENOTDIR),
         NamedObject::PipeObject(_) => Err(Errno::ENOTDIR),
@@ -26,14 +26,14 @@ pub(super) fn lookup_dir(path: &String) -> Result<Arc<dyn DirectoryObject>, Errn
 
 
 /// Resolves absolute `path` into a named object. \
-/// Returns `Ok(NamedObject)` or `Err`
-pub(super) fn lookup_named_object(path: &str) -> Result<NamedObject, Errno> {
+/// Returns `Ok(NamedObject, ParentDir)` or `Err`
+pub(super) fn lookup_named_object(path: &str) -> Result<(NamedObject, Option<Arc<dyn DirectoryObject>>), Errno> {
     let mut found_named_object;
 
     if check_absolute_path(path) {
         if path == "/" {
             found_named_object = traits::as_named_object(ROOT.get().unwrap().root_dir());
-            return Ok(found_named_object);
+            return Ok((found_named_object, None));
         }
         let mut components: Vec<&str> = path.split("/").collect();
         components.remove(0); // remove empty string at position 0
@@ -66,7 +66,8 @@ pub(super) fn lookup_named_object(path: &str) -> Result<NamedObject, Errno> {
                     let mounted_root = fs.root_dir();
                     if is_last {
                         // return if the path reached its end, and it is a mount point
-                        return Ok(traits::as_named_object(mounted_root));
+                        let parent_dir = Arc::clone(&mounted_root);
+                        return Ok((traits::as_named_object(mounted_root), Some(parent_dir)));
                     } else {
                         // switch to the mount point, and resolve the rest of the path
                         current_dir = mounted_root;
@@ -78,7 +79,7 @@ pub(super) fn lookup_named_object(path: &str) -> Result<NamedObject, Errno> {
 
             // if this is the last component, this must be a file or directory (see flags)
             if is_last {
-                return Ok(found_named_object.clone());
+                return Ok((found_named_object.clone(), Some(current_dir)));
             } else {
                 // if not last component, this must be a directory
                 if !found_named_object.is_dir() {
@@ -110,4 +111,16 @@ fn check_absolute_path(path: &str) -> bool {
         }
     }
     false
+}
+
+/// Helper function which returns a paths filename, i.e. its last component
+pub fn get_filename_from_path(path: &str) -> &str {
+    let components: Vec<&str> = path.split('/').collect();
+    // check for trailing '/' -- if present, return second to last component instead
+    let last = if path.chars().last() == Some('/') {
+        *components.get(components.len() - 2).unwrap_or(&"")
+    } else {
+        *components.last().unwrap_or(&"")
+    };
+    last
 }

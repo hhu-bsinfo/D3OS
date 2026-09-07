@@ -3,13 +3,15 @@ use concurrent::ipc::IpcQueue;
 use naming::shared_types::DirEntry;
 use spin::rwlock::RwLock;
 use syscall::return_vals::Errno;
+use uuid::Uuid;
 
 use crate::{consts, naming::{stat::Mode, traits::{DirectoryObject, FileObject, FileSystem, NamedObject}}, process::core_local_storage::scheduler};
 
 #[derive(Debug)]
-struct Service {
-    name: String,
-    ipc_queue_addr: usize,
+pub struct Service {
+    pub name: String,
+    pub ipc_queue_addr: usize,
+    pub owning_pid: Uuid,
 }
 
 pub struct ServiceFs {
@@ -32,7 +34,7 @@ impl FileSystem for ServiceFs {
 
 #[derive(Debug)]
 struct ServiceDirInner {
-    services: Vec<Service>,
+    services: Vec<Arc<Service>>,
 }
 
 #[derive(Debug)]
@@ -44,9 +46,17 @@ impl DirectoryObject for ServiceDir {
         // the current directory is /svc
         // check for /svc/<name>
         match self.0.read().services.iter().find(|svc| svc.name == name) {
-            Some(svc) => Ok(NamedObject::FileObject(Arc::new(ServiceObject { ipc_queue_addr: svc.ipc_queue_addr }))),
+            Some(svc) => Ok(NamedObject::FileObject(Arc::new(ServiceObject { service: Arc::clone(svc) }))),
             None => Err(Errno::ENOENT)
         }
+    }
+    
+    fn list(&self) -> Result<Vec<(NamedObject, String)>, Errno> {
+        let mut res = Vec::new();
+        for svc in self.0.read().services.iter() {
+            res.push((NamedObject::FileObject(Arc::new(ServiceObject { service: Arc::clone(svc) })), svc.name.clone()));
+        }
+        Ok(res)
     }
 
     fn readdir(&self, index: usize) -> Result<Option<DirEntry>, Errno> {
@@ -56,14 +66,15 @@ impl DirectoryObject for ServiceDir {
         }
     }
 
-    fn create_file(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno> {
-        let ipc_queue_addr = scheduler().current_thread()
-            .process()
+    fn create_file(&self, name: &str, _mode: Mode) -> Result<NamedObject, Errno> {
+        let process = scheduler().current_thread().process();
+        let ipc_queue_addr = process
             .virtual_address_space
             .translate_ptr(consts::USER_SPACE_MAILBOX_START as *const IpcQueue)
             .expect("IpcQueue isnt mapped into virt addr space") as usize;
-        self.0.write().services.push(Service { name: _name.to_string(), ipc_queue_addr });
-        Ok(NamedObject::FileObject(Arc::new(ServiceObject { ipc_queue_addr })))
+        let svc = Arc::new(Service { name: name.to_string(), ipc_queue_addr, owning_pid: process.id() });
+        self.0.write().services.push(Arc::clone(&svc));
+        Ok(NamedObject::FileObject(Arc::new(ServiceObject { service: svc })))
     }
 
     fn create_dir(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno> {
@@ -77,18 +88,40 @@ impl DirectoryObject for ServiceDir {
     fn stat(&self) -> Result<super::stat::Stat, Errno> {
         Err(Errno::ENOTSUP)
     }
+    
+    fn delete_file(&self, name: &str) -> Result<(), Errno> {
+        let mut svc_lock = self.0.write();
+        // check if service with name exists
+        if let Some(pos) = svc_lock.services.iter().position(|svc| svc.name == name) {
+            // remove service
+            svc_lock.services.swap_remove(pos);
+            Ok(())
+        } else {
+            // Error if service does not exist
+            Err(Errno::EEXIST)
+        }
+    }
+    
+    fn delete_dir(&self, _name: &str) -> Result<(), Errno> {
+        Err(Errno::ENOTSUP)
+    }
+    
+    fn delete_pipe(&self, _name: &str) -> Result<(), Errno> {
+        Err(Errno::ENOTSUP)
+    }
 }
 
 #[derive(Debug)]
 pub struct ServiceObject {
-    ipc_queue_addr: usize, // phys addr of ipc queue
+    pub service: Arc<Service>,
 }
 
 impl FileObject for ServiceObject {
     
-    /// read phys addr of IpcQueue into _buf
-    fn read(&self, _buf: &mut [u8], _offset: usize, _options: naming::shared_types::OpenOptions) -> Result<usize, syscall::return_vals::Errno> {
-        _buf.copy_from_slice(&self.ipc_queue_addr.to_le_bytes());
+    /// read `ServiceObject` into `buf`
+    fn read(&self, buf: &mut [u8], _offset: usize, _options: naming::shared_types::OpenOptions) -> Result<usize, syscall::return_vals::Errno> {
+        let selfslice = unsafe { core::slice::from_raw_parts((self as *const Self) as *const u8, core::mem::size_of::<Self>()) };
+        buf.copy_from_slice(selfslice);
         Ok(0)
     }
 
