@@ -9,14 +9,18 @@
 #![no_std]
 #![feature(variant_count)]
 
+pub mod return_vals;
+pub mod syscall_args;
+
 use core::mem;
 use crate::return_vals::SyscallResult;
+use crate::syscall_args::SyscallArgs;
 
-pub mod return_vals;
 
 /// Enum with all known system calls
 #[repr(u16)] // Cannot use full size of rax, because ax is needed to set up fs/gs in syscall_handler()
 #[allow(dead_code)]
+#[derive(Clone, Copy)]
 pub enum SystemCall {
     TerminalReadInput = 0,
     TerminalWriteInput,
@@ -90,22 +94,18 @@ pub const NUM_SYSCALLS: usize = mem::variant_count::<SystemCall>() as usize;
 ///    success >= 0 \
 ///    error, codes defined in consts.rs
 #[cfg(all(target_arch = "x86_64", feature = "userspace"))]
-pub fn syscall(call: SystemCall, args: &[usize]) -> SyscallResult {
+pub fn syscall<T: SyscallArgs>(call: SystemCall, syscall_args: &T) -> SyscallResult {
     use core::arch::asm;
     use return_vals::convert_ret_code_to_syscall_result;
 
     let ret_code: isize;
 
-    if args.len() > 6 {
-        panic!("System calls with more than 6 params are not supported.");
-    }
-
-    let a0 = *args.first().unwrap_or(&0usize);
-    let a1 = *args.get(1).unwrap_or(&0usize);
-    let a2 = *args.get(2).unwrap_or(&0usize);
-    let a3 = *args.get(3).unwrap_or(&0usize);
-    let a4 = *args.get(4).unwrap_or(&0usize);
-    let a5 = *args.get(5).unwrap_or(&0usize);
+    let a0 = syscall_args.arg(0);
+    let a1 = syscall_args.arg(1);
+    let a2 = syscall_args.arg(2);
+    let a3 = syscall_args.arg(3);
+    let a4 = syscall_args.arg(4);
+    let a5 = syscall_args.arg(5);
 
     #[cfg(target_arch = "x86_64")]
     unsafe {

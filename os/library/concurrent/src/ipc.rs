@@ -206,7 +206,28 @@ impl IpcMessageContent for &[u8] {
     }
 }
 
+impl<const N: usize> IpcMessageContent for &[u8; N] {
+    fn to_bytes(&self) -> &[u8] {
+        self.as_slice()
+    }
+    fn tag(&self) -> &str {
+        "SIMPLE"
+    }
+}
+
 impl IpcMessageContent for &[usize] {
+    fn to_bytes(&self) -> &[u8] {
+        let ptr = self.as_ptr() as *const u8;
+        let l = core::mem::size_of_val(*self);
+        // alignment should be safe, because usize alignment should always include u8 alignment
+        unsafe { core::slice::from_raw_parts(ptr, l) }
+    }
+    fn tag(&self) -> &str {
+        "USIZE"
+    }
+}
+
+impl<const N: usize> IpcMessageContent for &[usize; N] {
     fn to_bytes(&self) -> &[u8] {
         let ptr = self.as_ptr() as *const u8;
         let l = core::mem::size_of_val(*self);
@@ -282,7 +303,7 @@ pub fn send_struct<T: Copy>(service: &str, msg_name: &str, message: &T) -> Sysca
     let bytes = unsafe { any_as_bytes(message) };
     let tag = core::any::type_name_of_val(message);
     send_internal(service, msg_name, tag, bytes)
-} 
+}
 
 pub fn answer<T: IpcMessageContent>(original_message: &IpcMessage, message: T) -> SyscallResult {
     let bytes = message.to_bytes();
