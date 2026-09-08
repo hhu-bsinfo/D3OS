@@ -10,7 +10,7 @@ use modular_bitfield_msb::{
     prelude::{B10, B11, B21, B24, B28, B3, B4, B40, B7},
 };
 use zerocopy::AsBytes;
-use rdma::ibv_access_flags;
+use rdma::AccessFlags;
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
@@ -383,7 +383,7 @@ impl MrTable {
     /// This is used by ibv_reg_mr.
     pub(super) fn alloc_dmpt<T>(
         &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, pd: ProtectionDomainHandle, data: &mut [T], queue_pair: Option<&QueuePair>,
-        access: ibv_access_flags,
+        access: AccessFlags,
     ) -> Result<DataMemoryProtectionTable, &'static str> {
         assert!(!data.is_empty());
         let size = data.len() * size_of::<T>();
@@ -417,13 +417,13 @@ impl MrTable {
         dmpt.set_region(true);
         // local read is always allowed
         dmpt.set_local_read(true);
-        if access.contains(ibv_access_flags::IBV_ACCESS_LOCAL_WRITE) {
+        if access.contains(AccessFlags::LOCAL_WRITE) {
             dmpt.set_local_write(true);
         }
-        if access.contains(ibv_access_flags::IBV_ACCESS_REMOTE_READ) {
+        if access.contains(AccessFlags::REMOTE_READ) {
             dmpt.set_remote_read(true);
         }
-        if access.contains(ibv_access_flags::IBV_ACCESS_REMOTE_WRITE) {
+        if access.contains(AccessFlags::REMOTE_WRITE) {
             dmpt.set_remote_write(true);
         }
         let dmpt_index = dmpt.index();

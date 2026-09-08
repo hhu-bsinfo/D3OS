@@ -84,11 +84,6 @@ use core3::io;
 
 const PORT_NUM: u8 = 1;
 
-/// Direct access to low-level libverbs FFI.
-pub use ffi::ibv_mtu;
-pub use ffi::ibv_qp_type;
-pub use ffi::ibv_wc;
-
 #[cfg(feature = "serialize")]
 use bincode::{Decode, Encode};
 use log::error;
@@ -96,7 +91,11 @@ use log::error;
 use serde::{Deserialize, Serialize};
 
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
-pub use ffi::ibv_access_flags;
+pub use rdma::AccessFlags;
+pub use rdma::{Mtu, Gid};
+use rdma::{QueuePairType, ScatterGatherEntry};
+use crate::completion_queue::WorkCompletion;
+use crate::queue_pair::WorkRequestOpcode;
 use rdma::ProtectionDomainHandle;
 
 /// Because `std::slice::SliceIndex` is still unstable, we follow @alexcrichton's suggestion in
@@ -104,6 +103,8 @@ use rdma::ProtectionDomainHandle;
 pub mod sliceindex;
 pub mod cmd;
 mod provider;
+pub mod completion_queue;
+pub mod queue_pair;
 
 /// Get list of available RDMA devices.
 ///
@@ -117,7 +118,7 @@ pub fn devices() -> io::Result<DeviceList> {
 }
 
 /// List of available RDMA devices.
-pub struct DeviceList(Vec<ffi::ibv_device>);
+pub struct DeviceList(Vec<ffi::Device>);
 
 unsafe impl Sync for DeviceList {}
 unsafe impl Send for DeviceList {}
@@ -170,12 +171,12 @@ impl<'iter> Iterator for DeviceListIter<'iter> {
 }
 
 /// An RDMA device.
-pub struct Device<'devlist>(&'devlist ffi::ibv_device);
+pub struct Device<'devlist>(&'devlist ffi::Device);
 unsafe impl<'devlist> Sync for Device<'devlist> {}
 unsafe impl<'devlist> Send for Device<'devlist> {}
 
-impl<'d> From<&'d ffi::ibv_device> for Device<'d> {
-    fn from(d: &'d ffi::ibv_device) -> Self {
+impl<'d> From<&'d ffi::Device> for Device<'d> {
+    fn from(d: &'d ffi::Device) -> Self {
         Device(d)
     }
 }
@@ -221,12 +222,6 @@ impl From<Guid> for u64 {
     }
 }
 
-impl AsRef<ffi::__be64> for Guid {
-    fn as_ref(&self) -> &ffi::__be64 {
-        unsafe { &*self.raw.as_ptr().cast::<ffi::__be64>() }
-    }
-}
-
 impl<'devlist> Device<'devlist> {
     /// Opens an RMDA device and creates a context for further use.
     ///
@@ -252,7 +247,7 @@ impl<'devlist> Device<'devlist> {
     /// anything that intends to transfer data but useless for diagnostics: it means the port
     /// cannot be inspected exactly when something has gone wrong with it. This skips both that
     /// check and the GID query (whose result is only defined for an active port).
-    pub fn port_attr(&self) -> io::Result<ffi::ibv_port_attr> {
+    pub fn port_attr(&self) -> io::Result<ffi::PortAttr> {
         open_device(&self.0)?.query_port(PORT_NUM)
     }
 
@@ -310,7 +305,7 @@ impl<'devlist> Device<'devlist> {
 /// An RDMA context bound to a device.
 pub struct Context {
     inner: Arc<dyn IbvContext>,
-    port_attr: ffi::ibv_port_attr,
+    port_attr: ffi::PortAttr,
     gid: Gid,
 }
 
@@ -319,7 +314,7 @@ unsafe impl Send for Context {}
 
 impl Context {
     /// Opens a context for the given device, and queries its port and gid.
-    fn with_device(dev: &ffi::ibv_device) -> io::Result<Context> {
+    fn with_device(dev: &ffi::Device) -> io::Result<Context> {
 
         let ctx = open_device(dev)?;
 
@@ -339,7 +334,7 @@ impl Context {
         //   table is indeterminate.
         //
         match port_attr.state {
-            ffi::ibv_port_state::IBV_PORT_ACTIVE | ffi::ibv_port_state::IBV_PORT_ARMED => {}
+            ffi::PortState::Active | ffi::PortState::Armed => {}
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
@@ -399,11 +394,11 @@ impl Context {
         Ok(ProtectionDomain { ctx: self, pd })
     }
 
-    pub fn query_port(&self) -> &ffi::ibv_port_attr {
+    pub fn query_port(&self) -> &ffi::PortAttr {
         &self.port_attr
     }
 
-    pub fn query_device(&self) -> io::Result<ffi::ibv_device_attr> {
+    pub fn query_device(&self) -> io::Result<ffi::DeviceAttr> {
         self.inner.query_device()
     }
 }
@@ -440,8 +435,8 @@ impl CompletionQueue {
     #[inline]
     pub fn poll<'c>(
         &self,
-        completions: &'c mut [ffi::ibv_wc],
-    ) -> io::Result<&'c mut [ffi::ibv_wc]> {
+        completions: &'c mut [WorkCompletion],
+    ) -> io::Result<&'c mut [WorkCompletion]> {
         // TODO: from http://www.rdmamojo.com/2013/02/15/ibv_poll_cq/
         //
         //   One should consume Work Completions at a rate that prevents the CQ from being overrun
@@ -471,13 +466,13 @@ pub struct QueuePairBuilder<'res> {
     send: &'res CompletionQueue,
     recv: &'res CompletionQueue,
 
-    cap: ffi::ibv_qp_cap,
+    cap: ffi::QueuePairCapabilities,
 
-    qp_type: ffi::ibv_qp_type::Type,
+    qp_type: QueuePairType,
 
     // carried along to handshake phase
     /// only valid for RC and UC
-    access: Option<ffi::ibv_access_flags>,
+    access: Option<ffi::AccessFlags>,
     /// only valid for RC
     timeout: Option<u8>,
     /// only valid for RC
@@ -491,7 +486,7 @@ pub struct QueuePairBuilder<'res> {
     /// only valid for RC
     max_dest_rd_atomic: Option<u8>,
     /// only valid for RC and UC
-    path_mtu: Option<ibv_mtu>,
+    path_mtu: Option<Mtu>,
     /// only valid for RC and UC
     rq_psn: Option<u32>,
 }
@@ -513,8 +508,8 @@ impl<'res> QueuePairBuilder<'res> {
         pd: &'pd ProtectionDomain<'ctx>,
         send: &'scq CompletionQueue,
         recv: &'rcq CompletionQueue,
-        qp_type: ffi::ibv_qp_type::Type,
-        cap: ffi::ibv_qp_cap
+        qp_type: QueuePairType,
+        cap: ffi::QueuePairCapabilities
     ) -> QueuePairBuilder<'res>
     where
         'scq: 'res,
@@ -525,8 +520,8 @@ impl<'res> QueuePairBuilder<'res> {
         'pd: 'ctx,
         'res: 'ctx,
     {
-        let path_mtu = (qp_type == ffi::ibv_qp_type::IBV_QPT_RC
-                || qp_type == ffi::ibv_qp_type::IBV_QPT_UC)
+        let path_mtu = (qp_type == QueuePairType::RC
+                || qp_type == QueuePairType::UC)
                 .then_some(pd.ctx.port_attr.active_mtu);
         QueuePairBuilder {
             ctx: 0,
@@ -538,18 +533,18 @@ impl<'res> QueuePairBuilder<'res> {
 
             qp_type,
 
-            access: (qp_type == ffi::ibv_qp_type::IBV_QPT_RC
-                || qp_type == ffi::ibv_qp_type::IBV_QPT_UC)
-                .then_some(ffi::ibv_access_flags::IBV_ACCESS_LOCAL_WRITE),
-            min_rnr_timer: (qp_type == ffi::ibv_qp_type::IBV_QPT_RC).then_some(16),
-            retry_count: (qp_type == ffi::ibv_qp_type::IBV_QPT_RC).then_some(6),
-            rnr_retry: (qp_type == ffi::ibv_qp_type::IBV_QPT_RC).then_some(6),
-            timeout: (qp_type == ffi::ibv_qp_type::IBV_QPT_RC).then_some(4),
-            max_rd_atomic: (qp_type == ffi::ibv_qp_type::IBV_QPT_RC).then_some(1),
-            max_dest_rd_atomic: (qp_type == ffi::ibv_qp_type::IBV_QPT_RC).then_some(1),
+            access: (qp_type == QueuePairType::RC
+                || qp_type == QueuePairType::UC)
+                .then_some(ffi::AccessFlags::LOCAL_WRITE),
+            min_rnr_timer: (qp_type == QueuePairType::RC).then_some(16),
+            retry_count: (qp_type == QueuePairType::RC).then_some(6),
+            rnr_retry: (qp_type == QueuePairType::RC).then_some(6),
+            timeout: (qp_type == QueuePairType::RC).then_some(4),
+            max_rd_atomic: (qp_type == QueuePairType::RC).then_some(1),
+            max_dest_rd_atomic: (qp_type == QueuePairType::RC).then_some(1),
             path_mtu,
-            rq_psn: (qp_type == ffi::ibv_qp_type::IBV_QPT_RC
-                || qp_type == ffi::ibv_qp_type::IBV_QPT_UC)
+            rq_psn: (qp_type == QueuePairType::RC
+                || qp_type == QueuePairType::UC)
                 .then_some(0),
         }
     }
@@ -559,9 +554,9 @@ impl<'res> QueuePairBuilder<'res> {
     /// Valid only for RC and UC QPs.
     ///
     /// Defaults to `IBV_ACCESS_LOCAL_WRITE`.
-    pub fn set_access(&mut self, access: ffi::ibv_access_flags) -> &mut Self {
-        if self.qp_type == ffi::ibv_qp_type::IBV_QPT_RC
-            || self.qp_type == ffi::ibv_qp_type::IBV_QPT_UC
+    pub fn set_access(&mut self, access: ffi::AccessFlags) -> &mut Self {
+        if self.qp_type == QueuePairType::RC
+            || self.qp_type == QueuePairType::UC
         {
             self.access = Some(access);
         }
@@ -572,13 +567,13 @@ impl<'res> QueuePairBuilder<'res> {
     ///
     /// Valid only for RC and UC QPs.
     pub fn allow_remote_rw(&mut self) -> &mut Self {
-        if self.qp_type == ffi::ibv_qp_type::IBV_QPT_RC
-            || self.qp_type == ffi::ibv_qp_type::IBV_QPT_UC
+        if self.qp_type == QueuePairType::RC
+            || self.qp_type == QueuePairType::UC
         {
             self.access = Some(
                 self.access.expect("always set to Some in new")
-                    | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_WRITE
-                    | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_READ,
+                    | ffi::AccessFlags::REMOTE_WRITE
+                    | ffi::AccessFlags::REMOTE_READ,
             );
         }
         self
@@ -627,7 +622,7 @@ impl<'res> QueuePairBuilder<'res> {
     ///  - 30 - 327.68 ms delay
     ///  - 31 - 491.52 ms delay
     pub fn set_min_rnr_timer(&mut self, timer: u8) -> &mut Self {
-        if self.qp_type == ffi::ibv_qp_type::IBV_QPT_RC {
+        if self.qp_type == QueuePairType::RC {
             self.min_rnr_timer = Some(timer);
         }
         self
@@ -678,7 +673,7 @@ impl<'res> QueuePairBuilder<'res> {
     ///  - 30 - 4400 s
     ///  - 31 - 8800 s
     pub fn set_timeout(&mut self, timeout: u8) -> &mut Self {
-        if self.qp_type == ffi::ibv_qp_type::IBV_QPT_RC {
+        if self.qp_type == QueuePairType::RC {
             self.timeout = Some(timeout);
         }
         self
@@ -694,7 +689,7 @@ impl<'res> QueuePairBuilder<'res> {
     ///
     /// Panics if a count higher than 7 is given.
     pub fn set_retry_count(&mut self, count: u8) -> &mut Self {
-        if self.qp_type == ffi::ibv_qp_type::IBV_QPT_RC {
+        if self.qp_type == QueuePairType::RC {
             assert!(count <= 7);
             self.retry_count = Some(count);
         }
@@ -712,7 +707,7 @@ impl<'res> QueuePairBuilder<'res> {
     ///
     /// Panics if a limit higher than 7 is given.
     pub fn set_rnr_retry(&mut self, n: u8) -> &mut Self {
-        if self.qp_type == ffi::ibv_qp_type::IBV_QPT_RC {
+        if self.qp_type == QueuePairType::RC {
             assert!(n <= 7);
             self.rnr_retry = Some(n);
         }
@@ -724,7 +719,7 @@ impl<'res> QueuePairBuilder<'res> {
     /// This defaults to 1.
     /// Valid only for RC QPs.
     pub fn set_max_rd_atomic(&mut self, max_rd_atomic: u8) -> &mut Self {
-        if self.qp_type == ffi::ibv_qp_type::IBV_QPT_RC {
+        if self.qp_type == QueuePairType::RC {
             self.max_rd_atomic = Some(max_rd_atomic);
         }
         self
@@ -735,7 +730,7 @@ impl<'res> QueuePairBuilder<'res> {
     /// This defaults to 1.
     /// Valid only for RC QPs.
     pub fn set_max_dest_rd_atomic(&mut self, max_dest_rd_atomic: u8) -> &mut Self {
-        if self.qp_type == ffi::ibv_qp_type::IBV_QPT_RC {
+        if self.qp_type == QueuePairType::RC {
             self.max_dest_rd_atomic = Some(max_dest_rd_atomic);
         }
         self
@@ -751,9 +746,9 @@ impl<'res> QueuePairBuilder<'res> {
     ///  - 3: 1024
     ///  - 4: 2048
     ///  - 5: 4096
-    pub fn set_path_mtu(&mut self, path_mtu: ibv_mtu) -> &mut Self {
-        if self.qp_type == ffi::ibv_qp_type::IBV_QPT_RC
-            || self.qp_type == ffi::ibv_qp_type::IBV_QPT_UC
+    pub fn set_path_mtu(&mut self, path_mtu: Mtu) -> &mut Self {
+        if self.qp_type == QueuePairType::RC
+            || self.qp_type == QueuePairType::UC
         {
             self.path_mtu = Some(path_mtu);
         }
@@ -765,8 +760,8 @@ impl<'res> QueuePairBuilder<'res> {
     /// Defaults to 0.
     /// Valid only for RC and UC QPs.
     pub fn set_rq_psn(&mut self, rq_psn: u32) -> &mut Self {
-        if self.qp_type == ffi::ibv_qp_type::IBV_QPT_RC
-            || self.qp_type == ffi::ibv_qp_type::IBV_QPT_UC
+        if self.qp_type == QueuePairType::RC
+            || self.qp_type == QueuePairType::UC
         {
             self.rq_psn = Some(rq_psn);
         }
@@ -857,7 +852,7 @@ pub struct PreparedQueuePair<'res> {
 
     // carried from builder
     /// only valid for RC and UC
-    access: Option<ffi::ibv_access_flags>,
+    access: Option<ffi::AccessFlags>,
     /// only valid for RC
     min_rnr_timer: Option<u8>,
     /// only valid for RC
@@ -871,80 +866,9 @@ pub struct PreparedQueuePair<'res> {
     /// only valid for RC
     max_dest_rd_atomic: Option<u8>,
     /// only valid for RC and UC
-    path_mtu: Option<ibv_mtu>,
+    path_mtu: Option<Mtu>,
     /// only valid for RC and UC
     rq_psn: Option<u32>,
-}
-
-/// A Global identifier for ibv.
-///
-/// This struct acts as a rust wrapper for `ffi::ibv_gid`. We use it instead of
-/// `ffi::ibv_giv` because `ffi::ibv_gid` is actually an untagged union.
-///
-/// ```c
-/// union ibv_gid {
-///     uint8_t   raw[16];
-///     struct {
-///         __be64 subnet_prefix;
-///         __be64 interface_id;
-///     } global;
-/// };
-/// ```
-///
-/// It appears that `global` exists for convenience, but can be safely ignored.
-/// For continuity, the methods `subnet_prefix` and `interface_id` are provided.
-/// These methods read the array as big endian, regardless of native cpu
-/// endianness.
-#[cfg_attr(feature = "serialize", derive(Encode, Decode))]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Default, Copy, Clone, Debug, Eq, PartialEq, Hash)]
-#[repr(transparent)]
-pub struct Gid {
-    pub raw: [u8; 16],
-}
-
-impl Gid {
-    /// Expose the subnet_prefix component of the `Gid` as a u64. This is
-    /// equivalent to accessing the `global.subnet_prefix` component of the
-    /// `ffi::ibv_gid` union.
-    #[allow(dead_code)]
-    fn subnet_prefix(&self) -> u64 {
-        u64::from_be_bytes(self.raw[..8].try_into().unwrap())
-    }
-
-    /// Expose the interface_id component of the `Gid` as a u64. This is
-    /// equivalent to accessing the `global.interface_id` component of the
-    /// `ffi::ibv_gid` union.
-    #[allow(dead_code)]
-    fn interface_id(&self) -> u64 {
-        u64::from_be_bytes(self.raw[8..].try_into().unwrap())
-    }
-}
-
-impl From<ffi::ibv_gid> for Gid {
-    fn from(gid: ffi::ibv_gid) -> Self {
-        Self {
-            raw: gid.raw,
-        }
-    }
-}
-
-impl From<Gid> for ffi::ibv_gid {
-    fn from(mut gid: Gid) -> Self {
-        *gid.as_mut()
-    }
-}
-
-impl AsRef<ffi::ibv_gid> for Gid {
-    fn as_ref(&self) -> &ffi::ibv_gid {
-        unsafe { &*self.raw.as_ptr().cast::<ffi::ibv_gid>() }
-    }
-}
-
-impl AsMut<ffi::ibv_gid> for Gid {
-    fn as_mut(&mut self) -> &mut ffi::ibv_gid {
-        unsafe { &mut *self.raw.as_mut_ptr().cast::<ffi::ibv_gid>() }
-    }
 }
 
 /// An identifier for the network endpoint of a `QueuePair`.
@@ -1018,28 +942,28 @@ impl<'res> PreparedQueuePair<'res> {
     /// [RDMAmojo]: http://www.rdmamojo.com/2014/01/18/connecting-queue-pairs/
     pub fn handshake(mut self, remote: QueuePairEndpoint) -> io::Result<QueuePair> {
         // init and associate with port
-        let mut attr = ffi::ibv_qp_attr {
-            qp_state: ffi::ibv_qp_state::IBV_QPS_INIT,
+        let mut attr = ffi::QueuePairAttr {
+            qp_state: ffi::QueuePairtState::Init,
             pkey_index: 0,
             port_num: PORT_NUM,
             ..Default::default()
         };
-        let mut mask = ffi::ibv_qp_attr_mask::IBV_QP_STATE
-            | ffi::ibv_qp_attr_mask::IBV_QP_PKEY_INDEX
-            | ffi::ibv_qp_attr_mask::IBV_QP_PORT;
+        let mut mask = ffi::QueuePairAttrMask::IBV_QP_STATE
+            | ffi::QueuePairAttrMask::IBV_QP_PKEY_INDEX
+            | ffi::QueuePairAttrMask::IBV_QP_PORT;
         if let Some(access) = self.access {
             attr.qp_access_flags = access;
-            mask |= ffi::ibv_qp_attr_mask::IBV_QP_ACCESS_FLAGS;
+            mask |= ffi::QueuePairAttrMask::IBV_QP_ACCESS_FLAGS;
         }
         self.qp.inner.modify(&attr, mask)?;
 
         // set ready to receive
-        let mut attr = ffi::ibv_qp_attr {
-            qp_state: ffi::ibv_qp_state::IBV_QPS_RTR,
+        let mut attr = ffi::QueuePairAttr {
+            qp_state: ffi::QueuePairtState::ReadyToReceive,
             // TODO: this is only valid for RC and UC
             dest_qp_num: remote.num,
             // TODO: this is only valid for RC and UC
-            ah_attr: ffi::ibv_ah_attr {
+            ah_attr: ffi::AddressHandleAttr {
                 dlid: remote.lid,
                 sl: 0,
                 src_path_bits: 0,
@@ -1054,49 +978,49 @@ impl<'res> PreparedQueuePair<'res> {
             attr.ah_attr.grh.dgid = gid.into();
             attr.ah_attr.grh.hop_limit = 0xff;
         }
-        let mut mask = ffi::ibv_qp_attr_mask::IBV_QP_STATE
-            | ffi::ibv_qp_attr_mask::IBV_QP_AV
-            | ffi::ibv_qp_attr_mask::IBV_QP_DEST_QPN;
+        let mut mask = ffi::QueuePairAttrMask::IBV_QP_STATE
+            | ffi::QueuePairAttrMask::IBV_QP_AV
+            | ffi::QueuePairAttrMask::IBV_QP_DEST_QPN;
         if let Some(max_dest_rd_atomic) = self.max_dest_rd_atomic {
             attr.max_dest_rd_atomic = max_dest_rd_atomic;
-            mask |= ffi::ibv_qp_attr_mask::IBV_QP_MAX_DEST_RD_ATOMIC;
+            mask |= ffi::QueuePairAttrMask::IBV_QP_MAX_DEST_RD_ATOMIC;
         }
         if let Some(min_rnr_timer) = self.min_rnr_timer {
             attr.min_rnr_timer = min_rnr_timer;
-            mask |= ffi::ibv_qp_attr_mask::IBV_QP_MIN_RNR_TIMER;
+            mask |= ffi::QueuePairAttrMask::IBV_QP_MIN_RNR_TIMER;
         }
         if let Some(path_mtu) = self.path_mtu {
             attr.path_mtu = path_mtu;
-            mask |= ffi::ibv_qp_attr_mask::IBV_QP_PATH_MTU;
+            mask |= ffi::QueuePairAttrMask::IBV_QP_PATH_MTU;
         }
         if let Some(rq_psn) = self.rq_psn {
             attr.rq_psn = rq_psn;
-            mask |= ffi::ibv_qp_attr_mask::IBV_QP_RQ_PSN;
+            mask |= ffi::QueuePairAttrMask::IBV_QP_RQ_PSN;
         }
         self.qp.inner.modify(&attr, mask)?;
 
         // set ready to send
-        let mut attr = ffi::ibv_qp_attr {
-            qp_state: ffi::ibv_qp_state::IBV_QPS_RTS,
+        let mut attr = ffi::QueuePairAttr {
+            qp_state: ffi::QueuePairtState::ReadyToSend,
             sq_psn: 0,
             ..Default::default()
         };
-        let mut mask = ffi::ibv_qp_attr_mask::IBV_QP_STATE | ffi::ibv_qp_attr_mask::IBV_QP_SQ_PSN;
+        let mut mask = ffi::QueuePairAttrMask::IBV_QP_STATE | ffi::QueuePairAttrMask::IBV_QP_SQ_PSN;
         if let Some(timeout) = self.timeout {
             attr.timeout = timeout;
-            mask |= ffi::ibv_qp_attr_mask::IBV_QP_TIMEOUT;
+            mask |= ffi::QueuePairAttrMask::IBV_QP_TIMEOUT;
         }
         if let Some(retry_count) = self.retry_count {
             attr.retry_cnt = retry_count;
-            mask |= ffi::ibv_qp_attr_mask::IBV_QP_RETRY_CNT;
+            mask |= ffi::QueuePairAttrMask::IBV_QP_RETRY_CNT;
         }
         if let Some(rnr_retry) = self.rnr_retry {
             attr.rnr_retry = rnr_retry;
-            mask |= ffi::ibv_qp_attr_mask::IBV_QP_RNR_RETRY;
+            mask |= ffi::QueuePairAttrMask::IBV_QP_RNR_RETRY;
         }
         if let Some(max_rd_atomic) = self.max_rd_atomic {
             attr.max_rd_atomic = max_rd_atomic;
-            mask |= ffi::ibv_qp_attr_mask::IBV_QP_MAX_QP_RD_ATOMIC;
+            mask |= ffi::QueuePairAttrMask::IBV_QP_MAX_QP_RD_ATOMIC;
         }
         self.qp.inner.modify(&attr, mask)?;
 
@@ -1198,8 +1122,8 @@ impl<'ctx> ProtectionDomain<'ctx> {
         &'pd self,
         send: &'scq CompletionQueue,
         recv: &'rcq CompletionQueue,
-        qp_type: ffi::ibv_qp_type::Type,
-        cap: ffi::ibv_qp_cap
+        qp_type: QueuePairType,
+        cap: ffi::QueuePairCapabilities
     ) -> QueuePairBuilder<'res>
     where
         'scq: 'res,
@@ -1254,10 +1178,10 @@ impl<'ctx> ProtectionDomain<'ctx> {
         let mut data = Vec::with_capacity(n);
         data.resize(n, T::default());
 
-        let access = ffi::ibv_access_flags::IBV_ACCESS_LOCAL_WRITE
-            | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_WRITE
-            | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_READ
-            | ffi::ibv_access_flags::IBV_ACCESS_REMOTE_ATOMIC;
+        let access = ffi::AccessFlags::LOCAL_WRITE
+            | ffi::AccessFlags::REMOTE_WRITE
+            | ffi::AccessFlags::REMOTE_READ
+            | ffi::AccessFlags::REMOTE_ATOMIC;
 
         let metadata = self.ctx.inner.reg_mr(
             self.pd,
@@ -1333,7 +1257,7 @@ impl QueuePair {
         mr: &mut LocalMemoryRegion<'pd, T>,
         ranges: Vec<Vec<R>>,
         wr_ids: Vec<u64>,
-        send_flags: Vec<ffi::ibv_send_flags>
+        send_flags: Vec<ffi::SendFlags>
     ) -> io::Result<()>
     where
         R: sliceindex::SliceIndex<[T], Output = [T]>,
@@ -1352,7 +1276,7 @@ impl QueuePair {
 
             for slice in range {
                 let l = slice.index(mr);
-                let sge = ffi::ibv_sge {
+                let sge = ScatterGatherEntry {
                     addr: l.as_ptr() as u64,
                     length: mem::size_of_val(l) as u32,
                     lkey: mr.metadata.lkey,
@@ -1363,7 +1287,7 @@ impl QueuePair {
             wrs.push(SendWorkRequest {
                 wr_id,
                 sges: sg_list,
-                opcode: ffi::ibv_wr_opcode::IBV_WR_SEND,
+                opcode: WorkRequestOpcode::Send,
                 send_flags: wr_send_flags,
                 wr: Default::default(),
             });
@@ -1441,7 +1365,7 @@ impl QueuePair {
 
             for slice in range {
                 let l = slice.index(mr);
-                let sge = ffi::ibv_sge {
+                let sge = ScatterGatherEntry {
                     addr: l.as_ptr() as u64,
                     length: mem::size_of_val(l) as u32,
                     lkey: mr.metadata.lkey,
@@ -1510,7 +1434,7 @@ impl QueuePair {
         remote_mr: &mut RemoteMemoryRegion<T>,
         remote_ranges: Vec<Range<u64>>,
         wr_ids: Vec<u64>,
-        send_flags: Vec<ffi::ibv_send_flags>
+        send_flags: Vec<ffi::SendFlags>
     ) -> io::Result<()>
     where
         R: sliceindex::SliceIndex<[T], Output = [T]>,
@@ -1521,8 +1445,8 @@ impl QueuePair {
             local_mr,
             local_ranges,
             wr_ids,
-            ffi::ibv_wr_opcode::IBV_WR_RDMA_WRITE,
-        send_flags)
+            WorkRequestOpcode::RdmaWrite,
+            send_flags)
     }
 
     /// Posts a RDMA Read Work Request (WR) to the Send Queue of this Queue Pair.
@@ -1563,7 +1487,7 @@ impl QueuePair {
         local_mr: &mut LocalMemoryRegion<'pd, T>,
         local_ranges: Vec<Vec<R>>,
         wr_ids: Vec<u64>,
-        send_flags: Vec<ffi::ibv_send_flags>
+        send_flags: Vec<ffi::SendFlags>
     ) -> io::Result<()>
     where
         R: sliceindex::SliceIndex<[T], Output = [T]>,
@@ -1574,7 +1498,7 @@ impl QueuePair {
             local_mr,
             local_ranges,
             wr_ids,
-            ffi::ibv_wr_opcode::IBV_WR_RDMA_READ,
+            WorkRequestOpcode::RdmaRead,
             send_flags)
     }
 
@@ -1586,8 +1510,8 @@ impl QueuePair {
         local_mr: &mut LocalMemoryRegion<'pd, T>,
         mut local_ranges: Vec<Vec<R>>,
         mut wr_ids: Vec<u64>,
-        opcode: ffi::ibv_wr_opcode,
-        mut send_flags: Vec<ffi::ibv_send_flags>
+        opcode: WorkRequestOpcode,
+        mut send_flags: Vec<ffi::SendFlags>
     ) -> io::Result<()>
     where
         R: sliceindex::SliceIndex<[T], Output = [T]>,
@@ -1626,7 +1550,7 @@ impl QueuePair {
 
             for slice in local_range {
                 let l = slice.index(local_mr);
-                let sge = ffi::ibv_sge {
+                let sge = ScatterGatherEntry {
                     addr: l.as_ptr() as u64,
                     length: mem::size_of_val(l) as u32,
                     lkey: local_mr.metadata.lkey,
@@ -1647,7 +1571,7 @@ impl QueuePair {
                 sges: sg_list,
                 opcode,
                 send_flags: wr_send_flags,
-                wr: ffi::ibv_send_wr_wr::rdma {
+                wr: ffi::SendWorkRequestData::Rdma {
                     remote_addr: remote_start,
                     rkey: remote_mr.rkey,
                 },

@@ -8,7 +8,7 @@ use modular_bitfield_msb::{
     prelude::{B3, B5, B11, B28, B60, B84},
     specifiers::{B2, B4, B9, B48},
 };
-use rdma::{PhysicalPortState, ibv_mtu, ibv_port_attr, ibv_port_state};
+use rdma::{PhysicalPortState, Mtu, PortAttr, PortState};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use super::cmd::{CommandInterface, InputParam, MadIfcOpcodeModifier, Opcode, OutputParam, SetPortOpcodeModifier};
 use log::{debug, trace, warn};
@@ -25,7 +25,7 @@ pub struct Port {
 
 impl Port {
     pub(super) fn new(
-        cmd: &mut CommandInterface, number: u8, smi_qpn: u32, gsi_qpn: u32, mtu: ibv_mtu, pkey_table_size: Option<u16>,
+        cmd: &mut CommandInterface, number: u8, smi_qpn: u32, gsi_qpn: u32, mtu: Mtu, pkey_table_size: Option<u16>,
     ) -> Result<Self, &'static str> {
         trace!("initializing port {number}...");
         // create the struct
@@ -77,7 +77,7 @@ impl Port {
     /// Query the port capabilities, configuration and current settings.
     ///
     /// This is called by ibv_query_port.
-    pub(super) fn query(&mut self, cmd: &mut CommandInterface) -> Result<ibv_port_attr, &'static str> {
+    pub(super) fn query(&mut self, cmd: &mut CommandInterface) -> Result<PortAttr, &'static str> {
         // Querying the port might fail, so try this a few times.
         let mut attr = None;
         let mut err = None;
@@ -97,7 +97,7 @@ impl Port {
     }
 
     /// Actually query the port.
-    fn query_single(&mut self, cmd: &mut CommandInterface) -> Result<ibv_port_attr, &'static str> {
+    fn query_single(&mut self, cmd: &mut CommandInterface) -> Result<PortAttr, &'static str> {
         // QUERY_PORT gives us some details
         cmd.execute_command(Opcode::QueryPort, None, InputParam::Empty, Some(self.number.into()), OutputParam::Mailbox)?;
         let caps_bytes: &[u8; size_of::<PortCapabilities>()] = unsafe { cmd.output_mailbox_as_ref() };
@@ -123,10 +123,10 @@ impl Port {
         let madifc_output_data = MadPacketData::from_bytes(self.madifc_output.as_ref().unwrap().data);
 
         // finally, format it nicely for the application
-        Ok(ibv_port_attr {
-            state: ibv_port_state::from_repr(madifc_output_data.state().into()).ok_or("invalid state")?,
-            max_mtu: ibv_mtu::from_repr(madifc_output_data.max_mtu().into()).ok_or("invalid max MTU")?,
-            active_mtu: ibv_mtu::from_repr(madifc_output_data.active_mtu()).ok_or("invalid MTU")?,
+        Ok(PortAttr {
+            state: PortState::from_repr(madifc_output_data.state().into()).ok_or("invalid state")?,
+            max_mtu: Mtu::from_repr(madifc_output_data.max_mtu().into()).ok_or("invalid max MTU")?,
+            active_mtu: Mtu::from_repr(madifc_output_data.active_mtu()).ok_or("invalid MTU")?,
             port_cap_flags: madifc_output_data.port_cap_flags(),
             lid: madifc_output_data.lid(),
             sm_lid: madifc_output_data.sm_lid(),
@@ -238,7 +238,7 @@ impl Debug for PortCapabilities {
             .field("IB supported", &self.ib())
             .field("Ethernet supported", &self.eth())
             .field("Link", &self.link_up())
-            .field("IB MTU", &ibv_mtu::from_repr(self.ib_mtu()))
+            .field("IB MTU", &Mtu::from_repr(self.ib_mtu()))
             .field("Eth MTU", &self.eth_mtu())
             .field("Port MAC", &self.mac())
             .finish()

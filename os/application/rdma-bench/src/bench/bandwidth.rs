@@ -8,8 +8,8 @@ use crate::comm::Conn;
 use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
 use alloc::vec;
-use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
-use ibverbs::ffi::ibv_send_flags;
+use ibverbs::{completion_queue::WorkCompletion, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
+use ibverbs::ffi::SendFlags;
 use time::get_time_in_us;
 
 pub fn run(
@@ -44,12 +44,12 @@ fn send(
 
     let window = tx_depth.min(iterations);
     for i in 0..window {
-        unsafe { qp.post_send(mr, vec![vec![0..msg_size]], vec![i as u64], vec![ibv_send_flags::SIGNALED])? };
+        unsafe { qp.post_send(mr, vec![vec![0..msg_size]], vec![i as u64], vec![SendFlags::SIGNALED])? };
     }
 
     let mut posted = window;
     let mut completed = 0usize;
-    let mut wc = vec![ibv_wc::default(); tx_depth.max(1)];
+    let mut wc = vec![WorkCompletion::default(); tx_depth.max(1)];
 
     while completed < iterations {
         let completions = cq.poll(&mut wc)?;
@@ -60,7 +60,7 @@ fn send(
         completed += n;
         for _ in 0..n {
             if posted < iterations {
-                unsafe { qp.post_send(mr, vec![vec![0..msg_size]], vec![posted as u64], vec![ibv_send_flags::SIGNALED])? };
+                unsafe { qp.post_send(mr, vec![vec![0..msg_size]], vec![posted as u64], vec![SendFlags::SIGNALED])? };
                 posted += 1;
             }
         }
@@ -88,7 +88,7 @@ fn receive(
 
     let mut posted = window;
     let mut completed = 0usize;
-    let mut wc = vec![ibv_wc::default(); tx_depth.max(1)];
+    let mut wc = vec![WorkCompletion::default(); tx_depth.max(1)];
 
     conn.sync()?; // "ready"
     let mut last_progress = get_time_in_us();

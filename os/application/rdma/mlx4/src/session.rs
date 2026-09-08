@@ -1,9 +1,9 @@
 use ibverbs::{Context, ProtectionDomain, LocalMemoryRegion, CompletionQueue, QueuePairBuilder};
 use ibverbs::sliceindex::SliceIndex;
-use ibverbs::{ibv_qp_type::Type, ibv_wc};
-use ibverbs::ffi::ibv_qp_cap;
+use ibverbs::ffi::{QueuePairCapabilities, QueuePairType};
 use core::ops;
 use core::slice::from_raw_parts_mut;
+use ibverbs::completion_queue::WorkCompletion;
 use terminal::println;
 
 pub struct RdmaSession<'ctx, 'pd> {
@@ -42,14 +42,14 @@ impl<'ctx, 'pd> RdmaSession<'ctx, 'pd> {
         max_send_sge: u32,
         max_recv_sge: u32
     ) -> QueuePairBuilder<'ctx> where 'pd: 'ctx {
-        let cap = ibv_qp_cap {
+        let cap = QueuePairCapabilities {
             max_send_wr,
             max_recv_wr,
             max_send_sge,
             max_recv_sge,
             max_inline_data: 0
         };
-        let mut builder = pd.create_qp(cq_send, cq_recv, Type::IBV_QPT_RC, cap);
+        let mut builder = pd.create_qp(cq_send, cq_recv, QueuePairType::RC, cap);
         if allow_remote_rw {
             builder.allow_remote_rw();
         }
@@ -66,7 +66,7 @@ impl<'ctx, 'pd> RdmaSession<'ctx, 'pd> {
     } */
 
     pub fn poll_cq<const N: usize>(cq_send: &'ctx CompletionQueue, wait_until: usize) {
-        let mut wc = [ibv_wc::default(); N];
+        let mut wc = [WorkCompletion::default(); N];
         let mut completed = 0;
 
         while completed < wait_until {

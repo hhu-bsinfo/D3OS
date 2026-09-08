@@ -5,7 +5,7 @@ use core::mem::MaybeUninit;
 use core::slice::from_raw_parts_mut;
 use log::error;
 use rdma::uverbs_uapi::{AllocPdResponse, DeallocPdRequest, QueryPortRequest, UserSlice};
-use rdma::{ibv_device, uverbs_uapi::{
+use rdma::{Device, uverbs_uapi::{
     CreateCqRequest, CreateMrRequest, CreateQpRequest, ModifyQpRequest, UverbsCmd,
 }};
 use syscall::return_vals::{Errno, SyscallResult};
@@ -48,7 +48,7 @@ pub fn uverbs_ctl(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user
 fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: UserSlice) -> SyscallResult {
     match cmd {
         UverbsCmd::QueryDevices => {
-            let devices = uverbs_query_devices(user_out.capacity::<ibv_device>());
+            let devices = uverbs_query_devices(user_out.capacity::<Device>());
             copy_slice_to_user(user_out, &devices)
         }
         UverbsCmd::QueryDevice => {

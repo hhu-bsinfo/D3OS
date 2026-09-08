@@ -116,7 +116,7 @@ pub struct DeallocPdRequest {
 #[derive(Copy, Clone)]
 pub struct CreateMrRequest {
     pub pd: ProtectionDomainHandle,
-    pub ibv_access_flags: ibv_access_flags,
+    pub ibv_access_flags: AccessFlags,
     pub data_ptr: *mut u8,
     pub len: usize,
 }
@@ -155,7 +155,7 @@ pub struct CreateQpRequest {
     pub pd: ProtectionDomainHandle,
     pub send_cq_num: u32,
     pub recv_cq_num: u32,
-    pub qp_type: ibv_qp_type::Type,
+    pub qp_type: QueuePairType,
     pub _sq_sig_all: u8,
     pub _reserved: u16,
 
@@ -183,33 +183,8 @@ pub struct CreateQpResponse {
 #[derive(Copy, Clone)]
 pub struct ModifyQpRequest {
     pub qp_num: u32,
-    pub attr: ibv_qp_attr,
-    pub attr_mask: ibv_qp_attr_mask
-}
-
-impl Default for ibv_send_wr {
-    fn default() -> Self {
-        Self { 
-            wr_id: Default::default(), 
-            next: Default::default(), 
-            sg_list: Default::default(), 
-            opcode: ibv_wr_opcode::IBV_WR_SEND,
-            send_flags: ibv_send_flags::SIGNALED, 
-            __bindgen_anon_1: Default::default(), 
-            wr: Default::default(), 
-            qp_type: Default::default(), 
-            __bindgen_anon_2: Default::default() }
-    }
-}
-
-impl Default for ibv_recv_wr {
-    fn default() -> Self {
-        Self { 
-            wr_id: Default::default(), 
-            next: Default::default(), 
-            sg_list: Default::default(), 
-        }
-    }
+    pub attr: QueuePairAttr,
+    pub attr_mask: QueuePairAttrMask
 }
 
 #[repr(C)]

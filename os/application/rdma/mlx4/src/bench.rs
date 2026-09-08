@@ -3,7 +3,7 @@ use super::session::RdmaSession;
 use alloc::{vec, vec::Vec};
 use core::ops::Range;
 use cpu_core::flush_cache;
-use ibverbs::ffi::ibv_send_flags;
+use ibverbs::ffi::SendFlags;
 use ibverbs::{CompletionQueue, LocalMemoryRegion, QueuePair, RemoteMemoryRegion};
 use spin::Once;
 use terminal::println;
@@ -17,7 +17,7 @@ const BATCHES: usize = 3;
 static LOCAL_RANGES: Once<[Vec<Vec<Range<usize>>>; BATCHES]> = Once::new();
 static REMOTE_RANGES: Once<[Vec<Range<u64>>; BATCHES]> = Once::new();
 static WORK_IDS: Once<[Vec<u64>; BATCHES]> = Once::new();
-static SEND_FLAGS: Once<[Vec<ibv_send_flags>; BATCHES]> = Once::new();
+static SEND_FLAGS: Once<[Vec<SendFlags>; BATCHES]> = Once::new();
 
 #[derive(Copy, Clone, Debug)]
 pub enum SpecRdmaType {
@@ -83,13 +83,13 @@ fn work_id_init() -> [Vec<u64>; BATCHES] {
     })
 }
 
-fn send_flags_init() -> [Vec<ibv_send_flags>; BATCHES] {
+fn send_flags_init() -> [Vec<SendFlags>; BATCHES] {
     core::array::from_fn(|i| {
         let wr_count = 1 << i;
-        let mut flags = vec![ibv_send_flags::empty(); wr_count];
+        let mut flags = vec![SendFlags::empty(); wr_count];
         // set the last WR as signaled
         if let Some(last) = flags.last_mut() {
-            *last = ibv_send_flags::SIGNALED;
+            *last = SendFlags::SIGNALED;
         }
         flags
     })

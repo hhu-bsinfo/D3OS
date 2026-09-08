@@ -5,8 +5,8 @@ use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core3::io;
 use core3::io::{Error, ErrorKind};
+use rdma::ib_core::{PortAttr, AccessFlags, DeviceAttr};
 use rdma::uverbs_uapi::{CreateMrRequest, CreateMrResponse, AllocPdResponse, DeallocPdRequest, QueryPortRequest, UserSlice, UverbsCmd, OpenDeviceResponse};
-use rdma::ib_core::{ibv_access_flags, ibv_device_attr, ibv_gid, ibv_port_attr};
 use spin::Mutex;
 use tock_registers::{register_bitfields, register_fields, register_structs};
 use tock_registers::interfaces::Writeable;
@@ -18,7 +18,7 @@ mod queue_pair;
 use crate::cmd::uverbs;
 use crate::provider::mlx4::completion_queue::CompletionQueue;
 use crate::provider::{IbvCompletionQueue, IbvContext, IbvQueuePair, QpInitAttr};
-use crate::MemoryRegionMetadata;
+use crate::{Gid, MemoryRegionMetadata};
 use queue_pair::QueuePair;
 use rdma::ProtectionDomainHandle;
 
@@ -101,22 +101,22 @@ impl Mlx4Context {
 }
 
 impl IbvContext for Mlx4Context {
-    fn query_device(&self) -> io::Result<ibv_device_attr> {
-        let mut resp = MaybeUninit::<ibv_device_attr>::uninit();
+    fn query_device(&self) -> io::Result<DeviceAttr> {
+        let mut resp = MaybeUninit::<DeviceAttr>::uninit();
         uverbs(self.device_handle, UverbsCmd::QueryDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
         Ok(unsafe { resp.assume_init() })
     }
 
-    fn query_port(&self, port_num: u8) -> io::Result<ibv_port_attr> {
+    fn query_port(&self, port_num: u8) -> io::Result<PortAttr> {
         let req = QueryPortRequest { port_num };
-        let mut resp = MaybeUninit::<ibv_port_attr>::uninit();
+        let mut resp = MaybeUninit::<PortAttr>::uninit();
         uverbs(self.device_handle, UverbsCmd::QueryPort, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
         Ok(unsafe { resp.assume_init() })
     }
 
-    fn query_gid(&self, _port_num: u8, _index: i32) -> io::Result<ibv_gid> {
+    fn query_gid(&self, _port_num: u8, _index: i32) -> io::Result<Gid> {
         // TODO: figure out how to actually do this as the Nautilus driver can't
-        Ok(ibv_gid { raw: [0; 16] })
+        Ok(Gid { raw: [0; 16] })
     }
 
     fn create_qp(self: Arc<Self>, pd: ProtectionDomainHandle, attr: &QpInitAttr) -> io::Result<Arc<dyn IbvQueuePair>> {
@@ -146,7 +146,7 @@ impl IbvContext for Mlx4Context {
         Ok(())
     }
 
-    fn reg_mr(&self, pd: ProtectionDomainHandle, ptr: *mut u8, len: usize, access: ibv_access_flags) -> io::Result<MemoryRegionMetadata> {
+    fn reg_mr(&self, pd: ProtectionDomainHandle, ptr: *mut u8, len: usize, access: AccessFlags) -> io::Result<MemoryRegionMetadata> {
         if len == 0 {
             return Err(Error::from(ErrorKind::InvalidInput))
         }

@@ -1612,6 +1612,7 @@ dependencies = [
  "bincode",
  "bitflags 2.10.0",
  "num_enum 0.5.11",
+ "serde",
  "strum_macros",
 ]
 

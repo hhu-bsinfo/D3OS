@@ -1,5 +1,5 @@
 use crate::cmd::uverbs;
-use crate::MemoryRegionMetadata;
+use crate::{Gid, MemoryRegionMetadata};
 use alloc::boxed::Box;
 use alloc::string::ToString;
 use alloc::sync::Arc;
@@ -9,29 +9,32 @@ use bincode::{Decode, Encode};
 use core::mem;
 use core::mem::MaybeUninit;
 use core3::io;
-use rdma::ib_core::{ibv_access_flags, ibv_device, ibv_device_attr, ibv_gid, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_type, ibv_send_flags, ibv_send_wr_wr, ibv_sge, ibv_wc, ibv_wr_opcode};
+use rdma::ib_core::{PortAttr, QueuePairAttr, QueuePairAttrMask, SendFlags, SendWorkRequestData, ScatterGatherEntry, AccessFlags, Device, DeviceAttr, QueuePairCapabilities};
+use rdma::QueuePairType;
 use rdma::ProtectionDomainHandle;
 use rdma::uverbs_uapi::UverbsCmd::QueryDevices;
 use rdma::uverbs_uapi::{UserSlice, UVERBS_MAX_QUERY_DEVICES_REQ};
+use crate::completion_queue::WorkCompletion;
+use crate::queue_pair::WorkRequestOpcode;
 
 mod mlx4;
 
 /// Get all currently available InfiniBand devices
-pub fn get_available_devices() -> io::Result<Vec<ibv_device>> {
-    let mut devices : Vec<MaybeUninit<ibv_device>> = vec![MaybeUninit::uninit();UVERBS_MAX_QUERY_DEVICES_REQ];
+pub fn get_available_devices() -> io::Result<Vec<Device>> {
+    let mut devices : Vec<MaybeUninit<Device>> = vec![MaybeUninit::uninit(); UVERBS_MAX_QUERY_DEVICES_REQ];
     uverbs(0, QueryDevices, UserSlice::EMPTY, UserSlice::from_mut_slice(&mut devices)).map(|count| unsafe {
         devices.set_len(count);
-        mem::transmute::<_,Vec<ibv_device>>(devices)
+        mem::transmute::<_,Vec<Device>>(devices)
     })
 }
 
-pub fn open_device(device: &ibv_device) -> io::Result<Box<dyn IbvContext>> {
+pub fn open_device(device: &Device) -> io::Result<Box<dyn IbvContext>> {
     let device = mlx4::Mlx4Context::new(device.handle)?;
     Ok(Box::new(device))
 }
 
 /// Return kernel device name
-pub fn get_device_name(_device: &ibv_device) -> Option<&str> {
+pub fn get_device_name(_device: &Device) -> Option<&str> {
     // TODO: don't hardcode device name to mlx4
     Some("mlx4_todo")
 }
@@ -40,17 +43,17 @@ pub fn get_device_name(_device: &ibv_device) -> Option<&str> {
 #[derive(Clone, Encode, Decode)]
 pub struct SendWorkRequest {
     pub wr_id: u64,
-    pub sges: Vec<ibv_sge>,
-    pub opcode: ibv_wr_opcode,
-    pub send_flags: ibv_send_flags,
-    pub wr: ibv_send_wr_wr,
+    pub sges: Vec<ScatterGatherEntry>,
+    pub opcode: WorkRequestOpcode,
+    pub send_flags: SendFlags,
+    pub wr: SendWorkRequestData,
 }
 
 
 #[derive(Clone, Encode, Decode)]
 pub struct ReceiveWorkRequest {
     pub wr_id: u64,
-    pub sges: Vec<ibv_sge>,
+    pub sges: Vec<ScatterGatherEntry>,
 }
 
 pub trait IbvQueuePair {
@@ -61,18 +64,18 @@ pub trait IbvQueuePair {
     /// This is unsafe because the sges contain raw addresses.
     // TODO: figure out a way to return the bad wr
     unsafe fn post_send(&self, wrs: &[SendWorkRequest]) -> io::Result<()>;
-    fn modify(&self, attr: &ibv_qp_attr, attr_mask: ibv_qp_attr_mask) -> io::Result<()>;
+    fn modify(&self, attr: &QueuePairAttr, attr_mask: QueuePairAttrMask) -> io::Result<()>;
 }
 
 pub trait IbvCompletionQueue {
     fn number(&self) -> u32;
-    fn poll(&self, wcs: &mut [ibv_wc]) -> io::Result<usize>;
+    fn poll(&self, wcs: &mut [WorkCompletion]) -> io::Result<usize>;
 }
 
 pub trait IbvContext {
-    fn query_device(&self) -> io::Result<ibv_device_attr>;
-    fn query_port(&self, port_num: u8) -> io::Result<ibv_port_attr>;
-    fn query_gid(&self, port_num: u8, index: i32) -> io::Result<ibv_gid>;
+    fn query_device(&self) -> io::Result<DeviceAttr>;
+    fn query_port(&self, port_num: u8) -> io::Result<PortAttr>;
+    fn query_gid(&self, port_num: u8, index: i32) -> io::Result<Gid>;
 
     // --- Queue Pair ---
     fn create_qp(self: Arc<Self>, pd: ProtectionDomainHandle, attr: &QpInitAttr) -> io::Result<Arc<dyn IbvQueuePair>>;
@@ -86,7 +89,7 @@ pub trait IbvContext {
     fn dealloc_pd(&self, pd: ProtectionDomainHandle) -> io::Result<()>;
 
     // --- Memory Region ---
-    fn reg_mr(&self, pd: ProtectionDomainHandle, ptr: *mut u8, len: usize, access: ibv_access_flags) -> io::Result<MemoryRegionMetadata>;
+    fn reg_mr(&self, pd: ProtectionDomainHandle, ptr: *mut u8, len: usize, access: AccessFlags) -> io::Result<MemoryRegionMetadata>;
     fn dereg_mr(&self, meta: MemoryRegionMetadata);
 }
 
@@ -95,8 +98,8 @@ pub struct QpInitAttr<'cq> {
     pub send_cq: &'cq dyn IbvCompletionQueue,
     pub recv_cq: &'cq dyn IbvCompletionQueue,
     pub srq: Option<()>,
-    pub cap: ibv_qp_cap,
-    pub qp_type: ibv_qp_type::Type,
+    pub cap: QueuePairCapabilities,
+    pub qp_type: QueuePairType,
     pub sq_sig_all: i32,
 }
 

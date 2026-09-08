@@ -6,7 +6,7 @@ use concurrent::thread::sleep;
 use core::net::SocketAddr;
 use core::{arch::x86_64::_mm_mfence};
 use cpu_core::flush_cache;
-use ibverbs::ffi::ibv_send_flags;
+use ibverbs::ffi::SendFlags;
 use ibverbs::devices;
 
 pub fn invoke(config: RunConfig) {
@@ -98,7 +98,7 @@ pub fn invoke(config: RunConfig) {
                 &mut remote_mr,
                 vec![0..(alloc_mem as u64)],
                 vec![1],
-                vec![ibv_send_flags::SIGNALED]
+                vec![SendFlags::SIGNALED]
             ).expect("ups ... something went wrong!") };
 
             session::RdmaSession::poll_cq::<10>(&rdma_session.cq_send, 1);

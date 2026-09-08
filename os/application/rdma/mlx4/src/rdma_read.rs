@@ -1,7 +1,7 @@
 use super::{session, handshake, integrity};
 use mm::{MmapFlags, mmap};
 use ibverbs::devices;
-use ibverbs::ffi::ibv_send_flags;
+use ibverbs::ffi::SendFlags;
 use super::bench;
 use super::*;
 use alloc::{vec};
@@ -93,7 +93,7 @@ pub fn invoke(config: RunConfig) {
                 &mut rdma_session.mr,
                 vec![vec![0..alloc_mem]],
                 vec![1],
-                vec![ibv_send_flags::SIGNALED]
+                vec![SendFlags::SIGNALED]
             ).expect("ups ... something went wrong!") };
 
             session::RdmaSession::poll_cq::<10>(&rdma_session.cq_send, 1);

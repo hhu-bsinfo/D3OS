@@ -3,9 +3,10 @@ use core::{net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4}, str::FromStr};
 use alloc::string::String;
 use core3::io;
 use core3::io::ErrorKind;
-use ibverbs::{ibv_qp_type, Gid, LocalMemoryRegion, QueuePairEndpoint};
+use ibverbs::{Gid, LocalMemoryRegion, QueuePairEndpoint};
 use network::{TcpListener, TcpStream};
-use rdma::ib_core::ibv_qp_cap;
+use rdma::ib_core::QueuePairCapabilities;
+use rdma::QueuePairType;
 use terminal::println;
 
 use crate::comm::{self, PeerInfo};
@@ -66,7 +67,7 @@ pub fn run(cfg: Config) -> io::Result<()> {
     let mut mr: LocalMemoryRegion<'_, u8> = pd.allocate(cfg.size)?;
 
     let max_rd_atomic = MAX_RD_ATOMIC.min(cfg.tx_depth as u8);
-    let cap = ibv_qp_cap { max_send_wr: 1, max_recv_wr: 1, max_send_sge: 1, max_recv_sge: 1, max_inline_data: 0 };
+    let cap = QueuePairCapabilities { max_send_wr: 1, max_recv_wr: 1, max_send_sge: 1, max_recv_sge: 1, max_inline_data: 0 };
 
     match &cfg.server.clone() {
         Some(host) => {
@@ -86,9 +87,9 @@ fn build_qp<'res>(
     cq: &'res ibverbs::CompletionQueue,
     mr: &mut LocalMemoryRegion<'_, u8>,
     max_rd_atomic: u8,
-    cap: ibv_qp_cap,
+    cap: QueuePairCapabilities,
 ) -> io::Result<(ibverbs::PreparedQueuePair<'res>, PeerInfo)> {
-    let qp = pd.create_qp(cq, cq, ibv_qp_type::IBV_QPT_RC, cap)
+    let qp = pd.create_qp(cq, cq, QueuePairType::RC, cap)
         //.set_gid_index(cfg.gid_index)
         .allow_remote_rw()
         // Both sides set max_rd_atomic / max_dest_rd_atomic so that either
@@ -117,7 +118,7 @@ fn run_server(
     cq: &ibverbs::CompletionQueue,
     mr: &mut LocalMemoryRegion<'_, u8>,
     max_rd_atomic: u8,
-    cap: ibv_qp_cap,
+    cap: QueuePairCapabilities,
 ) -> io::Result<()> {
     let listen_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), cfg.port);
     let mut listener = TcpListener::bind(SocketAddr::V4(listen_addr)).unwrap();

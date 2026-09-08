@@ -27,7 +27,7 @@ use log::{error, info, trace, warn};
 use pci_types::{Bar, CommandRegister, EndpointHeader};
 use zerocopy::U32;
 
-use rdma::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_type, ProtectionDomainHandle};
+use rdma::{AccessFlags, DeviceAttr, PortAttr, ProtectionDomainHandle, QueuePairAttr, QueuePairAttrMask, QueuePairType};
 
 use crate::{pci_bus, process_manager};
 use port::Port;
@@ -230,8 +230,8 @@ impl ConnectX3Nic {
     /// Get statistics about the device.
     ///
     /// This is used by ibv_query_device.
-    pub fn query_device(&mut self) -> Result<ibv_device_attr, &'static str> {
-        Ok(ibv_device_attr {
+    pub fn query_device(&mut self) -> Result<DeviceAttr, &'static str> {
+        Ok(DeviceAttr {
             fw_ver_major: self.firmware.major.get(),
             fw_ver_minor: self.firmware.minor.get(),
             fw_ver_subminor: self.firmware.sub_minor.get(),
@@ -401,7 +401,7 @@ impl ConnectX3Nic {
     /// Get statistics about a port.
     ///
     /// This is used by ibv_query_port.
-    pub fn query_port(&mut self, port_num: u8) -> Result<ibv_port_attr, &'static str> {
+    pub fn query_port(&mut self, port_num: u8) -> Result<PortAttr, &'static str> {
         // Cheap enough to do on every query, and this is the call that notices a port dropping
         // back to `Initializing` — the two belong in the same log.
         self.check_internal_error();
@@ -492,7 +492,7 @@ impl ConnectX3Nic {
     /// the calling process.
     pub fn create_qp(&mut self,
                      pd: ProtectionDomainHandle,
-                     qp_type: ibv_qp_type::Type,
+                     qp_type: QueuePairType,
                      send_cq_number: u32,
                      receive_cq_number: u32,
                      buffer: *const u8,
@@ -531,7 +531,7 @@ impl ConnectX3Nic {
     /// Modify a queue pair.
     ///
     /// This is used by ibv_modify_qp.
-    pub fn modify_qp(&mut self, number: u32, attr: &ibv_qp_attr, attr_mask: ibv_qp_attr_mask) -> Result<(), &'static str> {
+    pub fn modify_qp(&mut self, number: u32, attr: &QueuePairAttr, attr_mask: QueuePairAttrMask) -> Result<(), &'static str> {
         let process = process_manager().read().current_process();
         let qp = self.qps.iter_mut()
             .find(|qp| qp.number() == number && qp.owner() == process.id())
@@ -561,7 +561,7 @@ impl ConnectX3Nic {
     /// Create a memory region and return its index, physical address, lkey and rkey.
     ///
     /// This is used by ibv_reg_mr.
-    pub fn create_mr<T>(&mut self, pd: ProtectionDomainHandle, data: &mut [T], access: ibv_access_flags) -> Result<DataMemoryProtectionTable, &'static str> {
+    pub fn create_mr<T>(&mut self, pd: ProtectionDomainHandle, data: &mut [T], access: AccessFlags) -> Result<DataMemoryProtectionTable, &'static str> {
         self.validate_pd(&pd, &process_manager().read().current_process())?;
         // TODO: this fails for large memory regions (>= 64 MB)
         self.icm_tables.memory_regions().alloc_dmpt(

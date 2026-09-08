@@ -1,8 +1,7 @@
 use crate::cli::{Mode, Transport};
 use crate::error::Result;
 use ibverbs::{CompletionQueue, PreparedQueuePair, ProtectionDomain};
-use ibverbs::ffi::ibv_qp_cap;
-use ibverbs::ffi::ibv_qp_type::Type;
+use ibverbs::ffi::{QueuePairCapabilities, QueuePairType};
 
 /// Builds a queue pair of the requested transport type, ready to be handshaked with a remote
 /// endpoint.
@@ -13,7 +12,7 @@ pub fn build<'res>(
     cq: &'res CompletionQueue,
     tx_depth: usize,
 ) -> Result<PreparedQueuePair<'res>> {
-    let cap = ibv_qp_cap {
+    let cap = QueuePairCapabilities {
         max_send_wr: tx_depth as u32,
         max_recv_wr: tx_depth as u32,
         max_send_sge: 1,
@@ -22,8 +21,8 @@ pub fn build<'res>(
     };
 
     let qp_type = match transport {
-        Transport::Rc => Type::IBV_QPT_RC,
-        Transport::Uc => Type::IBV_QPT_UC,
+        Transport::Rc => QueuePairType::RC,
+        Transport::Uc => QueuePairType::UC,
         Transport::Ud => unimplemented!("UD transport not yet implemented (see module doc comment)"),
     };
 

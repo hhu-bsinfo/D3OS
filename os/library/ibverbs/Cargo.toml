@@ -9,7 +9,7 @@ path = "src/ibverbs.rs"
 
 [dependencies]
 # internal depencies
-rdma = { path = "../../library/rdma" }
+rdma = { path = "../../library/rdma", features = ["serde"] }
 mm = { path = "../../library/mm" }
 syscall = { path = "../../library/syscall" }
 

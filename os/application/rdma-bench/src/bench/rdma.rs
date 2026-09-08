@@ -15,8 +15,9 @@ use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
 use alloc::vec;
 use core::ops::Range;
-use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, RemoteMemoryRegion};
-use ibverbs::ffi::ibv_send_flags;
+use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, RemoteMemoryRegion};
+use ibverbs::completion_queue::WorkCompletion;
+use ibverbs::ffi::SendFlags;
 use time::get_time_in_us;
 
 #[derive(Copy, Clone, Debug)]
@@ -86,7 +87,7 @@ fn post(
                 remote_mr,
                 vec![remote_range],
                 vec![wr_id],
-                vec![ibv_send_flags::SIGNALED],
+                vec![SendFlags::SIGNALED],
             )?,
             Direction::Read => qp.rdma_read(
                 remote_mr,
@@ -94,7 +95,7 @@ fn post(
                 local_mr,
                 vec![vec![local_range]],
                 vec![wr_id],
-                vec![ibv_send_flags::SIGNALED],
+                vec![SendFlags::SIGNALED],
             )?,
         }
     }
@@ -121,7 +122,7 @@ fn initiate(
 
     let mut posted = window;
     let mut completed = 0usize;
-    let mut wc = vec![ibv_wc::default(); window];
+    let mut wc = vec![WorkCompletion::default(); window];
 
     while completed < iterations {
         let completions = cq.poll(&mut wc)?;
