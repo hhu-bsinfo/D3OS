@@ -73,11 +73,7 @@ impl IbvQueuePair for QueuePair {
                 sge_index += 1;
             }
 
-            // Write the wr id and the chain size, so that the completion queue can recover them.
-            // Every receive WQE produces its own completion, so a chain is always a single WQE
-            // long — but it still has to be recorded: `poll_one` advances the receive queue's
-            // tail by this value, so leaving it at zero means the tail never moves and the queue
-            // reports an overflow after `max_post` posts no matter how many completed.
+            // For every read WR the CQ should create a completion, therefor chain_size = 1
             rq.update_meta_for_head(curr.wr_id, 1);
 
             // Terminate the scatter list, but only if this work request left a segment of the
@@ -108,13 +104,20 @@ impl IbvQueuePair for QueuePair {
         if *self.state.read() != ibv_qp_state::IBV_QPS_RTS {
             return Err(Error::new(ErrorKind::Other, "queue pair cannot send in this state"));
         }
+
+        if wrs.is_empty() {
+            return Ok(());
+        }
+
+        if wrs.len() == 1 && self.try_post_send_via_blueflame(wrs.first().unwrap()) {
+            return Ok(())
+        }
+
         // TODO: the Nautilus driver uses sq.next_wqe
         let mut sq = self.sq.write();
-        let mut num_req = 0;
         let mut chain_size = 1;
 
-        let mut peekable = wrs.iter().peekable();
-        while let Some(curr) = peekable.next() {
+        for curr in wrs {
             // make sure that we're not overflowing
             if sq.would_overflow() {
                 return Err(Error::new(ErrorKind::Other, "send queue would overflow"));
@@ -123,7 +126,6 @@ impl IbvQueuePair for QueuePair {
             if u32::try_from(curr.sges.len()).unwrap() > sq.max_gs {
                 return Err(Error::new(ErrorKind::Other, "work request has too many sges"));
             }
-
 
             let mut wqe_offset: usize = sq.wqe_byte_offset(sq.head);
             let control_segment_offset = wqe_offset;
@@ -176,7 +178,6 @@ impl IbvQueuePair for QueuePair {
             // Make sure descriptor is fully written before setting ownership
             // bit (because HW can start executing as soon as we do).
             compiler_fence(Ordering::SeqCst);
-            // TODO: opcode check
             let opcode = match curr.opcode {
                 ibv_wr_opcode::IBV_WR_RDMA_WRITE => QueuePairOpcode::RdmaWrite,
                 ibv_wr_opcode::IBV_WR_SEND => QueuePairOpcode::Send,
@@ -194,47 +195,21 @@ impl IbvQueuePair for QueuePair {
             sq.stamp_wqe(end_of_headroom, wqe_size)?;
 
             if curr.send_flags.contains(ibv_send_flags::SIGNALED) {
-                // write wr id, so that completion queue poll can recover it
+                // Completions should only be generated for signaled send WRs.
                 sq.update_meta_for_head(curr.wr_id, chain_size);
-
                 chain_size = 1;
             } else {
+                // A signaled should complete all previous the non-signaled send WRs
                 chain_size += 1;
             }
 
-            num_req += 1;
             sq.head = sq.head.wrapping_add(1);
-            // TODO: support multiple work requests ; Done
         }
-        // return if we don't have anything to do
-        if num_req == 0 {
-            return Ok(());
-        }
-        // TODO: bf fails for RDMA writes
-        if false && num_req == 1 {
-            // TODO: why decrement index and not just wqe_byte_offset(index - 1)
-            let index = sq.head - 1;
-            let ctrl_offset = sq.wqe_byte_offset(index);
-            let ctrl: &mut WqeControlSegment = sq.get_in_buffer(ctrl_offset).unwrap();
-            // Make sure that descriptor is written to memory
-            // before writing to BlueFlame page.
-            compiler_fence(Ordering::SeqCst);
-            // the UAR determines which BlueFlame page we can use
-            // we just use the first register (0..bf_reg_size)
-            // each register consists of two buffers (bf_reg_size/2)
-            // which we have to alternate between
-            /* TODO: assign BlueFlame page. A QP can only use a BlueFlame page with the index equal to the QP UAR.
-            let bf_reg: &mut [u64] = blueflame.as_slice_mut((index as usize % 2) * (caps.bf_reg_size() / 2), caps.bf_reg_size() / 8)?;
-            let src = self.sq.buffer.as_ptr() as *const u64;
-            let size = ctrl.size() / 8;
-            unsafe { copy_nonoverlapping(src, bf_reg.as_ptr(), size) };
-             */
-            // TODO: will this work when mixing BF and normal sends?
-        } else {
-            // Make sure that descriptors are written before doorbell.
-            compiler_fence(Ordering::SeqCst);
-            unsafe { &*self.doorbell_page }.send_queue_number.set((self.number << 8).to_be());
-        }
+
+        // Make sure that descriptors are written before doorbell.
+        compiler_fence(Ordering::SeqCst);
+        unsafe { &*self.doorbell_page }.send_queue_number.set((self.number << 8).to_be());
+
         Ok(())
     }
 
@@ -339,6 +314,19 @@ impl QueuePair {
         })
     }
 
+    /// Tries to post a send WQE via BlueFlame
+    /// TODO: add support for posting via BlueFlame Registers
+    /// BlueFlame posting should be used, when the HCA is lightly loaded, otherwise use regular posting
+    ///
+    /// - A BlueFlame Page is divided in to equally sized registers
+    /// - Each register into two equally sized buffers, which must be used alternately,
+    ///   e.g. buffer 0 for even and buffer 1 for odd postings
+    /// - If the WQE size is bigger than the BlueFlame buffer size, then  the WQE cannot be posted using BlueFlame.
+    /// - For WQEs with DS=1, BlueFlame is not supported. DS=1 is the case for the NOP or zero length send operations.
+    ///   Alternatively, the driver can pad the WQE with an extra zero length Data segment
+    fn try_post_send_via_blueflame(&self, wr: &SendWorkRequest) -> bool {
+        false
+    }
 
     /// Advance the tail of the receive queue.
     ///
@@ -610,9 +598,11 @@ impl WqeDatagramSegment {
     }
 }
 
-
-// TODO: why not use a struct instead of a tuple for WorkQueueMeta
-type WorkQueueMeta<U, T> = (U, T);
+#[derive(Debug, Clone, Copy)]
+struct WorkQueueMeta {
+    wr_id: u64,
+    chain_size: u32,
+}
 
 #[derive(Debug)]
 enum WorkQueueType {
@@ -629,9 +619,11 @@ struct WorkQueue {
     buffer: Option<&'static mut [u8]>,
     wqe_shift: u32,
     spare_wqes: Option<u32>,
+    /// Head of the ring buffer in WQE (RQ) or WQEBB (SQ)
     head: u32,
+    /// Tail of the ring buffer in WQE (RQ) or WQEBB (SQ)
     tail: u32,
-    meta: Vec<WorkQueueMeta<u64, u32>>,
+    meta: Vec<Option<WorkQueueMeta>>,
     /// Set once this queue's tail has been seen to disagree with the card, see
     /// [`QueuePair::check_wqe_index`]. Only the first disagreement is worth logging.
     divergence_reported: bool,
@@ -679,7 +671,7 @@ impl WorkQueue {
             spare_wqes: None,
             head: 0,
             tail: 0,
-            meta: vec![(0u64, 0u32); wqe_cnt as usize],
+            meta: vec![None; wqe_cnt as usize],
             divergence_reported: false,
         })
     }
@@ -716,7 +708,7 @@ impl WorkQueue {
             spare_wqes: Some(spare_wqes),
             head: 0,
             tail: 0,
-            meta: vec![(0u64, 0u32); wqe_cnt as usize],
+            meta: vec![None; wqe_cnt as usize],
             divergence_reported: false,
         })
     }
@@ -727,9 +719,12 @@ impl WorkQueue {
     }
 
     #[inline(always)]
+    /// Update the metadata for head of the buffer
+    /// - wr_id: can be used by the user to identify the WR corresponding to the CQ
+    /// - chain_size: is used by poll_one to advance the tail of the appropriate buffer
     fn update_meta_for_head(&mut self, wr_id: u64, chain_size: u32) {
         let idx = self.head & (self.wqe_cnt - 1);
-        self.meta.insert(idx as usize, (wr_id, chain_size));
+        self.meta.insert(idx as usize, Some(WorkQueueMeta { wr_id, chain_size }));
     }
 
     fn get_in_buffer<T: FromBytes>(&self, byte_offset: usize) -> Option<&mut T> {
@@ -822,9 +817,9 @@ impl WorkQueue {
 
     fn resolve_completion(&mut self, qp_num: u32, wqe_index: u32) -> Option<u64> {
         self.check_wqe_index(qp_num, wqe_index);
-        let (wr_id, chain_size) = self.meta.get(wqe_index as usize)?;
-        self.tail += chain_size;
-        Some(*wr_id)
+        let meta = self.meta.get_mut(wqe_index as usize).and_then(Option::take)?;
+        self.tail += meta.chain_size;
+        Some(meta.wr_id)
     }
 }
 

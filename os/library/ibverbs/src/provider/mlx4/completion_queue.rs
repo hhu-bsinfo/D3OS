@@ -174,7 +174,7 @@ impl CompletionQueue {
             wc.qp_num = cqe.qp_number();
             match self.context.resolve_completion(cqe.qp_number(), cqe.wqe_index().into(), cqe.is_send()) {
                 Some(wr_id) => wc.wr_id = wr_id,
-                None => warn!("completion has invalid queue pair number {}", cqe.qp_number()),
+                None => warn!("Completion for QP {} and index {} has no meta data", cqe.qp_number(), cqe.wqe_index()),
             }
             if cqe.opcode() == CQE_OPCODE_ERROR {
                 let checksum_bytes = cqe.checksum().to_be_bytes();
