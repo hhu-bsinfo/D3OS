@@ -332,7 +332,7 @@ pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -
         data_len: message.len(),
     };
 
-    syscall(SystemCall::IpcSend, &[core::ptr::from_ref(&params) as usize])
+    syscall(SystemCall::IpcSend, &&params)
 }
 
 pub fn receive() -> Option<IpcMessageWrapper> {
