@@ -1,4 +1,57 @@
+use alloc::sync::Arc;
 use bitflags::bitflags;
+use core3::io;
+use crate::provider::IbvCompletionQueue;
+
+/// A completion queue that allows subscribing to the completion of queued sends and receives.
+pub struct CompletionQueue {
+    pub(super) inner: Arc<dyn IbvCompletionQueue>,
+}
+
+unsafe impl Send for CompletionQueue {}
+unsafe impl Sync for CompletionQueue {}
+
+impl CompletionQueue {
+    /// Poll for (possibly multiple) work completions.
+    ///
+    /// A Work Completion indicates that a Work Request in a Work Queue, and all of the outstanding
+    /// unsignaled Work Requests that posted to that Work Queue, associated with this CQ have
+    /// completed. Any Receive Requests, signaled Send Requests and Send Requests that ended with
+    /// an error will generate Work Completions.
+    ///
+    /// When a Work Request ends, a Work Completion is added to the tail of the CQ that this Work
+    /// Queue is associated with. `poll` checks if Work Completions are present in a CQ, and pop
+    /// them from the head of the CQ in the order they entered it (FIFO) into `completions`. After
+    /// a Work Completion was popped from a CQ, it cannot be returned to it. `poll` returns the
+    /// subset of `completions` that successfully completed. If the returned slice has fewer
+    /// elements than the provided `completions` slice, the CQ was emptied.
+    ///
+    /// Not all attributes of the completed `ibv_wc`'s are always valid. If the completion status
+    /// is not `IBV_WC_SUCCESS`, only the following attributes are valid: `wr_id`, `status`,
+    /// `qp_num`, and `vendor_err`.
+    ///
+    /// Note that `poll` does not block or cause a context switch. This is why RDMA technologies
+    /// can achieve very low latency (below 1 µs).
+    #[inline]
+    pub fn poll<'c>(
+        &self,
+        completions: &'c mut [WorkCompletion],
+    ) -> io::Result<&'c mut [WorkCompletion]> {
+        // TODO: from http://www.rdmamojo.com/2013/02/15/ibv_poll_cq/
+        //
+        //   One should consume Work Completions at a rate that prevents the CQ from being overrun
+        //   (hold more Work Completions than the CQ size). In case of an CQ overrun, the async
+        //   event `IBV_EVENT_CQ_ERR` will be triggered, and the CQ cannot be used anymore.
+        //
+        let n = self.inner.poll(completions)?;
+
+        if n < 0 {
+            Err(io::Error::new(io::ErrorKind::Other, "ibv_poll_cq failed"))
+        } else {
+            Ok(&mut completions[0..n as usize])
+        }
+    }
+}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
