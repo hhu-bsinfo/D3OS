@@ -1,3 +1,7 @@
+/// Wrapper for Systemcall Arguments
+/// 
+/// allows passing 0 to 6 arguments normaly using an `usize slice`
+/// but also accepts `raw ptr` and `ref` (for passing structs)
 pub trait SyscallArgs {
     fn arg(&self, index: usize) -> usize;
 }
@@ -5,6 +9,8 @@ pub trait SyscallArgs {
 impl SyscallArgs for [usize; 0] {
     fn arg(&self, _index: usize) -> usize { 0 }
 }
+
+// by manually implementing arrays with 1 to 6 elements, the compiler will enforce the syscall argument limit for us
 
 impl SyscallArgs for [usize; 1] {
     fn arg(&self, index: usize) -> usize { *self.get(index).unwrap_or(&0) }

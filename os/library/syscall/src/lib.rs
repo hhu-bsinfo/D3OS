@@ -89,6 +89,10 @@ pub const NUM_SYSCALLS: usize = mem::variant_count::<SystemCall>() as usize;
 /// Description:
 ///    All syscalls are fired here. Parameters are passed in
 ///    registers according to the AMD 64 bit ABI.
+/// 
+/// Parameters:
+///     Accepts 0 to 6 arguments using an `usize` slice, as well as `raw ptr` and `ref`.
+///     See `SyscallArgs` for more details.
 ///
 /// Return: Result \
 ///    success >= 0 \
