@@ -1,7 +1,8 @@
 use core::str;
 
 use alloc::{format, slice};
-use ipc::{IpcSyscallParams, MESSAGE_DATA_SIZE};
+use ipc::ipc_customqueue::IpcQueue;
+use ipc::{IpcQueueType, IpcSyscallParams, MESSAGE_DATA_SIZE};
 //use ipc::ipc_queue::IpcQueue;
 use ipc::ipc_lfqueue::IpcLFQueue;
 use log::error;
@@ -84,7 +85,7 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
         nameservice::close(fh);
         let service = unsafe { &(*(buf.as_ptr() as *const ServiceObject)).service };
 
-        let ipc_queue_ptr = service.ipc_queue_addr as *const IpcLFQueue;
+        let ipc_queue_ptr = service.ipc_queue_addr as *const IpcQueueType;
         if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_ref() } {
             let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
             let msg_type = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_type_ptr, params.msg_type_len)) };

@@ -1,34 +1,14 @@
 use core::fmt::Display;
-use core::sync::atomic::{AtomicI16, Ordering};
 use core::ops::Deref;
+use core::sync::atomic::{AtomicI16, Ordering};
 
+use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
 use uuid::Uuid;
 
 use crate::{MESSAGE_DATA_SIZE, MESSAGE_NAME_LEN, MESSAGE_TAG_LEN};
 use crate::const_string::ConstString;
-
-
-/// type used for receiving messages, and dropping them after use
-pub struct IpcMessageWrapper {
-    pub msg: &'static IpcMessage,
-    pub(crate) queue_ptr: &'static AtomicI16,
-}
-
-impl Drop for IpcMessageWrapper {
-    fn drop(&mut self) {
-        self.queue_ptr.store(0, Ordering::SeqCst);
-    }
-}
-
-impl Deref for IpcMessageWrapper {
-    type Target = IpcMessage;
-
-    fn deref(&self) -> &Self::Target {
-        self.msg
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct IpcMessage {
@@ -164,5 +144,43 @@ impl IpcMessageContent for &String {
     }
     fn tag(&self) -> &str {
         "STRING"
+    }
+}
+
+
+/// type used for receiving messages, and dropping them after use, to achieve one copy behaviour
+pub struct IpcMessageWrapper {
+    pub msg: &'static IpcMessage,
+    pub(crate) queue_ptr: Option<&'static AtomicI16>,
+    pub(crate) is_boxed: bool,
+}
+
+impl Drop for IpcMessageWrapper {
+    fn drop(&mut self) {
+        // this msg still lives in the custom msg queue
+        // we need to manully free the space in the queue, this msg occupies
+        if let Some(qp) = self.queue_ptr {
+            qp.store(0, Ordering::SeqCst);
+        }
+        // check if this msg lives in a leaked box
+        // this is used by the lfqueue to allow returning a reference instead of an owned value
+        // this code should free the underlying msg correctly, when the wrapper is dropped
+        if self.is_boxed {
+            drop(unsafe { Box::from_raw(core::ptr::from_ref(self.msg).cast_mut()) })
+        }
+    }
+}
+
+impl Deref for IpcMessageWrapper {
+    type Target = IpcMessage;
+
+    fn deref(&self) -> &Self::Target {
+        self.msg
+    }
+}
+
+impl Display for IpcMessageWrapper {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.msg)
     }
 }
