@@ -6,6 +6,7 @@ pub mod ipc_message;
 pub mod ipc_customqueue;
 pub mod ipc_lfqueue;
 pub mod const_string;
+pub mod scq;
 
 extern crate alloc;
 
