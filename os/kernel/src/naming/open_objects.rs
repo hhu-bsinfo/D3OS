@@ -16,7 +16,7 @@ use core::result::Result;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Once;
 use spin::rwlock::RwLock;
-use log::info;
+use log::{info, warn};
 
 use crate::naming::traits::DirectoryObject;
 
@@ -179,7 +179,10 @@ pub(super) fn close(fh: usize) -> Result<usize, Errno> {
 pub(super) fn delete(fh: usize) -> Result<usize, Errno> {
     info!("delete called for fh={}", fh);
     if let Ok(opened_object) = get_open_object_table().lookup_opened_object(fh) {
-        opened_object.delete();
+        match opened_object.delete() {
+            Ok(_) => info!("  deleted {}", opened_object.name),
+            Err(e) => warn!("  error when deleting {}: {:?}", opened_object.name, e),
+        }
     }
     get_open_object_table().free_handle(fh)
 }
