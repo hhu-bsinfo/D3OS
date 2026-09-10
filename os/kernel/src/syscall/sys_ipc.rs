@@ -2,7 +2,8 @@ use core::str;
 
 use alloc::{format, slice};
 use ipc::{IpcSyscallParams, MESSAGE_DATA_SIZE};
-use ipc::ipc_queue::IpcQueue;
+//use ipc::ipc_queue::IpcQueue;
+use ipc::ipc_lfqueue::IpcLFQueue;
 use log::error;
 use naming::shared_types::OpenOptions;
 use syscall::return_vals::{self, SyscallResult};
@@ -83,7 +84,7 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
         nameservice::close(fh);
         let service = unsafe { &(*(buf.as_ptr() as *const ServiceObject)).service };
 
-        let ipc_queue_ptr = service.ipc_queue_addr as *const IpcQueue;
+        let ipc_queue_ptr = service.ipc_queue_addr as *const IpcLFQueue;
         if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_ref() } {
             let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
             let msg_type = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_type_ptr, params.msg_type_len)) };
@@ -100,7 +101,7 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
 
 pub extern "sysv64" fn sys_ipc_receive_blocking(timeout_ms: usize) -> isize {
 
-    let ipc_queue_ptr = consts::USER_SPACE_MAILBOX_START as *mut IpcQueue;
+    let ipc_queue_ptr = consts::USER_SPACE_MAILBOX_START as *mut IpcLFQueue;
     if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_mut() } {
 
         let num_messages = ipc_queue.messages_left();

@@ -61,7 +61,7 @@ pub fn main() {
         loop {
             match ipc::receive() {
                 Some(msg) => {
-                    println!("Received Message: {}", *msg);
+                    println!("Received Message: {}", msg);
                     break;
                 },
                 None => {}

@@ -1,5 +1,5 @@
 use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
-use ipc::ipc_queue::IpcQueue;
+use ipc::ipc_lfqueue::IpcLFQueue;
 use naming::shared_types::DirEntry;
 use spin::rwlock::RwLock;
 use syscall::return_vals::Errno;
@@ -70,7 +70,7 @@ impl DirectoryObject for ServiceDir {
         let process = scheduler().current_thread().process();
         let ipc_queue_addr = process
             .virtual_address_space
-            .translate_ptr(consts::USER_SPACE_MAILBOX_START as *const IpcQueue)
+            .translate_ptr(consts::USER_SPACE_MAILBOX_START as *const IpcLFQueue)
             .expect("IpcQueue isnt mapped into virt addr space") as usize;
         let svc = Arc::new(Service { name: name.to_string(), ipc_queue_addr, owning_pid: process.id() });
         self.0.write().services.push(Arc::clone(&svc));

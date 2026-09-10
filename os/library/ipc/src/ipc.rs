@@ -1,7 +1,9 @@
 #![no_std]
+#![feature(generic_atomic)]
 
 pub mod ipc_message;
 pub mod ipc_queue;
+pub mod ipc_lfqueue;
 pub mod const_string;
 
 extern crate alloc;
@@ -13,6 +15,7 @@ use concurrent::process;
 
 use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageWrapper};
 use crate::ipc_queue::IpcQueue;
+use crate::ipc_lfqueue::IpcLFQueue;
 
 // Schnittstelle für Interprozesskommunikation
 
@@ -31,16 +34,15 @@ const MESSAGE_NAME_LEN: usize = 0x20;
 const MESSAGE_TAG_LEN: usize = 0x10;
 //pub const MESSAGE_DATA_SIZE: usize = 0x100 - (size_of::<Uuid>() + size_of::<usize>() + MESSAGE_TAG_LEN);
 pub const MESSAGE_DATA_SIZE: usize = 0x100;
-const MAX_NUM_MESSAGES: usize = 32; // !this needs to be a power of 2! also this can not be smaller than 4
+const MAX_NUM_MESSAGES: usize = 16; // !this needs to be a power of 2! also this can not be smaller than 4
 
 const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
 pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, syscall::return_vals::Errno> {
     // TODO what happens when we register multiple endpoints / multiple services for this endpoint
     let mailbox_start = USER_SPACE_MAILBOX_START as *const u8;
-    let ipc_queue_ptr = mailbox_start as *mut IpcQueue;
     unsafe { 
-        ipc_queue_ptr.write(IpcQueue::new());
+        (mailbox_start as *mut IpcLFQueue).write(IpcLFQueue::new());
     }
     let name_ptr = svc_name.as_ptr();
     let name_len = svc_name.len();
@@ -99,14 +101,19 @@ pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -
     syscall(SystemCall::IpcSend, &&params)
 }
 
-pub fn receive() -> Option<IpcMessageWrapper> {
+pub fn receive_old() -> Option<IpcMessageWrapper> {
     let ipc_queue = unsafe { (USER_SPACE_MAILBOX_START as *const IpcQueue).as_ref() };
+    ipc_queue.and_then(|iq| iq.receive())
+}
+
+pub fn receive() -> Option<IpcMessage> {
+    let ipc_queue = unsafe { (USER_SPACE_MAILBOX_START as *const IpcLFQueue).as_ref() };
     ipc_queue.and_then(|iq| iq.receive())
 }
 
 pub fn receive_blocking(timeout_ms: usize) -> Result<IpcMessageWrapper, syscall::return_vals::Errno> {
     match syscall(SystemCall::IpcReceiveBlocking, &[timeout_ms]) {
-        Ok(_) => receive().ok_or(syscall::return_vals::Errno::EEXIST),
+        Ok(_) => receive_old().ok_or(syscall::return_vals::Errno::EEXIST),
         Err(e) => Err(e),
     }
 }
