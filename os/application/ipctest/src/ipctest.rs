@@ -8,8 +8,8 @@ use core::fmt::Display;
 use alloc::string::ToString;
 use alloc::{format, string::String, vec::Vec};
 use alloc::vec;
-use concurrent::ipc::{ConstString, bytes_as_any};
-use concurrent::{ipc::{self, MESSAGE_DATA_SIZE}, process, thread};
+use concurrent::{process, thread};
+use ipc::const_string::ConstString;
 use runtime::*;
 use terminal::println;
 use uuid::Uuid;
@@ -175,7 +175,7 @@ pub fn main() {
         loop {
             match ipc::receive() {
                 Some(msg) => {
-                    let my_struct: &MyStruct = unsafe { bytes_as_any(&*msg.data()) };
+                    let my_struct: &MyStruct = unsafe { ipc::bytes_as_any(&*msg.data()) };
                     println!("-- Receive --\n{:}", my_struct);
                     break;
                 },

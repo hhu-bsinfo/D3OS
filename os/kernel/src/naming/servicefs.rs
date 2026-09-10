@@ -1,5 +1,5 @@
 use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
-use concurrent::ipc::IpcQueue;
+use ipc::ipc_queue::IpcQueue;
 use naming::shared_types::DirEntry;
 use spin::rwlock::RwLock;
 use syscall::return_vals::Errno;

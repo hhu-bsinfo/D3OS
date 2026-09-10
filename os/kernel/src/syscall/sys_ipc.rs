@@ -1,7 +1,8 @@
 use core::str;
 
 use alloc::{format, slice};
-use concurrent::ipc::{IpcQueue, IpcSyscallParams, MESSAGE_DATA_SIZE};
+use ipc::{IpcSyscallParams, MESSAGE_DATA_SIZE};
+use ipc::ipc_queue::IpcQueue;
 use log::error;
 use naming::shared_types::OpenOptions;
 use syscall::return_vals::{self, SyscallResult};

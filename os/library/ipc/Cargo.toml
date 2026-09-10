@@ -1,0 +1,23 @@
+[package]
+edition = "2024"
+name = "ipc"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>, Richard Schweitzer <risch114@uni-duesseldorf.de>"]
+
+[lib]
+test = false
+doctest = false
+bench = false
+path = "src/ipc.rs"
+
+[dependencies]
+# Local dependencies
+syscall = { path = "../syscall" }
+time = { path = "../time" }
+concurrent = { path = "../concurrent" }
+
+# External dependencies
+chrono = { version = "0.4.42", default-features = false, features = ["alloc"] }
+spin = "0.12"
+uuid = { version = "1.23.1", default-features = false, features = ["v7"] }
+nolock = { version = "0.4.1", default-features = false, features = ["queues"] }

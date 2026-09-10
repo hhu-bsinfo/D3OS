@@ -16,6 +16,7 @@ bench = false
 runtime = { path = "../../library/runtime" }
 terminal = { path = "../../library/terminal" }
 concurrent = { path = "../../library/concurrent" }
+ipc = { path = "../../library/ipc" }
 syscall = { path = "../../library/syscall" }
 
 

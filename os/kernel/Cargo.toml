@@ -30,6 +30,7 @@ system_info = { path = "../library/system_info", default-features = false }
 input = { path = "../library/input", default-features = false }
 virtio = { package = "virtio-drivers", git = "https://github.com/hhu-bsinfo/virtio-drivers.git", rev = "f127bb0e9f3d71142ed1354e88c76b419261f8f3" }
 concurrent = { path = "../library/concurrent", default-features = false }
+ipc = { path = "../library/ipc", default-features = false }
 
 # External depencies
 spin = "0.12"

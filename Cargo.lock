@@ -611,10 +611,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipc"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "concurrent",
+ "nolock",
+ "spin 0.12.2",
+ "syscall",
+ "time",
+ "uuid",
+]
+
+[[package]]
 name = "ipctest"
 version = "0.1.0"
 dependencies = [
  "concurrent",
+ "ipc",
  "runtime",
  "syscall",
  "terminal",
@@ -670,6 +684,7 @@ dependencies = [
  "goblin",
  "graphic",
  "input",
+ "ipc",
  "linked_list_allocator",
  "llfree",
  "log",
