@@ -7,6 +7,7 @@ use crate::ipc_message::{IpcMessage, IpcMessageWrapper};
 pub trait IpcQueue {
     fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid) -> bool;
     fn receive(&'static self) -> Option<IpcMessageWrapper>;
+    fn messages_left(&self) -> usize;
 }
 
 #[derive(Debug)]
@@ -86,5 +87,9 @@ impl IpcQueue for IpcCustomQueue {
             self.reader_idx().store(reader_idx as u16, Ordering::SeqCst);
             None
         }
+    }
+    
+    fn messages_left(&self) -> usize {
+        self.messages_left()
     }
 }

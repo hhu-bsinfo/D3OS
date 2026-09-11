@@ -38,4 +38,8 @@ impl crate::ipc_customqueue::IpcQueue for IpcLFQueue {
         let b = Box::new(self.queue.dequeue()?);
         Some(IpcMessageWrapper { msg: Box::leak(b), queue_ptr: None, is_boxed: true })
     }
+    
+    fn messages_left(&self) -> usize {
+        todo!()
+    }
 }
