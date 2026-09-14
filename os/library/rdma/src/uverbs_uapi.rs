@@ -142,6 +142,7 @@ pub struct CreateCqRequest {
     pub doorbell_ptr: *const u64,
 }
 
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateCqResponse {
     pub cq_num: u32,
@@ -171,6 +172,7 @@ pub struct CreateQpRequest {
     pub log_rq_stride: u8,
 }
 
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateQpResponse {
     pub qp_num: u32,

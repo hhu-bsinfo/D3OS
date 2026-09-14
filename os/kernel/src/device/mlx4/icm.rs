@@ -434,7 +434,7 @@ impl MrTable {
         dmpt_bytes.copy_from_slice(&cmd.output_mailbox_as_bytes()[..size_of::<DmptEntry>()]);
         let mut dmpt = DmptEntry::from_bytes(dmpt_bytes);
         assert_eq!(dmpt_index, dmpt.index());
-        trace!("memory region of size {} with mem key {} created successfully", dmpt.length(), dmpt.key(),);
+        trace!("memory region of size {} with mem key {}, lkey {}, index {} created successfully", dmpt.length(), dmpt.key(), dmpt.lkey(), dmpt.index());
 
         // The `lkey` field of the entry is owned by the firmware and is not a
         // usable key (Linux writes a zero there and never reads it back). The
@@ -542,7 +542,7 @@ struct DmptEntry {
     /// Region/Window Length
     length: u64,
     /// Written by the firmware; must be zero when handing the entry over.
-    #[skip]
+    #[skip(setters)]
     lkey: u32,
     #[skip]
     __: u8,
