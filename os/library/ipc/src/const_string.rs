@@ -50,6 +50,11 @@ impl <const S: usize> ConstString<S> {
         self.buffer[..l].copy_from_slice(&s.as_bytes()[..l]);
         self.len = l;
     }
+    pub fn copy_from<const T: usize>(&mut self, other: ConstString<T>) {
+        let l = core::cmp::min(S, other.len());
+        self.buffer[..l].copy_from_slice(&other[..l]);
+        self.len = l;
+    }
 }
 
 impl ConstString<0> {

@@ -3,26 +3,21 @@
 #![allow(clippy::new_without_default)]
 
 pub mod ipc_message;
-pub mod ipc_customqueue;
-pub mod ipc_lfqueue;
+pub mod queues;
 pub mod const_string;
 pub mod scq;
 
 extern crate alloc;
 
-use alloc::boxed::Box;
 use alloc::format;
 use syscall::{SystemCall, return_vals::SyscallResult, syscall};
 
 use concurrent::process;
 
 use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageWrapper};
-use crate::ipc_customqueue::{IpcCustomQueue, IpcQueue};
-use crate::ipc_lfqueue::IpcLFQueue;
+use crate::queues::{IpcQueue, IpcQueueType};
 
 // Schnittstelle für Interprozesskommunikation
-
-pub type IpcQueueType = IpcLFQueue;
 
 const MESSAGE_NAME_LEN: usize = 0x20;
 const MESSAGE_TAG_LEN: usize = 0x10;
@@ -106,12 +101,12 @@ pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -
     syscall(SystemCall::IpcSend, &&params)
 }
 
-pub fn receive() -> Option<IpcMessageWrapper> {
+pub fn receive<'a>() -> Option<impl IpcMessageWrapper<'a>> {
     let ipc_queue = unsafe { (USER_SPACE_MAILBOX_START as *const IpcQueueType).as_ref() };
     ipc_queue?.receive()
 }
 
-pub fn receive_blocking(timeout_ms: usize) -> Result<IpcMessageWrapper, syscall::return_vals::Errno> {
+pub fn receive_blocking<'a>(timeout_ms: usize) -> Result<impl IpcMessageWrapper<'a>, syscall::return_vals::Errno> {
     match syscall(SystemCall::IpcReceiveBlocking, &timeout_ms) {
         Ok(_) => receive().ok_or(syscall::return_vals::Errno::EEXIST),
         Err(e) => Err(e),

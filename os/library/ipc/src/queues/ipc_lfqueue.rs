@@ -1,7 +1,6 @@
 use core::sync::atomic::Atomic;
 use core::{cell::UnsafeCell, mem::MaybeUninit};
 
-use alloc::boxed::Box;
 use lfqueue::{BoundedQueue, ConstBoundedQueue, const_queue};
 use crossbeam_utils::CachePadded;
 
@@ -26,7 +25,7 @@ impl IpcLFQueue {
     }
 }
 
-impl crate::ipc_customqueue::IpcQueue for IpcLFQueue {
+impl super::IpcQueue for IpcLFQueue {
     fn send(&self, name: &str, msg_type: &str, message: &[u8], id: &uuid::Uuid) -> bool {
         let mut data = [0; MESSAGE_DATA_SIZE];
         let l = core::cmp::min(message.len(), MESSAGE_DATA_SIZE);
@@ -34,12 +33,35 @@ impl crate::ipc_customqueue::IpcQueue for IpcLFQueue {
         self.queue.enqueue(IpcMessage { name: name.into(), msg_type: msg_type.into(), data, data_len: message.len(), sender_pid: *id, sender_tid: 0 }).is_ok()
     }
     
-    fn receive(&'static self) -> Option<IpcMessageWrapper> {
-        let b = Box::new(self.queue.dequeue()?);
-        Some(IpcMessageWrapper { msg: Box::leak(b), queue_ptr: None, is_boxed: true })
+    fn receive<'a>(&'a self) -> Option<impl IpcMessageWrapper> {
+        Some(IpcMessageWrapperOwned { msg: self.queue.dequeue()? })
     }
     
     fn messages_left(&self) -> usize {
         todo!()
+    }
+}
+
+pub struct IpcMessageWrapperOwned {
+    pub msg: IpcMessage,
+}
+
+impl<'a> IpcMessageWrapper<'a> for IpcMessageWrapperOwned {
+    fn msg(&'a self) -> &'a IpcMessage {
+        &self.msg
+    }
+}
+
+impl core::ops::Deref for IpcMessageWrapperOwned {
+    type Target = IpcMessage;
+
+    fn deref(&self) -> &Self::Target {
+        &self.msg
+    }
+}
+
+impl core::fmt::Display for IpcMessageWrapperOwned {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.msg)
     }
 }

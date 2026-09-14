@@ -1,10 +1,8 @@
 use core::str;
 
 use alloc::{format, slice};
-use ipc::ipc_customqueue::IpcQueue;
-use ipc::{IpcQueueType, IpcSyscallParams, MESSAGE_DATA_SIZE};
-//use ipc::ipc_queue::IpcQueue;
-use ipc::ipc_lfqueue::IpcLFQueue;
+use ipc::{IpcSyscallParams, MESSAGE_DATA_SIZE};
+use ipc::queues::{IpcQueue, IpcQueueType};
 use log::error;
 use naming::shared_types::OpenOptions;
 use syscall::return_vals::{self, SyscallResult};
@@ -102,7 +100,7 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
 
 pub extern "sysv64" fn sys_ipc_receive_blocking(timeout_ms: usize) -> isize {
 
-    let ipc_queue_ptr = consts::USER_SPACE_MAILBOX_START as *mut IpcLFQueue;
+    let ipc_queue_ptr = consts::USER_SPACE_MAILBOX_START as *mut IpcQueueType;
     if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_mut() } {
 
         let num_messages = ipc_queue.messages_left();

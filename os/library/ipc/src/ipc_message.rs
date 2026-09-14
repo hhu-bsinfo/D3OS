@@ -1,8 +1,5 @@
 use core::fmt::Display;
-use core::ops::Deref;
-use core::sync::atomic::{AtomicI16, Ordering};
 
-use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
 use uuid::Uuid;
@@ -48,6 +45,15 @@ impl IpcMessage {
     pub fn data_as_str(&self) -> &str {
         str::from_utf8(self.data()).unwrap_or("UTF8_ERROR")
         //str_from_ut8_nul_terminated(&self.data)
+    }
+    pub(crate) fn copy_from(&mut self, other_msg: &IpcMessage) {
+        self.name.copy_from(other_msg.name);
+        self.msg_type.copy_from(other_msg.msg_type);
+        let l = other_msg.data_len;
+        self.data[..l].copy_from_slice(other_msg.data());
+        self.data_len = l;
+        self.sender_pid = other_msg.sender_pid;
+        self.sender_tid = other_msg.sender_tid;
     }
 }
 
@@ -148,39 +154,7 @@ impl IpcMessageContent for &String {
 }
 
 
-/// type used for receiving messages, and dropping them after use, to achieve one copy behaviour
-pub struct IpcMessageWrapper {
-    pub msg: &'static IpcMessage,
-    pub(crate) queue_ptr: Option<&'static AtomicI16>,
-    pub(crate) is_boxed: bool,
-}
-
-impl Drop for IpcMessageWrapper {
-    fn drop(&mut self) {
-        // this msg still lives in the custom msg queue
-        // we need to manully free the space in the queue, this msg occupies
-        if let Some(qp) = self.queue_ptr {
-            qp.store(0, Ordering::SeqCst);
-        }
-        // check if this msg lives in a leaked box
-        // this is used by the lfqueue to allow returning a reference instead of an owned value
-        // this code should free the underlying msg correctly, when the wrapper is dropped
-        if self.is_boxed {
-            drop(unsafe { Box::from_raw(core::ptr::from_ref(self.msg).cast_mut()) })
-        }
-    }
-}
-
-impl Deref for IpcMessageWrapper {
-    type Target = IpcMessage;
-
-    fn deref(&self) -> &Self::Target {
-        self.msg
-    }
-}
-
-impl Display for IpcMessageWrapper {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.msg)
-    }
+/// trait used for receiving messages, and dropping them after use, to achieve one copy behaviour
+pub trait IpcMessageWrapper<'a> {
+    fn msg(&'a self) -> &'a IpcMessage;
 }

@@ -4,12 +4,6 @@ use uuid::Uuid;
 use crate::{MAX_NUM_MESSAGES, MESSAGE_DATA_SIZE};
 use crate::ipc_message::{IpcMessage, IpcMessageWrapper};
 
-pub trait IpcQueue {
-    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid) -> bool;
-    fn receive(&'static self) -> Option<IpcMessageWrapper>;
-    fn messages_left(&self) -> usize;
-}
-
 #[derive(Debug)]
 pub struct IpcCustomQueue {
     writer_idx: AtomicU16,
@@ -40,7 +34,7 @@ impl IpcCustomQueue {
     }
 }
 
-impl IpcQueue for IpcCustomQueue {
+impl super::IpcQueue for IpcCustomQueue {
     
     fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid) -> bool {
 
@@ -68,7 +62,7 @@ impl IpcQueue for IpcCustomQueue {
         false
     }
 
-    fn receive(&'static self) -> Option<IpcMessageWrapper> {
+    fn receive<'a>(&'a self) -> Option<impl IpcMessageWrapper<'a>> {
 
         // iter until writer_idx to check for any new messages
         let reader_idx = self.reader_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
@@ -79,7 +73,7 @@ impl IpcQueue for IpcCustomQueue {
         // check if found valid message
         if msg_len > 0 {
             // put Message into Wrapper to enable automatic clearing of the queue, once the value is dropped
-            self.messages.get(reader_idx).map(|msg| IpcMessageWrapper { msg, queue_ptr: Some(&self.mailbox[reader_idx]), is_boxed: false })
+            self.messages.get(reader_idx).map(|msg| IpcMessageWrapperCustomQueue { msg, queue_ptr: Some(&self.mailbox[reader_idx]) })
         } else {
             // free mailbox slot again
             self.mailbox[reader_idx].store(msg_len, Ordering::SeqCst);
@@ -91,5 +85,40 @@ impl IpcQueue for IpcCustomQueue {
     
     fn messages_left(&self) -> usize {
         self.messages_left()
+    }
+}
+
+pub struct IpcMessageWrapperCustomQueue<'a> {
+    pub msg: &'a IpcMessage,
+    pub(crate) queue_ptr: Option<&'a AtomicI16>,
+}
+
+impl<'a> IpcMessageWrapper<'a> for IpcMessageWrapperCustomQueue<'a> {
+    fn msg(&'a self) -> &'a IpcMessage {
+        self.msg
+    }
+}
+
+impl<'a> Drop for IpcMessageWrapperCustomQueue<'a> {
+    fn drop(&mut self) {
+        // this msg still lives in the custom msg queue
+        // we need to manully free the space in the queue, this msg occupies
+        if let Some(qp) = self.queue_ptr {
+            qp.store(0, Ordering::SeqCst);
+        }
+    }
+}
+
+impl<'a> core::ops::Deref for IpcMessageWrapperCustomQueue<'a> {
+    type Target = IpcMessage;
+
+    fn deref(&self) -> &Self::Target {
+        self.msg
+    }
+}
+
+impl<'a> core::fmt::Display for IpcMessageWrapperCustomQueue<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.msg)
     }
 }

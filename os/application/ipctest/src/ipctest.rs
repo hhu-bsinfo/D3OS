@@ -10,6 +10,7 @@ use alloc::{format, string::String, vec::Vec};
 use alloc::vec;
 use concurrent::{process, thread};
 use ipc::const_string::ConstString;
+use ipc::ipc_message::IpcMessageWrapper;
 use runtime::*;
 use terminal::println;
 use uuid::Uuid;
@@ -60,8 +61,9 @@ pub fn main() {
         ipc::register_ipc_endpoint("ipctest_recv");
         loop {
             match ipc::receive() {
-                Some(msg) => {
-                    println!("Received Message: {}", msg);
+                Some(msg_wrapper) => {
+                    let m = msg_wrapper.msg();
+                    println!("Received Message: {}", m);
                     break;
                 },
                 None => {}
@@ -79,11 +81,11 @@ pub fn main() {
         // wait for ping
         loop {
             if let Some(msg) = ipc::receive() {
-                let ping = msg.data_as_usize();
+                let ping = msg.msg().data_as_usize();
                 if *ping > 100 { return; }
                 let pong = ping + 1;
                 println!("PONG! [{}]", pong);
-                ipc::answer_with_name(&msg, "pong", pong);
+                ipc::answer_with_name(&msg.msg(), "pong", pong);
             }
             thread::sleep(200);
         }
@@ -95,11 +97,11 @@ pub fn main() {
         // wait for pong
         loop {
             if let Some(msg) = ipc::receive() {
-                let pong = msg.data_as_usize();
+                let pong = msg.msg().data_as_usize();
                 if *pong > 100 { return; }
                 let ping = pong + 1;
                 println!("PING! [{}]", ping);
-                ipc::answer_with_name(&msg, "ping", ping);
+                ipc::answer_with_name(&msg.msg(), "ping", ping);
             }
             thread::sleep(200);
         }
@@ -117,7 +119,7 @@ pub fn main() {
 
         loop {
             while let Some(msg) = ipc::receive() {
-                let number = *msg.data_as_usize();
+                let number = *msg.msg().data_as_usize();
                 println!("Received Message: {}", number);
                 if number == limit {
                     println!("Successfully received {} messages. Sending STOP signal and exiting...", limit);
@@ -146,7 +148,7 @@ pub fn main() {
             // check for stop signal
             if let Some(msg) = ipc::receive() {
                 
-                let msg_data = msg.data_as_str();
+                let msg_data = msg.msg().data_as_str();
 
                 if msg_data == "STOP" {
                     println!("Received STOP signal ({} errors in total), exiting...", errors);
@@ -175,7 +177,7 @@ pub fn main() {
         loop {
             match ipc::receive() {
                 Some(msg) => {
-                    let my_struct: &MyStruct = unsafe { ipc::bytes_as_any(&*msg.data()) };
+                    let my_struct: &MyStruct = unsafe { ipc::bytes_as_any(&*msg.msg().data()) };
                     println!("-- Receive --\n{:}", my_struct);
                     break;
                 },
