@@ -1,4 +1,3 @@
-use crate::D3OSStaticString;
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: log                                                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
@@ -13,6 +12,7 @@ use crate::device::serial::ComPort;
 use crate::device::serial::SerialPort;
 use crate::{allocator, timer};
 use graphic::ansi;
+use ipc::const_string::ConstString;
 use log::debug;
 use stream::OutputStream;
 use core::fmt::Write;
@@ -92,7 +92,7 @@ impl log::Log for Logger {
                 // this could become garbled if we had multiple threads,
                 // but we do not have them at this point
 
-                let mut static_string: D3OSStaticString<256> = D3OSStaticString::new();
+                let mut static_string: ConstString<256> = ConstString::new();
 
                 let systime = if allocator().is_initialized() && !allocator().is_locked() {
                     timer().systime_ms()

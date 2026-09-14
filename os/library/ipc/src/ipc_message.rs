@@ -28,10 +28,10 @@ impl IpcMessage {
         self.data_len == 0
     }
     pub fn name_as_str(&self) -> &str {
-        self.name.as_str()
+        self.name.as_str_unchecked()
     }
     pub fn msg_type_as_str(&self) -> &str {
-        self.msg_type.as_str()
+        self.msg_type.as_str_unchecked()
     }
     pub fn data(&self) -> &[u8] {
         &self.data[..self.data_len]
