@@ -97,7 +97,7 @@ use serde::{Deserialize, Serialize};
 
 /// Access flags for use with `QueuePair` and `MemoryRegion`.
 pub use ffi::ibv_access_flags;
-
+use rdma::ProtectionDomainHandle;
 
 /// Because `std::slice::SliceIndex` is still unstable, we follow @alexcrichton's suggestion in
 /// https://github.com/rust-lang/rust/issues/35729 and implement it ourselves.
@@ -1166,7 +1166,7 @@ pub struct RemoteMemoryRegion<T> {
 /// A protection domain for a device's context.
 pub struct ProtectionDomain<'ctx> {
     ctx: &'ctx Context,
-    pd: u32,
+    pd: ProtectionDomainHandle,
 }
 
 unsafe impl<'a> Sync for ProtectionDomain<'a> {}

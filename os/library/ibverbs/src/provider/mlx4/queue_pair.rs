@@ -24,6 +24,7 @@ use rdma::ib_core::{ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_state, ibv
 use rdma::uverbs_uapi::{CreateQpRequest, CreateQpResponse, ModifyQpRequest, UserSlice};
 use rdma::uverbs_uapi::UverbsCmd::{CreateQp, DestroyQp, ModifyQp};
 use strum_macros::FromRepr;
+use rdma::ProtectionDomainHandle;
 use crate::cmd::uverbs;
 use crate::provider::{IbvQueuePair, QpInitAttr, ReceiveWorkRequest, SendWorkRequest};
 use super::Mlx4Context;
@@ -238,7 +239,7 @@ impl Drop for QueuePair {
 }
 
 impl QueuePair {
-    pub(crate) fn create(context: Arc<Mlx4Context>, pd: u32, attr: &QpInitAttr) -> io::Result<QueuePair> {
+    pub(crate) fn create(context: Arc<Mlx4Context>, pd: ProtectionDomainHandle, attr: &QpInitAttr) -> io::Result<QueuePair> {
         let mut rq = WorkQueue::new_receive_queue(&context, &attr.cap)?;
         let mut sq = WorkQueue::new_send_queue(&context, &attr.cap, attr.qp_type)?;
 

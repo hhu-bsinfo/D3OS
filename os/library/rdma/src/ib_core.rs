@@ -34,6 +34,9 @@ pub struct ibv_qp_cap {
     pub max_inline_data: u32,
 }
 
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct ProtectionDomainHandle(pub u32);
+
 pub type __be64 = u64;
 
 bitflags! {

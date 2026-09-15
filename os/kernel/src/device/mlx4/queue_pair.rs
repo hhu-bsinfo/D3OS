@@ -25,7 +25,7 @@ use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::process::process::Process;
 use crate::process_manager;
-use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, ConnectX3Nic, ProtectionDomain};
+use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, ConnectX3Nic, ProtectionDomainHandle};
 
 const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
 const IB_MAX_HEADROOM: u32 = 2048;
@@ -42,7 +42,7 @@ pub(super) struct QueuePair {
     state: ibv_qp_state,
     qp_type: ibv_qp_type::Type,
     port_number: Option<u8>,
-    pd: ProtectionDomain,
+    pd: ProtectionDomainHandle,
     // TODO: bind the lifetime to the one of the completion queues
     send_cq_number: u32,
     receive_cq_number: u32,
@@ -69,7 +69,7 @@ impl QueuePair {
         dev: &mut ConnectX3Nic,
         process: Arc<Process>,
         qp_type: ibv_qp_type::Type,
-        pd: ProtectionDomain,
+        pd: ProtectionDomainHandle,
         send_cq_number: u32,
         receive_cq_number: u32,
         buffer: *const u8,
@@ -189,7 +189,7 @@ impl QueuePair {
                 });
                 context.set_path_migration_state(PATH_MIGRATION_STATE_MIGRATED);
                 context.set_usr_page(uar_index_to_hw(self.uar_index as usize).try_into().unwrap());
-                context.set_protection_domain(self.pd);
+                context.set_protection_domain(self.pd.0);
                 context.set_cqn_send(self.send_cq_number);
                 // RC needs remote read
                 if self.qp_type == ibv_qp_type::IBV_QPT_RC {

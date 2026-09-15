@@ -10,6 +10,7 @@ use core::mem;
 use core::mem::MaybeUninit;
 use core3::io;
 use rdma::ib_core::{ibv_access_flags, ibv_device, ibv_device_attr, ibv_gid, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_type, ibv_send_flags, ibv_send_wr_wr, ibv_sge, ibv_wc, ibv_wr_opcode};
+use rdma::ProtectionDomainHandle;
 use rdma::uverbs_uapi::UverbsCmd::QueryDevices;
 use rdma::uverbs_uapi::{UserSlice, UVERBS_MAX_QUERY_DEVICES_REQ};
 
@@ -74,18 +75,18 @@ pub trait IbvContext {
     fn query_gid(&self, port_num: u8, index: i32) -> io::Result<ibv_gid>;
 
     // --- Queue Pair ---
-    fn create_qp(self: Arc<Self>, pd: u32, attr: &QpInitAttr) -> io::Result<Arc<dyn IbvQueuePair>>;
+    fn create_qp(self: Arc<Self>, pd: ProtectionDomainHandle, attr: &QpInitAttr) -> io::Result<Arc<dyn IbvQueuePair>>;
     //fn query_qp();
 
     // --- Completion Queue ---
     fn create_cq(self: Arc<Self>, min_cpe: i32, cq_context: isize, channel: Option<()>, comp_vector: i32) -> io::Result<Box<dyn IbvCompletionQueue>>;
 
     // --- Protection Domain ---
-    fn alloc_pd(&self) -> io::Result<u32>;
-    fn dealloc_pd(&self, pd: u32) -> io::Result<()>;
+    fn alloc_pd(&self) -> io::Result<ProtectionDomainHandle>;
+    fn dealloc_pd(&self, pd: ProtectionDomainHandle) -> io::Result<()>;
 
     // --- Memory Region ---
-    fn reg_mr(&self, pd: u32, ptr: *mut u8, len: usize, access: ibv_access_flags) -> io::Result<MemoryRegionMetadata>;
+    fn reg_mr(&self, pd: ProtectionDomainHandle, ptr: *mut u8, len: usize, access: ibv_access_flags) -> io::Result<MemoryRegionMetadata>;
     fn dereg_mr(&self, meta: MemoryRegionMetadata);
 }
 

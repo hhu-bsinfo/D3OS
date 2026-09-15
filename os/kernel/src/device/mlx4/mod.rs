@@ -27,7 +27,7 @@ use log::{error, info, trace, warn};
 use pci_types::{Bar, CommandRegister, EndpointHeader};
 use zerocopy::U32;
 
-use rdma::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_type};
+use rdma::{ibv_access_flags, ibv_device_attr, ibv_port_attr, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_type, ProtectionDomainHandle};
 
 use crate::{pci_bus, process_manager};
 use port::Port;
@@ -96,7 +96,7 @@ pub struct ConnectX3Nic {
     offsets: Offsets,
     icm_tables: MappedIcmTables,
     hca: Hca,
-    pds: BTreeMap<ProtectionDomain, Uuid>, // Protection Domain -> Process id
+    pds: BTreeMap<ProtectionDomainHandle, Uuid>, // Protection Domain -> Process id
     eqs: Vec<EventQueue>,
     // TODO: find some way to bind this to the relevant EQ
     cqs: Vec<CompletionQueue>,
@@ -413,7 +413,7 @@ impl ConnectX3Nic {
         }
     }
 
-    fn validate_pd(&self, pd: &ProtectionDomain, process: &Process) -> Result<(), &'static str> {
+    fn validate_pd(&self, pd: &ProtectionDomainHandle, process: &Process) -> Result<(), &'static str> {
         if self.pds.get(&pd).map_or(false, |p| p.eq(&process.id())) {
             Ok(())
         } else {
@@ -421,11 +421,12 @@ impl ConnectX3Nic {
         }
     }
 
-    pub fn alloc_pd(&mut self) -> Result<ProtectionDomain, &'static str> {
+    pub fn alloc_pd(&mut self) -> Result<ProtectionDomainHandle, &'static str> {
         // TODO: impl random pd sampling
         let first = self.capabilities.num_rsvd_pds() as u32;
         let count = 1 << self.capabilities.log_max_pd();
-        for pd in first..first +count {
+        for pd in first..first+count {
+            let pd = ProtectionDomainHandle(pd);
             if !self.pds.contains_key(&pd) {
                 let process = process_manager().read().current_process();
                 self.pds.insert(pd, process.id());
@@ -435,12 +436,12 @@ impl ConnectX3Nic {
         Err("No protection domains available")
     }
 
-    pub fn dealloc_pd(&mut self, pd: ProtectionDomain) -> Result<(), &'static str> {
+    pub fn dealloc_pd(&mut self, pd: ProtectionDomainHandle) -> Result<(), &'static str> {
         // todo check if some qp or mr is register with this pd before allowing it to be deallocated
         let process = process_manager().read().current_process();
         self.validate_pd(&pd, &process)?;
         self.pds.remove(&pd);
-        info!("deallocated PD {pd}");
+        info!("deallocated PD {pd:?}");
         Ok(())
     }
 
@@ -490,7 +491,7 @@ impl ConnectX3Nic {
     /// Create a queue pair and return its number, plus the UAR and BlueFlame pages mapped into
     /// the calling process.
     pub fn create_qp(&mut self,
-                     pd: ProtectionDomain,
+                     pd: ProtectionDomainHandle,
                      qp_type: ibv_qp_type::Type,
                      send_cq_number: u32,
                      receive_cq_number: u32,
@@ -511,9 +512,9 @@ impl ConnectX3Nic {
             self,
             process,
             qp_type,
+            pd,
             send_cq.number(),
             receive_cq.number(),
-            pd,
             buffer,
             doorbell_ptr,
             uar_index,
@@ -560,7 +561,7 @@ impl ConnectX3Nic {
     /// Create a memory region and return its index, physical address, lkey and rkey.
     ///
     /// This is used by ibv_reg_mr.
-    pub fn create_mr<T>(&mut self, pd: ProtectionDomain, data: &mut [T], access: ibv_access_flags) -> Result<DataMemoryProtectionTable, &'static str> {
+    pub fn create_mr<T>(&mut self, pd: ProtectionDomainHandle, data: &mut [T], access: ibv_access_flags) -> Result<DataMemoryProtectionTable, &'static str> {
         self.validate_pd(&pd, &process_manager().read().current_process())?;
         // TODO: this fails for large memory regions (>= 64 MB)
         self.icm_tables.memory_regions().alloc_dmpt(
@@ -689,4 +690,3 @@ impl Context {
     }
 }
 
-pub type ProtectionDomain = u32;
