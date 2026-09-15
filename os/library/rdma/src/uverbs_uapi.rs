@@ -1,40 +1,42 @@
+use strum_macros::FromRepr;
 use super::ib_core::*;
 
 #[repr(u64)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, FromRepr)]
 pub enum UverbsCmd {
     // Completion queue operations
     CreateCq       = 1,
-    DestroyCq      = 2,
+    DestroyCq,
     // Polling and CQE parsing happen entirely in userspace against the mapped CQE buffer now;
     // there is no kernel-side handler for this anymore.
-    // PollCq      = 3,
+    // PollCq,
 
     // Queue pair operations
-    CreateQp       = 4,
-    ModifyQp       = 5,
-    QueryQp        = 6,
-    DestroyQp      = 7,
+    CreateQp,
+    ModifyQp,
+    QueryQp,
+    DestroyQp,
     // Posting happens entirely in userspace against the mapped WQE buffer now; there is no
     // kernel-side handler for these anymore.
-    // OpPostSend  = 8,
-    // OpPostRecv  = 9,
+    // PostSendQp,
+    // PostRecvQp,
 
     // Memory region operations
-    RegMr          = 10,
-    DeregMr        = 11,
-    SetMrSize      = 12,
+    RegMr,
+    DeregMr,
+    SetMrSize,
 
     // Query
-    QueryDevice    = 13,
-    QueryPort      = 14,
-    QueryDevices   = 15,
+    QueryDevice,
+    QueryPort,
+    QueryDevices,
+    OpenDevice,
 
     /// Drain the device's event queue (port-down/QP-error/internal-error notifications). Since
     /// posting and polling no longer go through the kernel on every operation, userspace calls
     /// this itself, rate-limited, from its poll loop instead of relying on it piggybacking on
     /// another verb.
-    DrainEvents    = 16,
+    DrainEvents,
 }
 
 pub const UVERBS_MAX_USER_TRUST_SIZE: usize = 0x06400000; // allow user space to allocate up to 100MB
@@ -128,8 +130,6 @@ pub struct CreateCqRequest {
 #[derive(Copy, Clone)]
 pub struct CreateCqResponse {
     pub cq_num: u32,
-    /// The UAR page mapped into the calling process, for ringing the arm doorbell.
-    pub doorbell_page: *mut u8,
 }
 
 #[repr(C)]
@@ -143,8 +143,10 @@ pub struct CreateQpRequest {
     pub _reserved: u16,
 
     // mlx4 specific, under linux this is an opaque driver_data[]
+
     pub buffer: *const u8,
     pub doorbell_ptr: *const u32,
+    pub uar_index: u32,
     pub log_sq_bb_count: u8,
     pub log_sq_stride: u8,
     pub inline_recv_size: u16,
@@ -158,8 +160,6 @@ pub struct CreateQpRequest {
 #[derive(Copy, Clone)]
 pub struct CreateQpResponse {
     pub qp_num: u32,
-    pub doorbell_page: *mut u8,
-    pub blueflame_page: *mut u8,
 }
 
 #[repr(C)]
@@ -194,3 +194,12 @@ impl Default for ibv_recv_wr {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct OpenDeviceResponse {
+    pub uar_index: u32,
+    pub doorbell_page: *mut u8,
+    pub blueflame_page: *mut u8,
+}
+

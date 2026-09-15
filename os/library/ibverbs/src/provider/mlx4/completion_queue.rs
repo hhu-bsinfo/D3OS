@@ -24,8 +24,8 @@ use tock_registers::registers::WriteOnly;
 use zerocopy::AsBytes;
 use crate::cmd::uverbs;
 use crate::provider::IbvCompletionQueue;
-use super::Mlx4Context;
-use super::queue_pair::{DoorbellPage, QueuePairOpcode};
+use super::{CqArmCmd, CqDoorbellRegister, Mlx4Context};
+use super::queue_pair::QueuePairOpcode;
 
 /// Size in bytes of a hardware completion queue entry. CX3 also supports a 64 B format, but this
 /// driver always uses the 32 B one.
@@ -46,7 +46,6 @@ pub struct CompletionQueue {
     num_entries: u32,
     buffer: &'static mut [u8],
     doorbell: *mut CompletionQueueDoorbell,
-    doorbell_page: *mut DoorbellPage,
     arm_sequence_number: u32,
     consumer_index: Mutex<u32>,
     poll_count: AtomicU32,
@@ -125,7 +124,6 @@ impl CompletionQueue {
             num_entries,
             buffer,
             doorbell: doorbell_ptr,
-            doorbell_page: resp.doorbell_page.cast(),
             arm_sequence_number: 1,
             consumer_index: Mutex::new(0),
             poll_count: AtomicU32::new(0),
@@ -142,18 +140,14 @@ impl CompletionQueue {
     ///
     /// This is used by ibv_req_notify_cq.
     pub fn arm(&mut self) {
-        const _DOORBELL_REQUEST_NOTIFICATION_SOLICITED: u32 = 0x1;
-        const DOORBELL_REQUEST_NOTIFICATION: u32 = 0x2;
         let sn = self.arm_sequence_number & 3;
         let ci = *self.consumer_index.lock() & 0xffffff;
-        let cmd = DOORBELL_REQUEST_NOTIFICATION;
-        unsafe { &*self.doorbell }.arm_consumer_index.set((sn << 28 | cmd << 24 | ci).to_be());
+        let cmd = CqArmCmd::ArmNext;
+        unsafe { &*self.doorbell }.arm_consumer_index.set((sn << 28 | (cmd as u32) << 24 | ci).to_be());
         // Make sure that the doorbell record in host memory is
         // written before ringing the doorbell via PCI MMIO.
         compiler_fence(Ordering::SeqCst);
-        let doorbell_page = unsafe { &*self.doorbell_page };
-        doorbell_page.cq_sn_cmd_num.set((sn << 28 | cmd << 24 | self.number).to_be());
-        doorbell_page.cq_consumer_index.set(ci.to_be());
+        self.context.ring_cq_doorbell(self.number, CqArmCmd::ArmNext, sn as u8, ci);
     }
 
     /// Poll this completion queue for one work completion.
@@ -332,6 +326,8 @@ impl CompletionQueue {
 }
 
 // PRM: "CQ DoorBell Records are aligned on an 8B boundary."
+// The specifies the completion queue doorbell record defined in PRM 16.2
+// It should not be confused with the cq doorbell register in the UAR page.
 #[repr(C, align(8))]
 struct CompletionQueueDoorbell {
     update_consumer_index: WriteOnly<u32>,

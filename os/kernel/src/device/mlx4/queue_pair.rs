@@ -20,7 +20,7 @@ use strum_macros::FromRepr;
 use tock_registers::registers::WriteOnly;
 use x86_64::{PhysAddr, VirtAddr};
 use uuid::Uuid;
-use x86_64::structures::paging::{Page, Size4KiB};
+use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::process::process::Process;
@@ -45,9 +45,7 @@ pub(super) struct QueuePair {
     // TODO: bind the lifetime to the one of the completion queues
     send_cq_number: u32,
     receive_cq_number: u32,
-    uar_idx: usize,
-    uar_page: Page<Size4KiB>,
-    bf_page: Page<Size4KiB>,
+    uar_index: u32,
     mtt: Option<u64>,
     /// In units of 64 bytes
     page_offset: u8,
@@ -74,6 +72,7 @@ impl QueuePair {
         receive_cq_number: u32,
         buffer: *const u8,
         doorbell_ptr: *const u32,
+        uar_index: u32,
         log_sq_bb_count: u8,
         log_sq_stride: u8,
         log_rq_wqe_count: u8,
@@ -96,11 +95,6 @@ impl QueuePair {
         }
 
         let number = dev.offsets.alloc_qpn().try_into().unwrap();
-
-        // TODO: UAR is allocated a device open
-        let uar_idx = dev.offsets.alloc_uar();
-        let uar = dev.map_uar(uar_idx, &process, alloc::format!("uar-{uar_idx}").as_str())?;
-        let bf = dev.map_bf(uar_idx, &process)?;
 
         let buffer_size: u64 = (1 << (log_sq_bb_count + log_sq_stride)) + (1 << (log_rq_wqe_count + log_rq_stride));
         let buffer_addr = VirtAddr::from_ptr(buffer);
@@ -126,9 +120,7 @@ impl QueuePair {
             port_number: None,
             send_cq_number,
             receive_cq_number,
-            uar_idx,
-            uar_page: uar,
-            bf_page: bf,
+            uar_index,
             mtt,
             page_offset,
             doorbell_address,
@@ -193,7 +185,7 @@ impl QueuePair {
                     _ => return Err("invalid queue pair type"),
                 });
                 context.set_path_migration_state(PATH_MIGRATION_STATE_MIGRATED);
-                context.set_usr_page(uar_index_to_hw(self.uar_idx).try_into().unwrap());
+                context.set_usr_page(uar_index_to_hw(self.uar_index as usize).try_into().unwrap());
                 // TODO: protection domain
                 context.set_cqn_send(self.send_cq_number);
                 // RC needs remote read
@@ -484,18 +476,6 @@ impl QueuePair {
     /// The process that created this queue pair.
     pub(super) fn owner(&self) -> Uuid {
         self.owner
-    }
-
-    /// The UAR page mapped into the calling process, for userspace to ring the SQ doorbell from
-    /// directly.
-    pub(super) fn uar_page_ptr(&self) -> *mut u8 {
-        self.uar_page.start_address().as_mut_ptr()
-    }
-
-    /// The BlueFlame page mapped into the calling process, for userspace to post sends through
-    /// directly.
-    pub(super) fn bf_page_ptr(&self) -> *mut u8 {
-        self.bf_page.start_address().as_mut_ptr()
     }
 }
 

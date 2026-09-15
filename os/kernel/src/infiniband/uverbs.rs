@@ -103,6 +103,10 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
         }
         UverbsCmd::QueryQp => todo!("QueryQp"),
         UverbsCmd::SetMrSize => todo!("SetMrSize"),
+        UverbsCmd::OpenDevice => {
+            let resp = uverbs_open_device(device_handle).map_err(log_error_and_invalid)?;
+            copy_to_user(user_out, &resp)
+        },
     }
 }
 

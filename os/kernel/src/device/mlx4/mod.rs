@@ -214,6 +214,15 @@ impl ConnectX3Nic {
         Ok(handle)
     }
 
+    /// Open a context to the device
+    pub fn open(&mut self) -> Result<Context, &'static str> {
+        let uar_index = self.offsets.alloc_uar();
+        Ok(Context {
+            device_handle: self.handle,
+            uar_index,
+        })
+    }
+
     /// Get statistics about the device.
     ///
     /// This is used by ibv_query_device.
@@ -226,31 +235,31 @@ impl ConnectX3Nic {
         })
     }
 
-    /// Map a single UAR page (used for ringing SQ/CQ doorbells) into `process`'s address space.
+    /// Map a single Doorbell page (used for ringing SQ/CQ doorbells) into `process`'s address space.
     ///
     /// Shared by QP creation (which also maps a BlueFlame page via [`Self::map_bf`]) and CQ
     /// creation (which only needs the UAR page).
-    fn map_uar(&self, uar_idx: usize, process: &Process, label: &str) -> Result<Page, &'static str> {
-        if uar_idx < self.capabilities.num_rsvd_uars() as usize {
+    pub fn map_doorbell_page(&self, ctx: &Context, process: &Process) -> Result<Page, &'static str> {
+        if ctx.uar_index < self.capabilities.num_rsvd_uars() as usize {
             return Err("UAR is reserved");
         }
 
-        if uar_idx >= self.capabilities.num_uars() {
+        if ctx.uar_index >= self.capabilities.num_uars() {
             return Err("UAR index out of range");
         }
 
         // TODO: add bitmap to check if uar is already mapped
 
-        let (addr, _size) = self.uar_bf_bar.unwrap_mem();
+        let (bar_addr, _size) = self.uar_bf_bar.unwrap_mem();
 
-        let uar_addr = addr + PAGE_SIZE * uar_idx;
+        let uar_addr = bar_addr + PAGE_SIZE * ctx.uar_index;
         let uar_frame = PhysFrame::from_start_address(PhysAddr::new(uar_addr as u64)).map_err(|_| "UAR page not aligned")?;
         let uar_vma = process.virtual_address_space.alloc_vma(
             None,
             1,
             MemorySpace::User,
             VmaType::DeviceMemory,
-            label,
+            format!("db-{}", ctx.uar_index).as_str()
         ).ok_or("Failed to allocate VMA for UAR")?;
         process.virtual_address_space.map_pfr_for_vma(
             &uar_vma,
@@ -260,33 +269,33 @@ impl ConnectX3Nic {
         Ok(uar_vma.range.start)
     }
 
-    /// Map the BlueFlame page paired with UAR `uar_idx` into `process`'s address space.
+    /// Map the BlueFlame page paired with the context into `process`'s address space.
     ///
     /// Used only by QP creation; CQs only need [`Self::map_uar`].
-    fn map_bf(&self, uar_idx: usize, process: &Process) -> Result<Page, &'static str> {
+    pub fn map_blueflame_page(&self, ctx: &Context, process: &Process) -> Result<Page, &'static str> {
         if !self.capabilities.bf() {
             return Err("Blueflame is not supported");
         }
 
-        if uar_idx < self.capabilities.num_rsvd_uars() as usize {
+        if ctx.uar_index < self.capabilities.num_rsvd_uars() as usize {
             return Err("UAR is reserved");
         }
 
-        if uar_idx >= self.capabilities.num_uars() {
+        if ctx.uar_index >= self.capabilities.num_uars() {
             return Err("UAR index out of range");
         }
 
-        let (addr, _size) = self.uar_bf_bar.unwrap_mem();
+        let (bar_addr, _size) = self.uar_bf_bar.unwrap_mem();
         // The BlueFlame region follows the whole UAR doorbell region (`num_uars()` pages), one
         // BF page per UAR.
-        let bf_addr = addr + self.capabilities.num_uars() * PAGE_SIZE + PAGE_SIZE * uar_idx;
+        let bf_addr = bar_addr + self.capabilities.num_uars() * PAGE_SIZE + PAGE_SIZE * ctx.uar_index;
         let bf_frame = PhysFrame::from_start_address(PhysAddr::new(bf_addr as u64)).map_err(|_| "BF page not aligned")?;
         let bf_vma = process.virtual_address_space.alloc_vma(
             None,
             1,
             MemorySpace::User,
             VmaType::DeviceMemory,
-            format!("bf-{uar_idx}",).as_str()
+            format!("bf-{}", ctx.uar_index).as_str()
         ).ok_or("Failed to allocate VMA for BF")?;
         process.virtual_address_space.map_pfr_for_vma(
             &bf_vma,
@@ -407,15 +416,14 @@ impl ConnectX3Nic {
     /// -mapped; polling, CQE parsing and arming happen entirely in userspace against them (the
     /// latter through the returned UAR page), so from here on the kernel only needs the buffer
     /// for building its MTT.
-    pub fn create_cq(&mut self, min_num_entries: i32, buffer: *const u8, doorbell_ptr: *const u64) -> Result<(u32, *mut u8), &'static str> {
+    pub fn create_cq(&mut self, min_num_entries: i32, buffer: *const u8, doorbell_ptr: *const u64) -> Result<u32, &'static str> {
         // TODO min_num_entries should be u32
         let process = process_manager().read().current_process();
         let mut cq = CompletionQueue::new(self, process, min_num_entries.try_into().unwrap(), buffer, doorbell_ptr)?;
         cq.query(&mut self.cmd)?;
         let number = cq.number();
-        let doorbell_page = cq.uar_page_ptr();
         self.cqs.push(cq);
-        Ok((number, doorbell_page))
+        Ok(number)
     }
 
     /// Destroy a completion queue.
@@ -452,11 +460,12 @@ impl ConnectX3Nic {
                      receive_cq_number: u32,
                      buffer: *const u8,
                      doorbell_ptr: *const u32,
+                     uar_index: u32,
                      log_sq_bb_count: u8,
                      log_sq_stride: u8,
                      log_rq_wqe_count: u8,
                      log_rq_stride: u8,
-    ) -> Result<(u32, *mut u8, *mut u8), &'static str> {
+    ) -> Result<u32, &'static str> {
         let process = process_manager().read().current_process();
         let send_cq = self.find_cq(send_cq_number, &process).ok_or("send completion queue not found")?;
         let receive_cq = self.find_cq(receive_cq_number, &process).ok_or("receive completion queue not found")?;
@@ -469,16 +478,15 @@ impl ConnectX3Nic {
             receive_cq.number(),
             buffer,
             doorbell_ptr,
+            uar_index,
             log_sq_bb_count,
             log_sq_stride,
             log_rq_wqe_count,
             log_rq_stride,
         )?;
         let number = qp.number();
-        let doorbell_page = qp.uar_page_ptr();
-        let blueflame_page = qp.bf_page_ptr();
         self.qps.push(qp);
-        Ok((number, doorbell_page, blueflame_page))
+        Ok(number)
     }
 
     /// Modify a queue pair.
@@ -627,5 +635,16 @@ impl Offsets {
         let res = self.next_dmpt;
         self.next_dmpt += 1;
         res
+    }
+}
+
+pub struct Context {
+    device_handle: usize,
+    uar_index: usize,
+}
+
+impl Context {
+    pub fn uar_index(&self) -> usize {
+        self.uar_index
     }
 }

@@ -31,7 +31,6 @@ const CQE_SIZE: usize = 32;
 pub(super) struct CompletionQueue {
     number: u32,
     owner: Uuid,
-    uar_page: Page<Size4KiB>,
     // TODO: deallocate mtt properly, see the equivalent TODO on `queue_pair::QueuePair`.
     mtt: Option<u64>,
     // TODO: bind the lifetime to the one of the event queue
@@ -47,7 +46,6 @@ impl CompletionQueue {
         let number: u32 = dev.offsets.alloc_cqn().try_into().unwrap();
         let uar_idx = dev.offsets.alloc_uar();
 
-        let uar_page = dev.map_uar(uar_idx, &process, alloc::format!("cq-uar-{uar_idx}").as_str())?;
 
         if buffer.addr() % crate::memory::PAGE_SIZE != 0 {
             return Err("CQE buffer is not page aligned");
@@ -78,7 +76,6 @@ impl CompletionQueue {
         let cq = Self {
             number,
             owner: process.id(),
-            uar_page,
             mtt: Some(mtt),
             eq_number,
         };
@@ -90,12 +87,6 @@ impl CompletionQueue {
     /// queue pair to it.
     pub(super) fn owner(&self) -> Uuid {
         self.owner
-    }
-
-    /// The UAR page mapped into the calling process, for userspace to ring the arm doorbell
-    /// from directly.
-    pub(super) fn uar_page_ptr(&self) -> *mut u8 {
-        self.uar_page.start_address().as_mut_ptr()
     }
 
     /// Destroy this completion queue.

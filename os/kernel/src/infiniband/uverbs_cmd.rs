@@ -1,13 +1,26 @@
 use crate::device::mlx4::{get_dev_list, device_handle_to_idx, ConnectX3Nic};
 use alloc::vec::Vec;
-use rdma::uverbs_uapi::{CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, CreateQpResponse, ModifyQpRequest};
+use rdma::uverbs_uapi::{CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, CreateQpResponse, ModifyQpRequest, OpenDeviceResponse};
 use rdma::{ibv_access_flags, ibv_device, ibv_device_attr, ibv_port_attr};
+use crate::process_manager;
 
 pub fn uverbs_query_devices(max_len: usize) -> Vec<ibv_device> {
     get_dev_list().lock().iter()
         .map(|dev| ibv_device { handle: dev.handle } )
         .take(max_len)
         .collect()
+}
+
+pub fn uverbs_open_device(device_handle: usize) -> Result<OpenDeviceResponse, &'static str> {
+    let process = process_manager().read().current_process();
+    let mut device_list = get_dev_list().lock();
+    let dev = device_list.get_mut(device_handle_to_idx(device_handle)).unwrap();
+    let ctx = dev.open()?;
+    Ok(OpenDeviceResponse {
+        uar_index: ctx.uar_index().try_into().map_err(|_| "uar index out of range")?,
+        doorbell_page: dev.map_doorbell_page(&ctx, &process)?.start_address().as_mut_ptr(),
+        blueflame_page: dev.map_blueflame_page(&ctx, &process)?.start_address().as_mut_ptr(),
+    })
 }
 
 pub fn uverbs_query_device(device_handle: usize) -> Result<ibv_device_attr, &'static str> {
@@ -32,14 +45,14 @@ pub fn uverbs_register_mem_region(device_handle: usize, access_flags: ibv_access
 }
 
 pub fn uverbs_create_cq<'cq>(device_handle: usize, cq_container: &'cq CreateCqRequest) -> Result<CreateCqResponse, &'static str> {
-    let (cq_num, doorbell_page) = get_dev_list().lock()
+    let cq_num = get_dev_list().lock()
         .get_mut(device_handle_to_idx(device_handle)).unwrap()
         .create_cq(cq_container.cq_entries, cq_container.buffer, cq_container.doorbell_ptr)?;
-    Ok(CreateCqResponse { cq_num, doorbell_page })
+    Ok(CreateCqResponse { cq_num })
 }
 
 pub fn uverbs_create_qp<'qp>(device_handle: usize, req: &CreateQpRequest) -> Result<CreateQpResponse, &'static str> {
-    let (qp_num, doorbell_page, blueflame_page) = get_dev_list().lock()
+    let qp_num = get_dev_list().lock()
         .get_mut(device_handle_to_idx(device_handle)).unwrap()
         .create_qp(
             req.qp_type,
@@ -47,12 +60,13 @@ pub fn uverbs_create_qp<'qp>(device_handle: usize, req: &CreateQpRequest) -> Res
             req.recv_cq_num,
             req.buffer,
             req.doorbell_ptr,
+            req.uar_index,
             req.log_sq_bb_count,
             req.log_sq_stride,
             req.log_rq_wqe_count,
             req.log_rq_stride,
         )?;
-    Ok(CreateQpResponse { qp_num, doorbell_page, blueflame_page })
+    Ok(CreateQpResponse { qp_num })
 }
 
 pub fn uverbs_modify_qp(device_handle: usize, qp_modify_container: ModifyQpRequest) -> Result<(), &'static str> {
