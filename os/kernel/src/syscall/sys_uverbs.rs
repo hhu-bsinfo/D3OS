@@ -14,7 +14,7 @@ pub fn sys_uverbs_ctl(
     let user_in = UserSlice::new(in_address, in_size);
     let user_out = UserSlice::new(out_address, out_size);
     let Some(cmd) = UverbsCmd::from_repr(cmd) else {
-        return Errno::EINVAL as isize
+        return Errno::EINVAL as isize;
     };
 
     return_vals::convert_syscall_result_to_ret_code(

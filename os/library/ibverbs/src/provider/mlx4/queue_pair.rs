@@ -17,8 +17,8 @@ use tock_registers::interfaces::Writeable;
 use tock_registers::{register_bitfields, register_structs};
 use tock_registers::registers::WriteOnly;
 use zerocopy::{BigEndian, FromBytes, U16, U32, U64};
-use log::error;
-use spin::RwLock;
+use log::{debug, error};
+use spin::{Mutex, RwLock};
 use mm::{mmap, MmapFlags, PAGE_SIZE};
 use rdma::ib_core::{ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_state, ibv_qp_type, ibv_send_flags, ibv_send_wr_wr, ibv_sge, ibv_wr_opcode};
 use rdma::uverbs_uapi::{CreateQpRequest, CreateQpResponse, ModifyQpRequest, UserSlice};
@@ -36,10 +36,6 @@ pub(crate) struct QueuePair {
     rq: RwLock<WorkQueue>,
     sq: RwLock<WorkQueue>,
     receive_wqe_counter: *mut ReceiveWQECounter,
-    doorbell_page: *mut DoorbellPage,
-    // TODO: not used yet, see the dead `if false && num_req == 1` BlueFlame branch in post_send.
-    #[allow(dead_code)]
-    blueflame_page: *mut u8,
 }
 
 impl IbvQueuePair for QueuePair {
@@ -101,6 +97,7 @@ impl IbvQueuePair for QueuePair {
     ///
     /// This is used by ibv_post_send.
     unsafe fn post_send(&self, wrs: &[SendWorkRequest]) -> io::Result<()> {
+        debug!("post_send num_wrs: {}", wrs.len());
         if *self.state.read() != ibv_qp_state::IBV_QPS_RTS {
             return Err(Error::new(ErrorKind::Other, "queue pair cannot send in this state"));
         }
@@ -208,8 +205,7 @@ impl IbvQueuePair for QueuePair {
 
         // Make sure that descriptors are written before doorbell.
         compiler_fence(Ordering::SeqCst);
-        unsafe { &*self.doorbell_page }.send_queue_number.set((self.number << 8).to_be());
-
+        self.context.ring_qp_doorbell(self.number);
         Ok(())
     }
 
@@ -290,6 +286,7 @@ impl QueuePair {
             _reserved: 0,
             buffer: buffer_ptr,
             doorbell_ptr: receive_wqe_counter_ptr.cast(),
+            uar_index: context.uar_index,
             log_sq_bb_count: sq.wqe_cnt.ilog2().try_into().unwrap(),
             log_sq_stride: sq.wqe_shift.try_into().unwrap(),
             inline_recv_size: 0,
@@ -309,8 +306,6 @@ impl QueuePair {
             rq: RwLock::new(rq),
             sq: RwLock::new(sq),
             receive_wqe_counter: receive_wqe_counter_ptr,
-            doorbell_page: resp.doorbell_page.cast(),
-            blueflame_page: resp.blueflame_page,
         })
     }
 
@@ -326,14 +321,6 @@ impl QueuePair {
     ///   Alternatively, the driver can pad the WQE with an extra zero length Data segment
     fn try_post_send_via_blueflame(&self, wr: &SendWorkRequest) -> bool {
         false
-    }
-
-    /// Advance the tail of the receive queue.
-    ///
-    /// This is called on work completion.
-    #[inline(always)]
-    pub(super) fn advance_receive_queue_by(&mut self, by: u32) {
-        self.rq.write().tail += by;
     }
 
     pub fn resolve_completion(&self, wqe_index: u32, is_send: bool) -> Option<u64> {
@@ -377,56 +364,6 @@ pub(crate) enum QueuePairOpcode {
     Fmr = 0x19,
     LocalInval = 0x1b,
     ConfigCmd = 0x1f,
-}
-
-// TODO: define DoorbellEq and DoorbellPage to register_structs!
-
-register_bitfields![u32,
-    pub SendQueueNumber [
-        NUM OFFSET(8) NUMBITS(24)
-    ],
-    pub CpSnCmdNum [
-        CPN OFFSET(0)  NUMBITS(24),
-        CMD OFFSET(24) NUMBITS(3),
-        SN  OFFSET(28) NUMBITS(2)
-    ],
-    pub CpConsumerIndex [
-        CP_CI OFFSET(0) NUMBITS(24),
-    ],
-    pub DoorbellEqField [
-        CI OFFSET(0)  NUMBITS(24),
-        A  OFFSET(31) NUMBITS(1)
-    ]
-];
-
-pub struct DoorbellEq  {
-    pub val: WriteOnly<u32, DoorbellEqField::Register>,
-    _reserved1: u32
-}
-
-register_structs! {
-    pub DoorbellPage {
-    (0x000 => _reserved1),
-    (0x014 => pub send_queue_number: WriteOnly<u32, SendQueueNumber::Register>),
-    (0x018 => _reserved2),
-
-    // CQ
-    /// contains the sequence number, the command and the cq number
-    (0x020 => pub cq_sn_cmd_num: WriteOnly<u32, CpSnCmdNum::Register>),
-    (0x024 => pub cq_consumer_index: WriteOnly<u32, CpConsumerIndex::Register>),
-
-    // skip 502 u32
-    (0x028 => _padding4),
-
-    // EQ
-    // for the EQ number n the relevant doorbell is in
-    // DoorbellPage (n / 4) and eq (n % 4)
-    (0x800 => pub eqs: [DoorbellEq; 4]),
-
-    // skip 503 u32
-    (0x820 => _padding9),
-    (0x1000 => @END),
-    }
 }
 
 #[derive(FromBytes)]
@@ -723,8 +660,9 @@ impl WorkQueue {
     /// - wr_id: can be used by the user to identify the WR corresponding to the CQ
     /// - chain_size: is used by poll_one to advance the tail of the appropriate buffer
     fn update_meta_for_head(&mut self, wr_id: u64, chain_size: u32) {
+        debug_assert_eq!(self.meta.len(), self.wqe_cnt as usize);
         let idx = self.head & (self.wqe_cnt - 1);
-        self.meta.insert(idx as usize, Some(WorkQueueMeta { wr_id, chain_size }));
+        self.meta[idx as usize] = Some(WorkQueueMeta { wr_id, chain_size });
     }
 
     fn get_in_buffer<T: FromBytes>(&self, byte_offset: usize) -> Option<&mut T> {
@@ -817,7 +755,8 @@ impl WorkQueue {
 
     fn resolve_completion(&mut self, qp_num: u32, wqe_index: u32) -> Option<u64> {
         self.check_wqe_index(qp_num, wqe_index);
-        let meta = self.meta.get_mut(wqe_index as usize).and_then(Option::take)?;
+        let idx = (wqe_index & (self.wqe_cnt - 1)) as usize;
+        let meta = self.meta[idx].take()?;
         self.tail += meta.chain_size;
         Some(meta.wr_id)
     }

@@ -25,7 +25,8 @@ pub fn get_available_devices() -> io::Result<Vec<ibv_device>> {
 }
 
 pub fn open_device(device: &ibv_device) -> io::Result<Box<dyn IbvContext>> {
-    Ok(Box::new(mlx4::Mlx4Context::new(device.handle)))
+    let device = mlx4::Mlx4Context::new(device.handle)?;
+    Ok(Box::new(device))
 }
 
 /// Return kernel device name

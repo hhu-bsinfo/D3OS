@@ -8,6 +8,7 @@ pub enum UverbsCmd {
     QueryDevice = 1,
     QueryPort,
     QueryDevices,
+    OpenDevice,
 
     // Protection Domain operations
     AllocPd,
@@ -146,8 +147,6 @@ pub struct CreateCqRequest {
 #[derive(Copy, Clone)]
 pub struct CreateCqResponse {
     pub cq_num: u32,
-    /// The UAR page mapped into the calling process, for ringing the arm doorbell.
-    pub doorbell_page: *mut u8,
 }
 
 #[repr(C)]
@@ -161,8 +160,10 @@ pub struct CreateQpRequest {
     pub _reserved: u16,
 
     // mlx4 specific, under linux this is an opaque driver_data[]
+
     pub buffer: *const u8,
     pub doorbell_ptr: *const u32,
+    pub uar_index: u32,
     pub log_sq_bb_count: u8,
     pub log_sq_stride: u8,
     pub inline_recv_size: u16,
@@ -176,8 +177,6 @@ pub struct CreateQpRequest {
 #[derive(Copy, Clone)]
 pub struct CreateQpResponse {
     pub qp_num: u32,
-    pub doorbell_page: *mut u8,
-    pub blueflame_page: *mut u8,
 }
 
 #[repr(C)]
@@ -212,3 +211,12 @@ impl Default for ibv_recv_wr {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct OpenDeviceResponse {
+    pub uar_index: u32,
+    pub doorbell_page: *mut u8,
+    pub blueflame_page: *mut u8,
+}
+

@@ -31,7 +31,7 @@ const DEFAULT_TX_DEPTH: usize = 32;
 /// because accuracy mode registers a `tx_depth`-slot buffer, so its memory region grows with the
 /// message size — sweeping higher is fine, but pair it with a smaller `--tx-depth`.
 const DEFAULT_MIN_SIZE: usize = 8;
-const DEFAULT_MAX_SIZE: usize = 1 << 16;
+const DEFAULT_MAX_SIZE: usize = 1 << 17;
 
 /// Also the wire type sent as part of `BenchmarkRequest`, so it needs to be `Serialize`/
 /// `Deserialize` rather than just parsed from argv.

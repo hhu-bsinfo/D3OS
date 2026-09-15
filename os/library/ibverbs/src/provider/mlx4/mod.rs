@@ -2,11 +2,15 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
+use core::ptr::NonNull;
 use core3::io;
 use core3::io::{Error, ErrorKind};
-use rdma::uverbs_uapi::{CreateMrRequest, CreateMrResponse, AllocPdResponse, DeallocPdRequest, QueryPortRequest, UserSlice, UverbsCmd};
+use rdma::uverbs_uapi::{CreateMrRequest, CreateMrResponse, AllocPdResponse, DeallocPdRequest, QueryPortRequest, UserSlice, UverbsCmd, OpenDeviceResponse};
 use rdma::ib_core::{ibv_access_flags, ibv_device_attr, ibv_gid, ibv_port_attr};
 use spin::Mutex;
+use tock_registers::{register_bitfields, register_fields, register_structs};
+use tock_registers::interfaces::Writeable;
+use tock_registers::registers::WriteOnly;
 
 pub(crate) mod completion_queue;
 mod queue_pair;
@@ -31,6 +35,9 @@ pub struct Mlx4Context {
     /// Maximum size of Send Queue in WQEBB (including SQ Headroom) or Receive Queue in WQE is 2^log_max_qp_size.
     // TODO: query the device for these instead of hardcoding them; nothing surfaces
     // QUERY_DEV_CAP to userspace yet.
+    uar_index: u32,
+    doorbell_page: NonNull<DoorbellPage>,
+    blueflame_page: *mut u8,
     log_max_qp_size: u8,
     log_max_rq_sge: u8,
     log_max_sq_sge: u8,
@@ -39,15 +46,23 @@ pub struct Mlx4Context {
 }
 
 impl Mlx4Context {
-    pub fn new(device_handle: usize) -> Self {
-        Self {
+    pub fn new(device_handle: usize) -> io::Result<Self> {
+        let mut resp = MaybeUninit::<OpenDeviceResponse>::uninit();
+        uverbs(device_handle, UverbsCmd::OpenDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
+        let resp = unsafe { resp.assume_init() };
+        let doorbell_page = NonNull::new(resp.doorbell_page.cast())
+            .ok_or(Error::new(ErrorKind::Other, "Doorbell page not mapped"))?;
+        Ok(Self {
             device_handle,
+            uar_index: resp.uar_index,
+            doorbell_page,
+            blueflame_page: resp.blueflame_page,
             log_max_qp_size: 16,
             log_max_rq_sge: 5,
             log_max_sq_sge: 5,
             max_wqe_sq_size: 1024,
             qps: Mutex::new(Vec::new()),
-        }
+        })
     }
 
     /// Resolve a CQE against the queue pair it belongs to: check the reported WQE index against
@@ -62,6 +77,25 @@ impl Mlx4Context {
     #[inline(always)]
     pub(super) fn device_handle(&self) -> usize {
         self.device_handle
+    }
+
+    pub(super) fn ring_qp_doorbell(&self, qp_number: u32) {
+        assert!(qp_number < 1 << 24);
+        let doorbell_page = unsafe { self.doorbell_page.as_ptr().as_mut() }.unwrap();
+        let value = (qp_number << 8).to_be();
+        doorbell_page.qp_doorbell.set(value);
+    }
+
+    pub(super) fn ring_cq_doorbell(&self, cq_number: u32, cmd: CqArmCmd, cmd_sn: u8, cq_consumer_index: u32) {
+        assert!(cq_number < 1 << 24);
+        assert!(cmd_sn < 1 << 3);
+        assert!(cq_consumer_index < 1 << 24);
+        let doorbell_page = unsafe { self.doorbell_page.as_ptr().as_mut() }.unwrap();
+        let value = CqDoorbellRegister::CQ_NUM.val((cq_number.to_be() >> 8) as u64)
+            + CqDoorbellRegister::CMD.val(cmd as u64)
+            + CqDoorbellRegister::CMD_SN.val(cmd_sn as u64)
+            + CqDoorbellRegister::CQ_CI.val((cq_consumer_index.to_be() >> 8) as u64);
+        doorbell_page.cq_doorbell.write(value);
     }
 }
 
@@ -138,3 +172,37 @@ impl IbvContext for Mlx4Context {
             .expect("failed to destroy memory region");
     }
 }
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+enum CqArmCmd {
+    ArmSolicit = 1,
+    ArmNext = 2,
+}
+
+// CQ Doorbell Register
+// BE|63      |55      |47      |39      |31      |23      |15      |7      0|
+//   |--------|    CQ Consumer Index     |CMD & SN|      CQ Number           |
+//
+// CQ Consumer Index and CQ Number are in BigEndian Format
+
+register_bitfields![u64,
+    pub CqDoorbellRegister [
+        CQ_NUM OFFSET(0)  NUMBITS(24),
+        CMD    OFFSET(24) NUMBITS(2),
+        CMD_SN OFFSET(28) NUMBITS(2),
+        CQ_CI  OFFSET(32) NUMBITS(24),
+    ]
+];
+
+register_structs! {
+    pub DoorbellPage {
+    (0x000 => _reserved1),
+    (0x014 => pub qp_doorbell: WriteOnly<u32>),
+    (0x018 => _reserved2),
+    (0x020 => pub cq_doorbell: WriteOnly<u64, CqDoorbellRegister::Register>),
+    (0x028 => _reserved3),
+    (0x1000 => @END),
+    }
+}
+

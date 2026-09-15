@@ -1331,23 +1331,24 @@ impl QueuePair {
     pub unsafe fn post_send<'pd, T, R>(
         &mut self,
         mr: &mut LocalMemoryRegion<'pd, T>,
-        mut ranges: Vec<Vec<R>>,
-        mut wr_ids: Vec<u64>,
-        mut send_flags: Vec<ffi::ibv_send_flags>
+        ranges: Vec<Vec<R>>,
+        wr_ids: Vec<u64>,
+        send_flags: Vec<ffi::ibv_send_flags>
     ) -> io::Result<()>
     where
         R: sliceindex::SliceIndex<[T], Output = [T]>,
     {
         assert!(
-            ranges.len() == wr_ids.len(),
-            "local ranges, and wr ids must have the same size!");
+            ranges.len() == wr_ids.len() && send_flags.len() == wr_ids.len(),
+            "local ranges, wr ids and send flags must have the same size!");
 
         let mut wrs = Vec::new();
 
-        for wr_id in wr_ids {
+        // Pair each wr_id with the range/flags posted for it, in the order they were given —
+        // not in reverse, which is what popping from the back of `ranges`/`send_flags` while
+        // iterating `wr_ids` forward would do.
+        for ((wr_id, range), wr_send_flags) in wr_ids.into_iter().zip(ranges).zip(send_flags) {
             let mut sg_list = Vec::new();
-            let range = ranges.pop().unwrap();
-            let wr_send_flags = send_flags.pop().unwrap();
 
             for slice in range {
                 let l = slice.index(mr);
@@ -1420,8 +1421,8 @@ impl QueuePair {
     pub unsafe fn post_receive<'pd, T, R>(
         &mut self,
         mr: &mut LocalMemoryRegion<'pd, T>,
-        mut ranges: Vec<Vec<R>>,
-        mut wr_ids: Vec<u64>,
+        ranges: Vec<Vec<R>>,
+        wr_ids: Vec<u64>,
     ) -> io::Result<()>
     where
         R: sliceindex::SliceIndex<[T], Output = [T]>,
@@ -1432,9 +1433,11 @@ impl QueuePair {
 
         let mut wrs = Vec::new();
 
-        for wr_id in wr_ids {
+        // Pair each wr_id with the range posted for it, in the order they were given — not in
+        // reverse, which is what popping from the back of `ranges` while iterating `wr_ids`
+        // forward would do.
+        for (wr_id, range) in wr_ids.into_iter().zip(ranges) {
             let mut sg_list = Vec::new();
-            let range = ranges.pop().unwrap();
 
             for slice in range {
                 let l = slice.index(mr);

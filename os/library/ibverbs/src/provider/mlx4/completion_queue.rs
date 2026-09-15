@@ -11,12 +11,8 @@ use core::mem::MaybeUninit;
 use core::sync::atomic::{compiler_fence, AtomicU32, Ordering};
 use core3::io;
 use core3::io::{Error, ErrorKind};
-use log::{error, warn};
-use modular_bitfield_msb::{
-    bitfield,
-    prelude::{B4, B7, B12},
-    specifiers::{B5, B24},
-};
+use log::error;
+use modular_bitfield_msb::{bitfield, prelude::*};
 use spin::Mutex;
 use mm::{mmap, MmapFlags, PAGE_SIZE};
 use rdma::ib_core::{ibv_wc, ibv_wc_flags, ibv_wc_opcode, ibv_wc_status};
@@ -25,10 +21,11 @@ use rdma::uverbs_uapi::UverbsCmd::{CreateCq, DestroyCq, DrainEvents};
 use strum_macros::FromRepr;
 use tock_registers::interfaces::Writeable;
 use tock_registers::registers::WriteOnly;
+use zerocopy::AsBytes;
 use crate::cmd::uverbs;
 use crate::provider::IbvCompletionQueue;
-use super::Mlx4Context;
-use super::queue_pair::{DoorbellPage, QueuePairOpcode};
+use super::{CqArmCmd, CqDoorbellRegister, Mlx4Context};
+use super::queue_pair::QueuePairOpcode;
 
 /// Size in bytes of a hardware completion queue entry. CX3 also supports a 64 B format, but this
 /// driver always uses the 32 B one.
@@ -49,7 +46,6 @@ pub struct CompletionQueue {
     num_entries: u32,
     buffer: &'static mut [u8],
     doorbell: *mut CompletionQueueDoorbell,
-    doorbell_page: *mut DoorbellPage,
     arm_sequence_number: u32,
     consumer_index: Mutex<u32>,
     poll_count: AtomicU32,
@@ -128,7 +124,6 @@ impl CompletionQueue {
             num_entries,
             buffer,
             doorbell: doorbell_ptr,
-            doorbell_page: resp.doorbell_page.cast(),
             arm_sequence_number: 1,
             consumer_index: Mutex::new(0),
             poll_count: AtomicU32::new(0),
@@ -145,18 +140,14 @@ impl CompletionQueue {
     ///
     /// This is used by ibv_req_notify_cq.
     pub fn arm(&mut self) {
-        const _DOORBELL_REQUEST_NOTIFICATION_SOLICITED: u32 = 0x1;
-        const DOORBELL_REQUEST_NOTIFICATION: u32 = 0x2;
         let sn = self.arm_sequence_number & 3;
         let ci = *self.consumer_index.lock() & 0xffffff;
-        let cmd = DOORBELL_REQUEST_NOTIFICATION;
-        unsafe { &*self.doorbell }.arm_consumer_index.set((sn << 28 | cmd << 24 | ci).to_be());
+        let cmd = CqArmCmd::ArmNext;
+        unsafe { &*self.doorbell }.arm_consumer_index.set((sn << 28 | (cmd as u32) << 24 | ci).to_be());
         // Make sure that the doorbell record in host memory is
         // written before ringing the doorbell via PCI MMIO.
         compiler_fence(Ordering::SeqCst);
-        let doorbell_page = unsafe { &*self.doorbell_page };
-        doorbell_page.cq_sn_cmd_num.set((sn << 28 | cmd << 24 | self.number).to_be());
-        doorbell_page.cq_consumer_index.set(ci.to_be());
+        self.context.ring_cq_doorbell(self.number, CqArmCmd::ArmNext, sn as u8, ci);
     }
 
     /// Poll this completion queue for one work completion.
@@ -168,13 +159,23 @@ impl CompletionQueue {
         // clear the wc first
         *wc = ibv_wc::default();
         if let Some(cqe) = self.get_cqe_sw(index) {
-            // Make sure we read CQ entry contents after we've checked the
-            // ownership bit.
-            compiler_fence(Ordering::SeqCst);
             wc.qp_num = cqe.qp_number();
             match self.context.resolve_completion(cqe.qp_number(), cqe.wqe_index().into(), cqe.is_send()) {
                 Some(wr_id) => wc.wr_id = wr_id,
-                None => warn!("Completion for QP {} and index {} has no meta data", cqe.qp_number(), cqe.wqe_index()),
+                None => {
+                    // Either the QP number isn't in the registry, or the wr_id/meta lookup for
+                    // this WQE index failed. Either way we cannot say which work request this
+                    // completion belongs to, so report it as failed rather than silently handing
+                    // back a default (wr_id = 0) success completion — that would look like a
+                    // completion for whatever request happens to occupy slot 0.
+                    error!(
+                        "completion for QP {} WQE index {} could not be resolved to a work request",
+                        cqe.qp_number(),
+                        cqe.wqe_index(),
+                    );
+                    wc.status = ibv_wc_status::Type::IBV_WC_GENERAL_ERR;
+                    return Ok(true);
+                }
             }
             if cqe.opcode() == CQE_OPCODE_ERROR {
                 let checksum_bytes = cqe.checksum().to_be_bytes();
@@ -294,21 +295,39 @@ impl CompletionQueue {
     }
 
     /// Get the CQE at `index` if it is owned by software
+    ///
+    /// The HCA writes a CQE back-to-front and sets the ownership bit — the top bit of the last
+    /// byte of the CQE — last, so it acts as the publication flag for the rest of the entry. We
+    /// therefore read that one byte alone (volatile: the compiler must not reorder or elide this
+    /// load, since nothing else touches this memory from its point of view), check ownership, and
+    /// only once we've established the CQE is ours do we read the remaining body — again
+    /// volatile, and after an `Acquire` fence so the body read cannot be speculated/reordered
+    /// ahead of the ownership check on either the compiler or the CPU side.
     fn get_cqe_sw(&self, index: u32) -> Option<CompletionQueueEntry> {
-        let offset = usize::try_from(index & (self.num_entries - 1)).unwrap() * CQE_SIZE;
-        let cqe_bytes: [u8; CQE_SIZE] = self.buffer[offset..offset + CQE_SIZE].try_into().unwrap();
-        let cqe = CompletionQueueEntry::from_bytes(cqe_bytes);
-        // check if it's valid
-        // the ownership bit is flipping every round
-        if cqe.owner() ^ ((index & self.num_entries) != 0) {
-            None
-        } else {
-            Some(cqe)
+        let base = unsafe { self.buffer.as_ptr().add((index & (self.num_entries - 1)) as usize * CQE_SIZE) };
+        let mut cqe = CompletionQueueEntry::new();
+
+        // Probe just the ownership before reading rest of CQE
+        cqe.bytes[CQE_SIZE-1] = unsafe { core::ptr::read_volatile(base.add(CQE_SIZE-1)) };
+
+        // the ownership bit flips every round
+        if cqe.owner() != ((index / self.num_entries) & 1) as u8 {
+            return None;
         }
+
+        // Make sure we read the rest of the CQE contents only after we've checked the ownership
+        // bit that the HCA writes last.
+        core::sync::atomic::fence(Ordering::Acquire);
+        for (i, byte) in cqe.bytes.iter_mut().enumerate() {
+            *byte = unsafe { core::ptr::read_volatile(base.add(i)) };
+        }
+        Some(cqe)
     }
 }
 
 // PRM: "CQ DoorBell Records are aligned on an 8B boundary."
+// The specifies the completion queue doorbell record defined in PRM 16.2
+// It should not be confused with the cq doorbell register in the UAR page.
 #[repr(C, align(8))]
 struct CompletionQueueDoorbell {
     update_consumer_index: WriteOnly<u32>,
@@ -338,7 +357,7 @@ struct CompletionQueueEntry {
     checksum: u16,
     #[skip]
     __: B24,
-    owner: bool,
+    owner: B1,
     is_send: bool,
     #[skip]
     __: bool,
