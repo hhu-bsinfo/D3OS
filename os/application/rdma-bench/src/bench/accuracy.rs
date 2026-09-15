@@ -16,7 +16,6 @@ use crate::report::Report;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Range;
-use cpu_core::flush_cache;
 use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
 use ibverbs::ffi::ibv_send_flags;
 use time::get_time_in_us;
@@ -137,6 +136,7 @@ fn receive(
 
     let mut report = AccuracyReport { msg_size, sent: iterations, ..AccuracyReport::default() };
     let mut seen = vec![false; iterations];
+    let mut distinct_seen = 0usize;
     let mut expected = vec![0u8; msg_size];
     let mut wc = vec![ibv_wc::default(); window];
     let mut batch: Vec<(usize, usize)> = Vec::with_capacity(window);
@@ -147,7 +147,7 @@ fn receive(
     conn.sync()?; // "ready"
 
     let mut last_progress = get_time_in_us();
-    while report.received < iterations {
+    while distinct_seen < iterations {
         batch.clear();
         let completions = cq.poll(&mut wc)?;
         for c in completions.iter() {
@@ -166,11 +166,10 @@ fn receive(
 
         for &(slot, len) in &batch {
             let range = slot_range(slot, msg_size);
-            unsafe { flush_cache(&mr[range.clone()]) };
             let got_len = len.min(msg_size);
             {
                 let got = &mr[range.start..range.start + got_len];
-                check(got, &mut expected, msg_size, &mut seen, &mut report);
+                check(got, &mut expected, msg_size, &mut seen, &mut distinct_seen, &mut report);
             }
             unsafe { qp.post_receive(mr, vec![vec![range]], vec![slot as u64])? };
         }
@@ -186,7 +185,7 @@ fn receive(
 /// unidentifiable, an already-seen sequence number is a duplicate (bailed out before byte
 /// counting, so correct totals never exceed what was sent), otherwise it's checked for
 /// truncation and XOR'd byte-by-byte against a freshly recomputed expected payload.
-fn check(got: &[u8], expected: &mut [u8], msg_size: usize, seen: &mut [bool], report: &mut AccuracyReport) {
+fn check(got: &[u8], expected: &mut [u8], msg_size: usize, seen: &mut [bool], distinct_seen: &mut usize, report: &mut AccuracyReport) {
     if got.len() < HEADER_LEN {
         report.unidentifiable += 1;
         return;
@@ -205,6 +204,7 @@ fn check(got: &[u8], expected: &mut [u8], msg_size: usize, seen: &mut [bool], re
         return;
     }
     seen[seq_idx] = true;
+    *distinct_seen += 1;
 
     if got.len() < msg_size {
         report.truncated += 1;

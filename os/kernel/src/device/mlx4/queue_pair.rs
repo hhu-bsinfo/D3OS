@@ -2,10 +2,7 @@
 //! pairs. Its functions can change the state of a QP and query and print some
 //! QP infos.
 
-use core::{
-    mem::size_of,
-    sync::atomic::{compiler_fence, Ordering},
-};
+use core::mem::size_of;
 
 use alloc::{vec, vec::Vec};
 use alloc::sync::Arc;
@@ -18,7 +15,6 @@ use modular_bitfield_msb::{
 };
 use rdma::{
     ibv_access_flags, ibv_mtu, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_state, ibv_qp_type, ibv_send_flags, ibv_send_wr_wr,
-    ibv_sge,
 };
 use strum_macros::FromRepr;
 use tock_registers::registers::WriteOnly;
@@ -783,25 +779,6 @@ struct WqeDataSegment {
 }
 
 impl WqeDataSegment {
-    /// Copy information from an sge.
-    fn copy_from_sge(&mut self, sge: &ibv_sge) -> Result<(), &'static str> {
-        // The address stays virtual: the lkey names a memory region whose MPT
-        // start address is virtual as well, and the card resolves the address
-        // through that region's MTT. (Translating to a physical address here
-        // would only be right for the reserved lkey, which bypasses the MPT.)
-        self.lkey.set(sge.lkey);
-        self.addr.set(sge.addr);
-        // sending needs a barrier here before writing the byte_count
-        // field to make sure that all the data is visible before the
-        // byte_count field is set. Otherwise, if the segment begins a new
-        // cacheline, the HCA prefetcher could grab the 64-byte chunk and
-        // get a valid (!= * 0xffffffff) byte count but stale data, and end
-        // up sending the wrong data.
-        compiler_fence(Ordering::SeqCst);
-        self.byte_count.set(sge.length);
-        Ok(())
-    }
-
     /// Create a dummy element to be the last in the queue.
     fn last() -> WqeDataSegment {
         const INVALID_LKEY: u32 = 0x100;

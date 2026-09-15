@@ -340,14 +340,6 @@ impl QueuePair {
     }
 
 
-    /// Advance the tail of the receive queue.
-    ///
-    /// This is called on work completion.
-    #[inline(always)]
-    pub(super) fn advance_receive_queue_by(&mut self, by: u32) {
-        self.rq.write().tail += by;
-    }
-
     pub fn resolve_completion(&self, wqe_index: u32, is_send: bool) -> Option<u64> {
         if is_send {
             self.sq.write().resolve_completion(self.number, wqe_index)
@@ -728,8 +720,9 @@ impl WorkQueue {
 
     #[inline(always)]
     fn update_meta_for_head(&mut self, wr_id: u64, chain_size: u32) {
+        debug_assert_eq!(self.meta.len(), self.wqe_cnt as usize);
         let idx = self.head & (self.wqe_cnt - 1);
-        self.meta.insert(idx as usize, (wr_id, chain_size));
+        self.meta[idx as usize] = (wr_id, chain_size);
     }
 
     fn get_in_buffer<T: FromBytes>(&self, byte_offset: usize) -> Option<&mut T> {
@@ -822,9 +815,10 @@ impl WorkQueue {
 
     fn resolve_completion(&mut self, qp_num: u32, wqe_index: u32) -> Option<u64> {
         self.check_wqe_index(qp_num, wqe_index);
-        let (wr_id, chain_size) = self.meta.get(wqe_index as usize)?;
+        let idx = (wqe_index & (self.wqe_cnt - 1)) as usize;
+        let (wr_id, chain_size) = self.meta[idx];
         self.tail += chain_size;
-        Some(*wr_id)
+        Some(wr_id)
     }
 }
 
