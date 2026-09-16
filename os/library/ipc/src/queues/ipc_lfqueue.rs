@@ -26,6 +26,11 @@ impl IpcLFQueue {
 }
 
 impl super::IpcQueue for IpcLFQueue {
+
+    fn new() -> Self {
+        Self::new()
+    }
+
     fn send(&self, name: &str, msg_type: &str, message: &[u8], id: &uuid::Uuid) -> bool {
         let mut data = [0; MESSAGE_DATA_SIZE];
         let l = core::cmp::min(message.len(), MESSAGE_DATA_SIZE);
@@ -33,7 +38,7 @@ impl super::IpcQueue for IpcLFQueue {
         self.queue.enqueue(IpcMessage { name: name.into(), msg_type: msg_type.into(), data, data_len: message.len(), sender_pid: *id, sender_tid: 0 }).is_ok()
     }
     
-    fn receive<'a>(&'a self) -> Option<impl IpcMessageWrapper> {
+    fn receive(&self) -> Option<impl IpcMessageWrapper> {
         Some(IpcMessageWrapperOwned { msg: self.queue.dequeue()? })
     }
     
@@ -46,8 +51,8 @@ pub struct IpcMessageWrapperOwned {
     pub msg: IpcMessage,
 }
 
-impl<'a> IpcMessageWrapper<'a> for IpcMessageWrapperOwned {
-    fn msg(&'a self) -> &'a IpcMessage {
+impl IpcMessageWrapper for IpcMessageWrapperOwned {
+    fn msg(&self) -> &IpcMessage {
         &self.msg
     }
 }

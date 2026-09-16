@@ -35,6 +35,10 @@ impl IpcCustomQueue {
 }
 
 impl super::IpcQueue for IpcCustomQueue {
+
+    fn new() -> Self {
+        Self::new()
+    }
     
     fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid) -> bool {
 
@@ -62,7 +66,7 @@ impl super::IpcQueue for IpcCustomQueue {
         false
     }
 
-    fn receive<'a>(&'a self) -> Option<impl IpcMessageWrapper<'a>> {
+    fn receive(&self) -> Option<impl IpcMessageWrapper> {
 
         // iter until writer_idx to check for any new messages
         let reader_idx = self.reader_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
@@ -93,8 +97,8 @@ pub struct IpcMessageWrapperCustomQueue<'a> {
     pub(crate) queue_ptr: Option<&'a AtomicI16>,
 }
 
-impl<'a> IpcMessageWrapper<'a> for IpcMessageWrapperCustomQueue<'a> {
-    fn msg(&'a self) -> &'a IpcMessage {
+impl<'a> IpcMessageWrapper for IpcMessageWrapperCustomQueue<'a> {
+    fn msg(&self) -> &IpcMessage {
         self.msg
     }
 }

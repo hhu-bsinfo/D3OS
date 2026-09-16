@@ -155,6 +155,6 @@ impl IpcMessageContent for &String {
 
 
 /// trait used for receiving messages, and dropping them after use, to achieve one copy behaviour
-pub trait IpcMessageWrapper<'a> {
-    fn msg(&'a self) -> &'a IpcMessage;
+pub trait IpcMessageWrapper {
+    fn msg(&self) -> &IpcMessage;
 }

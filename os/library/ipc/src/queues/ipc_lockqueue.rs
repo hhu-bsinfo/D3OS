@@ -10,6 +10,11 @@ pub struct IpcLockQueue {
 }
 
 impl super::IpcQueue for IpcLockQueue {
+
+    fn new() -> Self {
+        Self { messages: RwLock::new(BufferQueue::new()) }
+    }
+
     fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &uuid::Uuid) -> bool {
         let mut data_arr = [0; MESSAGE_DATA_SIZE];
         let l = core::cmp::min(MESSAGE_DATA_SIZE, data.len());
@@ -25,7 +30,7 @@ impl super::IpcQueue for IpcLockQueue {
         self.messages.write().enqueue(msg)
     }
 
-    fn receive<'a>(&'a self) -> Option<impl IpcMessageWrapper<'a>> {
+    fn receive(&self) -> Option<impl IpcMessageWrapper> {
         Some(IpcMessageWrapperOwned {
             msg: self.messages.write().dequeue_front()?
         })
@@ -42,8 +47,8 @@ pub struct IpcMessageWrapperBuffer<'a> {
     pub idx: usize,
 }
 
-impl<'a> IpcMessageWrapper<'a> for IpcMessageWrapperBuffer<'a> {
-    fn msg(&'a self) -> &'a IpcMessage {
+impl<'a> IpcMessageWrapper for IpcMessageWrapperBuffer<'a> {
+    fn msg(&self) -> &IpcMessage {
         self.msg
     }
 }

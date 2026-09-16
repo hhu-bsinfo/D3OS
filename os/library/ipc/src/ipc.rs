@@ -101,12 +101,12 @@ pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -
     syscall(SystemCall::IpcSend, &&params)
 }
 
-pub fn receive<'a>() -> Option<impl IpcMessageWrapper<'a>> {
+pub fn receive() -> Option<impl IpcMessageWrapper> {
     let ipc_queue = unsafe { (USER_SPACE_MAILBOX_START as *const IpcQueueType).as_ref() };
     ipc_queue?.receive()
 }
 
-pub fn receive_blocking<'a>(timeout_ms: usize) -> Result<impl IpcMessageWrapper<'a>, syscall::return_vals::Errno> {
+pub fn receive_blocking(timeout_ms: usize) -> Result<impl IpcMessageWrapper, syscall::return_vals::Errno> {
     match syscall(SystemCall::IpcReceiveBlocking, &timeout_ms) {
         Ok(_) => receive().ok_or(syscall::return_vals::Errno::EEXIST),
         Err(e) => Err(e),
