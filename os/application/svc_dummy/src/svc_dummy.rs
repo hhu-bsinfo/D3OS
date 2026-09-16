@@ -9,6 +9,11 @@ use naming::shared_types::{OpenOptions, SeekOrigin};
 use runtime::*;
 use terminal::println;
 use time::systime;
+use core::net::SocketAddr;
+use network::TcpStream;
+use core::str::FromStr;
+use alloc::format;
+use log::{info, error};
 
 // Sucht Zuweisungen mit = und gibt den Wert zurück, z.B. --sleep-ms=5000
 fn arg_value<'a>(args: &'a [String], key: &str) -> Option<&'a str> {
@@ -27,6 +32,7 @@ fn has_flag(args: &[String], flag: &str) -> bool {
 
 #[unsafe(no_mangle)]
 pub fn main() {
+    terminal::init_logger();
     let args: alloc::vec::Vec<String> = env::args().collect();
 
     let label = arg_value(&args, "--label=").unwrap_or("svc_dummy");
@@ -57,6 +63,9 @@ pub fn main() {
     let panic_on_start = has_flag(&args, "--panic");
     let panic_after_ms: Option<usize> = arg_value(&args, "--panic-after-ms=")
         .and_then(|v| v.parse::<usize>().ok());
+
+    let send_to_addr: Option<SocketAddr> = arg_value(&args, "--send-to=")
+    .and_then(|v| SocketAddr::from_str(v).ok());
 
     println!("svc_dummy: start label={} service_name={} initial_sleep_ms={} sleep_ms={} heartbeat_ms={:?} hang_after_ms={:?}", label, service_name, initial_sleep_ms, sleep_ms, if no_heartbeat { None } else { heartbeat_ms }, hang_after_ms);
 
@@ -108,6 +117,29 @@ pub fn main() {
             let _ = naming::seek(fh, 0, SeekOrigin::Start);
             let _ = naming::write(fh, &heartbeat_value.to_le_bytes());     // Heartbeat normal senden
         }
+
+        // 2. NEU: Nachricht über das Netzwerk senden!
+        if let Some(target_addr) = send_to_addr {
+        
+        info!("svc_dummy: Versuche TCP Verbindung zu {}", target_addr);
+        
+        
+        // TCP Verbindung aufbauen
+        match TcpStream::connect(target_addr) {
+            Ok(stream) => {
+                let msg = format!("Hello from D3OS Node! Mein Service heißt: {}\n", service_name);
+                
+                // Nachricht in den Socket schreiben
+                match stream.write(msg.as_bytes()) {
+                    Ok(bytes) => info!("svc_dummy: Erfolgreich {} Bytes an {} gesendet!", bytes, target_addr),
+                    Err(e) => error!("svc_dummy: Fehler beim Senden: {:?}", e),
+                }
+            }
+            Err(e) => {
+                error!("svc_dummy: Konnte keine Verbindung aufbauen zu {}: {:?}", target_addr, e);
+            }
+        }
+    }
 
         if print {
             println!("svc_dummy: hi from {}", label);

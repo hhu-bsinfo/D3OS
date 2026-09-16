@@ -1639,7 +1639,9 @@ name = "svc_dummy"
 version = "0.1.0"
 dependencies = [
  "concurrent",
+ "log",
  "naming",
+ "network",
  "runtime",
  "terminal",
  "time",
