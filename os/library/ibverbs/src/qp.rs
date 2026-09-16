@@ -2,10 +2,10 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem;
 use core::ops::Range;
+use core::slice::SliceIndex;
 use core3::io;
-use rdma::{Gid, Mtu, QueuePairType, ScatterGatherEntry};
-use crate::completion_queue::CompletionQueue;
-use crate::{ffi, sliceindex, Context, LocalMemoryRegion, ProtectionDomain, RemoteMemoryRegion, PORT_NUM};
+use rdma::{AccessFlags, AddressHandleAttr, Gid, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairType, QueuePairtState, ScatterGatherEntry, SendFlags, SendWorkRequestData};
+use crate::cq::CompletionQueue;
 use crate::provider::{IbvQueuePair, QpInitAttr, ReceiveWorkRequest, SendWorkRequest};
 
 #[cfg(feature = "serialize")]
@@ -13,6 +13,11 @@ use bincode::{Decode, Encode};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+use crate::context::Context;
+use crate::mr::{LocalMemoryRegion, RemoteMemoryRegion};
+use crate::pd::ProtectionDomain;
+use crate::PORT_NUM;
 
 /// An unconfigured `QueuePair`.
 ///
@@ -27,13 +32,13 @@ pub struct QueuePairBuilder<'res> {
     send: &'res CompletionQueue,
     recv: &'res CompletionQueue,
 
-    cap: ffi::QueuePairCapabilities,
+    cap: QueuePairCapabilities,
 
     qp_type: QueuePairType,
 
     // carried along to handshake phase
     /// only valid for RC and UC
-    access: Option<ffi::AccessFlags>,
+    access: Option<AccessFlags>,
     /// only valid for RC
     timeout: Option<u8>,
     /// only valid for RC
@@ -70,7 +75,7 @@ impl<'res> QueuePairBuilder<'res> {
         send: &'scq CompletionQueue,
         recv: &'rcq CompletionQueue,
         qp_type: QueuePairType,
-        cap: ffi::QueuePairCapabilities
+        cap: QueuePairCapabilities
     ) -> QueuePairBuilder<'res>
     where
         'scq: 'res,
@@ -96,7 +101,7 @@ impl<'res> QueuePairBuilder<'res> {
 
             access: (qp_type == QueuePairType::RC
                 || qp_type == QueuePairType::UC)
-                .then_some(ffi::AccessFlags::LOCAL_WRITE),
+                .then_some(AccessFlags::LOCAL_WRITE),
             min_rnr_timer: (qp_type == QueuePairType::RC).then_some(16),
             retry_count: (qp_type == QueuePairType::RC).then_some(6),
             rnr_retry: (qp_type == QueuePairType::RC).then_some(6),
@@ -115,7 +120,7 @@ impl<'res> QueuePairBuilder<'res> {
     /// Valid only for RC and UC QPs.
     ///
     /// Defaults to `IBV_ACCESS_LOCAL_WRITE`.
-    pub fn set_access(&mut self, access: ffi::AccessFlags) -> &mut Self {
+    pub fn set_access(&mut self, access: AccessFlags) -> &mut Self {
         if self.qp_type == QueuePairType::RC
             || self.qp_type == QueuePairType::UC
         {
@@ -133,8 +138,8 @@ impl<'res> QueuePairBuilder<'res> {
         {
             self.access = Some(
                 self.access.expect("always set to Some in new")
-                    | ffi::AccessFlags::REMOTE_WRITE
-                    | ffi::AccessFlags::REMOTE_READ,
+                    | AccessFlags::REMOTE_WRITE
+                    | AccessFlags::REMOTE_READ,
             );
         }
         self
@@ -413,7 +418,7 @@ pub struct PreparedQueuePair<'res> {
 
     // carried from builder
     /// only valid for RC and UC
-    access: Option<ffi::AccessFlags>,
+    access: Option<AccessFlags>,
     /// only valid for RC
     min_rnr_timer: Option<u8>,
     /// only valid for RC
@@ -452,21 +457,10 @@ impl<'res> PreparedQueuePair<'res> {
     ///
     /// This endpoint will need to be communicated to the `QueuePair` on the remote end.
     pub fn endpoint(&self) -> QueuePairEndpoint {
-        let num = self.qp.inner.number();
-
-        // A peer that receives a GID here enables global routing and puts a GRH on every packet
-        // it sends us. `ibv_query_gid` is still a stub returning an all-zero GID, and the mlx4
-        // driver hardcodes `primary_grh = false` in the queue pair context, so advertising one
-        // would ask the peer to address us by a GID we neither know nor honour — its packets
-        // would go undelivered and it would fail with IBV_WC_RETRY_EXC_ERR. Advertise a GID only
-        // once we actually have one; until then the connection is LID-routed, which is what the
-        // driver programs anyway.
-        let gid = (self.ctx.gid.raw != [0u8; 16]).then_some(self.ctx.gid);
-
         QueuePairEndpoint {
-            num,
+            num: self.qp.inner.number(),
             lid: self.ctx.port_attr.lid,
-            gid,
+            gid: (self.ctx.gid.raw != [0u8; 16]).then_some(self.ctx.gid),
         }
     }
 
@@ -503,28 +497,28 @@ impl<'res> PreparedQueuePair<'res> {
     /// [RDMAmojo]: http://www.rdmamojo.com/2014/01/18/connecting-queue-pairs/
     pub fn handshake(mut self, remote: QueuePairEndpoint) -> io::Result<crate::QueuePair> {
         // init and associate with port
-        let mut attr = ffi::QueuePairAttr {
-            qp_state: ffi::QueuePairtState::Init,
+        let mut attr = QueuePairAttr {
+            qp_state: QueuePairtState::Init,
             pkey_index: 0,
             port_num: PORT_NUM,
             ..Default::default()
         };
-        let mut mask = ffi::QueuePairAttrMask::IBV_QP_STATE
-            | ffi::QueuePairAttrMask::IBV_QP_PKEY_INDEX
-            | ffi::QueuePairAttrMask::IBV_QP_PORT;
+        let mut mask = QueuePairAttrMask::IBV_QP_STATE
+            | QueuePairAttrMask::IBV_QP_PKEY_INDEX
+            | QueuePairAttrMask::IBV_QP_PORT;
         if let Some(access) = self.access {
             attr.qp_access_flags = access;
-            mask |= ffi::QueuePairAttrMask::IBV_QP_ACCESS_FLAGS;
+            mask |= QueuePairAttrMask::IBV_QP_ACCESS_FLAGS;
         }
         self.qp.inner.modify(&attr, mask)?;
 
         // set ready to receive
-        let mut attr = ffi::QueuePairAttr {
-            qp_state: ffi::QueuePairtState::ReadyToReceive,
+        let mut attr = QueuePairAttr {
+            qp_state: QueuePairtState::ReadyToReceive,
             // TODO: this is only valid for RC and UC
             dest_qp_num: remote.num,
             // TODO: this is only valid for RC and UC
-            ah_attr: ffi::AddressHandleAttr {
+            ah_attr: AddressHandleAttr {
                 dlid: remote.lid,
                 sl: 0,
                 src_path_bits: 0,
@@ -539,49 +533,49 @@ impl<'res> PreparedQueuePair<'res> {
             attr.ah_attr.grh.dgid = gid.into();
             attr.ah_attr.grh.hop_limit = 0xff;
         }
-        let mut mask = ffi::QueuePairAttrMask::IBV_QP_STATE
-            | ffi::QueuePairAttrMask::IBV_QP_AV
-            | ffi::QueuePairAttrMask::IBV_QP_DEST_QPN;
+        let mut mask = QueuePairAttrMask::IBV_QP_STATE
+            | QueuePairAttrMask::IBV_QP_AV
+            | QueuePairAttrMask::IBV_QP_DEST_QPN;
         if let Some(max_dest_rd_atomic) = self.max_dest_rd_atomic {
             attr.max_dest_rd_atomic = max_dest_rd_atomic;
-            mask |= ffi::QueuePairAttrMask::IBV_QP_MAX_DEST_RD_ATOMIC;
+            mask |= QueuePairAttrMask::IBV_QP_MAX_DEST_RD_ATOMIC;
         }
         if let Some(min_rnr_timer) = self.min_rnr_timer {
             attr.min_rnr_timer = min_rnr_timer;
-            mask |= ffi::QueuePairAttrMask::IBV_QP_MIN_RNR_TIMER;
+            mask |= QueuePairAttrMask::IBV_QP_MIN_RNR_TIMER;
         }
         if let Some(path_mtu) = self.path_mtu {
             attr.path_mtu = path_mtu;
-            mask |= ffi::QueuePairAttrMask::IBV_QP_PATH_MTU;
+            mask |= QueuePairAttrMask::IBV_QP_PATH_MTU;
         }
         if let Some(rq_psn) = self.rq_psn {
             attr.rq_psn = rq_psn;
-            mask |= ffi::QueuePairAttrMask::IBV_QP_RQ_PSN;
+            mask |= QueuePairAttrMask::IBV_QP_RQ_PSN;
         }
         self.qp.inner.modify(&attr, mask)?;
 
         // set ready to send
-        let mut attr = ffi::QueuePairAttr {
-            qp_state: ffi::QueuePairtState::ReadyToSend,
+        let mut attr = QueuePairAttr {
+            qp_state: QueuePairtState::ReadyToSend,
             sq_psn: 0,
             ..Default::default()
         };
-        let mut mask = ffi::QueuePairAttrMask::IBV_QP_STATE | ffi::QueuePairAttrMask::IBV_QP_SQ_PSN;
+        let mut mask = QueuePairAttrMask::IBV_QP_STATE | QueuePairAttrMask::IBV_QP_SQ_PSN;
         if let Some(timeout) = self.timeout {
             attr.timeout = timeout;
-            mask |= ffi::QueuePairAttrMask::IBV_QP_TIMEOUT;
+            mask |= QueuePairAttrMask::IBV_QP_TIMEOUT;
         }
         if let Some(retry_count) = self.retry_count {
             attr.retry_cnt = retry_count;
-            mask |= ffi::QueuePairAttrMask::IBV_QP_RETRY_CNT;
+            mask |= QueuePairAttrMask::IBV_QP_RETRY_CNT;
         }
         if let Some(rnr_retry) = self.rnr_retry {
             attr.rnr_retry = rnr_retry;
-            mask |= ffi::QueuePairAttrMask::IBV_QP_RNR_RETRY;
+            mask |= QueuePairAttrMask::IBV_QP_RNR_RETRY;
         }
         if let Some(max_rd_atomic) = self.max_rd_atomic {
             attr.max_rd_atomic = max_rd_atomic;
-            mask |= ffi::QueuePairAttrMask::IBV_QP_MAX_QP_RD_ATOMIC;
+            mask |= QueuePairAttrMask::IBV_QP_MAX_QP_RD_ATOMIC;
         }
         self.qp.inner.modify(&attr, mask)?;
 
@@ -647,10 +641,10 @@ impl QueuePair {
         mr: &mut LocalMemoryRegion<'pd, T>,
         ranges: Vec<Vec<R>>,
         wr_ids: Vec<u64>,
-        send_flags: Vec<ffi::SendFlags>
+        send_flags: Vec<SendFlags>
     ) -> io::Result<()>
     where
-        R: sliceindex::SliceIndex<[T], Output = [T]>,
+        R: SliceIndex<[T], Output = [T]>,
     {
         assert!(
             ranges.len() == wr_ids.len() && send_flags.len() == wr_ids.len(),
@@ -669,7 +663,7 @@ impl QueuePair {
                 let sge = ScatterGatherEntry {
                     addr: l.as_ptr() as u64,
                     length: mem::size_of_val(l) as u32,
-                    lkey: mr.metadata.lkey,
+                    lkey: mr.lkey(),
                 };
                 sg_list.push(sge);
             }
@@ -739,7 +733,7 @@ impl QueuePair {
         wr_ids: Vec<u64>,
     ) -> io::Result<()>
     where
-        R: sliceindex::SliceIndex<[T], Output = [T]>,
+        R: SliceIndex<[T], Output = [T]>,
     {
         assert!(
             ranges.len() == wr_ids.len(),
@@ -758,7 +752,7 @@ impl QueuePair {
                 let sge = ScatterGatherEntry {
                     addr: l.as_ptr() as u64,
                     length: mem::size_of_val(l) as u32,
-                    lkey: mr.metadata.lkey,
+                    lkey: mr.lkey(),
                 };
                 sg_list.push(sge);
             }
@@ -824,10 +818,10 @@ impl QueuePair {
         remote_mr: &mut RemoteMemoryRegion<T>,
         remote_ranges: Vec<Range<u64>>,
         wr_ids: Vec<u64>,
-        send_flags: Vec<ffi::SendFlags>
+        send_flags: Vec<SendFlags>
     ) -> io::Result<()>
     where
-        R: sliceindex::SliceIndex<[T], Output = [T]>,
+        R: SliceIndex<[T], Output = [T]>,
     {
         self.rdma_backbone(
             remote_mr,
@@ -877,10 +871,10 @@ impl QueuePair {
         local_mr: &mut LocalMemoryRegion<'pd, T>,
         local_ranges: Vec<Vec<R>>,
         wr_ids: Vec<u64>,
-        send_flags: Vec<ffi::SendFlags>
+        send_flags: Vec<SendFlags>
     ) -> io::Result<()>
     where
-        R: sliceindex::SliceIndex<[T], Output = [T]>,
+        R: SliceIndex<[T], Output = [T]>,
     {
         self.rdma_backbone(
             remote_mr,
@@ -901,10 +895,10 @@ impl QueuePair {
         mut local_ranges: Vec<Vec<R>>,
         mut wr_ids: Vec<u64>,
         opcode: WorkRequestOpcode,
-        mut send_flags: Vec<ffi::SendFlags>
+        mut send_flags: Vec<SendFlags>
     ) -> io::Result<()>
     where
-        R: sliceindex::SliceIndex<[T], Output = [T]>,
+        R: SliceIndex<[T], Output = [T]>,
     {
         assert!(
             (remote_ranges.len() == local_ranges.len()) && (local_ranges.len() == wr_ids.len())
@@ -943,7 +937,7 @@ impl QueuePair {
                 let sge = ScatterGatherEntry {
                     addr: l.as_ptr() as u64,
                     length: mem::size_of_val(l) as u32,
-                    lkey: local_mr.metadata.lkey,
+                    lkey: local_mr.lkey(),
                 };
                 local_c += l.len();
                 sg_list.push(sge);
@@ -961,7 +955,7 @@ impl QueuePair {
                 sges: sg_list,
                 opcode,
                 send_flags: wr_send_flags,
-                wr: ffi::SendWorkRequestData::Rdma {
+                wr: SendWorkRequestData::Rdma {
                     remote_addr: remote_start,
                     rkey: remote_mr.rkey,
                 },

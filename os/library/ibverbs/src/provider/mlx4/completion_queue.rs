@@ -3,7 +3,7 @@
 //! CQE parsing happen entirely against the mapped buffer from here on, without a syscall per
 //! poll. Arming goes through the UAR page the kernel maps into this process at creation, so it
 //! needs no syscall either. This mirrors the kernel's former
-//! `os/kernel/src/device/mlx4/completion_queue.rs` `poll`/`poll_one`/`get_next_cqe_sw`/`arm`,
+//! `os/kernel/src/device/mlx4/cq` `poll`/`poll_one`/`get_next_cqe_sw`/`arm`,
 //! which were deleted from the kernel once this moved here.
 
 use alloc::sync::Arc;
@@ -22,7 +22,7 @@ use tock_registers::interfaces::Writeable;
 use tock_registers::registers::WriteOnly;
 use zerocopy::AsBytes;
 use crate::cmd::uverbs;
-use crate::completion_queue::{WorkCompletion, WorkCompletionFlags, WorkCompletionOpcode, WorkCompletionStatus};
+use crate::cq::{WorkCompletion, WorkCompletionFlags, WorkCompletionOpcode, WorkCompletionStatus};
 use crate::provider::IbvCompletionQueue;
 use crate::provider::mlx4::{CqArmCmd, Mlx4Context};
 use crate::provider::mlx4::queue_pair::QueuePairOpcode;
@@ -66,7 +66,7 @@ impl IbvCompletionQueue for CompletionQueue {
         let poll_count = self.poll_count.fetch_add(1, Ordering::AcqRel);
         let mut consumer_index = self.consumer_index.lock();
         if (poll_count + 1) % DRAIN_EVENTS_INTERVAL == 0 {
-            let _ = uverbs(self.context.device_handle(), DrainEvents, UserSlice::EMPTY, UserSlice::EMPTY);
+            let _ = uverbs(self.context.device_handle().into(), DrainEvents, UserSlice::EMPTY, UserSlice::EMPTY);
         }
 
         let mut completions = 0;
@@ -85,7 +85,7 @@ impl IbvCompletionQueue for CompletionQueue {
 
 impl Drop for CompletionQueue {
     fn drop(&mut self) {
-        uverbs(self.context.device_handle, DestroyCq, UserSlice::from_ref(&self.number), UserSlice::EMPTY)
+        uverbs(self.context.device_handle.into(), DestroyCq, UserSlice::from_ref(&self.number), UserSlice::EMPTY)
             .expect("failed to destroy completion queue");
     }
 }
@@ -115,7 +115,7 @@ impl CompletionQueue {
             doorbell_ptr: doorbell_ptr.cast(),
         };
         let mut resp = MaybeUninit::<CreateCqResponse>::uninit();
-        uverbs(context.device_handle(), CreateCq, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        uverbs(context.device_handle().into(), CreateCq, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
         let resp = unsafe { resp.assume_init() };
 
         let mut cq = Self {
@@ -197,7 +197,7 @@ impl CompletionQueue {
                 // drained, which otherwise only happens every `DRAIN_EVENTS_INTERVAL` polls — far
                 // too rare to catch it before a short-lived benchmark run already aborted on this
                 // exact completion. Force an out-of-band drain right here instead.
-                let _ = uverbs(self.context.device_handle, DrainEvents, UserSlice::EMPTY, UserSlice::EMPTY);
+                let _ = uverbs(self.context.device_handle.into(), DrainEvents, UserSlice::EMPTY, UserSlice::EMPTY);
                 return Ok(true);
             }
             wc.status = WorkCompletionStatus::Success;

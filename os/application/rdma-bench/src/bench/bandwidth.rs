@@ -8,8 +8,7 @@ use crate::comm::Conn;
 use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
 use alloc::vec;
-use ibverbs::{completion_queue::WorkCompletion, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
-use ibverbs::ffi::SendFlags;
+use ibverbs::{WorkCompletion, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, SendFlags};
 use time::get_time_in_us;
 
 pub fn run(

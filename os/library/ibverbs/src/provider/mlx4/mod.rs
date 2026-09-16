@@ -18,9 +18,9 @@ mod queue_pair;
 use crate::cmd::uverbs;
 use crate::provider::mlx4::completion_queue::CompletionQueue;
 use crate::provider::{IbvCompletionQueue, IbvContext, IbvQueuePair, QpInitAttr};
-use crate::{Gid, MemoryRegionMetadata};
 use queue_pair::QueuePair;
-use rdma::ProtectionDomainHandle;
+use rdma::{DeviceHandle, Gid, ProtectionDomainHandle};
+use crate::mr::MemoryRegionMetadata;
 
 /// A per-device registry of live queue pairs, shared between whichever `ibv_qp`s and `ibv_cq`s
 /// were created against this device.
@@ -31,7 +31,7 @@ use rdma::ProtectionDomainHandle;
 /// possible, mirroring the "find by number in a `Vec`" lookup that used to live in the kernel's
 /// `ConnectX3Nic::qps` before posting and polling moved out here.
 pub struct Mlx4Context {
-    device_handle: usize,
+    device_handle: DeviceHandle,
     /// Retrieved from QUERY_DEV_CAP -> log_max_qp_sz
     /// Maximum size of Send Queue in WQEBB (including SQ Headroom) or Receive Queue in WQE is 2^log_max_qp_size.
     // TODO: query the device for these instead of hardcoding them; nothing surfaces
@@ -47,9 +47,9 @@ pub struct Mlx4Context {
 }
 
 impl Mlx4Context {
-    pub fn new(device_handle: usize) -> io::Result<Self> {
+    pub fn new(device_handle: DeviceHandle) -> io::Result<Self> {
         let mut resp = MaybeUninit::<OpenDeviceResponse>::uninit();
-        uverbs(device_handle, UverbsCmd::OpenDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
+        uverbs(device_handle.into(), UverbsCmd::OpenDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
         let resp = unsafe { resp.assume_init() };
         let doorbell_page = NonNull::new(resp.doorbell_page.cast())
             .ok_or(Error::new(ErrorKind::Other, "Doorbell page not mapped"))?;
@@ -76,7 +76,7 @@ impl Mlx4Context {
     }
 
     #[inline(always)]
-    pub(super) fn device_handle(&self) -> usize {
+    pub(super) fn device_handle(&self) -> DeviceHandle {
         self.device_handle
     }
 
@@ -103,14 +103,14 @@ impl Mlx4Context {
 impl IbvContext for Mlx4Context {
     fn query_device(&self) -> io::Result<DeviceAttr> {
         let mut resp = MaybeUninit::<DeviceAttr>::uninit();
-        uverbs(self.device_handle, UverbsCmd::QueryDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
+        uverbs(self.device_handle.into(), UverbsCmd::QueryDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
         Ok(unsafe { resp.assume_init() })
     }
 
     fn query_port(&self, port_num: u8) -> io::Result<PortAttr> {
         let req = QueryPortRequest { port_num };
         let mut resp = MaybeUninit::<PortAttr>::uninit();
-        uverbs(self.device_handle, UverbsCmd::QueryPort, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        uverbs(self.device_handle.into(), UverbsCmd::QueryPort, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
         Ok(unsafe { resp.assume_init() })
     }
 
@@ -135,14 +135,14 @@ impl IbvContext for Mlx4Context {
 
     fn alloc_pd(&self) -> io::Result<ProtectionDomainHandle> {
         let mut resp = MaybeUninit::<AllocPdResponse>::uninit();
-        uverbs(self.device_handle, UverbsCmd::AllocPd, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
+        uverbs(self.device_handle.into(), UverbsCmd::AllocPd, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
         let resp = unsafe { resp.assume_init() };
         Ok(resp.pd)
     }
 
     fn dealloc_pd(&self, pd: ProtectionDomainHandle) -> io::Result<()> {
         let req = DeallocPdRequest { pd };
-        uverbs(self.device_handle, UverbsCmd::DeallocPd, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
+        uverbs(self.device_handle.into(), UverbsCmd::DeallocPd, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
         Ok(())
     }
 
@@ -159,7 +159,7 @@ impl IbvContext for Mlx4Context {
         };
 
         let mut resp = MaybeUninit::<CreateMrResponse>::uninit();
-        uverbs(self.device_handle, UverbsCmd::RegMr, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        uverbs(self.device_handle.into(), UverbsCmd::RegMr, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
         let CreateMrResponse { handle, lkey, rkey } = unsafe { resp.assume_init() };
         Ok(MemoryRegionMetadata {
             handle,
@@ -169,7 +169,7 @@ impl IbvContext for Mlx4Context {
     }
 
     fn dereg_mr(&self, meta: MemoryRegionMetadata) {
-        uverbs(self.device_handle, UverbsCmd::DeregMr, UserSlice::from_ref(&meta.handle), UserSlice::EMPTY)
+        uverbs(self.device_handle.into(), UverbsCmd::DeregMr, UserSlice::from_ref(&meta.handle), UserSlice::EMPTY)
             .expect("failed to destroy memory region");
     }
 }

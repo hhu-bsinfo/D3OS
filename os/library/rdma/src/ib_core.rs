@@ -28,6 +28,22 @@ pub struct QueuePairCapabilities {
     pub max_inline_data: u32,
 }
 
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug)]
+pub struct DeviceHandle(usize);
+
+impl From<usize> for DeviceHandle {
+    fn from(value: usize) -> Self {
+        DeviceHandle(value)
+    }
+}
+
+impl Into<usize> for DeviceHandle {
+    fn into(self) -> usize {
+        self.0
+    }
+}
+
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct ProtectionDomainHandle(pub u32);
 
@@ -44,11 +60,6 @@ bitflags! {
         const HUGETLB = 128;
         const RELAXED_ORDERING = 1048576;
     }
-}
-
-#[derive(Clone, Copy)]
-pub struct Device {
-    pub handle: usize,
 }
 
 #[derive(Default, Clone, Copy)]

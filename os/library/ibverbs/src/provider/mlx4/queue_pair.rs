@@ -2,7 +2,7 @@
 //! for the WQE buffer, map a UAR/BlueFlame page pair, and run the CMD-interface state
 //! transitions), but posting and WQE bookkeeping happen entirely against the mapped buffer from
 //! here on, without a syscall per post. This mirrors the kernel's former
-//! `os/kernel/src/device/mlx4/queue_pair.rs` `post_send`/`post_receive`/`check_wqe_index`/etc,
+//! `os/kernel/src/device/mlx4/qp` `post_send`/`post_receive`/`check_wqe_index`/etc,
 //! which were deleted from the kernel once this moved here.
 
 use alloc::sync::Arc;
@@ -28,7 +28,7 @@ use rdma::QueuePairType;
 use rdma::ProtectionDomainHandle;
 use crate::cmd::uverbs;
 use crate::provider::{IbvQueuePair, QpInitAttr, ReceiveWorkRequest, SendWorkRequest};
-use crate::queue_pair::WorkRequestOpcode;
+use crate::qp::WorkRequestOpcode;
 use super::Mlx4Context;
 
 pub(crate) struct QueuePair {
@@ -222,7 +222,7 @@ impl IbvQueuePair for QueuePair {
         };
 
         let mut state = self.state.write();
-        uverbs(self.context.device_handle, ModifyQp, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
+        uverbs(self.context.device_handle.into(), ModifyQp, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
 
         if attr_mask.contains(QueuePairAttrMask::IBV_QP_STATE) {
             *state = attr.qp_state;
@@ -235,7 +235,7 @@ impl IbvQueuePair for QueuePair {
 impl Drop for QueuePair {
     fn drop(&mut self) {
         let qp_num = self.number();
-        uverbs(self.context.device_handle(), DestroyQp, UserSlice::from_ref(&qp_num), UserSlice::EMPTY)
+        uverbs(self.context.device_handle().into(), DestroyQp, UserSlice::from_ref(&qp_num), UserSlice::EMPTY)
             .expect("failed to destroy queue pair");
     }
 }
@@ -298,7 +298,7 @@ impl QueuePair {
         };
 
         let mut resp = MaybeUninit::<CreateQpResponse>::uninit();
-        uverbs(context.device_handle, CreateQp, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        uverbs(context.device_handle.into(), CreateQp, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
         let resp = unsafe { resp.assume_init() };
 
         Ok(QueuePair {

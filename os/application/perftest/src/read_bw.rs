@@ -3,10 +3,10 @@ use core::{net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4}, str::FromStr};
 use alloc::string::String;
 use core3::io;
 use core3::io::ErrorKind;
-use ibverbs::{Gid, LocalMemoryRegion, QueuePairEndpoint};
+use ibverbs::{LocalMemoryRegion, QueuePairEndpoint};
 use network::{TcpListener, TcpStream};
 use rdma::ib_core::QueuePairCapabilities;
-use rdma::QueuePairType;
+use rdma::{Gid, QueuePairType};
 use terminal::println;
 
 use crate::comm::{self, PeerInfo};

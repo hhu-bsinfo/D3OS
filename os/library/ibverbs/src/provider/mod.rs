@@ -1,5 +1,4 @@
 use crate::cmd::uverbs;
-use crate::{Gid, MemoryRegionMetadata};
 use alloc::boxed::Box;
 use alloc::string::ToString;
 use alloc::sync::Arc;
@@ -9,22 +8,25 @@ use bincode::{Decode, Encode};
 use core::mem;
 use core::mem::MaybeUninit;
 use core3::io;
-use rdma::ib_core::{PortAttr, QueuePairAttr, QueuePairAttrMask, SendFlags, SendWorkRequestData, ScatterGatherEntry, AccessFlags, Device, DeviceAttr, QueuePairCapabilities};
-use rdma::QueuePairType;
+use rdma::ib_core::{PortAttr, QueuePairAttr, QueuePairAttrMask, SendFlags, SendWorkRequestData, ScatterGatherEntry, AccessFlags, DeviceAttr, QueuePairCapabilities};
+use rdma::{DeviceHandle, Gid, QueuePairType};
 use rdma::ProtectionDomainHandle;
 use rdma::uverbs_uapi::UverbsCmd::QueryDevices;
 use rdma::uverbs_uapi::{UserSlice, UVERBS_MAX_QUERY_DEVICES_REQ};
-use crate::completion_queue::WorkCompletion;
-use crate::queue_pair::WorkRequestOpcode;
+use crate::cq::WorkCompletion;
+use crate::device::Device;
+use crate::mr::MemoryRegionMetadata;
+use crate::qp::WorkRequestOpcode;
 
 mod mlx4;
 
 /// Get all currently available InfiniBand devices
-pub fn get_available_devices() -> io::Result<Vec<Device>> {
-    let mut devices : Vec<MaybeUninit<Device>> = vec![MaybeUninit::uninit(); UVERBS_MAX_QUERY_DEVICES_REQ];
+pub fn get_available_devices() -> io::Result<Vec<DeviceHandle>> {
+    let mut devices : Vec<MaybeUninit<DeviceHandle>> = vec![MaybeUninit::uninit(); UVERBS_MAX_QUERY_DEVICES_REQ];
+    // Safety: DeviceHandle uverbs returns the number of devices and a MaybeUninit<T> has the same layout as T
     uverbs(0, QueryDevices, UserSlice::EMPTY, UserSlice::from_mut_slice(&mut devices)).map(|count| unsafe {
         devices.set_len(count);
-        mem::transmute::<_,Vec<Device>>(devices)
+        mem::transmute::<_,Vec<DeviceHandle>>(devices)
     })
 }
 

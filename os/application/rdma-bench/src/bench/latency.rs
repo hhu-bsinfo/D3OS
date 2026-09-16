@@ -8,8 +8,7 @@ use crate::error::Result;
 use crate::report::{LatencyStats, Report};
 use alloc::vec;
 use alloc::vec::Vec;
-use ibverbs::{completion_queue::WorkCompletion, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
-use ibverbs::ffi::SendFlags;
+use ibverbs::{WorkCompletion, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, SendFlags};
 use time::get_time_in_us;
 
 const WR_SEND: u64 = 1;

@@ -2,7 +2,7 @@
 
 use terminal::println;
 use ibverbs::devices;
-use ibverbs::ffi::{QueuePairCapabilities, QueuePairType};
+use ibverbs::{QueuePairCapabilities, QueuePairType};
 
 #[allow(unused_imports)]
 use runtime::*;

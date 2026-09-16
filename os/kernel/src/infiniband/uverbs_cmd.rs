@@ -1,12 +1,12 @@
 use crate::device::mlx4::{get_dev_list, device_handle_to_idx, ConnectX3Nic};
 use alloc::vec::Vec;
 use rdma::uverbs_uapi::{AllocPdResponse, CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, CreateQpResponse, DeallocPdRequest, ModifyQpRequest, OpenDeviceResponse};
-use rdma::{AccessFlags, Device, DeviceAttr, PortAttr, ProtectionDomainHandle};
+use rdma::{AccessFlags,DeviceAttr, DeviceHandle, PortAttr, ProtectionDomainHandle};
 use crate::process_manager;
 
-pub fn uverbs_query_devices(max_len: usize) -> Vec<Device> {
+pub fn uverbs_query_devices(max_len: usize) -> Vec<DeviceHandle> {
     get_dev_list().lock().iter()
-        .map(|dev| Device { handle: dev.handle } )
+        .map(|dev| DeviceHandle::from(dev.handle) )
         .take(max_len)
         .collect()
 }

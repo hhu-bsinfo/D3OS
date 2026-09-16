@@ -1,9 +1,7 @@
-use ibverbs::{Context, ProtectionDomain, LocalMemoryRegion, CompletionQueue, QueuePairBuilder};
-use ibverbs::sliceindex::SliceIndex;
-use ibverbs::ffi::{QueuePairCapabilities, QueuePairType};
+use ibverbs::{ProtectionDomain, CompletionQueue, QueuePairBuilder, Context};
 use core::ops;
-use core::slice::from_raw_parts_mut;
-use ibverbs::completion_queue::WorkCompletion;
+use core::slice::{from_raw_parts_mut, SliceIndex};
+use ibverbs::{LocalMemoryRegion, WorkCompletion, QueuePairCapabilities, QueuePairType};
 use terminal::println;
 
 pub struct RdmaSession<'ctx, 'pd> {

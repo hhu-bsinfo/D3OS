@@ -1,7 +1,6 @@
 use crate::cli::{Mode, Transport};
 use crate::error::Result;
-use ibverbs::{CompletionQueue, PreparedQueuePair, ProtectionDomain};
-use ibverbs::ffi::{QueuePairCapabilities, QueuePairType};
+use ibverbs::{CompletionQueue, PreparedQueuePair, ProtectionDomain, QueuePairCapabilities, QueuePairType};
 
 /// Builds a queue pair of the requested transport type, ready to be handshaked with a remote
 /// endpoint.

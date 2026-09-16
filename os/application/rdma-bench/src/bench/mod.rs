@@ -7,8 +7,7 @@ use crate::cli::{Mode, Transport};
 use crate::comm::Conn;
 use crate::error::{other, Result};
 use crate::report::Report;
-use ibverbs::{CompletionQueue, ProtectionDomain, QueuePair};
-use ibverbs::completion_queue::WorkCompletion;
+use ibverbs::{CompletionQueue, ProtectionDomain, QueuePair, WorkCompletion};
 
 /// How long a receive/wait loop will wait for progress from the peer before giving up. Needed
 /// because UC acknowledges and retransmits nothing, so a message the fabric drops produces no

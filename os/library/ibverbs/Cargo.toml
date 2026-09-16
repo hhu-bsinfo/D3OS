@@ -5,7 +5,9 @@ version = "0.1.0"
 authors = [ "Sandro Jose Leal Miudo" ]
 
 [lib]
-path = "src/ibverbs.rs"
+test = false
+doctest = false
+bench = false
 
 [dependencies]
 # internal depencies
