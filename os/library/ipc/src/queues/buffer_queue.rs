@@ -9,9 +9,13 @@ struct Entry<T> {
 /// fixed sized queue using an internal buffer
 pub struct BufferQueue<T, const S: usize> {
     buffer: [Entry<T>; S],
+    /// front of queue
     front: usize,
+    /// last actual object / last inserted object
     middle: Option<usize>,
+    /// back of queue
     back: usize,
+    /// number of actual objects (not empty) in queue
     num_objects: usize,
 }
 
@@ -52,23 +56,35 @@ impl<T, const S: usize> BufferQueue<T, S> {
 
     pub fn dequeue(&mut self, idx: usize) -> Option<T> {
 
+        if self.num_objects == 0 {
+            return None;
+        }
+
         if idx >= S { return None; }
 
-        if let Some(middle_idx) = self.middle {
-            if middle_idx == idx {
-                // this is always None?
-                self.middle = self.get(idx).next;
-            }
+        // if we are the middle i.e. last actual object, set new middle
+        if let Some(middle_idx) = self.middle && middle_idx == idx {
+            // this is always None?
+            self.middle = self.get(idx).next;
         }
 
         self.num_objects -= 1;
 
+        // early return if we are at the end of the queue
         if idx == self.back { return core::mem::take(&mut self.get(idx).object); }
 
+        // set prev.next to this.next
         if let Some(prev_idx) = self.get(idx).prev {
             self.get(prev_idx).next = self.get(idx).next;
         }
+        
+        // if we are front, set new front
+        if idx == self.front {
+            // this.next should always exist here (otherwise this == back and we would early return above)
+            self.front = self.get(idx).next.unwrap();
+        }
 
+        // turn this into new back
         self.get_back().next = Some(idx);
         self.get(idx).prev = Some(self.back);
         self.get(idx).next = None;
@@ -87,7 +103,7 @@ impl<T, const S: usize> BufferQueue<T, S> {
 
         if idx >= S { return None; }
 
-        (&self.buffer[idx].object).as_ref()
+        self.buffer[idx].object.as_ref()
     }
 
     pub fn peek_front(&self) -> Option<&T> {

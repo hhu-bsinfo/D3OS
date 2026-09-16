@@ -194,6 +194,47 @@ pub fn main() {
         };
         println!("-- Sender --\n{:}", my_struct);
         ipc::send_struct("ipctest_struct_recv", "test", &my_struct);
+    } else if command == "contention" {
+        
+        ipc::register_ipc_endpoint("ipctest_contention_recv");
+
+        for _ in 0..4 {
+            thread::start_application("ipctest", vec!["contention_sender"]);
+        }
+
+        thread::sleep(1000);
+
+        loop {
+            match ipc::receive() {
+                Some(msg_wrapper) => {
+                    let msg = msg_wrapper.msg();
+                    let res = msg.data_as_usize_slice()[0] * msg.data_as_usize_slice()[1];
+                    ipc::answer(msg, res);
+                },
+                None => {}
+            }
+            //thread::sleep(300);
+        }
+
+    } else if command == "contention_sender" {
+        let t = thread.id();
+        let mut a = t;
+        let b = 2;
+        loop {
+            println!("{} Sending {}*{}", t, a, b);
+            match ipc::send_and_receive("ipctest_contention_recv", "test", &[a, b]) {
+                Ok(msg_wrapper) => {
+                    a = *msg_wrapper.msg().data_as_usize();
+                    println!("{} Received {}", t, a);
+                    if a > 5000 {
+                        println!("{} Done!", t);
+                        return;
+                    }
+                },
+                Err(_) => println!("Error sending message"),
+            }
+            thread::sleep(500);
+        }
     }
 }
 

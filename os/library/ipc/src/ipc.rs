@@ -12,7 +12,7 @@ extern crate alloc;
 use alloc::format;
 use syscall::{SystemCall, return_vals::SyscallResult, syscall};
 
-use concurrent::process;
+use concurrent::{process, thread};
 
 use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageWrapper};
 use crate::queues::{IpcQueue, IpcQueueType};
@@ -58,6 +58,21 @@ pub fn send_struct<T: Copy>(service: &str, msg_name: &str, message: &T) -> Sysca
     let bytes = unsafe { any_as_bytes(message) };
     let tag = core::any::type_name_of_val(message);
     send_internal(service, msg_name, tag, bytes)
+}
+/// and message and busy wait for answer, TODO block thread here
+pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, message: T) -> Result<impl IpcMessageWrapper, usize> {
+    let bytes: &[u8] = message.to_bytes();
+    match send_internal(service, msg_name, message.tag(), bytes) {
+        Ok(_) => {
+            loop {
+                if let Some(msg) = receive() {
+                    return Ok(msg);
+                }
+                thread::sleep(200);
+            }
+        },
+        Err(err) => Err(err as usize),
+    }
 }
 
 pub fn answer<T: IpcMessageContent>(original_message: &IpcMessage, message: T) -> SyscallResult {
