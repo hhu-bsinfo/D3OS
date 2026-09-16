@@ -1,8 +1,8 @@
 #![no_std]
 
-use terminal::println;
 use ibverbs::devices;
-use ibverbs::{QueuePairCapabilities, QueuePairType};
+use ibverbs::QueuePairType;
+use terminal::println;
 
 #[allow(unused_imports)]
 use runtime::*;
@@ -16,13 +16,13 @@ pub fn main() {
         let ctx = dev.open().expect("failed to open device");
         let cq = ctx.create_cq(10, 69).unwrap();
         let pd = ctx.alloc_pd().unwrap();
-        let _qp = pd.create_qp(&cq, &cq, QueuePairType::RC, QueuePairCapabilities {
-            max_send_wr: 10,
-            max_recv_wr: 10,
-            max_send_sge: 3,
-            max_recv_sge: 3,
-            max_inline_data: 3,
-        });
+        let _qp = pd.create_qp(&cq, &cq, QueuePairType::RC)
+            .set_max_send_wr(10)
+            .set_max_recv_wr(10)
+            .set_max_send_sge(1)
+            .set_max_recv_sge(1)
+            .set_max_inline_data(1)
+            .build().expect("faild to create qp");
     }
     return
 }

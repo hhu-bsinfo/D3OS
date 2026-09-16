@@ -32,9 +32,13 @@ pub struct QueuePairBuilder<'res> {
     send: &'res CompletionQueue,
     recv: &'res CompletionQueue,
 
-    cap: QueuePairCapabilities,
-
     qp_type: QueuePairType,
+
+    max_send_wr: u32,
+    max_recv_wr: u32,
+    max_send_sge: u32,
+    max_recv_sge: u32,
+    max_inline_data: u32,
 
     // carried along to handshake phase
     /// only valid for RC and UC
@@ -75,7 +79,6 @@ impl<'res> QueuePairBuilder<'res> {
         send: &'scq CompletionQueue,
         recv: &'rcq CompletionQueue,
         qp_type: QueuePairType,
-        cap: QueuePairCapabilities
     ) -> QueuePairBuilder<'res>
     where
         'scq: 'res,
@@ -94,10 +97,15 @@ impl<'res> QueuePairBuilder<'res> {
             pd,
 
             send,
-            cap,
             recv,
 
             qp_type,
+
+            max_send_wr: 1,
+            max_recv_wr: 1,
+            max_send_sge: 1,
+            max_recv_sge: 1,
+            max_inline_data: 0,
 
             access: (qp_type == QueuePairType::RC
                 || qp_type == QueuePairType::UC)
@@ -113,6 +121,56 @@ impl<'res> QueuePairBuilder<'res> {
                 || qp_type == QueuePairType::UC)
                 .then_some(0),
         }
+    }
+
+    /// Sets the maximum number of outstanding Work Requests that can be posted to the Send Queue
+    /// in the new `QueuePair`. Value must be in `[0..dev_cap.max_qp_wr]`. There may be RDMA
+    /// devices that for specific transport types may support less outstanding Work Requests than
+    /// the maximum reported value.
+    ///
+    /// Defaults to 1.
+    pub fn set_max_send_wr(&mut self, max_send_wr: u32) -> &mut Self {
+        self.max_send_wr = max_send_wr;
+        self
+    }
+
+    /// Sets the maximum number of outstanding Work Requests that can be posted to the Receive
+    /// Queue in the new `QueuePair`. Value must be in `[0..dev_cap.max_qp_wr]`. There may be RDMA
+    /// devices that for specific transport types may support less outstanding Work Requests than
+    /// the maximum reported value. This value is ignored if the Queue Pair is associated with an
+    /// SRQ.
+    ///
+    /// Defaults to 1.
+    pub fn set_max_recv_wr(&mut self, max_recv_wr: u32) -> &mut Self {
+        self.max_recv_wr = max_recv_wr;
+        self
+    }
+
+    /// Sets the maximum number of scatter/gather elements in any Work Request that can be posted
+    /// to the Send Queue in the new `QueuePair`. Value must be in `[0..dev_cap.max_sge]`.
+    ///
+    /// Defaults to 1.
+    pub fn set_max_send_sge(&mut self, max_send_sge: u32) -> &mut Self {
+        self.max_send_sge = max_send_sge;
+        self
+    }
+
+    /// Sets the maximum number of scatter/gather elements in any Work Request that can be posted
+    /// to the Receive Queue in the new `QueuePair`. Value must be in `[0..dev_cap.max_sge]`.
+    ///
+    /// Defaults to 1.
+    pub fn set_max_recv_sge(&mut self, max_recv_sge: u32) -> &mut Self {
+        self.max_recv_sge = max_recv_sge;
+        self
+    }
+
+    /// Sets the maximum message size (in bytes) that can be posted inline to the Send Queue of
+    /// the new `QueuePair`. 0 if no inlining is requested.
+    ///
+    /// Defaults to 0.
+    pub fn set_max_inline_data(&mut self, max_inline_data: u32) -> &mut Self {
+        self.max_inline_data = max_inline_data;
+        self
     }
 
     /// Set the access flags for the new `QueuePair`.
@@ -363,7 +421,13 @@ impl<'res> QueuePairBuilder<'res> {
             send_cq: self.send.inner.as_ref(),
             recv_cq: self.recv.inner.as_ref(),
             srq: None,
-            cap: self.cap,
+            cap: QueuePairCapabilities {
+                max_send_wr: self.max_send_wr,
+                max_recv_wr: self.max_recv_wr,
+                max_send_sge: self.max_send_sge,
+                max_recv_sge: self.max_recv_sge,
+                max_inline_data: self.max_inline_data,
+            },
             qp_type: self.qp_type,
             sq_sig_all: 0,
         };
@@ -495,7 +559,7 @@ impl<'res> PreparedQueuePair<'res> {
     ///  - `ENOMEM`: Not enough resources to complete this operation.
     ///
     /// [RDMAmojo]: http://www.rdmamojo.com/2014/01/18/connecting-queue-pairs/
-    pub fn handshake(mut self, remote: QueuePairEndpoint) -> io::Result<crate::QueuePair> {
+    pub fn handshake(mut self, remote: QueuePairEndpoint) -> io::Result<QueuePair> {
         // init and associate with port
         let mut attr = QueuePairAttr {
             qp_state: QueuePairtState::Init,

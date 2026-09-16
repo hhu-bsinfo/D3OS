@@ -43,7 +43,6 @@ impl<'ctx> ProtectionDomain<'ctx> {
         send: &'scq CompletionQueue,
         recv: &'rcq CompletionQueue,
         qp_type: QueuePairType,
-        cap: QueuePairCapabilities
     ) -> QueuePairBuilder<'res>
     where
         'scq: 'res,
@@ -54,7 +53,7 @@ impl<'ctx> ProtectionDomain<'ctx> {
         'pd: 'ctx,
         'res: 'ctx,
     {
-        QueuePairBuilder::new(self, send, recv, qp_type, cap)
+        QueuePairBuilder::new(self, send, recv, qp_type)
     }
 
     /// Allocates and registers a Memory Region (MR) associated with this `ProtectionDomain`.
