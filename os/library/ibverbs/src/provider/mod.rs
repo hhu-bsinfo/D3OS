@@ -1,22 +1,22 @@
 use crate::cmd::uverbs;
+use crate::cq::WorkCompletion;
+use crate::device::Device;
+use crate::mr::MemoryRegionMetadata;
+use crate::{ReceiveWorkRequest, SendWorkRequest};
 use alloc::boxed::Box;
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
-use bincode::{Decode, Encode};
 use core::mem;
 use core::mem::MaybeUninit;
 use core3::io;
-use rdma::ib_core::{PortAttr, QueuePairAttr, QueuePairAttrMask, SendFlags, SendWorkRequestData, ScatterGatherEntry, AccessFlags, DeviceAttr, QueuePairCapabilities};
-use rdma::{DeviceHandle, Gid, QueuePairType};
-use rdma::ProtectionDomainHandle;
+use rdma::ib_core::{AccessFlags, DeviceAttr, PortAttr, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities};
 use rdma::uverbs_uapi::UverbsCmd::QueryDevices;
 use rdma::uverbs_uapi::{UserSlice, UVERBS_MAX_QUERY_DEVICES_REQ};
-use crate::cq::WorkCompletion;
-use crate::device::Device;
-use crate::mr::MemoryRegionMetadata;
-use crate::qp::WorkRequestOpcode;
+use rdma::ProtectionDomainHandle;
+use rdma::{DeviceHandle, Gid, QueuePairType};
+use spin::RwLock;
 
 mod mlx4;
 
@@ -41,31 +41,15 @@ pub fn get_device_name(_device: &Device) -> Option<&str> {
     Some("mlx4_todo")
 }
 
-#[repr(C)]
-#[derive(Clone, Encode, Decode)]
-pub struct SendWorkRequest {
-    pub wr_id: u64,
-    pub sges: Vec<ScatterGatherEntry>,
-    pub opcode: WorkRequestOpcode,
-    pub send_flags: SendFlags,
-    pub wr: SendWorkRequestData,
-}
-
-
-#[derive(Clone, Encode, Decode)]
-pub struct ReceiveWorkRequest {
-    pub wr_id: u64,
-    pub sges: Vec<ScatterGatherEntry>,
-}
 
 pub trait IbvQueuePair {
     fn number(&self) -> u32;
     /// This is unsafe because the sges contain raw addresses.
     // TODO: figure out a way to return the bad wr
-    unsafe fn post_receive(&self, wrs: &[ReceiveWorkRequest]) -> io::Result<()>;
+    unsafe fn post_receive(&mut self, wrs: &[&ReceiveWorkRequest]) -> io::Result<()>;
     /// This is unsafe because the sges contain raw addresses.
     // TODO: figure out a way to return the bad wr
-    unsafe fn post_send(&self, wrs: &[SendWorkRequest]) -> io::Result<()>;
+    unsafe fn post_send(&mut self, wrs: &[&SendWorkRequest]) -> io::Result<()>;
     fn modify(&self, attr: &QueuePairAttr, attr_mask: QueuePairAttrMask) -> io::Result<()>;
 }
 
@@ -80,7 +64,7 @@ pub trait IbvContext {
     fn query_gid(&self, port_num: u8, index: i32) -> io::Result<Gid>;
 
     // --- Queue Pair ---
-    fn create_qp(self: Arc<Self>, pd: ProtectionDomainHandle, attr: &QpInitAttr) -> io::Result<Arc<dyn IbvQueuePair>>;
+    fn create_qp(self: Arc<Self>, pd: ProtectionDomainHandle, attr: &QpInitAttr) -> io::Result<Arc<RwLock<dyn IbvQueuePair>>>;
     //fn query_qp();
 
     // --- Completion Queue ---

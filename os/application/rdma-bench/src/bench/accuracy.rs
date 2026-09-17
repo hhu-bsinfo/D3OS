@@ -16,7 +16,7 @@ use crate::report::Report;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Range;
-use ibverbs::{WorkCompletion, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, SendFlags};
+use ibverbs::{WorkCompletion, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, SendFlags, ReceiveWorkRequest, SendWorkRequest, SendWorkRequestPayload};
 use time::get_time_in_us;
 
 const HEADER_LEN: usize = 8;
@@ -85,7 +85,9 @@ fn send(
     for seq in 0..window {
         let range = slot_range(seq, msg_size);
         fill_payload(&mut mr[range.clone()], seq as u64);
-        unsafe { qp.post_send(mr, vec![vec![range]], vec![seq as u64], vec![SendFlags::SIGNALED])? };
+        let sge = [mr.slice(range)];
+        let wr = SendWorkRequest::send(seq as u64, SendWorkRequestPayload::Sges(&sge), SendFlags::SIGNALED);
+        unsafe { qp.post_send(&[&wr])? };
     }
 
     let mut posted = window;
@@ -108,7 +110,9 @@ fn send(
                 let slot = posted % window;
                 let range = slot_range(slot, msg_size);
                 fill_payload(&mut mr[range.clone()], posted as u64);
-                unsafe { qp.post_send(mr, vec![vec![range]], vec![posted as u64], vec![SendFlags::SIGNALED])? };
+                let sge = [mr.slice(range)];
+                let wr = SendWorkRequest::send(posted as u64, SendWorkRequestPayload::Sges(&sge), SendFlags::SIGNALED);
+                unsafe { qp.post_send(&[&wr])? };
                 posted += 1;
             }
         }
@@ -129,8 +133,11 @@ fn receive(
     window: usize,
 ) -> Result<Report> {
     for slot in 0..window {
-        let range = slot_range(slot, msg_size);
-        unsafe { qp.post_receive(mr, vec![vec![range]], vec![slot as u64])? };
+        let wr = ReceiveWorkRequest {
+            wr_id: slot as u64,
+            sges: &[mr.slice(slot_range(slot, msg_size))]
+        };
+        unsafe { qp.post_receive(&[&wr])? };
     }
 
     let mut report = AccuracyReport { msg_size, sent: iterations, ..AccuracyReport::default() };
@@ -170,7 +177,11 @@ fn receive(
                 let got = &mr[range.start..range.start + got_len];
                 check(got, &mut expected, msg_size, &mut seen, &mut distinct_seen, &mut report);
             }
-            unsafe { qp.post_receive(mr, vec![vec![range]], vec![slot as u64])? };
+            let wr = ReceiveWorkRequest {
+                wr_id: slot as u64,
+                sges: &[mr.slice(slot_range(slot, msg_size))]
+            };
+            unsafe { qp.post_receive(&[&wr])? };
         }
     }
     report.lost = seen.iter().filter(|s| !**s).count();

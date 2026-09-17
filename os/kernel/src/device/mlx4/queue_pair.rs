@@ -13,7 +13,7 @@ use modular_bitfield_msb::{
     bitfield,
     prelude::{B12, B16, B17, B19, B2, B20, B24, B3, B4, B40, B48, B5, B53, B56, B6, B7},
 };
-use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairtState, SendFlags, SendWorkRequestData, QueuePairType, ScatterGatherEntry};
+use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairtState, SendFlags, QueuePairType, ScatterGatherEntry};
 use strum_macros::FromRepr;
 use tock_registers::registers::WriteOnly;
 use x86_64::{PhysAddr, VirtAddr};
@@ -28,6 +28,12 @@ use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIF
 const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
 const IB_MAX_HEADROOM: u32 = 2048;
 const IB_SQ_MAX_SPARE: u32 = ib_sq_headroom(IB_SQ_MIN_WQE_SHIFT);
+
+const SEGMENT_SIZE_CONTROL: usize = 16;
+const SEGMENT_SIZE_WQE_DATA: usize = 16;
+const SEGMENT_SIZE_DATAGRAM: usize = 48;
+const SEGMENT_SIZE_REMOTE_ADDR: usize = 16;
+
 
 const fn ib_sq_headroom(shift: u32) -> u32 {
     (IB_MAX_HEADROOM >> shift) + 1
@@ -529,7 +535,7 @@ impl WorkQueue {
             max_gs = 1;
         }
         max_gs = max_gs.next_power_of_two();
-        let wqe_shift = (max_gs * u32::try_from(size_of::<WqeDataSegment>()).unwrap()).ilog2();
+        let wqe_shift = (max_gs * u32::try_from(SEGMENT_SIZE_WQE_DATA).unwrap()).ilog2();
         let mut max_post = (1 << u32::from(hca_caps.log_max_qp_sz())) - IB_SQ_MAX_SPARE;
         if max_post > wqe_cnt {
             max_post = wqe_cnt;
@@ -560,7 +566,7 @@ impl WorkQueue {
         {
             return Err("SQ size is invalid");
         }
-        let size = ib_caps.max_send_sge * u32::try_from(size_of::<WqeDataSegment>()).unwrap() + send_wqe_overhead(qp_type);
+        let size = ib_caps.max_send_sge * u32::try_from(SEGMENT_SIZE_WQE_DATA).unwrap() + send_wqe_overhead(qp_type);
         if size > hca_caps.max_desc_sz_sq().into() {
             return Err("SQ size is invalid");
         }
@@ -573,7 +579,7 @@ impl WorkQueue {
         }
         wqe_cnt = (wqe_cnt + spare_wqes).next_power_of_two();
         let max_gs = (u32::from(*[hca_caps.max_desc_sz_sq(), 1 << wqe_shift].iter().min().unwrap()) - send_wqe_overhead(qp_type))
-            / u32::try_from(size_of::<WqeDataSegment>()).unwrap();
+            / u32::try_from(SEGMENT_SIZE_WQE_DATA).unwrap();
         let max_post = wqe_cnt - spare_wqes;
         // update the caps
         ib_caps.max_send_wr = max_post;
@@ -623,21 +629,6 @@ impl WorkQueue {
         self.meta[idx].1 = batch_size;
     }
 
-    /// Get the `sge_index`th data segment of the WQE at `index`.
-    ///
-    /// A receive WQE holds `max_gs` data segments, so unlike [`Self::get_element`] this
-    /// addresses within a single WQE — adding the segment index to the WQE index would land in
-    /// the following WQE instead.
-    fn get_data_segment<'e>(
-        &self, memory: &'e mut utils::PageToFrameMapping, index: u32, sge_index: u32,
-    ) -> Result<&'e mut WqeDataSegment, &'static str> {
-        // wrap around
-        let index = index & (self.wqe_cnt - 1);
-        let (pages, _address) = memory;
-        let offset = self.offset + (index << self.wqe_shift) + sge_index * u32::try_from(size_of::<WqeDataSegment>()).unwrap();
-        pages.as_type_mut(offset.try_into().unwrap())
-    }
-
     /// Get an element of this work queue.
     ///
     /// The index wraps around to the beginning.
@@ -646,29 +637,6 @@ impl WorkQueue {
         index &= self.wqe_cnt - 1;
         let (pages, _addresss) = memory;
         pages.as_type_mut((self.offset + (index << self.wqe_shift)).try_into().unwrap())
-    }
-
-    /// Stamp this WQE so that it is invalid if prefetched by marking the
-    /// first four bytes of every 64 byte chunk with 0xffffffff, except for
-    /// the very first chunk of the WQE.
-    ///
-    /// This is not part of `WqeControlSegment` because we need to access other
-    /// parts of the buffer here.
-    fn stamp_wqe(&mut self, memory: &mut utils::PageToFrameMapping, index: u32) -> Result<(), &'static str> {
-        let (size, ctrl_address) = {
-            let ctrl: &mut WqeControlSegment = self.get_element(memory, index)?;
-            let ctrl_address = VirtAddr::new(ctrl as *mut WqeControlSegment as u64);
-            (ctrl.size().try_into().unwrap(), ctrl_address)
-        };
-        let ctrl_offset = memory.0.offset_of_address(ctrl_address).ok_or("control segment has invalid address")?;
-        for i in (64..size).step_by(64) {
-            let bytes = memory.0.as_slice_mut(ctrl_offset, size)?;
-            bytes[i] = u8::MAX;
-            bytes[i + 1] = u8::MAX;
-            bytes[i + 2] = u8::MAX;
-            bytes[i + 3] = u8::MAX;
-        }
-        Ok(())
     }
 
     /// Check if this queue would overflow when adding `num_req` work requests.
@@ -684,166 +652,17 @@ fn send_wqe_overhead(qp_type: QueuePairType) -> u32 {
     // MLX WQEs need two extra inline data segments (for the UD header and space
     // for the ICRC).
     match qp_type {
-        QueuePairType::UD => size_of::<WqeControlSegment>() + size_of::<WqeDatagramSegment>(),
-        QueuePairType::UC => size_of::<WqeControlSegment>() + size_of::<WqeRemoteAddressSegment>(),
+        QueuePairType::UD => SEGMENT_SIZE_CONTROL + SEGMENT_SIZE_DATAGRAM,
+        QueuePairType::UC => SEGMENT_SIZE_CONTROL + SEGMENT_SIZE_REMOTE_ADDR,
         QueuePairType::RC => {
-            size_of::<WqeControlSegment>() /* + size_of::<WqeMaskedAtomicSegment>() */
-            + size_of::<WqeRemoteAddressSegment>()
+            SEGMENT_SIZE_CONTROL /* + size_of::<WqeMaskedAtomicSegment>() */
+                + SEGMENT_SIZE_REMOTE_ADDR
         }
         #[allow(unreachable_patterns)]
-        _ => size_of::<WqeControlSegment>(),
+        _ => SEGMENT_SIZE_CONTROL,
     }
     .try_into()
     .unwrap()
-}
-
-#[derive(FromBytes)]
-#[repr(C)]
-struct WqeControlSegment {
-    owner_opcode: U32<BigEndian>,
-    /// DS: WQE size in octowords (16-byte units)
-    vlan_cv_f_ds: U32<BigEndian>,
-    flags: U32<BigEndian>,
-    flags2: U32<BigEndian>,
-}
-
-impl WqeControlSegment {
-    fn size(&self) -> u32 {
-        (self.vlan_cv_f_ds.get() & 0x3f) << 4
-    }
-}
-
-bitflags! {
-    struct WqeControlSegmentFlags: u32 {
-        const NEC = 1 << 29;
-        const IIP = 1 << 28;
-        const ILP = 1 << 27;
-        const FENCE = 1 << 6;
-        const CQ_UPDATE = 3 << 2;
-        const SOLICITED = 1 << 1;
-        const IP_CSUM = 1 << 4;
-        const TCP_UDP_CSUM = 1 << 5;
-        const INS_CVLAN = 1 << 6;
-        const INS_SVLAN = 1 << 7;
-        const STRONG_ORDER = 1 << 7;
-        const FORCE_LOOPBACK = 1 << 0;
-    }
-}
-
-impl From<SendFlags> for WqeControlSegmentFlags {
-    fn from(flags: SendFlags) -> Self {
-        let mut out = WqeControlSegmentFlags::empty();
-
-        if flags.contains(SendFlags::FENCE) {
-            out |= WqeControlSegmentFlags::FENCE;
-        }
-        if flags.contains(SendFlags::SOLICITED) {
-            out |= WqeControlSegmentFlags::SOLICITED;
-        }
-        // CQ update for signaled WRs
-        if flags.contains(SendFlags::SIGNALED) {
-            out |= WqeControlSegmentFlags::CQ_UPDATE;
-        }
-        out
-    }
-}
-
-#[derive(FromBytes)]
-#[repr(C)]
-struct WqeDataSegment {
-    byte_count: U32<BigEndian>,
-    lkey: U32<BigEndian>,
-    addr: U64<BigEndian>,
-}
-
-impl WqeDataSegment {
-    /// Create a dummy element to be the last in the queue.
-    fn last() -> WqeDataSegment {
-        const INVALID_LKEY: u32 = 0x100;
-        Self {
-            byte_count: 0.into(),
-            lkey: INVALID_LKEY.into(),
-            addr: 0.into(),
-        }
-    }
-}
-
-const ETH_ALEN: usize = 6;
-
-#[derive(FromBytes)]
-#[repr(C)]
-struct WqeDatagramSegment {
-    av: WqeDatagramSegmentAv,
-    dst_qpn: U32<BigEndian>,
-    qkey: U32<BigEndian>,
-    vlan: u16,
-    mac: [u8; ETH_ALEN],
-}
-
-impl WqeDatagramSegment {
-    /// Create a datagram segment from a wr wr.
-    fn from_wr(wr: &SendWorkRequestData) -> Result<Self, &'static str> {
-        if let SendWorkRequestData::UD { ah, remote_qpn, remote_qkey } = wr {
-            Ok(Self {
-                av: WqeDatagramSegmentAv {
-                    port_pd: (ah.port << 24).into(),
-                    _reserved1: 0,
-                    g_slid: ah.slid & 0x7f,
-                    dlid: ah.dlid.into(),
-                    _reserved2: 0,
-                    gid_index: 0,
-                    stat_rate: 0,
-                    hop_limit: 0,
-                    sl_tclass_flowlabel: 0,
-                    dgid: [0; 4],
-                },
-                dst_qpn: (*remote_qpn).into(),
-                qkey: (*remote_qkey).into(),
-                vlan: 0,
-                mac: [0; ETH_ALEN],
-            })
-        } else {
-            Err("invalid wr field")
-        }
-    }
-}
-
-#[derive(FromBytes)]
-#[repr(C)]
-struct WqeDatagramSegmentAv {
-    port_pd: U32<BigEndian>,
-    _reserved1: u8,
-    g_slid: u8,
-    dlid: U16<BigEndian>,
-    _reserved2: u8,
-    gid_index: u8,
-    stat_rate: u8,
-    hop_limit: u8,
-    sl_tclass_flowlabel: u32,
-    dgid: [u32; 4],
-}
-
-#[derive(FromBytes)]
-#[repr(C)]
-struct WqeRemoteAddressSegment {
-    va: U64<BigEndian>,
-    key: U32<BigEndian>,
-    rsvd: u32,
-}
-
-impl WqeRemoteAddressSegment {
-    /// Create a remote address segment from a wr wr.
-    fn from_wr(wr: &SendWorkRequestData) -> Result<Self, &'static str> {
-        if let SendWorkRequestData::Rdma { remote_addr, rkey } = wr {
-            Ok(Self {
-                va: (*remote_addr).into(),
-                key: (*rkey).into(),
-                rsvd: 0,
-            })
-        } else {
-            Err("invalid wr field")
-        }
-    }
 }
 
 #[bitfield]

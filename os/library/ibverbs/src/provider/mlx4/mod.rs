@@ -1,26 +1,26 @@
 use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core3::io;
 use core3::io::{Error, ErrorKind};
-use rdma::ib_core::{PortAttr, AccessFlags, DeviceAttr};
-use rdma::uverbs_uapi::{CreateMrRequest, CreateMrResponse, AllocPdResponse, DeallocPdRequest, QueryPortRequest, UserSlice, UverbsCmd, OpenDeviceResponse};
-use spin::Mutex;
-use tock_registers::{register_bitfields, register_fields, register_structs};
+use rdma::ib_core::{AccessFlags, DeviceAttr, PortAttr};
+use rdma::uverbs_uapi::{AllocPdResponse, CreateMrRequest, CreateMrResponse, DeallocPdRequest, OpenDeviceResponse, QueryPortRequest, UserSlice, UverbsCmd};
+use spin::{Mutex, RwLock};
 use tock_registers::interfaces::Writeable;
 use tock_registers::registers::WriteOnly;
+use tock_registers::{register_bitfields, register_structs};
 
 pub(crate) mod completion_queue;
 mod queue_pair;
 
 use crate::cmd::uverbs;
+use crate::mr::MemoryRegionMetadata;
 use crate::provider::mlx4::completion_queue::CompletionQueue;
 use crate::provider::{IbvCompletionQueue, IbvContext, IbvQueuePair, QpInitAttr};
 use queue_pair::QueuePair;
 use rdma::{DeviceHandle, Gid, ProtectionDomainHandle};
-use crate::mr::MemoryRegionMetadata;
 
 /// A per-device registry of live queue pairs, shared between whichever `ibv_qp`s and `ibv_cq`s
 /// were created against this device.
@@ -43,7 +43,7 @@ pub struct Mlx4Context {
     log_max_rq_sge: u8,
     log_max_sq_sge: u8,
     max_wqe_sq_size: u16,
-    qps: Mutex<Vec<Arc<QueuePair>>>,
+    qps: Mutex<BTreeMap<u32, Arc<RwLock<QueuePair>>>>,
 }
 
 impl Mlx4Context {
@@ -62,7 +62,7 @@ impl Mlx4Context {
             log_max_rq_sge: 5,
             log_max_sq_sge: 5,
             max_wqe_sq_size: 1024,
-            qps: Mutex::new(Vec::new()),
+            qps: Mutex::new(BTreeMap::new()),
         })
     }
 
@@ -70,9 +70,7 @@ impl Mlx4Context {
     /// what the driver expected, advance that queue's tail by the chain size, and return the
     /// `wr_id` to report in the work completion.
     pub(crate) fn resolve_completion(&self, qp_num: u32, wqe_index: u32, is_send: bool) -> Option<u64> {
-        let mut qps = self.qps.lock();
-        let qp = qps.iter_mut().find(|qp| qp.number == qp_num)?;
-        qp.resolve_completion(wqe_index, is_send)
+        self.qps.lock().get(&qp_num)?.write().resolve_completion(wqe_index, is_send)
     }
 
     #[inline(always)]
@@ -119,10 +117,12 @@ impl IbvContext for Mlx4Context {
         Ok(Gid { raw: [0; 16] })
     }
 
-    fn create_qp(self: Arc<Self>, pd: ProtectionDomainHandle, attr: &QpInitAttr) -> io::Result<Arc<dyn IbvQueuePair>> {
-        let qp = Arc::new(QueuePair::create(self.clone(), pd, attr)?);
-        self.qps.lock().push(qp.clone());
-        Ok(qp)
+    fn create_qp(self: Arc<Self>, pd: ProtectionDomainHandle, attr: &QpInitAttr) -> io::Result<Arc<RwLock<dyn IbvQueuePair>>> {
+        let qp = QueuePair::create(self.clone(), pd, attr)?;
+        let qp_num = qp.number;
+        let qp_ref = Arc::new(RwLock::new(qp));
+        self.qps.lock().insert(qp_num, qp_ref.clone());
+        Ok(qp_ref)
     }
 
     fn create_cq(self: Arc<Self>, min_cpe: i32, _cq_context: isize, channel: Option<()>, comp_vector: i32) -> io::Result<Box<dyn IbvCompletionQueue>> {

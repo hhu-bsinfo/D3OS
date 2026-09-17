@@ -220,39 +220,6 @@ pub enum QueuePairtState {
 }
 
 #[derive(Debug, Copy, Clone, Encode, Decode)]
-pub enum SendWorkRequestData {
-    Rdma {
-        /// Start address of remote memory buffer
-        remote_addr: u64,
-        /// Key of the remote Memory Region
-        rkey: u32,
-    },
-    Atomic {
-        /// Start address of remote memory buffer
-        remote_addr: u64,
-        /// Compare operand
-        compare_add: u64,
-        /// Swap operand
-        swap: u64,
-        /// Key of the remote Memory Region
-        rkey: u32,
-    },
-    UD {
-        /// Address handle for the remote node address
-        ah: SendWorkRequestAddressHandle,
-        remote_qpn: u32,
-        remote_qkey: u32,
-    },
-}
-
-impl Default for SendWorkRequestData {
-    fn default() -> Self {
-        Self::Rdma { remote_addr: 0, rkey: 0, }
-    }
-}
-
-
-#[derive(Debug, Copy, Clone, Encode, Decode)]
 pub struct SendWorkRequestAddressHandle {
     pub port: u32,
     pub dlid: u16,

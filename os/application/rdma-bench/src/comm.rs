@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 use concurrent::thread::sleep;
 use core::cell::RefCell;
 use core::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
-use ibverbs::{QueuePairEndpoint, RemoteMemoryRegion};
+use ibverbs::{QueuePairEndpoint, RemoteMemorySlice};
 use network::{TcpListener, TcpStream};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -46,7 +46,7 @@ pub struct ClientEndpoint {
 /// the responder's CPU.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RemoteBufferInfo {
-    pub remote: RemoteMemoryRegion<u8>,
+    pub remote: RemoteMemorySlice,
 }
 
 /// Sent from the accuracy-mode receiver back to the sender once its drain loop finishes.
