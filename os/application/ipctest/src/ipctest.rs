@@ -222,7 +222,7 @@ pub fn main() {
         let b = 2;
         loop {
             println!("{} Sending {}*{}", t, a, b);
-            match ipc::send_and_receive("ipctest_contention_recv", "test", &[a, b]) {
+            match ipc::send_and_receive("ipctest_contention_recv", "mult", &[a, b]) {
                 Ok(msg_wrapper) => {
                     a = *msg_wrapper.msg().data_as_usize();
                     println!("{} Received {}", t, a);

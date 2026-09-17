@@ -16,7 +16,7 @@ use core::result::Result;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Once;
 use spin::rwlock::RwLock;
-use log::{info, warn};
+use log::{debug, info, warn};
 
 use crate::naming::traits::DirectoryObject;
 
@@ -41,7 +41,7 @@ pub(super) fn open_object_table_init() {
 }
 
 pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
-    info!("open_object::open: open called for path '{}', flags={:?}", path, flags);
+    debug!("open_object::open: open called for path '{}', flags={:?}", path, flags);
     // try to open the named object for the given path
     let result = lookup::lookup_named_object(path);
     if result.is_err() {
@@ -163,7 +163,7 @@ pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
 }
 
 pub(super) fn close(fh: usize) -> Result<usize, Errno> {
-    info!("open_object::close: close called for fh={}", fh);
+    debug!("open_object::close: close called for fh={}", fh);
     if let Ok(opened_object) = get_open_object_table().lookup_opened_object(fh) {
         if opened_object.named_object.is_pipe() {
             if let Ok(pipe) = opened_object.named_object.as_pipe() {
@@ -177,10 +177,10 @@ pub(super) fn close(fh: usize) -> Result<usize, Errno> {
 
 /// delete an opened object and free its handle
 pub(super) fn delete(fh: usize) -> Result<usize, Errno> {
-    info!("delete called for fh={}", fh);
+    debug!("delete called for fh={}", fh);
     if let Ok(opened_object) = get_open_object_table().lookup_opened_object(fh) {
         match opened_object.delete() {
-            Ok(_) => info!("  deleted {}", opened_object.name),
+            Ok(_) => debug!("  deleted {}", opened_object.name),
             Err(e) => warn!("  error when deleting {}: {:?}", opened_object.name, e),
         }
     }
@@ -188,7 +188,7 @@ pub(super) fn delete(fh: usize) -> Result<usize, Errno> {
 }
 
 pub(super) fn list_dir(fh: usize) -> Result<Vec<(NamedObject, String)>, Errno> {
-    info!("lsdir called for fh={}", fh);
+    debug!("lsdir called for fh={}", fh);
     if let Ok(opened_object) = get_open_object_table().lookup_opened_object(fh) {
         if let Ok(dir) = opened_object.named_object.as_dir() {
             dir.list()
