@@ -1,8 +1,9 @@
 use crate::bench::{self, Role};
 use crate::cli::ServerArgs;
-use crate::comm::{self, BenchmarkRequest, ClientEndpoint, Conn, HandshakeAck};
+use crate::comm::{self, BenchmarkRequest, ClientEndpoint, Conn, HandshakeAck, ResultRow};
 use crate::device;
 use crate::error::Result;
+use crate::report;
 use crate::transport;
 use alloc::format;
 use ibverbs::{Context, ProtectionDomain};
@@ -48,8 +49,17 @@ fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &Conn) -> Resul
     let ClientEndpoint { endpoint: remote_endpoint } = conn.recv_msg()?;
     let mut qp = prepared.handshake(remote_endpoint)?;
 
-    // The server side is the passive peer in every mode, so its report carries no numbers of its
-    // own — whatever it has to say it has already printed.
+    // The server side is the passive peer in every mode, so its own report carries no numbers of
+    // its own — the client sends its result back as CSV once it has one, below.
     bench::run(req.mode, pd, &cq, &mut qp, conn, Role::Server, req.msg_size, req.iterations, req.tx_depth)?;
+
+    let ResultRow { row } = conn.recv_msg()?;
+    match row {
+        Some(row) => {
+            terminal::println!("{}", report::csv_header(req.mode));
+            terminal::println!("{}", row);
+        }
+        None => terminal::println!("(no result)"),
+    }
     Ok(())
 }

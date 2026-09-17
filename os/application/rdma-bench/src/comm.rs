@@ -49,6 +49,16 @@ pub struct RemoteBufferInfo {
     pub remote: RemoteMemorySlice,
 }
 
+/// Sent by the client to the server once its `Report` is ready, so the server — normally the
+/// passive side with no numbers of its own — can also show the result, in CSV rather than the
+/// client's fixed-width table.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ResultRow {
+    /// `None` when the run produced no numbers (e.g. every round trip in a latency run timed
+    /// out) — mirrors `Report::row()`/`Report::csv_row()` returning `None` for that case.
+    pub row: Option<String>,
+}
+
 /// Sent from the accuracy-mode receiver back to the sender once its drain loop finishes.
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct AccuracyReport {

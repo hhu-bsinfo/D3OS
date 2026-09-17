@@ -138,6 +138,37 @@ impl Report {
             terminal::println!("{}", notes);
         }
     }
+
+    /// The same fields as `row()`, comma-separated and unpadded instead of column-aligned — meant
+    /// for the server side, which has no table of its own in progress, so plain CSV is what's
+    /// worth pasting into a spreadsheet.
+    pub fn csv_row(&self) -> Option<String> {
+        match self {
+            Report::Bandwidth(s) => Some(format!(
+                "{},{},{},{:.6},{:.6}",
+                s.msg_size,
+                s.iterations,
+                s.tx_depth,
+                s.bw_gbps(),
+                s.msg_rate_mpps()
+            )),
+            Report::Latency(Some(s)) => Some(format!(
+                "{},{},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2}",
+                s.msg_size, s.samples, s.min, s.max, s.typical, s.avg, s.stdev, s.p99, s.p999
+            )),
+            Report::Latency(None) => None,
+            Report::Accuracy(r) => {
+                let total_bytes = (r.sent * r.msg_size) as f64;
+                let byte_acc = r.correct_bytes as f64 / total_bytes * 100.0;
+                let bit_acc = r.correct_bits as f64 / (total_bytes * 8.0) * 100.0;
+                Some(format!(
+                    "{},{},{},{},{},{},{:.4},{:.4}",
+                    r.msg_size, r.sent, r.received, r.lost, r.duplicated, r.corrupted, byte_acc, bit_acc
+                ))
+            }
+            Report::Peer => None,
+        }
+    }
 }
 
 pub fn header(mode: Mode) -> String {
@@ -162,5 +193,17 @@ pub fn header(mode: Mode) -> String {
             "{:>8}  {:>12}  {:>10}  {:>8}  {:>6}  {:>10}  {:>12}  {:>12}",
             "#bytes", "#iterations", "#received", "#lost", "#dup", "#corrupt", "ByteAcc[%]", "BitAcc[%]"
         ),
+    }
+}
+
+/// The column header for `mode`'s CSV row, matching `header()`'s columns but comma-separated and
+/// unpadded.
+pub fn csv_header(mode: Mode) -> String {
+    match mode {
+        Mode::Bandwidth | Mode::RdmaWrite | Mode::RdmaRead => {
+            "#bytes,#iterations,tx_depth,BW avg[Gb/sec],MsgRate[Mpps]".into()
+        }
+        Mode::Latency => "#bytes,#iterations,t_min[usec],t_max[usec],t_typical[usec],t_avg[usec],t_stdev[usec],99%[usec],99.9%[usec]".into(),
+        Mode::Accuracy => "#bytes,#iterations,#received,#lost,#dup,#corrupt,ByteAcc[%],BitAcc[%]".into(),
     }
 }
