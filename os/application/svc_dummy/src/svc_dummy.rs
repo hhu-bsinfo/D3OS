@@ -119,6 +119,7 @@ pub fn main() {
         }
 
         // 2. NEU: Nachricht über das Netzwerk senden!
+        // Erfolgreich von QEMU zu Linux gesendet via lauschen mit nc -l -p 8080
         if let Some(target_addr) = send_to_addr {
         
         info!("svc_dummy: Versuche TCP Verbindung zu {}", target_addr);
