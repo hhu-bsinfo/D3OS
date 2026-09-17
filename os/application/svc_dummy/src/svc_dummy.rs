@@ -119,16 +119,8 @@ pub fn main() {
 
                 // HTTP/1.1 POST Request
                 // \r\n sind zwingenden Zeilenumbrüche im HTTP-Protokoll
-                let msg = format!(
-                    "POST /v3/kv/put HTTP/1.1\r\n\
-                    Host: 10.0.2.2:2379\r\n\
-                    Content-Type: application/json\r\n\
-                    Content-Length: {}\r\n\
-                    \r\n\
-                    {}",
-                    payload.len(),
-                    payload
-                );
+                let msg = format!("POST /v3/kv/put HTTP/1.1\r\nHost: 10.0.2.2:2379\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    payload.len(), payload);
                 
                 // Nachricht in den Socket schreiben
                 match stream.write(msg.as_bytes()) {
