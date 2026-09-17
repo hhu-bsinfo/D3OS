@@ -101,24 +101,7 @@ pub fn main() {
         None
     };
 
-    let mut elapsed_ms: usize = 0;
-
-    loop {
-        if let Some(ms) = hang_after_ms {
-            if elapsed_ms >= ms {   // Extra hängen bleiben
-                loop {
-                    core::hint::spin_loop();
-                }
-            }
-        }
-
-        if let Some(fh) = heartbeat_fh {
-            let heartbeat_value = systime().num_milliseconds() as u64;
-            let _ = naming::seek(fh, 0, SeekOrigin::Start);
-            let _ = naming::write(fh, &heartbeat_value.to_le_bytes());     // Heartbeat normal senden
-        }
-
-        // 2. NEU: Nachricht über das Netzwerk senden!
+        // 2. NEU: Nachricht über das Netzwerk senden! (einmal)
         // Erfolgreich von QEMU zu Linux gesendet via lauschen mit nc -l -p 8080
         if let Some(target_addr) = send_to_addr {
         
@@ -158,6 +141,27 @@ pub fn main() {
             }
         }
     }
+
+
+
+    let mut elapsed_ms: usize = 0;
+
+    loop {
+        if let Some(ms) = hang_after_ms {
+            if elapsed_ms >= ms {   // Extra hängen bleiben
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        }
+
+        if let Some(fh) = heartbeat_fh {
+            let heartbeat_value = systime().num_milliseconds() as u64;
+            let _ = naming::seek(fh, 0, SeekOrigin::Start);
+            let _ = naming::write(fh, &heartbeat_value.to_le_bytes());     // Heartbeat normal senden
+        }
+
+        
 
         if print {
             println!("svc_dummy: hi from {}", label);
