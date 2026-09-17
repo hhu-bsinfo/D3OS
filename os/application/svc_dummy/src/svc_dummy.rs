@@ -124,7 +124,20 @@ pub fn main() {
                 
                 // Nachricht in den Socket schreiben
                 match stream.write(msg.as_bytes()) {
-                    Ok(bytes) => info!("svc_dummy: Erfolgreich {} Bytes an {} gesendet!", bytes, target_addr),
+                    Ok(bytes) => {
+                        info!("svc_dummy: Erfolgreich {} Bytes an {} gesendet!", bytes, target_addr);
+                        
+                        // Neu: warten auf die HTTP-Antwort von etcd
+                        let mut buf = [0u8; 1024];
+                        match stream.read(&mut buf) {
+                            Ok(n) => {
+                                if let Ok(response) = core::str::from_utf8(&buf[..n]) {
+                                    info!("svc_dummy: ANTWORT VON ETCD:\n{}", response);
+                                }
+                            }
+                            Err(e) => error!("svc_dummy: Fehler beim Lesen der Antwort: {:?}", e),
+                        }
+                    }
                     Err(e) => error!("svc_dummy: Fehler beim Senden: {:?}", e),
                 }
             }
