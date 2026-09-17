@@ -14,7 +14,7 @@ use crate::comm::{Conn, RemoteBufferInfo};
 use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
 use alloc::vec;
-use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, RemoteMemorySlice, SendFlags, SendWorkRequest, SendWorkRequestPayload, WorkCompletion};
+use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, RemoteMemorySlice, SendFlags, SendWorkRequest, WorkCompletion};
 use time::get_time_in_us;
 
 #[derive(Copy, Clone, Debug)]
@@ -68,16 +68,15 @@ fn post(
     let sges = [local_mr.slice(start..start+msg_size)];
     let remote_slice = remote_slice.slice(start..start+msg_size);
     let wr = match direction {
-        Direction::Write =>
-            SendWorkRequest::rdma_write(
-                wr_id,
-                SendWorkRequestPayload::Sges(&sges),
-                remote_slice,
-                SendFlags::SIGNALED
-            ).expect("failed to create work request"),
+        Direction::Write => SendWorkRequest::rdma_write(
+            wr_id,
+            &sges,
+            remote_slice,
+            SendFlags::SIGNALED
+        ).expect("failed to create work request"),
         Direction::Read => SendWorkRequest::rdma_read(
             wr_id,
-            SendWorkRequestPayload::Sges(&sges),
+            &sges,
             remote_slice,
             SendFlags::SIGNALED
         ).expect("failed to create work request"),

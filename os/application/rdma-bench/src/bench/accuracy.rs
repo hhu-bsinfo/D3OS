@@ -16,7 +16,7 @@ use crate::report::Report;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Range;
-use ibverbs::{WorkCompletion, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, SendFlags, ReceiveWorkRequest, SendWorkRequest, SendWorkRequestPayload};
+use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, ReceiveWorkRequest, SendFlags, SendWorkRequest, WorkCompletion};
 use time::get_time_in_us;
 
 const HEADER_LEN: usize = 8;
@@ -86,7 +86,7 @@ fn send(
         let range = slot_range(seq, msg_size);
         fill_payload(&mut mr[range.clone()], seq as u64);
         let sge = [mr.slice(range)];
-        let wr = SendWorkRequest::send(seq as u64, SendWorkRequestPayload::Sges(&sge), SendFlags::SIGNALED);
+        let wr = SendWorkRequest::send(seq as u64, &sge, SendFlags::SIGNALED);
         unsafe { qp.post_send(&[&wr])? };
     }
 
@@ -111,7 +111,7 @@ fn send(
                 let range = slot_range(slot, msg_size);
                 fill_payload(&mut mr[range.clone()], posted as u64);
                 let sge = [mr.slice(range)];
-                let wr = SendWorkRequest::send(posted as u64, SendWorkRequestPayload::Sges(&sge), SendFlags::SIGNALED);
+                let wr = SendWorkRequest::send(posted as u64, &sge, SendFlags::SIGNALED);
                 unsafe { qp.post_send(&[&wr])? };
                 posted += 1;
             }

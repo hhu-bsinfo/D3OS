@@ -13,7 +13,7 @@ use modular_bitfield_msb::{
     bitfield,
     prelude::{B12, B16, B17, B19, B2, B20, B24, B3, B4, B40, B48, B5, B53, B56, B6, B7},
 };
-use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairtState, SendFlags, QueuePairType, ScatterGatherEntry};
+use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairtState, QueuePairType, ScatterGatherEntry};
 use strum_macros::FromRepr;
 use tock_registers::registers::WriteOnly;
 use x86_64::{PhysAddr, VirtAddr};

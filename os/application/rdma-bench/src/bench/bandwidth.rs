@@ -8,7 +8,7 @@ use crate::comm::Conn;
 use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
 use alloc::vec;
-use ibverbs::{WorkCompletion, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, SendFlags, ReceiveWorkRequest, SendWorkRequest, SendWorkRequestPayload};
+use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, ReceiveWorkRequest, SendFlags, SendWorkRequest, WorkCompletion};
 use time::get_time_in_us;
 
 pub fn run(
@@ -43,7 +43,7 @@ fn send(
 
     let window = tx_depth.min(iterations);
     let send_sge = [mr.slice(0..msg_size)];
-    let mut send_wr = SendWorkRequest::send(0, SendWorkRequestPayload::Sges(&send_sge), SendFlags::SIGNALED);
+    let mut send_wr = SendWorkRequest::send(0, &send_sge, SendFlags::SIGNALED);
     for i in 0..window {
         send_wr.wr_id = i as u64;
         unsafe { qp.post_send(&[&send_wr])? };

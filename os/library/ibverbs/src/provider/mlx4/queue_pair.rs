@@ -28,7 +28,7 @@ use rdma::QueuePairType;
 use rdma::ProtectionDomainHandle;
 use crate::cmd::uverbs;
 use crate::provider::{IbvQueuePair, QpInitAttr, ReceiveWorkRequest, SendWorkRequest};
-use crate::{DatagramHeader, RemoteMemoryHeader, SendOperation, SendWorkRequestPayload};
+use crate::{DatagramHeader, RemoteMemoryHeader, SendOperation, Payload};
 use super::Mlx4Context;
 
 pub(crate) struct QueuePair {
@@ -136,7 +136,7 @@ impl IbvQueuePair for QueuePair {
             }
 
             // check that this work request is not too big
-            if let SendWorkRequestPayload::Sges(sges) = curr.payload && sges.len() > sq.max_gs as usize {
+            if let Payload::Sges(sges) = curr.payload && sges.len() > sq.max_gs as usize {
                 return Err(Error::new(ErrorKind::Other, "work request has too many sges"));
             }
 
@@ -174,7 +174,7 @@ impl IbvQueuePair for QueuePair {
                 _ => return Err(Error::new(ErrorKind::Other, "invalid queue pair type")),
             }
 
-            if let SendWorkRequestPayload::Sges(sges) = curr.payload {
+            if let Payload::Sges(sges) = curr.payload {
                 // Write data segments in reverse order, so as to overwrite
                 // cacheline stamp last within each cacheline. This avoids issues
                 // with WQE prefetching.

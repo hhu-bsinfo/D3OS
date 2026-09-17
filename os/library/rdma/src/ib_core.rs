@@ -232,7 +232,6 @@ bitflags! {
         const SIGNALED   = 1 << 0;
         const FENCE      = 1 << 1;
         const SOLICITED  = 1 << 2; // event driven approach
-        const INLINE     = 1 << 3; // only for very small packages
     }
 }
 

@@ -733,30 +733,34 @@ impl QueuePair {
 #[derive(Copy, Clone, Debug)]
 pub struct SendWorkRequest<'a> {
     pub wr_id: u64,
-    pub payload: SendWorkRequestPayload<'a>,
+    pub payload: Payload<'a>,
     pub send_flags: SendFlags,
     pub op: SendOperation,
 }
 
 impl<'a> SendWorkRequest<'a> {
-    pub fn send(wr_id: u64, payload: SendWorkRequestPayload<'a>, send_flags: SendFlags) -> Self{
+    #[inline]
+    pub fn send(wr_id: u64, payload: impl Into<Payload<'a>>, send_flags: SendFlags) -> Self {
         Self {
             wr_id,
-            payload,
+            payload: payload.into(),
             send_flags,
             op: SendOperation::Send,
         }
     }
-    pub fn rdma_write(wr_id: u64, payload: SendWorkRequestPayload<'a>, remote_memory_slice: RemoteMemorySlice, send_flags: SendFlags) -> Option<Self> {
+
+    #[inline]
+    pub fn rdma_write(wr_id: u64, payload: impl Into<Payload<'a>>, remote_memory_slice: RemoteMemorySlice, send_flags: SendFlags) -> Option<Self> {
+        let payload = payload.into();
         let mut local_total_byte_len: usize = 0;
 
         match payload {
-            SendWorkRequestPayload::Sges(sges) => {
+            Payload::Sges(sges) => {
                 for sge in sges {
                     local_total_byte_len += sge.length as usize;
                 }
             }
-            SendWorkRequestPayload::Inline(bytes) => local_total_byte_len = bytes.len()
+            Payload::Inline(bytes) => local_total_byte_len = bytes.len()
         }
 
         if local_total_byte_len != remote_memory_slice.len {
@@ -774,16 +778,12 @@ impl<'a> SendWorkRequest<'a> {
         }
     }
 
-    pub fn rdma_read(wr_id: u64, payload: SendWorkRequestPayload<'a>, remote_memory_slice: RemoteMemorySlice, send_flags: SendFlags) -> Option<Self> {
+    #[inline]
+    pub fn rdma_read(wr_id: u64, sges: &'a [ScatterGatherEntry], remote_memory_slice: RemoteMemorySlice, send_flags: SendFlags) -> Option<Self> {
         let mut local_total_byte_len: usize = 0;
 
-        match payload {
-            SendWorkRequestPayload::Sges(sges) => {
-                for sge in sges {
-                    local_total_byte_len += sge.length as usize;
-                }
-            }
-            SendWorkRequestPayload::Inline(bytes) => local_total_byte_len = bytes.len()
+        for sge in sges {
+            local_total_byte_len += sge.length as usize;
         }
 
         if local_total_byte_len != remote_memory_slice.len {
@@ -791,7 +791,7 @@ impl<'a> SendWorkRequest<'a> {
         } else {
             Some(Self {
                 wr_id,
-                payload,
+                payload: Payload::Sges(sges),
                 send_flags,
                 op: SendOperation::RdmaRead(RemoteMemoryHeader {
                     remote_addr: remote_memory_slice.addr,
@@ -803,10 +803,23 @@ impl<'a> SendWorkRequest<'a> {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum SendWorkRequestPayload<'a> {
+pub enum Payload<'a> {
     Sges(&'a [ScatterGatherEntry]),
     Inline(&'a [u8]),
 }
+
+impl<'a> From<&'a [ScatterGatherEntry]> for Payload<'a> {
+    fn from(sges: &'a [ScatterGatherEntry]) -> Self {
+        Payload::Sges(sges)
+    }
+}
+
+impl<'a, const N: usize> From<&'a [ScatterGatherEntry; N]> for Payload<'a> {
+    fn from(sges: &'a [ScatterGatherEntry; N]) -> Self {
+        Payload::Sges(sges)
+    }
+}
+
 
 #[derive(Debug, Copy, Clone)]
 pub enum SendOperation {

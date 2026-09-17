@@ -8,7 +8,7 @@ use crate::error::Result;
 use crate::report::{LatencyStats, Report};
 use alloc::vec;
 use alloc::vec::Vec;
-use ibverbs::{WorkCompletion, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, SendFlags, ReceiveWorkRequest, SendWorkRequest, SendWorkRequestPayload};
+use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, ReceiveWorkRequest, SendFlags, SendWorkRequest, WorkCompletion};
 use time::get_time_in_us;
 
 const WR_SEND: u64 = 1;
@@ -71,7 +71,7 @@ fn ping(
     let send_sge = [send_mr.slice(0..msg_size)];
     let send_wr = SendWorkRequest::send(
         WR_SEND,
-        SendWorkRequestPayload::Sges(&send_sge),
+        &send_sge,
         SendFlags::SIGNALED
     );
 
@@ -123,7 +123,7 @@ fn pong(
     let send_sge = [send_mr.slice(0..msg_size)];
     let send_wr = SendWorkRequest::send(
         WR_SEND,
-        SendWorkRequestPayload::Sges(&send_sge),
+        &send_sge,
         SendFlags::SIGNALED
     );
 
