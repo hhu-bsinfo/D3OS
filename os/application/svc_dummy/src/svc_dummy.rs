@@ -128,7 +128,24 @@ pub fn main() {
         // TCP Verbindung aufbauen
         match TcpStream::connect(target_addr) {
             Ok(stream) => {
-                let msg = format!("Hello from D3OS Node! Mein Service heißt: {}\n", service_name);
+                //let msg = format!("Hello from D3OS Node! Mein Service heißt: {}\n", service_name);
+
+                // Neuer Test: Nachricht an etcd senden
+                // Base64! "test_a" = "dGVzdF9h", "online" = "b25saW5l"
+                let payload = "{\"key\": \"dGVzdF9h\", \"value\": \"b25saW5l\"}";
+
+                // HTTP/1.1 POST Request
+                // \r\n sind zwingenden Zeilenumbrüche im HTTP-Protokoll
+                let msg = format!(
+                    "POST /v3/kv/put HTTP/1.1\r\n\
+                    Host: 10.0.2.2:2379\r\n\
+                    Content-Type: application/json\r\n\
+                    Content-Length: {}\r\n\
+                    \r\n\
+                    {}",
+                    payload.len(),
+                    payload
+                );
                 
                 // Nachricht in den Socket schreiben
                 match stream.write(msg.as_bytes()) {
