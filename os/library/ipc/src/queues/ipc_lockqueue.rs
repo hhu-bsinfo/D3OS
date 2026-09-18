@@ -15,7 +15,7 @@ impl super::IpcQueue for IpcLockQueue {
         Self { messages: RwLock::new(BufferQueue::new()) }
     }
 
-    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &uuid::Uuid) -> bool {
+    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &uuid::Uuid, sender_tid: usize) -> bool {
         let mut data_arr = [0; MESSAGE_DATA_SIZE];
         let l = core::cmp::min(MESSAGE_DATA_SIZE, data.len());
         data_arr[..l].copy_from_slice(&data[..l]);
@@ -25,7 +25,7 @@ impl super::IpcQueue for IpcLockQueue {
             data: data_arr, 
             data_len: data_arr.len(), 
             sender_pid: *sender_pid, 
-            sender_tid: 0
+            sender_tid
         };
         self.messages.write().enqueue(msg)
     }

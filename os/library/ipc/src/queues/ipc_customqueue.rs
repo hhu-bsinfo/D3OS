@@ -40,7 +40,7 @@ impl super::IpcQueue for IpcCustomQueue {
         Self::new()
     }
     
-    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid) -> bool {
+    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid, sender_tid: usize) -> bool {
 
         // 1. increment writer idx
         let writer_idx = self.writer_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
@@ -57,6 +57,7 @@ impl super::IpcQueue for IpcCustomQueue {
                 msg.data[..msg_len].copy_from_slice(&data[..msg_len]);
                 msg.data_len = msg_len;
                 msg.sender_pid = *sender_pid;
+                msg.sender_tid = sender_tid;
                 self.mailbox[writer_idx].store(msg_len as i16, Ordering::SeqCst);
                 return true;
             }

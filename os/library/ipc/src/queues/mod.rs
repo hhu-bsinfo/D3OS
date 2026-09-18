@@ -14,7 +14,7 @@ pub type IpcQueueType = ipc_ringbufferqueue::IpcRingbufferQueue<crate::ipc_messa
 
 pub trait IpcQueue {
     fn new() -> Self;
-    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid) -> bool;
+    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid, sender_tid: usize) -> bool;
     fn receive(&self) -> Option<impl IpcMessageWrapper>;
     fn messages_left(&self) -> usize;
 }

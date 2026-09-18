@@ -19,6 +19,7 @@ use uuid::Uuid;
 pub fn main() {
     let process = process::current();
     let thread = thread::current().unwrap();
+    let tid = thread.id();
 
     println!("Hello from Thread [{}] in Process [{}]", thread.id(), process.id());
 
@@ -208,7 +209,13 @@ pub fn main() {
             match ipc::receive() {
                 Some(msg_wrapper) => {
                     let msg = msg_wrapper.msg();
-                    let res = msg.data_as_usize_slice()[0] * msg.data_as_usize_slice()[1];
+                    let data = msg.data_as_usize_slice();
+                    let mut tmp = 0;
+                    if msg.sender_tid() == 0 {
+                        tmp += 1;
+                    }
+                    println!("{} received request {} * {} from {}", tid, data[0], data[1], msg.sender_tid());
+                    let res = data[0] * data[1];
                     ipc::answer(msg, res);
                 },
                 None => {}
@@ -217,23 +224,36 @@ pub fn main() {
         }
 
     } else if command == "contention_sender" {
-        let t = thread.id();
-        let mut a = t;
+        let mut a = tid;
         let b = 2;
         loop {
-            println!("{} Sending {}*{}", t, a, b);
+            println!("{} Sending {}*{}", tid, a, b);
             match ipc::send_and_receive("ipctest_contention_recv", "mult", &[a, b]) {
                 Ok(msg_wrapper) => {
                     a = *msg_wrapper.msg().data_as_usize();
-                    println!("{} Received {}", t, a);
-                    if a > 5000 {
-                        println!("{} Done!", t);
-                        return;
+                    match a {
+                        0 => {
+                            println!("{} Error, received zero!", tid);
+                        },
+                        5000..usize::MAX => {
+                            println!("{} Received {}", tid, a);
+                            println!("{} Done!", tid);
+                            return;
+                        },
+                        _ => println!("{} Received {}", tid, a),
                     }
                 },
                 Err(_) => println!("Error sending message"),
             }
             thread::sleep(500);
+        }
+    } else if command == "tmp" {
+        for _ in 0..1000 {
+            thread::create(|| {
+                let thread = thread::current().unwrap();
+                let tid = thread.id();
+                println!("Hello from thread {}", tid);
+            });
         }
     }
 }

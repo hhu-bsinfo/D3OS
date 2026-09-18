@@ -1,4 +1,7 @@
-use crate::{ipc_message::{IpcMessage, IpcMessageWrapper}, queues::{IpcQueue, atomic_ringbuffer::Ringbuffer, ipc_lfqueue::IpcMessageWrapperOwned}};
+use crate::queues::IpcQueue;
+use crate::queues::atomic_ringbuffer::Ringbuffer;
+use crate::queues::ipc_lfqueue::IpcMessageWrapperOwned;
+use crate::ipc_message::{IpcMessage, IpcMessageWrapper};
 
 
 pub struct IpcRingbufferQueue<T, const S: usize> {
@@ -10,15 +13,12 @@ impl<const S: usize> IpcQueue for IpcRingbufferQueue<IpcMessage, S> {
         Self { ringbuffer: Ringbuffer::new() }
     }
 
-    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &uuid::Uuid) -> bool {
+    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &uuid::Uuid, sender_tid: usize) -> bool {
 
         // reserve space in ringbuffer
         let reserved = self.ringbuffer.reserve();
 
-        if let Some(ptr) = reserved {
-
-            // get mut ref to msg -> this should be safe, the ringbuffer ensures we are the only writer
-            let msg = unsafe { ptr.as_mut_unchecked() };
+        if let Some(mut msg) = reserved {
 
             // write data into msg
             msg.name.set(name);
@@ -27,6 +27,7 @@ impl<const S: usize> IpcQueue for IpcRingbufferQueue<IpcMessage, S> {
             msg.data[..l].copy_from_slice(&data[..l]);
             msg.data_len = l;
             msg.sender_pid = *sender_pid;
+            msg.sender_tid = sender_tid;
             
             true
         } else {

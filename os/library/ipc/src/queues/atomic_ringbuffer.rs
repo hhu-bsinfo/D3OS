@@ -1,12 +1,12 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use spin::Mutex;
+use spin::{RelaxStrategy, rwlock::RwLock};
 
 use crate::MAX_NUM_MESSAGES;
 
 /// thread-safe, non-locking ringbuffer using atomics
 pub struct Ringbuffer<T, const S: usize> {
-    data: [T; S],
+    data: [RwLock<T, YieldD3OS>; S],
     head: AtomicUsize,
     tail: AtomicUsize,
     /// number of saved elements
@@ -16,7 +16,7 @@ pub struct Ringbuffer<T, const S: usize> {
 impl<T: Copy + Default, const S: usize> Ringbuffer<T, S> {
 
     pub fn new() -> Self {
-        Self { data: [{ T::default() }; _], head: AtomicUsize::new(0), tail: AtomicUsize::new(0), num_elements: AtomicUsize::new(0) }
+        Self { data: core::array::from_fn(|_| RwLock::new(T::default())), head: AtomicUsize::new(0), tail: AtomicUsize::new(0), num_elements: AtomicUsize::new(0) }
     }
 
     /// push `data` into the ringbuffer, if there is space
@@ -36,12 +36,18 @@ impl<T: Copy + Default, const S: usize> Ringbuffer<T, S> {
         let tail_idx = self.tail.fetch_add(1, Ordering::SeqCst) % MAX_NUM_MESSAGES;
 
         // write the data
-        unsafe { self.data.as_ptr().add(tail_idx).cast_mut().write(data); };
-        true
+        // aquire write lock to ensure atomic writing operation
+        if let Some(_guard) = self.data[tail_idx].try_write() {
+            let ptr = self.data[tail_idx].as_mut_ptr();
+            unsafe { ptr.write(data); };
+            true
+        } else {
+            false
+        }
     }
 
     /// check and reserve ringbuffer slot, for writing to later
-    pub fn reserve(&self) -> Option<*mut T> {
+    pub fn reserve(&self) -> Option<spin::rwlock::RwLockWriteGuard<'_, T, YieldD3OS>> {
         
         // check if there is space -> increment num_elements here to avoid two threads fighting over a single free space
         let num_elements = self.num_elements.fetch_add(1, Ordering::SeqCst);
@@ -57,7 +63,7 @@ impl<T: Copy + Default, const S: usize> Ringbuffer<T, S> {
         let tail_idx = self.tail.fetch_add(1, Ordering::SeqCst) % MAX_NUM_MESSAGES;
 
         // return raw ptr to reserved slot
-        Some(self.data.as_ptr().wrapping_add(tail_idx).cast_mut())
+        self.data[tail_idx].try_write()
     }
 
     pub fn pop(&self) -> Option<T> {
@@ -73,12 +79,17 @@ impl<T: Copy + Default, const S: usize> Ringbuffer<T, S> {
         let head_idx = self.head.fetch_add(1, Ordering::SeqCst) % MAX_NUM_MESSAGES;
 
         // copy data from ringbuffer
-        let data = unsafe { core::mem::take(self.data.as_ptr().add(head_idx).cast_mut().as_mut_unchecked()) };
+        let data = {
+            // aquire read lock to ensure atomic reading operation
+            let _guard = self.data[head_idx].read();
+            let ptr = self.data[head_idx].as_mut_ptr();
+            unsafe { Some(ptr.read()) }
+        };
 
         // there is now a free space
         self.num_elements.fetch_sub(1, Ordering::SeqCst);
 
-        Some(data)
+        data
     }
     
     pub fn num_elements(&self) -> usize {
@@ -91,15 +102,15 @@ impl<T: Copy + Default, const S: usize> Ringbuffer<T, S> {
     }
 }
 
-struct Iter<'a, T> {
-    data: &'a[T],
+pub struct Iter<'a, T> {
+    data: &'a[RwLock<T, YieldD3OS>],
     tail: usize,
     idx: usize,
     size: usize,
 }
 
 impl<'a, T: 'a> Iterator for Iter<'a, T> {
-    type Item = &'a T;
+    type Item = &'a RwLock<T, YieldD3OS>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx >= self.tail {
@@ -108,5 +119,13 @@ impl<'a, T: 'a> Iterator for Iter<'a, T> {
         let item = &self.data[self.idx];
         self.idx = (self.idx + 1) & self.size;
         Some(item)
+    }
+}
+
+pub struct YieldD3OS;
+
+impl RelaxStrategy for YieldD3OS {
+    fn relax() {
+        concurrent::thread::switch();
     }
 }

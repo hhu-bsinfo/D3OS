@@ -13,7 +13,6 @@ path = "src/ipc.rs"
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }
-time = { path = "../time" }
 concurrent = { path = "../concurrent" }
 
 # External dependencies

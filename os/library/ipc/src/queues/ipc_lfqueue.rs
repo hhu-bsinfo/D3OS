@@ -31,11 +31,11 @@ impl super::IpcQueue for IpcLFQueue {
         Self::new()
     }
 
-    fn send(&self, name: &str, msg_type: &str, message: &[u8], id: &uuid::Uuid) -> bool {
+    fn send(&self, name: &str, msg_type: &str, message: &[u8], id: &uuid::Uuid, sender_tid: usize) -> bool {
         let mut data = [0; MESSAGE_DATA_SIZE];
         let l = core::cmp::min(message.len(), MESSAGE_DATA_SIZE);
         data[..l].copy_from_slice(&message[..l]);
-        self.queue.enqueue(IpcMessage { name: name.into(), msg_type: msg_type.into(), data, data_len: message.len(), sender_pid: *id, sender_tid: 0 }).is_ok()
+        self.queue.enqueue(IpcMessage { name: name.into(), msg_type: msg_type.into(), data, data_len: message.len(), sender_pid: *id, sender_tid }).is_ok()
     }
     
     fn receive(&self) -> Option<impl IpcMessageWrapper> {

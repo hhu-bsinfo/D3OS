@@ -55,6 +55,12 @@ impl IpcMessage {
         self.sender_pid = other_msg.sender_pid;
         self.sender_tid = other_msg.sender_tid;
     }
+    pub fn sender_pid(&self) -> &Uuid {
+        &self.sender_pid
+    }
+    pub fn sender_tid(&self) -> usize {
+        self.sender_tid
+    }
 }
 
 impl Default for IpcMessage {
