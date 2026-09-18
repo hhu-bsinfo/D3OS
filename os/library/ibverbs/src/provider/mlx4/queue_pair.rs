@@ -2,14 +2,14 @@
 //! for the WQE buffer, map a UAR/BlueFlame page pair, and run the CMD-interface state
 //! transitions), but posting and WQE bookkeeping happen entirely against the mapped buffer from
 //! here on, without a syscall per post. This mirrors the kernel's former
-//! `os/kernel/src/device/mlx4/queue_pair.rs` `post_send`/`post_receive`/`check_wqe_index`/etc,
+//! `os/kernel/src/device/mlx4/qp` `post_send`/`post_receive`/`check_wqe_index`/etc,
 //! which were deleted from the kernel once this moved here.
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::vec;
 use core::mem::MaybeUninit;
-use core::sync::atomic::{compiler_fence, AtomicBool, Ordering};
+use core::sync::atomic::{compiler_fence, Ordering};
 use bitflags::bitflags;
 use core3::io;
 use core3::io::{Error, ErrorKind};
@@ -20,20 +20,22 @@ use zerocopy::{BigEndian, FromBytes, U16, U32, U64};
 use log::{debug, error};
 use spin::{Mutex, RwLock};
 use mm::{mmap, MmapFlags, PAGE_SIZE};
-use rdma::ib_core::{ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_cap, ibv_qp_state, ibv_qp_type, ibv_send_flags, ibv_send_wr_wr, ibv_sge, ibv_wr_opcode};
+use rdma::ib_core::{QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairtState, SendFlags, ScatterGatherEntry};
 use rdma::uverbs_uapi::{CreateQpRequest, CreateQpResponse, ModifyQpRequest, UserSlice};
 use rdma::uverbs_uapi::UverbsCmd::{CreateQp, DestroyQp, ModifyQp};
 use strum_macros::FromRepr;
+use rdma::QueuePairType;
 use rdma::ProtectionDomainHandle;
 use crate::cmd::uverbs;
 use crate::provider::{IbvQueuePair, QpInitAttr, ReceiveWorkRequest, SendWorkRequest};
+use crate::{DatagramHeader, RemoteMemoryHeader, SendOperation, Payload};
 use super::Mlx4Context;
 
 pub(crate) struct QueuePair {
     context: Arc<Mlx4Context>,
-    qp_type: ibv_qp_type::Type,
+    qp_type: QueuePairType,
     pub(crate) number: u32,
-    state: RwLock<ibv_qp_state>,
+    state: RwLock<QueuePairtState>,
     rq: RwLock<WorkQueue>,
     sq: RwLock<WorkQueue>,
     receive_wqe_counter: *mut ReceiveWQECounter,
@@ -47,9 +49,9 @@ impl IbvQueuePair for QueuePair {
     /// Post a work request to receive data.
     ///
     /// This is used by ibv_post_recv.
-    unsafe fn post_receive(&self, wrs: &[ReceiveWorkRequest]) -> io::Result<()> {
+    unsafe fn post_receive(&mut self, wrs: &[&ReceiveWorkRequest]) -> io::Result<()> {
         let state = *self.state.read();
-        if state != ibv_qp_state::IBV_QPS_RTR && state != ibv_qp_state::IBV_QPS_RTS {
+        if state != QueuePairtState::ReadyToReceive && state != QueuePairtState::ReadyToSend {
             return Err(Error::new(ErrorKind::Other, "queue pair cannot receive in this state"));
         }
         let mut rq = self.rq.write();
@@ -64,7 +66,7 @@ impl IbvQueuePair for QueuePair {
                 return Err(Error::new(ErrorKind::Other, "work request has too many sges"));
             }
             let mut sge_index = 0;
-            for sge in &curr.sges {
+            for sge in curr.sges {
                 let elem = rq.get_data_segment(rq.head, sge_index).unwrap();
                 elem.copy_from_sge(sge);
                 sge_index += 1;
@@ -97,9 +99,21 @@ impl IbvQueuePair for QueuePair {
     /// Post a work request to send data.
     ///
     /// This is used by ibv_post_send.
-    unsafe fn post_send(&self, wrs: &[SendWorkRequest]) -> io::Result<()> {
+    unsafe fn post_send(&mut self, wrs: &[&SendWorkRequest]) -> io::Result<()> {
+        // TODO:
+        // If the QP qp is associated with a shared receive queue, you must use the function
+        // ibv_post_srq_recv(), and not ibv_post_recv(), since the QP's own receive queue will not
+        // be used.
+
+        // TODO:
+        // If a WR is being posted to a UD QP, the Global Routing Header (GRH) of the incoming
+        // message will be placed in the first 40 bytes of the buffer(s) in the scatter list. If no
+        // GRH is present in the incoming message, then the first  bytes  will  be undefined. This
+        // means that in all cases, the actual data of the incoming message will start at an offset
+        // of 40 bytes into the buffer(s) in the scatter list.
+
         debug!("post_send num_wrs: {}", wrs.len());
-        if *self.state.read() != ibv_qp_state::IBV_QPS_RTS {
+        if *self.state.read() != QueuePairtState::ReadyToSend {
             return Err(Error::new(ErrorKind::Other, "queue pair cannot send in this state"));
         }
 
@@ -120,8 +134,9 @@ impl IbvQueuePair for QueuePair {
             if sq.would_overflow() {
                 return Err(Error::new(ErrorKind::Other, "send queue would overflow"));
             }
+
             // check that this work request is not too big
-            if u32::try_from(curr.sges.len()).unwrap() > sq.max_gs {
+            if let Payload::Sges(sges) = curr.payload && sges.len() > sq.max_gs as usize {
                 return Err(Error::new(ErrorKind::Other, "work request has too many sges"));
             }
 
@@ -138,34 +153,38 @@ impl IbvQueuePair for QueuePair {
             wqe_offset += size_of::<WqeControlSegment>();
             let mut wqe_size = size_of::<WqeControlSegment>();
             match self.qp_type {
-                ibv_qp_type::IBV_QPT_RC | ibv_qp_type::IBV_QPT_UC => {
+                QueuePairType::RC | QueuePairType::UC => {
                     // extra segments are only required for RDMA
-                    if curr.opcode == ibv_wr_opcode::IBV_WR_RDMA_READ || curr.opcode == ibv_wr_opcode::IBV_WR_RDMA_WRITE {
+                    if let SendOperation::RdmaRead(header) | SendOperation::RdmaWrite(header) = curr.op {
                         let wqe: &mut WqeRemoteAddressSegment = sq.get_in_buffer(wqe_offset).unwrap();
-                        *wqe = WqeRemoteAddressSegment::from_wr(&curr.wr)?;
+                        *wqe = WqeRemoteAddressSegment::from(header);
                         wqe_offset += size_of::<WqeRemoteAddressSegment>();
                         wqe_size += size_of::<WqeRemoteAddressSegment>();
                     }
                 }
-                ibv_qp_type::IBV_QPT_UD => {
-                    let wqe: &mut WqeDatagramSegment = sq.get_in_buffer(wqe_offset).unwrap();
-                    *wqe = WqeDatagramSegment::from_wr(&curr.wr)?;
-                    wqe_offset += size_of::<WqeDatagramSegment>();
-                    wqe_size += size_of::<WqeDatagramSegment>();
+                QueuePairType::UD => {
+                    if let SendOperation::UD(header) = curr.op {
+                        let wqe: &mut WqeDatagramSegment = sq.get_in_buffer(wqe_offset).unwrap();
+                        *wqe = WqeDatagramSegment::from(header);
+                        wqe_offset += size_of::<WqeDatagramSegment>();
+                        wqe_size += size_of::<WqeDatagramSegment>();
+                    }
                 }
                 #[allow(unreachable_patterns)]
                 _ => return Err(Error::new(ErrorKind::Other, "invalid queue pair type")),
             }
 
-            // Write data segments in reverse order, so as to overwrite
-            // cacheline stamp last within each cacheline. This avoids issues
-            // with WQE prefetching.
-            wqe_offset += (usize::try_from(curr.sges.len()).unwrap() - 1) * size_of::<WqeDataSegment>();
-            for sge in curr.sges.iter().rev() {
-                let elem: &mut WqeDataSegment = sq.get_in_buffer(wqe_offset).unwrap();
-                elem.copy_from_sge(sge);
-                wqe_offset -= size_of::<WqeDataSegment>();
-                wqe_size += size_of::<WqeDataSegment>();
+            if let Payload::Sges(sges) = curr.payload {
+                // Write data segments in reverse order, so as to overwrite
+                // cacheline stamp last within each cacheline. This avoids issues
+                // with WQE prefetching.
+                wqe_offset += (sges.len() - 1) * size_of::<WqeDataSegment>();
+                for sge in sges.iter().rev() {
+                    let elem: &mut WqeDataSegment = sq.get_in_buffer(wqe_offset).unwrap();
+                    elem.copy_from_sge(sge);
+                    wqe_offset -= size_of::<WqeDataSegment>();
+                    wqe_size += size_of::<WqeDataSegment>();
+                }
             }
 
             // Possibly overwrite stamping in cacheline with LSO segment
@@ -176,10 +195,12 @@ impl IbvQueuePair for QueuePair {
             // Make sure descriptor is fully written before setting ownership
             // bit (because HW can start executing as soon as we do).
             compiler_fence(Ordering::SeqCst);
-            let opcode = match curr.opcode {
-                ibv_wr_opcode::IBV_WR_RDMA_WRITE => QueuePairOpcode::RdmaWrite,
-                ibv_wr_opcode::IBV_WR_SEND => QueuePairOpcode::Send,
-                ibv_wr_opcode::IBV_WR_RDMA_READ => QueuePairOpcode::RdmaRead,
+            let opcode = match curr.op {
+                SendOperation::Send => QueuePairOpcode::Send,
+                SendOperation::RdmaWrite(_) => QueuePairOpcode::RdmaWrite,
+                SendOperation::RdmaRead(_) => QueuePairOpcode::RdmaRead,
+                SendOperation::Atomic { .. } => todo!("atomic"),
+                SendOperation::UD { .. } => todo!("ud"),
             } as u32;
             let owner = match sq.head & sq.wqe_cnt {
                 0 => 0,
@@ -192,7 +213,7 @@ impl IbvQueuePair for QueuePair {
             let end_of_headroom = sq.head + sq.spare_wqes.unwrap();
             sq.stamp_wqe(end_of_headroom, wqe_size)?;
 
-            if curr.send_flags.contains(ibv_send_flags::SIGNALED) {
+            if curr.send_flags.contains(SendFlags::SIGNALED) {
                 // Completions should only be generated for signaled send WRs.
                 sq.update_meta_for_head(curr.wr_id, chain_size);
                 chain_size = 1;
@@ -210,7 +231,7 @@ impl IbvQueuePair for QueuePair {
         Ok(())
     }
 
-    fn modify(&self, attr: &ibv_qp_attr, attr_mask: ibv_qp_attr_mask) -> io::Result<()> {
+    fn modify(&self, attr: &QueuePairAttr, attr_mask: QueuePairAttrMask) -> io::Result<()> {
         let attr = *attr;
 
         let req = ModifyQpRequest {
@@ -220,9 +241,9 @@ impl IbvQueuePair for QueuePair {
         };
 
         let mut state = self.state.write();
-        uverbs(self.context.device_handle, ModifyQp, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
+        uverbs(self.context.device_handle.into(), ModifyQp, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
 
-        if attr_mask.contains(ibv_qp_attr_mask::IBV_QP_STATE) {
+        if attr_mask.contains(QueuePairAttrMask::IBV_QP_STATE) {
             *state = attr.qp_state;
         }
 
@@ -233,7 +254,7 @@ impl IbvQueuePair for QueuePair {
 impl Drop for QueuePair {
     fn drop(&mut self) {
         let qp_num = self.number();
-        uverbs(self.context.device_handle(), DestroyQp, UserSlice::from_ref(&qp_num), UserSlice::EMPTY)
+        uverbs(self.context.device_handle().into(), DestroyQp, UserSlice::from_ref(&qp_num), UserSlice::EMPTY)
             .expect("failed to destroy queue pair");
     }
 }
@@ -296,14 +317,14 @@ impl QueuePair {
         };
 
         let mut resp = MaybeUninit::<CreateQpResponse>::uninit();
-        uverbs(context.device_handle, CreateQp, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        uverbs(context.device_handle.into(), CreateQp, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
         let resp = unsafe { resp.assume_init() };
 
         Ok(QueuePair {
             context,
             qp_type: attr.qp_type,
             number: resp.qp_num,
-            state: RwLock::new(ibv_qp_state::IBV_QPS_RESET),
+            state: RwLock::new(QueuePairtState::Reset),
             rq: RwLock::new(rq),
             sq: RwLock::new(sq),
             receive_wqe_counter: receive_wqe_counter_ptr,
@@ -320,7 +341,7 @@ impl QueuePair {
     /// - If the WQE size is bigger than the BlueFlame buffer size, then  the WQE cannot be posted using BlueFlame.
     /// - For WQEs with DS=1, BlueFlame is not supported. DS=1 is the case for the NOP or zero length send operations.
     ///   Alternatively, the driver can pad the WQE with an extra zero length Data segment
-    fn try_post_send_via_blueflame(&self, wr: &SendWorkRequest) -> bool {
+    fn try_post_send_via_blueflame(&self, _wr: &SendWorkRequest) -> bool {
         false
     }
 
@@ -377,7 +398,7 @@ struct WqeDataSegment {
 
 impl WqeDataSegment {
     /// Copy information from an sge.
-    fn copy_from_sge(&mut self, sge: &ibv_sge) {
+    fn copy_from_sge(&mut self, sge: &ScatterGatherEntry) {
         // The address stays virtual: the lkey names a memory region whose MPT
         // start address is virtual as well, and the card resolves the address
         // through that region's MTT. (Translating to a physical address here
@@ -422,18 +443,18 @@ bitflags! {
     }
 }
 
-impl From<ibv_send_flags> for WqeControlSegmentFlags {
-    fn from(flags: ibv_send_flags) -> Self {
+impl From<SendFlags> for WqeControlSegmentFlags {
+    fn from(flags: SendFlags) -> Self {
         let mut out = WqeControlSegmentFlags::empty();
 
-        if flags.contains(ibv_send_flags::FENCE) {
+        if flags.contains(SendFlags::FENCE) {
             out |= WqeControlSegmentFlags::FENCE;
         }
-        if flags.contains(ibv_send_flags::SOLICITED) {
+        if flags.contains(SendFlags::SOLICITED) {
             out |= WqeControlSegmentFlags::SOLICITED;
         }
         // CQ update for signaled WRs
-        if flags.contains(ibv_send_flags::SIGNALED) {
+        if flags.contains(SendFlags::SIGNALED) {
             out |= WqeControlSegmentFlags::CQ_UPDATE;
         }
         out
@@ -448,17 +469,13 @@ struct WqeRemoteAddressSegment {
     rsvd: u32,
 }
 
-impl WqeRemoteAddressSegment {
+impl From<RemoteMemoryHeader> for WqeRemoteAddressSegment {
     /// Create a remote address segment from a wr wr.
-    fn from_wr(wr: &ibv_send_wr_wr) -> io::Result<Self> {
-        if let ibv_send_wr_wr::rdma { remote_addr, rkey } = wr {
-            Ok(Self {
-                va: (*remote_addr).into(),
-                key: (*rkey).into(),
-                rsvd: 0,
-            })
-        } else {
-            Err(Error::new(ErrorKind::InvalidData, "invalid wr field"))
+    fn from(header: RemoteMemoryHeader) -> Self {
+        Self {
+            va: header.remote_addr.into(),
+            key: header.rkey.into(),
+            rsvd: 0,
         }
     }
 }
@@ -508,30 +525,25 @@ struct WqeDatagramSegment {
     mac: [u8; ETH_ALEN],
 }
 
-impl WqeDatagramSegment {
-    /// Create a datagram segment from a wr wr.
-    fn from_wr(wr: &ibv_send_wr_wr) -> io::Result<Self> {
-        if let ibv_send_wr_wr::ud { ah, remote_qpn, remote_qkey } = wr {
-            Ok(Self {
-                av: WqeDatagramSegmentAv {
-                    port_pd: (ah.port << 24).into(),
-                    _reserved1: 0,
-                    g_slid: ah.slid & 0x7f,
-                    dlid: ah.dlid.into(),
-                    _reserved2: 0,
-                    gid_index: 0,
-                    stat_rate: 0,
-                    hop_limit: 0,
-                    sl_tclass_flowlabel: 0,
-                    dgid: [0; 4],
-                },
-                dst_qpn: (*remote_qpn).into(),
-                qkey: (*remote_qkey).into(),
-                vlan: 0,
-                mac: [0; ETH_ALEN],
-            })
-        } else {
-            Err(Error::new(ErrorKind::InvalidData, "invalid wr field"))
+impl From<DatagramHeader> for WqeDatagramSegment {
+    fn from(header: DatagramHeader) -> Self {
+        Self {
+            av: WqeDatagramSegmentAv {
+                port_pd: (header.ah.port << 24).into(),
+                _reserved1: 0,
+                g_slid: header.ah.slid & 0x7f,
+                dlid: header.ah.dlid.into(),
+                _reserved2: 0,
+                gid_index: 0,
+                stat_rate: 0,
+                hop_limit: 0,
+                sl_tclass_flowlabel: 0,
+                dgid: [0; 4],
+            },
+            dst_qpn: header.remote_qpn.into(),
+            qkey: header.remote_qkey.into(),
+            vlan: 0,
+            mac: [0; ETH_ALEN],
         }
     }
 }
@@ -577,7 +589,7 @@ const fn ib_sq_headroom(shift: u32) -> u32 {
 
 impl WorkQueue {
     /// Compute the size of the receive queue and return it.
-    fn new_receive_queue(device: &Mlx4Context, ib_caps: &ibv_qp_cap) -> io::Result<Self> {
+    fn new_receive_queue(device: &Mlx4Context, ib_caps: &QueuePairCapabilities) -> io::Result<Self> {
         // check the RQ size before proceeding
         if ib_caps.max_recv_wr > ((1 << device.log_max_qp_size) - IB_SQ_MAX_SPARE)
             || ib_caps.max_recv_sge > 1 << device.log_max_rq_sge
@@ -615,7 +627,7 @@ impl WorkQueue {
     }
 
     /// Compute the size of the receive queue and return it.
-    fn new_send_queue(device: &Mlx4Context, ib_caps: &ibv_qp_cap, qp_type: ibv_qp_type::Type) -> io::Result<Self> {
+    fn new_send_queue(device: &Mlx4Context, ib_caps: &QueuePairCapabilities, qp_type: QueuePairType) -> io::Result<Self> {
         // check the SQ size before proceeding
         if ib_caps.max_send_wr > ((1 << device.log_max_qp_size) - IB_SQ_MAX_SPARE)
             || ib_caps.max_send_sge > 1 << device.log_max_sq_sge
@@ -763,15 +775,15 @@ impl WorkQueue {
     }
 }
 
-fn send_wqe_overhead(qp_type: ibv_qp_type::Type) -> u32 {
+fn send_wqe_overhead(qp_type: QueuePairType) -> u32 {
     // UD WQEs must have a datagram segment.
     // RC and UC WQEs might have a remote address segment.
     // MLX WQEs need two extra inline data segments (for the UD header and space
     // for the ICRC).
     match qp_type {
-        ibv_qp_type::IBV_QPT_UD => size_of::<WqeControlSegment>() + size_of::<WqeDatagramSegment>(),
-        ibv_qp_type::IBV_QPT_UC => size_of::<WqeControlSegment>() + size_of::<WqeRemoteAddressSegment>(),
-        ibv_qp_type::IBV_QPT_RC => {
+        QueuePairType::UD => size_of::<WqeControlSegment>() + size_of::<WqeDatagramSegment>(),
+        QueuePairType::UC => size_of::<WqeControlSegment>() + size_of::<WqeRemoteAddressSegment>(),
+        QueuePairType::RC => {
             size_of::<WqeControlSegment>() /* + size_of::<WqeMaskedAtomicSegment>() */
                 + size_of::<WqeRemoteAddressSegment>()
         }

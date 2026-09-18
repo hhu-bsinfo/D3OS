@@ -8,8 +8,7 @@ use crate::error::Result;
 use crate::report::{LatencyStats, Report};
 use alloc::vec;
 use alloc::vec::Vec;
-use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
-use ibverbs::ffi::ibv_send_flags;
+use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, ReceiveWorkRequest, SendFlags, SendWorkRequest, WorkCompletion};
 use time::get_time_in_us;
 
 const WR_SEND: u64 = 1;
@@ -38,7 +37,7 @@ pub fn run(
 
 /// Waits for the bitmask of outstanding wr_ids in `want` to clear, or for `IDLE_TIMEOUT_US` to
 /// elapse. Returns the still-pending subset of `want` — zero means fully satisfied.
-fn wait_for(cq: &CompletionQueue, wc: &mut [ibv_wc], want: u64) -> Result<u64> {
+fn wait_for(cq: &CompletionQueue, wc: &mut [WorkCompletion], want: u64) -> Result<u64> {
     let mut pending = want;
     let deadline = get_time_in_us() + IDLE_TIMEOUT_US;
     while pending != 0 {
@@ -63,15 +62,25 @@ fn ping(
     msg_size: usize,
     iterations: usize,
 ) -> Result<Report> {
-    let mut wc = vec![ibv_wc::default(); 4];
+    let mut wc = vec![WorkCompletion::default(); 4];
     let mut samples: Vec<f64> = Vec::with_capacity(iterations);
+    let recv_wr = ReceiveWorkRequest {
+        wr_id: WR_RECV,
+        sges: &[recv_mr.slice(0..msg_size)],
+    };
+    let send_sge = [send_mr.slice(0..msg_size)];
+    let send_wr = SendWorkRequest::send(
+        WR_SEND,
+        &send_sge,
+        SendFlags::SIGNALED
+    );
 
-    unsafe { qp.post_receive(recv_mr, vec![vec![0..msg_size]], vec![WR_RECV])? };
+    unsafe { qp.post_receive(&[&recv_wr])? };
     conn.sync()?; // both sides have a receive posted
 
     for i in 0..iterations {
         let t0 = get_time_in_us();
-        unsafe { qp.post_send(send_mr, vec![vec![0..msg_size]], vec![WR_SEND], vec![ibv_send_flags::SIGNALED])? };
+        unsafe { qp.post_send(&[&send_wr])? };
 
         if wait_for(cq, &mut wc, WR_SEND | WR_RECV)? != 0 {
             terminal::println!(
@@ -87,7 +96,7 @@ fn ping(
         samples.push((get_time_in_us() - t0) as f64 / 2.0);
 
         if i + 1 < iterations {
-            unsafe { qp.post_receive(recv_mr, vec![vec![0..msg_size]], vec![WR_RECV])? };
+            unsafe { qp.post_receive(&[&recv_wr])? };
         }
     }
     conn.sync()?; // both sides done
@@ -104,19 +113,30 @@ fn pong(
     msg_size: usize,
     iterations: usize,
 ) -> Result<Report> {
-    let mut wc = vec![ibv_wc::default(); 4];
+    let mut wc = vec![WorkCompletion::default(); 4];
     let mut echoed = 0usize;
+    let recv_wr = ReceiveWorkRequest {
+        wr_id: WR_RECV,
+        sges: &[recv_mr.slice(0..msg_size)],
+    };
 
-    unsafe { qp.post_receive(recv_mr, vec![vec![0..msg_size]], vec![WR_RECV])? };
+    let send_sge = [send_mr.slice(0..msg_size)];
+    let send_wr = SendWorkRequest::send(
+        WR_SEND,
+        &send_sge,
+        SendFlags::SIGNALED
+    );
+
+    unsafe { qp.post_receive(&[&recv_wr])? };
     conn.sync()?; // both sides have a receive posted
 
     for _ in 0..iterations {
-        if wait_for(cq, &mut wc, WR_RECV)? != 0 {
+        if wait_for(cq, &mut wc, recv_wr.wr_id)? != 0 {
             break;
         }
         // Repost the receive before echoing so the next ping's receive is armed ahead of time.
-        unsafe { qp.post_receive(recv_mr, vec![vec![0..msg_size]], vec![WR_RECV])? };
-        unsafe { qp.post_send(send_mr, vec![vec![0..msg_size]], vec![WR_SEND], vec![ibv_send_flags::SIGNALED])? };
+        unsafe { qp.post_receive(&[&recv_wr])? };
+        unsafe { qp.post_send(&[&send_wr])? };
         wait_for(cq, &mut wc, WR_SEND)?;
         echoed += 1;
     }

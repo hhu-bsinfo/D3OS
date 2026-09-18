@@ -1,3 +1,4 @@
+#![feature(slice_index_methods)]
 #![no_std]
 
 mod bench;

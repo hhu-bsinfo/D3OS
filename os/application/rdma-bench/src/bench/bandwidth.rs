@@ -8,8 +8,7 @@ use crate::comm::Conn;
 use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
 use alloc::vec;
-use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair};
-use ibverbs::ffi::ibv_send_flags;
+use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, ReceiveWorkRequest, SendFlags, SendWorkRequest, WorkCompletion};
 use time::get_time_in_us;
 
 pub fn run(
@@ -43,13 +42,16 @@ fn send(
     let t0 = get_time_in_us();
 
     let window = tx_depth.min(iterations);
+    let send_sge = [mr.slice(0..msg_size)];
+    let mut send_wr = SendWorkRequest::send(0, &send_sge, SendFlags::SIGNALED);
     for i in 0..window {
-        unsafe { qp.post_send(mr, vec![vec![0..msg_size]], vec![i as u64], vec![ibv_send_flags::SIGNALED])? };
+        send_wr.wr_id = i as u64;
+        unsafe { qp.post_send(&[&send_wr])? };
     }
 
     let mut posted = window;
     let mut completed = 0usize;
-    let mut wc = vec![ibv_wc::default(); tx_depth.max(1)];
+    let mut wc = vec![WorkCompletion::default(); tx_depth.max(1)];
 
     while completed < iterations {
         let completions = cq.poll(&mut wc)?;
@@ -60,7 +62,8 @@ fn send(
         completed += n;
         for _ in 0..n {
             if posted < iterations {
-                unsafe { qp.post_send(mr, vec![vec![0..msg_size]], vec![posted as u64], vec![ibv_send_flags::SIGNALED])? };
+                send_wr.wr_id = posted as u64;
+                unsafe { qp.post_send(&[&send_wr])? };
                 posted += 1;
             }
         }
@@ -82,13 +85,18 @@ fn receive(
     tx_depth: usize,
 ) -> Result<Report> {
     let window = tx_depth.min(iterations);
+    let mut recv_wr = ReceiveWorkRequest {
+        wr_id: 0,
+        sges: &[mr.slice(0..msg_size)],
+    };
     for i in 0..window {
-        unsafe { qp.post_receive(mr, vec![vec![0..msg_size]], vec![i as u64])? };
+        recv_wr.wr_id = i as u64;
+        unsafe { qp.post_receive(&[&recv_wr])? };
     }
 
     let mut posted = window;
     let mut completed = 0usize;
-    let mut wc = vec![ibv_wc::default(); tx_depth.max(1)];
+    let mut wc = vec![WorkCompletion::default(); tx_depth.max(1)];
 
     conn.sync()?; // "ready"
     let mut last_progress = get_time_in_us();
@@ -110,7 +118,8 @@ fn receive(
         completed += n;
         for _ in 0..n {
             if posted < iterations {
-                unsafe { qp.post_receive(mr, vec![vec![0..msg_size]], vec![posted as u64])? };
+                recv_wr.wr_id = posted as u64;
+                unsafe { qp.post_receive(&[&recv_wr])? };
                 posted += 1;
             }
         }

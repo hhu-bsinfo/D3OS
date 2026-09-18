@@ -23,7 +23,7 @@ use super::{
 };
 
 /// Size in bytes of a hardware completion queue entry. CX3 also supports a 64 B format, but this
-/// driver always uses the 32 B one (matches the layout `os/library/ibverbs/src/mlx4/completion_queue.rs`
+/// driver always uses the 32 B one (matches the layout `os/library/ibverbs/src/mlx4/cq`
 /// parses).
 const CQE_SIZE: usize = 32;
 

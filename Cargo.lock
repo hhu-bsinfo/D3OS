@@ -278,15 +278,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crc32fast"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
-dependencies = [
- "cfg-if",
-]
-
-[[package]]
 name = "critical-section"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1342,19 +1333,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
-name = "perftest"
-version = "0.0.1"
-dependencies = [
- "core3",
- "ibverbs",
- "log",
- "network",
- "rdma",
- "runtime",
- "terminal",
-]
-
-[[package]]
 name = "pin-project"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1612,6 +1590,7 @@ dependencies = [
  "bincode",
  "bitflags 2.10.0",
  "num_enum 0.5.11",
+ "serde",
  "strum_macros",
 ]
 
@@ -1629,23 +1608,6 @@ dependencies = [
  "runtime",
  "serde",
  "serde_json",
- "terminal",
- "time",
-]
-
-[[package]]
-name = "rdma_test_mlx4"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "concurrent",
- "cpu-core",
- "crc32fast",
- "ibverbs",
- "mm",
- "network",
- "runtime",
- "spin 0.9.8",
  "terminal",
  "time",
 ]

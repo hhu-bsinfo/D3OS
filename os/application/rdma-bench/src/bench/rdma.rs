@@ -14,9 +14,7 @@ use crate::comm::{Conn, RemoteBufferInfo};
 use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
 use alloc::vec;
-use core::ops::Range;
-use ibverbs::{ibv_wc, CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, RemoteMemoryRegion};
-use ibverbs::ffi::ibv_send_flags;
+use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, RemoteMemorySlice, SendFlags, SendWorkRequest, WorkCompletion};
 use time::get_time_in_us;
 
 #[derive(Copy, Clone, Debug)]
@@ -57,48 +55,33 @@ fn respond(mr: &mut LocalMemoryRegion<u8>, conn: &Conn) -> Result<Report> {
     Ok(Report::Peer)
 }
 
-fn slot_range(slot: usize, msg_size: usize) -> Range<usize> {
-    let start = slot * msg_size;
-    start..start + msg_size
-}
-
-fn remote_slot_range(slot: usize, msg_size: usize) -> Range<u64> {
-    let start = (slot * msg_size) as u64;
-    start..start + msg_size as u64
-}
-
 fn post(
     direction: Direction,
     qp: &mut QueuePair,
     local_mr: &mut LocalMemoryRegion<u8>,
-    remote_mr: &mut RemoteMemoryRegion<u8>,
+    remote_slice: &mut RemoteMemorySlice,
     slot: usize,
     msg_size: usize,
     wr_id: u64,
 ) -> Result<()> {
-    let local_range = slot_range(slot, msg_size);
-    let remote_range = remote_slot_range(slot, msg_size);
-    unsafe {
-        match direction {
-            Direction::Write => qp.rdma_write(
-                local_mr,
-                vec![vec![local_range]],
-                remote_mr,
-                vec![remote_range],
-                vec![wr_id],
-                vec![ibv_send_flags::SIGNALED],
-            )?,
-            Direction::Read => qp.rdma_read(
-                remote_mr,
-                vec![remote_range],
-                local_mr,
-                vec![vec![local_range]],
-                vec![wr_id],
-                vec![ibv_send_flags::SIGNALED],
-            )?,
-        }
-    }
-    Ok(())
+    let start = slot * msg_size;
+    let sges = [local_mr.slice(start..start+msg_size)];
+    let remote_slice = remote_slice.slice(start..start+msg_size);
+    let wr = match direction {
+        Direction::Write => SendWorkRequest::rdma_write(
+            wr_id,
+            &sges,
+            remote_slice,
+            SendFlags::SIGNALED
+        ).expect("failed to create work request"),
+        Direction::Read => SendWorkRequest::rdma_read(
+            wr_id,
+            &sges,
+            remote_slice,
+            SendFlags::SIGNALED
+        ).expect("failed to create work request"),
+    };
+    unsafe { qp.post_send(&[&wr]) }
 }
 
 fn initiate(
@@ -107,7 +90,7 @@ fn initiate(
     cq: &CompletionQueue,
     qp: &mut QueuePair,
     conn: &Conn,
-    remote_mr: &mut RemoteMemoryRegion<u8>,
+    remote_mr: &mut RemoteMemorySlice,
     msg_size: usize,
     iterations: usize,
     window: usize,
@@ -121,7 +104,7 @@ fn initiate(
 
     let mut posted = window;
     let mut completed = 0usize;
-    let mut wc = vec![ibv_wc::default(); window];
+    let mut wc = vec![WorkCompletion::default(); window];
 
     while completed < iterations {
         let completions = cq.poll(&mut wc)?;

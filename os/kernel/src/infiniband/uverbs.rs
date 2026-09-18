@@ -4,12 +4,10 @@ use crate::process_manager;
 use core::mem::MaybeUninit;
 use core::slice::from_raw_parts_mut;
 use log::error;
-use rdma::uverbs_uapi::{AllocPdResponse, DeallocPdRequest, QueryPortRequest, UserSlice};
-use rdma::{ibv_device, uverbs_uapi::{
-    CreateCqRequest, CreateMrRequest, CreateQpRequest, ModifyQpRequest, UverbsCmd,
-}};
+use rdma::uverbs_uapi::{CreateCqRequest, CreateMrRequest, CreateQpRequest, ModifyQpRequest, UverbsCmd, AllocPdResponse, DeallocPdRequest, QueryPortRequest, UserSlice};
 use syscall::return_vals::{Errno, SyscallResult};
 use x86_64::VirtAddr;
+use rdma::DeviceHandle;
 
 /// user_in describes the parameters provided by the user
 /// user_out describes a user buffer for return values
@@ -48,7 +46,7 @@ pub fn uverbs_ctl(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user
 fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: UserSlice) -> SyscallResult {
     match cmd {
         UverbsCmd::QueryDevices => {
-            let devices = uverbs_query_devices(user_out.capacity::<ibv_device>());
+            let devices = uverbs_query_devices(user_out.capacity::<DeviceHandle>());
             copy_slice_to_user(user_out, &devices)
         }
         UverbsCmd::QueryDevice => {

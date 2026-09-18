@@ -1,4 +1,4 @@
-use pci_types::{Bar, ConfigRegionAccess};
+use pci_types::Bar;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{PageTableFlags, PhysFrame, Size4KiB};
 
