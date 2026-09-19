@@ -17,7 +17,7 @@ use tock_registers::interfaces::Writeable;
 use tock_registers::{register_bitfields, register_structs};
 use tock_registers::registers::WriteOnly;
 use zerocopy::{BigEndian, FromBytes, U16, U32, U64};
-use log::{debug, error};
+use log::error;
 use spin::{Mutex, RwLock};
 use mm::{mmap, MmapFlags, PAGE_SIZE};
 use rdma::ib_core::{QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairtState, SendFlags, ScatterGatherEntry};
@@ -112,7 +112,6 @@ impl IbvQueuePair for QueuePair {
         // means that in all cases, the actual data of the incoming message will start at an offset
         // of 40 bytes into the buffer(s) in the scatter list.
 
-        debug!("post_send num_wrs: {}", wrs.len());
         if *self.state.read() != QueuePairtState::ReadyToSend {
             return Err(Error::new(ErrorKind::Other, "queue pair cannot send in this state"));
         }
