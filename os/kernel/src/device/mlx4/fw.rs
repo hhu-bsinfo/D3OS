@@ -791,6 +791,7 @@ register_bitfields![u32,
     ]
 ];
 
+#[repr(C)]
 pub struct DoorbellEq  {
     pub val: WriteOnly<u32, DoorbellEqField::Register>,
     _reserved1: u32
