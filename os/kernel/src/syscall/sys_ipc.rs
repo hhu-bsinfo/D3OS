@@ -1,7 +1,7 @@
 use core::str;
 
 use alloc::{format, slice};
-use ipc::{IpcSyscallParams, MESSAGE_DATA_SIZE};
+use ipc::{IpcEndpoints, IpcSyscallParams, MESSAGE_DATA_SIZE};
 use ipc::queues::{IpcError, IpcQueue, IpcQueueType};
 use log::error;
 use naming::shared_types::OpenOptions;
@@ -44,7 +44,7 @@ pub extern "sysv64" fn sys_ipc_delete(name_ptr: *const u8, name_len: usize) -> i
     }
 }
 
-pub fn remove_enpoints_for_process(process_id: &Uuid) {
+pub fn remove_endpoints_for_process(process_id: &Uuid) {
     if let Ok(svc_fh) = nameservice::open("/svc", OpenOptions::DIRECTORY) {
         // get all services
         if let Ok(list) = nameservice::list_dir(svc_fh) {
@@ -83,8 +83,8 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
         nameservice::close(fh);
         let service = unsafe { &(*(buf.as_ptr() as *const ServiceObject)).service };
 
-        let ipc_queue_ptr = service.ipc_queue_addr as *const IpcQueueType;
-        if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_ref() } {
+        let endpoints = unsafe { (service.ipc_queue_addr as *const IpcEndpoints).as_ref_unchecked() };
+        if let Some(ipc_queue) = endpoints.get(service_name) {
             let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
             let msg_type = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_type_ptr, params.msg_type_len)) };
             let res = ipc_queue.send(name, msg_type, message, &scheduler().current_thread().process().id(), scheduler().current_thread().id());
@@ -100,6 +100,8 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
 }
 
 pub extern "sysv64" fn sys_ipc_receive_blocking(timeout_ms: usize) -> isize {
+
+    todo!("this needs to be updated to use the nameservice and the new endpoints struct");
 
     let ipc_queue_ptr = consts::USER_SPACE_MAILBOX_START as *mut IpcQueueType;
     if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_mut() } {

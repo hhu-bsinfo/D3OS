@@ -148,6 +148,6 @@ impl core::fmt::Debug for Process {
 impl Drop for Process {
     fn drop(&mut self) {
         network::close_sockets_for_process(self);
-        crate::syscall::sys_ipc::remove_enpoints_for_process(&self.id());
+        crate::syscall::sys_ipc::remove_endpoints_for_process(&self.id());
     }
 }

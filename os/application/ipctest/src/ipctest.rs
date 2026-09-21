@@ -253,7 +253,7 @@ pub fn main() {
                     }
                 },
             }
-            thread::sleep(300);
+            //thread::sleep(300);
         }
 
     } else if command == "contention_sender" {

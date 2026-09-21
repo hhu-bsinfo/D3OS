@@ -12,10 +12,14 @@ extern crate alloc;
 use core::sync::atomic::AtomicBool;
 
 use alloc::format;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use spin::RwLock;
 use syscall::{SystemCall, syscall};
 
 use concurrent::{process, thread};
 
+use crate::const_string::ConstString;
 use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageWrapper};
 use crate::queues::{IpcError, IpcQueue, IpcQueueType};
 
@@ -29,16 +33,29 @@ const MAX_NUM_MESSAGES: usize = 16; // !this needs to be a power of 2! also this
 
 const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
-static MAILBOX_INIT: AtomicBool = AtomicBool::new(false);
+static ENDPOINTS_INIT: AtomicBool = AtomicBool::new(false);
+
+pub struct IpcEndpoints {
+    endpoints: RwLock<Vec<(ConstString<64>, Arc<IpcQueueType>)>>
+}
+
+impl IpcEndpoints {
+    pub fn get(&self, name: &str) -> Option<Arc<IpcQueueType>> {
+        self.endpoints.read().iter().find(|(endpoint_name, _)| endpoint_name == name).map(|(_, endpoint)| Arc::clone(endpoint))
+    }
+}
 
 pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, IpcError> {
     // TODO what happens when we register multiple endpoints / multiple services for this endpoint
 
-    let mailbox_ptr = USER_SPACE_MAILBOX_START as *mut IpcQueueType;
+    let endpoints_ptr = USER_SPACE_MAILBOX_START as *mut IpcEndpoints;
     // if queue is not initialized, create new queue
-    if MAILBOX_INIT.compare_exchange(false, true, core::sync::atomic::Ordering::Relaxed, core::sync::atomic::Ordering::Relaxed).is_ok() {
-        unsafe { mailbox_ptr.write(IpcQueueType::new()) };
+    if ENDPOINTS_INIT.compare_exchange(false, true, core::sync::atomic::Ordering::Relaxed, core::sync::atomic::Ordering::Relaxed).is_ok() {
+        unsafe { endpoints_ptr.write(IpcEndpoints { endpoints: RwLock::new(Vec::new()) }) };
     }
+
+    // create new endpoint
+    unsafe { (*endpoints_ptr).endpoints.write().push((ConstString::from(svc_name), Arc::new(IpcQueueType::new()))); }
 
     let name_ptr = svc_name.as_ptr();
     let name_len = svc_name.len();
