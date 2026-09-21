@@ -1,5 +1,6 @@
 use spin::RwLock;
 
+use crate::queues::IpcError;
 use crate::queues::buffer_queue::BufferQueue;
 use crate::queues::ipc_lfqueue::IpcMessageWrapperOwned;
 use crate::{MAX_NUM_MESSAGES, MESSAGE_DATA_SIZE};
@@ -15,7 +16,7 @@ impl super::IpcQueue for IpcLockQueue {
         Self { messages: RwLock::new(BufferQueue::new()) }
     }
 
-    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &uuid::Uuid, sender_tid: usize) -> bool {
+    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
         let mut data_arr = [0; MESSAGE_DATA_SIZE];
         let l = core::cmp::min(MESSAGE_DATA_SIZE, data.len());
         data_arr[..l].copy_from_slice(&data[..l]);
@@ -30,9 +31,9 @@ impl super::IpcQueue for IpcLockQueue {
         self.messages.write().enqueue(msg)
     }
 
-    fn receive(&self) -> Option<impl IpcMessageWrapper> {
-        Some(IpcMessageWrapperOwned {
-            msg: self.messages.write().dequeue_front()?
+    fn receive(&self) -> Result<impl IpcMessageWrapper, IpcError> {
+        Ok(IpcMessageWrapperOwned {
+            msg: self.messages.write().dequeue_front().ok_or(IpcError::Full)?
         })
     }
 

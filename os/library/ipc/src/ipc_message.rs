@@ -24,6 +24,9 @@ impl IpcMessage {
     pub fn is_empty(&self) -> bool {
         self.data_len == 0
     }
+    pub fn is_valid(&self) -> bool {
+        self.sender_tid != 0 && !self.sender_pid.is_nil()
+    }
     pub fn name_as_str(&self) -> &str {
         self.name.as_str_unchecked()
     }

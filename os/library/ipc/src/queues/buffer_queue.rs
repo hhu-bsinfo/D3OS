@@ -1,3 +1,5 @@
+use crate::queues::IpcError;
+
 
 
 struct Entry<T> {
@@ -29,7 +31,7 @@ impl<T, const S: usize> BufferQueue<T, S> {
         }), front: 0, middle: None, back: S-1, num_objects: 0 }
     }
 
-    pub fn enqueue(&mut self, object: T) -> bool {
+    pub fn enqueue(&mut self, object: T) -> Result<usize, IpcError> {
         match self.middle {
             // there exists an entry
             Some(middle_idx) => {
@@ -39,9 +41,9 @@ impl<T, const S: usize> BufferQueue<T, S> {
                         self.get(next_idx).object = Some(object);
                         self.middle = Some(next_idx);
                         self.num_objects += 1;
-                        true
+                        Ok(0)
                     },
-                    None => false,
+                    None => Err(IpcError::Full),
                 }
             },
             // this is the first enqueue, queue is curently empty
@@ -49,7 +51,7 @@ impl<T, const S: usize> BufferQueue<T, S> {
                 self.get(0).object = Some(object);
                 self.middle = Some(0);
                 self.num_objects += 1;
-                true
+                Ok(0)
             },
         }
     }

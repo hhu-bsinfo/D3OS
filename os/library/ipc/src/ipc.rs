@@ -12,7 +12,7 @@ extern crate alloc;
 use core::sync::atomic::AtomicBool;
 
 use alloc::format;
-use syscall::{SystemCall, return_vals::SyscallResult, syscall};
+use syscall::{SystemCall, syscall};
 
 use concurrent::{process, thread};
 
@@ -139,7 +139,7 @@ pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -
 
 pub fn receive() -> Result<impl IpcMessageWrapper, IpcError> {
     let ipc_queue = unsafe { (USER_SPACE_MAILBOX_START as *const IpcQueueType).as_ref().ok_or(IpcError::NoIpcQueue) };
-    ipc_queue?.receive().ok_or(IpcError::Empty)
+    ipc_queue?.receive()
 }
 
 pub fn receive_blocking(timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {

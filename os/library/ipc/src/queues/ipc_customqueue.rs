@@ -1,6 +1,7 @@
 use core::sync::atomic::{AtomicI16, AtomicU16, Ordering};
 use uuid::Uuid;
 
+use crate::queues::IpcError;
 use crate::{MAX_NUM_MESSAGES, MESSAGE_DATA_SIZE};
 use crate::ipc_message::{IpcMessage, IpcMessageWrapper};
 
@@ -40,7 +41,7 @@ impl super::IpcQueue for IpcCustomQueue {
         Self::new()
     }
     
-    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid, sender_tid: usize) -> bool {
+    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid, sender_tid: usize) -> Result<usize, IpcError> {
 
         // 1. increment writer idx
         let writer_idx = self.writer_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
@@ -59,15 +60,15 @@ impl super::IpcQueue for IpcCustomQueue {
                 msg.sender_pid = *sender_pid;
                 msg.sender_tid = sender_tid;
                 self.mailbox[writer_idx].store(msg_len as i16, Ordering::SeqCst);
-                return true;
+                return Ok(0);
             }
         }
 
         self.writer_idx().store(writer_idx as u16, Ordering::SeqCst);
-        false
+        Err(IpcError::Full)
     }
 
-    fn receive(&self) -> Option<impl IpcMessageWrapper> {
+    fn receive(&self) -> Result<impl IpcMessageWrapper, IpcError> {
 
         // iter until writer_idx to check for any new messages
         let reader_idx = self.reader_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
@@ -78,13 +79,18 @@ impl super::IpcQueue for IpcCustomQueue {
         // check if found valid message
         if msg_len > 0 {
             // put Message into Wrapper to enable automatic clearing of the queue, once the value is dropped
-            self.messages.get(reader_idx).map(|msg| IpcMessageWrapperCustomQueue { msg, queue_ptr: Some(&self.mailbox[reader_idx]) })
+            let msg = &self.messages[reader_idx];
+            if msg.is_valid() {
+                Ok(IpcMessageWrapperCustomQueue { msg, queue_ptr: Some(&self.mailbox[reader_idx]) })
+            } else {
+                Err(IpcError::Invalid)
+            }
         } else {
             // free mailbox slot again
             self.mailbox[reader_idx].store(msg_len, Ordering::SeqCst);
             // reset reader idx
             self.reader_idx().store(reader_idx as u16, Ordering::SeqCst);
-            None
+            Err(IpcError::Invalid)
         }
     }
     

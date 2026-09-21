@@ -17,8 +17,8 @@ pub type IpcQueueType = ipc_ringbufferqueue::IpcRingbufferQueue<crate::ipc_messa
 
 pub trait IpcQueue {
     fn new() -> Self;
-    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid, sender_tid: usize) -> bool;
-    fn receive(&self) -> Option<impl IpcMessageWrapper>;
+    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid, sender_tid: usize) -> Result<usize, IpcError>;
+    fn receive(&self) -> Result<impl IpcMessageWrapper, IpcError>;
     fn messages_left(&self) -> usize;
 }
 
@@ -30,6 +30,7 @@ pub enum IpcError {
     Empty = -4,
     MsgTooLarge = -5,
     NoIpcQueue = -6,
+    Invalid = -7,
 }
 
 impl IpcError {
@@ -56,6 +57,7 @@ impl From<isize> for IpcError {
             -4 => IpcError::Empty,
             -5 => IpcError::MsgTooLarge,
             -6 => IpcError::NoIpcQueue,
+            -7 => IpcError::Invalid,
             _ => IpcError::Generic,
         }
     }

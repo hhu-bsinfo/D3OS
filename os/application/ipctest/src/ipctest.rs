@@ -232,7 +232,7 @@ pub fn main() {
                             let data = msg.data_as_str();
                             if data == "STOP" {
                                 num_stop_req += 1;
-                                log::info!("{} received STOP request from {} -- [{} in total]", tid, msg.sender_tid(), num_stop_req);
+                                log::info!("{} received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
                                 if num_stop_req >= num_child_processes {
                                     log::info!("{} received {} STOP requests, exiting...", tid, num_stop_req);
                                     return;
@@ -253,7 +253,7 @@ pub fn main() {
                     }
                 },
             }
-            //thread::sleep(300);
+            thread::sleep(300);
         }
 
     } else if command == "contention_sender" {
