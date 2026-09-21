@@ -18,6 +18,8 @@ terminal = { path = "../../library/terminal" }
 concurrent = { path = "../../library/concurrent" }
 ipc = { path = "../../library/ipc" }
 syscall = { path = "../../library/syscall" }
+logger = { path = "../../library/logger" }
+log = "0.4.26"
 
 
 uuid = { version = "1.23.1", default-features = false, features = ["v7"] }

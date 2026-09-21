@@ -1,4 +1,4 @@
-use syscall::return_vals::Errno;
+use syscall::return_vals::{self, Errno};
 use uuid::Uuid;
 
 use crate::ipc_message::IpcMessageWrapper;
@@ -9,6 +9,7 @@ pub mod buffer_queue;
 pub mod ipc_lockqueue;
 pub mod atomic_ringbuffer;
 pub mod ipc_ringbufferqueue;
+//pub mod ipc_lfdsqueue;
 
 
 pub type IpcQueueType = ipc_ringbufferqueue::IpcRingbufferQueue<crate::ipc_message::IpcMessage, { crate::MAX_NUM_MESSAGES }>;
@@ -28,6 +29,7 @@ pub enum IpcError {
     Full = -3,
     Empty = -4,
     MsgTooLarge = -5,
+    NoIpcQueue = -6,
 }
 
 impl IpcError {
@@ -53,6 +55,7 @@ impl From<isize> for IpcError {
             -3 => IpcError::Full,
             -4 => IpcError::Empty,
             -5 => IpcError::MsgTooLarge,
+            -6 => IpcError::NoIpcQueue,
             _ => IpcError::Generic,
         }
     }
@@ -60,9 +63,7 @@ impl From<isize> for IpcError {
 
 impl From<Errno> for IpcError {
     fn from(value: Errno) -> Self {
-        match value {
-            // TODO better mapping here
-            _ => IpcError::Generic,
-        }
+        let ret_code = return_vals::convert_syscall_result_to_ret_code(Err(value));
+        ret_code.into()
     }
 }

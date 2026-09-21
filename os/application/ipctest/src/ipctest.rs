@@ -16,11 +16,16 @@ use runtime::*;
 use terminal::println;
 use uuid::Uuid;
 
+static LOGGER: logger::Logger = logger::Logger::new();
+
 #[unsafe(no_mangle)]
 pub fn main() {
     let process = process::current();
     let thread = thread::current().unwrap();
     let tid = thread.id();
+
+    log::set_logger(&LOGGER).map(|_| log::set_max_level(log::LevelFilter::Debug));
+    log::info!("[{}:{}] Successfully initialized logger!", process.id(), tid);
 
     println!("Hello from Thread [{}] in Process [{}]", thread.id(), process.id());
 
@@ -206,28 +211,45 @@ pub fn main() {
         
         ipc::register_ipc_endpoint("ipctest_contention_recv");
 
-        for _ in 0..4 {
-            thread::start_application("ipctest", vec!["contention_sender"]);
-        }
+        let num_child_processes = 16;
+
+        thread::create(move || {
+            for _ in 0..num_child_processes {
+                thread::start_application("ipctest", vec!["contention_sender"]);
+            }
+        });
 
         thread::sleep(1000);
+
+        let mut num_stop_req = 0;
 
         loop {
             match ipc::receive() {
                 Ok(msg_wrapper) => {
                     let msg = msg_wrapper.msg();
-                    let data = msg.data_as_usize_slice();
-                    let mut tmp = 0;
-                    if msg.sender_tid() == 0 {
-                        tmp += 1;
+                    match msg.name_as_str() {
+                        "CTRL" => {
+                            let data = msg.data_as_str();
+                            if data == "STOP" {
+                                num_stop_req += 1;
+                                log::info!("{} received STOP request from {} -- [{} in total]", tid, msg.sender_tid(), num_stop_req);
+                                if num_stop_req >= num_child_processes {
+                                    log::info!("{} received {} STOP requests, exiting...", tid, num_stop_req);
+                                    return;
+                                }
+                            }
+                        },
+                        _ => {
+                            let data = msg.data_as_usize_slice();
+                            log::info!("{} received request {} * {} from {}", tid, data[0], data[1], msg.sender_tid());
+                            let res = data[0] * data[1];
+                            ipc::answer(msg, res);
+                        },
                     }
-                    println!("{} received request {} * {} from {}", tid, data[0], data[1], msg.sender_tid());
-                    let res = data[0] * data[1];
-                    ipc::answer(msg, res);
                 },
                 Err(err) => {
                     if err != IpcError::Empty {
-                        println!("[{}] Error: {:?}", tid, err);
+                        log::error!("[{}] Error: {:?}", tid, err);
                     }
                 },
             }
@@ -238,33 +260,26 @@ pub fn main() {
         let mut a = tid;
         let b = 2;
         loop {
-            println!("{} Sending {}*{}", tid, a, b);
+            log::info!("{} Sending {}*{}", tid, a, b);
             match ipc::send_and_receive("ipctest_contention_recv", "mult", &[a, b], 5000) {
                 Ok(msg_wrapper) => {
                     a = *msg_wrapper.msg().data_as_usize();
                     match a {
                         0 => {
-                            println!("{} Error, received zero!", tid);
+                            log::error!("{} Error, received zero!", tid);
                         },
                         5000..usize::MAX => {
-                            println!("{} Received {}", tid, a);
+                            log::info!("{} Received {}", tid, a);
+                            ipc::answer_with_name(msg_wrapper.msg(), "CTRL", "STOP");
                             println!("{} Done!", tid);
                             return;
                         },
-                        _ => println!("{} Received {}", tid, a),
+                        _ => log::info!("{} Received {}", tid, a),
                     }
                 },
-                Err(err) => println!("[{}] Error: {:?}", tid, err),
+                Err(err) => log::error!("[{}] Error: {:?}", tid, err),
             }
             thread::sleep(500);
-        }
-    } else if command == "tmp" {
-        for _ in 0..1000 {
-            thread::create(|| {
-                let thread = thread::current().unwrap();
-                let tid = thread.id();
-                println!("Hello from thread {}", tid);
-            });
         }
     }
 }
