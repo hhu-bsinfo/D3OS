@@ -2,7 +2,7 @@ use core::str;
 
 use alloc::{format, slice};
 use ipc::{IpcSyscallParams, MESSAGE_DATA_SIZE};
-use ipc::queues::{IpcQueue, IpcQueueType};
+use ipc::queues::{IpcError, IpcQueue, IpcQueueType};
 use log::error;
 use naming::shared_types::OpenOptions;
 use syscall::return_vals::{self, SyscallResult};
@@ -70,7 +70,7 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
 
     if message.len() > MESSAGE_DATA_SIZE {
         error!("ipc message is to large, aborting...");
-        return return_vals::convert_syscall_result_to_ret_code(Err(return_vals::Errno::EINVAL));
+        return IpcError::MsgTooLarge.into();
     }
     
     let service_name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.service_name_ptr, params.service_name_len)) };
@@ -91,11 +91,13 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
 
             if res {
                 return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(message.len()));
-            }   
+            } else {
+                return IpcError::Full.into();
+            }
         }
     }
 
-    return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(return_vals::Errno::EEXIST))
+    IpcError::Generic.into()
 }
 
 pub extern "sysv64" fn sys_ipc_receive_blocking(timeout_ms: usize) -> isize {
@@ -112,10 +114,10 @@ pub extern "sysv64" fn sys_ipc_receive_blocking(timeout_ms: usize) -> isize {
         WAIT_QUEUE.wait(|| ipc_queue.messages_left() > 0 || timer().systime_ms() >= timeout_time, "waiting for ipc receive");
         let num_messages = ipc_queue.messages_left();
         if num_messages > 0 {
-            return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(num_messages))
+            return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(num_messages));
         } else {
-            return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(return_vals::Errno::EEXIST))
+            return IpcError::Timeout.into();
         }
     }
-    return_vals::convert_syscall_result_to_ret_code(SyscallResult::Err(return_vals::Errno::EEXIST))
+    IpcError::Generic.into()
 }

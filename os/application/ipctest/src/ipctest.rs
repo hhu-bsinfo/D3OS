@@ -11,6 +11,7 @@ use alloc::vec;
 use concurrent::{process, thread};
 use ipc::const_string::ConstString;
 use ipc::ipc_message::IpcMessageWrapper;
+use ipc::queues::IpcError;
 use runtime::*;
 use terminal::println;
 use uuid::Uuid;
@@ -62,12 +63,12 @@ pub fn main() {
         ipc::register_ipc_endpoint("ipctest_recv");
         loop {
             match ipc::receive() {
-                Some(msg_wrapper) => {
+                Ok(msg_wrapper) => {
                     let m = msg_wrapper.msg();
                     println!("Received Message: {}", m);
                     break;
                 },
-                None => {}
+                Err(err) => println!("[{}] Error: {:?}", tid, err),
             }
             thread::sleep(1_000);
         }
@@ -81,12 +82,15 @@ pub fn main() {
 
         // wait for ping
         loop {
-            if let Some(msg) = ipc::receive() {
-                let ping = msg.msg().data_as_usize();
-                if *ping > 100 { return; }
-                let pong = ping + 1;
-                println!("PONG! [{}]", pong);
-                ipc::answer_with_name(&msg.msg(), "pong", pong);
+            match ipc::receive() {
+                Ok(msg) => {
+                    let ping = msg.msg().data_as_usize();
+                    if *ping > 100 { return; }
+                    let pong = ping + 1;
+                    println!("PONG! [{}]", pong);
+                    ipc::answer_with_name(&msg.msg(), "pong", pong);
+                },
+                Err(err) => println!("[{}] Error: {:?}", tid, err),
             }
             thread::sleep(200);
         }
@@ -97,12 +101,15 @@ pub fn main() {
 
         // wait for pong
         loop {
-            if let Some(msg) = ipc::receive() {
-                let pong = msg.msg().data_as_usize();
-                if *pong > 100 { return; }
-                let ping = pong + 1;
-                println!("PING! [{}]", ping);
-                ipc::answer_with_name(&msg.msg(), "ping", ping);
+            match ipc::receive() {
+                Ok(msg) => {
+                    let pong = msg.msg().data_as_usize();
+                    if *pong > 100 { return; }
+                    let ping = pong + 1;
+                    println!("PING! [{}]", ping);
+                    ipc::answer_with_name(&msg.msg(), "ping", ping);
+                },
+                Err(err) => println!("[{}] Error: {:?}", tid, err),
             }
             thread::sleep(200);
         }
@@ -119,7 +126,7 @@ pub fn main() {
         let mut prev = 0;
 
         loop {
-            while let Some(msg) = ipc::receive() {
+            while let Ok(msg) = ipc::receive() {
                 let number = *msg.msg().data_as_usize();
                 println!("Received Message: {}", number);
                 if number == limit {
@@ -147,7 +154,7 @@ pub fn main() {
         loop {
 
             // check for stop signal
-            if let Some(msg) = ipc::receive() {
+            if let Ok(msg) = ipc::receive() {
                 
                 let msg_data = msg.msg().data_as_str();
 
@@ -177,12 +184,12 @@ pub fn main() {
 
         loop {
             match ipc::receive() {
-                Some(msg) => {
+                Ok(msg) => {
                     let my_struct: &MyStruct = unsafe { ipc::bytes_as_any(&*msg.msg().data()) };
                     println!("-- Receive --\n{:}", my_struct);
                     break;
                 },
-                None => {}
+                Err(err) => println!("[{}] Error: {:?}", tid, err),
             }
             thread::sleep(300);
         }
@@ -195,7 +202,7 @@ pub fn main() {
         };
         println!("-- Sender --\n{:}", my_struct);
         ipc::send_struct("ipctest_struct_recv", "test", &my_struct);
-    } else if command == "contention" {
+    } else if command == "contention" || command == "c" {
         
         ipc::register_ipc_endpoint("ipctest_contention_recv");
 
@@ -207,7 +214,7 @@ pub fn main() {
 
         loop {
             match ipc::receive() {
-                Some(msg_wrapper) => {
+                Ok(msg_wrapper) => {
                     let msg = msg_wrapper.msg();
                     let data = msg.data_as_usize_slice();
                     let mut tmp = 0;
@@ -218,7 +225,11 @@ pub fn main() {
                     let res = data[0] * data[1];
                     ipc::answer(msg, res);
                 },
-                None => {}
+                Err(err) => {
+                    if err != IpcError::Empty {
+                        println!("[{}] Error: {:?}", tid, err);
+                    }
+                },
             }
             //thread::sleep(300);
         }
@@ -228,7 +239,7 @@ pub fn main() {
         let b = 2;
         loop {
             println!("{} Sending {}*{}", tid, a, b);
-            match ipc::send_and_receive("ipctest_contention_recv", "mult", &[a, b]) {
+            match ipc::send_and_receive("ipctest_contention_recv", "mult", &[a, b], 5000) {
                 Ok(msg_wrapper) => {
                     a = *msg_wrapper.msg().data_as_usize();
                     match a {
@@ -243,7 +254,7 @@ pub fn main() {
                         _ => println!("{} Received {}", tid, a),
                     }
                 },
-                Err(_) => println!("Error sending message"),
+                Err(err) => println!("[{}] Error: {:?}", tid, err),
             }
             thread::sleep(500);
         }

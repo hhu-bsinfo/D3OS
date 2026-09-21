@@ -1,3 +1,4 @@
+use syscall::return_vals::Errno;
 use uuid::Uuid;
 
 use crate::ipc_message::IpcMessageWrapper;
@@ -11,10 +12,57 @@ pub mod ipc_ringbufferqueue;
 
 
 pub type IpcQueueType = ipc_ringbufferqueue::IpcRingbufferQueue<crate::ipc_message::IpcMessage, { crate::MAX_NUM_MESSAGES }>;
+//pub type IpcQueueType = ipc_lfqueue::IpcLFQueue;
 
 pub trait IpcQueue {
     fn new() -> Self;
     fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid, sender_tid: usize) -> bool;
     fn receive(&self) -> Option<impl IpcMessageWrapper>;
     fn messages_left(&self) -> usize;
+}
+
+#[derive(Debug, PartialEq)]
+pub enum IpcError {
+    Generic = -1,
+    Timeout = -2,
+    Full = -3,
+    Empty = -4,
+    MsgTooLarge = -5,
+}
+
+impl IpcError {
+    pub fn convert_syscall_result(syscall_result: Result<usize, Errno>) -> Result<usize, Self> {
+        match syscall_result {
+            Ok(ok) => Ok(ok),
+            Err(err) => Err(err.into()),
+        }
+    }
+}
+
+impl From<IpcError> for isize {
+    fn from(value: IpcError) -> Self {
+        value as isize
+    }
+}
+
+impl From<isize> for IpcError {
+    fn from(value: isize) -> Self {
+        match value {
+            -1 => IpcError::Generic,
+            -2 => IpcError::Timeout,
+            -3 => IpcError::Full,
+            -4 => IpcError::Empty,
+            -5 => IpcError::MsgTooLarge,
+            _ => IpcError::Generic,
+        }
+    }
+}
+
+impl From<Errno> for IpcError {
+    fn from(value: Errno) -> Self {
+        match value {
+            // TODO better mapping here
+            _ => IpcError::Generic,
+        }
+    }
 }

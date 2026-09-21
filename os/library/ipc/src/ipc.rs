@@ -17,7 +17,7 @@ use syscall::{SystemCall, return_vals::SyscallResult, syscall};
 use concurrent::{process, thread};
 
 use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageWrapper};
-use crate::queues::{IpcQueue, IpcQueueType};
+use crate::queues::{IpcError, IpcQueue, IpcQueueType};
 
 // Schnittstelle für Interprozesskommunikation
 
@@ -31,7 +31,7 @@ const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
 static MAILBOX_INIT: AtomicBool = AtomicBool::new(false);
 
-pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, syscall::return_vals::Errno> {
+pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, IpcError> {
     // TODO what happens when we register multiple endpoints / multiple services for this endpoint
 
     let mailbox_ptr = USER_SPACE_MAILBOX_START as *mut IpcQueueType;
@@ -42,52 +42,66 @@ pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, syscall::return_va
 
     let name_ptr = svc_name.as_ptr();
     let name_len = svc_name.len();
-    syscall(SystemCall::IpcRegister, &[name_ptr as usize, name_len])
+    IpcError::convert_syscall_result(syscall(SystemCall::IpcRegister, &[name_ptr as usize, name_len]))
 }
 
-pub fn remove_ipc_endpoint(svc_name: &str) -> Result<usize, syscall::return_vals::Errno> {
+pub fn remove_ipc_endpoint(svc_name: &str) -> Result<usize, IpcError> {
     let name_ptr = svc_name.as_ptr();
     let name_len = svc_name.len();
-    syscall(SystemCall::IpcDelete, &[name_ptr as usize, name_len])
+    IpcError::convert_syscall_result(syscall(SystemCall::IpcDelete, &[name_ptr as usize, name_len]))
 }
 
-pub fn send<T: IpcMessageContent>(service: &str, msg_name: &str, message: T) -> SyscallResult {
+pub fn send<T: IpcMessageContent>(service: &str, msg_name: &str, message: T) -> Result<usize, IpcError> {
     let bytes: &[u8] = message.to_bytes();
     send_internal(service, msg_name, message.tag(), bytes)
 }
 
-pub fn send_with_tag<T: IpcMessageContent>(service: &str, msg_name: &str, tag: &str, message: T) -> SyscallResult {
+pub fn send_with_tag<T: IpcMessageContent>(service: &str, msg_name: &str, tag: &str, message: T) -> Result<usize, IpcError> {
     let bytes = message.to_bytes();
     send_internal(service, msg_name, tag, bytes)
 }
 
-pub fn send_struct<T: Copy>(service: &str, msg_name: &str, message: &T) -> SyscallResult {
+pub fn send_struct<T: Copy>(service: &str, msg_name: &str, message: &T) -> Result<usize, IpcError> {
     let bytes = unsafe { any_as_bytes(message) };
     let tag = core::any::type_name_of_val(message);
     send_internal(service, msg_name, tag, bytes)
 }
 /// and message and busy wait for answer, TODO block thread here
-pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, message: T) -> Result<impl IpcMessageWrapper, usize> {
+pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, message: T, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
     let bytes: &[u8] = message.to_bytes();
     match send_internal(service, msg_name, message.tag(), bytes) {
         Ok(_) => {
+            let mut counter = 0;
             loop {
-                if let Some(msg) = receive() {
-                    return Ok(msg);
+                let rec = receive();
+                match rec {
+                    // TODO find specific answer message
+                    Ok(_) => return rec,
+                    Err(err) => {
+                        match err {
+                            IpcError::Empty => {
+                                thread::sleep(200);
+                                counter += 200;
+                                if counter >= timeout_ms {
+                                    return Err(IpcError::Timeout);
+                                }
+                            },
+                            _ => return Err(err),
+                        }
+                    },
                 }
-                thread::sleep(200);
             }
         },
-        Err(err) => Err(err as usize),
+        Err(err) => Err(err),
     }
 }
 
-pub fn answer<T: IpcMessageContent>(original_message: &IpcMessage, message: T) -> SyscallResult {
+pub fn answer<T: IpcMessageContent>(original_message: &IpcMessage, message: T) -> Result<usize, IpcError> {
     let bytes = message.to_bytes();
     send_internal(&format!("callback-{}", original_message.sender_pid), &format!("answer-{}", original_message.name), message.tag(), bytes)
 }
 
-pub fn answer_with_name<T: IpcMessageContent>(original_message: &IpcMessage, msg_name: &str, message: T) -> SyscallResult {
+pub fn answer_with_name<T: IpcMessageContent>(original_message: &IpcMessage, msg_name: &str, message: T) -> Result<usize, IpcError> {
     let bytes = message.to_bytes();
     send_internal(&format!("callback-{}", original_message.sender_pid), msg_name, message.tag(), bytes)
 }
@@ -103,7 +117,7 @@ pub struct IpcSyscallParams {
     pub data_len: usize,
 }
 
-pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -> SyscallResult {
+pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -> Result<usize, IpcError> {
 
     // register callback endpoint
     let pid = process::current().id();
@@ -120,18 +134,18 @@ pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -
         data_len: message.len(),
     };
 
-    syscall(SystemCall::IpcSend, &&params)
+    IpcError::convert_syscall_result(syscall(SystemCall::IpcSend, &&params))
 }
 
-pub fn receive() -> Option<impl IpcMessageWrapper> {
-    let ipc_queue = unsafe { (USER_SPACE_MAILBOX_START as *const IpcQueueType).as_ref() };
-    ipc_queue?.receive()
+pub fn receive() -> Result<impl IpcMessageWrapper, IpcError> {
+    let ipc_queue = unsafe { (USER_SPACE_MAILBOX_START as *const IpcQueueType).as_ref().ok_or(IpcError::Generic) };
+    ipc_queue?.receive().ok_or(IpcError::Empty)
 }
 
-pub fn receive_blocking(timeout_ms: usize) -> Result<impl IpcMessageWrapper, syscall::return_vals::Errno> {
+pub fn receive_blocking(timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
     match syscall(SystemCall::IpcReceiveBlocking, &timeout_ms) {
-        Ok(_) => receive().ok_or(syscall::return_vals::Errno::EEXIST),
-        Err(e) => Err(e),
+        Ok(_) => receive(),
+        Err(e) => Err(e.into()),
     }
 }
 
