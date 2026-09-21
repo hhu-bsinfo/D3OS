@@ -192,7 +192,7 @@ impl QueuePair {
                     _ => return Err("invalid queue pair type"),
                 });
                 context.set_path_migration_state(PATH_MIGRATION_STATE_MIGRATED);
-                context.set_usr_page(uar_index_to_hw(self.uar_index as usize).try_into().unwrap());
+                context.set_usr_page(uar_index_to_hw(self.uar_index).try_into().unwrap());
                 context.set_protection_domain(self.pd.0);
                 context.set_cqn_send(self.send_cq_number);
                 // RC needs remote read

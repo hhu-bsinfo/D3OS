@@ -82,6 +82,6 @@ impl Ownership {
     }
 }
 
-pub(super) fn uar_index_to_hw(index: usize) -> usize {
+pub(super) fn uar_index_to_hw(index: u32) -> u32 {
     index << (PAGE_SHIFT - DEFAULT_UAR_PAGE_SHIFT)
 }

@@ -17,9 +17,9 @@ pub fn uverbs_open_device(device_handle: usize) -> Result<OpenDeviceResponse, &'
     let dev = device_list.get_mut(device_handle_to_idx(device_handle)).unwrap();
     let ctx = dev.open()?;
     Ok(OpenDeviceResponse {
-        uar_index: ctx.uar_index().try_into().map_err(|_| "uar index out of range")?,
-        doorbell_page: dev.map_doorbell_page(&ctx, &process)?.start_address().as_mut_ptr(),
-        blueflame_page: dev.map_blueflame_page(&ctx, &process)?.start_address().as_mut_ptr(),
+        uar_index: ctx.uar_page.index() as u32,
+        doorbell_page: ctx.uar_page.map_doorbell_page(&process)?.start_address().as_mut_ptr(),
+        blueflame_page: ctx.uar_page.map_blueflame_page(&process)?.start_address().as_mut_ptr(),
     })
 }
 
@@ -44,10 +44,10 @@ pub fn uverbs_register_mem_region(device_handle: usize, pd: ProtectionDomainHand
         .map_err(|_| "failed to create memory region")
 }
 
-pub fn uverbs_create_cq<'cq>(device_handle: usize, cq_container: &'cq CreateCqRequest) -> Result<CreateCqResponse, &'static str> {
+pub fn uverbs_create_cq<'cq>(device_handle: usize, req: &'cq CreateCqRequest) -> Result<CreateCqResponse, &'static str> {
     let cq_num = get_dev_list().lock()
         .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .create_cq(cq_container.cq_entries, cq_container.buffer, cq_container.doorbell_ptr)?;
+        .create_cq(req.cq_entries, req.buffer, req.doorbell_ptr, req.uar_index)?;
     Ok(CreateCqResponse { cq_num })
 }
 

@@ -42,10 +42,15 @@ impl CompletionQueue {
     /// `doorbell_ptr` (a two-word consumer-index/arm-index doorbell record). The kernel only
     /// builds the MTT for the buffer and runs the CMD-interface transition; polling, CQE parsing
     /// and arming happen entirely in userspace against the mapped memory from here on.
-    pub(super) fn new(dev: &mut ConnectX3Nic, process: Arc<Process>, num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64) -> Result<Self, &'static str> {
+    pub(super) fn new(
+        dev: &mut ConnectX3Nic,
+        process: Arc<Process>,
+        num_entries: u32,
+        buffer: *const u8,
+        doorbell_ptr: *const u64,
+        uar_idx: u32,
+    ) -> Result<Self, &'static str> {
         let number: u32 = dev.offsets.alloc_cqn().try_into().unwrap();
-        let uar_idx = dev.offsets.alloc_uar();
-
 
         if buffer.addr() % crate::memory::PAGE_SIZE != 0 {
             return Err("CQE buffer is not page aligned");

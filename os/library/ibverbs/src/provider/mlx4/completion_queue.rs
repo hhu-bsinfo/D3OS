@@ -113,6 +113,7 @@ impl CompletionQueue {
             cq_entries: num_entries.try_into().unwrap(),
             buffer: buffer.as_ptr(),
             doorbell_ptr: doorbell_ptr.cast(),
+            uar_index: context.uar_index,
         };
         let mut resp = MaybeUninit::<CreateCqResponse>::uninit();
         uverbs(context.device_handle().into(), CreateCq, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;

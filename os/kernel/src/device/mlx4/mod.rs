@@ -17,6 +17,7 @@ mod utils;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::vec::Vec;
+use core::marker::PhantomData;
 use cmd::CommandInterface;
 use completion_queue::CompletionQueue;
 use event_queue::{EventQueue, init_eqs};
@@ -43,7 +44,7 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use uuid::Uuid;
 use x86_64::PhysAddr;
-use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
+use x86_64::structures::paging::{Page, PageSize, PageTableFlags, PhysFrame, Size4KiB};
 use crate::device::mlx4::fw::DoorbellPage;
 use crate::device::mlx4::icm::DataMemoryProtectionTable;
 use crate::memory::{MemorySpace, PAGE_SIZE};
@@ -96,6 +97,7 @@ pub struct ConnectX3Nic {
     offsets: Offsets,
     icm_tables: MappedIcmTables,
     hca: Hca,
+    contexts: Vec<Context>,
     pds: BTreeMap<ProtectionDomainHandle, Uuid>, // Protection Domain -> Process id
     eqs: Vec<EventQueue>,
     // TODO: find some way to bind this to the relevant EQ
@@ -108,7 +110,7 @@ pub struct ConnectX3Nic {
     /// Counts down to the next check of the internal error buffer, see [`Self::drain_events`].
     internal_error_countdown: u32,
     identity_mapped_uar: MappedPages,
-    uar_bf_bar: Bar,
+    uar_list: Vec<UarPage>,
     pub handle: usize,
 }
 
@@ -174,6 +176,25 @@ impl ConnectX3Nic {
 
         let uar_bf_bar = mlx3_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)")?;
         trace!("mlx4 User Access Region (UAR) Bar : {:?}", uar_bf_bar);
+        let num_uars = capabilities.num_uars();
+        let mut uar_list = Vec::with_capacity(num_uars);
+        let first_uar = capabilities.num_rsvd_uars() as usize;
+        for index in first_uar..num_uars {
+            let (start_addr, _) = uar_bf_bar.unwrap_mem();
+            let uar_addr = start_addr + PAGE_SIZE * index;
+            let bf_addr = start_addr + PAGE_SIZE * (num_uars + index);
+            let doorbell = PhysFrame::from_start_address(PhysAddr::new(uar_addr as u64)).expect("Doorbell page not aligned");
+            let blueflame  = if capabilities.bf() {
+                Some(PhysFrame::from_start_address(PhysAddr::new(bf_addr as u64)).expect("BlueFlame page not aligned"))
+            } else {
+                None
+            };
+            uar_list.push(UarPage {
+                index,
+                doorbell,
+                blueflame,
+            })
+        }
 
         // Identity Mapping of the UAR pages. This is only relevant for the kernel, mainly for EQ
         // Doorbells. A UAR page also has to be mapped individually for each process that open this
@@ -203,6 +224,7 @@ impl ConnectX3Nic {
             offsets,
             icm_tables,
             hca,
+            contexts: Vec::new(),
             pds: BTreeMap::new(),
             eqs,
             cqs: Vec::new(),
@@ -211,7 +233,7 @@ impl ConnectX3Nic {
             internal_error_reported: false,
             internal_error_countdown: 0,
             handle,
-            uar_bf_bar,
+            uar_list,
             identity_mapped_uar
         };
         get_dev_list().lock().push(nic);
@@ -219,12 +241,12 @@ impl ConnectX3Nic {
     }
 
     /// Open a context to the device
-    pub fn open(&mut self) -> Result<Context, &'static str> {
-        let uar_index = self.offsets.alloc_uar();
-        Ok(Context {
+    pub fn open(&mut self) -> Result<&Context, &'static str> {
+        let context = Context {
             device_handle: self.handle,
-            uar_index,
-        })
+            uar_page: self.uar_list.pop().ok_or("No UAR page available")?,
+        };
+        Ok(self.contexts.push_mut(context))
     }
 
     /// Get statistics about the device.
@@ -237,76 +259,6 @@ impl ConnectX3Nic {
             fw_ver_subminor: self.firmware.sub_minor.get(),
             phys_port_cnt: self.ports.len().try_into().unwrap(),
         })
-    }
-
-    /// Map a single Doorbell page (used for ringing SQ/CQ doorbells) into `process`'s address space.
-    ///
-    /// Shared by QP creation (which also maps a BlueFlame page via [`Self::map_bf`]) and CQ
-    /// creation (which only needs the UAR page).
-    pub fn map_doorbell_page(&self, ctx: &Context, process: &Process) -> Result<Page, &'static str> {
-        if ctx.uar_index < self.capabilities.num_rsvd_uars() as usize {
-            return Err("UAR is reserved");
-        }
-
-        if ctx.uar_index >= self.capabilities.num_uars() {
-            return Err("UAR index out of range");
-        }
-
-        // TODO: add bitmap to check if uar is already mapped
-
-        let (bar_addr, _size) = self.uar_bf_bar.unwrap_mem();
-
-        let uar_addr = bar_addr + PAGE_SIZE * ctx.uar_index;
-        let uar_frame = PhysFrame::from_start_address(PhysAddr::new(uar_addr as u64)).map_err(|_| "UAR page not aligned")?;
-        let uar_vma = process.virtual_address_space.alloc_vma(
-            None,
-            1,
-            MemorySpace::User,
-            VmaType::DeviceMemory,
-            format!("db-{}", ctx.uar_index).as_str()
-        ).ok_or("Failed to allocate VMA for UAR")?;
-        process.virtual_address_space.map_pfr_for_vma(
-            &uar_vma,
-            PhysFrame::range(uar_frame, uar_frame + 1),
-            PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE | PageTableFlags::NO_CACHE,
-        ).map_err(|_| "Failed to map UAR")?;
-        Ok(uar_vma.range.start)
-    }
-
-    /// Map the BlueFlame page paired with the context into `process`'s address space.
-    ///
-    /// Used only by QP creation; CQs only need [`Self::map_uar`].
-    pub fn map_blueflame_page(&self, ctx: &Context, process: &Process) -> Result<Page, &'static str> {
-        if !self.capabilities.bf() {
-            return Err("Blueflame is not supported");
-        }
-
-        if ctx.uar_index < self.capabilities.num_rsvd_uars() as usize {
-            return Err("UAR is reserved");
-        }
-
-        if ctx.uar_index >= self.capabilities.num_uars() {
-            return Err("UAR index out of range");
-        }
-
-        let (bar_addr, _size) = self.uar_bf_bar.unwrap_mem();
-        // The BlueFlame region follows the whole UAR doorbell region (`num_uars()` pages), one
-        // BF page per UAR.
-        let bf_addr = bar_addr + self.capabilities.num_uars() * PAGE_SIZE + PAGE_SIZE * ctx.uar_index;
-        let bf_frame = PhysFrame::from_start_address(PhysAddr::new(bf_addr as u64)).map_err(|_| "BF page not aligned")?;
-        let bf_vma = process.virtual_address_space.alloc_vma(
-            None,
-            1,
-            MemorySpace::User,
-            VmaType::DeviceMemory,
-            format!("bf-{}", ctx.uar_index).as_str()
-        ).ok_or("Failed to allocate VMA for BF")?;
-        process.virtual_address_space.map_pfr_for_vma(
-            &bf_vma,
-            PhysFrame::range(bf_frame, bf_frame + 1),
-            PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE | PageTableFlags::NO_CACHE,
-        ).map_err(|_| "Failed to map BF")?;
-        Ok(bf_vma.range.start)
     }
 
     /// Drain the event queue, returning how many events were handled.
@@ -452,10 +404,10 @@ impl ConnectX3Nic {
     /// -mapped; polling, CQE parsing and arming happen entirely in userspace against them (the
     /// latter through the returned UAR page), so from here on the kernel only needs the buffer
     /// for building its MTT.
-    pub fn create_cq(&mut self, min_num_entries: i32, buffer: *const u8, doorbell_ptr: *const u64) -> Result<u32, &'static str> {
+    pub fn create_cq(&mut self, min_num_entries: i32, buffer: *const u8, doorbell_ptr: *const u64, uar_index: u32) -> Result<u32, &'static str> {
         // TODO min_num_entries should be u32
         let process = process_manager().read().current_process();
-        let mut cq = CompletionQueue::new(self, process, min_num_entries.try_into().unwrap(), buffer, doorbell_ptr)?;
+        let mut cq = CompletionQueue::new(self, process, min_num_entries.try_into().unwrap(), buffer, doorbell_ptr, uar_index)?;
         cq.query(&mut self.cmd)?;
         let number = cq.number();
         self.cqs.push(cq);
@@ -658,14 +610,6 @@ impl Offsets {
         res
     }
 
-    /// Allocate a doorbell for SCQs.
-    pub(in crate::device::mlx4) fn alloc_uar(&mut self) -> usize {
-        // FIXME: can overflow
-        let res = self.next_uar_index;
-        self.next_uar_index += 1;
-        res
-    }
-
     /// Allocate an entry in the data memory protection table.
     ///
     /// This is an *index* into that table, which is why it starts above the entries the firmware
@@ -681,12 +625,59 @@ impl Offsets {
 
 pub struct Context {
     device_handle: usize,
-    uar_index: usize,
+    pub uar_page: UarPage,
 }
 
-impl Context {
-    pub fn uar_index(&self) -> usize {
-        self.uar_index
+pub struct UarPage {
+    index: usize,
+    doorbell: PhysFrame,
+    blueflame: Option<PhysFrame>,
+}
+
+impl UarPage {
+
+    pub fn index(&self) -> usize {
+        self.index
     }
-}
 
+    /// Map a single Doorbell page (used for ringing SQ/CQ doorbells) into `process`'s address space.
+    ///
+    /// Shared by QP creation (which also maps a BlueFlame page via [`Self::map_bf`]) and CQ
+    /// creation (which only needs the UAR page).
+    pub fn map_doorbell_page(&self, process: &Process) -> Result<Page, &'static str> {
+        let uar_vma = process.virtual_address_space.alloc_vma(
+            None,
+            1,
+            MemorySpace::User,
+            VmaType::DeviceMemory,
+            format!("db-{}", self.index).as_str()
+        ).ok_or("Failed to allocate VMA for UAR")?;
+        process.virtual_address_space.map_pfr_for_vma(
+            &uar_vma,
+            PhysFrame::range(self.doorbell, self.doorbell + 1),
+            PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE | PageTableFlags::NO_CACHE,
+        ).map_err(|_| "Failed to map UAR")?;
+        Ok(uar_vma.range.start)
+    }
+
+    /// Map the BlueFlame page paired with the context into `process`'s address space.
+    ///
+    /// Used only by QP creation; CQs only need [`Self::map_uar`].
+    pub fn map_blueflame_page(&self, process: &Process) -> Result<Page, &'static str> {
+        let bf_frame = self.blueflame.ok_or("No BlueFlame Page present")?;
+        let bf_vma = process.virtual_address_space.alloc_vma(
+            None,
+            1,
+            MemorySpace::User,
+            VmaType::DeviceMemory,
+            format!("bf-{}", self.index).as_str()
+        ).ok_or("Failed to allocate VMA for BF")?;
+        process.virtual_address_space.map_pfr_for_vma(
+            &bf_vma,
+            PhysFrame::range(bf_frame, bf_frame + 1),
+            PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE | PageTableFlags::NO_CACHE,
+        ).map_err(|_| "Failed to map BF")?;
+        Ok(bf_vma.range.start)
+    }
+
+}

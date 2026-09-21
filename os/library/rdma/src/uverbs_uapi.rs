@@ -141,6 +141,7 @@ pub struct CreateCqRequest {
     pub buffer: *const u8,
     /// CQ doorbell records are aligned on an 8 B boundary per the PRM.
     pub doorbell_ptr: *const u64,
+    pub uar_index: u32,
 }
 
 #[repr(C)]

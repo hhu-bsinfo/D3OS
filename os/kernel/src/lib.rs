@@ -21,6 +21,7 @@
 
 // For ipi.rs volatile_load and volatile_store
 #![feature(core_intrinsics)]
+#![feature(push_mut)]
 
 use crate::device::apic::Apic;
 use crate::device::cpu::Cpu;
