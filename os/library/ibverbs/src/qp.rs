@@ -430,7 +430,7 @@ impl<'res> QueuePairBuilder<'res> {
 
         Ok(PreparedQueuePair {
             ctx: self.pd.ctx,
-            qp: QueuePair(inner),
+            qp: QueuePair { inner },
             access: self.access,
             timeout: self.timeout,
             retry_count: self.retry_count,
@@ -646,15 +646,17 @@ impl<'res> PreparedQueuePair<'res> {
 /// which is maintained by the network stack and doesn't have a physical resource behind it. A QP
 /// is a resource of an RDMA device and a QP number can be used by one process at the same time
 /// (similar to a socket that is associated with a specific TCP or UDP port number)
-pub struct QueuePair(Arc<RwLock<dyn IbvQueuePair>>);
+pub struct QueuePair {
+    inner: Arc<RwLock<dyn IbvQueuePair>>,
+}
 
 impl QueuePair {
     pub fn number(&self) -> u32 {
-        self.0.read().number()
+        self.inner.read().number()
     }
 
     pub fn modify(&mut self, attr: &QueuePairAttr, attr_mask: QueuePairAttrMask) -> io::Result<()> {
-        self.0.write().modify(attr, attr_mask)
+        self.inner.write().modify(attr, attr_mask)
     }
 
     /// Posts a list of Work Requests (WRs) to the Send Queue of this Queue Pair.
@@ -683,7 +685,7 @@ impl QueuePair {
     /// [1]: http://www.rdmamojo.com/2013/01/26/ibv_post_send/
     #[inline]
     pub unsafe fn post_send(&mut self, wrs: &[&SendWorkRequest]) -> io::Result<()> {
-        unsafe { self.0.write().post_send(wrs) }
+        unsafe { self.inner.write().post_send(wrs) }
     }
 
     /// Posts a list of Work Requests (WRs) to the Receive Queue of this Queue Pair.
@@ -725,7 +727,7 @@ impl QueuePair {
         // means that in all cases, the actual data of the incoming message will start at an offset
         // of 40 bytes into the buffer(s) in the scatter list.
 
-        unsafe { self.0.write().post_receive(wrs) }
+        unsafe { self.inner.write().post_receive(wrs) }
     }
 }
 
