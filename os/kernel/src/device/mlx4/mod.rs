@@ -14,13 +14,16 @@ mod profile;
 mod queue_pair;
 mod utils;
 
+use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
+use core::ptr::eq;
 use cmd::CommandInterface;
 use completion_queue::CompletionQueue;
-use event_queue::{EventQueue, init_eqs};
+use event_queue::{ClrInt, EventQueue, init_eqs};
 use fw::{Capabilities, Hca, MappedFirmwareArea};
 use byteorder::BigEndian;
 use icm::MappedIcmTables;
@@ -30,7 +33,7 @@ use zerocopy::U32;
 
 use rdma::{AccessFlags, DeviceAttr, PortAttr, ProtectionDomainHandle, QueuePairAttr, QueuePairAttrMask, QueuePairType};
 
-use crate::{pci_bus, process_manager};
+use crate::{interrupt_dispatcher, pci_bus, process_manager};
 use port::Port;
 use queue_pair::QueuePair;
 use spin::{Mutex, Once, RwLock};
@@ -47,6 +50,7 @@ use x86_64::PhysAddr;
 use x86_64::structures::paging::{Page, PageSize, PageTableFlags, PhysFrame, Size4KiB};
 use crate::device::mlx4::fw::DoorbellPage;
 use crate::device::mlx4::icm::DataMemoryProtectionTable;
+use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::vma::VmaType;
 use crate::process::process::Process;
@@ -99,7 +103,7 @@ pub struct ConnectX3Nic {
     hca: Hca,
     contexts: Vec<Context>,
     pds: BTreeMap<ProtectionDomainHandle, Uuid>, // Protection Domain -> Process id
-    eqs: Vec<EventQueue>,
+    eqs: Vec<Arc<RwLock<EventQueue>>>,
     // TODO: find some way to bind this to the relevant EQ
     cqs: Vec<CompletionQueue>,
     qps: Vec<QueuePair>,
@@ -172,7 +176,7 @@ impl ConnectX3Nic {
         let hca = profile.init_hca.init_hca(&mut cmd)?;
 
         // give us the interrupt pin
-        hca.query_adapter(&mut cmd)?;
+        let adapter = hca.query_adapter(&mut cmd)?;
 
         let uar_bf_bar = mlx3_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)")?;
         trace!("mlx4 User Access Region (UAR) Bar : {:?}", uar_bf_bar);
@@ -201,9 +205,19 @@ impl ConnectX3Nic {
         // device and should not be shared with different processes
         let mut identity_mapped_uar = utils::pci_map_bar_mem(uar_bf_bar, "mlx4-uar");
 
+        // The clr_int register lives in whichever BAR QUERY_FW reported; on this card that's
+        // always one of the two we already have mapped (config regs or UAR).
+        let (clr_int_bar, clr_int_offset) = firmware.clr_int();
+        let clr_int_regs = match clr_int_bar {
+            0 => config_regs,
+            2 => identity_mapped_uar,
+            _ => return Err("legacy interrupt clear register is in an unmapped BAR"),
+        };
+        let clr_int = ClrInt::new(clr_int_regs, clr_int_offset, adapter.inta_pin());
+
         // The first 128 UAR pages are reserved for EQs
         let eq_doorbells: &mut [DoorbellPage] = identity_mapped_uar.as_slice_mut(0, 128)?;
-        let eqs = init_eqs(&mut cmd, eq_doorbells, &capabilities, &mut offsets, icm_tables.memory_regions())?;
+        let eqs = init_eqs(&mut cmd, eq_doorbells, &capabilities, &mut offsets, icm_tables.memory_regions(), clr_int)?;
 
         hca.config_mad_demux(&mut cmd, &capabilities)?;
 
@@ -259,39 +273,6 @@ impl ConnectX3Nic {
             fw_ver_subminor: self.firmware.sub_minor.get(),
             phys_port_cnt: self.ports.len().try_into().unwrap(),
         })
-    }
-
-    /// Drain the event queue, returning how many events were handled.
-    ///
-    /// The card reports a port going down, a queue pair failing or its own internal errors as
-    /// events. Draining after every verb costs one read of the ring when it is empty and
-    /// attributes an event to the operation that caused it. Now that posting and polling both
-    /// happen directly from userspace against mapped memory, without going through a syscall,
-    /// userspace also drives this directly (rate-limited, see `UverbsCmd::DrainEvents`) so
-    /// events still get noticed during an otherwise syscall-free hot loop.
-    ///
-    /// This is also where the internal error buffer gets checked (an MMIO read, so also
-    /// rate-limited, see [`Self::internal_error_countdown`]) since it used to run from the same
-    /// place `CompletionQueue::poll` did.
-    pub fn drain_events(&mut self) -> usize {
-        const INTERNAL_ERROR_CHECK_INTERVAL: u32 = 4096;
-        if self.internal_error_countdown == 0 {
-            self.internal_error_countdown = INTERNAL_ERROR_CHECK_INTERVAL;
-            self.check_internal_error();
-        } else {
-            self.internal_error_countdown -= 1;
-        }
-        let Some(eq) = self.eqs.first_mut() else {
-            return 0;
-        };
-        let eq_doorbells: &mut [DoorbellPage] = self.identity_mapped_uar.as_slice_mut(0, 128).unwrap();
-        match eq.handle_events(eq_doorbells, false) {
-            Ok(handled) => handled,
-            Err(e) => {
-                warn!("draining the event queue failed: {e}");
-                0
-            }
-        }
     }
 
     /// Read the card's internal error buffer and report it if it is not empty.
@@ -547,7 +528,7 @@ impl Drop for ConnectX3Nic {
             port.close(&mut self.cmd).unwrap()
         }
         while let Some(eq) = self.eqs.pop() {
-            eq.destroy(&mut self.cmd).unwrap()
+            eq.write().destroy(&mut self.cmd).unwrap()
         }
         self.hca.close(&mut self.cmd).unwrap();
         self.icm_tables.unmap(&mut self.cmd).unwrap();

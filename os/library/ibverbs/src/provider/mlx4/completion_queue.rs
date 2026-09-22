@@ -16,7 +16,7 @@ use modular_bitfield_msb::{bitfield, prelude::*};
 use spin::Mutex;
 use mm::{mmap, MmapFlags, PAGE_SIZE};
 use rdma::uverbs_uapi::{CreateCqRequest, CreateCqResponse, UserSlice};
-use rdma::uverbs_uapi::UverbsCmd::{CreateCq, DestroyCq, DrainEvents};
+use rdma::uverbs_uapi::UverbsCmd::{CreateCq, DestroyCq};
 use strum_macros::FromRepr;
 use tock_registers::interfaces::Writeable;
 use tock_registers::registers::WriteOnly;
@@ -30,15 +30,6 @@ use crate::provider::mlx4::queue_pair::QueuePairOpcode;
 /// Size in bytes of a hardware completion queue entry. CX3 also supports a 64 B format, but this
 /// driver always uses the 32 B one.
 const CQE_SIZE: usize = 32;
-
-/// How many polls between rate-limited event-queue drains.
-///
-/// Draining the event queue used to piggyback on every uverbs syscall (`uverbs_ctl` called
-/// `uverbs_drain_events` after every verb); now that polling never goes through a syscall, a
-/// port-down/QP-error/internal-error notification would otherwise never get noticed during a
-/// tight polling loop. This calls `UverbsCmd::DrainEvents` itself instead, at the same interval
-/// the kernel used to check its internal error buffer on.
-const DRAIN_EVENTS_INTERVAL: u32 = 4096;
 
 pub struct CompletionQueue {
     context: Arc<Mlx4Context>,
@@ -65,9 +56,6 @@ impl IbvCompletionQueue for CompletionQueue {
     fn poll(&self, wc: &mut [WorkCompletion]) -> io::Result<usize> {
         let poll_count = self.poll_count.fetch_add(1, Ordering::AcqRel);
         let mut consumer_index = self.consumer_index.lock();
-        if (poll_count + 1) % DRAIN_EVENTS_INTERVAL == 0 {
-            let _ = uverbs(self.context.device_handle().into(), DrainEvents, UserSlice::EMPTY, UserSlice::EMPTY);
-        }
 
         let mut completions = 0;
         while completions < wc.len() {
@@ -190,15 +178,6 @@ impl CompletionQueue {
                     wc.status,
                     cqe.opcode(),
                 );
-                // A WR error (this one included, since a QP that hits any error goes to the
-                // error state and flushes every WR still outstanding) is reported to the card's
-                // event queue too, with the actual cause (`WqCatastrophicError`,
-                // `WqInvalidRequestError`, `WqAccessViolation`, ...) rather than just the generic
-                // syndrome this CQE carries. That only reaches the log once the event queue is
-                // drained, which otherwise only happens every `DRAIN_EVENTS_INTERVAL` polls — far
-                // too rare to catch it before a short-lived benchmark run already aborted on this
-                // exact completion. Force an out-of-band drain right here instead.
-                let _ = uverbs(self.context.device_handle.into(), DrainEvents, UserSlice::EMPTY, UserSlice::EMPTY);
                 return Ok(true);
             }
             wc.status = WorkCompletionStatus::Success;

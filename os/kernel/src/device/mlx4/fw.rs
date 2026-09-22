@@ -74,6 +74,13 @@ impl Firmware {
         (self.err_bar, self.err_start_offset.get() as usize, self.err_size.get() as usize)
     }
 
+    /// Where the legacy-interrupt clear register lives: `(BAR, byte offset in that BAR)`.
+    ///
+    /// See [`super::event_queue::ClrInt`] for why this matters.
+    pub(super) fn clr_int(&self) -> (u8, u64) {
+        (self.clr_int_bar, self.clr_int_base.get())
+    }
+
     pub(super) fn map_area(&self, cmd: &mut CommandInterface) -> Result<MappedFirmwareArea, &'static str> {
         trace!("mapping firmware area...");
 
@@ -1236,8 +1243,8 @@ pub(super) struct Adapter {
     /// clearing an interrupt. To clear an interrupt, the driver should write
     /// the value (1<<intapin) into the clr_int register. When using an MSI-X,
     /// this register is not used.
-    #[skip]
-    inta_pin: u8,
+    #[skip(setters)]
+    pub(super) inta_pin: u8,
     #[skip]
     __: B24,
     // skip 58 u32

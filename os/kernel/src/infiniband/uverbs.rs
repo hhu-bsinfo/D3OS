@@ -31,15 +31,6 @@ pub fn uverbs_ctl(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user
 
     let result = dispatch(device_handle, cmd, user_in, user_out);
 
-    // Drain the card's event queue right after the verb that may have provoked it. The card
-    // reports a port going down or a queue pair failing as an event, and those used to be
-    // consumed only from `ibv_poll_cq`, so they surfaced at some arbitrary later moment with no
-    // way to tell which operation caused them. When the queue is empty this is a single read of
-    // the ring.
-    if requires_device_handle {
-        uverbs_drain_events(device_handle);
-    }
-
     result
 }
 
@@ -78,10 +69,6 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
         UverbsCmd::ModifyQp => {
             let req: ModifyQpRequest = copy_from_user(user_in)?;
             uverbs_modify_qp(device_handle, req).map_err(log_error_and_invalid)?;
-            Ok(0)
-        }
-        UverbsCmd::DrainEvents => {
-            uverbs_drain_events(device_handle);
             Ok(0)
         }
         UverbsCmd::DestroyCq => {

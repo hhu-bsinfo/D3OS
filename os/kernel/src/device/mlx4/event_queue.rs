@@ -1,24 +1,36 @@
 //! This module consists of functions that create, work with and destroy event queues.
 //! Additionally it holds the interrupt handling function to consume EQEs.
 
+use alloc::boxed::Box;
+use alloc::sync::Arc;
 use core::{
     mem::size_of,
     sync::atomic::{compiler_fence, Ordering},
 };
 
-use super::utils;
+use super::{device_handle_to_idx, get_dev_list, utils, DEV_LIST};
 use super::utils::MappedPages;
 use crate::memory::PAGE_SIZE;
 use alloc::vec::Vec;
+use core::ptr::eq;
+use core::sync::atomic::AtomicUsize;
 use bitflags::bitflags;
+use byteorder::BigEndian;
 use log::{debug, error, trace, warn};
+use zerocopy::U32;
 use modular_bitfield_msb::{
     bitfield,
     specifiers::{B10, B16, B2, B22, B24, B4, B40, B5, B6, B60, B7, B72, B96},
 };
+use spin::{Mutex, RwLock};
 use strum_macros::FromRepr;
 use tock_registers::interfaces::Writeable;
 use tock_registers::registers::WriteOnly;
+use x86_64::structures::paging::Page;
+use x86_64::VirtAddr;
+use crate::interrupt::interrupt_dispatcher::InterruptVector;
+use crate::interrupt::interrupt_handler::InterruptHandler;
+use crate::interrupt_dispatcher;
 use super::{
     cmd::{CommandInterface, InputParam, Opcode, OutputParam},
     device::PAGE_SHIFT,
@@ -34,23 +46,55 @@ const NUM_SPARE_EQE: u32 = 0x80;
 /// This creates all of the EQs ahead of time,
 /// passes their ownership to the hardware and calls MapEq.
 pub(super) fn init_eqs(
-    cmd: &mut CommandInterface, doorbells: &mut [DoorbellPage], caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable,
-) -> Result<Vec<EventQueue>, &'static str> {
+    cmd: &mut CommandInterface, doorbell_pages: &[DoorbellPage], caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable,
+    clr_int: ClrInt,
+) -> Result<Vec<Arc<RwLock<EventQueue>>>, &'static str> {
     const NUM_EQS: usize = 1;
     let mut eqs = Vec::with_capacity(NUM_EQS);
-    for _ in 0..NUM_EQS {
+    for i in 0..NUM_EQS {
+        // four EQE doorbells per page;
+        let doorbell_page = Page::from_start_address(VirtAddr::from_ptr(&doorbell_pages[i/4] as *const _)).expect("Doorbell not aligned");
         // TODO: use interrupts here
-        let eq = EventQueue::new(cmd, caps, offsets, memory_regions, None)?;
-        eqs.push(eq);
+        let eq = EventQueue::new(cmd, caps, offsets, memory_regions, doorbell_page, None)?;
+        eqs.push(Arc::new(RwLock::new(eq)));
     }
+
     // map all events to the first (and only) event queue
-    eqs[0].map(cmd)?;
-    // Leave the queue disarmed: `EventQueue::new` is called with no IRQ above, so nothing handles
-    // the card's interrupts. Arming it means every event raises an interrupt that is never
-    // acknowledged, which livelocks the system once completions start arriving. The queue is
-    // drained by polling from `CompletionQueue::poll` instead.
-    eqs[0].ring(doorbells, false)?;
+    interrupt_dispatcher().assign(InterruptVector::Free3, Box::new(EventQueueHandler::new(eqs[0].clone(), clr_int)));
+    eqs[0].write().map_all_events(cmd)?;
+    eqs[0].read().ring(true);
     Ok(eqs)
+}
+
+/// Where the card's legacy-interrupt clear register lives, and the value that clears it.
+///
+/// Ringing an EQ's doorbell (even with the arm bit set) only updates that EQ's own
+/// software-visible arm state; it does not touch the physical, level-triggered legacy (INTx)
+/// interrupt line. Per the PRM: "To clear an interrupt, the driver should write the value
+/// (1<<intapin) into the clr_int register." Without this write the line stays asserted forever
+/// once anything has posted an event, so the CPU keeps re-entering the handler indefinitely even
+/// though `poll_one` finds nothing left to consume.
+#[derive(Clone, Copy)]
+pub(super) struct ClrInt {
+    regs: MappedPages,
+    offset: usize,
+    mask: u64,
+}
+
+impl ClrInt {
+    pub(super) fn new(regs: MappedPages, offset: u64, inta_pin: u8) -> Self {
+        Self { regs, offset: offset as usize, mask: 1 << inta_pin }
+    }
+
+    fn clear(&self) {
+        unsafe {
+            self.regs.page_range().start.start_address()
+                .as_mut_ptr::<u8>()
+                .add(self.offset)
+                .cast::<u64>()
+                .write_volatile(self.mask.to_be())
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -58,37 +102,39 @@ pub(super) struct EventQueue {
     number: usize,
     num_entries: u32,
     memory: Option<utils::PageToFrameMapping>,
+    doorbell_page: Page,
     // TODO: somehow free this on Drop
     _mtt: u64,
-    consumer_index: u32,
+    consumer_index: Mutex<u32>,
     /// IRQ number on bus
-    _intr_vector: Option<u8>,
+    intr_vector: Option<u8>,
     /// IRQ we will see
-    _base_vector: Option<u8>,
+    base_vector: Option<u8>,
     /// event bitmask
     async_ev_mask: AsyncEventMask,
+}
+
+#[repr(u8)]
+enum EventQueueState {
+    Armed = 0x9,
+    Fired = 0xa,
+    AlwaysArmed = 0xb,
 }
 
 impl EventQueue {
     // Create a new event queue. If `base_vector` is given, it will be interrupt
     // driven, else it will be polled.
     fn new(
-        cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable, base_vector: Option<u8>,
+        cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable, doorbell_page: Page, base_vector: Option<u8>,
     ) -> Result<Self, &'static str> {
         // EQE size is 32. There is 64 B support also available in CX3.
-        const EQE_SIZE: usize = 32;
-        const EQ_STATUS_OK: u8 = 0;
-        const EQ_STATE_ARMED: u8 = 9;
-        const EQ_STATE_FIRED: u8 = 0xa;
         let number = offsets.alloc_eqn();
         let num_entries: u32 = 4096; // NUM_ASYNC_EQE + NUM_SPARE_EQE
-        let consumer_index = 0;
-        let mut num_pages = (num_entries as usize * EQE_SIZE).next_multiple_of(PAGE_SIZE) / PAGE_SIZE;
-        // not needed if 128 EQE entries
-        if num_pages == 0 {
-            num_pages = 1;
-        }
-        let mapped_page_to_frame = utils::create_cont_mapping_with_dma_flags(utils::pages_required(num_pages * PAGE_SIZE + EQE_SIZE - 1))?.fetch_in_addr()?;
+        let num_pages = (num_entries as usize * size_of::<EventQueueEntry>()).div_ceil(PAGE_SIZE);
+
+        let mut mapped_page_to_frame = utils::create_cont_mapping_with_dma_flags(num_pages)?.fetch_in_addr()?;
+        // Invalidate all EQEs
+        mapped_page_to_frame.0.as_bytes_mut().fill(0);
 
         let mtt = memory_regions.alloc_mtt_for_pages(caps, mapped_page_to_frame.0.page_range())?;
         // TODO: register interrupt correctly
@@ -96,8 +142,7 @@ impl EventQueue {
         let intr_vector = base_vector.and_then(|_| todo!());
 
         let mut ctx = EventQueueContext::new();
-        ctx.set_status(EQ_STATUS_OK);
-        ctx.set_state(if base_vector.is_some() { EQ_STATE_ARMED } else { EQ_STATE_FIRED });
+        ctx.set_state(if base_vector.is_some() { EventQueueState::Armed } else { EventQueueState::Fired } as u8);
         ctx.set_log_eq_size(num_entries.ilog2().try_into().unwrap());
         if let Some(base_vector) = base_vector {
             ctx.set_intr(base_vector.try_into().unwrap());
@@ -111,10 +156,11 @@ impl EventQueue {
             number,
             num_entries,
             memory: Some(mapped_page_to_frame),
+            doorbell_page,
             _mtt: mtt,
-            consumer_index,
-            _intr_vector: intr_vector,
-            _base_vector: base_vector,
+            consumer_index: Mutex::new(0),
+            intr_vector,
+            base_vector,
             async_ev_mask,
         };
         trace!("created new EQ: {:?}", eq);
@@ -123,7 +169,7 @@ impl EventQueue {
 
     /// Map all event types to this EQ.
     // TODO: should parameterize the types of events given to this EQ
-    fn map(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
+    fn map_all_events(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         // TODO: unmask IRQ
         self.async_ev_mask = AsyncEventMask::all();
         let unmap = false;
@@ -152,7 +198,7 @@ impl EventQueue {
     }
 
     /// Destroy the event queue.
-    pub(super) fn destroy(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
+    pub(super) fn destroy(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         if !self.async_ev_mask.is_empty() {
             self.unmap(cmd)?;
         }
@@ -166,90 +212,50 @@ impl EventQueue {
     /// doorbell.
     ///
     /// If armed, events will generate interrupts.
-    fn ring(&mut self, doorbells: &mut [DoorbellPage], arm: bool) -> Result<(), &'static str> {
-        // for the EQ number n the relevant doorbell is in
-        // DoorbellPage (n / 4) and eq (n % 4)
-        let doorbell: &mut DoorbellPage = &mut doorbells[self.number / 4];
-        doorbell.eqs[self.number % 4].val.set(((self.consumer_index & 0xffffff) | (arm as u32) << 31).to_be());
-        // We still want ordering, just not swabbing, so add a barrier
+    fn ring(&self, arm: bool) {
+        // There are four EQE doorbell per page
+        let doorbell: &mut DoorbellPage = unsafe { &mut *self.doorbell_page.start_address().as_mut_ptr()};
+        doorbell.eqs[self.number % 4].val.set(((*self.consumer_index.lock() & 0xffffff) | (arm as u32) << 31).to_be());
         compiler_fence(Ordering::SeqCst);
-        Ok(())
     }
 
     /// Handle events, returning how many were consumed.
     ///
-    /// This can be called manually (polling) or from an interrupt. `arm` decides whether the
-    /// queue is left armed for interrupts afterwards; a caller polling in a loop wants `false`,
-    /// both to avoid re-arming thousands of times a second and to leave the card's interrupt
-    /// behaviour exactly as `init_eqs` set it up.
-    pub(super) fn handle_events(&mut self, doorbells: &mut [DoorbellPage], arm: bool) -> Result<usize, &'static str> {
-        // Bound the work per call. A ring whose ownership bits were never initialised reads as
-        // `num_entries` back-to-back "events", which would otherwise all be drained inside a
-        // single completion poll.
-        const MAX_EVENTS_PER_CALL: usize = 16;
+    /// Called from the EQ's interrupt handler.
+    pub(super) fn handle_events(&self) -> usize {
         let mut handled = 0;
-        let mut set_ci: u32 = 0;
-        while handled < MAX_EVENTS_PER_CALL {
-            if self.poll_one()? {
-                handled += 1;
-                set_ci += 1;
-                if set_ci >= NUM_SPARE_EQE {
-                    self.ring(doorbells, false)?;
-                    set_ci = 0;
-                }
-                continue;
-            } else {
-                break;
-            }
+        while let Some(ref eqe) = self.consume_entry() {
+            report_event(eqe);
+            handled += 1;
         }
-        // Only touch the doorbell when there is something to report, so a polling caller does not
-        // turn every iteration into an MMIO write.
-        if handled > 0 || arm {
-            self.ring(doorbells, arm)?;
-        }
-        Ok(handled)
+
+        self.ring(true);
+
+        handled
     }
 
-    /// Poll this event queue for one event.
-    ///
-    /// Return true if there are more.
-    fn poll_one(&mut self) -> Result<bool, &'static str> {
-        if let Some(eqe) = self.get_next_eqe_sw()? {
-            self.consumer_index += 1;
-            // Make sure we read CQ entry contents after we've checked the
-            // ownership bit.
-            compiler_fence(Ordering::SeqCst);
-            report_event(&eqe);
-            Ok(true)
-        } else {
-            Ok(false)
+    /// Consumes one EQE from the event queue
+    fn consume_entry(&self) -> Option<EventQueueEntry> {
+        let mut index = self.consumer_index.lock();
+        let buffer_start_addr: *const EventQueueEntry = self.memory.unwrap().0.page_range().start.start_address().as_ptr();
+        // wrap around after num_entries
+        let eqe_start = unsafe { buffer_start_addr.add((*index & (self.num_entries - 1)) as usize) };
+        let word_count = size_of::<EventQueueEntry>() / size_of::<u32>();
+        // check ownership before reading the EQE
+        let last_word = unsafe { u32::from_be(eqe_start.cast::<u32>().add(word_count - 1).read_volatile()) };
+        let owner = (last_word >> 7) & 1;
+        let round = (*index / self.num_entries) & 1;
+        if owner == round {
+            return None;
         }
-    }
+        *index += 1;
+        compiler_fence(Ordering::SeqCst);
 
-    /// Get the next entry.
-    fn get_next_eqe_sw(&mut self) -> Result<Option<EventQueueEntry>, &'static str> {
-        let index = self.consumer_index;
-        // get the eqe
-        let eqe_bytes: &[u8] = self.memory.as_mut().unwrap().0.as_slice(
-            (
-                // wrap around
-                usize::try_from(index & (self.num_entries - 1)).unwrap()
-            ) * size_of::<EventQueueEntry>(),
-            // TODO: CX3 is capable of extending the EQE from 32 to 64 bytes
-            // with strides of 64B, 128B and 256B. When 64B EQE is used, the
-            // first (in the lower addresses) 32 bytes in the 64 byte EQE are
-            // reserved and the next 32 bytes contain the legacy EQE information.
-            // In all other cases, the first 32B contains the legacy EQE info.
-            size_of::<EventQueueEntry>(),
-        )?;
-        let eqe = EventQueueEntry::from_bytes(eqe_bytes.try_into().unwrap());
-        // check if it's valid
-        // the ownership bit is flipping every round
-        if eqe.owner() ^ ((index & self.num_entries) != 0) {
-            Ok(None)
-        } else {
-            Ok(Some(eqe))
-        }
+        // TODO: ConnectX-3 is capable of extending the EQE from 32 to 64 bytes
+        // with strides of 64B, 128B and 256B. When 64B EQE is used, the
+        // first (in the lower addresses) 32 bytes in the 64 byte EQE are
+        // reserved and the next 32 bytes contain the legacy EQE information.
+        Some(unsafe { eqe_start.read_volatile() })
     }
 
     /// Get the number of this event queue.
@@ -311,6 +317,27 @@ fn report_event(eqe: &EventQueueEntry) {
     }
 }
 
+pub struct EventQueueHandler {
+    eq: Arc<RwLock<EventQueue>>,
+    clr_int: ClrInt,
+}
+
+impl EventQueueHandler {
+    pub(crate) fn new(eq: Arc<RwLock<EventQueue>>, clr_int: ClrInt) -> EventQueueHandler {
+        Self { eq, clr_int }
+    }
+}
+impl InterruptHandler for EventQueueHandler {
+    fn trigger(&self) {
+        self.clr_int.clear();
+        if let Some(eq) = self.eq.try_read() {
+            eq.handle_events();
+        } else {
+            trace!("failed to aquire read lock")
+        }
+    }
+}
+
 impl Drop for EventQueue {
     fn drop(&mut self) {
         if self.memory.is_some() {
@@ -321,7 +348,7 @@ impl Drop for EventQueue {
 
 #[bitfield]
 struct EventQueueContext {
-    #[skip(getters)]
+    #[skip(setters)]
     status: B4,
     #[skip]
     __: B16,
@@ -337,9 +364,7 @@ struct EventQueueContext {
     log_eq_size: B5,
     #[skip]
     __: B24,
-    #[skip]
     eq_period: u16,
-    #[skip]
     eq_max_count: u16,
     #[skip]
     __: B22,
@@ -356,11 +381,11 @@ struct EventQueueContext {
     mtt_base_addr: B40,
     #[skip]
     __: B72,
-    #[skip]
+    #[skip(setters)]
     consumer_index: B24,
     #[skip]
     __: u8,
-    #[skip]
+    #[skip(setters)]
     producer_index: B24,
     #[skip]
     __: B96,
@@ -403,7 +428,7 @@ impl EventQueueEntry {
 
     /// The queue pair a work queue event refers to.
     fn qp_number(&self) -> u32 {
-        self.event_words()[1] & 0xff_ffff
+        self.event_words()[0] & 0xff_ffff
     }
 
     /// The completion queue a completion queue event refers to.
@@ -412,8 +437,12 @@ impl EventQueueEntry {
     }
 
     /// The syndrome of a completion queue error.
+    ///
+    /// `struct mlx4_eqe.event.cq_err` is `{ u32 cqn; u32 reserved1; u8 reserved2[3]; u8
+    /// syndrome; }`: the syndrome byte is the low byte of the third word, not the second (which
+    /// is always-zero padding and was being misread as the syndrome before).
     fn cq_error_syndrome(&self) -> u32 {
-        self.event_words()[1] & 0xff
+        self.event_words()[2] & 0xff
     }
 }
 

@@ -23,6 +23,7 @@ use x86_64::structures::paging::{Page, PageTableFlags};
 // ONLY WORKS ON SINGLE CORE, IF MULTICORE IS PLANNED THIS NEEDS TO BE DEFINED FOR EACH CPU
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::sync::atomic::Ordering::Relaxed;
+use strum_macros::FromRepr;
 use crate::process::process::Process;
 
 static LAST_IRQ_FROM_USER: AtomicBool = AtomicBool::new(false);
@@ -36,7 +37,7 @@ pub fn last_irq_from_user() -> bool {
 
 
 #[repr(u8)]
-#[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
+#[derive(PartialEq, PartialOrd, Copy, Clone, Debug, FromRepr)]
 #[allow(dead_code)]
 pub enum InterruptVector {
     // Hardware exceptions
@@ -279,9 +280,12 @@ impl InterruptDispatcher {
     }
 
     pub fn dispatch(&self, frame: InterruptStackFrame, interrupt: u8) {
-        // if we log the timer interrupt, it just spams the log and nothing else happens
-        if interrupt != 32 {
-            trace!("handling interrupt {interrupt}");
+        match InterruptVector::from_repr(interrupt){
+            Some(InterruptVector::Pit) | Some(InterruptVector::ApicTimer) => {
+                // if we log the timer interrupt, it just spams the log and nothing else happens
+            }
+            Some(interrupt) => trace!("handling interrupt {:?}", interrupt),
+            None => trace!("handling unknown interrupt {}", interrupt)
         }
         let handler_vec_mutex = self
             .int_vectors

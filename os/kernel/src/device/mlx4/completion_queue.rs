@@ -70,6 +70,7 @@ impl CompletionQueue {
         ctx.set_usr_page(uar_index_to_hw(uar_idx).try_into().unwrap());
         let mut eq_number = None;
         if let Some(eq) = dev.eqs.get(0) {
+            let eq = eq.read();
             ctx.set_comp_eqn(eq.number().try_into().unwrap());
             eq_number = Some(eq.number());
         }

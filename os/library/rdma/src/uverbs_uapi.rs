@@ -29,12 +29,6 @@ pub enum UverbsCmd {
     DeregMr,
     SetMrSize,
 
-    /// Drain the device's event queue (port-down/QP-error/internal-error notifications). Since
-    /// posting and polling no longer go through the kernel on every operation, userspace calls
-    /// this itself, rate-limited, from its poll loop instead of relying on it piggybacking on
-    /// another verb.
-    DrainEvents,
-
     // Fallback data-path operations, if they are not supported by the user-space driver
     //PollCq,
     //PostSend,
