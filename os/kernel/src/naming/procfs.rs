@@ -14,6 +14,7 @@
 
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
+use uuid::Uuid;
 use core::result::Result;
 
 use core::{fmt};
@@ -65,7 +66,7 @@ impl DirectoryObject for ProcDir {
     fn lookup(&self, name: &str) -> Result<NamedObject, Errno> {
         // the current Directory is /proc
         // /proc/<pid>
-        if let Ok(pid) = name.parse::<usize>() {
+        if let Ok(pid) = Uuid::parse_str(name) {
             if process_manager().read().is_active_process(pid) {
                 Ok(NamedObject::DirectoryObject(Arc::new(ProcPidDir { pid })))
             } else {
@@ -156,7 +157,7 @@ impl fmt::Debug for ProcDir {
 // ProcPidDir
 
 pub struct ProcPidDir {
-    pid: usize,
+    pid: Uuid,
 }
 
 impl DirectoryObject for ProcPidDir {
@@ -208,7 +209,7 @@ impl fmt::Debug for ProcPidDir {
 // ProcStatusFile
 
 pub struct ProcStatusFile {
-    pid: usize,
+    pid: Uuid,
 }
 
 impl FileObject for ProcStatusFile {
@@ -261,11 +262,12 @@ impl FileObject for ProcPsFile {
         // fill the File with Process Data
         let mut content = String::new();
         // first line
-        content.push_str(&format!("{:>10}{:>10}{:>10}{:>10}\n", "PID","UTIME","STIME","RSS")); 
+        content.push_str(&format!("{:>36}{:>20}{:>10}{:>10}{:>10}\n", "PID","NAME","UTIME","STIME","RSS"));
         // dynamically fill rest
         for proc in processes {
-            content.push_str(&format!("{:>10}{:>10}{:>10}{:>10}\n", 
+            content.push_str(&format!("{:>36}{:>20}{:>10}{:>10}{:>10}\n",
                 proc.pid(),
+                proc.name(),
                 proc.utime(),
                 proc.stime(),
                 proc.rss_in_bytes()));

@@ -7,11 +7,9 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-use alloc::format;
-use alloc::string::ToString;
-use chrono::{DateTime, Datelike, TimeDelta, Timelike};
+use chrono::{DateTime, Datelike, Timelike};
 use uefi::runtime::{Time, TimeParams};
-use crate::{efi_services_available, timer};
+use crate::{efi_services_available, now, timer};
 
 
 pub extern "sysv64" fn sys_get_system_time() -> isize {
@@ -23,29 +21,9 @@ pub extern "sysv64" fn sys_get_date() -> isize {
         return 0;
     }
     
-    match uefi::runtime::get_time() {
-        Ok(time) => {
-            if time.is_valid().is_ok() {
-                let timezone = match time.time_zone() {
-                    Some(timezone) => {
-                        let delta = TimeDelta::try_minutes(timezone as i64).expect("Failed to create TimeDelta struct from timezone");
-                        if timezone >= 0 {
-                            format!("+{:0>2}:{:0>2}", delta.num_hours(), delta.num_minutes() % 60)
-                        } else {
-                            format!("-{:0>2}:{:0>2}", delta.num_hours(), delta.num_minutes() % 60)
-                        }
-                    }
-                    None => "Z".to_string(),
-                };
-
-                DateTime::parse_from_rfc3339(format!("{}-{:0>2}-{:0>2}T{:0>2}:{:0>2}:{:0>2}.{:0>9}{}", time.year(), time.month(), time.day(), time.hour(), time.minute(), time.second(), time.nanosecond(), timezone).as_str())
-                    .expect("Failed to parse date from EFI runtime services")
-                    .timestamp_millis() as isize
-            } else {
-                0
-            }
-        }
-        Err(_) => 0
+    match now() {
+        Some(datetime) => datetime.timestamp_millis() as isize,
+        None => 0,
     }
 }
 

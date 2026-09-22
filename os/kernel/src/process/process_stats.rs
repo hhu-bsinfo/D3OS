@@ -1,17 +1,22 @@
+use alloc::string::String;
+use uuid::Uuid;
+
 use crate::process::process::Process;
 use crate::memory::PAGE_SIZE;
 pub struct ProcStat {
-    pub pid: usize,
-    pub utime: u64, // Time spent in User-Mode
-    pub stime: u64, // Time spent in Kernel-Mode
-    pub total_cpu_time: u64, // Total Time spent
-    pub rss_user_pages: u64, // num-pages used
+    pid: Uuid,
+    name: String,
+    utime: u64, // Time spent in User-Mode
+    stime: u64, // Time spent in Kernel-Mode
+    total_cpu_time: u64, // Total Time spent
+    rss_user_pages: u64, // num-pages used
 }
 
 impl ProcStat {
     pub fn from_process(process: &Process) -> Self {
         Self {
             pid: process.id(),
+            name: process.name().into(),
             utime: process.utime(),
             stime: process.stime(),
             total_cpu_time: process.utime() + process.stime(),
@@ -19,9 +24,15 @@ impl ProcStat {
         }
     }
 
-    pub fn pid(&self) -> usize {
+    pub fn pid(&self) -> Uuid {
         self.pid
     }
+    
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    
+    
     // Time in User-Mode
     pub fn utime(&self) -> u64 {
         self.utime

@@ -19,6 +19,7 @@
    ║ Author: Michael Schoettner, Univ. Duesseldorf, 2.4.2026                 ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+use core::ops::DerefMut;
 use core::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use log::info;
 use spin::{Mutex,MutexGuard};
@@ -68,6 +69,9 @@ static RESERVED_REGIONS: Mutex<RegionSet> = Mutex::new(EMPTY_REGION_SET);
 
 /// Insert a available physical memory region (retrieved from EFI) into the available region set
 pub fn insert_available(region: PhysFrameRange) {
+    if DRAM_FINALIZED.load(Ordering::Acquire) {
+        panic!("available: DRAM regions have already been finalized");
+    }
     
     let mut available = AVAILABLE_REGIONS.lock();
 
@@ -87,16 +91,18 @@ pub fn insert_available(region: PhysFrameRange) {
 
 /// Insert a reserved physical memory region (retrieved from EFI) or any other stuff identified by the  boot process
 pub fn insert_reserved(region: PhysFrameRange) {
+    if DRAM_FINALIZED.load(Ordering::Acquire) {
+        panic!("reserved: DRAM regions have already been finalized");
+    }
     let mut reserved = RESERVED_REGIONS.lock();
     insert_region(&mut *reserved, region);
 }
 
 
+/// Internal function for actual inserting a region into a RegionSet.
+/// 
+/// This is called both before and after finalization.
 fn insert_region(set: &mut RegionSet, new_region: PhysFrameRange) {
-    if DRAM_FINALIZED.load(Ordering::Acquire) {
-        panic!("available: DRAM regions have already been finalized");
-    }
-
     let start = new_region.start.start_address();
     let end = new_region.end.start_address(); // exclusive
 
@@ -341,8 +347,13 @@ fn finalize_reserved_regions() {
 /// So we need a kernel heap first.
 ///
 /// Returns a half-open physical frame range: [start, end) on success, or `None` if no fitting region is found.
+/// 
+/// This function can only be called after finalization.
 pub fn boot_alloc(num_frames: usize) -> Option<PhysFrameRange> {
     assert!(num_frames > 0, "alloc: num_frames must be > 0");
+    if !DRAM_FINALIZED.load(Ordering::Acquire) {
+        panic!("boot_alloc: DRAM not finalized yet");
+    }
 
     let byte_len = num_frames
         .checked_mul(PAGE_SIZE)
@@ -396,10 +407,13 @@ pub fn boot_alloc(num_frames: usize) -> Option<PhysFrameRange> {
             available.regions[i].start = alloc_end;
         }
 
-        return Some(PhysFrameRange {
+        let allocated_range = PhysFrameRange {
             start: start_frame,
             end: end_frame,
-        });
+        };
+        // add this to the reserved regions, so that the page frame allocator will not overwrite this
+        insert_region(RESERVED_REGIONS.lock().deref_mut(), allocated_range);
+        return Some(allocated_range);
     }
 
     None

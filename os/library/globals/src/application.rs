@@ -10,7 +10,7 @@ pub struct Application {
 /// Add new applications here.
 ///
 /// Author: Sebastian Keller
-pub const APPLICATION_REGISTRY: &'static [Application] = &[
+pub const APPLICATION_REGISTRY: &[Application] = &[
     //////////////////////
     // Debug
     Application {
@@ -123,11 +123,6 @@ pub const APPLICATION_REGISTRY: &'static [Application] = &[
     Application {
         namespace: "keytest",
         single_value: &["canonical", "fluid", "raw"],
-        key_value_pair: &[],
-    },
-    Application {
-        namespace: "legacy_shell",
-        single_value: &[],
         key_value_pair: &[],
     },
     Application {

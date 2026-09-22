@@ -1,12 +1,12 @@
 [package]
 edition = "2024"
-name = "legacy_shell"
+name = "mandelbrot"
 version = "0.1.0"
-authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>"]
+authors = ["Alex Wantz <exalws@gmail.com>"]
 
 [lib]
 crate-type = ["staticlib"]
-path = "src/legacy_shell.rs"
+path = "src/mandelbrot.rs"
 test = false
 doctest = false
 bench = false
@@ -16,5 +16,7 @@ bench = false
 runtime = { path = "../../library/runtime" }
 terminal = { path = "../../library/terminal" }
 concurrent = { path = "../../library/concurrent" }
-naming = { path = "../../library/naming" }
-syscall = { path = "../../library/syscall" }
+graphic = { path = "../../library/graphic" }
+time = { path = "../../library/time" }
+
+spin = "0.12"

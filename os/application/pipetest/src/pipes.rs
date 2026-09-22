@@ -5,14 +5,13 @@ extern crate alloc;
 mod test1;
 mod test2;
 
+#[allow(unused_imports, reason = "contains global_allocator")]
+use runtime::*;
 
-use naming::shared_types::OpenOptions;
-use naming::{close, mkfifo, open, read, write};
+use naming::mkfifo;
 use syscall::return_vals::Errno;
 
 use concurrent::{thread,process};
-#[allow(unused_imports)]
-use runtime::*;
 use terminal::println;
 
 
@@ -22,7 +21,7 @@ const FIFO_PATH: &str = "/mypipe";
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let process = process::current().unwrap();
+    let process = process::current();
     let thread = thread::current().unwrap();
     let main_tid = thread.id();
     println!("MAIN: pid={}, tid={}", process.id(), main_tid);

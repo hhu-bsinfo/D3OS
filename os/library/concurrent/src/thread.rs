@@ -109,7 +109,7 @@ pub fn create(entry: impl FnOnce() + Send + 'static) -> Option<Thread> {
     functions.insert(func_id, Box::new(entry));
     
     let res = syscall(SystemCall::ThreadCreate, &[
-        kickoff_user_thread as *const () as usize, func_id as usize,
+        kickoff_user_thread as *const () as usize, func_id,
     ]);
     match res {
         Ok(id) => Some(Thread::new(id)),
@@ -145,7 +145,7 @@ pub fn exit_with_code(exit_code: usize) -> ! {
 }
 
 pub fn count() -> usize {
-    syscall(SystemCall::ThreadCount, &[]).unwrap_or_else(|_| 0)
+    syscall(SystemCall::ThreadCount, &[]).unwrap_or(0)
 }
 
 pub fn start_application(name: &str, args: Vec<&str>) -> Option<Thread> {

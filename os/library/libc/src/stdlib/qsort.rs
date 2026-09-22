@@ -16,7 +16,7 @@ type Comparator = unsafe extern "C" fn(*const c_void, *const c_void) -> c_int;
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qsort(base: *const c_void, count: c_size_t, size: c_size_t, comp: Comparator) {
-    if base == ptr::null() || count == 0 || size == 0 {
+    if base.is_null() || count == 0 || size == 0 {
         return;
     }
 
@@ -25,7 +25,7 @@ pub unsafe extern "C" fn qsort(base: *const c_void, count: c_size_t, size: c_siz
         bubble_sort(base, count, size, comp);
     }
 }
-fn bubble_sort(base: &mut [u8], count: c_size_t, size: c_size_t, comp: Comparator) -> () {
+fn bubble_sort(base: &mut [u8], count: c_size_t, size: c_size_t, comp: Comparator) {
     assert!(size > 0, "bubble_sort: Element size must be greater than zero");
     assert_eq!(base.len(), count * size, "bubble_sort: Base length must match (count * size)");
 

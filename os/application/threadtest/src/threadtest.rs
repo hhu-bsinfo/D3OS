@@ -11,7 +11,7 @@ use terminal::println;
 
 
 fn thread_fn() {
-    let process = process::current().unwrap();
+    let process = process::current();
     let thread = thread::current().unwrap();
     let start_time = thread.start_time();
 
@@ -32,11 +32,11 @@ pub fn main() {
         .parse()
         .expect("Failed to parse number of threads argument!");
 
-    let panic_mode = it.next().as_deref() == Some("panic");
-
-    let process = process::current().unwrap();
+    let panic_mode = false;
+    let process = process::current();
     let thread = thread::current().unwrap();
     let start_time = thread.start_time();
+    
 
     println!("Hello from main thread with ID [{}] in process [{}] started at [{}]!", thread.id(), process.id(), start_time);
 

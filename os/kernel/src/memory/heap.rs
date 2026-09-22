@@ -11,11 +11,11 @@ use core::ptr::NonNull;
 use linked_list_allocator::LockedHeap;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use crate::memory::PAGE_SIZE;
-use core::sync::atomic::AtomicUsize;
-use log::info;
+use core::sync::atomic::{AtomicBool, AtomicUsize};
 
 pub struct KernelAllocator {
-    heap: LockedHeap,
+    pub heap: LockedHeap,
+    initialized: AtomicBool,
 }
 
 static FREE_BYTES: AtomicUsize = AtomicUsize::new(0);                   // number of bytes currently in the pipe
@@ -26,17 +26,18 @@ pub fn get_free_bytes() -> usize {
 
 impl KernelAllocator {
     pub const fn new() -> Self {
-        Self { heap: LockedHeap::empty() }
+        Self { heap: LockedHeap::empty(), initialized: AtomicBool::new(false) }
     }
 
     pub unsafe fn init(&self, frames: &PhysFrameRange) {
         let mut heap = self.heap.lock();
         unsafe { heap.init(frames.start.start_address().as_u64() as *mut u8, (frames.end - frames.start) as usize * PAGE_SIZE); }
-        FREE_BYTES.store((frames.end - frames.start) as usize * PAGE_SIZE, core::sync::atomic::Ordering::SeqCst);   
+        FREE_BYTES.store((frames.end - frames.start) as usize * PAGE_SIZE, core::sync::atomic::Ordering::SeqCst);
+        self.initialized.store(true, core::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.heap.lock().size() > 0
+        self.initialized.load(core::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn is_locked(&self) -> bool {
@@ -47,7 +48,7 @@ impl KernelAllocator {
 unsafe impl Allocator for KernelAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         if layout.size() == 0 {
-            return Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0));
+            return Ok(NonNull::slice_from_raw_parts(layout.dangling_ptr(), 0));
         }
 
         match self.heap.lock().allocate_first_fit(layout) {

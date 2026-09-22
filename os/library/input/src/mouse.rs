@@ -53,7 +53,7 @@ impl MousePacket {
         let flags = MouseFlags::from_bits_truncate(flags);
 
         // Read intellimouse flags (4 bits)
-        let im_flags = (im >> 4) as u8;
+        let im_flags = im >> 4;
         let mut im_flags = IntelliMouseFlags::from_bits_truncate(im_flags);
 
         // HACK: Linux & QEMU handles horizontal scrolling differently

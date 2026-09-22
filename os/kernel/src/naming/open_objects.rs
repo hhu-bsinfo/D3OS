@@ -174,7 +174,6 @@ pub(super) fn close(fh: usize) -> Result<usize, Errno> {
 }*/
 
 /// ************************ OpenedObject ************************
-
 impl OpenObjectTable {
     /// Create a new OpenObjectTable
     fn new() -> OpenObjectTable {
@@ -252,9 +251,9 @@ fn get_open_object_table() -> Arc<OpenObjectTable> {
 }
 
 /// ************************ OpenedObject ************************
-
-// Opened object stored in the 'OpenObjectTable'
-// (includes NamedObject, current position within object, and options)
+///
+/// Opened object stored in the 'OpenObjectTable'
+/// (includes NamedObject, current position within object, and options)
 pub struct OpenedObject {
     named_object: Arc<NamedObject>,
     pos: AtomicUsize, // current position within file or number of next DirEntry

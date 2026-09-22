@@ -6,28 +6,29 @@
    ║ Author: Fabian Ruhland, Michael Schoettner, 26.12.2025, HHU             ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
+use core::ptr;
 use syscall::{SystemCall, return_vals::Errno, syscall};
+use uuid::Uuid;
 
 pub struct Process {
-    id: usize,
+    id: Uuid,
 }
 
 impl Process {
-    const fn new(id: usize) -> Self {
+    const fn new(id: Uuid) -> Self {
         Self { id }
     }
 
-    pub fn id(&self) -> usize {
+    pub const fn id(&self) -> Uuid {
         self.id
     }
 }
 
-pub fn current() -> Option<Process> {
-    let res = syscall(SystemCall::ProcessId, &[]);
-    match res {
-        Ok(id) => Some(Process::new(id)),
-        Err(_) => None,
-    }    
+pub fn current() -> Process {
+    let mut id: u128 = 0;
+    syscall(SystemCall::ProcessId, &[ptr::from_mut(&mut id) as usize])
+        .expect("failed to get process id");
+    Process::new(Uuid::from_u128(id))
 }
 
 pub fn exit() {
@@ -35,11 +36,7 @@ pub fn exit() {
 }
 
 pub fn count() -> usize {
-    match syscall(SystemCall::ProcessCount, &[]) {
-        Ok(count) => count,
-        Err(_) => 0,
-    }
-    
+    syscall(SystemCall::ProcessCount, &[]).unwrap_or(0)
 }
 
 pub fn ps(buf: &mut [u8]) -> Result<usize, Errno> {

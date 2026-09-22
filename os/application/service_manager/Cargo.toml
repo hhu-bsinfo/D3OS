@@ -24,4 +24,4 @@ time = { path = "../../library/time" }
 serde_json = { version = "1.0.109", default-features = false, features = ["alloc"] }
 serde = { version = "1.0.219", default-features = false, features = ["derive"] }
 log = { version = "0.4.26", default-features = false }
-spin = { version = "0.9.8", default-features = false }
+spin = { version = "0.9.8", default-features = false, features = ["mutex", "spin_mutex"] }

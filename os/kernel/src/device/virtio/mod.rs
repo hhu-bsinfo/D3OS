@@ -159,7 +159,7 @@ pub fn init_devices(fb_start_phys_addr: u64, fb_end_phys_addr: u64) {
         }
 
             match PciTransport::new::<HalImpl, _>(&mut pci_root, device_function) {
-                Ok(mut transport) => {
+                Ok(transport) => {
                     match transport.device_type() {
                         virtio::transport::DeviceType::GPU => {
                             info!("     VirtIO GPU device found. Initializing driver...");

@@ -7,10 +7,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use naming::cwd;
 
-use naming::shared_types::{DirEntry, FileType, OpenOptions};
-#[allow(unused_imports)]
-use runtime::*;
+use naming::shared_types::OpenOptions;
 use terminal::println;
+use runtime::*;
 
 fn print_usage() {
     println!("usage: cat file_name");
