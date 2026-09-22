@@ -49,7 +49,7 @@ impl IbvQueuePair for QueuePair {
     /// Post a work request to receive data.
     ///
     /// This is used by ibv_post_recv.
-    unsafe fn post_receive(&mut self, wrs: &[&ReceiveWorkRequest]) -> io::Result<()> {
+    unsafe fn post_receive(&mut self, wrs: &[ReceiveWorkRequest]) -> io::Result<()> {
         let state = *self.state.read();
         if state != QueuePairtState::ReadyToReceive && state != QueuePairtState::ReadyToSend {
             return Err(Error::new(ErrorKind::Other, "queue pair cannot receive in this state"));
@@ -99,7 +99,7 @@ impl IbvQueuePair for QueuePair {
     /// Post a work request to send data.
     ///
     /// This is used by ibv_post_send.
-    unsafe fn post_send(&mut self, wrs: &[&SendWorkRequest]) -> io::Result<()> {
+    unsafe fn post_send(&mut self, wrs: &[SendWorkRequest]) -> io::Result<()> {
         // TODO:
         // If the QP qp is associated with a shared receive queue, you must use the function
         // ibv_post_srq_recv(), and not ibv_post_recv(), since the QP's own receive queue will not

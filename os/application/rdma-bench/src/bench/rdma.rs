@@ -81,7 +81,7 @@ fn post(
             SendFlags::SIGNALED
         ).expect("failed to create work request"),
     };
-    unsafe { qp.post_send(&[&wr]) }
+    unsafe { qp.post_send([wr]) }
 }
 
 fn initiate(

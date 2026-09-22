@@ -75,12 +75,12 @@ fn ping(
         SendFlags::SIGNALED
     );
 
-    unsafe { qp.post_receive(&[&recv_wr])? };
+    unsafe { qp.post_receive([recv_wr])? };
     conn.sync()?; // both sides have a receive posted
 
     for i in 0..iterations {
         let t0 = get_time_in_us();
-        unsafe { qp.post_send(&[&send_wr])? };
+        unsafe { qp.post_send([send_wr])? };
 
         if wait_for(cq, &mut wc, WR_SEND | WR_RECV)? != 0 {
             terminal::println!(
@@ -96,7 +96,7 @@ fn ping(
         samples.push((get_time_in_us() - t0) as f64 / 2.0);
 
         if i + 1 < iterations {
-            unsafe { qp.post_receive(&[&recv_wr])? };
+            unsafe { qp.post_receive([recv_wr])? };
         }
     }
     conn.sync()?; // both sides done
@@ -127,7 +127,7 @@ fn pong(
         SendFlags::SIGNALED
     );
 
-    unsafe { qp.post_receive(&[&recv_wr])? };
+    unsafe { qp.post_receive([recv_wr])? };
     conn.sync()?; // both sides have a receive posted
 
     for _ in 0..iterations {
@@ -135,8 +135,8 @@ fn pong(
             break;
         }
         // Repost the receive before echoing so the next ping's receive is armed ahead of time.
-        unsafe { qp.post_receive(&[&recv_wr])? };
-        unsafe { qp.post_send(&[&send_wr])? };
+        unsafe { qp.post_receive([recv_wr])? };
+        unsafe { qp.post_send([send_wr])? };
         wait_for(cq, &mut wc, WR_SEND)?;
         echoed += 1;
     }

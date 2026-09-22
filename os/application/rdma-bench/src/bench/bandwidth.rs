@@ -46,7 +46,7 @@ fn send(
     let mut send_wr = SendWorkRequest::send(0, &send_sge, SendFlags::SIGNALED);
     for i in 0..window {
         send_wr.wr_id = i as u64;
-        unsafe { qp.post_send(&[&send_wr])? };
+        unsafe { qp.post_send([send_wr])? };
     }
 
     let mut posted = window;
@@ -63,7 +63,7 @@ fn send(
         for _ in 0..n {
             if posted < iterations {
                 send_wr.wr_id = posted as u64;
-                unsafe { qp.post_send(&[&send_wr])? };
+                unsafe { qp.post_send([send_wr])? };
                 posted += 1;
             }
         }
@@ -91,7 +91,7 @@ fn receive(
     };
     for i in 0..window {
         recv_wr.wr_id = i as u64;
-        unsafe { qp.post_receive(&[&recv_wr])? };
+        unsafe { qp.post_receive([recv_wr])? };
     }
 
     let mut posted = window;
@@ -119,7 +119,7 @@ fn receive(
         for _ in 0..n {
             if posted < iterations {
                 recv_wr.wr_id = posted as u64;
-                unsafe { qp.post_receive(&[&recv_wr])? };
+                unsafe { qp.post_receive([recv_wr])? };
                 posted += 1;
             }
         }

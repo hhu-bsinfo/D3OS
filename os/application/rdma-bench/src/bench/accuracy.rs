@@ -87,7 +87,7 @@ fn send(
         fill_payload(&mut mr[range.clone()], seq as u64);
         let sge = [mr.slice(range)];
         let wr = SendWorkRequest::send(seq as u64, &sge, SendFlags::SIGNALED);
-        unsafe { qp.post_send(&[&wr])? };
+        unsafe { qp.post_send([wr])? };
     }
 
     let mut posted = window;
@@ -112,7 +112,7 @@ fn send(
                 fill_payload(&mut mr[range.clone()], posted as u64);
                 let sge = [mr.slice(range)];
                 let wr = SendWorkRequest::send(posted as u64, &sge, SendFlags::SIGNALED);
-                unsafe { qp.post_send(&[&wr])? };
+                unsafe { qp.post_send([wr])? };
                 posted += 1;
             }
         }
@@ -137,7 +137,7 @@ fn receive(
             wr_id: slot as u64,
             sges: &[mr.slice(slot_range(slot, msg_size))]
         };
-        unsafe { qp.post_receive(&[&wr])? };
+        unsafe { qp.post_receive([wr])? };
     }
 
     let mut report = AccuracyReport { msg_size, sent: iterations, ..AccuracyReport::default() };
@@ -181,7 +181,7 @@ fn receive(
                 wr_id: slot as u64,
                 sges: &[mr.slice(slot_range(slot, msg_size))]
             };
-            unsafe { qp.post_receive(&[&wr])? };
+            unsafe { qp.post_receive([wr])? };
         }
     }
     report.lost = seen.iter().filter(|s| !**s).count();

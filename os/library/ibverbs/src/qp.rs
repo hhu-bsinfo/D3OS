@@ -430,7 +430,7 @@ impl<'res> QueuePairBuilder<'res> {
 
         Ok(PreparedQueuePair {
             ctx: self.pd.ctx,
-            qp: QueuePair { inner },
+            qp: QueuePair { inner},
             access: self.access,
             timeout: self.timeout,
             retry_count: self.retry_count,
@@ -684,8 +684,8 @@ impl QueuePair {
     ///
     /// [1]: http://www.rdmamojo.com/2013/01/26/ibv_post_send/
     #[inline]
-    pub unsafe fn post_send(&mut self, wrs: &[&SendWorkRequest]) -> io::Result<()> {
-        unsafe { self.inner.write().post_send(wrs) }
+    pub unsafe fn post_send<'a>(&mut self, mut wrs: impl AsMut<[SendWorkRequest<'a>]>) -> io::Result<()> {
+        unsafe { self.inner.write().post_send(wrs.as_mut()) }
     }
 
     /// Posts a list of Work Requests (WRs) to the Receive Queue of this Queue Pair.
@@ -713,7 +713,7 @@ impl QueuePair {
     ///
     /// [1]: http://www.rdmamojo.com/2013/02/02/ibv_post_recv/
     #[inline]
-    pub unsafe fn post_receive(&mut self, wrs: &[&ReceiveWorkRequest]) -> io::Result<()> {
+    pub unsafe fn post_receive<'a>(&mut self, mut wrs: impl AsMut<[ReceiveWorkRequest<'a>]>) -> io::Result<()> {
 
         // TODO:
         //
@@ -727,7 +727,7 @@ impl QueuePair {
         // means that in all cases, the actual data of the incoming message will start at an offset
         // of 40 bytes into the buffer(s) in the scatter list.
 
-        unsafe { self.inner.write().post_receive(wrs) }
+        unsafe { self.inner.write().post_receive(wrs.as_mut()) }
     }
 }
 

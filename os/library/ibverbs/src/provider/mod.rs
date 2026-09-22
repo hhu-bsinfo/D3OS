@@ -46,10 +46,10 @@ pub trait IbvQueuePair {
     fn number(&self) -> u32;
     /// This is unsafe because the sges contain raw addresses.
     // TODO: figure out a way to return the bad wr
-    unsafe fn post_receive(&mut self, wrs: &[&ReceiveWorkRequest]) -> io::Result<()>;
+    unsafe fn post_receive(&mut self, wrs: &[ReceiveWorkRequest]) -> io::Result<()>;
     /// This is unsafe because the sges contain raw addresses.
     // TODO: figure out a way to return the bad wr
-    unsafe fn post_send(&mut self, wrs: &[&SendWorkRequest]) -> io::Result<()>;
+    unsafe fn post_send(&mut self, wrs: &[SendWorkRequest]) -> io::Result<()>;
     fn modify(&self, attr: &QueuePairAttr, attr_mask: QueuePairAttrMask) -> io::Result<()>;
 }
 
