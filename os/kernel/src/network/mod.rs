@@ -205,7 +205,6 @@ pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
 }
 
 pub fn open_udp() -> SocketHandle {
-    let sockets = SOCKETS.get().expect("Socket set not initialized!");
 
     let rx_buffer = udp::PacketBuffer::new(
         vec![udp::PacketMetadata::EMPTY; 44],
@@ -216,7 +215,7 @@ pub fn open_udp() -> SocketHandle {
         vec![0; 65535],
     );
 
-    let handle = sockets.write().add(udp::Socket::new(rx_buffer, tx_buffer));
+    let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(udp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
         .try_insert(handle, process_manager().read().current_process())
@@ -225,11 +224,10 @@ pub fn open_udp() -> SocketHandle {
 }
 
 pub fn open_tcp() -> SocketHandle {
-    let sockets = SOCKETS.get().expect("Socket set not initialized!");
     let rx_buffer = tcp::SocketBuffer::new(vec![0; 65535]);
     let tx_buffer = tcp::SocketBuffer::new(vec![0; 65535]);
 
-    let handle = sockets.write().add(tcp::Socket::new(rx_buffer, tx_buffer));
+    let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(tcp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
         .try_insert(handle, process_manager().read().current_process())
@@ -238,8 +236,7 @@ pub fn open_tcp() -> SocketHandle {
 }
 
 pub fn open_icmp() -> SocketHandle {
-    let sockets = SOCKETS.get().expect("Socket set not initialized!");
-    
+
     let rx_buffer = icmp::PacketBuffer::new(
         vec![icmp::PacketMetadata::EMPTY, icmp::PacketMetadata::EMPTY],
         vec![0; 65535],
@@ -249,7 +246,7 @@ pub fn open_icmp() -> SocketHandle {
         vec![0; 65535],
     );
 
-    let handle = sockets.write().add(icmp::Socket::new(rx_buffer, tx_buffer));
+    let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(icmp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
         .try_insert(handle, process_manager().read().current_process())
@@ -275,6 +272,8 @@ pub fn close_socket(handle: SocketHandle) {
     } else {
         warn!("Socket {} not found in SocketSet", handle);
     }
+
+    drop(sockets);
 
     // Remove permission for the process
     // The socket remains in the set until poll_sockets() garbage collects it.
@@ -336,10 +335,13 @@ pub fn accept_tcp(handle: SocketHandle) -> Result<(IpEndpoint, SocketHandle), tc
     Ok((client, listen_handle))
 }
 
-pub fn connect_tcp(handle: SocketHandle, host: IpAddress, port: u16) -> Result<IpEndpoint, tcp::ConnectError> {    get_socket_for_current_process!(socket, handle, tcp::Socket);
+pub fn connect_tcp(handle: SocketHandle, host: IpAddress, port: u16) -> Result<IpEndpoint, tcp::ConnectError> {
+    let local_port = pick_port(0);
+
     let mut interfaces = INTERFACES.write();
     let interface = interfaces.get_mut(0).ok_or(tcp::ConnectError::InvalidState)?;
-    let local_port = pick_port(0);
+
+    get_socket_for_current_process!(socket, handle, tcp::Socket);
 
     socket.connect(interface.context(), (host, port), local_port)?;
     Ok(socket.local_endpoint().unwrap())
@@ -501,10 +503,12 @@ fn poll_sockets() -> Option<()> {
         }
     }
 
+    drop(interfaces);
+
     // Remove closed sockets
     let mut sockets_to_remove = Vec::new();
 
-    let socket_map = SOCKET_PROCESS.read();
+    let socket_map = SOCKET_PROCESS.try_read()?;
     let dns_handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
 
     for (handle, socket) in sockets.iter() {
@@ -536,8 +540,8 @@ fn poll_sockets() -> Option<()> {
 }
 
 pub(crate) fn close_sockets_for_process(process: &mut Process) {
-    let mut lock = SOCKET_PROCESS.write();
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let mut lock = SOCKET_PROCESS.write();
     let handles: Vec<_> = lock
         .iter()
         .filter(|(_handle, proc)| ***proc == *process)
