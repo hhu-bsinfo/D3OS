@@ -41,8 +41,8 @@ fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &Conn) -> Resul
         return Ok(());
     }
 
-    let cq = ctx.create_cq((2 * req.tx_depth) as i32, 0)?;
-    let prepared = transport::build(req.transport, req.mode, pd, &cq, req.tx_depth)?;
+    let cq = ctx.create_cq((req.tx_depth + req.rx_depth) as i32, 0)?;
+    let prepared = transport::build(req.transport, req.mode, pd, &cq, req.tx_depth, req.rx_depth)?;
     let local_endpoint = prepared.endpoint();
     conn.send_msg(&HandshakeAck::Ok { endpoint: local_endpoint })?;
 
@@ -51,7 +51,18 @@ fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &Conn) -> Resul
 
     // The server side is the passive peer in every mode, so its own report carries no numbers of
     // its own — the client sends its result back as CSV once it has one, below.
-    bench::run(req.mode, pd, &cq, &mut qp, conn, Role::Server, req.msg_size, req.iterations, req.tx_depth)?;
+    bench::run(
+        req.mode,
+        pd,
+        &cq,
+        &mut qp,
+        conn,
+        Role::Server,
+        req.msg_size,
+        req.iterations,
+        req.tx_depth,
+        req.rx_depth,
+    )?;
 
     let ResultRow { row } = conn.recv_msg()?;
     match row {

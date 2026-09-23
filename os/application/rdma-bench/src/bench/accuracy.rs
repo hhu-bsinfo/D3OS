@@ -56,6 +56,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<Report> {
     if iterations == 0 {
         return Err(other("accuracy mode requires at least one iteration"));
@@ -64,7 +65,14 @@ pub fn run(
         return Err(other("accuracy mode requires msg_size >= 8"));
     }
 
-    let window = tx_depth.max(1).min(iterations);
+    // Every message in flight needs its own buffer: unlike bandwidth the payloads differ per
+    // message, so a slot must not be rewritten until its work request has completed. The window
+    // is sized from the depth that governs this side's queue: the sender's outstanding sends, the
+    // receiver's outstanding receives.
+    let window = match role {
+        Role::Client => tx_depth.max(1).min(iterations),
+        Role::Server => rx_depth.max(1).min(iterations),
+    };
     let mut mr = pd.allocate::<u8>(window * msg_size)?;
 
     match role {

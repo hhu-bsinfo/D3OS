@@ -10,6 +10,7 @@ pub fn build<'res>(
     pd: &'res ProtectionDomain<'res>,
     cq: &'res CompletionQueue,
     tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<PreparedQueuePair<'res>> {
     let qp_type = match transport {
         Transport::Rc => QueuePairType::RC,
@@ -21,7 +22,7 @@ pub fn build<'res>(
 
     builder
         .set_max_send_wr(tx_depth as u32)
-        .set_max_recv_wr(tx_depth as u32);
+        .set_max_recv_wr(rx_depth as u32);
 
     if let Mode::RdmaWrite | Mode::RdmaRead = mode {
         builder.allow_remote_rw();

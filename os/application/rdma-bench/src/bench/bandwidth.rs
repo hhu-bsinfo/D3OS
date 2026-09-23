@@ -20,12 +20,13 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<Report> {
     let mut mr = pd.allocate::<u8>(msg_size)?;
 
     match role {
         Role::Client => send(&mut mr, cq, qp, conn, msg_size, iterations, tx_depth),
-        Role::Server => receive(&mut mr, cq, qp, conn, msg_size, iterations, tx_depth),
+        Role::Server => receive(&mut mr, cq, qp, conn, msg_size, iterations, rx_depth),
     }
 }
 
@@ -82,9 +83,9 @@ fn receive(
     conn: &Conn,
     msg_size: usize,
     iterations: usize,
-    tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<Report> {
-    let window = tx_depth.min(iterations);
+    let window = rx_depth.min(iterations);
     let mut recv_wr = ReceiveWorkRequest {
         wr_id: 0,
         sges: &[mr.slice(0..msg_size)],
@@ -96,7 +97,7 @@ fn receive(
 
     let mut posted = window;
     let mut completed = 0usize;
-    let mut wc = vec![WorkCompletion::default(); tx_depth.max(1)];
+    let mut wc = vec![WorkCompletion::default(); rx_depth.max(1)];
 
     conn.sync()?; // "ready"
     let mut last_progress = get_time_in_us();

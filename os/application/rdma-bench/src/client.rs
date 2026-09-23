@@ -34,6 +34,7 @@ struct RunParams {
     size: usize,
     iterations: usize,
     tx_depth: usize,
+    rx_depth: usize,
 }
 
 pub fn run(args: ClientArgs) -> Result<()> {
@@ -49,6 +50,7 @@ pub fn run(args: ClientArgs) -> Result<()> {
             size: args.sizes[0],
             iterations: args.iterations,
             tx_depth: args.tx_depth,
+            rx_depth: args.rx_depth,
         };
         let report = run_once(&ctx, &pd, &params, true)?;
         report.print(params.mode);
@@ -62,12 +64,14 @@ pub fn run(args: ClientArgs) -> Result<()> {
 /// is reported in place and does not abort the rest of the sweep.
 fn run_suite(ctx: &Context, pd: &ProtectionDomain, args: &ClientArgs) -> Result<()> {
     println!(
-        "running {} mode(s) over {} message size(s), transport={:?}, iterations={}, tx_depth={}",
+        "running {} mode(s) over {} message size(s), transport={:?}, iterations={}, \
+         tx_depth={}, rx_depth={}",
         args.modes.len(),
         args.sizes.len(),
         args.transport,
         args.iterations,
-        args.tx_depth
+        args.tx_depth,
+        args.rx_depth
     );
     println!("(the peer must be running as `rdma-bench server --listen`)");
 
@@ -100,6 +104,7 @@ fn run_suite(ctx: &Context, pd: &ProtectionDomain, args: &ClientArgs) -> Result<
                 size,
                 iterations: args.iterations,
                 tx_depth: args.tx_depth,
+                rx_depth: args.rx_depth,
             };
 
             match run_once(ctx, pd, &params, false) {
@@ -137,9 +142,10 @@ fn run_suite(ctx: &Context, pd: &ProtectionDomain, args: &ClientArgs) -> Result<
 ///
 /// `verbose` gates the per-run chatter a sweep would otherwise repeat for every size.
 fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams, verbose: bool) -> Result<Report> {
-    let cq = ctx.create_cq((2 * params.tx_depth) as i32, 0)?;
+    let cq = ctx.create_cq((params.tx_depth + params.rx_depth) as i32, 0)?;
 
-    let prepared = transport::build(params.transport, params.mode, pd, &cq, params.tx_depth)?;
+    let prepared =
+        transport::build(params.transport, params.mode, pd, &cq, params.tx_depth, params.rx_depth)?;
     let local_endpoint = prepared.endpoint();
 
     let conn = comm::connect(params.host, params.port)?;
@@ -149,6 +155,7 @@ fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams, verbose: b
         msg_size: params.size,
         iterations: params.iterations,
         tx_depth: params.tx_depth,
+        rx_depth: params.rx_depth,
     })?;
 
     let ack: HandshakeAck = conn.recv_msg()?;
@@ -177,6 +184,7 @@ fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams, verbose: b
         params.size,
         params.iterations,
         params.tx_depth,
+        params.rx_depth,
     )?;
 
     // The server is normally the passive side with no numbers of its own; hand it the CSV row so

@@ -1,6 +1,7 @@
 //! Stop-and-wait ping/pong latency benchmark. Ported from
 //! `rust-rdma-bench/src/bench/latency.rs` — exactly one message in flight per direction,
-//! `tx_depth` is accepted (to match the shared `bench::run` dispatch signature) but unused.
+//! `tx_depth`/`rx_depth` are accepted (to match the shared `bench::run` dispatch signature) but
+//! unused.
 
 use crate::bench::{self, Role, IDLE_TIMEOUT_US};
 use crate::comm::Conn;
@@ -23,6 +24,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     _tx_depth: usize,
+    _rx_depth: usize,
 ) -> Result<Report> {
     // Two separate buffers: reusing one for both directions would let the echo overwrite bytes
     // the outgoing send is still reading.

@@ -50,16 +50,17 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<Report> {
     match mode {
-        Mode::Bandwidth => bandwidth::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
-        Mode::Latency => latency::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
-        Mode::Accuracy => accuracy::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
+        Mode::Bandwidth => bandwidth::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth, rx_depth),
+        Mode::Latency => latency::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth, rx_depth),
+        Mode::Accuracy => accuracy::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth, rx_depth),
         Mode::RdmaWrite => {
-            rdma::run(rdma::Direction::Write, pd, cq, qp, conn, role, msg_size, iterations, tx_depth)
+            rdma::run(rdma::Direction::Write, pd, cq, qp, conn, role, msg_size, iterations, tx_depth, rx_depth)
         }
         Mode::RdmaRead => {
-            rdma::run(rdma::Direction::Read, pd, cq, qp, conn, role, msg_size, iterations, tx_depth)
+            rdma::run(rdma::Direction::Read, pd, cq, qp, conn, role, msg_size, iterations, tx_depth, rx_depth)
         }
     }
 }

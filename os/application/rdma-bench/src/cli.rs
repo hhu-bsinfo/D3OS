@@ -12,7 +12,7 @@ const USAGE: &str = concat!(
     "Usage: rdma-bench server [--port N] [--listen]\n",
     "       rdma-bench client --host HOST [--port N] [--transport rc|uc|ud]\n",
     "                         [--mode M[,M..]] [--size N[,N..]] [--min-size N] [--max-size N]\n",
-    "                         [--iterations N] [--tx-depth N]\n",
+    "                         [--iterations N] [--tx-depth N] [--rx-depth N]\n",
     "\n",
     "--mode selects bandwidth, latency, accuracy, rdma-write and/or rdma-read; left out, all\n",
     "five run.\n",
@@ -25,11 +25,13 @@ const USAGE: &str = concat!(
 const DEFAULT_PORT: u16 = 18515;
 const DEFAULT_ITERATIONS: usize = 1000;
 const DEFAULT_TX_DEPTH: usize = 32;
+const DEFAULT_RX_DEPTH: usize = 128;
 
 /// Bounds of the default message size sweep. The lower one is the smallest size accuracy mode can
 /// identify (it needs room for its 8-byte sequence-number header); the upper one is kept at 64 KiB
-/// because accuracy mode registers a `tx_depth`-slot buffer, so its memory region grows with the
-/// message size — sweeping higher is fine, but pair it with a smaller `--tx-depth`.
+/// because accuracy mode registers a `tx_depth`- or `rx_depth`-slot buffer (sender/receiver
+/// respectively), so its memory region grows with the message size — sweeping higher is fine, but
+/// pair it with a smaller `--tx-depth`/`--rx-depth`.
 const DEFAULT_MIN_SIZE: usize = 8;
 const DEFAULT_MAX_SIZE: usize = 1 << 17;
 
@@ -129,8 +131,12 @@ pub struct ClientArgs {
     pub sizes: Vec<usize>,
     /// Number of messages to exchange per run.
     pub iterations: usize,
-    /// Number of sends/receives allowed to be outstanding at once.
+    /// Number of sends allowed to be outstanding at once.
     pub tx_depth: usize,
+    /// Number of receives allowed to be outstanding at once. Sizes every receive queue and every
+    /// benchmark's receive-side window (e.g. how many receive buffers a bandwidth/accuracy
+    /// receiver keeps posted).
+    pub rx_depth: usize,
 }
 
 impl ClientArgs {
@@ -190,6 +196,7 @@ impl Cli {
             sizes: Vec::new(),
             iterations: DEFAULT_ITERATIONS,
             tx_depth: DEFAULT_TX_DEPTH,
+            rx_depth: DEFAULT_RX_DEPTH,
         };
 
         loop {
@@ -247,6 +254,10 @@ impl Cli {
                 Some("--tx-depth") => {
                     let val = Self::next_value(&mut args, "--tx-depth")?;
                     client.tx_depth = val.parse().map_err(|_| "invalid --tx-depth value".to_string())?;
+                }
+                Some("--rx-depth") => {
+                    let val = Self::next_value(&mut args, "--rx-depth")?;
+                    client.rx_depth = val.parse().map_err(|_| "invalid --rx-depth value".to_string())?;
                 }
                 Some(_) => return Err(USAGE.to_string()),
                 None => break,

@@ -25,6 +25,7 @@ pub struct BenchmarkRequest {
     pub msg_size: usize,
     pub iterations: usize,
     pub tx_depth: usize,
+    pub rx_depth: usize,
 }
 
 /// The server's reply to a `BenchmarkRequest`.
