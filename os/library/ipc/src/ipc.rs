@@ -69,7 +69,7 @@ impl IpcEndpoints {
     }
 }
 
-pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, IpcError> {
+pub fn register_ipc_endpoint(endpoint_name: &str) -> Result<usize, IpcError> {
     // TODO what happens when we register multiple endpoints / multiple services for this endpoint
 
     let endpoints_ptr = USER_SPACE_MAILBOX_START as *mut IpcEndpoints;
@@ -79,10 +79,10 @@ pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, IpcError> {
     }
 
     // try creating a new endpoint
-    unsafe { (*endpoints_ptr).try_register(svc_name)?; }
+    unsafe { (*endpoints_ptr).try_register(endpoint_name)?; }
 
-    let name_ptr = svc_name.as_ptr();
-    let name_len = svc_name.len();
+    let name_ptr = endpoint_name.as_ptr();
+    let name_len = endpoint_name.len();
     IpcError::convert_syscall_result(syscall(SystemCall::IpcRegister, &[name_ptr as usize, name_len]))
 }
 

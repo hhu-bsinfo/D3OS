@@ -13,6 +13,7 @@ use ipc::const_string::ConstString;
 use ipc::ipc_message::IpcMessageWrapper;
 use ipc::ipc_error::IpcError;
 use runtime::*;
+use syscall::syscall;
 use terminal::println;
 use uuid::Uuid;
 
@@ -255,7 +256,6 @@ pub fn main() {
             }
             //thread::sleep(300);
         }
-
     } else if command == "contention_sender" {
         let mut a = tid;
         let b = 2;
@@ -280,6 +280,114 @@ pub fn main() {
                 Err(err) => log::error!("[{}] Error: {:?}", tid, err),
             }
             thread::sleep(500);
+        }
+    } else if command == "mathserver" || command == "ms" {
+
+        ipc::register_ipc_endpoint("mathserver_ctrl");
+
+        let math_fns: [(&str, fn(usize, usize) -> usize); 4] = [
+            ("mathserver_add", usize::wrapping_add),
+            ("mathserver_sub", usize::wrapping_sub),
+            ("mathserver_mult", usize::wrapping_mul),
+            ("mathserver_div", |n1, n2| usize::checked_div(n1, n2).unwrap_or_default()),
+        ];
+
+        for (endpoint_name, _) in math_fns {
+            ipc::register_ipc_endpoint(endpoint_name);
+        }
+
+        let num_child_processes = 2;
+
+        thread::create(move || {
+            for _ in 0..num_child_processes {
+                thread::start_application("ipctest", vec!["mathclient"]);
+            }
+        });
+
+        let mut num_stop_req = 0;
+
+        for (endpoint_name, math_fn) in math_fns {
+            thread::create(move || {
+                loop {
+                    match ipc::receive(endpoint_name) {
+                        Ok(msg_wrapper) => {
+                            let msg = msg_wrapper.msg();
+                            let numbers = msg.data_as_usize_slice();
+                            let mut result = numbers[0];
+                            for n in numbers.iter().skip(1) {
+                                result = (math_fn)(result, *n);
+                            }
+                        },
+                        Err(err) => {
+                            if err != IpcError::Empty {
+                                log::error!("[{}] Error: {:?}", tid, err);
+                            }
+                        },
+                    }
+                }
+            });
+        }
+
+        loop {
+            match ipc::receive("mathserver_ctrl") {
+                Ok(msg_wrapper) => {
+                    let msg = msg_wrapper.msg();
+                    if msg.msg_type_as_str() == "STRING" && msg.name_as_str() == "STOP" {
+                        num_stop_req += 1;
+                        log::info!("{} received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
+                        if num_stop_req >= num_child_processes {
+                            log::info!("{} received [{}/{}] STOP requests, exiting...", tid, num_stop_req, num_child_processes);
+                            return;
+                        }
+                    }
+                },
+                Err(err) => {
+                    if err != IpcError::Empty {
+                        log::error!("[{}] Error: {:?}", tid, err);
+                    }
+                },
+            }
+            thread::sleep(300);
+        }
+    } else if command == "mathclient" || command == "mc" {
+
+        let math_fns = [
+            "mathserver_add",
+            "mathserver_sub",
+            "mathserver_mult",
+            "mathserver_div",
+        ];
+
+        let r = syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap();
+        let limit = (r * 41) % 13;
+
+        let mut count = 0;
+
+        loop {
+            let r1 = syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap();
+            let r2 = syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap();
+            let f = syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap();
+
+            let service_name = math_fns[(f * 7) % 4];
+
+            let n1 = (r1 * 1009) % 999;
+            let n2 = (r2 * 1093) % 999;
+
+            match ipc::send_and_receive(service_name, "MATH", &[n1, n2], 5000) {
+                Ok(msg_wrapper) => {
+                    let res = *msg_wrapper.msg().data_as_usize();
+                    println!("[{}] Sent {} & {}, received {}", tid, n1, n2, res);
+                    count += 1;
+                },
+                Err(err) => {
+                    log::error!("[{}] Error: {:?}", tid, err);
+                },
+            }
+
+            if count >= limit {
+                println!("[{}] Done", tid);
+                return;
+            }
         }
     } else {
         println!("Invalid argument {}", command)
