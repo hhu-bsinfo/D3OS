@@ -3,12 +3,13 @@
 //! `tx_depth`/`rx_depth` are accepted (to match the shared `bench::run` dispatch signature) but
 //! unused.
 
-use crate::bench::{self, Role, IDLE_TIMEOUT_US};
+use crate::bench::{self, Role, IDLE_TIMEOUT_US, WARMUP_SETTLE_MS};
 use crate::comm::Conn;
 use crate::error::Result;
 use crate::report::{LatencyStats, Report};
 use alloc::vec;
 use alloc::vec::Vec;
+use concurrent::thread::sleep;
 use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, ReceiveWorkRequest, SendFlags, SendWorkRequest, WorkCompletion};
 use time::get_time_in_us;
 
@@ -77,6 +78,12 @@ fn ping(
         SendFlags::SIGNALED
     );
 
+    // Warm-up: see `bench::WARMUP_SETTLE_MS`'s doc comment. Without this, the queue pair's
+    // one-time settling cost shows up as a single, wildly-outlying first sample here.
+    conn.sync()?; // warm-up barrier
+    sleep(WARMUP_SETTLE_MS);
+    conn.sync()?; // warm-up done
+
     unsafe { qp.post_receive([recv_wr])? };
     conn.sync()?; // both sides have a receive posted
 
@@ -128,6 +135,11 @@ fn pong(
         &send_sge,
         SendFlags::SIGNALED
     );
+
+    // Warm-up: see ping()'s matching comment.
+    conn.sync()?; // warm-up barrier
+    sleep(WARMUP_SETTLE_MS);
+    conn.sync()?; // warm-up done
 
     unsafe { qp.post_receive([recv_wr])? };
     conn.sync()?; // both sides have a receive posted

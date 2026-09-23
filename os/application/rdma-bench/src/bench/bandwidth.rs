@@ -3,11 +3,12 @@
 //! receiver's idle-timeout early exit and a "never arrived" count instead of always draining to
 //! `iterations`.
 
-use crate::bench::{self, Role, IDLE_TIMEOUT_US};
+use crate::bench::{self, Role, IDLE_TIMEOUT_US, WARMUP_SETTLE_MS};
 use crate::comm::Conn;
 use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
 use alloc::vec;
+use concurrent::thread::sleep;
 use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, ReceiveWorkRequest, SendFlags, SendWorkRequest, WorkCompletion};
 use time::get_time_in_us;
 
@@ -39,6 +40,11 @@ fn send(
     iterations: usize,
     tx_depth: usize,
 ) -> Result<Report> {
+    // Warm-up: see `bench::WARMUP_SETTLE_MS`'s doc comment.
+    conn.sync()?; // warm-up barrier
+    sleep(WARMUP_SETTLE_MS);
+    conn.sync()?; // warm-up done
+
     conn.sync()?; // wait for "ready"
     let t0 = get_time_in_us();
 
@@ -85,6 +91,11 @@ fn receive(
     iterations: usize,
     rx_depth: usize,
 ) -> Result<Report> {
+    // Warm-up: see send()'s matching comment.
+    conn.sync()?; // warm-up barrier
+    sleep(WARMUP_SETTLE_MS);
+    conn.sync()?; // warm-up done
+
     let window = rx_depth.min(iterations);
     let mut recv_wr = ReceiveWorkRequest {
         wr_id: 0,

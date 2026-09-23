@@ -14,6 +14,19 @@ use ibverbs::{CompletionQueue, ProtectionDomain, QueuePair, WorkCompletion};
 /// completion on either side to signal the loss.
 pub const IDLE_TIMEOUT_US: usize = 2_000_000;
 
+/// How long a bandwidth/latency run pauses, synchronized on both sides, right after the
+/// handshake before starting its timed region.
+///
+/// A freshly-RTS queue pair has a one-time settling cost that, on the ib1/ib2 ConnectX-3
+/// hardware, was confirmed (on the `rust-rdma-bench` Linux side) to swamp a short run's *entire*
+/// measured throughput rather than just its first sample — a bandwidth run with no warm-up
+/// measured ~15-30x lower throughput than a reference tool on the identical path. This is a
+/// genuinely time-bound cost, not a "number of messages" one: a discarded warm-up batch bounded
+/// by queue depth finishes in well under a millisecond even at the slow cold rate, nowhere near
+/// enough elapsed time to matter — only an actual pause of this rough magnitude fixed it in
+/// testing.
+pub const WARMUP_SETTLE_MS: usize = 100;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Role {
     Client,
