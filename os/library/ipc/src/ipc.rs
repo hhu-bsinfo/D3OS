@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(generic_atomic)]
+#![feature(generic_atomic)] // used by lfqueue
 #![allow(clippy::new_without_default)]
 
 pub mod ipc_message;
@@ -13,8 +13,6 @@ extern crate alloc;
 use core::sync::atomic::AtomicBool;
 
 use alloc::format;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
 use spin::RwLock;
 use syscall::{SystemCall, syscall};
 
@@ -28,22 +26,46 @@ use crate::queues::{IpcQueue, IpcQueueType};
 // Schnittstelle für Interprozesskommunikation
 
 const MESSAGE_NAME_LEN: usize = 0x20;
-const MESSAGE_TAG_LEN: usize = 0x10;
+const MESSAGE_TAG_LEN: usize = 0x20;
 //pub const MESSAGE_DATA_SIZE: usize = 0x100 - (size_of::<Uuid>() + size_of::<usize>() + MESSAGE_TAG_LEN);
 pub const MESSAGE_DATA_SIZE: usize = 0x100;
 const MAX_NUM_MESSAGES: usize = 16; // when using customqueue this needs to be a power of 2 and cannot be smaller than 4
+const MAX_NUM_ENDPOINTS: usize = 8;
 
 const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
 static ENDPOINTS_INIT: AtomicBool = AtomicBool::new(false);
 
+//pub type EndpointEntry = (ConstString<64>, *const IpcQueueType);
+
 pub struct IpcEndpoints {
-    endpoints: RwLock<Vec<(ConstString<64>, Arc<IpcQueueType>)>>
+    endpoints: [RwLock<ConstString<64>>; MAX_NUM_ENDPOINTS],
+    queues: [IpcQueueType; MAX_NUM_ENDPOINTS]
 }
 
 impl IpcEndpoints {
-    pub fn get(&self, name: &str) -> Option<Arc<IpcQueueType>> {
-        self.endpoints.read().iter().find(|(endpoint_name, _)| endpoint_name == name).map(|(_, endpoint)| Arc::clone(endpoint))
+    pub fn new() -> Self {
+        Self { endpoints: [const { RwLock::new(ConstString::new()) }; _], queues: core::array::from_fn(|_| IpcQueueType::new()) }
+    }
+    pub fn get(&self, name: &str) -> Option<&IpcQueueType> {
+        let pos = self.endpoints.iter().position(|endpoint_name| endpoint_name.read().as_str_unchecked() == name)?;
+        Some(&self.queues[pos])
+    }
+    pub fn try_register(&self, svc_name: &str) -> Result<usize, IpcError> {
+
+        let opt_duplicate = self.endpoints.iter().find(|name| name.read().as_str_unchecked() == svc_name);
+
+        if opt_duplicate.is_some() {
+            return Err(IpcError::Invalid);
+        }
+
+        match self.endpoints.iter().position(|name| name.read().is_empty()) {
+            Some(pos) => {
+                self.endpoints[pos].write().set(svc_name);
+                Ok(pos)
+            },
+            None => Err(IpcError::Full),
+        }
     }
 }
 
@@ -53,11 +75,11 @@ pub fn register_ipc_endpoint(svc_name: &str) -> Result<usize, IpcError> {
     let endpoints_ptr = USER_SPACE_MAILBOX_START as *mut IpcEndpoints;
     // if queue is not initialized, create new queue
     if ENDPOINTS_INIT.compare_exchange(false, true, core::sync::atomic::Ordering::Relaxed, core::sync::atomic::Ordering::Relaxed).is_ok() {
-        unsafe { endpoints_ptr.write(IpcEndpoints { endpoints: RwLock::new(Vec::new()) }) };
+        unsafe { endpoints_ptr.write(IpcEndpoints::new()) };
     }
 
-    // create new endpoint
-    unsafe { (*endpoints_ptr).endpoints.write().push((ConstString::from(svc_name), Arc::new(IpcQueueType::new()))); }
+    // try creating a new endpoint
+    unsafe { (*endpoints_ptr).try_register(svc_name)?; }
 
     let name_ptr = svc_name.as_ptr();
     let name_len = svc_name.len();
@@ -79,7 +101,7 @@ pub fn send_with_tag<T: IpcMessageContent>(service: &str, msg_name: &str, tag: &
     let bytes = message.to_bytes();
     send_internal(service, msg_name, tag, bytes)
 }
-
+/// send a custom data structure over ipc
 pub fn send_struct<T: Copy>(service: &str, msg_name: &str, message: &T) -> Result<usize, IpcError> {
     let bytes = unsafe { any_as_bytes(message) };
     let tag = core::any::type_name_of_val(message);
@@ -91,8 +113,9 @@ pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, mes
     match send_internal(service, msg_name, message.tag(), bytes) {
         Ok(_) => {
             let mut counter = 0;
+            let callback_endpoint_name = format!("callback-{}", process::current().id());
             loop {
-                let rec = receive();
+                let rec = receive(&callback_endpoint_name);
                 match rec {
                     // TODO find specific answer message
                     Ok(_) => return rec,
@@ -156,14 +179,20 @@ pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -
     IpcError::convert_syscall_result(syscall(SystemCall::IpcSend, &&params))
 }
 
-pub fn receive() -> Result<impl IpcMessageWrapper, IpcError> {
-    let ipc_queue = unsafe { (USER_SPACE_MAILBOX_START as *const IpcQueueType).as_ref().ok_or(IpcError::NoIpcQueue) };
-    ipc_queue?.receive()
+pub fn receive(endpoint_name: &str) -> Result<impl IpcMessageWrapper + use<>, IpcError> {
+    let endpoints = unsafe { (USER_SPACE_MAILBOX_START as *const IpcEndpoints).as_ref_unchecked() };
+    let ipc_queue = endpoints.get(endpoint_name).ok_or(IpcError::EndpointNotFound)?;
+    ipc_queue.receive()
 }
 
-pub fn receive_blocking(timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
+pub fn receive_answer() -> Result<impl IpcMessageWrapper + use<>, IpcError> {
+    let endpoint_name = format!("callback-{}", process::current().id());
+    receive(&endpoint_name)
+}
+
+pub fn receive_blocking(endpoint_name: &str, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
     match syscall(SystemCall::IpcReceiveBlocking, &timeout_ms) {
-        Ok(_) => receive(),
+        Ok(_) => receive(endpoint_name),
         Err(e) => Err(e.into()),
     }
 }
@@ -181,7 +210,7 @@ pub unsafe fn any_as_bytes<T>(any: &T) -> &[u8] {
 ///
 /// # Safety
 ///
-/// Manually dereferences the byte slice into the struct T. Will probably only work correctly when uses on a byte slice created by `any_as_bytes`.
+/// Manually dereferences the byte slice into the struct T. Will most likely only work correctly when used on a byte slice created by `any_as_bytes`.
 pub unsafe fn bytes_as_any<T>(bytes: &[u8]) -> &T {
     unsafe { &*(bytes.as_ptr() as *const T) }
 }

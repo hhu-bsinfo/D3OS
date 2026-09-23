@@ -1,3 +1,4 @@
+use crate::MESSAGE_DATA_SIZE;
 use crate::queues::{IpcError, IpcQueue};
 use crate::queues::atomic_ringbuffer::Ringbuffer;
 use crate::ipc_message::{IpcMessage, IpcMessageWrapper};
@@ -22,7 +23,7 @@ impl<const S: usize> IpcQueue for IpcRingbufferQueue<IpcMessage, S> {
             unsafe {
                 (*ptr).name.set(name);
                 (*ptr).msg_type.set(msg_type);
-                let l = core::cmp::min(S, data.len());
+                let l = core::cmp::min(MESSAGE_DATA_SIZE, data.len());
                 core::ptr::copy_nonoverlapping(data.as_ptr(), (*ptr).data.as_mut_ptr(), l);
                 (*ptr).data_len = l;
                 (*ptr).sender_pid = *sender_pid;

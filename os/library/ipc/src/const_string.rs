@@ -24,6 +24,7 @@ impl <const S: usize> ConstString<S> {
         self.len
     }
     #[must_use]
+    /// is this str empty (i.e. "")
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -58,13 +59,13 @@ impl <const S: usize> ConstString<S> {
 }
 
 impl ConstString<0> {
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self { buffer: [0; 0], len: 0 }
     }
 }
 
 impl <const S: usize> ConstString<S> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { buffer: [0; S], len: 0 }
     }
 }

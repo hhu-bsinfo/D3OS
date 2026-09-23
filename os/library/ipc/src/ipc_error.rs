@@ -10,6 +10,7 @@ pub enum IpcError {
     MsgTooLarge = -5,
     NoIpcQueue = -6,
     Invalid = -7,
+    EndpointNotFound = -8,
 }
 
 impl IpcError {
@@ -37,6 +38,7 @@ impl From<isize> for IpcError {
             -5 => IpcError::MsgTooLarge,
             -6 => IpcError::NoIpcQueue,
             -7 => IpcError::Invalid,
+            -8 => IpcError::EndpointNotFound,
             _ => IpcError::Generic,
         }
     }

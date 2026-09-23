@@ -67,7 +67,7 @@ pub fn main() {
     } else if command == "receive" {
         ipc::register_ipc_endpoint("ipctest_recv");
         loop {
-            match ipc::receive() {
+            match ipc::receive("ipctest_recv") {
                 Ok(msg_wrapper) => {
                     let m = msg_wrapper.msg();
                     println!("Received Message: {}", m);
@@ -87,7 +87,7 @@ pub fn main() {
 
         // wait for ping
         loop {
-            match ipc::receive() {
+            match ipc::receive("ipctest_pong") {
                 Ok(msg) => {
                     let ping = msg.msg().data_as_usize();
                     if *ping > 100 { return; }
@@ -106,7 +106,7 @@ pub fn main() {
 
         // wait for pong
         loop {
-            match ipc::receive() {
+            match ipc::receive_answer() {
                 Ok(msg) => {
                     let pong = msg.msg().data_as_usize();
                     if *pong > 100 { return; }
@@ -131,7 +131,7 @@ pub fn main() {
         let mut prev = 0;
 
         loop {
-            while let Ok(msg) = ipc::receive() {
+            while let Ok(msg) = ipc::receive("ipctest_recv") {
                 let number = *msg.msg().data_as_usize();
                 println!("Received Message: {}", number);
                 if number == limit {
@@ -159,7 +159,7 @@ pub fn main() {
         loop {
 
             // check for stop signal
-            if let Ok(msg) = ipc::receive() {
+            if let Ok(msg) = ipc::receive("ipctest_send") {
                 
                 let msg_data = msg.msg().data_as_str();
 
@@ -188,7 +188,7 @@ pub fn main() {
         thread::sleep(1500);
 
         loop {
-            match ipc::receive() {
+            match ipc::receive("ipctest_struct_recv") {
                 Ok(msg) => {
                     let my_struct: &MyStruct = unsafe { ipc::bytes_as_any(&*msg.msg().data()) };
                     println!("-- Receive --\n{:}", my_struct);
@@ -224,7 +224,7 @@ pub fn main() {
         let mut num_stop_req = 0;
 
         loop {
-            match ipc::receive() {
+            match ipc::receive("ipctest_contention_recv") {
                 Ok(msg_wrapper) => {
                     let msg = msg_wrapper.msg();
                     match msg.name_as_str() {
@@ -281,6 +281,8 @@ pub fn main() {
             }
             thread::sleep(500);
         }
+    } else {
+        println!("Invalid argument {}", command)
     }
 }
 
