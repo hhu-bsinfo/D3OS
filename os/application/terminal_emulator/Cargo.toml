@@ -23,6 +23,7 @@ system_info = { path = "../../library/system_info" }
 input = { path = "../../library/input" }
 syscall = {path ="../../library/syscall"}
 terminal = {path ="../../library/terminal"}
+logger = {path ="../../library/logger"}
 globals = {path ="../../library/globals"}
 
 # Extern dependencies

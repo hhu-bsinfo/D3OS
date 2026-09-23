@@ -786,6 +786,7 @@ name = "logger"
 version = "0.1.0"
 dependencies = [
  "log",
+ "spin 0.12.2",
  "syscall",
 ]
 
@@ -918,6 +919,7 @@ dependencies = [
  "chrono",
  "concurrent",
  "log",
+ "logger",
  "network",
  "postcard",
  "runtime",
@@ -1367,6 +1369,7 @@ dependencies = [
  "concurrent",
  "globals",
  "log",
+ "logger",
  "naming",
  "runtime",
  "spin 0.12.2",
@@ -1536,8 +1539,6 @@ dependencies = [
 name = "terminal"
 version = "0.1.0"
 dependencies = [
- "log",
- "logger",
  "num_enum",
  "pc-keyboard",
  "spin 0.12.2",
@@ -1557,6 +1558,7 @@ dependencies = [
  "graphic",
  "input",
  "log",
+ "logger",
  "num_enum",
  "pc-keyboard",
  "runtime",
@@ -1898,6 +1900,7 @@ dependencies = [
  "input",
  "libm",
  "log",
+ "logger",
  "nolock",
  "pc-keyboard",
  "pulldown-cmark",

@@ -21,6 +21,7 @@ with_runtime = []
 runtime = { path = "../../library/runtime" }
 # io = { path = "../../library/io" }
 terminal = { path = "../../library/terminal" }
+logger = { path = "../../library/logger" }
 concurrent = { path = "../../library/concurrent" }
 drawer = { path = "../../library/drawer" }
 graphic = { path = "../../library/graphic" }

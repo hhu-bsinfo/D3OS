@@ -6,6 +6,22 @@ use alloc::format;
 use log::{Level, Log, Metadata, Record};
 use syscall::{SystemCall, syscall};
 
+#[cfg(feature = "userspace")]
+use spin::Once;
+
+#[cfg(feature = "userspace")]
+static LOGGER: Once<Logger> = Once::new();
+
+#[cfg(feature = "userspace")]
+pub fn init_logger() {
+    use log::{set_logger, LevelFilter};
+
+    LOGGER.call_once(Logger::new);
+    set_logger(LOGGER.get().unwrap())
+        .map(|()| log::set_max_level(LevelFilter::Debug))
+        .expect("Failed to initialize logger!");
+}
+
 /// Forward log to kernel logger
 pub struct Logger {
     /// the verbosity
@@ -42,5 +58,11 @@ impl Logger {
         Self {
             level: Level::Debug,
         }
+    }
+}
+
+impl Default for Logger {
+    fn default() -> Self {
+        Self::new()
     }
 }

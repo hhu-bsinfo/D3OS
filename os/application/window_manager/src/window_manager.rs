@@ -660,7 +660,7 @@ impl WindowManager {
 #[cfg(feature = "with_runtime")]
 #[no_mangle]
 fn main() {
-    use terminal::init_logger;
+    use logger::init_logger;
 
     init_logger();
     let resolution = Drawer::get_graphic_resolution();

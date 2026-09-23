@@ -143,7 +143,7 @@ impl Pacer {
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    terminal::init_logger();
+    logger::init_logger();
     let cli = Cli::parse();
 
     if let Err(message) = cli {
