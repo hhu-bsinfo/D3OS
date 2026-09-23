@@ -659,8 +659,6 @@ dependencies = [
  "concurrent",
  "crossbeam-utils",
  "lfqueue",
- "lockfree-datastructures",
- "nolock",
  "spin 0.12.2",
  "syscall",
  "uuid",
@@ -858,12 +856,6 @@ checksum = "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
 dependencies = [
  "scopeguard",
 ]
-
-[[package]]
-name = "lockfree-datastructures"
-version = "0.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a357d1b977cea3f86e28da9f2076a49f58832f2bcee9089b887d67599f67975"
 
 [[package]]
 name = "log"

@@ -11,7 +11,7 @@ use alloc::vec;
 use concurrent::{process, thread};
 use ipc::const_string::ConstString;
 use ipc::ipc_message::IpcMessageWrapper;
-use ipc::queues::IpcError;
+use ipc::ipc_error::IpcError;
 use runtime::*;
 use terminal::println;
 use uuid::Uuid;

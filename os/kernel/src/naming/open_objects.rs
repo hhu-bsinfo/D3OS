@@ -16,7 +16,7 @@ use core::result::Result;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Once;
 use spin::rwlock::RwLock;
-use log::{debug, info, warn};
+use log::{debug, warn};
 
 use crate::naming::traits::DirectoryObject;
 

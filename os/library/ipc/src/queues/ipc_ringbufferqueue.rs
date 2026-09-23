@@ -1,6 +1,5 @@
 use crate::queues::{IpcError, IpcQueue};
 use crate::queues::atomic_ringbuffer::Ringbuffer;
-use crate::queues::ipc_lfqueue::IpcMessageWrapperOwned;
 use crate::ipc_message::{IpcMessage, IpcMessageWrapper};
 
 
@@ -42,5 +41,21 @@ impl<const S: usize> IpcQueue for IpcRingbufferQueue<IpcMessage, S> {
 
     fn messages_left(&self) -> usize {
         self.ringbuffer.num_elements()
+    }
+}
+
+pub struct IpcMessageWrapperOwned {
+    pub msg: IpcMessage,
+}
+
+impl IpcMessageWrapper for IpcMessageWrapperOwned {
+    fn msg(&self) -> &IpcMessage {
+        &self.msg
+    }
+}
+
+impl core::fmt::Display for IpcMessageWrapperOwned {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.msg)
     }
 }

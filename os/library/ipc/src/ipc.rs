@@ -3,6 +3,7 @@
 #![allow(clippy::new_without_default)]
 
 pub mod ipc_message;
+pub mod ipc_error;
 pub mod queues;
 pub mod const_string;
 pub mod scq;
@@ -21,7 +22,8 @@ use concurrent::{process, thread};
 
 use crate::const_string::ConstString;
 use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageWrapper};
-use crate::queues::{IpcError, IpcQueue, IpcQueueType};
+use crate::ipc_error::IpcError;
+use crate::queues::{IpcQueue, IpcQueueType};
 
 // Schnittstelle für Interprozesskommunikation
 
@@ -29,7 +31,7 @@ const MESSAGE_NAME_LEN: usize = 0x20;
 const MESSAGE_TAG_LEN: usize = 0x10;
 //pub const MESSAGE_DATA_SIZE: usize = 0x100 - (size_of::<Uuid>() + size_of::<usize>() + MESSAGE_TAG_LEN);
 pub const MESSAGE_DATA_SIZE: usize = 0x100;
-const MAX_NUM_MESSAGES: usize = 16; // !this needs to be a power of 2! also this can not be smaller than 4
+const MAX_NUM_MESSAGES: usize = 16; // when using customqueue this needs to be a power of 2 and cannot be smaller than 4
 
 const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
