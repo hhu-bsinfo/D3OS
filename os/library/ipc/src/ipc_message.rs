@@ -49,7 +49,7 @@ impl IpcMessage {
         str::from_utf8(self.data()).unwrap_or("UTF8_ERROR")
         //str_from_ut8_nul_terminated(&self.data)
     }
-    pub(crate) fn copy_from(&mut self, other_msg: &IpcMessage) {
+    pub fn copy_from(&mut self, other_msg: &IpcMessage) {
         self.name.copy_from(other_msg.name);
         self.msg_type.copy_from(other_msg.msg_type);
         let l = other_msg.data_len;
