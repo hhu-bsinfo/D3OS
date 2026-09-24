@@ -31,7 +31,8 @@ members = [
     "os/application/infiniband-diags/*",
     "os/application/perftest",
     #"os/application/rdma/mlx4",
-    "os/application/rdma-bench"
+    "os/application/rdma-bench",
+    "os/application/ib-isolation"
 ]
 
 # [profile.release]

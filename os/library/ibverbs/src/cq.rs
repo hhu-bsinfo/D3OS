@@ -12,6 +12,15 @@ unsafe impl Send for CompletionQueue {}
 unsafe impl Sync for CompletionQueue {}
 
 impl CompletionQueue {
+    /// The queue number the device assigned to this completion queue.
+    ///
+    /// This is the raw `cq_num` the kernel keys its per-process ownership check on; it is what a
+    /// peer (or an isolation test) would need to reference this CQ in a `uverbs` command.
+    #[inline]
+    pub fn number(&self) -> u32 {
+        self.inner.number()
+    }
+
     /// Poll for (possibly multiple) work completions.
     ///
     /// A Work Completion indicates that a Work Request in a Work Queue, and all of the outstanding

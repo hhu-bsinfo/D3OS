@@ -662,6 +662,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ib-isolation"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "ibverbs",
+ "rdma",
+ "runtime",
+ "syscall",
+ "terminal",
+]
+
+[[package]]
 name = "ibping"
 version = "0.1.0"
 dependencies = [

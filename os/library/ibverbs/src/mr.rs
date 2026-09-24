@@ -80,6 +80,15 @@ impl<'pd, T> LocalMemoryRegion<'pd, T> {
         self.metadata.lkey
     }
 
+    /// The device-assigned handle (dMPT index) of this memory region.
+    ///
+    /// This is the value passed to `DeregMr`; an isolation test needs it to attempt deregistering
+    /// the region from another process.
+    #[inline]
+    pub fn handle(&self) -> u32 {
+        self.metadata.handle
+    }
+
 }
 
 /// A (remote) memory region that has been registered for use with RDMA.
