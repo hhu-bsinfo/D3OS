@@ -10,7 +10,7 @@ use alloc::{format, string::String, vec::Vec};
 use alloc::vec;
 use concurrent::{process, thread};
 use ipc::const_string::ConstString;
-use ipc::ipc_message::IpcMessageWrapper;
+use ipc::ipc_message::{IpcMessageType, IpcMessageWrapper};
 use ipc::ipc_error::IpcError;
 use runtime::*;
 use syscall::syscall;
@@ -90,8 +90,8 @@ pub fn main() {
         loop {
             match ipc::receive("ipctest_pong") {
                 Ok(msg) => {
-                    let ping = msg.msg().data_as_usize();
-                    if *ping > 100 { return; }
+                    let ping = msg.msg().data_as_usize().unwrap();
+                    if ping > 100 { return; }
                     let pong = ping + 1;
                     println!("PONG! [{}]", pong);
                     ipc::answer_with_name(&msg.msg(), "pong", pong);
@@ -109,8 +109,8 @@ pub fn main() {
         loop {
             match ipc::receive_answer() {
                 Ok(msg) => {
-                    let pong = msg.msg().data_as_usize();
-                    if *pong > 100 { return; }
+                    let pong = msg.msg().data_as_usize().unwrap();
+                    if pong > 100 { return; }
                     let ping = pong + 1;
                     println!("PING! [{}]", ping);
                     ipc::answer_with_name(&msg.msg(), "ping", ping);
@@ -133,7 +133,7 @@ pub fn main() {
 
         loop {
             while let Ok(msg) = ipc::receive("ipctest_recv") {
-                let number = *msg.msg().data_as_usize();
+                let number = msg.msg().data_as_usize().unwrap();
                 println!("Received Message: {}", number);
                 if number == limit {
                     println!("Successfully received {} messages. Sending STOP signal and exiting...", limit);
@@ -162,7 +162,7 @@ pub fn main() {
             // check for stop signal
             if let Ok(msg) = ipc::receive("ipctest_send") {
                 
-                let msg_data = msg.msg().data_as_str();
+                let msg_data = msg.msg().data_as_str_unchecked();
 
                 if msg_data == "STOP" {
                     println!("Received STOP signal ({} errors in total), exiting...", errors);
@@ -230,7 +230,7 @@ pub fn main() {
                     let msg = msg_wrapper.msg();
                     match msg.name_as_str() {
                         "CTRL" => {
-                            let data = msg.data_as_str();
+                            let data = msg.data_as_str_unchecked();
                             if data == "STOP" {
                                 num_stop_req += 1;
                                 log::info!("{} received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
@@ -241,7 +241,7 @@ pub fn main() {
                             }
                         },
                         _ => {
-                            let data = msg.data_as_usize_slice();
+                            let data = msg.data_as_usize_slice().unwrap();
                             log::info!("{} received request {} * {} from {}", tid, data[0], data[1], msg.sender_tid());
                             let res = data[0] * data[1];
                             ipc::answer(msg, res);
@@ -263,7 +263,7 @@ pub fn main() {
             log::info!("{} Sending {}*{}", tid, a, b);
             match ipc::send_and_receive("ipctest_contention_recv", "mult", &[a, b], 5000) {
                 Ok(msg_wrapper) => {
-                    a = *msg_wrapper.msg().data_as_usize();
+                    a = msg_wrapper.msg().data_as_usize().unwrap();
                     match a {
                         0 => {
                             log::error!("{} Error, received zero!", tid);
@@ -285,11 +285,11 @@ pub fn main() {
 
         ipc::register_ipc_endpoint("mathserver_ctrl");
 
-        let math_fns: [(&str, fn(usize, usize) -> usize); 4] = [
-            ("mathserver_add", usize::wrapping_add),
-            ("mathserver_sub", usize::wrapping_sub),
-            ("mathserver_mult", usize::wrapping_mul),
-            ("mathserver_div", |n1, n2| usize::checked_div(n1, n2).unwrap_or_default()),
+        let math_fns: [(&str, fn(f64, f64) -> f64); 4] = [
+            ("mathserver_add", |i1, i2| i1 + i2),
+            ("mathserver_sub", |i1, i2| i1 - i2),
+            ("mathserver_mult", |i1, i2| i1 * i2),
+            ("mathserver_div", |i1, i2| i1 / i2),
         ];
 
         for (endpoint_name, _) in math_fns {
@@ -312,11 +312,47 @@ pub fn main() {
                     match ipc::receive(endpoint_name) {
                         Ok(msg_wrapper) => {
                             let msg = msg_wrapper.msg();
-                            let numbers = msg.data_as_usize_slice();
-                            let mut result = numbers[0];
-                            for n in numbers.iter().skip(1) {
-                                result = (math_fn)(result, *n);
+                            log::info!("[Mathserver] Received {}", msg);
+                            let mut result: f64;
+                            match msg.msg_type() {
+                                IpcMessageType::UsizeSlice => {
+                                    let numbers = msg.data_as_usize_slice().unwrap();
+                                    result = numbers[0] as f64;
+                                    for n in numbers.iter().skip(1) {
+                                        let f = *n as f64;
+                                        result = (math_fn)(result, f);
+                                    }
+                                },
+                                IpcMessageType::IsizeSlice => {
+                                    let numbers = msg.data_as_isize_slice().unwrap();
+                                    result = numbers[0] as f64;
+                                    for n in numbers.iter().skip(1) {
+                                        let f = *n as f64;
+                                        result = (math_fn)(result, f);
+                                    }
+                                },
+                                IpcMessageType::I32Slice => {
+                                    let numbers = msg.data_as_i32_slice().unwrap();
+                                    result = numbers[0] as f64;
+                                    for n in numbers.iter().skip(1) {
+                                        let f = *n as f64;
+                                        result = (math_fn)(result, f);
+                                    }
+                                },
+                                IpcMessageType::F64Slice => {
+                                    let numbers = msg.data_as_f64_slice().unwrap();
+                                    result = numbers[0];
+                                    for n in numbers.iter().skip(1) {
+                                        result = (math_fn)(result, *n);
+                                    }
+                                },
+                                _ => {
+                                    ipc::answer_with_name(msg, "ERROR", "Invalid Message Type!");
+                                    continue;
+                                },
                             }
+                            log::info!("[Mathserver] Answer is {}", result);
+                            ipc::answer(msg, result);
                         },
                         Err(err) => {
                             if err != IpcError::Empty {
@@ -332,7 +368,7 @@ pub fn main() {
             match ipc::receive("mathserver_ctrl") {
                 Ok(msg_wrapper) => {
                     let msg = msg_wrapper.msg();
-                    if msg.msg_type_as_str() == "STRING" && msg.name_as_str() == "STOP" {
+                    if msg.name() == "STOP" {
                         num_stop_req += 1;
                         log::info!("{} received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
                         if num_stop_req >= num_child_processes {
@@ -357,6 +393,9 @@ pub fn main() {
             "mathserver_mult",
             "mathserver_div",
         ];
+        let math_symb = [
+            "+", "-", "*", "/",
+        ];
 
         let r = syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap();
         let limit = (r * 41) % 13;
@@ -368,15 +407,16 @@ pub fn main() {
             let r2 = syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap();
             let f = syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap();
 
-            let service_name = math_fns[(f * 7) % 4];
+            let ridx = (f * 7) % 4;
+            let service_name = math_fns[ridx];
 
             let n1 = (r1 * 1009) % 999;
             let n2 = (r2 * 1093) % 999;
 
             match ipc::send_and_receive(service_name, "MATH", &[n1, n2], 5000) {
                 Ok(msg_wrapper) => {
-                    let res = *msg_wrapper.msg().data_as_usize();
-                    println!("[{}] Sent {} & {}, received {}", tid, n1, n2, res);
+                    let res = msg_wrapper.msg().data_as_f64().unwrap();
+                    println!("[{}] Sent {} {} {}, received {}", tid, n1, math_symb[ridx], n2, res);
                     count += 1;
                 },
                 Err(err) => {
@@ -385,6 +425,7 @@ pub fn main() {
             }
 
             if count >= limit {
+                ipc::send_empty("mathserver_ctrl", "STOP");
                 println!("[{}] Done", tid);
                 return;
             }

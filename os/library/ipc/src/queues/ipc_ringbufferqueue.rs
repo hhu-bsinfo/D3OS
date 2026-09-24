@@ -1,7 +1,6 @@
-use crate::MESSAGE_DATA_SIZE;
 use crate::queues::{IpcError, IpcQueue};
 use crate::queues::atomic_ringbuffer::Ringbuffer;
-use crate::ipc_message::{IpcMessage, IpcMessageWrapper};
+use crate::ipc_message::{IpcMessage, IpcMessageType, IpcMessageWrapper};
 
 
 pub struct IpcRingbufferQueue<T, const S: usize> {
@@ -13,22 +12,15 @@ impl<const S: usize> IpcQueue for IpcRingbufferQueue<IpcMessage, S> {
         Self { ringbuffer: Ringbuffer::new() }
     }
 
-    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
+    fn send(&self, name: &str, msg_type: IpcMessageType, data: &[u8], sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
 
         // reserve space in ringbuffer
         let reserved = self.ringbuffer.reserve();
         if let Some((ptr, _guard)) = reserved {
 
             // write data into msg
-            unsafe {
-                (*ptr).name.set(name);
-                (*ptr).msg_type.set(msg_type);
-                let l = core::cmp::min(MESSAGE_DATA_SIZE, data.len());
-                core::ptr::copy_nonoverlapping(data.as_ptr(), (*ptr).data.as_mut_ptr(), l);
-                (*ptr).data_len = l;
-                (*ptr).sender_pid = *sender_pid;
-                (*ptr).sender_tid = sender_tid;
-            }
+            let msg = unsafe { &mut (*ptr) };
+            msg.set(name, msg_type, data, *sender_pid, sender_tid);
             
             Ok(0)
         } else {

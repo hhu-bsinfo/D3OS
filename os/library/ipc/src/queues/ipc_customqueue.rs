@@ -2,8 +2,8 @@ use core::sync::atomic::{AtomicI16, AtomicU16, Ordering};
 use uuid::Uuid;
 
 use crate::queues::IpcError;
-use crate::{MAX_NUM_MESSAGES, MESSAGE_DATA_SIZE};
-use crate::ipc_message::{IpcMessage, IpcMessageWrapper};
+use crate::MAX_NUM_MESSAGES;
+use crate::ipc_message::{IpcMessage, IpcMessageType, IpcMessageWrapper};
 
 #[derive(Debug)]
 pub struct IpcCustomQueue {
@@ -41,7 +41,7 @@ impl super::IpcQueue for IpcCustomQueue {
         Self::new()
     }
     
-    fn send(&self, name: &str, msg_type: &str, data: &[u8], sender_pid: &Uuid, sender_tid: usize) -> Result<usize, IpcError> {
+    fn send(&self, name: &str, msg_type: IpcMessageType, data: &[u8], sender_pid: &Uuid, sender_tid: usize) -> Result<usize, IpcError> {
 
         // 1. increment writer idx
         let writer_idx = self.writer_idx().fetch_add(1, Ordering::SeqCst) as usize % MAX_NUM_MESSAGES;
@@ -52,15 +52,10 @@ impl super::IpcQueue for IpcCustomQueue {
             //    -> this is sound because we ensure we are the sole thread accessing this message, using the atomic variable above
             if let Some(msg) = self.messages.get(writer_idx).and_then(|msg| unsafe { core::ptr::from_ref(msg).cast_mut().as_mut() }) {
                 // 4. write message
-                msg.name.set(name);
-                msg.msg_type.set(msg_type);
-                let msg_len = core::cmp::min(data.len(), MESSAGE_DATA_SIZE);
-                msg.data[..msg_len].copy_from_slice(&data[..msg_len]);
-                msg.data_len = msg_len;
-                msg.sender_pid = *sender_pid;
-                msg.sender_tid = sender_tid;
+                msg.set(name, msg_type, data, *sender_pid, sender_tid);
+                let msg_len = msg.data_len;
                 self.mailbox[writer_idx].store(msg_len as i16, Ordering::SeqCst);
-                return Ok(0);
+                return Ok(msg_len);
             }
         }
 

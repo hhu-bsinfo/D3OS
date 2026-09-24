@@ -3,6 +3,7 @@
 #![allow(clippy::new_without_default)]
 
 pub mod ipc_message;
+pub mod ipc_message_numbers;
 pub mod ipc_error;
 pub mod queues;
 pub mod const_string;
@@ -19,14 +20,13 @@ use syscall::{SystemCall, syscall};
 use concurrent::{process, thread};
 
 use crate::const_string::ConstString;
-use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageWrapper};
+use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageType, IpcMessageWrapper};
 use crate::ipc_error::IpcError;
 use crate::queues::{IpcQueue, IpcQueueType};
 
 // Schnittstelle für Interprozesskommunikation
 
 const MESSAGE_NAME_LEN: usize = 0x20;
-const MESSAGE_TAG_LEN: usize = 0x20;
 //pub const MESSAGE_DATA_SIZE: usize = 0x100 - (size_of::<Uuid>() + size_of::<usize>() + MESSAGE_TAG_LEN);
 pub const MESSAGE_DATA_SIZE: usize = 0x100;
 const MAX_NUM_MESSAGES: usize = 16; // when using customqueue this needs to be a power of 2 and cannot be smaller than 4
@@ -94,23 +94,27 @@ pub fn remove_ipc_endpoint(svc_name: &str) -> Result<usize, IpcError> {
 
 pub fn send<T: IpcMessageContent>(service: &str, msg_name: &str, message: T) -> Result<usize, IpcError> {
     let bytes: &[u8] = message.to_bytes();
-    send_internal(service, msg_name, message.tag(), bytes)
+    send_internal(service, msg_name, message.msg_type(), bytes)
 }
 
-pub fn send_with_tag<T: IpcMessageContent>(service: &str, msg_name: &str, tag: &str, message: T) -> Result<usize, IpcError> {
+pub fn send_empty(service: &str, msg_name: &str) -> Result<usize, IpcError> {
+    send_internal(service, msg_name, IpcMessageType::Empty, &[])
+}
+
+pub fn send_with_tag<T: IpcMessageContent>(service: &str, msg_name: &str, msg_type: IpcMessageType, message: T) -> Result<usize, IpcError> {
     let bytes = message.to_bytes();
-    send_internal(service, msg_name, tag, bytes)
+    send_internal(service, msg_name, msg_type, bytes)
 }
 /// send a custom data structure over ipc
 pub fn send_struct<T: Copy>(service: &str, msg_name: &str, message: &T) -> Result<usize, IpcError> {
     let bytes = unsafe { any_as_bytes(message) };
-    let tag = core::any::type_name_of_val(message);
-    send_internal(service, msg_name, tag, bytes)
+    let msg_type = IpcMessageType::Struct;
+    send_internal(service, msg_name, msg_type, bytes)
 }
 /// and message and busy wait for answer, TODO block thread here
 pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, message: T, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
     let bytes: &[u8] = message.to_bytes();
-    match send_internal(service, msg_name, message.tag(), bytes) {
+    match send_internal(service, msg_name, message.msg_type(), bytes) {
         Ok(_) => {
             let mut counter = 0;
             let callback_endpoint_name = format!("callback-{}", process::current().id());
@@ -140,12 +144,12 @@ pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, mes
 
 pub fn answer<T: IpcMessageContent>(original_message: &IpcMessage, message: T) -> Result<usize, IpcError> {
     let bytes = message.to_bytes();
-    send_internal(&format!("callback-{}", original_message.sender_pid), &format!("answer-{}", original_message.name), message.tag(), bytes)
+    send_internal(&format!("callback-{}", original_message.sender_pid), &format!("answer-{}", original_message.name), message.msg_type(), bytes)
 }
 
 pub fn answer_with_name<T: IpcMessageContent>(original_message: &IpcMessage, msg_name: &str, message: T) -> Result<usize, IpcError> {
     let bytes = message.to_bytes();
-    send_internal(&format!("callback-{}", original_message.sender_pid), msg_name, message.tag(), bytes)
+    send_internal(&format!("callback-{}", original_message.sender_pid), msg_name, message.msg_type(), bytes)
 }
 
 pub struct IpcSyscallParams {
@@ -153,13 +157,12 @@ pub struct IpcSyscallParams {
     pub service_name_len: usize,
     pub msg_name_ptr: *const u8,
     pub msg_name_len: usize,
-    pub msg_type_ptr: *const u8,
-    pub msg_type_len: usize,
+    pub msg_type: IpcMessageType,
     pub data_ptr: *const u8,
     pub data_len: usize,
 }
 
-pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -> Result<usize, IpcError> {
+pub fn send_internal(service: &str, msg_name: &str, msg_type: IpcMessageType, message: &[u8]) -> Result<usize, IpcError> {
 
     // register callback endpoint
     let pid = process::current().id();
@@ -170,8 +173,7 @@ pub fn send_internal(service: &str, msg_name: &str, tag: &str, message: &[u8]) -
         service_name_len: service.len(),
         msg_name_ptr: msg_name.as_ptr(),
         msg_name_len: msg_name.len(),
-        msg_type_ptr: tag.as_ptr(),
-        msg_type_len: tag.len(),
+        msg_type,
         data_ptr: message.as_ptr(),
         data_len: message.len(),
     };

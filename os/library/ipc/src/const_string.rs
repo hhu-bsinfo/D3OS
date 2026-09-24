@@ -11,6 +11,11 @@ pub struct ConstString<const S: usize> {
 }
 
 impl <const S: usize> ConstString<S> {
+
+    pub const fn new() -> Self {
+        Self { buffer: [0; S], len: 0 }
+    }
+
     /// returns this buffer as a str
     pub fn as_str(&self) -> Result<&str, core::str::Utf8Error> {
         core::str::from_utf8(&self.buffer[..self.len])
@@ -35,8 +40,7 @@ impl <const S: usize> ConstString<S> {
     
     /// set this string to `s`
     pub fn set(&mut self, s: &str) {
-        let l = core::cmp::min(S, s.len());
-        self.buffer[..l].copy_from_slice(&s.as_bytes()[..l]);
+        let l = self.buffer.copy_from_slice_sizechecked(s.as_bytes());
         self.len = l;
     }
     pub fn clear(&mut self) {
@@ -52,8 +56,7 @@ impl <const S: usize> ConstString<S> {
         self.len = l;
     }
     pub fn copy_from<const T: usize>(&mut self, other: ConstString<T>) {
-        let l = core::cmp::min(S, other.len());
-        self.buffer[..l].copy_from_slice(&other[..l]);
+        let l = self.buffer.copy_from_slice_sizechecked(&other[..]);
         self.len = l;
     }
 }
@@ -61,12 +64,6 @@ impl <const S: usize> ConstString<S> {
 impl ConstString<0> {
     pub const fn empty() -> Self {
         Self { buffer: [0; 0], len: 0 }
-    }
-}
-
-impl <const S: usize> ConstString<S> {
-    pub const fn new() -> Self {
-        Self { buffer: [0; S], len: 0 }
     }
 }
 
@@ -85,18 +82,16 @@ impl <const S: usize> From<[u8; S]> for ConstString<S> {
 impl <const S: usize> From<&str> for ConstString<S> {
     fn from(value: &str) -> Self {
         let mut buffer = [0_u8; S];
-        let l = core::cmp::min(value.len(), S);
-        buffer[..l].copy_from_slice(&value.as_bytes()[..l]);
-        Self { buffer, len: value.len() }
+        let l = buffer.copy_from_slice_sizechecked(value.as_bytes());
+        Self { buffer, len: l }
     }
 }
 
 impl <const S: usize> From<&[u8]> for ConstString<S> {
     fn from(value: &[u8]) -> Self {
         let mut buffer = [0_u8; S];
-        let l = core::cmp::min(value.len(), S);
-        buffer[..l].copy_from_slice(&value[..l]);
-        Self { buffer, len: value.len() }
+        let l = buffer.copy_from_slice_sizechecked(value);
+        Self { buffer, len: l }
     }
 }
 
@@ -137,5 +132,31 @@ impl <const S: usize> PartialEq for ConstString<S> {
 impl <const S: usize> PartialEq<str> for ConstString<S> {
     fn eq(&self, other: &str) -> bool {
         self.as_str_unchecked() == other
+    }
+}
+
+
+pub trait CopySizeChecked<T> {
+    /// performs a copy_from_slice / memcpy with automatic size checks, i.e. avoids panics on different slice lengths
+    /// 
+    /// returns the copied length
+    fn copy_from_slice_sizechecked(&mut self, src: &[T]) -> usize;
+}
+
+impl<T: Copy> CopySizeChecked<T> for &mut [T] {
+    fn copy_from_slice_sizechecked(&mut self, src: &[T]) -> usize {
+        let l = core::cmp::min(self.len(), src.len());
+        self[..l].copy_from_slice(&src[..l]);
+        l
+    }
+}
+
+impl<T: Copy> CopySizeChecked<T> for [T] {
+    fn copy_from_slice_sizechecked(&mut self, src: &[T]) -> usize {
+        let l = core::cmp::min(self.len(), src.len());
+        // do not copy when either length is zero
+        if l == 0 { return 0; }
+        self[..l].copy_from_slice(&src[..l]);
+        l
     }
 }

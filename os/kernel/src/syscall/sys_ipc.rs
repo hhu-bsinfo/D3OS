@@ -87,7 +87,7 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
         let endpoints = unsafe { (service.ipc_queue_addr as *const IpcEndpoints).as_ref_unchecked() };
         if let Some(ipc_queue) = endpoints.get(service_name) {
             let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
-            let msg_type = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_type_ptr, params.msg_type_len)) };
+            let msg_type = params.msg_type;
             let res = ipc_queue.send(name, msg_type, message, &scheduler().current_thread().process().id(), scheduler().current_thread().id());
 
             match res {

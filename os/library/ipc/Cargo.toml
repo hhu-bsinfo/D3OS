@@ -12,6 +12,7 @@ path = "src/ipc.rs"
 
 [features]
 default = ["ringbufferqueue"]
+#default = ["ringbufferqueue", "customqueue", "lfqueue", "lockqueue"]
 customqueue = []
 lfqueue = ["dep:crossbeam-utils", "dep:lfqueue"]
 lockqueue = []
