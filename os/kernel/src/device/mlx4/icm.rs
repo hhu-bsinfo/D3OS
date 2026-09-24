@@ -10,7 +10,7 @@ use modular_bitfield_msb::{
     prelude::{B10, B11, B21, B24, B28, B3, B4, B40, B7},
 };
 use zerocopy::AsBytes;
-use rdma::AccessFlags;
+use rdma::{AccessFlags, MemoryRegionMetadata};
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
@@ -310,27 +310,6 @@ pub(super) struct MrTable {
     // TODO
 }
 
-/// Also called dMPT
-pub(crate) struct DataMemoryProtectionTable {
-    handle: u32,
-    lkey: u32,
-    rkey: u32,
-}
-
-impl DataMemoryProtectionTable{
-    pub fn handle(&self) -> u32 {
-        self.handle
-    }
-
-    pub fn lkey(&self) -> u32 {
-        self.lkey
-    }
-
-    pub fn rkey(&self) -> u32 {
-        self.rkey
-    }
-}
-
 impl MrTable {
     fn new(mtt_table: IcmTable, dmpt_table: IcmTable, reserved_mtts: u64) -> Self {
         Self {
@@ -384,7 +363,7 @@ impl MrTable {
     pub(super) fn alloc_dmpt<T>(
         &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, pd: PdHandle, data: &mut [T], queue_pair: Option<&QueuePair>,
         access: AccessFlags,
-    ) -> Result<DataMemoryProtectionTable, &'static str> {
+    ) -> Result<MemoryRegionMetadata, &'static str> {
         assert!(!data.is_empty());
         let size = data.len() * size_of::<T>();
         let addr = VirtAddr::from_ptr(data.as_ptr());
@@ -443,7 +422,7 @@ impl MrTable {
         let rkey = dmpt.key();
 
         self.regions.push(MemoryRegion { dmpt: Some(dmpt) });
-        Ok(DataMemoryProtectionTable {
+        Ok(MemoryRegionMetadata {
             handle: dmpt_index,
             lkey,
             rkey,

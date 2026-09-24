@@ -148,6 +148,14 @@ pub struct AddressHandleAttr {
 
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
+pub struct MemoryRegionMetadata {
+    pub handle: u32,
+    pub lkey: u32,
+    pub rkey: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
 pub struct QueuePairAttr {
     pub qp_state: QueuePairtState,
     pub path_mtu: Mtu,

@@ -31,7 +31,7 @@ use log::{error, info, trace, warn};
 use pci_types::{Bar, CommandRegister, EndpointHeader};
 use zerocopy::U32;
 
-use rdma::{AccessFlags, DeviceAttr, PortAttr, PdHandle, QueuePairAttr, QueuePairAttrMask, QueuePairType};
+use rdma::{AccessFlags, DeviceAttr, PortAttr, PdHandle, QueuePairAttr, QueuePairAttrMask, QueuePairType, MemoryRegionMetadata};
 
 use crate::{interrupt_dispatcher, pci_bus, process_manager};
 use port::Port;
@@ -49,7 +49,6 @@ use uuid::Uuid;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::{Page, PageSize, PageTableFlags, PhysFrame, Size4KiB};
 use crate::device::mlx4::fw::DoorbellPage;
-use crate::device::mlx4::icm::DataMemoryProtectionTable;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::vma::VmaType;
@@ -494,9 +493,8 @@ impl ConnectX3Nic {
     /// Create a memory region and return its index, physical address, lkey and rkey.
     ///
     /// This is used by ibv_reg_mr.
-    pub fn create_mr<T>(&mut self, pd: PdHandle, data: &mut [T], access: AccessFlags) -> Result<DataMemoryProtectionTable, &'static str> {
+    pub fn create_mr<T>(&mut self, pd: PdHandle, data: &mut [T], access: AccessFlags) -> Result<MemoryRegionMetadata, &'static str> {
         self.validate_pd(&pd, &process_manager().read().current_process())?;
-        // TODO: this fails for large memory regions (>= 64 MB)
         self.icm_tables.memory_regions().alloc_dmpt(
             &mut self.cmd,
             &mut self.capabilities,

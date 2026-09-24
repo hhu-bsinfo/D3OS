@@ -1,7 +1,6 @@
 use crate::cmd::uverbs;
 use crate::cq::WorkCompletion;
 use crate::device::Device;
-use crate::mr::MemoryRegionMetadata;
 use crate::{ReceiveWorkRequest, SendWorkRequest};
 use alloc::boxed::Box;
 use alloc::string::ToString;
@@ -14,7 +13,7 @@ use core3::io;
 use rdma::ib_core::{AccessFlags, DeviceAttr, PortAttr, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities};
 use rdma::uverbs_uapi::UverbsCmd::QueryDevices;
 use rdma::uverbs_uapi::{UserSlice, UVERBS_MAX_QUERY_DEVICES_REQ};
-use rdma::PdHandle;
+use rdma::{MemoryRegionMetadata, PdHandle};
 use rdma::{DeviceHandle, Gid, QueuePairType};
 use spin::RwLock;
 

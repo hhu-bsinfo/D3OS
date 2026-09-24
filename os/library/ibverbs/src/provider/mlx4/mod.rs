@@ -16,11 +16,10 @@ pub(crate) mod completion_queue;
 mod queue_pair;
 
 use crate::cmd::uverbs;
-use crate::mr::MemoryRegionMetadata;
 use crate::provider::mlx4::completion_queue::CompletionQueue;
 use crate::provider::{IbvCompletionQueue, IbvContext, IbvQueuePair, QpInitAttr};
 use queue_pair::QueuePair;
-use rdma::{DeviceHandle, Gid, PdHandle};
+use rdma::{DeviceHandle, Gid, MemoryRegionMetadata, PdHandle};
 
 /// A per-device registry of live queue pairs, shared between whichever `ibv_qp`s and `ibv_cq`s
 /// were created against this device.
@@ -160,12 +159,8 @@ impl IbvContext for Mlx4Context {
 
         let mut resp = MaybeUninit::<CreateMrResponse>::uninit();
         uverbs(self.device_handle.into(), UverbsCmd::RegMr, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
-        let CreateMrResponse { handle, lkey, rkey } = unsafe { resp.assume_init() };
-        Ok(MemoryRegionMetadata {
-            handle,
-            lkey,
-            rkey,
-        })
+        let CreateMrResponse { metadata } = unsafe { resp.assume_init() };
+        Ok(metadata)
     }
 
     fn dereg_mr(&self, meta: MemoryRegionMetadata) {

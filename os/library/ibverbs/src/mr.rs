@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use core::mem;
 use core::ops::{Bound, Deref, DerefMut, RangeBounds};
 use core3::io;
-use rdma::{AccessFlags, ScatterGatherEntry};
+use rdma::{AccessFlags, MemoryRegionMetadata, ScatterGatherEntry};
 
 #[cfg(feature = "serialize")]
 use bincode::{Decode, Encode};
@@ -17,12 +17,6 @@ pub struct LocalMemoryRegion<'pd, T> {
     pd: &'pd ProtectionDomain<'pd>,
     metadata: MemoryRegionMetadata,
     data: Vec<T>,
-}
-
-pub struct MemoryRegionMetadata {
-    pub(crate) handle: u32,
-    pub(crate) lkey: u32,
-    pub(crate) rkey: u32,
 }
 
 unsafe impl<'pd, T> Send for LocalMemoryRegion<'pd, T> {}

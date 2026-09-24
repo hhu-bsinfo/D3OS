@@ -118,9 +118,7 @@ pub struct CreateMrRequest {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateMrResponse {
-    pub handle: u32,
-    pub lkey: u32,
-    pub rkey: u32
+    pub metadata: MemoryRegionMetadata,
 }
 
 #[repr(C)]
