@@ -96,20 +96,20 @@ pub struct QueryPortRequest {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct AllocPdResponse {
-    pub pd: ProtectionDomainHandle,
+    pub pd: PdHandle,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct DeallocPdRequest {
-    pub pd: ProtectionDomainHandle,
+    pub pd: PdHandle,
 }
 
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateMrRequest {
-    pub pd: ProtectionDomainHandle,
+    pub pd: PdHandle,
     pub ibv_access_flags: AccessFlags,
     pub data_ptr: *mut u8,
     pub len: usize,
@@ -147,7 +147,7 @@ pub struct CreateCqResponse {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateQpRequest {
-    pub pd: ProtectionDomainHandle,
+    pub pd: PdHandle,
     pub send_cq_num: u32,
     pub recv_cq_num: u32,
     pub qp_type: QueuePairType,

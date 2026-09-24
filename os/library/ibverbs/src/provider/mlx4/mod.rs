@@ -20,7 +20,7 @@ use crate::mr::MemoryRegionMetadata;
 use crate::provider::mlx4::completion_queue::CompletionQueue;
 use crate::provider::{IbvCompletionQueue, IbvContext, IbvQueuePair, QpInitAttr};
 use queue_pair::QueuePair;
-use rdma::{DeviceHandle, Gid, ProtectionDomainHandle};
+use rdma::{DeviceHandle, Gid, PdHandle};
 
 /// A per-device registry of live queue pairs, shared between whichever `ibv_qp`s and `ibv_cq`s
 /// were created against this device.
@@ -117,7 +117,7 @@ impl IbvContext for Mlx4Context {
         Ok(Gid { raw: [0; 16] })
     }
 
-    fn create_qp(self: Arc<Self>, pd: ProtectionDomainHandle, attr: &QpInitAttr) -> io::Result<Arc<RwLock<dyn IbvQueuePair>>> {
+    fn create_qp(self: Arc<Self>, pd: PdHandle, attr: &QpInitAttr) -> io::Result<Arc<RwLock<dyn IbvQueuePair>>> {
         let qp = QueuePair::create(self.clone(), pd, attr)?;
         let qp_num = qp.number;
         let qp_ref = Arc::new(RwLock::new(qp));
@@ -133,20 +133,20 @@ impl IbvContext for Mlx4Context {
         Ok(Box::new(cq))
     }
 
-    fn alloc_pd(&self) -> io::Result<ProtectionDomainHandle> {
+    fn alloc_pd(&self) -> io::Result<PdHandle> {
         let mut resp = MaybeUninit::<AllocPdResponse>::uninit();
         uverbs(self.device_handle.into(), UverbsCmd::AllocPd, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
         let resp = unsafe { resp.assume_init() };
         Ok(resp.pd)
     }
 
-    fn dealloc_pd(&self, pd: ProtectionDomainHandle) -> io::Result<()> {
+    fn dealloc_pd(&self, pd: PdHandle) -> io::Result<()> {
         let req = DeallocPdRequest { pd };
         uverbs(self.device_handle.into(), UverbsCmd::DeallocPd, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
         Ok(())
     }
 
-    fn reg_mr(&self, pd: ProtectionDomainHandle, ptr: *mut u8, len: usize, access: AccessFlags) -> io::Result<MemoryRegionMetadata> {
+    fn reg_mr(&self, pd: PdHandle, ptr: *mut u8, len: usize, access: AccessFlags) -> io::Result<MemoryRegionMetadata> {
         if len == 0 {
             return Err(Error::from(ErrorKind::InvalidInput))
         }

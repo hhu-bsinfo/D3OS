@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::mem;
 use core3::io;
 use log::error;
-use rdma::{AccessFlags, ProtectionDomainHandle, QueuePairCapabilities, QueuePairType};
+use rdma::{AccessFlags, PdHandle, QueuePairCapabilities, QueuePairType};
 use crate::{CompletionQueue, QueuePairBuilder};
 use crate::context::Context;
 use crate::mr::LocalMemoryRegion;
@@ -10,7 +10,7 @@ use crate::mr::LocalMemoryRegion;
 /// A protection domain for a device's context.
 pub struct ProtectionDomain<'ctx> {
     pub ctx: &'ctx Context,
-    pub pd: ProtectionDomainHandle,
+    pub pd: PdHandle,
 }
 
 unsafe impl<'a> Sync for ProtectionDomain<'a> {}

@@ -17,7 +17,7 @@ use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::{memory, process_manager};
-use super::{cmd::{CommandInterface, Opcode}, fw::{Capabilities, VirtualPhysicalMapping}, profile::{get_mgm_entry_size, Profile}, queue_pair::QueuePair, utils, Offsets, ProtectionDomainHandle};
+use super::{cmd::{CommandInterface, Opcode}, fw::{Capabilities, VirtualPhysicalMapping}, profile::{get_mgm_entry_size, Profile}, queue_pair::QueuePair, utils, Offsets, PdHandle};
 
 pub(super) const ICM_PAGE_SHIFT: u8 = 12;
 const TABLE_CHUNK_SIZE: usize = 1 << 18;
@@ -382,7 +382,7 @@ impl MrTable {
     ///
     /// This is used by ibv_reg_mr.
     pub(super) fn alloc_dmpt<T>(
-        &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, pd: ProtectionDomainHandle, data: &mut [T], queue_pair: Option<&QueuePair>,
+        &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, pd: PdHandle, data: &mut [T], queue_pair: Option<&QueuePair>,
         access: AccessFlags,
     ) -> Result<DataMemoryProtectionTable, &'static str> {
         assert!(!data.is_empty());

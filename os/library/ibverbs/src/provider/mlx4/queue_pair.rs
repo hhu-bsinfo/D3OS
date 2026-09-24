@@ -25,7 +25,7 @@ use rdma::uverbs_uapi::{CreateQpRequest, CreateQpResponse, ModifyQpRequest, User
 use rdma::uverbs_uapi::UverbsCmd::{CreateQp, DestroyQp, ModifyQp};
 use strum_macros::FromRepr;
 use rdma::QueuePairType;
-use rdma::ProtectionDomainHandle;
+use rdma::PdHandle;
 use crate::cmd::uverbs;
 use crate::provider::{IbvQueuePair, QpInitAttr, ReceiveWorkRequest, SendWorkRequest};
 use crate::{DatagramHeader, RemoteMemoryHeader, SendOperation, Payload};
@@ -259,7 +259,7 @@ impl Drop for QueuePair {
 }
 
 impl QueuePair {
-    pub(crate) fn create(context: Arc<Mlx4Context>, pd: ProtectionDomainHandle, attr: &QpInitAttr) -> io::Result<QueuePair> {
+    pub(crate) fn create(context: Arc<Mlx4Context>, pd: PdHandle, attr: &QpInitAttr) -> io::Result<QueuePair> {
         let mut rq = WorkQueue::new_receive_queue(&context, &attr.cap)?;
         let mut sq = WorkQueue::new_send_queue(&context, &attr.cap, attr.qp_type)?;
 

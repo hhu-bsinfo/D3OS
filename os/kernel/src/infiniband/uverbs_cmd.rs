@@ -1,7 +1,7 @@
 use crate::device::mlx4::{get_dev_list, device_handle_to_idx, ConnectX3Nic};
 use alloc::vec::Vec;
 use rdma::uverbs_uapi::{AllocPdResponse, CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, CreateQpResponse, DeallocPdRequest, ModifyQpRequest, OpenDeviceResponse};
-use rdma::{AccessFlags,DeviceAttr, DeviceHandle, PortAttr, ProtectionDomainHandle};
+use rdma::{AccessFlags, DeviceAttr, DeviceHandle, PortAttr, PdHandle};
 use crate::process_manager;
 
 pub fn uverbs_query_devices(max_len: usize) -> Vec<DeviceHandle> {
@@ -35,7 +35,7 @@ pub fn uverbs_query_port(device_handle: usize, port_num: u8) -> Result<PortAttr,
         .query_port(port_num)
 }
 
-pub fn uverbs_register_mem_region(device_handle: usize, pd: ProtectionDomainHandle, access_flags: AccessFlags, user_data_ref: &mut [u8]) -> Result<CreateMrResponse, &'static str> {
+pub fn uverbs_register_mem_region(device_handle: usize, pd: PdHandle, access_flags: AccessFlags, user_data_ref: &mut [u8]) -> Result<CreateMrResponse, &'static str> {
     get_dev_list().lock().get_mut(device_handle_to_idx(device_handle)).unwrap()
         .create_mr(pd, user_data_ref, access_flags)
         .map(|d| {

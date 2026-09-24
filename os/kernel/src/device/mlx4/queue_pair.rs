@@ -23,7 +23,7 @@ use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::process::process::Process;
 use crate::process_manager;
-use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, ConnectX3Nic, ProtectionDomainHandle};
+use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, ConnectX3Nic, PdHandle};
 
 const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
 const IB_MAX_HEADROOM: u32 = 2048;
@@ -46,7 +46,7 @@ pub(super) struct QueuePair {
     state: QueuePairtState,
     qp_type: QueuePairType,
     port_number: Option<u8>,
-    pd: ProtectionDomainHandle,
+    pd: PdHandle,
     // TODO: bind the lifetime to the one of the completion queues
     send_cq_number: u32,
     receive_cq_number: u32,
@@ -73,7 +73,7 @@ impl QueuePair {
         dev: &mut ConnectX3Nic,
         process: Arc<Process>,
         qp_type: QueuePairType,
-        pd: ProtectionDomainHandle,
+        pd: PdHandle,
         send_cq_number: u32,
         receive_cq_number: u32,
         buffer: *const u8,

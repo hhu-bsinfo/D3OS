@@ -45,7 +45,7 @@ impl Into<usize> for DeviceHandle {
 }
 
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct ProtectionDomainHandle(pub u32);
+pub struct PdHandle(pub u32);
 
 bitflags! {
     #[derive(Default, Clone, Copy)]
