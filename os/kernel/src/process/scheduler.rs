@@ -29,7 +29,7 @@ use crate::{allocator, apic, per_cpu_ref, timer, tss};
 use alloc::collections::VecDeque;
 use alloc::string::String;
 use alloc::sync::Arc;
-use alloc::vec;
+use alloc::{vec};
 use alloc::vec::Vec;
 use syscall::return_vals::Errno;
 use uuid::Uuid;
@@ -39,16 +39,14 @@ use core::cell::Cell;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::sync::atomic::AtomicU32;
-use core::sync::atomic::Ordering::Relaxed;
+use core::sync::atomic::Ordering::{Relaxed};
 use log::{debug, info};
 use smallmap::Map;
 use spin::{Mutex, MutexGuard, Once};
-use thingbuf::mpsc::Sender;
+use thingbuf::mpsc::{Sender};
 use crate::device::apic::get_apic_id;
 use crate::device::cpu::{disable_int_nested, enable_int_nested};
 use crate::process::core_local_storage::{cls, current_core_id, scheduler, tss_static};
-
-use crate::memory;
 use crate::interrupt::interrupt_dispatcher::last_irq_from_user;
 
 // thread IDs
@@ -382,12 +380,12 @@ impl Scheduler {
         }
     }
 
-     /// Helper function for switching a thread not caused by an interrupt
+    /// Helper function for switching a thread not caused by an interrupt
     pub fn switch_thread_no_interrupt(&self) {
         self.switch_thread(false);
     }
 
-     /// Helper function for switching a thread caused by an interrupt
+    /// Helper function for switching a thread caused by an interrupt
     pub fn switch_thread_from_interrupt(&self) {
         self.switch_thread(true);
     }
@@ -454,7 +452,7 @@ impl Scheduler {
                 inc_rq_len();
             }
         }
-        schedule_on_all_others(MessageItem::Cmd(MessageCmd::JoinTargetExited { tid: thread_id }));
+        schedule_on_all_others(MessageItem::Cmd(MessageCmd::JoinTargetExited {tid: thread_id}));
         join_map.remove(&thread_id);
     }
 
@@ -469,11 +467,12 @@ impl Scheduler {
         let current = self.current_thread();
         current.set_state(ThreadState::Exited);
 
+        // Mark dead globally *before* waking joiners, so joiners racing in will observe "dead"
         mark_thread_dead(current.id());
         self.unjoin(current.id(), exit_code, &mut ready_state);
 
         dec_rq_len();
-        drop(current);
+        drop(current); // Decrease Rc manually, because block() does not return
         self.block_and_switch(ready_state);
         unreachable!()
     }
@@ -498,6 +497,7 @@ impl Scheduler {
     fn kill_locally(&self, thread_id: usize, state: &mut ReadyState) -> bool {
         if is_thread_alive(thread_id) == false { return true; }
         let mut changed = false;
+        let mut removed_from_ready_queue = false;
 
         // check ready_queue
         let mut before = state.ready_queue.len();
@@ -505,13 +505,14 @@ impl Scheduler {
         let mut after = state.ready_queue.len();
         if before != after {
             changed = true;
+            removed_from_ready_queue = true;
         }
         if !changed {
             {   // check sleep_list
                 let mut sleep_list = self.sleep_list.lock();
                 before = sleep_list.len();
                 sleep_list.retain(|(thread, _)| thread.id() != thread_id);
-                after = state.ready_queue.len() + sleep_list.len();
+                after = sleep_list.len();
             }
             if before != after {
                 changed = true;
@@ -541,7 +542,9 @@ impl Scheduler {
         if changed {
             mark_thread_dead(thread_id);
             self.unjoin(thread_id, 1, state);
-            dec_rq_len();
+            if removed_from_ready_queue {
+                dec_rq_len();
+            }
         }
         changed
     }
@@ -604,7 +607,7 @@ impl Scheduler {
             Scheduler::check_sleep_list(&mut state, &mut sleep_list);
             drain_inbox_into_ready(10, &mut state);
             next_thread = state.ready_queue.pop_back();
-            if next_thread.is_none() {
+            if next_thread.is_none() {  //still no new thread => switch to idle
                 next_thread = Some(Arc::clone(&state.idle_thread));
             }
         }
@@ -806,7 +809,6 @@ impl Scheduler {
         }
     }
 
-
     pub fn switch_fpu_context(&self) {
         let mut state = self.ready_state.lock();
         let current = self.current_thread();
@@ -930,6 +932,8 @@ impl Scheduler {
             Some(target_id) => send_reschedule_ipi(target_id)
         }
     }
+
+    
 
     /// Check the sleep list for threads that need to be woken up
     fn check_sleep_list(state: &mut ReadyState, sleep_list: &mut Vec<(Arc<Thread>, usize)>) {
