@@ -42,7 +42,7 @@ impl IpcMessage {
     }
     pub fn data_as_usize_slice(&self) -> &[usize] {
         let ptr = self.data().as_ptr() as *const usize;
-        let l = self.data.len() / size_of::<usize>();
+        let l = self.data_len / size_of::<usize>();
         unsafe { core::slice::from_raw_parts(ptr, l) }
     }
     pub fn data_as_str(&self) -> &str {
