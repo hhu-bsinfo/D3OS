@@ -243,10 +243,6 @@ fn report(outcomes: &[AttackOutcome; N_ATTACKS], pd: &ibverbs::ProtectionDomain)
         "  summary: {}/{} isolation checks held, {} breach(es)",
         held, N_ATTACKS, breaches
     );
-    if breaches != 0 {
-        println!("  NOTE: DeregMr has no owner check in the driver yet (mlx4 destroy_mr TODO);");
-        println!("        a breach there is the known gap this test is meant to surface.");
-    }
 }
 
 /// Detach and unlink the shared-memory segment.

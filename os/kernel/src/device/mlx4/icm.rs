@@ -9,6 +9,7 @@ use modular_bitfield_msb::{
     bitfield,
     prelude::{B10, B11, B21, B24, B28, B3, B4, B40, B7},
 };
+use uuid::Uuid;
 use zerocopy::AsBytes;
 use rdma::{AccessFlags, MemoryRegionMetadata};
 use x86_64::{PhysAddr, VirtAddr};
@@ -17,6 +18,7 @@ use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::{memory, process_manager};
+use crate::process::process::Process;
 use super::{cmd::{CommandInterface, Opcode}, fw::{Capabilities, VirtualPhysicalMapping}, profile::{get_mgm_entry_size, Profile}, queue_pair::QueuePair, utils, Offsets, PdHandle};
 
 pub(super) const ICM_PAGE_SHIFT: u8 = 12;
@@ -361,8 +363,8 @@ impl MrTable {
     ///
     /// This is used by ibv_reg_mr.
     pub(super) fn alloc_dmpt<T>(
-        &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, pd: PdHandle, data: &mut [T], queue_pair: Option<&QueuePair>,
-        access: AccessFlags,
+        &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, owner: &Process, pd: PdHandle, data: &mut [T],
+        queue_pair: Option<&QueuePair>, access: AccessFlags,
     ) -> Result<MemoryRegionMetadata, &'static str> {
         assert!(!data.is_empty());
         let size = data.len() * size_of::<T>();
@@ -421,7 +423,10 @@ impl MrTable {
         let lkey = dmpt.key();
         let rkey = dmpt.key();
 
-        self.regions.push(MemoryRegion { dmpt: Some(dmpt) });
+        self.regions.push(MemoryRegion {
+            owner: owner.id(),
+            dmpt: Some(dmpt)
+        });
         Ok(MemoryRegionMetadata {
             handle: dmpt_index,
             lkey,
@@ -437,13 +442,12 @@ impl MrTable {
         Ok(())
     }
 
-    /// Tear down a memory region.
-    pub(super) fn destroy(&mut self, cmd: &mut CommandInterface, index: u32) -> Result<(), &'static str> {
-        let (idx, _) = self
+    /// Tear down a memory region, provided it belongs to `owner`.
+    pub(super) fn destroy(&mut self, cmd: &mut CommandInterface, owner: Uuid, index: u32) -> Result<(), &'static str> {
+        let idx = self
             .regions
             .iter()
-            .enumerate()
-            .find(|(_, region)| region.dmpt.as_ref().unwrap().index() == index)
+            .position(|region| region.dmpt.as_ref().unwrap().index() == index && region.owner == owner)
             .ok_or("dmpt entry not found")?;
         let dmpt = self.regions.remove(idx);
         dmpt.destroy(cmd)
@@ -452,6 +456,8 @@ impl MrTable {
 
 /// This is a wrapper around DmptEntry, so that we can implement Drop.
 struct MemoryRegion {
+    /// The process that registered this region, i.e. the only process allowed to deregister it.
+    owner: Uuid,
     dmpt: Option<DmptEntry>,
 }
 

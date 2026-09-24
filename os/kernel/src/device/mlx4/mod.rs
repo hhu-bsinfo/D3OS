@@ -494,11 +494,13 @@ impl ConnectX3Nic {
     ///
     /// This is used by ibv_reg_mr.
     pub fn create_mr<T>(&mut self, pd: PdHandle, data: &mut [T], access: AccessFlags) -> Result<MemoryRegionMetadata, &'static str> {
-        self.validate_pd(&pd, &process_manager().read().current_process())?;
+        let process = process_manager().read().current_process();
+        self.validate_pd(&pd, &process)?;
         self.icm_tables.memory_regions().alloc_dmpt(
             &mut self.cmd,
             &mut self.capabilities,
             &mut self.offsets,
+            &process,
             pd,
             data,
             None,
@@ -508,8 +510,8 @@ impl ConnectX3Nic {
 
     /// Destroy a memory region.
     pub fn destroy_mr(&mut self, index: u32) -> Result<(), &'static str> {
-        /// TODO add protection, that one process can not destroy a mr of another
-        self.icm_tables.memory_regions().destroy(&mut self.cmd, index)
+        let process = process_manager().read().current_process();
+        self.icm_tables.memory_regions().destroy(&mut self.cmd, process.id(), index)
     }
 }
 
