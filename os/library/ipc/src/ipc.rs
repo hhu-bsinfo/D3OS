@@ -1,5 +1,6 @@
 #![no_std]
 #![feature(generic_atomic)] // used by lfqueue
+#![feature(integer_casts)]
 #![allow(clippy::new_without_default)]
 
 pub mod ipc_message;
@@ -19,8 +20,8 @@ use syscall::{SystemCall, syscall};
 
 use concurrent::{process, thread};
 
-use crate::const_string::ConstString;
-use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageType, IpcMessageWrapper};
+use crate::const_string::{ConstString, CopySizeChecked};
+use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageData, IpcMessageType, IpcMessageWrapper};
 use crate::ipc_error::IpcError;
 use crate::queues::{IpcQueue, IpcQueueType};
 
@@ -92,29 +93,36 @@ pub fn remove_ipc_endpoint(svc_name: &str) -> Result<usize, IpcError> {
     IpcError::convert_syscall_result(syscall(SystemCall::IpcDelete, &[name_ptr as usize, name_len]))
 }
 
-pub fn send<T: IpcMessageContent>(service: &str, msg_name: &str, message: T) -> Result<usize, IpcError> {
-    let bytes: &[u8] = message.to_bytes();
-    send_internal(service, msg_name, message.msg_type(), bytes)
+pub fn create_msg<T: IpcMessageContent>(content: T) -> IpcMessageData {
+    content.to_data()
+}
+
+/// send message content directly
+/// 
+/// this copies the given data, to create a new IpcMessageData struct
+pub fn send<T: IpcMessageContent>(service: &str, msg_name: &str, content: T) -> Result<usize, IpcError> {
+    send_internal(service, msg_name, &content.to_data())
+}
+
+pub fn send_data(service: &str, msg_name: &str, data: &IpcMessageData) -> Result<usize, IpcError> {
+    send_internal(service, msg_name, data)
 }
 
 pub fn send_empty(service: &str, msg_name: &str) -> Result<usize, IpcError> {
-    send_internal(service, msg_name, IpcMessageType::Empty, &[])
+    send_internal(service, msg_name, &IpcMessageData::Empty)
 }
 
-pub fn send_with_tag<T: IpcMessageContent>(service: &str, msg_name: &str, msg_type: IpcMessageType, message: T) -> Result<usize, IpcError> {
-    let bytes = message.to_bytes();
-    send_internal(service, msg_name, msg_type, bytes)
-}
 /// send a custom data structure over ipc
 pub fn send_struct<T: Copy>(service: &str, msg_name: &str, message: &T) -> Result<usize, IpcError> {
     let bytes = unsafe { any_as_bytes(message) };
-    let msg_type = IpcMessageType::Struct;
-    send_internal(service, msg_name, msg_type, bytes)
+    let mut arr = [0; _];
+    arr.copy_from_slice_sizechecked(bytes);
+    send_internal(service, msg_name, &IpcMessageData::Struct { bytes: arr, size: bytes.len() })
 }
+
 /// and message and busy wait for answer, TODO block thread here
-pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, message: T, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
-    let bytes: &[u8] = message.to_bytes();
-    match send_internal(service, msg_name, message.msg_type(), bytes) {
+pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, content: T, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
+    match send_internal(service, msg_name, &content.to_data()) {
         Ok(_) => {
             let mut counter = 0;
             let callback_endpoint_name = format!("callback-{}", process::current().id());
@@ -142,14 +150,12 @@ pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, mes
     }
 }
 
-pub fn answer<T: IpcMessageContent>(original_message: &IpcMessage, message: T) -> Result<usize, IpcError> {
-    let bytes = message.to_bytes();
-    send_internal(&format!("callback-{}", original_message.sender_pid), &format!("answer-{}", original_message.name), message.msg_type(), bytes)
+pub fn answer_with_name<T: IpcMessageContent>(original_message: &IpcMessage, msg_name: &str, content: T) -> Result<usize, IpcError> {
+    send_internal(&format!("callback-{}", original_message.sender_pid), msg_name, &content.to_data())
 }
 
-pub fn answer_with_name<T: IpcMessageContent>(original_message: &IpcMessage, msg_name: &str, message: T) -> Result<usize, IpcError> {
-    let bytes = message.to_bytes();
-    send_internal(&format!("callback-{}", original_message.sender_pid), msg_name, message.msg_type(), bytes)
+pub fn answer<T: IpcMessageContent>(original_message: &IpcMessage, content: T) -> Result<usize, IpcError> {
+    answer_with_name(original_message, &format!("answer-{}", original_message.name), content)
 }
 
 pub struct IpcSyscallParams {
@@ -157,12 +163,10 @@ pub struct IpcSyscallParams {
     pub service_name_len: usize,
     pub msg_name_ptr: *const u8,
     pub msg_name_len: usize,
-    pub msg_type: IpcMessageType,
-    pub data_ptr: *const u8,
-    pub data_len: usize,
+    pub data_ptr: *const IpcMessageData,
 }
 
-pub fn send_internal(service: &str, msg_name: &str, msg_type: IpcMessageType, message: &[u8]) -> Result<usize, IpcError> {
+pub fn send_internal(service: &str, msg_name: &str, data: &IpcMessageData) -> Result<usize, IpcError> {
 
     // register callback endpoint
     let pid = process::current().id();
@@ -173,9 +177,7 @@ pub fn send_internal(service: &str, msg_name: &str, msg_type: IpcMessageType, me
         service_name_len: service.len(),
         msg_name_ptr: msg_name.as_ptr(),
         msg_name_len: msg_name.len(),
-        msg_type,
-        data_ptr: message.as_ptr(),
-        data_len: message.len(),
+        data_ptr: core::ptr::from_ref(data),
     };
 
     IpcError::convert_syscall_result(syscall(SystemCall::IpcSend, &&params))

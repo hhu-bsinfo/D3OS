@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::ipc_message::{IpcMessageType, IpcMessageWrapper};
+use crate::ipc_message::{IpcMessageData, IpcMessageWrapper};
 use crate::ipc_error::IpcError;
 
 #[cfg(feature = "customqueue")]
@@ -28,7 +28,7 @@ pub type IpcQueueType = cfg_select! {
 
 pub trait IpcQueue {
     fn new() -> Self;
-    fn send(&self, name: &str, msg_type: IpcMessageType, data: &[u8], sender_pid: &Uuid, sender_tid: usize) -> Result<usize, IpcError>;
+    fn send(&self, name: &str, data: IpcMessageData, sender_pid: &Uuid, sender_tid: usize) -> Result<usize, IpcError>;
     fn receive(&self) -> Result<impl IpcMessageWrapper, IpcError>;
     fn messages_left(&self) -> usize;
 }

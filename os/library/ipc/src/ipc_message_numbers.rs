@@ -1,83 +1,88 @@
-use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageType};
+use crate::const_string::CopySizeChecked;
+use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageData, IpcMessageType};
 
-macro_rules! deref_num_to_num {
-    ($msg:expr, $in_type:ty) => {
-        Ok(unsafe { IpcMessage::deref_data::<$in_type>($msg) })
-    };
-    ($msg:expr, $in_type:ty, $out_type:ty) => {
-        Ok(unsafe { IpcMessage::deref_data::<$in_type>($msg) } as $out_type)
-    };
-}
-
-macro_rules! deref_num_slice_to_num {
-    ($msg:expr, $in_type:ty) => {
-       Ok(unsafe { IpcMessage::ref_data_as_slice::<$in_type>($msg) }.first().copied().unwrap_or_default())
-    };
-    ($msg:expr, $in_type:ty, $out_type:ty) => {
-        Ok(unsafe { IpcMessage::ref_data_as_slice::<$in_type>($msg) }.first().copied().map(|n| n as $out_type).unwrap_or_default())
-    };
-}
-
-macro_rules! data_as_number {
+macro_rules! data_as_any_number {
     ($msg:expr, $out_type:ty) => {
-        match IpcMessage::msg_type($msg) {
-            IpcMessageType::Usize => deref_num_to_num!($msg, usize, $out_type),
-            IpcMessageType::Isize => deref_num_to_num!($msg, isize, $out_type),
-            IpcMessageType::I32 => deref_num_to_num!($msg, i32, $out_type),
-            IpcMessageType::F64 => deref_num_to_num!($msg, f64, $out_type),
-            IpcMessageType::UsizeSlice => deref_num_slice_to_num!($msg, usize, $out_type),
-            IpcMessageType::IsizeSlice => deref_num_slice_to_num!($msg, isize, $out_type),
-            IpcMessageType::I32Slice => deref_num_slice_to_num!($msg, i32, $out_type),
-            IpcMessageType::F64Slice => deref_num_slice_to_num!($msg, f64, $out_type),
-            _ => Err(IpcMessage::msg_type($msg)),
+        match $msg.data() {
+            IpcMessageData::Empty => Ok(0 as $out_type),
+            IpcMessageData::Raw { data, size } => {
+                let mut arr = [0; _];
+                arr.copy_from_slice_sizechecked(&data[..*size]);
+                Ok(<$out_type>::from_ne_bytes(arr))
+            },
+            IpcMessageData::Usize(n) => Ok((*n).saturating_cast()),
+            IpcMessageData::Isize(n) => Ok((*n).saturating_cast()),
+            IpcMessageData::I32(n) => Ok((*n).saturating_cast()),
+            IpcMessageData::F64(n) => Ok(((*n) as u64).saturating_cast()),
+            IpcMessageData::UsizeSlice { data, size: _ } => Ok((data.first().copied().unwrap_or_default()).saturating_cast()),
+            IpcMessageData::IsizeSlice { data, size: _ } => Ok((data.first().copied().unwrap_or_default()).saturating_cast()),
+            IpcMessageData::I32Slice { data, size: _ } => Ok((data.first().copied().unwrap_or_default()).saturating_cast()),
+            IpcMessageData::F64Slice { data, size: _ } => Ok((data.first().copied().unwrap_or_default() as u64).saturating_cast()),
+            _ => Err($msg.data()),
         }
     };
 }
 
 impl IpcMessage {
     
-    pub fn data_as_usize(&self) -> Result<usize, IpcMessageType> {
-        data_as_number!(self, usize)
+    pub fn data_as_usize(&self) -> Result<usize, &IpcMessageData> {
+        data_as_any_number!(self, usize)
     }
     
-    pub fn data_as_isize(&self) -> Result<isize, IpcMessageType> {
-        data_as_number!(self, isize)
+    pub fn data_as_isize(&self) -> Result<isize, &IpcMessageData> {
+        data_as_any_number!(self, isize)
     }
     
-    pub fn data_as_i32(&self) -> Result<i32, IpcMessageType> {
-        data_as_number!(self, i32)
+    pub fn data_as_i32(&self) -> Result<i32, &IpcMessageData> {
+        data_as_any_number!(self, i32)
     }
     
-    pub fn data_as_f64(&self) -> Result<f64, IpcMessageType> {
-        data_as_number!(self, f64)
-    }
-
-
-    pub fn data_as_usize_slice(&self) -> Result<&[usize], IpcMessageType> {
-        match self.msg_type {
-            IpcMessageType::Usize | IpcMessageType::UsizeSlice => Ok(unsafe { self.ref_data_as_slice() }),
-            _ => Err(self.msg_type),
+    pub fn data_as_f64(&self) -> f64 {
+        match self.data() {
+            IpcMessageData::Empty => f64::NAN,
+            IpcMessageData::Raw { data, size } => {
+                let mut arr = [0; _];
+                arr.copy_from_slice_sizechecked(&data[..*size]);
+                f64::from_ne_bytes(arr)
+            },
+            IpcMessageData::Usize(n) => (*n) as f64,
+            IpcMessageData::Isize(n) => (*n) as f64,
+            IpcMessageData::I32(n) => (*n) as f64,
+            IpcMessageData::F64(n) => *n,
+            IpcMessageData::UsizeSlice { data, size: _ } => data.first().copied().unwrap_or_default() as f64,
+            IpcMessageData::IsizeSlice { data, size: _ } => data.first().copied().unwrap_or_default() as f64,
+            IpcMessageData::I32Slice { data, size: _ } => data.first().copied().unwrap_or_default() as f64,
+            IpcMessageData::F64Slice { data, size: _ } => data.first().copied().unwrap_or_default(),
+            _ => f64::NAN,
         }
     }
 
-    pub fn data_as_isize_slice(&self) -> Result<&[isize], IpcMessageType> {
-        match self.msg_type {
-            IpcMessageType::Isize | IpcMessageType::IsizeSlice => Ok(unsafe { self.ref_data_as_slice() }),
-            _ => Err(self.msg_type),
+
+    pub fn data_as_usize_slice(&self) -> Result<&[usize], &IpcMessageData> {
+        match self.data() {
+            IpcMessageData::Usize(_) | IpcMessageData::UsizeSlice { data: _, size: _ } => Ok(unsafe { self.ref_data_as_slice() }),
+            _ => Err(self.data())
         }
     }
 
-    pub fn data_as_i32_slice(&self) -> Result<&[i32], IpcMessageType> {
-        match self.msg_type {
-            IpcMessageType::I32 | IpcMessageType::I32Slice => Ok(unsafe { self.ref_data_as_slice() }),
-            _ => Err(self.msg_type),
+    pub fn data_as_isize_slice(&self) -> Result<&[isize], &IpcMessageData> {
+        match self.data() {
+            IpcMessageData::Isize(_) | IpcMessageData::IsizeSlice { data: _, size: _ } => Ok(unsafe { self.ref_data_as_slice() }),
+            _ => Err(self.data())
         }
     }
 
-    pub fn data_as_f64_slice(&self) -> Result<&[f64], IpcMessageType> {
-        match self.msg_type {
-            IpcMessageType::F64 | IpcMessageType::F64Slice => Ok(unsafe { self.ref_data_as_slice() }),
-            _ => Err(self.msg_type),
+    pub fn data_as_i32_slice(&self) -> Result<&[i32], &IpcMessageData> {
+        match self.data() {
+            IpcMessageData::I32(_) | IpcMessageData::I32Slice { data: _, size: _ } => Ok(unsafe { self.ref_data_as_slice() }),
+            _ => Err(self.data())
+        }
+    }
+
+    pub fn data_as_f64_slice(&self) -> Result<&[f64], &IpcMessageData> {
+        match self.data() {
+            IpcMessageData::F64(_) | IpcMessageData::F64Slice { data: _, size: _ } => Ok(unsafe { self.ref_data_as_slice() }),
+            _ => Err(self.data())
         }
     }
 }
@@ -93,6 +98,12 @@ impl IpcMessageContent for &[usize] {
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::UsizeSlice
     }
+
+    fn to_data(&self) -> IpcMessageData {
+        let mut arr = [0; _];
+        arr.copy_from_slice_sizechecked(self);
+        IpcMessageData::UsizeSlice { data: arr, size: self.len() }
+    }
 }
 
 impl<const N: usize> IpcMessageContent for &[usize; N] {
@@ -105,6 +116,12 @@ impl<const N: usize> IpcMessageContent for &[usize; N] {
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::UsizeSlice
     }
+
+    fn to_data(&self) -> IpcMessageData {
+        let mut arr = [0; _];
+        arr.copy_from_slice_sizechecked(self.as_slice());
+        IpcMessageData::UsizeSlice { data: arr, size: self.len() }
+    }
 }
 
 impl IpcMessageContent for usize {
@@ -116,6 +133,10 @@ impl IpcMessageContent for usize {
     }
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::Usize
+    }
+    
+    fn to_data(&self) -> IpcMessageData {
+        IpcMessageData::Usize(*self)
     }
 }
 
@@ -130,6 +151,12 @@ impl IpcMessageContent for &[isize] {
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::IsizeSlice
     }
+    
+    fn to_data(&self) -> IpcMessageData {
+        let mut arr = [0; _];
+        arr.copy_from_slice_sizechecked(self);
+        IpcMessageData::IsizeSlice { data: arr, size: self.len() }
+    }
 }
 
 impl<const N: usize> IpcMessageContent for &[isize; N] {
@@ -142,6 +169,12 @@ impl<const N: usize> IpcMessageContent for &[isize; N] {
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::IsizeSlice
     }
+    
+    fn to_data(&self) -> IpcMessageData {
+        let mut arr = [0; _];
+        arr.copy_from_slice_sizechecked(self.as_slice());
+        IpcMessageData::IsizeSlice { data: arr, size: self.len() }
+    }
 }
 
 impl IpcMessageContent for isize {
@@ -153,6 +186,10 @@ impl IpcMessageContent for isize {
     }
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::Isize
+    }
+    
+    fn to_data(&self) -> IpcMessageData {
+        IpcMessageData::Isize(*self)
     }
 }
 
@@ -167,6 +204,12 @@ impl IpcMessageContent for &[i32] {
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::I32Slice
     }
+    
+    fn to_data(&self) -> IpcMessageData {
+        let mut arr = [0; _];
+        arr.copy_from_slice_sizechecked(self);
+        IpcMessageData::I32Slice { data: arr, size: self.len() }
+    }
 }
 
 impl<const N: usize> IpcMessageContent for &[i32; N] {
@@ -179,6 +222,12 @@ impl<const N: usize> IpcMessageContent for &[i32; N] {
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::I32Slice
     }
+    
+    fn to_data(&self) -> IpcMessageData {
+        let mut arr = [0; _];
+        arr.copy_from_slice_sizechecked(self.as_slice());
+        IpcMessageData::I32Slice { data: arr, size: self.len() }
+    }
 }
 
 impl IpcMessageContent for i32 {
@@ -190,6 +239,10 @@ impl IpcMessageContent for i32 {
     }
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::I32
+    }
+    
+    fn to_data(&self) -> IpcMessageData {
+        IpcMessageData::I32(*self)
     }
 }
 
@@ -204,6 +257,12 @@ impl IpcMessageContent for &[f64] {
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::F64Slice
     }
+    
+    fn to_data(&self) -> IpcMessageData {
+        let mut arr = [0.0; _];
+        arr.copy_from_slice_sizechecked(self);
+        IpcMessageData::F64Slice { data: arr, size: self.len() }
+    }
 }
 
 impl<const N: usize> IpcMessageContent for &[f64; N] {
@@ -216,6 +275,12 @@ impl<const N: usize> IpcMessageContent for &[f64; N] {
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::F64Slice
     }
+    
+    fn to_data(&self) -> IpcMessageData {
+        let mut arr = [0.0; _];
+        arr.copy_from_slice_sizechecked(self.as_slice());
+        IpcMessageData::F64Slice { data: arr, size: self.len() }
+    }
 }
 
 impl IpcMessageContent for f64 {
@@ -227,5 +292,9 @@ impl IpcMessageContent for f64 {
     }
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::F64
+    }
+    
+    fn to_data(&self) -> IpcMessageData {
+        IpcMessageData::F64(*self)
     }
 }

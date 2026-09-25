@@ -10,7 +10,7 @@ use alloc::{format, string::String, vec::Vec};
 use alloc::vec;
 use concurrent::{process, thread};
 use ipc::const_string::ConstString;
-use ipc::ipc_message::{IpcMessageType, IpcMessageWrapper};
+use ipc::ipc_message::{IpcMessageData, IpcMessageType, IpcMessageWrapper};
 use ipc::ipc_error::IpcError;
 use runtime::*;
 use syscall::syscall;
@@ -74,7 +74,11 @@ pub fn main() {
                     println!("Received Message: {}", m);
                     break;
                 },
-                Err(err) => println!("[{}] Error: {:?}", tid, err),
+                Err(err) => {
+                    if err != IpcError::Empty {
+                        println!("[{}] Error: {:?}", tid, err);
+                    }
+                },
             }
             thread::sleep(1_000);
         }
@@ -137,14 +141,14 @@ pub fn main() {
                 println!("Received Message: {}", number);
                 if number == limit {
                     println!("Successfully received {} messages. Sending STOP signal and exiting...", limit);
-                    ipc::send("ipctest_send", "signal", "STOP");
+                    ipc::send_empty("ipctest_send", "STOP");
                     return;
                 }
                 if prev + 1 == number {
                     prev = number;
                 } else {
                     println!("Error in message order. Sending STOP signal and exiting...");
-                    ipc::send("ipctest_send", "signal", "STOP");
+                    ipc::send_empty("ipctest_send", "STOP");
                     return;
                 }
             }
@@ -161,10 +165,8 @@ pub fn main() {
 
             // check for stop signal
             if let Ok(msg) = ipc::receive("ipctest_send") {
-                
-                let msg_data = msg.msg().data_as_str_unchecked();
 
-                if msg_data == "STOP" {
+                if msg.msg().name_as_str() == "STOP" {
                     println!("Received STOP signal ({} errors in total), exiting...", errors);
                     break;
                 }
@@ -191,7 +193,7 @@ pub fn main() {
         loop {
             match ipc::receive("ipctest_struct_recv") {
                 Ok(msg) => {
-                    let my_struct: &MyStruct = unsafe { ipc::bytes_as_any(&*msg.msg().data()) };
+                    let my_struct: &MyStruct = unsafe { ipc::bytes_as_any(&*msg.msg().data_as_bytes()) };
                     println!("-- Receive --\n{:}", my_struct);
                     break;
                 },
@@ -230,8 +232,8 @@ pub fn main() {
                     let msg = msg_wrapper.msg();
                     match msg.name_as_str() {
                         "CTRL" => {
-                            let data = msg.data_as_str_unchecked();
-                            if data == "STOP" {
+                            let ctrl_msg = msg.data_as_str().unwrap_or("");
+                            if ctrl_msg == "STOP" {
                                 num_stop_req += 1;
                                 log::info!("{} received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
                                 if num_stop_req >= num_child_processes {
@@ -314,33 +316,33 @@ pub fn main() {
                             let msg = msg_wrapper.msg();
                             log::info!("[Mathserver] Received {}", msg);
                             let mut result: f64;
-                            match msg.msg_type() {
-                                IpcMessageType::UsizeSlice => {
-                                    let numbers = msg.data_as_usize_slice().unwrap();
+                            match msg.data() {
+                                IpcMessageData::UsizeSlice { data, size } => {
+                                    let numbers = &data[..*size];
                                     result = numbers[0] as f64;
                                     for n in numbers.iter().skip(1) {
                                         let f = *n as f64;
                                         result = (math_fn)(result, f);
                                     }
                                 },
-                                IpcMessageType::IsizeSlice => {
-                                    let numbers = msg.data_as_isize_slice().unwrap();
+                                IpcMessageData::IsizeSlice { data, size } => {
+                                    let numbers = &data[..*size];
                                     result = numbers[0] as f64;
                                     for n in numbers.iter().skip(1) {
                                         let f = *n as f64;
                                         result = (math_fn)(result, f);
                                     }
                                 },
-                                IpcMessageType::I32Slice => {
-                                    let numbers = msg.data_as_i32_slice().unwrap();
+                                IpcMessageData::I32Slice { data, size } => {
+                                    let numbers = &data[..*size];
                                     result = numbers[0] as f64;
                                     for n in numbers.iter().skip(1) {
                                         let f = *n as f64;
                                         result = (math_fn)(result, f);
                                     }
                                 },
-                                IpcMessageType::F64Slice => {
-                                    let numbers = msg.data_as_f64_slice().unwrap();
+                                IpcMessageData::F64Slice { data, size } => {
+                                    let numbers = &data[..*size];
                                     result = numbers[0];
                                     for n in numbers.iter().skip(1) {
                                         result = (math_fn)(result, *n);
@@ -415,7 +417,7 @@ pub fn main() {
 
             match ipc::send_and_receive(service_name, "MATH", &[n1, n2], 5000) {
                 Ok(msg_wrapper) => {
-                    let res = msg_wrapper.msg().data_as_f64().unwrap();
+                    let res = msg_wrapper.msg().data_as_f64();
                     println!("[{}] Sent {} {} {}, received {}", tid, n1, math_symb[ridx], n2, res);
                     count += 1;
                 },

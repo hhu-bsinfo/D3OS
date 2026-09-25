@@ -1,6 +1,6 @@
 use crate::queues::{IpcError, IpcQueue};
 use crate::queues::atomic_ringbuffer::Ringbuffer;
-use crate::ipc_message::{IpcMessage, IpcMessageType, IpcMessageWrapper};
+use crate::ipc_message::{IpcMessage, IpcMessageData, IpcMessageWrapper};
 
 
 pub struct IpcRingbufferQueue<T, const S: usize> {
@@ -12,7 +12,7 @@ impl<const S: usize> IpcQueue for IpcRingbufferQueue<IpcMessage, S> {
         Self { ringbuffer: Ringbuffer::new() }
     }
 
-    fn send(&self, name: &str, msg_type: IpcMessageType, data: &[u8], sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
+    fn send(&self, name: &str, data: IpcMessageData, sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
 
         // reserve space in ringbuffer
         let reserved = self.ringbuffer.reserve();
@@ -20,7 +20,7 @@ impl<const S: usize> IpcQueue for IpcRingbufferQueue<IpcMessage, S> {
 
             // write data into msg
             let msg = unsafe { &mut (*ptr) };
-            msg.set(name, msg_type, data, *sender_pid, sender_tid);
+            msg.set(name, data, *sender_pid, sender_tid);
             
             Ok(0)
         } else {

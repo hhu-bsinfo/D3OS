@@ -37,6 +37,12 @@ impl <const S: usize> ConstString<S> {
     pub fn space_left(&self) -> usize {
         S - self.len()
     }
+    pub fn as_ptr(&self) -> *const u8 {
+        self.buffer.as_ptr()
+    }
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.buffer[..self.len]
+    }
     
     /// set this string to `s`
     pub fn set(&mut self, s: &str) {

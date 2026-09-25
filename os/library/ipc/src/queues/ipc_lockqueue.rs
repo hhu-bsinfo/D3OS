@@ -4,7 +4,7 @@ use crate::queues::IpcError;
 use crate::queues::buffer_queue::BufferQueue;
 use crate::queues::ipc_lfqueue::IpcMessageWrapperOwned;
 use crate::MAX_NUM_MESSAGES;
-use crate::ipc_message::{IpcMessage, IpcMessageType, IpcMessageWrapper};
+use crate::ipc_message::{IpcMessage, IpcMessageData, IpcMessageWrapper};
 
 pub struct IpcLockQueue {
     messages: RwLock<BufferQueue<IpcMessage, MAX_NUM_MESSAGES>>,
@@ -16,8 +16,8 @@ impl super::IpcQueue for IpcLockQueue {
         Self { messages: RwLock::new(BufferQueue::new()) }
     }
 
-    fn send(&self, name: &str, msg_type: IpcMessageType, data: &[u8], sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
-        let msg = IpcMessage::new_from(name, msg_type, data, *sender_pid, sender_tid);
+    fn send(&self, name: &str, data: IpcMessageData, sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
+        let msg = IpcMessage::new_from(name, data, *sender_pid, sender_tid);
         self.messages.write().enqueue(msg)
     }
 

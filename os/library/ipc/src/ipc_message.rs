@@ -1,4 +1,4 @@
-use core::fmt::Display;
+use core::fmt::{Debug, Display};
 
 use alloc::format;
 use alloc::string::String;
@@ -23,12 +23,99 @@ pub enum IpcMessageType {
     Struct,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum IpcMessageData {
+    Empty,
+    Raw {
+        data: [u8; MESSAGE_DATA_SIZE],
+        size: usize,
+    },
+    Usize(usize),
+    UsizeSlice {
+        data: [usize; const { MESSAGE_DATA_SIZE / size_of::<usize>() }],
+        size: usize,
+    },
+    Isize(isize),
+    IsizeSlice {
+        data: [isize; const { MESSAGE_DATA_SIZE / size_of::<isize>() }],
+        size: usize,
+    },
+    I32(i32),
+    I32Slice {
+        data: [i32; const { MESSAGE_DATA_SIZE / size_of::<i32>() }],
+        size: usize,
+    },
+    F64(f64),
+    F64Slice {
+        data: [f64; const { MESSAGE_DATA_SIZE / size_of::<f64>() }],
+        size: usize,
+    },
+    String(ConstString<MESSAGE_DATA_SIZE>),
+    Struct {
+        bytes: [u8; MESSAGE_DATA_SIZE],
+        size: usize
+    },
+}
+
+impl IpcMessageData {
+    /// actual amount of data space being used
+    pub fn size(&self) -> usize {
+        match self {
+            IpcMessageData::Empty => 0,
+            IpcMessageData::Raw { data: _, size } => *size,
+            IpcMessageData::Usize(_) => size_of::<usize>(),
+            IpcMessageData::UsizeSlice { data: _, size } => *size,
+            IpcMessageData::Isize(_) => size_of::<isize>(),
+            IpcMessageData::IsizeSlice { data: _, size } => *size,
+            IpcMessageData::I32(_) => size_of::<i32>(),
+            IpcMessageData::I32Slice { data: _, size } => *size,
+            IpcMessageData::F64(_) => size_of::<f64>(),
+            IpcMessageData::F64Slice { data: _, size } => *size,
+            IpcMessageData::String(const_string) => const_string.len(),
+            IpcMessageData::Struct { bytes: _, size } => *size,
+        }
+    }
+    pub fn as_ptr<T>(&self) -> *const T {
+        match self {
+            IpcMessageData::Empty => panic!("Empty message cannot be cast to ptr!"),
+            IpcMessageData::Raw { data, size: _ } => data.as_ptr() as *const T,
+            IpcMessageData::Usize(n) => core::ptr::from_ref(n) as *const T,
+            IpcMessageData::UsizeSlice { data, size: _ } => data.as_ptr() as *const T,
+            IpcMessageData::Isize(n) => core::ptr::from_ref(n) as *const T,
+            IpcMessageData::IsizeSlice { data, size: _ } => data.as_ptr() as *const T,
+            IpcMessageData::I32(n) => core::ptr::from_ref(n) as *const T,
+            IpcMessageData::I32Slice { data, size: _ } => data.as_ptr() as *const T,
+            IpcMessageData::F64(n) => core::ptr::from_ref(n) as *const T,
+            IpcMessageData::F64Slice { data, size: _ } => data.as_ptr() as *const T,
+            IpcMessageData::String(const_string) => const_string.as_ptr() as *const T,
+            IpcMessageData::Struct { bytes, size: _ } => bytes.as_ptr() as *const T,
+        }
+    }
+}
+
+impl Debug for IpcMessageData {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Empty => write!(f, "Empty"),
+            Self::Raw { data, size } => f.debug_struct("Raw").field("data", &&data[..*size]).finish(),
+            Self::Usize(n) => f.debug_tuple("Usize").field(n).finish(),
+            Self::UsizeSlice { data, size } => f.debug_struct("UsizeSlice").field("data", &&data[..*size]).finish(),
+            Self::Isize(n) => f.debug_tuple("Isize").field(n).finish(),
+            Self::IsizeSlice { data, size } => f.debug_struct("IsizeSlice").field("data", &&data[..*size]).finish(),
+            Self::I32(n) => f.debug_tuple("I32").field(n).finish(),
+            Self::I32Slice { data, size } => f.debug_struct("I32Slice").field("data", &&data[..*size]).finish(),
+            Self::F64(n) => f.debug_tuple("F64").field(n).finish(),
+            Self::F64Slice { data, size } => f.debug_struct("F64Slice").field("data", &&data[..*size]).finish(),
+            Self::String(n) => f.debug_tuple("String").field(n).finish(),
+            Self::Struct { bytes, size } => f.debug_struct("Struct").field("bytes", &&bytes[..*size]).finish(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct IpcMessage {
     pub(crate) name: ConstString<MESSAGE_NAME_LEN>,
-    pub(crate) msg_type: IpcMessageType,
-    pub(crate) data: [u8; MESSAGE_DATA_SIZE],
-    pub(crate) data_len: usize,
+    pub(crate) data: IpcMessageData,
     pub(crate) sender_pid: Uuid,
     pub(crate) sender_tid: usize,
 }
@@ -37,16 +124,14 @@ impl IpcMessage {
     #![allow(clippy::missing_safety_doc)]
 
     pub fn new() -> Self {
-        Self { name: ConstString::new(), msg_type: IpcMessageType::Raw, data: [0; _], data_len: 0, sender_pid: Uuid::nil(), sender_tid: 0 }
+        Self { name: ConstString::new(), data: IpcMessageData::Empty, sender_pid: Uuid::nil(), sender_tid: 0 }
     }
-    pub fn new_from(name: &str, msg_type: IpcMessageType, data: &[u8], sender_pid: Uuid, sender_tid: usize) -> Self {
-        let mut data_arr = [0; _];
-        let l = data_arr.copy_from_slice_sizechecked(data);
-        Self { name: name.into(), msg_type, data: data_arr, data_len: l, sender_pid, sender_tid }
+    pub fn new_from(name: &str, data: IpcMessageData, sender_pid: Uuid, sender_tid: usize) -> Self {
+        Self { name: name.into(), data, sender_pid, sender_tid }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.data_len == 0
+        self.data.size() == 0
     }
     pub fn is_valid(&self) -> bool {
         self.sender_tid != 0 && !self.sender_pid.is_nil()
@@ -57,39 +142,8 @@ impl IpcMessage {
     pub fn name(&self) -> &ConstString<MESSAGE_NAME_LEN> {
         &self.name
     }
-    pub fn msg_type(&self) -> IpcMessageType {
-        self.msg_type
-    }
-    pub fn data(&self) -> &[u8] {
-        &self.data[..self.data_len]
-    }
-
-    /// reference the data as generic type `T`
-    pub unsafe fn ref_data<T>(&self) -> &T {
-        let ptr = self.data().as_ptr() as *const T;
-        unsafe { ptr.as_ref().unwrap() }
-    }
-    /// reference the data as a slice of generic type `T`
-    pub unsafe fn ref_data_as_slice<T>(&self) -> &[T] {
-        let ptr = self.data().as_ptr() as *const T;
-        let l = self.data_len / size_of::<T>();
-        unsafe { core::slice::from_raw_parts(ptr, l) }
-    }
-    /// deref (i.e. copy) the data as the generic type `T`
-    pub unsafe fn deref_data<T: Copy>(&self) -> T {
-        let ptr = self.data().as_ptr() as *const T;
-        unsafe { *ptr.as_ref().unwrap() }
-    }
-
-    pub fn data_as_str(&self) -> Result<&str, IpcMessageType> {
-        if self.msg_type == IpcMessageType::String {
-            str::from_utf8(self.data()).or(Err(self.msg_type))
-        } else {
-            Err(self.msg_type)
-        }
-    }
-    pub fn data_as_str_unchecked(&self) -> &str {
-        str::from_utf8(self.data()).unwrap_or("UTF8_ERROR")
+    pub fn data(&self) -> &IpcMessageData {
+        &self.data
     }
     pub fn sender_pid(&self) -> &Uuid {
         &self.sender_pid
@@ -98,22 +152,53 @@ impl IpcMessage {
         self.sender_tid
     }
 
+    /// reference the data as generic type `T`
+    pub unsafe fn ref_data<T>(&self) -> &T {
+        let ptr = self.data().as_ptr::<T>();
+        unsafe { ptr.as_ref().unwrap() }
+    }
+    /// reference the data as a slice of generic type `T`
+    pub unsafe fn ref_data_as_slice<T>(&self) -> &[T] {
+        let ptr = self.data().as_ptr::<T>();
+        let l = self.data().size() / size_of::<T>();
+        unsafe { core::slice::from_raw_parts(ptr, l) }
+    }
+    /// deref (i.e. copy) the data as the generic type `T`
+    pub unsafe fn deref_data<T: Copy>(&self) -> T {
+        let ptr = self.data().as_ptr::<T>();
+        unsafe { *ptr }
+        //unsafe { *ptr.as_ref().unwrap() }
+    }
+
+    pub fn data_as_str(&self) -> Result<&str, &IpcMessageData> {
+        match self.data() {
+            IpcMessageData::String(const_string) => Ok(const_string.as_str_unchecked()),
+            IpcMessageData::Raw { data, size } => Ok(str::from_utf8(&data[..*size]).unwrap_or("UTF8-Error")),
+            IpcMessageData::Empty => Ok(""),
+            _ => Err(self.data())
+        }
+    }
+    
     pub fn copy_from(&mut self, other_msg: &IpcMessage) {
         self.name.copy_from(other_msg.name);
-        self.msg_type = other_msg.msg_type;
-        let l = other_msg.data_len;
-        self.data[..l].copy_from_slice(other_msg.data());
-        self.data_len = l;
+        self.data = other_msg.data;
         self.sender_pid = other_msg.sender_pid;
         self.sender_tid = other_msg.sender_tid;
     }
-    pub fn set(&mut self, name: &str, msg_type: IpcMessageType, data: &[u8], sender_pid: Uuid, sender_tid: usize) {
+    pub fn set(&mut self, name: &str, data: IpcMessageData, sender_pid: Uuid, sender_tid: usize) {
         self.name.set(name);
-        self.msg_type = msg_type;
-        let l = self.data.copy_from_slice_sizechecked(data);
-        self.data_len = l;
+        self.data = data;
         self.sender_pid = sender_pid;
         self.sender_tid = sender_tid;
+    }
+    
+    pub fn data_as_bytes(&self) -> &[u8] {
+        match self.data() {
+            IpcMessageData::Empty => &[],
+            IpcMessageData::Raw { data, size } => &data[..*size],
+            IpcMessageData::String(const_string) => const_string.as_bytes(),
+            _ => unsafe { self.ref_data_as_slice() },
+        }
     }
 }
 
@@ -125,13 +210,11 @@ impl Default for IpcMessage {
 
 impl Display for IpcMessage {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let content = match self.msg_type {
-            IpcMessageType::String => self.data_as_str_unchecked(),
-            IpcMessageType::Usize => &format!("{:?}", self.data_as_usize()),
-            IpcMessageType::UsizeSlice => &format!("{:?}", self.data_as_usize_slice()),
+        let content = match self.data() {
+            IpcMessageData::String(const_string) => &format!("String: {}", const_string.as_str_unchecked()),
             _ => &format!("{:?}", self.data),
         };
-        write!(f, "({}, {:?}, pid: {:?}, tid: {}): {:?}", self.name, self.msg_type, self.sender_pid, self.sender_tid, content)
+        write!(f, "({}, pid: {:?}, tid: {}): {}", self.name, self.sender_pid, self.sender_tid, content)
     }
 }
 
@@ -141,6 +224,7 @@ impl Display for IpcMessage {
 pub trait IpcMessageContent {
     fn to_bytes(&self) -> &[u8];
     fn msg_type(&self) -> IpcMessageType;
+    fn to_data(&self) -> IpcMessageData;
 }
 
 impl IpcMessageContent for &[u8] {
@@ -149,6 +233,11 @@ impl IpcMessageContent for &[u8] {
     }
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::Raw
+    }
+    fn to_data(&self) -> IpcMessageData {
+        let mut arr = [0; _];
+        arr.copy_from_slice_sizechecked(*self);
+        IpcMessageData::Raw { data: arr, size: self.len() }
     }
 }
 
@@ -159,6 +248,11 @@ impl<const N: usize> IpcMessageContent for &[u8; N] {
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::Raw
     }
+    fn to_data(&self) -> IpcMessageData {
+        let mut arr = [0; _];
+        arr.copy_from_slice_sizechecked(*self);
+        IpcMessageData::Raw { data: arr, size: self.len() }
+    }
 }
 
 impl IpcMessageContent for &str {
@@ -168,6 +262,9 @@ impl IpcMessageContent for &str {
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::String
     }
+    fn to_data(&self) -> IpcMessageData {
+        IpcMessageData::String(ConstString::from(*self))
+    }
 }
 
 impl IpcMessageContent for &String {
@@ -176,6 +273,22 @@ impl IpcMessageContent for &String {
     }
     fn msg_type(&self) -> IpcMessageType {
         IpcMessageType::String
+    }
+    fn to_data(&self) -> IpcMessageData {
+        IpcMessageData::String(ConstString::from(self.as_str()))
+    }
+}
+
+impl IpcMessageContent for IpcMessageData {
+    fn to_bytes(&self) -> &[u8] {
+        todo!()
+    }
+    fn msg_type(&self) -> IpcMessageType {
+        todo!()
+    }
+
+    fn to_data(&self) -> IpcMessageData {
+        *self
     }
 }
 

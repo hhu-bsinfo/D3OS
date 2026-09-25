@@ -66,13 +66,16 @@ pub fn remove_endpoints_for_process(process_id: &Uuid) {
 pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isize {
 
     let params = unsafe { &*params_ptr };
-            
-    let message = unsafe { core::slice::from_raw_parts(params.data_ptr, params.data_len) };
 
-    if message.len() > MESSAGE_DATA_SIZE {
+    // this hopefully shouldnt copy?
+    let data = unsafe { &*params.data_ptr };
+
+    /*
+    if data.size() > MESSAGE_DATA_SIZE {
         error!("ipc message is to large, aborting...");
         return IpcError::MsgTooLarge.into();
     }
+    */
     
     let service_name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.service_name_ptr, params.service_name_len)) };
     
@@ -87,11 +90,12 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
         let endpoints = unsafe { (service.ipc_queue_addr as *const IpcEndpoints).as_ref_unchecked() };
         if let Some(ipc_queue) = endpoints.get(service_name) {
             let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
-            let msg_type = params.msg_type;
-            let res = ipc_queue.send(name, msg_type, message, &scheduler().current_thread().process().id(), scheduler().current_thread().id());
+            
+            // dereferencing the data here should copy?
+            let res = ipc_queue.send(name, *data, &scheduler().current_thread().process().id(), scheduler().current_thread().id());
 
             match res {
-                Ok(_) => return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(message.len())),
+                Ok(_) => return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(data.size())),
                 Err(err) => return err.into(),
             }
         }
