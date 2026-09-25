@@ -6,7 +6,7 @@ use crossbeam_utils::CachePadded;
 
 use crate::queues::IpcError;
 use crate::MAX_NUM_MESSAGES;
-use crate::ipc_message::{IpcMessage, IpcMessageData, IpcMessageWrapper};
+use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageData, IpcMessageWrapper};
 
 type BackingStorage = [UnsafeCell<MaybeUninit<IpcMessage>>; MAX_NUM_MESSAGES * 2];
 type Ring = [CachePadded<Atomic<usize>>; MAX_NUM_MESSAGES * 2];
@@ -32,8 +32,8 @@ impl super::IpcQueue for IpcLFQueue {
         Self::new()
     }
 
-    fn send(&self, name: &str, data: IpcMessageData, sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
-        let msg = IpcMessage::new_from(name, data, *sender_pid, sender_tid);
+    fn send(&self, name: &str, bytes: &[u8], sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
+        let msg = IpcMessage::new_from(name, bytes.to_data(), *sender_pid, sender_tid);
         let enq = self.queue.enqueue(msg);
         match enq {
             Ok(_) => Ok(0),

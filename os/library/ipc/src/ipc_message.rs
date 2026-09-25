@@ -57,6 +57,18 @@ pub enum IpcMessageData {
     },
 }
 
+macro_rules! cast_bytes_as_number {
+    ($bytes:expr, $out_type:ty) => {
+        <$out_type>::from_ne_bytes(*$bytes[..size_of::<$out_type>()].as_array().unwrap())
+    };
+}
+
+macro_rules! cast_bytes_as_slice {
+    ($bytes:expr, $out_type:ty) => {
+        unsafe { core::slice::from_raw_parts($bytes.as_ptr() as *const $out_type, $bytes.len() / size_of::<$out_type>()) }
+    };
+}
+
 impl IpcMessageData {
     /// actual amount of data space being used
     pub fn size(&self) -> usize {
@@ -90,6 +102,22 @@ impl IpcMessageData {
             IpcMessageData::String(const_string) => const_string.as_ptr() as *const T,
             IpcMessageData::Struct { bytes, size: _ } => bytes.as_ptr() as *const T,
         }
+    }
+    pub fn set_data(&mut self, new_data: &[u8]) {
+        match self {
+            IpcMessageData::Empty => (),
+            IpcMessageData::Raw { data, size } => *size = data.copy_from_slice_sizechecked(new_data),
+            IpcMessageData::Usize(n) => *n = cast_bytes_as_number!(new_data, usize),
+            IpcMessageData::UsizeSlice { data, size } => *size = data.copy_from_slice_sizechecked(cast_bytes_as_slice!(new_data, usize)),
+            IpcMessageData::Isize(n) => *n = cast_bytes_as_number!(new_data, isize),
+            IpcMessageData::IsizeSlice { data, size } => *size = data.copy_from_slice_sizechecked(cast_bytes_as_slice!(new_data, isize)),
+            IpcMessageData::I32(n) => *n = cast_bytes_as_number!(new_data, i32),
+            IpcMessageData::I32Slice { data, size } => *size = data.copy_from_slice_sizechecked(cast_bytes_as_slice!(new_data, i32)),
+            IpcMessageData::F64(n) => *n = cast_bytes_as_number!(new_data, f64),
+            IpcMessageData::F64Slice { data, size } => *size = data.copy_from_slice_sizechecked(cast_bytes_as_slice!(new_data, f64)),
+            IpcMessageData::String(const_string) => const_string.set_from_bytes(new_data),
+            IpcMessageData::Struct { bytes, size } => *size = bytes.copy_from_slice_sizechecked(new_data),
+        };
     }
 }
 
@@ -191,6 +219,25 @@ impl IpcMessage {
         self.sender_pid = sender_pid;
         self.sender_tid = sender_tid;
     }
+    pub fn set_from_data_bytes(&mut self, name: &str, bytes: &[u8], data_type: IpcMessageType, sender_pid: Uuid, sender_tid: usize) {
+        self.name.set(name);
+        self.data = match data_type {
+            IpcMessageType::Empty => IpcMessageData::Empty,
+            IpcMessageType::Raw => IpcMessageData::Raw { data: bytes, size: () },
+            IpcMessageType::Usize => todo!(),
+            IpcMessageType::UsizeSlice => todo!(),
+            IpcMessageType::Isize => todo!(),
+            IpcMessageType::IsizeSlice => todo!(),
+            IpcMessageType::I32 => todo!(),
+            IpcMessageType::I32Slice => todo!(),
+            IpcMessageType::F64 => todo!(),
+            IpcMessageType::F64Slice => todo!(),
+            IpcMessageType::String => todo!(),
+            IpcMessageType::Struct => todo!(),
+        };
+        self.sender_pid = sender_pid;
+        self.sender_tid = sender_tid;
+    }
     
     pub fn data_as_bytes(&self) -> &[u8] {
         match self.data() {
@@ -236,7 +283,7 @@ impl IpcMessageContent for &[u8] {
     }
     fn to_data(&self) -> IpcMessageData {
         let mut arr = [0; _];
-        arr.copy_from_slice_sizechecked(*self);
+        arr.copy_from_slice_sizechecked(self);
         IpcMessageData::Raw { data: arr, size: self.len() }
     }
 }

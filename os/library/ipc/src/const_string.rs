@@ -44,6 +44,10 @@ impl <const S: usize> ConstString<S> {
         &self.buffer[..self.len]
     }
     
+    pub fn set_from_bytes(&mut self, bytes: &[u8]) {
+        let new_len = self.buffer.copy_from_slice_sizechecked(bytes);
+        self.len = new_len;
+    }
     /// set this string to `s`
     pub fn set(&mut self, s: &str) {
         let l = self.buffer.copy_from_slice_sizechecked(s.as_bytes());

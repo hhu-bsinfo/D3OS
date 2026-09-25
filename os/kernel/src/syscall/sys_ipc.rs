@@ -67,15 +67,12 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
 
     let params = unsafe { &*params_ptr };
 
-    // this hopefully shouldnt copy?
-    let data = unsafe { &*params.data_ptr };
+    let bytes = unsafe { core::slice::from_raw_parts(params.data_ptr, params.data_len) };
 
-    /*
-    if data.size() > MESSAGE_DATA_SIZE {
+    if bytes.len() > MESSAGE_DATA_SIZE {
         error!("ipc message is to large, aborting...");
         return IpcError::MsgTooLarge.into();
     }
-    */
     
     let service_name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.service_name_ptr, params.service_name_len)) };
     
@@ -92,10 +89,10 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
             let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
             
             // dereferencing the data here should copy?
-            let res = ipc_queue.send(name, *data, &scheduler().current_thread().process().id(), scheduler().current_thread().id());
+            let res = ipc_queue.send(name, bytes, &scheduler().current_thread().process().id(), scheduler().current_thread().id());
 
             match res {
-                Ok(_) => return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(data.size())),
+                Ok(ok) => return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(ok)),
                 Err(err) => return err.into(),
             }
         }
