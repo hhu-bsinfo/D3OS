@@ -67,10 +67,8 @@ fn ping(
 ) -> Result<Report> {
     let mut wc = vec![WorkCompletion::default(); 4];
     let mut samples: Vec<f64> = Vec::with_capacity(iterations);
-    let recv_wr = ReceiveWorkRequest {
-        wr_id: WR_RECV,
-        sges: &[recv_mr.slice(0..msg_size)],
-    };
+    let sge = [recv_mr.slice(0..msg_size)];
+    let recv_wr = ReceiveWorkRequest::new(WR_RECV, &sge);
     let send_sge = [send_mr.slice(0..msg_size)];
     let send_wr = SendWorkRequest::send(
         WR_SEND,
@@ -124,10 +122,8 @@ fn pong(
 ) -> Result<Report> {
     let mut wc = vec![WorkCompletion::default(); 4];
     let mut echoed = 0usize;
-    let recv_wr = ReceiveWorkRequest {
-        wr_id: WR_RECV,
-        sges: &[recv_mr.slice(0..msg_size)],
-    };
+    let sge = [recv_mr.slice(0..msg_size)];
+    let recv_wr = ReceiveWorkRequest::new(WR_RECV, &sge);
 
     let send_sge = [send_mr.slice(0..msg_size)];
     let send_wr = SendWorkRequest::send(

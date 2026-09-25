@@ -93,7 +93,7 @@ fn main() {
     } else {
         let now = get_time_in_us();
         for _ in 0..rx_depth {
-            unsafe { qp.post_receive([ReceiveWorkRequest { wr_id: 2, sges: &[mr.slice(..)] }]) }.expect("recv");
+            unsafe { qp.post_receive([ReceiveWorkRequest::new(2, &[mr.slice(..)])]) }.expect("recv");
         }
         now
     };
@@ -111,7 +111,7 @@ fn main() {
                 let flags =  SendFlags::SIGNALED;
                 unsafe { qp.post_send([SendWorkRequest::send(1, &[mr.slice(..)], flags)]) }.expect("send");
             } else {
-                unsafe { qp.post_receive([ReceiveWorkRequest { wr_id: 2, sges: &[mr.slice(..)] }]) }.expect("recv");
+                unsafe { qp.post_receive([ReceiveWorkRequest::new(2, &[mr.slice(..)])]) }.expect("recv");
             }
         }
         n += completed.len() as u32;

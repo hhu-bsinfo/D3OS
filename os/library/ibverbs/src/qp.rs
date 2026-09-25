@@ -860,3 +860,9 @@ pub struct ReceiveWorkRequest<'a> {
     pub sges: &'a [ScatterGatherEntry],
 }
 
+impl<'a> ReceiveWorkRequest<'a> {
+    pub fn new(wr_id: u64, sges: &'a [ScatterGatherEntry]) -> Self {
+        Self { wr_id, sges}
+    }
+}
+

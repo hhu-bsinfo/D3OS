@@ -141,11 +141,9 @@ fn receive(
     window: usize,
 ) -> Result<Report> {
     for slot in 0..window {
-        let wr = ReceiveWorkRequest {
-            wr_id: slot as u64,
-            sges: &[mr.slice(slot_range(slot, msg_size))]
-        };
-        unsafe { qp.post_receive([wr])? };
+        unsafe { qp.post_receive([
+            ReceiveWorkRequest::new(slot as u64, &[mr.slice(slot_range(slot, msg_size))])
+        ])? };
     }
 
     let mut report = AccuracyReport { msg_size, sent: iterations, ..AccuracyReport::default() };
@@ -185,11 +183,7 @@ fn receive(
                 let got = &mr[range.start..range.start + got_len];
                 check(got, &mut expected, msg_size, &mut seen, &mut distinct_seen, &mut report);
             }
-            let wr = ReceiveWorkRequest {
-                wr_id: slot as u64,
-                sges: &[mr.slice(slot_range(slot, msg_size))]
-            };
-            unsafe { qp.post_receive([wr])? };
+            unsafe { qp.post_receive([ReceiveWorkRequest::new(slot as u64, &[mr.slice(slot_range(slot, msg_size))])])? };
         }
     }
     report.lost = seen.iter().filter(|s| !**s).count();

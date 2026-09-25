@@ -97,13 +97,8 @@ fn receive(
     conn.sync()?; // warm-up done
 
     let window = rx_depth.min(iterations);
-    let mut recv_wr = ReceiveWorkRequest {
-        wr_id: 0,
-        sges: &[mr.slice(0..msg_size)],
-    };
     for i in 0..window {
-        recv_wr.wr_id = i as u64;
-        unsafe { qp.post_receive([recv_wr])? };
+        unsafe { qp.post_receive([ReceiveWorkRequest::new(i as u64, &[mr.slice(0..msg_size)])])? };
     }
 
     let mut posted = window;
@@ -130,8 +125,7 @@ fn receive(
         completed += n;
         for _ in 0..n {
             if posted < iterations {
-                recv_wr.wr_id = posted as u64;
-                unsafe { qp.post_receive([recv_wr])? };
+                unsafe { qp.post_receive([ReceiveWorkRequest::new(posted as u64, &[mr.slice(0..msg_size)])])? };
                 posted += 1;
             }
         }
