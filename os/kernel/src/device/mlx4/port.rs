@@ -12,6 +12,7 @@ use rdma::{PhysicalPortState, Mtu, PortAttr, PortState};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use super::cmd::{CommandInterface, InputParam, MadIfcOpcodeModifier, Opcode, OutputParam, SetPortOpcodeModifier};
 use log::{debug, trace, warn};
+use crate::process::core_local_storage::scheduler;
 
 #[derive(Debug)]
 pub struct Port {
@@ -59,12 +60,14 @@ impl Port {
 
         // finally, bring the port up
         cmd.execute_command(Opcode::InitPort, None, InputParam::Empty, Some(number.into()), OutputParam::Empty)?;
-        // and update the state again
-        port.query(cmd)?;
-        trace!("initialized {port:?}");
-        // port.query might fail. In that case we won't get the real error,
-        // if we already have set open to true.
         port.open = true;
+        // and update the state again; if that fails, close the port again instead of
+        // dropping it open, which would panic and hide the real error
+        if let Err(e) = port.query(cmd) {
+            port.close(cmd)?;
+            return Err(e);
+        }
+        trace!("initialized {port:?}");
         Ok(port)
     }
 
@@ -78,22 +81,25 @@ impl Port {
     ///
     /// This is called by ibv_query_port.
     pub(super) fn query(&mut self, cmd: &mut CommandInterface) -> Result<PortAttr, &'static str> {
-        // Querying the port might fail, so try this a few times.
-        let mut attr = None;
+        // Querying the port might fail, so try this a few times. Right after INIT_HCA the
+        // firmware can still be busy and answer the PortInfo MAD without valid data, so give it
+        // some time between the tries instead of asking again immediately.
+        const ATTEMPTS: usize = 5;
+        const RETRY_DELAY_MS: usize = 10;
         let mut err = None;
-        for _ in 0..5 {
+        for attempt in 1..=ATTEMPTS {
             match self.query_single(cmd) {
-                Ok(a) => {
-                    attr = Some(a);
-                    break;
-                }
+                Ok(attr) => return Ok(attr),
                 Err(e) => {
-                    warn!("querying the port failed with: {e:?}");
+                    warn!("querying port {} failed (attempt {attempt}/{ATTEMPTS}): {e:?}", self.number);
                     err = Some(e);
                 }
             }
+            if attempt < ATTEMPTS {
+                scheduler().sleep(RETRY_DELAY_MS);
+            }
         }
-        attr.ok_or_else(|| err.unwrap())
+        Err(err.unwrap())
     }
 
     /// Actually query the port.
@@ -119,11 +125,18 @@ impl Port {
         madifc_input.attr_mod = u32::from(self.number).into();
         cmd.execute_command(Opcode::MadIfc, Some(madifc_modifier.into()), InputParam::Mailbox(madifc_input.as_bytes()), Some(self.number.into()), OutputParam::Mailbox)?;
         let madifc_output: &MadPacket = unsafe { cmd.output_mailbox_as_ref() };
+        // The command itself succeeding does not mean the MAD did: its status field says
+        // whether the data in it is valid (e.g. the SMA may answer "busy").
+        let mad_status = madifc_output.status.get();
+        if mad_status != 0 {
+            warn!("PortInfo MAD for port {} returned status {mad_status:#06x}", self.number);
+            return Err("PortInfo MAD returned an error status");
+        }
         self.madifc_output = Some(madifc_output.clone());
         let madifc_output_data = MadPacketData::from_bytes(self.madifc_output.as_ref().unwrap().data);
 
         // finally, format it nicely for the application
-        Ok(PortAttr {
+        let attr = (|| Ok(PortAttr {
             state: PortState::from_repr(madifc_output_data.state().into()).ok_or("invalid state")?,
             max_mtu: Mtu::from_repr(madifc_output_data.max_mtu().into()).ok_or("invalid max MTU")?,
             active_mtu: Mtu::from_repr(madifc_output_data.active_mtu()).ok_or("invalid MTU")?,
@@ -133,7 +146,17 @@ impl Port {
             lmc: madifc_output_data.lmc(),
             phys_state: PhysicalPortState::from_repr(madifc_output_data.phys_state()).ok_or("invalid physical port state")?,
             link_layer: 0, // TODO
-        })
+        }))();
+        if attr.is_err() {
+            // The error only says which field was off; the raw values tell whether the
+            // whole response was empty or just one field was unexpected.
+            warn!(
+                "PortInfo for port {} has invalid fields: state {}, phys_state {}, max_mtu {}, active_mtu {}",
+                self.number, madifc_output_data.state(), madifc_output_data.phys_state(),
+                madifc_output_data.max_mtu(), madifc_output_data.active_mtu(),
+            );
+        }
+        attr
     }
 }
 
