@@ -172,12 +172,15 @@ impl ConnectX3Nic {
         let aux_pages = firmware_area.set_icm(&mut cmd, profile.total_size)?;
         let icm_aux_area = firmware_area.map_icm_aux(&mut cmd, aux_pages)?;
         let mut icm_tables = icm_aux_area.map_icm_tables(&mut cmd, &profile, &capabilities)?;
-        let hca = profile.init_hca.init_hca(&mut cmd)?;
+        let mut hca = profile.init_hca.init_hca(&mut cmd)?;
+        let mut eqs = Vec::new();
 
+        // From here on the card holds resources that panic when dropped, so an error has to
+        // release them first; otherwise the panic replaces the actual error.
         // give us the interrupt pin
-        let adapter = hca.query_adapter(&mut cmd)?;
+        let adapter = hca.query_adapter(&mut cmd).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
 
-        let uar_bf_bar = mlx3_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)")?;
+        let uar_bf_bar = mlx3_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)").or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
         trace!("mlx4 User Access Region (UAR) Bar : {:?}", uar_bf_bar);
         let num_uars = capabilities.num_uars();
         let mut uar_list = Vec::with_capacity(num_uars);
@@ -210,21 +213,21 @@ impl ConnectX3Nic {
         let clr_int_regs = match clr_int_bar {
             0 => config_regs,
             2 => identity_mapped_uar,
-            _ => return Err("legacy interrupt clear register is in an unmapped BAR"),
+            _ => Err("legacy interrupt clear register is in an unmapped BAR").or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?,
         };
         let clr_int = ClrInt::new(clr_int_regs, clr_int_offset, adapter.inta_pin());
 
         // The first 128 UAR pages are reserved for EQs
-        let eq_doorbells: &mut [DoorbellPage] = identity_mapped_uar.as_slice_mut(0, 128)?;
-        let eqs = init_eqs(&mut cmd, eq_doorbells, &capabilities, &mut offsets, icm_tables.memory_regions(), clr_int)?;
+        let eq_doorbells: &mut [DoorbellPage] = identity_mapped_uar.as_slice_mut(0, 128).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
+        eqs = init_eqs(&mut cmd, eq_doorbells, &capabilities, &mut offsets, icm_tables.memory_regions(), clr_int).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
 
-        hca.config_mad_demux(&mut cmd, &capabilities)?;
+        hca.config_mad_demux(&mut cmd, &capabilities).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
 
         // TODO: Configure Special QPs (QP0, QP1) for SMI and GSI MAD packets
         //       before initializing the ports
         //let _: () = cmd.execute_command(cmd::Opcode::ConfSpecialQp, (), (), offsets.base_qpn)?;
 
-        let ports = hca.init_ports(&mut cmd, &capabilities, offsets.base_qpn)?;
+        let ports = hca.init_ports(&mut cmd, &capabilities, offsets.base_qpn).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
 
         let handle = next_device_handle();
 
@@ -251,6 +254,33 @@ impl ConnectX3Nic {
         };
         get_dev_list().lock().push(nic);
         Ok(handle)
+    }
+
+    /// Release what `init` had set up when it fails after INIT_HCA, in the same order as `drop`,
+    /// and pass the error on.
+    ///
+    /// Failures while releasing are only logged: the card is in an unknown state at this point
+    /// anyway, and the error that got us here is the one worth returning.
+    fn abort_init<T>(
+        error: &'static str, cmd: &mut CommandInterface, hca: &mut Hca, eqs: &mut Vec<Arc<RwLock<EventQueue>>>,
+        icm_tables: &mut MappedIcmTables, firmware_area: &mut MappedFirmwareArea,
+    ) -> Result<T, &'static str> {
+        error!("mlx4 initialization failed after INIT_HCA: {error}");
+        while let Some(eq) = eqs.pop() {
+            if let Err(e) = eq.write().destroy(cmd) {
+                warn!("failed to destroy an event queue while cleaning up: {e}");
+            }
+        }
+        if let Err(e) = hca.close(cmd) {
+            warn!("failed to close the HCA while cleaning up: {e}");
+        }
+        if let Err(e) = icm_tables.unmap(cmd) {
+            warn!("failed to unmap the ICM tables while cleaning up: {e}");
+        }
+        if let Err(e) = firmware_area.unmap(cmd) {
+            warn!("failed to unmap the firmware area while cleaning up: {e}");
+        }
+        Err(error)
     }
 
     /// Open a context to the device

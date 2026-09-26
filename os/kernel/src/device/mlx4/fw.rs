@@ -1220,8 +1220,18 @@ impl Hca {
         for port_num in 1..=caps.num_ports() {
             let smi_qpn = base_qpn + 0 + port_num as u32 - 1;
             let gsi_qpn = base_qpn + 2 + port_num as u32 - 1;
-            let port = Port::new(cmd, port_num, smi_qpn, gsi_qpn, Mtu::Mtu4096, None)?;
-            ports.push(port);
+            match Port::new(cmd, port_num, smi_qpn, gsi_qpn, Mtu::Mtu4096, None) {
+                Ok(port) => ports.push(port),
+                Err(e) => {
+                    // close the ports that did come up, they would panic when dropped
+                    while let Some(port) = ports.pop() {
+                        if let Err(close_err) = port.close(cmd) {
+                            warn!("failed to close a port while cleaning up: {close_err}");
+                        }
+                    }
+                    return Err(e);
+                }
+            }
         }
         Ok(ports)
     }
