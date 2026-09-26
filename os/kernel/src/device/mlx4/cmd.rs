@@ -362,7 +362,7 @@ impl CommandInterface {
 
     fn is_pending(&self) -> bool {
         let status = u32::from_be(self.hcr.status_opcode.get());
-        status & (1 << HCR_GO_BIT) != 0 || (status & (1 << HCR_T_BIT)) == self.exp_toggle
+        status & (1 << HCR_GO_BIT) != 0 || (status >> HCR_T_BIT) & 1 == self.exp_toggle
     }
 
     /// Reinterpret the output mailbox's contents as `&T`.
