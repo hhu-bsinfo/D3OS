@@ -8,6 +8,7 @@
 //! native `rust-rdma-bench` peer) oblivious to suites — it only has to be serving in a loop, i.e.
 //! started with `--listen`.
 
+use alloc::string::String;
 use crate::bench::{self, Role};
 use crate::cli::{ClientArgs, Mode, Transport};
 use crate::comm::{self, BenchmarkRequest, ClientEndpoint, HandshakeAck};
@@ -16,8 +17,10 @@ use crate::error::{other, Result};
 use crate::report::{self, Report};
 use crate::transport;
 use alloc::vec::Vec;
+use core::fmt::{write, Write};
 use concurrent::thread::sleep;
 use core::net::IpAddr;
+use log::info;
 use ibverbs::{Context, ProtectionDomain};
 use terminal::println;
 
@@ -78,6 +81,8 @@ fn run_suite(ctx: &Context, pd: &ProtectionDomain, args: &ClientArgs) -> Result<
     let mut failures: Vec<(Mode, usize)> = Vec::new();
     let mut first_run = true;
 
+    let mut csv_string_buffer = String::new();
+
     for &mode in &args.modes {
         let sizes: Vec<usize> = args.sizes.iter().copied().filter(|&s| s >= mode.min_msg_size()).collect();
         let skipped = args.sizes.len() - sizes.len();
@@ -87,9 +92,23 @@ fn run_suite(ctx: &Context, pd: &ProtectionDomain, args: &ClientArgs) -> Result<
         if skipped > 0 {
             println!("(skipping {} size(s) below {} bytes, the minimum for this mode)", skipped, mode.min_msg_size());
         }
+
+        if args.csv {
+            writeln!(&mut csv_string_buffer, "=== {} ===", mode.name()).unwrap();
+        }
+
         println!("{}", report::header(mode));
 
+        if args.csv {
+            writeln!(&mut csv_string_buffer, "").unwrap();
+            writeln!(&mut csv_string_buffer, "{}", report::csv_header(mode)).unwrap();
+        }
+
         for size in sizes {
+            if mode == Mode::Accuracy && size > 32 * 1024 {
+                println!("{:>8} too big for accuracy, skipped", size);
+                break
+            }
             // Every run after the first reconnects to a server that just finished one.
             if !first_run {
                 sleep(SETTLE_MS);
@@ -107,22 +126,31 @@ fn run_suite(ctx: &Context, pd: &ProtectionDomain, args: &ClientArgs) -> Result<
                 rx_depth: args.rx_depth,
             };
 
-            match run_once(ctx, pd, &params, false) {
-                Ok(result) => {
-                    match result.row() {
-                        Some(row) => println!("{}", row),
-                        None => println!("{:>8}  (no result)", size),
+            for _ in 0..args.runs {
+                match run_once(ctx, pd, &params, false) {
+                    Ok(result) => {
+                        match result.row() {
+                            Some(row) => println!("{}", row),
+                            None => println!("{:>8}  (no result)", size),
+                        }
+                        if let Some(notes) = result.notes() {
+                            println!("{:>8}  {}", "", notes);
+                        }
+                        if args.csv && let Some(row) = result.csv_row() {
+                            writeln!(&mut csv_string_buffer, "{}", row).unwrap();
+                        }
                     }
-                    if let Some(notes) = result.notes() {
-                        println!("{:>8}  {}", "", notes);
+                    Err(e) => {
+                        println!("{:>8}  failed: {:?}", size, e);
+                        failures.push((mode, size));
                     }
-                }
-                Err(e) => {
-                    println!("{:>8}  failed: {:?}", size, e);
-                    failures.push((mode, size));
                 }
             }
         }
+    }
+
+    if args.csv {
+        info!("CSV results:\n{}", csv_string_buffer)
     }
 
     println!("");

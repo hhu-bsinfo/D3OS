@@ -124,6 +124,10 @@ pub struct ServerArgs {
 pub struct ClientArgs {
     pub host: IpAddr,
     pub port: u16,
+    /// Print the results in format CSV to the console
+    pub csv: bool,
+    /// Print the results in format CSV to the console
+    pub runs: u32,
     pub transport: Transport,
     /// Modes to run, in the order given.
     pub modes: Vec<Mode>,
@@ -191,6 +195,8 @@ impl Cli {
         let mut client = ClientArgs {
             host: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
             port: DEFAULT_PORT,
+            csv: false,
+            runs: 1,
             transport: Transport::Rc,
             modes: Vec::new(),
             sizes: Vec::new(),
@@ -213,6 +219,17 @@ impl Cli {
                 Some("--port") => {
                     let val = Self::next_value(&mut args, "--port")?;
                     client.port = val.parse().map_err(|_| "invalid --port value".to_string())?;
+                }
+                Some("--csv") => {
+                    args.next();
+                    client.csv = true
+                }
+                Some("--runs") => {
+                    let val = Self::next_value(&mut args, "--runs")?;
+                    client.runs = val.parse().map_err(|_| "invalid --runs value".to_string())?;
+                    if client.runs == 0 {
+                        return Err("--runs must be positive".to_string())
+                    }
                 }
                 Some("--transport") => {
                     let val = Self::next_value(&mut args, "--transport")?;
