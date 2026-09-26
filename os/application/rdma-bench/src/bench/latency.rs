@@ -144,10 +144,8 @@ fn pong(
         if wait_for(cq, &mut wc, recv_wr.wr_id)? != 0 {
             break;
         }
-        // Repost the receive before echoing so the next ping's receive is armed ahead of time.
         unsafe { qp.post_receive([recv_wr])? };
         unsafe { qp.post_send([send_wr])? };
-        wait_for(cq, &mut wc, WR_SEND)?;
         echoed += 1;
     }
     conn.sync()?; // both sides done
