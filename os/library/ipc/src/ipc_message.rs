@@ -7,6 +7,12 @@ use uuid::Uuid;
 use crate::{MESSAGE_DATA_SIZE, MESSAGE_NAME_LEN};
 use crate::const_string::{ConstString, CopySizeChecked};
 
+macro_rules! num_slice_from_bytes {
+    ($bytes:expr, $num:ty) => {
+        core::array::from_fn(|i| $bytes.get((i * size_of::<$num>())..(i * size_of::<$num>() + size_of::<$num>())).map(|b| <$num>::from_le_bytes(b.try_into().unwrap())).unwrap_or_default())
+    };
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IpcMessageType {
     Empty,
@@ -221,19 +227,21 @@ impl IpcMessage {
     }
     pub fn set_from_data_bytes(&mut self, name: &str, bytes: &[u8], data_type: IpcMessageType, sender_pid: Uuid, sender_tid: usize) {
         self.name.set(name);
+        // unsafe copy_from_slice directly into the enum + change discriminant manually may be faster
+        //      we wouldnt have to set unused part of array to zero
         self.data = match data_type {
             IpcMessageType::Empty => IpcMessageData::Empty,
-            IpcMessageType::Raw => IpcMessageData::Raw { data: bytes, size: () },
-            IpcMessageType::Usize => todo!(),
-            IpcMessageType::UsizeSlice => todo!(),
-            IpcMessageType::Isize => todo!(),
-            IpcMessageType::IsizeSlice => todo!(),
-            IpcMessageType::I32 => todo!(),
-            IpcMessageType::I32Slice => todo!(),
-            IpcMessageType::F64 => todo!(),
-            IpcMessageType::F64Slice => todo!(),
-            IpcMessageType::String => todo!(),
-            IpcMessageType::Struct => todo!(),
+            IpcMessageType::Raw => IpcMessageData::Raw { data: core::array::from_fn(|i| bytes.get(i).copied().unwrap_or_default()), size: bytes.len() },
+            IpcMessageType::Usize => IpcMessageData::Usize(usize::from_le_bytes(bytes[..size_of::<usize>()].try_into().unwrap())),
+            IpcMessageType::UsizeSlice => IpcMessageData::UsizeSlice { data: num_slice_from_bytes!(bytes, usize), size: bytes.len() / size_of::<usize>() },
+            IpcMessageType::Isize => IpcMessageData::Isize(isize::from_le_bytes(bytes[..size_of::<isize>()].try_into().unwrap())),
+            IpcMessageType::IsizeSlice => IpcMessageData::IsizeSlice { data: num_slice_from_bytes!(bytes, isize), size: bytes.len() / size_of::<isize>() },
+            IpcMessageType::I32 => IpcMessageData::I32(i32::from_le_bytes(bytes[..size_of::<i32>()].try_into().unwrap())),
+            IpcMessageType::I32Slice => IpcMessageData::I32Slice { data: num_slice_from_bytes!(bytes, i32), size: bytes.len() / size_of::<i32>() },
+            IpcMessageType::F64 => IpcMessageData::F64(f64::from_le_bytes(bytes[..size_of::<f64>()].try_into().unwrap())),
+            IpcMessageType::F64Slice => IpcMessageData::F64Slice { data: num_slice_from_bytes!(bytes, f64), size: bytes.len() / size_of::<f64>() },
+            IpcMessageType::String => IpcMessageData::String(bytes.into()),
+            IpcMessageType::Struct => IpcMessageData::Struct { bytes: core::array::from_fn(|i| bytes.get(i).copied().unwrap_or_default()), size: bytes.len() },
         };
         self.sender_pid = sender_pid;
         self.sender_tid = sender_tid;

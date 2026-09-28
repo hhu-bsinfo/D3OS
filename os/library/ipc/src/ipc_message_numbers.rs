@@ -26,18 +26,50 @@ macro_rules! data_as_any_number {
 impl IpcMessage {
     
     pub fn data_as_usize(&self) -> Result<usize, &IpcMessageData> {
-        data_as_any_number!(self, usize)
+        match self.data() {
+            IpcMessageData::Usize(n) => Ok(*n),
+            IpcMessageData::UsizeSlice { data, size: _ } => data.first().copied().ok_or(self.data()),
+            _ => Err(self.data())
+        }
     }
     
     pub fn data_as_isize(&self) -> Result<isize, &IpcMessageData> {
-        data_as_any_number!(self, isize)
+        match self.data() {
+            IpcMessageData::Isize(n) => Ok(*n),
+            IpcMessageData::IsizeSlice { data, size: _ } => data.first().copied().ok_or(self.data()),
+            _ => Err(self.data())
+        }
     }
     
     pub fn data_as_i32(&self) -> Result<i32, &IpcMessageData> {
+        match self.data() {
+            IpcMessageData::I32(n) => Ok(*n),
+            IpcMessageData::I32Slice { data, size: _ } => data.first().copied().ok_or(self.data()),
+            _ => Err(self.data())
+        }
+    }
+    
+    pub fn data_as_f64(&self) -> Result<f64, &IpcMessageData> {
+        match self.data() {
+            IpcMessageData::F64(n) => Ok(*n),
+            IpcMessageData::F64Slice { data, size: _ } => data.first().copied().ok_or(self.data()),
+            _ => Err(self.data()),
+        }
+    }
+    
+    pub fn data_as_usize_unchecked(&self) -> Result<usize, &IpcMessageData> {
+        data_as_any_number!(self, usize)
+    }
+    
+    pub fn data_as_isize_unchecked(&self) -> Result<isize, &IpcMessageData> {
+        data_as_any_number!(self, isize)
+    }
+    
+    pub fn data_as_i32_unchecked(&self) -> Result<i32, &IpcMessageData> {
         data_as_any_number!(self, i32)
     }
     
-    pub fn data_as_f64(&self) -> f64 {
+    pub fn data_as_f64_unchecked(&self) -> f64 {
         match self.data() {
             IpcMessageData::Empty => f64::NAN,
             IpcMessageData::Raw { data, size } => {
@@ -60,28 +92,32 @@ impl IpcMessage {
 
     pub fn data_as_usize_slice(&self) -> Result<&[usize], &IpcMessageData> {
         match self.data() {
-            IpcMessageData::Usize(_) | IpcMessageData::UsizeSlice { data: _, size: _ } => Ok(unsafe { self.ref_data_as_slice() }),
+            IpcMessageData::UsizeSlice { data, size } => Ok(data[..*size].as_ref()),
+            IpcMessageData::Usize(n) => Ok(core::array::from_ref(n)),
             _ => Err(self.data())
         }
     }
 
     pub fn data_as_isize_slice(&self) -> Result<&[isize], &IpcMessageData> {
         match self.data() {
-            IpcMessageData::Isize(_) | IpcMessageData::IsizeSlice { data: _, size: _ } => Ok(unsafe { self.ref_data_as_slice() }),
+            IpcMessageData::IsizeSlice { data, size } => Ok(data[..*size].as_ref()),
+            IpcMessageData::Isize(n) => Ok(core::array::from_ref(n)),
             _ => Err(self.data())
         }
     }
 
     pub fn data_as_i32_slice(&self) -> Result<&[i32], &IpcMessageData> {
         match self.data() {
-            IpcMessageData::I32(_) | IpcMessageData::I32Slice { data: _, size: _ } => Ok(unsafe { self.ref_data_as_slice() }),
+            IpcMessageData::I32Slice { data, size } => Ok(data[..*size].as_ref()),
+            IpcMessageData::I32(n) => Ok(core::array::from_ref(n)),
             _ => Err(self.data())
         }
     }
 
     pub fn data_as_f64_slice(&self) -> Result<&[f64], &IpcMessageData> {
         match self.data() {
-            IpcMessageData::F64(_) | IpcMessageData::F64Slice { data: _, size: _ } => Ok(unsafe { self.ref_data_as_slice() }),
+            IpcMessageData::F64Slice { data, size } => Ok(data[..*size].as_ref()),
+            IpcMessageData::F64(n) => Ok(core::array::from_ref(n)),
             _ => Err(self.data())
         }
     }
@@ -153,9 +189,7 @@ impl IpcMessageContent for &[isize] {
     }
     
     fn to_data(&self) -> IpcMessageData {
-        let mut arr = [0; _];
-        arr.copy_from_slice_sizechecked(self);
-        IpcMessageData::IsizeSlice { data: arr, size: self.len() }
+        IpcMessageData::IsizeSlice { data: core::array::from_fn(|i| self.get(i).copied().unwrap_or_default()), size: self.len() }
     }
 }
 

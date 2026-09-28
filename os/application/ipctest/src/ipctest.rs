@@ -94,7 +94,7 @@ pub fn main() {
         loop {
             match ipc::receive("ipctest_pong") {
                 Ok(msg) => {
-                    let ping = msg.msg().data_as_usize().unwrap();
+                    let ping = msg.msg().data_as_usize_unchecked().unwrap();
                     if ping > 100 { return; }
                     let pong = ping + 1;
                     println!("PONG! [{}]", pong);
@@ -113,7 +113,7 @@ pub fn main() {
         loop {
             match ipc::receive_answer() {
                 Ok(msg) => {
-                    let pong = msg.msg().data_as_usize().unwrap();
+                    let pong = msg.msg().data_as_usize_unchecked().unwrap();
                     if pong > 100 { return; }
                     let ping = pong + 1;
                     println!("PING! [{}]", ping);
@@ -137,7 +137,7 @@ pub fn main() {
 
         loop {
             while let Ok(msg) = ipc::receive("ipctest_recv") {
-                let number = msg.msg().data_as_usize().unwrap();
+                let number = msg.msg().data_as_usize_unchecked().unwrap();
                 println!("Received Message: {}", number);
                 if number == limit {
                     println!("Successfully received {} messages. Sending STOP signal and exiting...", limit);
@@ -214,7 +214,7 @@ pub fn main() {
         
         ipc::register_ipc_endpoint("ipctest_contention_recv");
 
-        let num_child_processes = 16;
+        let num_child_processes = 4;
 
         thread::create(move || {
             for _ in 0..num_child_processes {
@@ -243,10 +243,13 @@ pub fn main() {
                             }
                         },
                         _ => {
-                            let data = msg.data_as_usize_slice().unwrap();
-                            log::info!("{} received request {} * {} from {}", tid, data[0], data[1], msg.sender_tid());
-                            let res = data[0] * data[1];
-                            ipc::answer(msg, res);
+                            if let Ok(data) = msg.data_as_usize_slice() && data.len() >= 2 {
+                                log::info!("{} received request {} * {} from {}", tid, data[0], data[1], msg.sender_tid());
+                                let res = data[0] * data[1];
+                                ipc::answer(msg, res);
+                            } else {
+                                log::warn!("Invalid msg: {}", msg);
+                            }
                         },
                     }
                 },
@@ -265,7 +268,7 @@ pub fn main() {
             log::info!("{} Sending {}*{}", tid, a, b);
             match ipc::send_and_receive("ipctest_contention_recv", "mult", &[a, b], 5000) {
                 Ok(msg_wrapper) => {
-                    a = msg_wrapper.msg().data_as_usize().unwrap();
+                    a = msg_wrapper.msg().data_as_usize_unchecked().unwrap();
                     match a {
                         0 => {
                             log::error!("{} Error, received zero!", tid);
@@ -417,7 +420,7 @@ pub fn main() {
 
             match ipc::send_and_receive(service_name, "MATH", &[n1, n2], 5000) {
                 Ok(msg_wrapper) => {
-                    let res = msg_wrapper.msg().data_as_f64();
+                    let res = msg_wrapper.msg().data_as_f64_unchecked();
                     println!("[{}] Sent {} {} {}, received {}", tid, n1, math_symb[ridx], n2, res);
                     count += 1;
                 },

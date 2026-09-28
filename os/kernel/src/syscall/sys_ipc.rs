@@ -87,9 +87,10 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
         let endpoints = unsafe { (service.ipc_queue_addr as *const IpcEndpoints).as_ref_unchecked() };
         if let Some(ipc_queue) = endpoints.get(service_name) {
             let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
-            
+            let msg_type = params.msg_type;
+
             // dereferencing the data here should copy?
-            let res = ipc_queue.send(name, bytes, &scheduler().current_thread().process().id(), scheduler().current_thread().id());
+            let res = ipc_queue.send(name, bytes, msg_type, &scheduler().current_thread().process().id(), scheduler().current_thread().id());
 
             match res {
                 Ok(ok) => return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(ok)),
