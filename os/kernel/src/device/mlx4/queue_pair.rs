@@ -21,6 +21,7 @@ use uuid::Uuid;
 use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
+use crate::device::mlx4::utils::MappedPages;
 use crate::process::process::Process;
 use crate::process_manager;
 use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, ConnectX3Nic, PdHandle};
@@ -100,6 +101,7 @@ impl QueuePair {
             return Err("QP buffer size overflows");
         }
 
+        // TODO: make sure ICM entry for this queue pair number is mapped to physical memory
         let number = dev.offsets.alloc_qpn().try_into().unwrap();
 
         let buffer_size: u64 = (1 << (log_sq_bb_count + log_sq_stride)) + (1 << (log_rq_wqe_count + log_rq_stride));
@@ -632,10 +634,9 @@ impl WorkQueue {
     /// Get an element of this work queue.
     ///
     /// The index wraps around to the beginning.
-    fn get_element<'e, T: FromBytes>(&self, memory: &'e mut utils::PageToFrameMapping, mut index: u32) -> Result<&'e mut T, &'static str> {
+    fn get_element<'e, T: FromBytes>(&self, pages: &'e mut MappedPages, mut index: u32) -> Result<&'e mut T, &'static str> {
         // wrap around
         index &= self.wqe_cnt - 1;
-        let (pages, _addresss) = memory;
         pages.as_type_mut((self.offset + (index << self.wqe_shift)).try_into().unwrap())
     }
 

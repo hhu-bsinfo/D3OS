@@ -49,6 +49,7 @@ use uuid::Uuid;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::{Page, PageSize, PageTableFlags, PhysFrame, Size4KiB};
 use crate::device::mlx4::fw::DoorbellPage;
+use crate::device::mlx4::icm::map_icm_tables;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::vma::VmaType;
@@ -142,7 +143,7 @@ impl ConnectX3Nic {
         let mut config_regs = utils::pci_map_bar_mem(
             mlx3_pci_dev.bar(0, config_space).ok_or("No config regs (BAR 0)")?,
             "mlx4-config-regs"
-        );
+        ).ok_or("failed map BAR 0")?;
         trace!("mlx4 configuration registers: {:?}", config_regs);
 
         // set the memory space bit for this PciDevice
@@ -170,8 +171,8 @@ impl ConnectX3Nic {
         let mut offsets = Offsets::init(&capabilities);
         let mut profile = Profile::new(&capabilities)?;
         let aux_pages = firmware_area.set_icm(&mut cmd, profile.total_size)?;
-        let icm_aux_area = firmware_area.map_icm_aux(&mut cmd, aux_pages)?;
-        let mut icm_tables = icm_aux_area.map_icm_tables(&mut cmd, &profile, &capabilities)?;
+        firmware_area.map_icm_aux(&mut cmd, aux_pages)?;
+        let mut icm_tables = map_icm_tables(&mut cmd, &profile, &capabilities)?;
         let mut hca = profile.init_hca.init_hca(&mut cmd)?;
         let mut eqs = Vec::new();
 
@@ -205,7 +206,8 @@ impl ConnectX3Nic {
         // Identity Mapping of the UAR pages. This is only relevant for the kernel, mainly for EQ
         // Doorbells. A UAR page also has to be mapped individually for each process that open this
         // device and should not be shared with different processes
-        let mut identity_mapped_uar = utils::pci_map_bar_mem(uar_bf_bar, "mlx4-uar");
+        let mut identity_mapped_uar = utils::pci_map_bar_mem(uar_bf_bar, "mlx4-uar")
+            .ok_or("Failed to map UAR BAR")?;
 
         // The clr_int register lives in whichever BAR QUERY_FW reported; on this card that's
         // always one of the two we already have mapped (config regs or UAR).

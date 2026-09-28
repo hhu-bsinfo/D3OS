@@ -101,7 +101,7 @@ impl ClrInt {
 pub(super) struct EventQueue {
     number: usize,
     num_entries: u32,
-    memory: Option<utils::PageToFrameMapping>,
+    memory: Option<MappedPages>,
     doorbell_page: Page,
     // TODO: somehow free this on Drop
     _mtt: u64,
@@ -132,11 +132,11 @@ impl EventQueue {
         let num_entries: u32 = 4096; // NUM_ASYNC_EQE + NUM_SPARE_EQE
         let num_pages = (num_entries as usize * size_of::<EventQueueEntry>()).div_ceil(PAGE_SIZE);
 
-        let mut mapped_page_to_frame = utils::create_cont_mapping_with_dma_flags(num_pages)?.fetch_in_addr()?;
+        let mut mapped_page_to_frame = utils::create_cont_mapping_with_dma_flags(num_pages)?;
         // Invalidate all EQEs
-        mapped_page_to_frame.0.as_bytes_mut().fill(0);
+        mapped_page_to_frame.as_bytes_mut().fill(0);
 
-        let mtt = memory_regions.alloc_mtt_for_pages(caps, mapped_page_to_frame.0.page_range())?;
+        let mtt = memory_regions.alloc_mtt_for_pages(caps, mapped_page_to_frame.page_range())?;
         // TODO: register interrupt correctly
         // TODO: Should use MSI-X instead of legacy INTs
         let intr_vector = base_vector.and_then(|_| todo!());
@@ -237,7 +237,7 @@ impl EventQueue {
     /// Consumes one EQE from the event queue
     fn consume_entry(&self) -> Option<EventQueueEntry> {
         let mut index = self.consumer_index.lock();
-        let buffer_start_addr: *const EventQueueEntry = self.memory.unwrap().0.page_range().start.start_address().as_ptr();
+        let buffer_start_addr: *const EventQueueEntry = self.memory.unwrap().page_range().start.start_address().as_ptr();
         // wrap around after num_entries
         let eqe_start = unsafe { buffer_start_addr.add((*index & (self.num_entries - 1)) as usize) };
         let word_count = size_of::<EventQueueEntry>() / size_of::<u32>();

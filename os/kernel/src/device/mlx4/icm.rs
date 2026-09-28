@@ -15,15 +15,160 @@ use rdma::{AccessFlags, MemoryRegionMetadata};
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
+use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame, Size4KiB};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::{memory, process_manager};
+use crate::device::mlx4::device::PAGE_SHIFT;
+use crate::device::mlx4::utils::MappedPages;
+use crate::memory::vma::VmaType;
 use crate::process::process::Process;
 use super::{cmd::{CommandInterface, Opcode}, fw::{Capabilities, VirtualPhysicalMapping}, profile::{get_mgm_entry_size, Profile}, queue_pair::QueuePair, utils, Offsets, PdHandle};
 
 pub(super) const ICM_PAGE_SHIFT: u8 = 12;
 const TABLE_CHUNK_SIZE: usize = 1 << 18;
+const MAX_CHUNK_SIZE: usize = PAGE_SIZE / size_of::<VirtualPhysicalMapping>();
 
+pub(super) fn map_icm_tables(cmd: &mut CommandInterface, profile: &Profile, caps: &Capabilities) -> Result<MappedIcmTables, &'static str> {
+    // first, map the cmpt tables
+    const CMPT_SHIFT: u8 = 24;
+    // TODO: do we really need to calculate the bases here?
+    let qp_cmpt_table = IcmTable::init(
+        cmd,
+        caps.c_mpt_entry_sz(),
+        profile.init_hca.num_qps(),
+        1 << caps.log2_rsvd_qps(),
+        profile.init_hca.tpt_cmpt_base() + (CmptType::QP as u64 * caps.c_mpt_entry_sz() as u64) << CMPT_SHIFT,
+    )?;
+    trace!("mapped QP cMPT table");
+    let srq_cmpt_table = IcmTable::init(
+        cmd,
+        caps.c_mpt_entry_sz(),
+        profile.init_hca.num_srqs(),
+        1 << caps.log2_rsvd_srqs(),
+        profile.init_hca.tpt_cmpt_base() + (CmptType::SRQ as u64 * caps.c_mpt_entry_sz() as u64) << CMPT_SHIFT,
+    )?;
+    trace!("mapped SRQ cMPT table");
+    let cq_cmpt_table = IcmTable::init(
+        cmd,
+        caps.c_mpt_entry_sz(),
+        profile.init_hca.num_cqs(),
+        1 << caps.log2_rsvd_cqs(),
+        profile.init_hca.tpt_cmpt_base() + (CmptType::CQ as u64 * caps.c_mpt_entry_sz() as u64) << CMPT_SHIFT,
+    )?;
+    trace!("mapped CQ cMPT table");
+    let eq_cmpt_table = IcmTable::init(
+        cmd,
+        caps.c_mpt_entry_sz(),
+        profile.init_hca.num_eqs(),
+        profile.init_hca.num_eqs(),
+        profile.init_hca.tpt_cmpt_base() + (CmptType::EQ as u64 * caps.c_mpt_entry_sz() as u64) << CMPT_SHIFT,
+    )?;
+    trace!("mapped EQ cMPT table");
+
+    // then, the rest
+    let eq_table = EqTable {
+        table: IcmTable::init(
+            cmd,
+            caps.eqc_entry_sz(),
+            profile.init_hca.num_eqs(),
+            profile.init_hca.num_eqs(),
+            profile.init_hca.qpc_eqc_base(),
+        )?,
+        cmpt_table: eq_cmpt_table,
+    };
+    // Assuming Cache Line is 64 Bytes. Reserved MTT entries must be
+    // aligned up to a cacheline boundary, since the FW will write to them,
+    // while the driver writes to all other MTT entries. (The variable
+    // caps.mtt_entry_sz below is really the MTT segment size, not the
+    // raw entry size.)
+    let reserved_mtts = ((1 << caps.log2_rsvd_mtts() as u64) * caps.mtt_entry_sz() as u64).next_multiple_of(64) / caps.mtt_entry_sz() as u64;
+    let mr_table = MrTable::new(
+        IcmTable::init(
+            cmd,
+            caps.mtt_entry_sz(),
+            profile.num_mtts,
+            reserved_mtts.try_into().unwrap(),
+            profile.init_hca.tpt_mtt_base(),
+        )?,
+        IcmTable::init(
+            cmd,
+            caps.d_mpt_entry_sz(),
+            profile.num_mpts,
+            1 << caps.log2_rsvd_mrws(),
+            profile.init_hca.tpt_dmpt_base(),
+        )?,
+        reserved_mtts,
+    );
+    let qp_table = QpTable {
+        table: IcmTable::init(
+            cmd,
+            caps.qpc_entry_sz(),
+            profile.init_hca.num_qps(),
+            1 << caps.log2_rsvd_qps(),
+            profile.init_hca.qpc_base(),
+        )?,
+        cmpt_table: qp_cmpt_table,
+        auxc_table: IcmTable::init(
+            cmd,
+            caps.aux_entry_sz(),
+            profile.init_hca.num_qps(),
+            1 << caps.log2_rsvd_qps(),
+            profile.init_hca.qpc_auxc_base(),
+        )?,
+        altc_table: IcmTable::init(
+            cmd,
+            caps.altc_entry_sz(),
+            profile.init_hca.num_qps(),
+            1 << caps.log2_rsvd_qps(),
+            profile.init_hca.qpc_altc_base(),
+        )?,
+        rdmarc_table: IcmTable::init(
+            cmd,
+            caps.rdmarc_entry_sz() << profile.rdmarc_shift,
+            profile.init_hca.num_qps(),
+            1 << caps.log2_rsvd_qps(),
+            profile.init_hca.qpc_rdmarc_base(),
+        )?,
+        _rdmarc_base: profile.init_hca.qpc_rdmarc_base(),
+        _rdmarc_shift: profile.rdmarc_shift,
+    };
+    let cq_table = CqTable {
+        table: IcmTable::init(
+            cmd,
+            caps.cqc_entry_sz(),
+            profile.init_hca.num_cqs(),
+            1 << caps.log2_rsvd_cqs(),
+            profile.init_hca.qpc_cqc_base(),
+        )?,
+        cmpt_table: cq_cmpt_table,
+    };
+    let srq_table = SrqTable {
+        table: IcmTable::init(
+            cmd,
+            caps.srq_entry_sz(),
+            profile.init_hca.num_srqs(),
+            1 << caps.log2_rsvd_srqs(),
+            profile.init_hca.qpc_srqc_base(),
+        )?,
+        cmpt_table: srq_cmpt_table,
+    };
+    let mcg_table = IcmTable::init(
+        cmd,
+        get_mgm_entry_size().try_into().unwrap(),
+        profile.num_mgms + profile.num_amgms,
+        profile.num_mgms + profile.num_amgms,
+        profile.init_hca.mc_base(),
+    )?;
+    trace!("ICM tables mapped successfully");
+    Ok(MappedIcmTables {
+        cq_table: Some(cq_table),
+        qp_table: Some(qp_table),
+        eq_table: Some(eq_table),
+        srq_table: Some(srq_table),
+        mr_table: Some(mr_table),
+        mcg_table: Some(mcg_table),
+    })
+}
 
 #[repr(u64)]
 #[derive(Default, Clone, Copy)]
@@ -60,183 +205,6 @@ impl MappedIcmAuxiliaryArea {
         }
         Ok(())
     }
-
-    pub(super) fn map_icm_tables(&self, cmd: &mut CommandInterface, profile: &Profile, caps: &Capabilities) -> Result<MappedIcmTables, &'static str> {
-        // first, map the cmpt tables
-        const CMPT_SHIFT: u8 = 24;
-        // TODO: do we really need to calculate the bases here?
-        let qp_cmpt_table = self.init_icm_table(
-            cmd,
-            caps.c_mpt_entry_sz(),
-            profile.init_hca.num_qps(),
-            1 << caps.log2_rsvd_qps(),
-            profile.init_hca.tpt_cmpt_base() + (CmptType::QP as u64 * caps.c_mpt_entry_sz() as u64) << CMPT_SHIFT,
-        )?;
-        trace!("mapped QP cMPT table");
-        let srq_cmpt_table = self.init_icm_table(
-            cmd,
-            caps.c_mpt_entry_sz(),
-            profile.init_hca.num_srqs(),
-            1 << caps.log2_rsvd_srqs(),
-            profile.init_hca.tpt_cmpt_base() + (CmptType::SRQ as u64 * caps.c_mpt_entry_sz() as u64) << CMPT_SHIFT,
-        )?;
-        trace!("mapped SRQ cMPT table");
-        let cq_cmpt_table = self.init_icm_table(
-            cmd,
-            caps.c_mpt_entry_sz(),
-            profile.init_hca.num_cqs(),
-            1 << caps.log2_rsvd_cqs(),
-            profile.init_hca.tpt_cmpt_base() + (CmptType::CQ as u64 * caps.c_mpt_entry_sz() as u64) << CMPT_SHIFT,
-        )?;
-        trace!("mapped CQ cMPT table");
-        let eq_cmpt_table = self.init_icm_table(
-            cmd,
-            caps.c_mpt_entry_sz(),
-            profile.init_hca.num_eqs(),
-            profile.init_hca.num_eqs(),
-            profile.init_hca.tpt_cmpt_base() + (CmptType::EQ as u64 * caps.c_mpt_entry_sz() as u64) << CMPT_SHIFT,
-        )?;
-        trace!("mapped EQ cMPT table");
-
-        // then, the rest
-        let eq_table = EqTable {
-            table: self.init_icm_table(
-                cmd,
-                caps.eqc_entry_sz(),
-                profile.init_hca.num_eqs(),
-                profile.init_hca.num_eqs(),
-                profile.init_hca.qpc_eqc_base(),
-            )?,
-            cmpt_table: eq_cmpt_table,
-        };
-        // Assuming Cache Line is 64 Bytes. Reserved MTT entries must be
-        // aligned up to a cacheline boundary, since the FW will write to them,
-        // while the driver writes to all other MTT entries. (The variable
-        // caps.mtt_entry_sz below is really the MTT segment size, not the
-        // raw entry size.)
-        let reserved_mtts = ((1 << caps.log2_rsvd_mtts() as u64) * caps.mtt_entry_sz() as u64).next_multiple_of(64) / caps.mtt_entry_sz() as u64;
-        let mr_table = MrTable::new(
-            self.init_icm_table(
-                cmd,
-                caps.mtt_entry_sz(),
-                profile.num_mtts,
-                reserved_mtts.try_into().unwrap(),
-                profile.init_hca.tpt_mtt_base(),
-            )?,
-            self.init_icm_table(
-                cmd,
-                caps.d_mpt_entry_sz(),
-                profile.num_mpts,
-                1 << caps.log2_rsvd_mrws(),
-                profile.init_hca.tpt_dmpt_base(),
-            )?,
-            reserved_mtts,
-        );
-        let qp_table = QpTable {
-            table: self.init_icm_table(
-                cmd,
-                caps.qpc_entry_sz(),
-                profile.init_hca.num_qps(),
-                1 << caps.log2_rsvd_qps(),
-                profile.init_hca.qpc_base(),
-            )?,
-            cmpt_table: qp_cmpt_table,
-            auxc_table: self.init_icm_table(
-                cmd,
-                caps.aux_entry_sz(),
-                profile.init_hca.num_qps(),
-                1 << caps.log2_rsvd_qps(),
-                profile.init_hca.qpc_auxc_base(),
-            )?,
-            altc_table: self.init_icm_table(
-                cmd,
-                caps.altc_entry_sz(),
-                profile.init_hca.num_qps(),
-                1 << caps.log2_rsvd_qps(),
-                profile.init_hca.qpc_altc_base(),
-            )?,
-            rdmarc_table: self.init_icm_table(
-                cmd,
-                caps.rdmarc_entry_sz() << profile.rdmarc_shift,
-                profile.init_hca.num_qps(),
-                1 << caps.log2_rsvd_qps(),
-                profile.init_hca.qpc_rdmarc_base(),
-            )?,
-            _rdmarc_base: profile.init_hca.qpc_rdmarc_base(),
-            _rdmarc_shift: profile.rdmarc_shift,
-        };
-        let cq_table = CqTable {
-            table: self.init_icm_table(
-                cmd,
-                caps.cqc_entry_sz(),
-                profile.init_hca.num_cqs(),
-                1 << caps.log2_rsvd_cqs(),
-                profile.init_hca.qpc_cqc_base(),
-            )?,
-            cmpt_table: cq_cmpt_table,
-        };
-        let srq_table = SrqTable {
-            table: self.init_icm_table(
-                cmd,
-                caps.srq_entry_sz(),
-                profile.init_hca.num_srqs(),
-                1 << caps.log2_rsvd_srqs(),
-                profile.init_hca.qpc_srqc_base(),
-            )?,
-            cmpt_table: srq_cmpt_table,
-        };
-        let mcg_table = self.init_icm_table(
-            cmd,
-            get_mgm_entry_size().try_into().unwrap(),
-            profile.num_mgms + profile.num_amgms,
-            profile.num_mgms + profile.num_amgms,
-            profile.init_hca.mc_base(),
-        )?;
-        trace!("ICM tables mapped successfully");
-        Ok(MappedIcmTables {
-            cq_table: Some(cq_table),
-            qp_table: Some(qp_table),
-            eq_table: Some(eq_table),
-            srq_table: Some(srq_table),
-            mr_table: Some(mr_table),
-            mcg_table: Some(mcg_table),
-        })
-    }
-
-    fn init_icm_table(&self, cmd: &mut CommandInterface, obj_size: u16, obj_num: usize, reserved: usize, virt: u64) -> Result<IcmTable, &'static str> {
-        // We allocate in as big chunks as we can,
-        // up to a maximum of 256 KB per chunk.
-        trace!("Creating icm table of {} objects with size {} at {:016x}, reserved = {}", obj_num, obj_size, virt, reserved);
-
-        let table_size = obj_size as usize * obj_num;
-        let obj_per_chunk = TABLE_CHUNK_SIZE / obj_size as usize;
-        let icm_num = (obj_num + obj_per_chunk - 1) / obj_per_chunk;
-        let mut icm = Vec::new();
-        // map the reserved entries
-        let mut idx = 0;
-        while idx * TABLE_CHUNK_SIZE < reserved * obj_size as usize {
-            let mut chunk_size = TABLE_CHUNK_SIZE;
-            // TODO: does this make sense?
-            if (idx + 1) * chunk_size > table_size {
-                chunk_size = (table_size - idx * TABLE_CHUNK_SIZE).next_multiple_of(PAGE_SIZE);
-            }
-            let mut num_pages: u32 = (chunk_size / PAGE_SIZE).try_into().unwrap();
-            if num_pages == 0 {
-                num_pages = 1;
-                chunk_size = num_pages as usize * PAGE_SIZE;
-            }
-            icm.push(MappedIcm::new(cmd, chunk_size, num_pages, virt + (idx * TABLE_CHUNK_SIZE) as u64)?);
-
-            idx += 1;
-        }
-        Ok(IcmTable {
-            _virt: virt,
-            _obj_num: obj_num,
-            _obj_size: obj_size,
-            _icm_num: icm_num,
-            icm,
-        })
-    }
 }
 
 impl Drop for MappedIcmAuxiliaryArea {
@@ -249,24 +217,95 @@ impl Drop for MappedIcmAuxiliaryArea {
 
 // TODO: do we need those fields?
 struct IcmTable {
-    _virt: u64,
-    _obj_num: usize,
-    _obj_size: u16,
-    /// the available number of Icms
-    _icm_num: usize,
+    virt: u64,
+    entry_capacity: usize,
+    entry_size: u16,
     /// must contain less than icm_num entries
     icm: Vec<MappedIcm>,
 }
 
 impl IcmTable {
+    fn init(cmd: &mut CommandInterface, entry_size: u16, entry_capacity: usize, reserved: usize, virt: u64) -> Result<IcmTable, &'static str> {
+        trace!("Creating icm table of {} objects with size {} at {:016x}, reserved = {}", entry_capacity, entry_size, virt, reserved);
+        assert!(entry_capacity >= reserved);
+
+        let mut icm = IcmTable {
+            virt,
+            entry_capacity,
+            entry_size,
+            icm: Vec::new(),
+        };
+
+        icm.map_entries(cmd, 0, reserved)?;
+
+        Ok(icm)
+    }
+
+    fn map_entries(&mut self, cmd: &mut CommandInterface, index: usize, count: usize) -> Result<(), &'static str> {
+        let bytes_start = index * self.entry_size as usize;
+        let byte_end = bytes_start + count * self.entry_size as usize;
+        for table_offset in (bytes_start..byte_end).step_by(TABLE_CHUNK_SIZE) {
+            self.map_chunk(cmd, table_offset, (TABLE_CHUNK_SIZE/PAGE_SIZE) as u32)?;
+        }
+        Ok(())
+    }
+
+    /// Allocate and map an ICM.
+    // TODO: merge this with Firmware::map_area and MappedFirmwareArea::map_icm_aux?
+    // TODO: Support higher alignment then one 4KB page to reduce the number of MAP_ICM commands.
+    //       Theoretically can the alignment be: page_size * 2^log2size = 4KB * 2^32 = 16TB
+    //       See PRM p. 373: Table 161 - Virtual_Physical_Mapping Field Descriptions
+    fn map_chunk(&mut self, cmd: &mut CommandInterface, byte_offset: usize, num_pages: u32) -> Result<(), &'static str> {
+        trace!("Mapping a chunk of {num_pages} pages at byte offset 0x{byte_offset:x} for ICM Table at 0x{:x}", self.virt);
+        assert!(num_pages > 0);
+        assert!(num_pages as usize <= MAX_CHUNK_SIZE);
+
+        // batch as many vpm entries as fit in a mailbox to make bootup faster
+        let mut vpms = [VirtualPhysicalMapping::default(); MAX_CHUNK_SIZE];
+
+        // TODO: retry with smaller size if allocation failed
+        let memory = utils::create_cont_mapping_with_dma_flags(num_pages as usize)?;
+        let phys_start = memory.start_frame().start_address().as_u64();
+        let card_virtual = self.virt + byte_offset as u64;
+
+
+        let chunk_size = vpms.len().min(num_pages as usize);
+
+        for i in 0..chunk_size {
+            let offset: u64 = (i * PAGE_SIZE) as u64;
+            // We assume that the pages are identity mapped
+            vpms[i].physical_address.set(phys_start + offset | (PAGE_SHIFT - ICM_PAGE_SHIFT) as u64);
+            vpms[i].virtual_address.set(card_virtual + offset);
+        }
+
+        cmd.execute_command(
+            Opcode::MapIcm,
+            None,
+            InputParam::Mailbox(vpms.as_bytes()),
+            Some(chunk_size.try_into().unwrap()),
+            OutputParam::Empty
+        )?;
+
+        self.icm.push(MappedIcm {
+            memory: Some(memory),
+            card_virtual,
+            num_pages,
+        });
+        Ok(())
+    }
+
     /// Resolve a byte offset within this table to the host memory backing it.
     ///
     /// ICM is ordinary host memory that the card reads by DMA, so the driver can update table
     /// entries in place.
     fn host_bytes_mut(&mut self, byte_offset: usize, len: usize) -> Result<&mut [u8], &'static str> {
-        let chunk = self.icm.get_mut(byte_offset / TABLE_CHUNK_SIZE).ok_or("table offset is beyond the mapped ICM")?;
-        let memory = chunk.memory.as_mut().ok_or("ICM chunk has no memory")?;
-        memory.0.as_slice_mut(byte_offset % TABLE_CHUNK_SIZE, len)
+        let index = self.icm.iter().position(|chunk| {
+            let start = (chunk.card_virtual - self.virt) as usize;
+            let end = chunk.num_pages as usize * PAGE_SIZE;
+            start <= byte_offset && byte_offset < end
+        }).ok_or("chunk not found")?;
+        let memory = self.icm[index].memory.as_mut().ok_or("ICM chunk has no memory")?;
+        memory.as_slice_mut(byte_offset % TABLE_CHUNK_SIZE, len)
     }
 
     fn unmap(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
@@ -579,54 +618,12 @@ impl DmptEntry {
 
 /// An ICM mapping.
 struct MappedIcm {
-    memory: Option<utils::PageToFrameMapping>,
+    memory: Option<MappedPages>,
     card_virtual: u64,
     num_pages: u32,
 }
 
 impl MappedIcm {
-    /// Allocate and map an ICM.
-    // TODO: merge this with Firmware::map_area and MappedFirmwareArea::map_icm_aux?
-    fn new(cmd: &mut CommandInterface, chunk_size: usize, num_pages: u32, card_virtual: u64) -> Result<Self, &'static str> {
-        trace!("create icm mapping chunk_size = {}, num_pages = {}, card_virtual = 0x{:016x}", chunk_size, num_pages, card_virtual);
-        let (pages, physical) = utils::create_cont_mapping_with_dma_flags(utils::pages_required(chunk_size))?.fetch_in_addr()?;
-        let mut align = physical.as_u64().trailing_zeros();
-        if align > PAGE_SIZE.ilog2() {
-            // TODO: fw.rs says it's 256KB?
-            trace!("alignment greater than max size, defaulting to 4KB");
-            align = PAGE_SIZE.ilog2();
-        }
-        let size = num_pages as usize * PAGE_SIZE;
-        let mut num_entries = size / (1 << align);
-        if size % (1 << align) != 0 {
-            num_entries += 1;
-        }
-        // batch as many vpm entries as fit in a mailbox to make bootup faster
-        let mut vpms = [VirtualPhysicalMapping::default(); 256];
-        let mut phys_pointer = physical;
-        let mut virt_pointer = card_virtual;
-        while num_entries > 0 {
-            let mut chunk = PAGE_SIZE / size_of::<VirtualPhysicalMapping>();
-            if num_entries < chunk {
-                chunk = num_entries;
-            }
-            for i in 0..chunk {
-                vpms[i].physical_address.set(phys_pointer.as_u64() | (align as u64 - ICM_PAGE_SHIFT as u64));
-                vpms[i].virtual_address.set(virt_pointer);
-
-                phys_pointer += 1 << align;
-                virt_pointer += 1 << align;
-            }
-            cmd.execute_command(Opcode::MapIcm, None, InputParam::Mailbox(vpms.as_bytes()), Some(chunk.try_into().unwrap()), OutputParam::Empty)?;
-            num_entries -= chunk;
-        }
-        Ok(Self {
-            memory: Some((pages, physical)),
-            card_virtual,
-            num_pages,
-        })
-    }
-
     /// Unmaps the area from the card.
     pub(super) fn unmap(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         cmd.execute_command(Opcode::UnmapIcm, None, InputParam::Immediate(self.card_virtual), Some(self.num_pages), OutputParam::Empty)?;

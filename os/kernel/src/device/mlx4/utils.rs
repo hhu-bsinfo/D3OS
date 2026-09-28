@@ -12,37 +12,22 @@ use crate::memory::vma::VmaType;
 use alloc::slice;
 use log::error;
 
-pub type PageToFrameMapping = (MappedPages, PhysAddr);
-
-#[derive(Debug)]
-pub struct PageToFrameRange {
-    mapped_pages: MappedPages,
-    start_frame: PhysFrame<Size4KiB>,
-}
-
-impl PageToFrameRange {
-    pub fn is_valid(&self) -> bool {
-        self.mapped_pages.non_zero() & !self.start_frame.start_address().is_null()
-    }
-
-    pub fn fetch_in_addr(&self) -> Result<(MappedPages, PhysAddr), &'static str> {
-        if !self.is_valid() {
-            return Err("Not a valid mapping -> fetching not possible");
-        }
-
-        Ok((self.mapped_pages, self.start_frame.start_address()))
-    }
-}
-
 // wrapper type around page range, to mark mapped allocated pages
 #[derive(Clone, Copy, Debug)]
 pub struct MappedPages {
     range: PageRange<Size4KiB>,
+    start_frame: PhysFrame<Size4KiB>,
 }
 
 impl MappedPages {
-    pub fn from(page_range: PageRange<Size4KiB>) -> Self {
-        Self { range: page_range }
+    pub unsafe fn from_identity_unchecked(page_range: PageRange<Size4KiB>) -> Self {
+        let phys_addr = PhysAddr::new(page_range.start.start_address().as_u64());
+        let phys_frame = unsafe { PhysFrame::from_start_address_unchecked(phys_addr) };
+        Self { range: page_range, start_frame: phys_frame }
+    }
+
+    pub fn start_frame(&self) -> PhysFrame<Size4KiB> {
+        self.start_frame
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -123,11 +108,7 @@ impl MappedPages {
     }
 }
 
-pub fn pages_required(bytes: usize) -> usize {
-    (bytes + PAGE_SIZE - 1) / PAGE_SIZE
-}
-
-pub fn pci_map_bar_mem(bar: Bar, tag: &str) -> MappedPages {
+pub fn pci_map_bar_mem(bar: Bar, tag: &str) -> Option<MappedPages> {
     let (address, size) = bar.unwrap_mem();
     let end_address = address + size;
     let process = process_manager().write().current_process();
@@ -138,10 +119,12 @@ pub fn pci_map_bar_mem(bar: Bar, tag: &str) -> MappedPages {
         VmaType::DeviceMemory,
         tag
     );
-    MappedPages::from(pages)
+
+    // SAFETY: identity mapped
+    Some(unsafe { MappedPages::from_identity_unchecked(pages) })
 }
 
-pub fn create_cont_mapping_with_dma_flags(frame_count: usize) -> Result<PageToFrameRange, &'static str> {
+pub fn create_cont_mapping_with_dma_flags(frame_count: usize) -> Result<MappedPages, &'static str> {
     if frame_count == 0 {
         return Err("frame_count must not be zero");
     }
@@ -159,12 +142,5 @@ pub fn create_cont_mapping_with_dma_flags(frame_count: usize) -> Result<PageToFr
     }
 
     // SAFETY: identity mapped
-    let phys_addr = PhysAddr::new(page_range.start.start_address().as_u64());
-
-    let pagetoframe = PageToFrameRange {
-        mapped_pages: MappedPages::from(page_range),
-        start_frame: PhysFrame::from_start_address(phys_addr).map_err(|_| "address was not aligned")?,
-    };
-
-    Ok(pagetoframe)
+    Ok(unsafe { MappedPages::from_identity_unchecked(page_range) })
 }
