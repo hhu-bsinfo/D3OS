@@ -98,7 +98,7 @@ impl CompletionQueue {
         }
 
         let req = CreateCqRequest {
-            cq_entries: num_entries.try_into().unwrap(),
+            cq_entries: num_entries,
             buffer: buffer.as_ptr(),
             doorbell_ptr: doorbell_ptr.cast(),
             uar_index: context.uar_index,

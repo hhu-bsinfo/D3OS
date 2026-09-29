@@ -4,14 +4,12 @@
 
 use alloc::sync::Arc;
 use core::mem::size_of;
-
-use log::trace;
-use modular_bitfield_msb::{
-    bitfield,
-    specifiers::{B2, B24, B3, B40, B48, B5, B6},
-};
+use core::ops::Div;
+use log::{error, trace};
+use modular_bitfield_msb::{bitfield, prelude::*};
 use uuid::Uuid;
 use x86_64::structures::paging::{Page, Size4KiB};
+use x86_64::VirtAddr;
 use crate::process::process::Process;
 use crate::process_manager;
 
@@ -38,10 +36,10 @@ pub(super) struct CompletionQueue {
 }
 
 impl CompletionQueue {
-    /// Create a new completion queue over a userspace-owned, -mmap'd `buffer` and
-    /// `doorbell_ptr` (a two-word consumer-index/arm-index doorbell record). The kernel only
-    /// builds the MTT for the buffer and runs the CMD-interface transition; polling, CQE parsing
-    /// and arming happen entirely in userspace against the mapped memory from here on.
+    /// Create a new completion queue over a user-owned `buffer` and `doorbell_ptr`
+    /// (a two-word consumer-index/arm-index doorbell record). The kernel builds the MTT
+    /// for the buffer and transitions ownership of the CQ to the HCA.
+    /// All CQs are registered to the first EQ of the device.
     pub(super) fn new(
         dev: &mut ConnectX3Nic,
         process: Arc<Process>,
@@ -52,28 +50,39 @@ impl CompletionQueue {
     ) -> Result<Self, &'static str> {
         let number: u32 = dev.offsets.alloc_cqn().try_into().unwrap();
 
-        if buffer.addr() % crate::memory::PAGE_SIZE != 0 {
-            return Err("CQE buffer is not page aligned");
+        if !num_entries.is_power_of_two() {
+            error!("invalid CQE count: {}", num_entries);
+            return Err("The number off CQE is not a power of 2");
         }
-        let size = usize::try_from(num_entries).unwrap() * CQE_SIZE;
-        let start: Page<Size4KiB> = Page::containing_address(x86_64::VirtAddr::from_ptr(buffer));
-        let end = start + u64::try_from(size.next_multiple_of(crate::memory::PAGE_SIZE) / crate::memory::PAGE_SIZE).unwrap();
+
+        if num_entries > (1 << 22) {
+            return Err("Too many CQEs");
+        }
+
+        let log2num_entries = num_entries.ilog2() as u8;
+
+        let buffer_addr = VirtAddr::from_ptr(buffer);
+        // The buffer must be aligned to the cqe_stride set in HCA_INIT
+        if !buffer_addr.is_aligned(size_of::<u32>() as u64) {
+            return Err("Buffer is not aligned to CQE stride")
+        }
+        let buffer_size = num_entries as usize * CQE_SIZE;
+        let start: Page<Size4KiB> = Page::containing_address(buffer_addr);
+        let end = start + (buffer_size as u64).div_ceil(start.size());
         let mtt = dev.icm_tables.memory_regions().alloc_mtt_for_pages(&dev.capabilities, Page::range(start, end))?;
 
         let doorbell_address = process.virtual_address_space
             .get_phys(doorbell_ptr as u64)
             .ok_or("doorbell not mapped to physical address")?;
 
+        let eq_number = dev.eqs.get(0)
+            .map(|eq| eq.read().number());
 
         let mut ctx = CompletionQueueContext::new();
-        ctx.set_log_size(num_entries.ilog2().try_into().unwrap());
+        ctx.set_page_offset(buffer_addr.page_offset().into());
+        ctx.set_log_size(log2num_entries);
         ctx.set_usr_page(uar_index_to_hw(uar_idx).try_into().unwrap());
-        let mut eq_number = None;
-        if let Some(eq) = dev.eqs.get(0) {
-            let eq = eq.read();
-            ctx.set_comp_eqn(eq.number().try_into().unwrap());
-            eq_number = Some(eq.number());
-        }
+        if let Some(eqn) = eq_number { ctx.set_comp_eqn(eqn as u8); }
         ctx.set_log_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
         ctx.set_mtt_base_addr(mtt);
         ctx.set_doorbell_record_addr(doorbell_address.as_u64());
@@ -131,26 +140,35 @@ impl Drop for CompletionQueue {
 #[derive(Debug)]
 #[allow(dead_code)]
 struct CompletionQueueContext {
+    // 0x00
     #[skip]
-    flags: u32,
+    flags: B32,
+    // 0x00
     #[skip]
-    __: B48,
+    __: B32,
+    // 0x08
     #[skip]
-    page_offset: u16,
+    __: B16,
+    /// Offset to buffer from the beginning of the first page defined by MTT. Bits 4:0 have to be zero
+    page_offset: B16,
+    // 0x0C
     #[skip]
     __: B3,
     #[skip(getters)]
     log_size: B5,
     #[skip(getters)]
     usr_page: B24,
+    // 0x10
     #[skip]
-    cq_period: u16,
+    cq_period: B16,
     #[skip]
-    cq_max_count: u16,
+    cq_max_count: B16,
+    // 0x14
     #[skip]
     __: B24,
     #[skip(getters)]
     comp_eqn: u8,
+    // 0x18
     #[skip]
     __: B2,
     #[skip(getters)]
@@ -160,25 +178,30 @@ struct CompletionQueueContext {
     // the last three bits must be zero
     #[skip(getters)]
     mtt_base_addr: B40,
+    // 0x20
     #[skip]
     __: u8,
     #[skip]
     last_notified_index: B24,
+    // 0x24
     #[skip]
     __: u8,
     #[skip]
     solicit_producer_index: B24,
+    // 0x28
     #[skip]
     __: u8,
     #[skip]
     consumer_index: B24,
+    // 0x2C
     #[skip]
     __: u8,
     #[skip]
     producer_index: B24,
+    // 0x30
     #[skip]
     __: u64,
+    // 0x38
     // the last three bits must be zero
-    #[skip(getters)]
     doorbell_record_addr: u64,
 }

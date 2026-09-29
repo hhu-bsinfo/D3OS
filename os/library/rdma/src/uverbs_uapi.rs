@@ -124,7 +124,7 @@ pub struct CreateMrResponse {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateCqRequest {
-    pub cq_entries: i32,
+    pub cq_entries: u32,
 
     // mlx4 specific, under linux this is an opaque driver_data[]: the userspace-owned, -mmap'd
     // CQE ring and its consumer-index/arm-index doorbell record. The kernel only builds an MTT

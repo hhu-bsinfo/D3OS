@@ -227,7 +227,6 @@ impl ConnectX3Nic {
 
         // TODO: Configure Special QPs (QP0, QP1) for SMI and GSI MAD packets
         //       before initializing the ports
-        //let _: () = cmd.execute_command(cmd::Opcode::ConfSpecialQp, (), (), offsets.base_qpn)?;
 
         let ports = hca.init_ports(&mut cmd, &capabilities, offsets.base_qpn).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
 
@@ -416,10 +415,10 @@ impl ConnectX3Nic {
     /// -mapped; polling, CQE parsing and arming happen entirely in userspace against them (the
     /// latter through the returned UAR page), so from here on the kernel only needs the buffer
     /// for building its MTT.
-    pub fn create_cq(&mut self, min_num_entries: i32, buffer: *const u8, doorbell_ptr: *const u64, uar_index: u32) -> Result<u32, &'static str> {
+    pub fn create_cq(&mut self, min_num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64, uar_index: u32) -> Result<u32, &'static str> {
         // TODO min_num_entries should be u32
         let process = process_manager().read().current_process();
-        let mut cq = CompletionQueue::new(self, process, min_num_entries.try_into().unwrap(), buffer, doorbell_ptr, uar_index)?;
+        let mut cq = CompletionQueue::new(self, process, min_num_entries, buffer, doorbell_ptr, uar_index)?;
         cq.query(&mut self.cmd)?;
         let number = cq.number();
         self.cqs.push(cq);

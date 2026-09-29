@@ -367,7 +367,7 @@ impl VirtualAddressSpace {
         self.page_tables.map(page_range, space, flags);
     }
 
-    fn access_ok(&self, addr: VirtAddr, len: usize) -> bool {
+    pub fn access_ok(&self, addr: VirtAddr, len: usize) -> bool {
         if len == 0 {
             return false;
         }
@@ -389,16 +389,16 @@ impl VirtualAddressSpace {
         false
     }
 
-    pub unsafe fn copy_bytes_to_user(&self, dst: VirtAddr, src: *const u8, size: usize) -> Result<(), ()> {
+    pub unsafe fn copy_bytes_to_user(&self, dst: VirtAddr, src: *const u8, size: usize) -> Result<(), UserCopyError> {
         if !self.access_ok(dst, size) {
-            return Err(());
+            return Err(UserCopyError::NoUserAccess);
         }
 
         let first_page = Page::containing_address(dst);
         let last_page = Page::containing_address(dst + size as u64);
         for page in first_page..last_page {
             if !self.ensure_user_page_is_mapped(page) {
-                return Err(());
+                return Err(UserCopyError::PageNotMapped);
             }
         }
 
@@ -406,16 +406,16 @@ impl VirtualAddressSpace {
         Ok(())
     }
 
-    pub unsafe fn copy_bytes_from_user(&self, dst: *mut u8, src: VirtAddr, size: usize) -> Result<(), ()> {
+    pub unsafe fn copy_bytes_from_user(&self, dst: *mut u8, src: VirtAddr, size: usize) -> Result<(), UserCopyError> {
         if !self.access_ok(src, size) {
-            return Err(());
+            return Err(UserCopyError::NoUserAccess);
         }
 
         let first_page = Page::containing_address(src);
         let last_page = Page::containing_address(src + size as u64);
         for page in first_page..last_page {
             if !self.ensure_user_page_is_mapped(page) {
-                return Err(());
+                return Err(UserCopyError::PageNotMapped);
             }
         }
 
@@ -665,4 +665,9 @@ impl Drop for VirtualAddressSpace {
             }
         }
     }
+}
+
+pub enum UserCopyError {
+    NoUserAccess,
+    PageNotMapped,
 }

@@ -10,10 +10,7 @@ use tock_registers::{register_bitfields, register_structs, registers::WriteOnly}
 use core::fmt::Debug;
 use core::ops::Shl;
 use log::{debug, trace, warn};
-use modular_bitfield_msb::{
-    bitfield,
-    specifiers::{B1, B10, B104, B11, B12, B15, B2, B20, B22, B24, B25, B27, B3, B31, B36, B4, B42, B45, B5, B6, B63, B7, B72, B88, B91},
-};
+use modular_bitfield_msb::{bitfield, prelude::*, Specifier};
 use pci_types::Bar;
 use rdma::Mtu;
 use x86_64::structures::paging::{page::Page, Size4KiB};
@@ -871,7 +868,8 @@ pub(super) struct InitHcaParameters {
     qpc_eqe_stride: B3,
     #[skip]
     __: bool,
-    #[skip]
+    /// Stride of CQE in the buffer. Default is 0x0 which means same as CQE size
+    /// The buffer has to be aligned by the stride.
     qpc_cqe_stride: B3,
     #[skip]
     __: u32,

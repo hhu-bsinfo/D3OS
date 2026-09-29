@@ -365,13 +365,21 @@ impl MrTable {
     /// Allocate MTT entries for an existing buffer.
     /// Returns the byte offset in the global mtt to the first entry
     pub(crate) fn alloc_mtt_for_pages(&mut self, caps: &Capabilities, pages: PageRange) -> Result<u64, &'static str> {
-        assert!(!pages.is_empty());
+        if pages.is_empty() {
+            return Err("No pages provides");
+        }
+
+        let process = process_manager().read().current_process();
+        let kernel = process_manager().read().kernel_process().ok_or("No Kernel Process")?;
+        if process.id() != kernel.id() && !process.virtual_address_space.access_ok(pages.start.start_address(), pages.size() as usize) {
+            return Err("User has no access to all pages")
+        }
+
         debug!("Create MTT mappings for {:?}", pages);
         // get the next free entry. The Linux driver uses a buddy allocator for MTT
         let addr = (self.reserved_mtts + self.offset) * caps.mtt_entry_sz() as u64;
         self.offset += pages.len();
 
-        let process = process_manager().read().current_process();
         const MTT_FLAG_PRESENT: u64 = 1;
         // Write the entries straight into the ICM memory backing the table. The WRITE_MTT command is
         // only used there when the device is a virtual function, which cannot reach ICM itself.
@@ -405,7 +413,6 @@ impl MrTable {
         &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, owner: &Process, pd: PdHandle, data: &mut [T],
         queue_pair: Option<&QueuePair>, access: AccessFlags,
     ) -> Result<MemoryRegionMetadata, &'static str> {
-        assert!(!data.is_empty());
         let size = data.len() * size_of::<T>();
         let addr = VirtAddr::from_ptr(data.as_ptr());
         let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size as u64) + 1);

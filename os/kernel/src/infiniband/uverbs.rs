@@ -111,10 +111,10 @@ fn log_error_and_invalid(msg: &str) -> Errno {
 
 #[inline]
 fn copy_from_user<T: Copy>(user_in: UserSlice) -> Result<T, Errno> {
-    assert_ne!(user_in.address, 0);
-
     let size = size_of::<T>();
-    assert!(user_in.size >= size);
+    if user_in.address == 0 || user_in.size < size  {
+        return Err(Errno::EINVAL);
+    }
 
     let process = process_manager().read().current_process();
     let mut req = MaybeUninit::<T>::uninit();
@@ -128,10 +128,10 @@ fn copy_from_user<T: Copy>(user_in: UserSlice) -> Result<T, Errno> {
 
 #[inline]
 fn copy_to_user<T: Copy>(user_out: UserSlice, resp: &T) -> SyscallResult {
-    assert_ne!(user_out.address, 0);
-
     let size = size_of::<T>();
-    assert!(user_out.size >= size);
+    if user_out.address == 0 || user_out.size < size  {
+        return Err(Errno::EINVAL);
+    }
 
     let process = process_manager().read().current_process();
     unsafe { process.virtual_address_space.copy_bytes_to_user(VirtAddr::new(user_out.address), resp as *const T as *const _, size) }
