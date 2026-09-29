@@ -12,8 +12,8 @@ use super::{
     icm::ICM_PAGE_SHIFT,
     utils,
 };
-use crate::device::mlx4::cmd::{InputParam, OutputParam};
-use crate::device::mlx4::utils::MappedPages;
+use crate::device::infiniband::mlx4::cmd::{InputParam, OutputParam};
+use crate::device::infiniband::mlx4::utils::MappedPages;
 use crate::process::process::Process;
 use crate::process_manager;
 use alloc::sync::Arc;
@@ -77,6 +77,10 @@ impl QueuePair {
         dev: &mut Mlx4Device, process: Arc<Process>, qp_type: QueuePairType, pd: PdHandle, send_cq_number: u32, receive_cq_number: u32, buffer: *const u8,
         doorbell_ptr: *const u32, uar_index: u32, log_sq_bb_count: u8, log_sq_stride: u8, log_rq_wqe_count: u8, log_rq_stride: u8,
     ) -> Result<Self, &'static str> {
+        if !process.virtual_address_space.access_ok(VirtAddr::from_ptr(doorbell_ptr), size_of::<u64>()) {
+            return Err("User has no access to Doorbell");
+        }
+
         if log_sq_stride < 4 || log_rq_stride < 4 {
             return Err("stride is not multiple of 16 bytes");
         }

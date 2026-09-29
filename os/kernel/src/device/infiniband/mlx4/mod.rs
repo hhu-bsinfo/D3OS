@@ -42,8 +42,8 @@ use device::{Ownership, ResetRegisters};
 use fw::Firmware;
 use profile::Profile;
 
-use crate::device::mlx4::fw::DoorbellPage;
-use crate::device::mlx4::icm::map_icm_tables;
+use crate::device::infiniband::mlx4::fw::DoorbellPage;
+use crate::device::infiniband::mlx4::icm::map_icm_tables;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
@@ -544,7 +544,7 @@ struct Offsets {
 
 impl Offsets {
     /// Initialize the queue offsets.
-    pub(in crate::device::mlx4) fn init(caps: &Capabilities) -> Self {
+    pub(in crate::device::infiniband::mlx4) fn init(caps: &Capabilities) -> Self {
         let end_reserved_cpn: u32 = 1 << caps.log2_rsvd_cqs();
         // Reserve numbers for special qp. Base_qpn must be naturally aliged
         let base_qpn = end_reserved_cpn.next_multiple_of(NUM_SPECIAL_QP);
@@ -565,21 +565,21 @@ impl Offsets {
     }
 
     /// Allocate an event queue number.
-    pub(in crate::device::mlx4) fn alloc_eqn(&mut self) -> usize {
+    pub(in crate::device::infiniband::mlx4) fn alloc_eqn(&mut self) -> usize {
         let res = self.next_eqn;
         self.next_eqn += 1;
         res
     }
 
     /// Allocate a completion queue number.
-    pub(in crate::device::mlx4) fn alloc_cqn(&mut self) -> usize {
+    pub(in crate::device::infiniband::mlx4) fn alloc_cqn(&mut self) -> usize {
         let res = self.next_cqn;
         self.next_cqn += 1;
         res
     }
 
     /// Allocate a queue pair number.
-    pub(in crate::device::mlx4) fn alloc_qpn(&mut self) -> usize {
+    pub(in crate::device::infiniband::mlx4) fn alloc_qpn(&mut self) -> usize {
         let res = self.next_qpn;
         self.next_qpn += 1;
         res
@@ -591,7 +591,7 @@ impl Offsets {
     /// reserved for itself and counts up by one. The memory key the application gets is derived
     /// from it (`DmptEntry::key`), not the other way around.
     /// TODO: add mechanism to free dmpt, e.g. a bit map
-    pub(in crate::device::mlx4) fn alloc_dmpt(&mut self) -> usize {
+    pub(in crate::device::infiniband::mlx4) fn alloc_dmpt(&mut self) -> usize {
         let res = self.next_dmpt;
         self.next_dmpt += 1;
         res

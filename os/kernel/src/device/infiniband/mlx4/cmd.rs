@@ -3,7 +3,7 @@
 
 use core::sync::atomic::{Ordering, compiler_fence};
 
-use crate::device::mlx4::utils;
+use crate::device::infiniband::mlx4::utils;
 use crate::memory::vma::VmaType;
 use crate::{get_time_in_us, process_manager};
 use bitflags::bitflags;

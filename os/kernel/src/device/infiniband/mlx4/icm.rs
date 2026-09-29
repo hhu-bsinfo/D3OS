@@ -8,9 +8,9 @@ use super::{
     queue_pair::QueuePair,
     utils,
 };
-use crate::device::mlx4::cmd::{InputParam, OutputParam};
-use crate::device::mlx4::device::PAGE_SHIFT;
-use crate::device::mlx4::utils::MappedPages;
+use crate::device::infiniband::mlx4::cmd::{InputParam, OutputParam};
+use crate::device::infiniband::mlx4::device::PAGE_SHIFT;
+use crate::device::infiniband::mlx4::utils::MappedPages;
 use crate::memory::PAGE_SIZE;
 use crate::memory::vma::VmaType;
 use crate::process::process::Process;

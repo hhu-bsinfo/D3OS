@@ -18,7 +18,6 @@ default = ["frame_alloc_lockfree", "infiniband_mlx4"]
 frame_alloc_lockfree = []
 frame_alloc_locking = []
 infiniband_mlx4 = []
-infiniband_mlx5 = []
 
 [dependencies]
 # Local dependencies

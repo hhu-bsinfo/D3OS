@@ -5,7 +5,7 @@
 use crate::process::process::Process;
 use crate::process_manager;
 use alloc::sync::Arc;
-use core::mem::size_of;
+use core::mem::{size_of, size_of_val_raw};
 use core::ops::Div;
 use log::{error, trace};
 use modular_bitfield_msb::{bitfield, prelude::*};
@@ -43,7 +43,9 @@ impl CompletionQueue {
     pub(super) fn new(
         dev: &mut Mlx4Device, process: Arc<Process>, num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64, uar_idx: u32,
     ) -> Result<Self, &'static str> {
-        let number: u32 = dev.offsets.alloc_cqn().try_into().unwrap();
+        if !process.virtual_address_space.access_ok(VirtAddr::from_ptr(doorbell_ptr), size_of::<u64>()) {
+            return Err("User has no access to Doorbell");
+        }
 
         if !num_entries.is_power_of_two() {
             error!("invalid CQE count: {}", num_entries);
@@ -54,6 +56,7 @@ impl CompletionQueue {
             return Err("Too many CQEs");
         }
 
+        let number: u32 = dev.offsets.alloc_cqn().try_into().unwrap();
         let log2num_entries = num_entries.ilog2() as u8;
 
         let buffer_addr = VirtAddr::from_ptr(buffer);

@@ -1,5 +1,5 @@
 use super::uverbs_cmd::*;
-use crate::device::mlx4::{Mlx4Device, device_in_range};
+use crate::device::infiniband::mlx4::{Mlx4Device, device_in_range};
 use crate::process_manager;
 use core::mem::MaybeUninit;
 use core::slice::from_raw_parts_mut;

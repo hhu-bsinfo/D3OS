@@ -46,7 +46,7 @@ use alloc::format;
 use alloc::vec::Vec;
 use chrono::{DateTime, FixedOffset, TimeDelta};
 use graphic::color::{BLUE, WHITE};
-use ::log::{Level, Log, Record, error};
+use ::log::{error, Level, Log, Record};
 use acpi::AcpiTables;
 use alloc::string::String;
 use alloc::sync::Arc;
@@ -88,7 +88,6 @@ pub mod syscall;
 pub mod sync;
 pub mod boot_ap;
 pub mod ipi;
-pub mod infiniband;
 
 pub mod built_info {
     // The file has been placed there by the build script

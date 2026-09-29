@@ -1,4 +1,4 @@
-use crate::device::mlx4::{Mlx4Device, device_handle_to_idx, get_dev_list};
+use crate::device::infiniband::mlx4::{Mlx4Device, device_handle_to_idx, get_dev_list};
 use crate::process_manager;
 use alloc::vec::Vec;
 use rdma::uverbs_uapi::{

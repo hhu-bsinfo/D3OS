@@ -14,7 +14,7 @@ use crate::syscall::sys_time::sys_get_system_time;
 use crate::{consts, ipi, per_cpu_init};
 use crate::device::pit::Timer;
 use crate::device::ps2::{Keyboard, Mouse};
-use crate::device::{virtio};
+use crate::device::{infiniband, virtio};
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
@@ -24,13 +24,13 @@ use crate::memory::{dram, nvmem, PAGE_SIZE};
 use crate::process::thread::Thread;
 use crate::syscall::{sys_vmem, syscall_dispatcher};
 use crate::{
-    acpi_tables, allocator, apic, calibrate, gdt, get_initrd_frames,
-    efi_services_available, init_acpi_tables, init_apic, init_boot_info,
+    acpi_tables, allocator, apic, calibrate, efi_services_available, gdt,
+    get_initrd_frames, init_acpi_tables, init_apic, init_boot_info,
     init_cpu_info, init_initrd, init_lfb, init_lfb_info, init_pci,
     init_serial_port, init_tty, keyboard, logger, mouse,
     process_manager, serial_port, timer, tss,
 };
-use crate::{built_info, memory, naming, network, storage, infiniband};
+use crate::{built_info, memory, naming, network, storage};
 
 use alloc::format;
 use alloc::string::ToString;
@@ -40,7 +40,7 @@ use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr;
-use log::{trace, debug, info, warn, LevelFilter, Log};
+use log::{debug, info, trace, warn, LevelFilter, Log};
 use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
 use uefi::data_types::Handle;
 use uefi::mem::memory_map::MemoryMap;
@@ -49,7 +49,7 @@ use uefi_raw::table::boot::MemoryType;
 use uefi_raw::table::system::SystemTable;
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::instructions::interrupts;
-use x86_64::instructions::segmentation::{CS, DS, ES, FS, GS, SS, Segment};
+use x86_64::instructions::segmentation::{Segment, CS, DS, ES, FS, GS, SS};
 use x86_64::instructions::tables::load_tss;
 use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use x86_64::registers::segmentation::SegmentSelector;
