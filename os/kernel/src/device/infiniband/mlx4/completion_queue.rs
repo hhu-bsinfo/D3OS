@@ -5,7 +5,7 @@
 use crate::process::process::Process;
 use crate::process_manager;
 use alloc::sync::Arc;
-use core::mem::{size_of, size_of_val_raw};
+use core::mem::size_of;
 use core::ops::Div;
 use log::{error, trace};
 use modular_bitfield_msb::{bitfield, prelude::*};

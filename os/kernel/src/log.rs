@@ -44,8 +44,7 @@ pub struct Logger {
 impl log::Log for Logger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= self.level
-                || metadata.target().starts_with("kernel::device::mlx4")
-                || metadata.target().starts_with("kernel::infiniband")
+                || metadata.target().starts_with("kernel::device::infiniband")
 
     }
 
