@@ -424,6 +424,9 @@ impl MrTable {
         &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, owner: &Process, pd: PdHandle, data: &mut [T],
         queue_pair: Option<&QueuePair>, access: AccessFlags,
     ) -> Result<MemoryRegionMetadata, &'static str> {
+        if data.is_empty() {
+            return Err("MR must not be empty");
+        }
         let size = data.len() * size_of::<T>();
         let addr = VirtAddr::from_ptr(data.as_ptr());
         let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size as u64 - 1) + 1);
