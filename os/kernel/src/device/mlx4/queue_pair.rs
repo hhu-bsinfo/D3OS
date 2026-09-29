@@ -24,7 +24,7 @@ use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::device::mlx4::utils::MappedPages;
 use crate::process::process::Process;
 use crate::process_manager;
-use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, ConnectX3Nic, PdHandle};
+use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, Mlx4Device, PdHandle};
 
 const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
 const IB_MAX_HEADROOM: u32 = 2048;
@@ -71,7 +71,7 @@ impl QueuePair {
     ///
     /// This is similar to creating a completion queue or an event queue.
     pub(super) fn new(
-        dev: &mut ConnectX3Nic,
+        dev: &mut Mlx4Device,
         process: Arc<Process>,
         qp_type: QueuePairType,
         pd: PdHandle,

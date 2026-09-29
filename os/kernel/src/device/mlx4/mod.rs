@@ -79,19 +79,19 @@ pub fn device_handle_to_idx(handle: usize) -> usize {
 }
 
 static CURRENT_DEVICE_HANDLE: AtomicUsize = AtomicUsize::new(DEVICE_START);
-static DEV_LIST: Once<Mutex<Vec<ConnectX3Nic>>> = Once::new();
+static DEV_LIST: Once<Mutex<Vec<Mlx4Device>>> = Once::new();
 
 fn next_device_handle() -> usize {
     CURRENT_DEVICE_HANDLE.fetch_add(1, Relaxed)
 }
 
 /// List of all initialized ConnectX-3 NICs
-pub fn get_dev_list() -> &'static Mutex<Vec<ConnectX3Nic>> {
+pub fn get_dev_list() -> &'static Mutex<Vec<Mlx4Device>> {
     DEV_LIST.call_once(|| Mutex::new(Vec::with_capacity(devices_supported())))
 }
 
 /// Struct representing a ConnectX-3 card
-pub struct ConnectX3Nic {
+pub struct Mlx4Device {
     config_regs: MappedPages,
     cmd: CommandInterface,
     firmware: Firmware,
@@ -118,44 +118,44 @@ pub struct ConnectX3Nic {
 }
 
 /// Functions that setup the struct.
-impl ConnectX3Nic {
+impl Mlx4Device {
     /// Initializes the ConnectX-3 card that is connected as the given PciDevice.
     /// Adds the device to the global List of ConnectX-3 NICs
     ///
     /// # Arguments
-    /// * `mlx3_pci_dev`: Contains the pci device information.
-    pub fn init(mlx3_pci_dev: &RwLock<EndpointHeader>) -> Result<usize, &'static str> {
+    /// * `mlx4_pci_dev`: Contains the pci device information.
+    pub fn init(mlx4_pci_dev: &RwLock<EndpointHeader>) -> Result<usize, &'static str> {
         if CURRENT_DEVICE_HANDLE.load(Relaxed) > DEVICE_END {
             return Err("Max devices reached !");
         }
 
         let config_space = pci_bus().config_space();
-        let mut mlx3_pci_dev = mlx3_pci_dev.write();
+        let mut mlx4_pci_dev = mlx4_pci_dev.write();
 
         // Disable Memory Space decoding before reading the BARs. Sizing a BAR
         // transiently writes 0xFFFFFFFF to it, and if memory decoding is enabled
         // the device would briefly decode at that bogus (all-ones) address, which
         // the host (QEMU/KVM) tries to map and rejects.
-        mlx3_pci_dev.update_command(config_space, |creg| creg & !CommandRegister::MEMORY_ENABLE);
+        mlx4_pci_dev.update_command(config_space, |creg| creg & !CommandRegister::MEMORY_ENABLE);
 
         // map the Global Device Configuration registers
         let mut config_regs = utils::pci_map_bar_mem(
-            mlx3_pci_dev.bar(0, config_space).ok_or("No config regs (BAR 0)")?,
+            mlx4_pci_dev.bar(0, config_space).ok_or("No config regs (BAR 0)")?,
             "mlx4-config-regs"
         ).ok_or("failed map BAR 0")?;
         trace!("mlx4 configuration registers: {:?}", config_regs);
 
         // set the memory space bit for this PciDevice
         // set the bus mastering bit for this PciDevice, which allows it to use DMA
-        mlx3_pci_dev.update_command(config_space, |creg| creg | CommandRegister::MEMORY_ENABLE | CommandRegister::BUS_MASTER_ENABLE);
+        mlx4_pci_dev.update_command(config_space, |creg| creg | CommandRegister::MEMORY_ENABLE | CommandRegister::BUS_MASTER_ENABLE);
 
-        ResetRegisters::reset(&mlx3_pci_dev, &mut config_regs)?;
+        ResetRegisters::reset(&mlx4_pci_dev, &mut config_regs)?;
 
         // TODO: This shouldn't be necessary.
         // We should be restoring the config space in reset(),
         // but even now these bits are always set.
 
-        mlx3_pci_dev.update_command(config_space, |creg| creg | CommandRegister::MEMORY_ENABLE | CommandRegister::BUS_MASTER_ENABLE);
+        mlx4_pci_dev.update_command(config_space, |creg| creg | CommandRegister::MEMORY_ENABLE | CommandRegister::BUS_MASTER_ENABLE);
 
         // In linux driver ownership is taken before reset
         Ownership::get(&config_regs)?;
@@ -180,7 +180,7 @@ impl ConnectX3Nic {
         // give us the interrupt pin
         let adapter = hca.query_adapter(&mut cmd).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
 
-        let uar_bf_bar = mlx3_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)").or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
+        let uar_bf_bar = mlx4_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)").or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
         trace!("mlx4 User Access Region (UAR) Bar : {:?}", uar_bf_bar);
         let num_uars = capabilities.num_uars();
         let mut uar_list = Vec::with_capacity(num_uars);
@@ -433,12 +433,6 @@ impl ConnectX3Nic {
             .position(|cq| cq.number() == number && cq.owner() == process.id())
             .ok_or("completion queue not found")?;
         let cq = self.cqs.remove(index);
-        // FIXME: this could result in a race condition, when the qp list is modified by another thread
-        if cq.number() != number {
-            error!("The removed completion queue number does not match with the provided");
-            self.cqs.push(cq);
-            return Err("could not remove queue pair")
-        }
         cq.destroy(&mut self.cmd)?;
         Ok(())
     }
@@ -539,7 +533,7 @@ impl ConnectX3Nic {
     }
 }
 
-impl Drop for ConnectX3Nic {
+impl Drop for Mlx4Device {
     fn drop(&mut self) {
         self.icm_tables.memory_regions().destroy_all(&mut self.cmd).unwrap();
         while let Some(qp) = self.qps.pop() {

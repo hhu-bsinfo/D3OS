@@ -17,7 +17,7 @@ use super::{
     cmd::{CommandInterface, InputParam, OutputParam, Opcode},
     device::{uar_index_to_hw, PAGE_SHIFT},
     icm::ICM_PAGE_SHIFT,
-    ConnectX3Nic,
+    Mlx4Device,
 };
 
 /// Size in bytes of a hardware completion queue entry. CX3 also supports a 64 B format, but this
@@ -41,7 +41,7 @@ impl CompletionQueue {
     /// for the buffer and transitions ownership of the CQ to the HCA.
     /// All CQs are registered to the first EQ of the device.
     pub(super) fn new(
-        dev: &mut ConnectX3Nic,
+        dev: &mut Mlx4Device,
         process: Arc<Process>,
         num_entries: u32,
         buffer: *const u8,

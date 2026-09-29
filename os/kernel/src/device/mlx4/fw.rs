@@ -66,7 +66,7 @@ impl Firmware {
     /// Where the card reports internal errors: `(BAR, byte offset in that BAR, size in 32-bit
     /// words)`.
     ///
-    /// See [`super::ConnectX3Nic::check_internal_error`] for why this matters.
+    /// See [`super::Mlx4Device::check_internal_error`] for why this matters.
     pub(super) fn internal_error_buffer(&self) -> (u8, usize, usize) {
         (self.err_bar, self.err_start_offset.get() as usize, self.err_size.get() as usize)
     }
@@ -336,7 +336,7 @@ pub(super) struct Capabilities {
     __: u16,
     #[skip]
     __: B4,
-    // not present in mlx3
+    // not present in mlx4
     #[skip]
     num_sys_eq: B12,
     // max_av?

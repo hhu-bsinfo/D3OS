@@ -1,5 +1,5 @@
 use super::uverbs_cmd::*;
-use crate::device::mlx4::{device_in_range, ConnectX3Nic};
+use crate::device::mlx4::{device_in_range, Mlx4Device};
 use crate::process_manager;
 use core::mem::MaybeUninit;
 use core::slice::from_raw_parts_mut;
@@ -73,17 +73,17 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
         }
         UverbsCmd::DestroyCq => {
             let cq_num: u32 = copy_from_user(user_in)?;
-            uverbs_destroy(device_handle, ConnectX3Nic::destroy_cq, cq_num).map_err(log_error_and_invalid)?;
+            uverbs_destroy(device_handle, Mlx4Device::destroy_cq, cq_num).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::DestroyQp => {
             let qp_num: u32 = copy_from_user(user_in)?;
-            uverbs_destroy(device_handle, ConnectX3Nic::destroy_qp, qp_num).map_err(log_error_and_invalid)?;
+            uverbs_destroy(device_handle, Mlx4Device::destroy_qp, qp_num).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::DeregMr => {
             let mr_index: u32 = copy_from_user(user_in)?;
-            uverbs_destroy(device_handle, ConnectX3Nic::destroy_mr, mr_index).map_err(log_error_and_invalid)?;
+            uverbs_destroy(device_handle, Mlx4Device::destroy_mr, mr_index).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::QueryQp => todo!("QueryQp"),

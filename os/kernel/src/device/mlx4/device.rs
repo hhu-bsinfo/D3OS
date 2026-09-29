@@ -23,7 +23,7 @@ register_structs! {
 }
 
 impl ResetRegisters {
-    pub(super) fn reset(mlx3_pci_dev: &EndpointHeader, config_regs: &mut MappedPages) -> Result<(), &'static str> {
+    pub(super) fn reset(mlx4_pci_dev: &EndpointHeader, config_regs: &mut MappedPages) -> Result<(), &'static str> {
         // See ConnectX Programmer’s Reference Manual (RPM) Rev 2.1 / Appendix A ConnectX Software Reset
         let config_space = pci_bus().config_space();
         trace!("Initiating card reset for ConnectX-3...");
@@ -56,7 +56,7 @@ impl ResetRegisters {
         for _ in 0..100 {
             // wait for it to respond to PCI cycles
 
-            if mlx3_pci_dev.header().id(config_space).0 != 0xffff {
+            if mlx4_pci_dev.header().id(config_space).0 != 0xffff {
                 return Ok(());
             }
             trace!("waiting for card...");

@@ -1,4 +1,4 @@
-use crate::device::mlx4::{get_dev_list, device_handle_to_idx, ConnectX3Nic};
+use crate::device::mlx4::{get_dev_list, device_handle_to_idx, Mlx4Device};
 use alloc::vec::Vec;
 use rdma::uverbs_uapi::{AllocPdResponse, CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, CreateQpResponse, DeallocPdRequest, ModifyQpRequest, OpenDeviceResponse};
 use rdma::{AccessFlags, DeviceAttr, DeviceHandle, PortAttr, PdHandle};
@@ -75,7 +75,7 @@ pub fn uverbs_modify_qp(device_handle: usize, qp_modify_container: ModifyQpReque
     )
 }
 
-pub fn uverbs_destroy(device_handle: usize, destroy_spec_fn: fn(&mut ConnectX3Nic, u32) -> Result<(), &'static str>, x_num: u32) -> Result<(), &'static str> {
+pub fn uverbs_destroy(device_handle: usize, destroy_spec_fn: fn(&mut Mlx4Device, u32) -> Result<(), &'static str>, x_num: u32) -> Result<(), &'static str> {
     let mut device_list = get_dev_list().lock();
     let device = device_list.get_mut(device_handle_to_idx(device_handle)).unwrap();
     destroy_spec_fn(device, x_num)

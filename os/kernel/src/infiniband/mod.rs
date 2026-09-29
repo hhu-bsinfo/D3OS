@@ -6,7 +6,7 @@ use log::{info, trace};
 use crate::pci_bus;
 
 #[cfg(feature = "infiniband_mlx4")]
-use crate::device::mlx4::ConnectX3Nic;
+use crate::device::mlx4::Mlx4Device;
 
 // add new card by specifying corresponding init with feature
 
@@ -18,7 +18,7 @@ fn _init() {
     for (i, dev) in devices.iter().enumerate() {
         info!("Found ConnectX-3 card ! - dev : {}", i);
 
-        let minor = ConnectX3Nic::init(dev).expect("error in x3 init");
+        let minor = Mlx4Device::init(dev).expect("error in x3 init");
         info!("Initialized mlx4 driver, associated dev {} with minor => {}", i, minor);
     }
 
