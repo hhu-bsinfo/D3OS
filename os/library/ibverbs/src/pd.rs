@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::mem;
 use core3::io;
 use log::error;
-use rdma::{AccessFlags, PdHandle, QueuePairCapabilities, QueuePairType};
+use rdma::{AccessFlags, PdHandle, QueuePairType};
 use crate::{CompletionQueue, QueuePairBuilder};
 use crate::context::Context;
 use crate::mr::LocalMemoryRegion;
@@ -90,7 +90,7 @@ impl<'ctx> ProtectionDomain<'ctx> {
     ///  - `EINVAL`: Invalid access value.
     ///  - `ENOMEM`: Not enough resources (either in operating system or in RDMA device) to
     ///    complete this operation.
-    pub fn allocate<T: Sized + Copy + Default>(&self, n: usize) -> io::Result<LocalMemoryRegion<T>> {
+    pub fn allocate<T: Sized + Copy + Default>(&self, n: usize) -> io::Result<LocalMemoryRegion<'_, T>> {
         assert!(n > 0);
         assert!(mem::size_of::<T>() > 0);
 

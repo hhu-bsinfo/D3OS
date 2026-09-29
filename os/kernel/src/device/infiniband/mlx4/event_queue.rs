@@ -9,7 +9,7 @@ use core::{
 };
 
 use super::utils::MappedPages;
-use super::{DEV_LIST, device_handle_to_idx, get_dev_list, utils};
+use super::utils;
 use super::{
     Offsets,
     cmd::{CommandInterface, InputParam, Opcode, OutputParam},
@@ -23,21 +23,15 @@ use crate::interrupt_dispatcher;
 use crate::memory::PAGE_SIZE;
 use alloc::vec::Vec;
 use bitflags::bitflags;
-use byteorder::BigEndian;
-use core::ptr::eq;
-use core::sync::atomic::AtomicUsize;
 use log::{debug, error, trace, warn};
 use modular_bitfield_msb::{bitfield, prelude::*};
 use spin::{Mutex, RwLock};
 use strum_macros::FromRepr;
 use tock_registers::interfaces::Writeable;
-use tock_registers::registers::WriteOnly;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::Page;
-use zerocopy::U32;
 
 const _NUM_ASYNC_EQE: u32 = 0x100;
-const NUM_SPARE_EQE: u32 = 0x80;
 
 /// Initialize the event queues.
 /// This creates all of the EQs ahead of time,
@@ -109,9 +103,12 @@ pub(super) struct EventQueue {
     // TODO: somehow free this on Drop
     _mtt: u64,
     consumer_index: Mutex<u32>,
+    // Only set once interrupt-driven EQs are implemented, see the TODOs in `new`.
     /// IRQ number on bus
+    #[allow(dead_code)]
     intr_vector: Option<u8>,
     /// IRQ we will see
+    #[allow(dead_code)]
     base_vector: Option<u8>,
     /// event bitmask
     async_ev_mask: AsyncEventMask,
@@ -121,6 +118,7 @@ pub(super) struct EventQueue {
 enum EventQueueState {
     Armed = 0x9,
     Fired = 0xa,
+    #[allow(dead_code)]
     AlwaysArmed = 0xb,
 }
 
@@ -368,7 +366,7 @@ impl Drop for EventQueue {
 
 #[bitfield]
 struct EventQueueContext {
-    #[skip(setters)]
+    #[skip]
     status: B4,
     #[skip]
     __: B16,
@@ -384,7 +382,9 @@ struct EventQueueContext {
     log_eq_size: B5,
     #[skip]
     __: B24,
+    #[skip]
     eq_period: u16,
+    #[skip]
     eq_max_count: u16,
     #[skip]
     __: B22,
@@ -401,11 +401,11 @@ struct EventQueueContext {
     mtt_base_addr: B40,
     #[skip]
     __: B72,
-    #[skip(setters)]
+    #[skip]
     consumer_index: B24,
     #[skip]
     __: u8,
-    #[skip(setters)]
+    #[skip]
     producer_index: B24,
     #[skip]
     __: B96,

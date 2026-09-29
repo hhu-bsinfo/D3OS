@@ -5,25 +5,19 @@ use core::mem::size_of;
 use super::{
     cmd::{CommandInterface, InputParam, MadDemuxOpcodeModifier, Opcode, OutputParam},
     device::{DEFAULT_UAR_PAGE_SHIFT, PAGE_SHIFT},
-    icm::{ICM_PAGE_SHIFT, MappedIcmAuxiliaryArea},
+    icm::MappedIcmAuxiliaryArea,
     port::Port,
-    utils,
-    utils::MappedPages,
 };
 use crate::memory;
 use crate::memory::PAGE_SIZE;
 use alloc::{format, string::String, vec::Vec};
 use byteorder::BigEndian;
-use core::cmp::min;
 use core::fmt::Debug;
-use core::ops::Shl;
 use log::{debug, trace, warn};
-use modular_bitfield_msb::{Specifier, bitfield, prelude::*};
-use pci_types::Bar;
+use modular_bitfield_msb::{bitfield, prelude::*};
 use rdma::Mtu;
 use tock_registers::{register_bitfields, register_structs, registers::WriteOnly};
 use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::{Size4KiB, page::Page};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 
 /// The output of QUERY_FW.
@@ -643,8 +637,8 @@ pub(super) struct Capabilities {
     bmme_flags: u16,
     #[skip]
     phv_en: u16,
-    #[skip(setters)]
-    pub(super) reserved_lkey: u32,
+    #[skip]
+    reserved_lkey: u32,
     #[skip]
     diag_flags: u32,
     #[skip(setters)]
@@ -888,6 +882,7 @@ pub(super) struct InitHcaParameters {
     __: bool,
     /// Stride of CQE in the buffer. Default is 0x0 which means same as CQE size
     /// The buffer has to be aligned by the stride.
+    #[skip(getters)]
     qpc_cqe_stride: B3,
     #[skip]
     __: u32,

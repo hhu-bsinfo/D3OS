@@ -13,26 +13,23 @@ mod profile;
 mod queue_pair;
 mod utils;
 
-use alloc::boxed::Box;
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use byteorder::BigEndian;
 use cmd::CommandInterface;
 use completion_queue::CompletionQueue;
-use core::marker::PhantomData;
-use core::ptr::eq;
 use event_queue::{ClrInt, EventQueue, init_eqs};
 use fw::{Capabilities, Hca, MappedFirmwareArea};
 use icm::MappedIcmTables;
 use log::{error, info, trace, warn};
-use pci_types::{Bar, CommandRegister, EndpointHeader};
+use pci_types::{CommandRegister, EndpointHeader};
 use zerocopy::U32;
 
 use rdma::{AccessFlags, DeviceAttr, MemoryRegionMetadata, PdHandle, PortAttr, QueuePairAttr, QueuePairAttrMask, QueuePairType};
 
-use crate::{interrupt_dispatcher, pci_bus, process_manager};
+use crate::{pci_bus, process_manager};
 use port::Port;
 use queue_pair::QueuePair;
 use spin::{Mutex, Once, RwLock};
@@ -44,7 +41,6 @@ use profile::Profile;
 
 use crate::device::infiniband::mlx4::fw::DoorbellPage;
 use crate::device::infiniband::mlx4::icm::map_icm_tables;
-use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process::process::Process;
@@ -52,7 +48,7 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use uuid::Uuid;
 use x86_64::PhysAddr;
-use x86_64::structures::paging::{Page, PageSize, PageTableFlags, PhysFrame, Size4KiB};
+use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use rdma::uverbs_uapi::UserSlice;
 
 /// Vendor ID for Mellanox
@@ -111,9 +107,6 @@ pub struct Mlx4Device {
     /// Set once the internal error buffer has been dumped, so it is reported once and not on
     /// every poll afterwards.
     internal_error_reported: bool,
-    /// Counts down to the next check of the internal error buffer, see [`Self::drain_events`].
-    internal_error_countdown: u32,
-    identity_mapped_uar: MappedPages,
     uar_list: Vec<UarPage>,
     pub handle: usize,
 }
@@ -253,10 +246,8 @@ impl Mlx4Device {
             qps: Vec::new(),
             ports,
             internal_error_reported: false,
-            internal_error_countdown: 0,
             handle,
             uar_list,
-            identity_mapped_uar,
         };
         get_dev_list().lock().push(nic);
         Ok(handle)
@@ -292,7 +283,6 @@ impl Mlx4Device {
     /// Open a context to the device
     pub fn open(&mut self) -> Result<&Context, &'static str> {
         let context = Context {
-            device_handle: self.handle,
             uar_page: self.uar_list.pop().ok_or("No UAR page available")?,
             owner: process_manager().read().current_process().id(),
         };
@@ -550,7 +540,6 @@ struct Offsets {
     next_qpn: usize,
     next_dmpt: usize,
     next_eqn: usize,
-    next_uar_index: usize,
     // TODO: EventQueue does not seem to need this.
     // Should it use this to be more similar to QueuePair?
     _next_eq_doorbell_index: usize,
@@ -570,7 +559,6 @@ impl Offsets {
             next_dmpt: 1 << caps.log2_rsvd_mrws(),
             next_eqn: caps.num_rsvd_eqs().into(),
             // For SQ and CQ Uar Doorbell index starts from 128
-            next_uar_index: 128,
             // Each UAR has 4 EQ doorbells; so if a UAR is reserved,
             // then we can't use any EQs whose doorbell falls on that page,
             // even if the EQ itself isn't reserved.
@@ -613,7 +601,6 @@ impl Offsets {
 }
 
 pub struct Context {
-    device_handle: usize,
     pub uar_page: UarPage,
     owner: Uuid,
 }

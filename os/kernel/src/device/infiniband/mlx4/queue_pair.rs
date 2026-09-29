@@ -10,38 +10,19 @@ use super::{
     device::{PAGE_SHIFT, uar_index_to_hw},
     fw::Capabilities,
     icm::ICM_PAGE_SHIFT,
-    utils,
 };
 use crate::device::infiniband::mlx4::cmd::{InputParam, OutputParam};
-use crate::device::infiniband::mlx4::utils::MappedPages;
 use crate::process::process::Process;
-use crate::process_manager;
 use alloc::sync::Arc;
-use alloc::{vec, vec::Vec};
 use bitflags::bitflags;
 use byteorder::BigEndian;
 use log::trace;
 use modular_bitfield_msb::{bitfield, prelude::*};
-use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairType, QueuePairState, ScatterGatherEntry};
-use strum_macros::FromRepr;
-use tock_registers::registers::WriteOnly;
+use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairType, QueuePairState};
 use uuid::Uuid;
-use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
+use x86_64::structures::paging::{Page, Size4KiB};
 use x86_64::{PhysAddr, VirtAddr};
-use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
-
-const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
-const IB_MAX_HEADROOM: u32 = 2048;
-const IB_SQ_MAX_SPARE: u32 = ib_sq_headroom(IB_SQ_MIN_WQE_SHIFT);
-
-const SEGMENT_SIZE_CONTROL: usize = 16;
-const SEGMENT_SIZE_WQE_DATA: usize = 16;
-const SEGMENT_SIZE_DATAGRAM: usize = 48;
-const SEGMENT_SIZE_REMOTE_ADDR: usize = 16;
-
-const fn ib_sq_headroom(shift: u32) -> u32 {
-    (IB_MAX_HEADROOM >> shift) + 1
-}
+use zerocopy::{AsBytes, FromBytes, U32};
 
 #[derive(Debug)]
 pub(super) struct QueuePair {
@@ -144,6 +125,8 @@ impl QueuePair {
     }
 
     /// Query this queue pair.
+    // Not wired up yet; this is what ibv_query_qp would use.
+    #[allow(dead_code)]
     pub(super) fn query(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         cmd.execute_command(Opcode::QueryQp, None, InputParam::Empty, Some(self.number), OutputParam::Mailbox)?;
         let transition: &StateTransitionCommandParameter = unsafe { cmd.output_mailbox_as_ref() };
@@ -490,179 +473,6 @@ impl Drop for QueuePair {
     }
 }
 
-#[repr(transparent)]
-struct QueuePairDoorbell {
-    receive_wqe_index: WriteOnly<u32>,
-}
-
-// TODO: why not use a struct instea of a tuple for WorkQueueMeta
-type WorkQueueMeta<U, T> = (U, T);
-
-#[derive(Debug)]
-struct WorkQueue {
-    wqe_cnt: u32,
-    max_post: u32,
-    max_gs: u32,
-    offset: u32,
-    wqe_shift: u32,
-    spare_wqes: Option<u32>,
-    head: u32,
-    tail: u32,
-    meta: Vec<WorkQueueMeta<u64, u32>>,
-    /// Set once this queue's tail has been seen to disagree with the card, see
-    /// [`QueuePair::check_wqe_index`]. Only the first disagreement is worth logging.
-    divergence_reported: bool,
-}
-
-impl WorkQueue {
-    /// Compute the size of the receive queue and return it.
-    fn new_receive_queue(hca_caps: &Capabilities, ib_caps: &mut QueuePairCapabilities) -> Result<Self, &'static str> {
-        // check the RQ size before proceeding
-        if ib_caps.max_recv_wr > ((1 << u32::from(hca_caps.log_max_qp_sz())) - IB_SQ_MAX_SPARE)
-            || ib_caps.max_recv_sge > hca_caps.max_sg_sq().into()
-            || ib_caps.max_recv_sge > hca_caps.max_sg_rq().into()
-        {
-            return Err("RQ size is invalid");
-        }
-        let mut wqe_cnt = ib_caps.max_recv_wr;
-        if wqe_cnt < 256 {
-            wqe_cnt = 256;
-        }
-        wqe_cnt = wqe_cnt.next_power_of_two();
-        let mut max_gs = ib_caps.max_recv_sge;
-        if max_gs < 1 {
-            max_gs = 1;
-        }
-        max_gs = max_gs.next_power_of_two();
-        let wqe_shift = (max_gs * u32::try_from(SEGMENT_SIZE_WQE_DATA).unwrap()).ilog2();
-        let mut max_post = (1 << u32::from(hca_caps.log_max_qp_sz())) - IB_SQ_MAX_SPARE;
-        if max_post > wqe_cnt {
-            max_post = wqe_cnt;
-        }
-        // update the caps
-        ib_caps.max_recv_wr = max_post;
-        ib_caps.max_recv_sge = *[max_gs, hca_caps.max_sg_sq().into(), hca_caps.max_sg_rq().into()].iter().min().unwrap();
-        Ok(Self {
-            wqe_cnt,
-            max_post,
-            max_gs,
-            offset: 0,
-            wqe_shift,
-            spare_wqes: None,
-            head: 0,
-            tail: 0,
-            meta: vec![(0u64, 0u32); wqe_cnt as usize],
-            divergence_reported: false,
-        })
-    }
-
-    /// Compute the size of the receive queue and return it.
-    fn new_send_queue(hca_caps: &Capabilities, ib_caps: &mut QueuePairCapabilities, qp_type: QueuePairType) -> Result<Self, &'static str> {
-        // check the SQ size before proceeding
-        if ib_caps.max_send_wr > ((1 << u32::from(hca_caps.log_max_qp_sz())) - IB_SQ_MAX_SPARE)
-            || ib_caps.max_send_sge > hca_caps.max_sg_sq().into()
-            || ib_caps.max_send_sge > hca_caps.max_sg_rq().into()
-        {
-            return Err("SQ size is invalid");
-        }
-        let size = ib_caps.max_send_sge * u32::try_from(SEGMENT_SIZE_WQE_DATA).unwrap() + send_wqe_overhead(qp_type);
-        if size > hca_caps.max_desc_sz_sq().into() {
-            return Err("SQ size is invalid");
-        }
-        let wqe_shift = size.next_power_of_two().ilog2();
-        // We need to leave 2 KB + 1 WR of headroom in the SQ to allow HW to prefetch.
-        let spare_wqes = ib_sq_headroom(wqe_shift);
-        let mut wqe_cnt = ib_caps.max_send_wr;
-        if wqe_cnt < 256 {
-            wqe_cnt = 256;
-        }
-        wqe_cnt = (wqe_cnt + spare_wqes).next_power_of_two();
-        let max_gs = (u32::from(*[hca_caps.max_desc_sz_sq(), 1 << wqe_shift].iter().min().unwrap()) - send_wqe_overhead(qp_type))
-            / u32::try_from(SEGMENT_SIZE_WQE_DATA).unwrap();
-        let max_post = wqe_cnt - spare_wqes;
-        // update the caps
-        ib_caps.max_send_wr = max_post;
-        ib_caps.max_send_sge = *[max_gs, hca_caps.max_sg_sq().into(), hca_caps.max_sg_rq().into()].iter().min().unwrap();
-        Ok(Self {
-            wqe_cnt,
-            max_post,
-            max_gs,
-            offset: 0,
-            wqe_shift,
-            spare_wqes: Some(spare_wqes),
-            head: 0,
-            tail: 0,
-            meta: vec![(0u64, 0u32); wqe_cnt as usize],
-            divergence_reported: false,
-        })
-    }
-
-    /// Get the size.
-    fn size(&self) -> u32 {
-        self.wqe_cnt << self.wqe_shift
-    }
-
-    /// Get work id based on wqe index
-    #[inline(always)]
-    fn get_id(&self, wqe_idx: usize) -> u64 {
-        let idx = wqe_idx & ((self.wqe_cnt - 1) as usize);
-        self.meta[idx].0
-    }
-
-    #[inline(always)]
-    fn update_id(&mut self, wqe_idx: usize, wr_id: u64) {
-        let idx = wqe_idx & ((self.wqe_cnt - 1) as usize);
-        self.meta[idx].0 = wr_id;
-    }
-
-    /// Get batch size based on wqe index
-    #[inline(always)]
-    fn get_chain_size(&self, wqe_idx: usize) -> u32 {
-        let idx = wqe_idx & ((self.wqe_cnt - 1) as usize);
-        self.meta[idx].1
-    }
-
-    #[inline(always)]
-    fn update_chain_size(&mut self, wqe_idx: usize, batch_size: u32) {
-        let idx = wqe_idx & ((self.wqe_cnt - 1) as usize);
-        self.meta[idx].1 = batch_size;
-    }
-
-    /// Get an element of this work queue.
-    ///
-    /// The index wraps around to the beginning.
-    fn get_element<'e, T: FromBytes>(&self, pages: &'e mut MappedPages, mut index: u32) -> Result<&'e mut T, &'static str> {
-        // wrap around
-        index &= self.wqe_cnt - 1;
-        pages.as_type_mut((self.offset + (index << self.wqe_shift)).try_into().unwrap())
-    }
-
-    /// Check if this queue would overflow when adding `num_req` work requests.
-    fn would_overflow(&self, num_req: u32) -> bool {
-        let cur = self.head - self.tail;
-        cur + num_req >= self.max_post
-    }
-}
-
-fn send_wqe_overhead(qp_type: QueuePairType) -> u32 {
-    // UD WQEs must have a datagram segment.
-    // RC and UC WQEs might have a remote address segment.
-    // MLX WQEs need two extra inline data segments (for the UD header and space
-    // for the ICRC).
-    match qp_type {
-        QueuePairType::UD => SEGMENT_SIZE_CONTROL + SEGMENT_SIZE_DATAGRAM,
-        QueuePairType::UC => SEGMENT_SIZE_CONTROL + SEGMENT_SIZE_REMOTE_ADDR,
-        QueuePairType::RC => {
-            SEGMENT_SIZE_CONTROL /* + size_of::<WqeMaskedAtomicSegment>() */
-                + SEGMENT_SIZE_REMOTE_ADDR
-        }
-        #[allow(unreachable_patterns)]
-        _ => SEGMENT_SIZE_CONTROL,
-    }
-    .try_into()
-    .unwrap()
-}
-
 #[bitfield]
 struct QueuePairContext {
     state: B4,
@@ -675,6 +485,7 @@ struct QueuePairContext {
     path_migration_state: B2,
     #[skip]
     __: B19,
+    #[skip(getters)]
     protection_domain: B24,
     mtu: B3,
     #[skip(getters)]
@@ -935,23 +746,3 @@ bitflags! {
     }
 }
 
-#[repr(u32)]
-#[derive(FromRepr)]
-pub(super) enum QueuePairOpcode {
-    Nop = 0x00,
-    SendInval = 0x01,
-    RdmaWrite = 0x08,
-    RdmaWriteImm = 0x09,
-    Send = 0x0a,
-    SendImm = 0x0b,
-    Lso = 0x0e,
-    RdmaRead = 0x10,
-    AtomicCs = 0x11,
-    AtomicFa = 0x12,
-    MaskedAtomicCs = 0x14,
-    MaskedAtomicFa = 0x15,
-    BindMw = 0x18,
-    Fmr = 0x19,
-    LocalInval = 0x1b,
-    ConfigCmd = 0x1f,
-}

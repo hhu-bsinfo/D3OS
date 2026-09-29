@@ -40,8 +40,6 @@ pub const UVERBS_MAX_USER_TRUST_SIZE: usize = 0x06400000; // allow user space to
 pub const UVERBS_MAX_USER_WC_REQ: usize = 16000;
 pub const UVERBS_MAX_QUERY_DEVICES_REQ: usize = 10;
 
-const CHAR_BUF: &[u8] = &[0u8; 64];
-
 /// A region of user memory, described by its start address and its size in bytes.
 ///
 /// The uverbs system call takes two of these: one for the request (in) and one

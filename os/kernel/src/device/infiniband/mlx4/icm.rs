@@ -12,20 +12,17 @@ use crate::device::infiniband::mlx4::cmd::{InputParam, OutputParam};
 use crate::device::infiniband::mlx4::device::PAGE_SHIFT;
 use crate::device::infiniband::mlx4::utils::MappedPages;
 use crate::memory::PAGE_SIZE;
-use crate::memory::vma::VmaType;
 use crate::process::process::Process;
 use crate::{memory, process_manager};
 use alloc::vec::Vec;
-use core::cmp::min;
-use core::intrinsics::offset;
-use log::{debug, error, info, trace};
+use log::{debug, error, trace};
 use modular_bitfield_msb::{bitfield, prelude::*};
 use rdma::{AccessFlags, MemoryRegionMetadata};
 use uuid::Uuid;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
-use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame, Size4KiB};
-use x86_64::{PhysAddr, VirtAddr};
+use x86_64::structures::paging::Page;
+use x86_64::VirtAddr;
 use zerocopy::AsBytes;
 use rdma::uverbs_uapi::UserSlice;
 
@@ -221,7 +218,6 @@ impl Drop for MappedIcmAuxiliaryArea {
 // TODO: do we need those fields?
 struct IcmTable {
     virt: u64,
-    entry_capacity: usize,
     entry_size: u16,
     /// must contain less than icm_num entries
     icm: Vec<MappedIcm>,
@@ -237,7 +233,6 @@ impl IcmTable {
 
         let mut icm = IcmTable {
             virt,
-            entry_capacity,
             entry_size,
             icm: Vec::new(),
         };
@@ -479,7 +474,7 @@ impl MrTable {
         cmd.execute_command(Opcode::QueryMpt, None, InputParam::Empty, Some(dmpt_index), OutputParam::Mailbox)?;
         let mut dmpt_bytes = [0u8; size_of::<DmptEntry>()];
         dmpt_bytes.copy_from_slice(&cmd.output_mailbox_as_bytes()[..size_of::<DmptEntry>()]);
-        let mut dmpt = DmptEntry::from_bytes(dmpt_bytes);
+        let dmpt = DmptEntry::from_bytes(dmpt_bytes);
         assert_eq!(dmpt_index, dmpt.index());
         trace!(
             "memory region of size {} with mem key {}, lkey {}, index {} created successfully",
@@ -592,6 +587,7 @@ struct DmptEntry {
     rae: bool,
     #[skip]
     __: B4,
+    #[skip(getters)]
     pd: B24,
     #[skip(getters)]
     /// Start Address - Virtual Address where this region/window starts

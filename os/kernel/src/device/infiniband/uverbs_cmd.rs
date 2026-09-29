@@ -2,7 +2,7 @@ use crate::device::infiniband::mlx4::{Mlx4Device, device_handle_to_idx, get_dev_
 use crate::process_manager;
 use alloc::vec::Vec;
 use rdma::uverbs_uapi::{AllocPdResponse, CreateCqRequest, CreateCqResponse, CreateMrRequest, CreateMrResponse, CreateQpRequest, CreateQpResponse, DeallocPdRequest, ModifyQpRequest, OpenDeviceResponse, UserSlice};
-use rdma::{AccessFlags, DeviceAttr, DeviceHandle, PdHandle, PortAttr};
+use rdma::{DeviceAttr, DeviceHandle, PortAttr};
 
 const DEVICE_NOT_FOUND: &'static str = "Device not found";
 

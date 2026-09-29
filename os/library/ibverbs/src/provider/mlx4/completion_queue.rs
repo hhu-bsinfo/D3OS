@@ -3,7 +3,7 @@
 
 use alloc::sync::Arc;
 use core::mem::MaybeUninit;
-use core::sync::atomic::{compiler_fence, AtomicU32, Ordering};
+use core::sync::atomic::{compiler_fence, Ordering};
 use core3::io;
 use core3::io::{Error, ErrorKind};
 use log::error;
@@ -15,7 +15,6 @@ use rdma::uverbs_uapi::UverbsCmd::{CreateCq, DestroyCq};
 use strum_macros::FromRepr;
 use tock_registers::interfaces::Writeable;
 use tock_registers::registers::WriteOnly;
-use zerocopy::AsBytes;
 use crate::cmd::uverbs;
 use crate::cq::{WorkCompletion, WorkCompletionFlags, WorkCompletionOpcode, WorkCompletionStatus};
 use crate::provider::IbvCompletionQueue;
@@ -280,7 +279,6 @@ struct CompletionQueueDoorbell {
 
 // CQE size is 32. There is 64 B support also available in CX3.
 #[bitfield(bytes = 32)]
-#[derive(Debug)]
 struct CompletionQueueEntry {
     #[skip]
     __: u8,

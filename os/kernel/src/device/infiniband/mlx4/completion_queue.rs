@@ -3,10 +3,9 @@
 //! completion queue elements.
 
 use crate::process::process::Process;
-use crate::process_manager;
 use alloc::sync::Arc;
+use core::fmt::{Debug, Formatter};
 use core::mem::size_of;
-use core::ops::Div;
 use log::{error, trace};
 use modular_bitfield_msb::{bitfield, prelude::*};
 use uuid::Uuid;
@@ -32,6 +31,7 @@ pub(super) struct CompletionQueue {
     // TODO: deallocate mtt properly, see the equivalent TODO on `queue_pair::QueuePair`.
     mtt: Option<u64>,
     // TODO: bind the lifetime to the one of the event queue
+    #[allow(dead_code)]
     eq_number: Option<usize>,
 }
 
@@ -82,12 +82,12 @@ impl CompletionQueue {
 
         let mut ctx = CompletionQueueContext::new();
         ctx.set_page_offset(buffer_addr.page_offset().into());
-        ctx.set_log_size(log2num_entries);
+        ctx.set_log_cq_size(log2num_entries);
         ctx.set_usr_page(uar_index_to_hw(uar_idx).try_into().unwrap());
         if let Some(eqn) = eq_number {
-            ctx.set_comp_eqn(eqn as u8);
+            ctx.set_c_eqn(eqn as u8);
         }
-        ctx.set_log_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
+        ctx.set_log2_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
         ctx.set_mtt_base_addr(mtt);
         ctx.set_doorbell_record_addr(doorbell_address.as_u64());
         dev.cmd.execute_command(
@@ -132,8 +132,7 @@ impl CompletionQueue {
     /// Query this completion queue for debugging purposes.
     pub(super) fn query(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         cmd.execute_command(Opcode::QueryCq, None, InputParam::Empty, Some(self.number), OutputParam::Mailbox)?;
-        let ctx_bytes: &[u8; size_of::<CompletionQueueContext>()] = unsafe { cmd.output_mailbox_as_ref() };
-        let ctx = CompletionQueueContext::from_bytes(*ctx_bytes);
+        let ctx: &CompletionQueueContext = unsafe { cmd.output_mailbox_as_ref() };
         trace!("current CQ state: {ctx:?}");
         Ok(())
     }
@@ -154,11 +153,21 @@ impl Drop for CompletionQueue {
 
 #[bitfield]
 #[derive(Debug)]
-#[allow(dead_code)]
 struct CompletionQueueContext {
     // 0x00
+    #[skip(setters)]
+    staus: B4,
     #[skip]
-    flags: B32,
+    __: B8,
+    timestamp_en: bool,
+    cc: bool,
+    oi: bool,
+    #[skip]
+    __: B5,
+    #[skip(setters)]
+    st: B4,
+    #[skip]
+    __: u8,
     // 0x00
     #[skip]
     __: B32,
@@ -170,49 +179,42 @@ struct CompletionQueueContext {
     // 0x0C
     #[skip]
     __: B3,
-    #[skip(getters)]
-    log_size: B5,
-    #[skip(getters)]
+    log_cq_size: B5,
     usr_page: B24,
     // 0x10
-    #[skip]
     cq_period: B16,
-    #[skip]
     cq_max_count: B16,
     // 0x14
     #[skip]
     __: B24,
-    #[skip(getters)]
-    comp_eqn: u8,
+    c_eqn: u8,
     // 0x18
     #[skip]
     __: B2,
-    #[skip(getters)]
-    log_page_size: B6,
+    log2_page_size: B6,
     #[skip]
     __: u16,
     // the last three bits must be zero
-    #[skip(getters)]
     mtt_base_addr: B40,
     // 0x20
     #[skip]
     __: u8,
-    #[skip]
+    #[skip(setters)]
     last_notified_index: B24,
     // 0x24
     #[skip]
     __: u8,
-    #[skip]
+    #[skip(setters)]
     solicit_producer_index: B24,
     // 0x28
     #[skip]
     __: u8,
-    #[skip]
+    #[skip(setters)]
     consumer_index: B24,
     // 0x2C
     #[skip]
     __: u8,
-    #[skip]
+    #[skip(setters)]
     producer_index: B24,
     // 0x30
     #[skip]
@@ -221,3 +223,4 @@ struct CompletionQueueContext {
     // the last three bits must be zero
     doorbell_record_addr: u64,
 }
+

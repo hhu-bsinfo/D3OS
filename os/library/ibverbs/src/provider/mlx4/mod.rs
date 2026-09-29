@@ -31,6 +31,8 @@ pub struct Mlx4Context {
     // QUERY_DEV_CAP to userspace yet.
     uar_index: u32,
     doorbell_page: NonNull<DoorbellPage>,
+    // Not written to yet: WQEs are posted through the doorbell page only.
+    #[allow(dead_code)]
     blueflame_page: *mut u8,
     log_max_qp_size: u8,
     log_max_rq_sge: u8,
@@ -166,6 +168,7 @@ impl IbvContext for Mlx4Context {
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 pub enum CqArmCmd {
+    #[allow(dead_code)]
     ArmSolicit = 1,
     ArmNext = 2,
 }

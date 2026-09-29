@@ -13,7 +13,7 @@ use crate::transport;
 use alloc::string::String;
 use alloc::vec::Vec;
 use concurrent::thread::sleep;
-use core::fmt::{Write, write};
+use core::fmt::Write;
 use core::net::IpAddr;
 use ibverbs::{Context, ProtectionDomain};
 use log::info;

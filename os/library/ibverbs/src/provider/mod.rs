@@ -3,7 +3,6 @@ use crate::cq::WorkCompletion;
 use crate::device::Device;
 use crate::{ReceiveWorkRequest, SendWorkRequest};
 use alloc::boxed::Box;
-use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -32,12 +31,6 @@ pub fn get_available_devices() -> io::Result<Vec<DeviceHandle>> {
 pub fn open_device(device: &Device) -> io::Result<Box<dyn IbvContext>> {
     let device = mlx4::Mlx4Context::new(device.handle)?;
     Ok(Box::new(device))
-}
-
-/// Return kernel device name
-pub fn get_device_name(_device: &Device) -> Option<&str> {
-    // TODO: don't hardcode device name to mlx4
-    Some("mlx4_todo")
 }
 
 

@@ -2,9 +2,8 @@ use pci_types::Bar;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{PageTableFlags, PhysFrame, Size4KiB};
 
-use crate::memory::PAGE_SIZE;
 use crate::process_manager;
-use x86_64::{PhysAddr, VirtAddr};
+use x86_64::PhysAddr;
 
 use core::mem;
 
@@ -33,9 +32,6 @@ impl MappedPages {
         self.start_frame
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        unsafe { core::slice::from_raw_parts(self.range.start.start_address().as_ptr(), self.range.size() as usize) }
-    }
     pub fn as_bytes_mut(&mut self) -> &mut [u8] {
         unsafe { core::slice::from_raw_parts_mut(self.range.start.start_address().as_mut_ptr(), self.range.size() as usize) }
     }
@@ -86,24 +82,6 @@ impl MappedPages {
         let ptr = self.check_align_bounds(byte_offset, size_in_bytes, align_of::<T>())?;
         let slc = unsafe { slice::from_raw_parts_mut(ptr as *mut T, length) };
         Ok(slc)
-    }
-
-    pub fn offset_of_address(&self, addr: VirtAddr) -> Option<usize> {
-        let start_vaddr = self.range.start.start_address().as_ptr::<u8>();
-        let end_vaddr = self.range.end.start_address().as_ptr::<u8>();
-        let target_vaddr = addr.as_ptr::<u8>();
-
-        if target_vaddr < start_vaddr || end_vaddr <= target_vaddr {
-            return None;
-        }
-
-        let offset = unsafe { target_vaddr.offset_from(start_vaddr) };
-
-        Some(offset as usize)
-    }
-
-    pub fn non_zero(&self) -> bool {
-        !self.range.is_empty()
     }
 
     pub fn page_range(&self) -> PageRange<Size4KiB> {

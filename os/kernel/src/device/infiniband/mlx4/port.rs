@@ -5,7 +5,7 @@ use core::{
     fmt::{self, Debug},
     mem::size_of,
 };
-use log::{debug, trace, warn};
+use log::{trace, warn};
 use modular_bitfield_msb::{bitfield, prelude::*};
 use rdma::{Mtu, PhysicalPortState, PortAttr, PortState};
 use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
@@ -16,7 +16,10 @@ pub struct Port {
     open: bool,
     capabilities: Option<PortCapabilities>,
     madifc_output: Option<MadPacket>,
+    // Unused until the special QPs are configured, see the TODO in `Mlx4Device::init`.
+    #[allow(dead_code)]
     smi_qpn: u32,
+    #[allow(dead_code)]
     gsi_qpn: u32,
 }
 

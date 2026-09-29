@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 
 /// A (local) memory region that has been registered for use with RDMA.
 pub struct LocalMemoryRegion<'pd, T> {
+    // Only held so the region cannot outlive its protection domain.
+    #[allow(dead_code)]
     pd: &'pd ProtectionDomain<'pd>,
     metadata: MemoryRegionMetadata,
     data: Vec<T>,

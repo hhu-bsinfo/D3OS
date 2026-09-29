@@ -10,11 +10,10 @@ use bitflags::bitflags;
 use core3::io;
 use core3::io::{Error, ErrorKind};
 use tock_registers::interfaces::Writeable;
-use tock_registers::{register_bitfields, register_structs};
 use tock_registers::registers::WriteOnly;
 use zerocopy::{BigEndian, FromBytes, U16, U32, U64};
 use log::error;
-use spin::{Mutex, RwLock};
+use spin::RwLock;
 use mm::{mmap, MmapFlags, PAGE_SIZE};
 use rdma::ib_core::{QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairState, SendFlags, ScatterGatherEntry};
 use rdma::uverbs_uapi::{CreateQpRequest, CreateQpResponse, ModifyQpRequest, UserSlice};
@@ -480,13 +479,6 @@ struct WqeControlSegment {
     vlan_cv_f_ds: U32<BigEndian>,
     flags: U32<BigEndian>,
     flags2: U32<BigEndian>,
-}
-
-impl WqeControlSegment {
-    /// Size of the WQE in bytes
-    fn size(&self) -> u32 {
-        (self.vlan_cv_f_ds.get() & 0x3f) << 4
-    }
 }
 
 #[derive(FromBytes)]

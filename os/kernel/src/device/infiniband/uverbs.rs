@@ -2,7 +2,6 @@ use super::uverbs_cmd::*;
 use crate::device::infiniband::mlx4::{Mlx4Device, device_in_range};
 use crate::process_manager;
 use core::mem::MaybeUninit;
-use core::slice::from_raw_parts_mut;
 use log::error;
 use rdma::DeviceHandle;
 use rdma::uverbs_uapi::{
@@ -47,7 +46,7 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
             copy_to_user(user_out, &dev_attr)
         }
         UverbsCmd::QueryPort => {
-            let mut req: QueryPortRequest = copy_from_user(user_in)?;
+            let req: QueryPortRequest = copy_from_user(user_in)?;
             let port_attr = uverbs_query_port(device_handle, req.port_num).map_err(log_error_and_invalid)?;
             copy_to_user(user_out, &port_attr)
         }
