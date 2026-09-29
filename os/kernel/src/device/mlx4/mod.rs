@@ -1,7 +1,6 @@
-//! A mlx3 driver for a ConnectX-3 card.
+//! A driver for a ConnectX-3 card.
 //!
-//! This is (very) roughly based on [the Nautilus driver](https://github.com/HExSA-Lab/nautilus/blob/master/src/dev/mlx3_ib.c)
-//! and the existing mlx5 driver.
+//! This is based on [Theseus' mlx3 driver](https://github.com/YtvwlD/Theseus/tree/mlx3/kernel/mlx3)
 
 mod cmd;
 mod completion_queue;
