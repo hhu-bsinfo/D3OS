@@ -22,7 +22,7 @@ use bitflags::bitflags;
 use byteorder::BigEndian;
 use log::trace;
 use modular_bitfield_msb::{bitfield, prelude::*};
-use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairType, QueuePairtState, ScatterGatherEntry};
+use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairType, QueuePairState, ScatterGatherEntry};
 use strum_macros::FromRepr;
 use tock_registers::registers::WriteOnly;
 use uuid::Uuid;
@@ -47,7 +47,7 @@ const fn ib_sq_headroom(shift: u32) -> u32 {
 pub(super) struct QueuePair {
     number: u32,
     owner: Uuid,
-    state: QueuePairtState,
+    state: QueuePairState,
     qp_type: QueuePairType,
     port_number: Option<u8>,
     pd: PdHandle,
@@ -124,7 +124,7 @@ impl QueuePair {
         let qp = Self {
             number,
             owner: process.id(),
-            state: QueuePairtState::Reset,
+            state: QueuePairState::Reset,
             qp_type,
             port_number: None,
             pd,
@@ -177,7 +177,7 @@ impl QueuePair {
         // get the right state transition
         let opcode = match (self.state, next_qp_state) {
             // initialize
-            (QueuePairtState::Reset, Some(QueuePairtState::Init)) => {
+            (QueuePairState::Reset, Some(QueuePairState::Init)) => {
                 // The port belongs to INIT2RTR, but applications may already set it here.
                 if attr_mask.contains(QueuePairAttrMask::IBV_QP_PORT) {
                     self.port_number = Some(attr.port_num);
@@ -244,10 +244,10 @@ impl QueuePair {
 
             // or just stay in the current state
             // We can't even set anything here.
-            (QueuePairtState::Reset, None) => return Ok(()),
+            (QueuePairState::Reset, None) => return Ok(()),
 
             // init -> rtr
-            (QueuePairtState::Init, Some(QueuePairtState::ReadyToReceive)) => {
+            (QueuePairState::Init, Some(QueuePairState::ReadyToReceive)) => {
                 // we need the port number for this transition
                 if attr_mask.contains(QueuePairAttrMask::IBV_QP_PORT) {
                     self.port_number = Some(attr.port_num);
@@ -332,7 +332,7 @@ impl QueuePair {
             }
 
             // or just stay in the current state
-            (QueuePairtState::Init, Some(QueuePairtState::Init)) | (QueuePairtState::Init, None) => {
+            (QueuePairState::Init, Some(QueuePairState::Init)) | (QueuePairState::Init, None) => {
                 // can update qkey for UD
                 if self.qp_type == QueuePairType::UD {
                     if attr_mask.contains(QueuePairAttrMask::IBV_QP_QKEY) {
@@ -356,7 +356,7 @@ impl QueuePair {
                 Opcode::Init2InitQp
             }
 
-            (QueuePairtState::ReadyToReceive, Some(QueuePairtState::ReadyToSend)) => {
+            (QueuePairState::ReadyToReceive, Some(QueuePairState::ReadyToSend)) => {
                 // set required fields
                 // TODO: ack_req_freq, next_send_psn, retry_count
                 if self.qp_type == QueuePairType::RC {
@@ -406,38 +406,38 @@ impl QueuePair {
             }
 
             // interestingly, there's no Rtr2RtrQp, but we could emulate it by calling UpdateQp
-            (QueuePairtState::ReadyToReceive, None) => {
+            (QueuePairState::ReadyToReceive, None) => {
                 unimplemented!()
             }
 
             // we can modify values in rts
-            (QueuePairtState::ReadyToSend, Some(QueuePairtState::ReadyToSend)) | (QueuePairtState::ReadyToSend, None) => {
+            (QueuePairState::ReadyToSend, Some(QueuePairState::ReadyToSend)) | (QueuePairState::ReadyToSend, None) => {
                 unimplemented!()
             }
 
             // ignore SQD for now
-            (QueuePairtState::ReadyToSend, Some(QueuePairtState::SQD)) => {
+            (QueuePairState::ReadyToSend, Some(QueuePairState::SQD)) => {
                 unimplemented!()
             }
-            (QueuePairtState::SQD, Some(QueuePairtState::ReadyToSend)) => {
+            (QueuePairState::SQD, Some(QueuePairState::ReadyToSend)) => {
                 unimplemented!()
             }
-            (QueuePairtState::SQD, Some(QueuePairtState::SQD)) | (QueuePairtState::SQD, None) => {
+            (QueuePairState::SQD, Some(QueuePairState::SQD)) | (QueuePairState::SQD, None) => {
                 unimplemented!()
             }
 
             // resetting is always possible
-            (_, Some(QueuePairtState::Reset)) => Opcode::Any2RstQp,
+            (_, Some(QueuePairState::Reset)) => Opcode::Any2RstQp,
 
             // There is a command State2State which allows transitioning through multiple States at
             // once, e.g. from INIT to RTS (through RTR) with one command. The Card then does the
             // intermediates transitions automatically. Support has to be checked in the device
             // capabilities, but ConnectX-3 only support 2 variants: INIT to RTS and Reset to RTS
-            (QueuePairtState::Reset, Some(_)) => return Err("Can not go from RESET to the supplied State"),
-            (QueuePairtState::Init, Some(_)) => return Err("Can not go from INIT to the supplied State"),
-            (QueuePairtState::ReadyToReceive, Some(_)) => return Err("Can not go from RTR to the supplied State"),
-            (QueuePairtState::ReadyToSend, Some(_)) => return Err("Can not go from RTS to the supplied State"),
-            (QueuePairtState::SQD, Some(_)) => return Err("Can not go from SQD to the supplied State"),
+            (QueuePairState::Reset, Some(_)) => return Err("Can not go from RESET to the supplied State"),
+            (QueuePairState::Init, Some(_)) => return Err("Can not go from INIT to the supplied State"),
+            (QueuePairState::ReadyToReceive, Some(_)) => return Err("Can not go from RTR to the supplied State"),
+            (QueuePairState::ReadyToSend, Some(_)) => return Err("Can not go from RTS to the supplied State"),
+            (QueuePairState::SQD, Some(_)) => return Err("Can not go from SQD to the supplied State"),
         };
         // actually execute the command
         let mut input = StateTransitionCommandParameter::new_zeroed();
@@ -455,12 +455,12 @@ impl QueuePair {
     /// Destroy this queue pair.
     pub(super) fn destroy(mut self, cmd: &mut CommandInterface, caps: &Capabilities) -> Result<(), &'static str> {
         trace!("destroying QP {}..", self.number);
-        if self.state != QueuePairtState::Reset {
+        if self.state != QueuePairState::Reset {
             self.modify(
                 cmd,
                 caps,
                 &QueuePairAttr {
-                    qp_state: QueuePairtState::Reset,
+                    qp_state: QueuePairState::Reset,
                     ..Default::default()
                 },
                 QueuePairAttrMask::IBV_QP_STATE,

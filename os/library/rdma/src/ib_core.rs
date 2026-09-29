@@ -157,7 +157,7 @@ pub struct MemoryRegionMetadata {
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
 pub struct QueuePairAttr {
-    pub qp_state: QueuePairtState,
+    pub qp_state: QueuePairState,
     pub path_mtu: Mtu,
     pub qkey: u32,
     pub rq_psn: u32,
@@ -218,7 +218,7 @@ pub struct PortAttr {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
-pub enum QueuePairtState {
+pub enum QueuePairState {
     #[default]
     Reset,
     Init,

@@ -2,7 +2,7 @@ use crate::cq::CompletionQueue;
 use crate::provider::{IbvQueuePair, QpInitAttr};
 use alloc::sync::Arc;
 use core3::io;
-use rdma::{AccessFlags, AddressHandleAttr, Gid, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairType, QueuePairtState, ScatterGatherEntry, SendFlags, SendWorkRequestAddressHandle};
+use rdma::{AccessFlags, AddressHandleAttr, Gid, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairType, QueuePairState, ScatterGatherEntry, SendFlags, SendWorkRequestAddressHandle};
 
 use crate::context::Context;
 use crate::pd::ProtectionDomain;
@@ -554,7 +554,7 @@ impl<'res> PreparedQueuePair<'res> {
     pub fn handshake(mut self, remote: QueuePairEndpoint) -> io::Result<QueuePair> {
         // init and associate with port
         let mut attr = QueuePairAttr {
-            qp_state: QueuePairtState::Init,
+            qp_state: QueuePairState::Init,
             pkey_index: 0,
             port_num: PORT_NUM,
             ..Default::default()
@@ -570,7 +570,7 @@ impl<'res> PreparedQueuePair<'res> {
 
         // set ready to receive
         let mut attr = QueuePairAttr {
-            qp_state: QueuePairtState::ReadyToReceive,
+            qp_state: QueuePairState::ReadyToReceive,
             // TODO: this is only valid for RC and UC
             dest_qp_num: remote.num,
             // TODO: this is only valid for RC and UC
@@ -612,7 +612,7 @@ impl<'res> PreparedQueuePair<'res> {
 
         // set ready to send
         let mut attr = QueuePairAttr {
-            qp_state: QueuePairtState::ReadyToSend,
+            qp_state: QueuePairState::ReadyToSend,
             sq_psn: 0,
             ..Default::default()
         };

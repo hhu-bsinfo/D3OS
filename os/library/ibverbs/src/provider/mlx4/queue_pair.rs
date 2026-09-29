@@ -16,7 +16,7 @@ use zerocopy::{BigEndian, FromBytes, U16, U32, U64};
 use log::error;
 use spin::{Mutex, RwLock};
 use mm::{mmap, MmapFlags, PAGE_SIZE};
-use rdma::ib_core::{QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairtState, SendFlags, ScatterGatherEntry};
+use rdma::ib_core::{QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairState, SendFlags, ScatterGatherEntry};
 use rdma::uverbs_uapi::{CreateQpRequest, CreateQpResponse, ModifyQpRequest, UserSlice};
 use rdma::uverbs_uapi::UverbsCmd::{CreateQp, DestroyQp, ModifyQp};
 use strum_macros::FromRepr;
@@ -31,7 +31,7 @@ pub(crate) struct QueuePair {
     context: Arc<Mlx4Context>,
     qp_type: QueuePairType,
     pub(crate) number: u32,
-    state: RwLock<QueuePairtState>,
+    state: RwLock<QueuePairState>,
     rq: RwLock<WorkQueue>,
     sq: RwLock<WorkQueue>,
     receive_wqe_counter: *mut ReceiveWQECounter,
@@ -47,7 +47,7 @@ impl IbvQueuePair for QueuePair {
     /// This is used by ibv_post_recv.
     unsafe fn post_receive(&mut self, wrs: &[ReceiveWorkRequest]) -> io::Result<()> {
         let state = *self.state.read();
-        if state != QueuePairtState::ReadyToReceive && state != QueuePairtState::ReadyToSend {
+        if state != QueuePairState::ReadyToReceive && state != QueuePairState::ReadyToSend {
             return Err(Error::new(ErrorKind::Other, "queue pair cannot receive in this state"));
         }
         let mut rq = self.rq.write();
@@ -108,7 +108,7 @@ impl IbvQueuePair for QueuePair {
         // means that in all cases, the actual data of the incoming message will start at an offset
         // of 40 bytes into the buffer(s) in the scatter list.
 
-        if *self.state.read() != QueuePairtState::ReadyToSend {
+        if *self.state.read() != QueuePairState::ReadyToSend {
             return Err(Error::new(ErrorKind::Other, "queue pair cannot send in this state"));
         }
 
@@ -316,7 +316,7 @@ impl QueuePair {
             context,
             qp_type: attr.qp_type,
             number: resp.qp_num,
-            state: RwLock::new(QueuePairtState::Reset),
+            state: RwLock::new(QueuePairState::Reset),
             rq: RwLock::new(rq),
             sq: RwLock::new(sq),
             receive_wqe_counter: receive_wqe_counter_ptr,
