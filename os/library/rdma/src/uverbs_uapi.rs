@@ -110,9 +110,9 @@ pub struct DeallocPdRequest {
 #[derive(Copy, Clone)]
 pub struct CreateMrRequest {
     pub pd: PdHandle,
-    pub ibv_access_flags: AccessFlags,
-    pub data_ptr: *mut u8,
-    pub len: usize,
+    pub access_flags: AccessFlags,
+    pub data_ptr: u64,
+    pub len: u64,
 }
 
 #[repr(C)]

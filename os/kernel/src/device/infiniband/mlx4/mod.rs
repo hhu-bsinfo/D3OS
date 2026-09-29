@@ -53,6 +53,7 @@ use core::sync::atomic::Ordering::Relaxed;
 use uuid::Uuid;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::{Page, PageSize, PageTableFlags, PhysFrame, Size4KiB};
+use rdma::uverbs_uapi::UserSlice;
 
 /// Vendor ID for Mellanox
 pub const MLX_VEND: u16 = 0x15b3;
@@ -293,6 +294,7 @@ impl Mlx4Device {
         let context = Context {
             device_handle: self.handle,
             uar_page: self.uar_list.pop().ok_or("No UAR page available")?,
+            owner: process_manager().read().current_process().id(),
         };
         Ok(self.contexts.push_mut(context))
     }
@@ -367,12 +369,23 @@ impl Mlx4Device {
         // Cheap enough to do on every query, and this is the call that notices a port dropping
         // back to `Initializing` — the two belong in the same log.
         self.check_internal_error();
-        let port: Option<&mut Port> = self.ports.get_mut(port_num as usize - 1);
+        let port: Option<&mut Port> = port_num.checked_sub(1)
+            .and_then(|i| self.ports.get_mut(i as usize));
         if let Some(port) = port {
             port.query(&mut self.cmd)
         } else {
             Err("port does not exist")
         }
+    }
+
+    fn validate_uar_index(&self, uar_index: u32, process: &Process) -> Result<(), &'static str> {
+        match self.contexts.iter().find(|ctx| ctx.uar_page.index == uar_index as usize ) {
+            None => Err("No context with corresponding UAR index found"),
+            Some(ctx) if ctx.owner == process.id() => Ok(()),
+            _ => Err("Context corresponding to UAR index is owned by other process")
+        }
+
+
     }
 
     fn validate_pd(&self, pd: &PdHandle, process: &Process) -> Result<(), &'static str> {
@@ -441,6 +454,7 @@ impl Mlx4Device {
         uar_index: u32, log_sq_bb_count: u8, log_sq_stride: u8, log_rq_wqe_count: u8, log_rq_stride: u8,
     ) -> Result<u32, &'static str> {
         let process = process_manager().read().current_process();
+        self.validate_uar_index(uar_index, &process)?;
         self.validate_pd(&pd, &process)?;
         let send_cq = self.find_cq(send_cq_number, &process).ok_or("send completion queue not found")?;
         let receive_cq = self.find_cq(receive_cq_number, &process).ok_or("receive completion queue not found")?;
@@ -494,7 +508,7 @@ impl Mlx4Device {
     /// Create a memory region and return its index, physical address, lkey and rkey.
     ///
     /// This is used by ibv_reg_mr.
-    pub fn create_mr<T>(&mut self, pd: PdHandle, data: &mut [T], access: AccessFlags) -> Result<MemoryRegionMetadata, &'static str> {
+    pub fn create_mr(&mut self, pd: PdHandle, data: UserSlice, access: AccessFlags) -> Result<MemoryRegionMetadata, &'static str> {
         let process = process_manager().read().current_process();
         self.validate_pd(&pd, &process)?;
         self.icm_tables
@@ -601,6 +615,7 @@ impl Offsets {
 pub struct Context {
     device_handle: usize,
     pub uar_page: UarPage,
+    owner: Uuid,
 }
 
 pub struct UarPage {

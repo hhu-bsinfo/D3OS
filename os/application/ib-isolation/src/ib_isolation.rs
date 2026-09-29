@@ -291,9 +291,9 @@ fn run_attacker() {
         let mut buffer = vec![0u8; 4096];
         let req = CreateMrRequest {
             pd,
-            ibv_access_flags: AccessFlags::LOCAL_WRITE,
-            data_ptr: buffer.as_mut_ptr(),
-            len: buffer.len(),
+            access_flags: AccessFlags::LOCAL_WRITE,
+            data_ptr: buffer.as_mut_ptr() as u64,
+            len: buffer.len() as u64,
         };
         let mut resp = MaybeUninit::<CreateMrResponse>::uninit();
         outcomes[1] = attempt(

@@ -52,10 +52,8 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
             copy_to_user(user_out, &port_attr)
         }
         UverbsCmd::RegMr => {
-            let mut req: CreateMrRequest = copy_from_user(user_in)?;
-            // todo: use a custom type like UserSlice instead of slice
-            let user_slice = unsafe { from_raw_parts_mut(req.data_ptr, req.len) };
-            let resp = uverbs_register_mem_region(device_handle, req.pd, req.ibv_access_flags, user_slice).map_err(log_error_and_invalid)?;
+            let req: CreateMrRequest = copy_from_user(user_in)?;
+            let resp = uverbs_register_mem_region(device_handle, &req).map_err(log_error_and_invalid)?;
             copy_to_user(user_out, &resp)
         }
         UverbsCmd::CreateCq => {

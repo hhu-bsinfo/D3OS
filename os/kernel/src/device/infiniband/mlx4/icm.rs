@@ -27,6 +27,7 @@ use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame, Size4KiB};
 use x86_64::{PhysAddr, VirtAddr};
 use zerocopy::AsBytes;
+use rdma::uverbs_uapi::UserSlice;
 
 pub(super) const ICM_PAGE_SHIFT: u8 = 12;
 const TABLE_CHUNK_SIZE: usize = 1 << 18;
@@ -420,16 +421,23 @@ impl MrTable {
     /// Allocate an entry in the Data Memory Protection Table and return its index, physical address, lkey and rkey.
     ///
     /// This is used by ibv_reg_mr.
-    pub(super) fn alloc_dmpt<T>(
-        &mut self, cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, owner: &Process, pd: PdHandle, data: &mut [T],
-        queue_pair: Option<&QueuePair>, access: AccessFlags,
+    pub(super) fn alloc_dmpt(
+        &mut self, cmd: &mut CommandInterface,
+        caps: &Capabilities,
+        offsets: &mut Offsets,
+        owner: &Process,
+        pd: PdHandle,
+        data: UserSlice,
+        queue_pair: Option<&QueuePair>,
+        access: AccessFlags,
     ) -> Result<MemoryRegionMetadata, &'static str> {
         if data.is_empty() {
             return Err("MR must not be empty");
         }
-        let size = data.len() * size_of::<T>();
-        let addr = VirtAddr::from_ptr(data.as_ptr());
-        let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size as u64 - 1) + 1);
+        let size = data.size as u64;
+        let addr = VirtAddr::new(data.address);
+        process_manager().read().current_process().virtual_address_space.access_ok(addr, size as usize);
+        let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size - 1) + 1);
         debug!("Create dMTP for addr: 0x{:016x}, size: 0x{:x}", addr, size);
 
         // TODO: check if icm has sufficient space available for the new dmpt entry
@@ -448,7 +456,7 @@ impl MrTable {
         // The offset in the first mtt page (fbo) is taken from the mtt_fbo field if fbo_en=1.
         // When fbo_en=0, fbo is calculated as: start_addr & (2^(entity_size-1))
         dmpt.set_start(addr.as_u64());
-        dmpt.set_length(size.try_into().unwrap());
+        dmpt.set_length(size);
         dmpt.set_entity_size(pages.start.size().ilog2());
         dmpt.set_mtt_addr(mtt);
         dmpt.set_mtt_size(pages.len() as u32);

@@ -43,6 +43,7 @@ impl CompletionQueue {
     pub(super) fn new(
         dev: &mut Mlx4Device, process: Arc<Process>, num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64, uar_idx: u32,
     ) -> Result<Self, &'static str> {
+        dev.validate_uar_index(uar_idx, &process)?;
         if !process.virtual_address_space.access_ok(VirtAddr::from_ptr(doorbell_ptr), size_of::<u64>()) {
             return Err("User has no access to Doorbell");
         }

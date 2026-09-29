@@ -1,10 +1,7 @@
 use crate::device::infiniband::mlx4::{Mlx4Device, device_handle_to_idx, get_dev_list};
 use crate::process_manager;
 use alloc::vec::Vec;
-use rdma::uverbs_uapi::{
-    AllocPdResponse, CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, CreateQpResponse, DeallocPdRequest, ModifyQpRequest,
-    OpenDeviceResponse,
-};
+use rdma::uverbs_uapi::{AllocPdResponse, CreateCqRequest, CreateCqResponse, CreateMrRequest, CreateMrResponse, CreateQpRequest, CreateQpResponse, DeallocPdRequest, ModifyQpRequest, OpenDeviceResponse, UserSlice};
 use rdma::{AccessFlags, DeviceAttr, DeviceHandle, PdHandle, PortAttr};
 
 const DEVICE_NOT_FOUND: &'static str = "Device not found";
@@ -42,13 +39,13 @@ pub fn uverbs_query_port(device_handle: usize, port_num: u8) -> Result<PortAttr,
 }
 
 pub fn uverbs_register_mem_region(
-    device_handle: usize, pd: PdHandle, access_flags: AccessFlags, user_data_ref: &mut [u8],
+    device_handle: usize, req: &CreateMrRequest,
 ) -> Result<CreateMrResponse, &'static str> {
     get_dev_list()
         .lock()
         .get_mut(device_handle_to_idx(device_handle))
         .ok_or(DEVICE_NOT_FOUND)?
-        .create_mr(pd, user_data_ref, access_flags)
+        .create_mr(req.pd, UserSlice::new(req.data_ptr, req.len as usize), req.access_flags)
         .map(|metadata| CreateMrResponse { metadata })
         .map_err(|_| "failed to create memory region")
 }

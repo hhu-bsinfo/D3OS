@@ -146,9 +146,9 @@ impl IbvContext for Mlx4Context {
 
         let req = CreateMrRequest {
             pd,
-            ibv_access_flags: access,
-            data_ptr: ptr,
-            len,
+            access_flags: access,
+            data_ptr: ptr as u64,
+            len: len as u64,
         };
 
         let mut resp = MaybeUninit::<CreateMrResponse>::uninit();
