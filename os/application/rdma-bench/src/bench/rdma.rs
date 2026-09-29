@@ -1,13 +1,7 @@
-//! One-sided RDMA WRITE/READ bandwidth benchmark. Unlike `bandwidth` (which is SEND/RECV and thus
-//! symmetric), only the initiator's HCA ever produces a work completion here — the responder does
-//! nothing but register a buffer, hand its address and rkey to the initiator, and wait. So "client"
-//! and "server" no longer line up with "the side that measures something": the initiator is always
-//! the client (the peer that opened the TCP connection and asked for this mode), and it is the only
-//! side that reports numbers.
+//! One-sided RDMA WRITE/READ bandwidth benchmark. The client initiates and reports; the server
+//! only registers a buffer and sends its address and rkey.
 //!
-//! Windowing works like `bandwidth`: `tx_depth`-many operations are kept outstanding at once, each
-//! targeting its own `msg_size`-sized slot of a `window * msg_size` buffer on both ends, so a
-//! completion for slot N frees it up to be reused before the whole `iterations` count is done.
+//! Like `bandwidth`, `tx_depth` operations are kept outstanding, each on its own buffer slot.
 
 use crate::bench::{self, Role};
 use crate::comm::{Conn, RemoteBufferInfo};

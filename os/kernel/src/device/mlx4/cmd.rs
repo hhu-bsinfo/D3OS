@@ -338,11 +338,8 @@ impl CommandInterface {
 
     /// Spin until the card hands the command register back, reporting if that takes long.
     ///
-    /// The firmware serves the subnet manager's MADs as well as our commands, and the subnet
-    /// manager gives up on a MAD after a few hundred milliseconds and then drops the port from
-    /// the subnet. A command that holds the card for that long is therefore not just slow, it is
-    /// enough to take the port down. There is still no timeout here, so a command that never
-    /// completes hangs the kernel silently; at least it now says so first.
+    /// A command that blocks the firmware for too long delays its MAD processing, and the subnet
+    /// manager may drop the port. There is no timeout, so a command that never completes hangs.
     fn wait_while_pending(&mut self, opcode: Opcode, what: &str) {
         /// How long the card may take before it is reported.
         const SLOW_COMMAND_US: u64 = 10_000;

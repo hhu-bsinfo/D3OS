@@ -421,10 +421,8 @@ impl MrTable {
         // TODO: check if icm has sufficient space available for the new dmpt entry
         let mtt = self.alloc_mtt_for_pages(caps, pages)?;
         let mut dmpt = DmptEntry::new();
-        // The allocator hands out the table index directly. Passing it through `set_key` would
-        // rotate it (`key_to_hw_index`) into a small number — 256 became 1, 512 became 2 — and
-        // every one of those lands inside the range the firmware reserved for itself, silently
-        // overwriting the card's own memory regions one per registration.
+        // Set the index directly, not via `set_key`: rotating it would land in the
+        // firmware-reserved range.
         dmpt.set_index(offsets.alloc_dmpt().try_into().unwrap());
         dmpt.set_rae(true);
         dmpt.set_pd(pd.0);

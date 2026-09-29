@@ -126,10 +126,7 @@ pub struct CreateMrResponse {
 pub struct CreateCqRequest {
     pub cq_entries: u32,
 
-    // mlx4 specific, under linux this is an opaque driver_data[]: the userspace-owned, -mmap'd
-    // CQE ring and its consumer-index/arm-index doorbell record. The kernel only builds an MTT
-    // over `buffer` and runs the CMD-interface transition; polling and CQE parsing happen
-    // entirely in userspace against these from here on.
+    // mlx4 specific (Linux: driver_data[]): the userspace-owned CQE ring and its doorbell record.
     pub buffer: *const u8,
     /// CQ doorbell records are aligned on an 8 B boundary per the PRM.
     pub doorbell_ptr: *const u64,

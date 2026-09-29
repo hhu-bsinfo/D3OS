@@ -1,9 +1,5 @@
-//! Userspace-owned queue pair: creation still goes through the kernel (it needs to build an MTT
-//! for the WQE buffer, map a UAR/BlueFlame page pair, and run the CMD-interface state
-//! transitions), but posting and WQE bookkeeping happen entirely against the mapped buffer from
-//! here on, without a syscall per post. This mirrors the kernel's former
-//! `os/kernel/src/device/mlx4/qp` `post_send`/`post_receive`/`check_wqe_index`/etc,
-//! which were deleted from the kernel once this moved here.
+//! Userspace-owned queue pair. Creation and state transitions go through the kernel; posting
+//! works directly on the mapped buffer, without syscalls.
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -286,11 +282,8 @@ impl QueuePair {
             sq.buffer = Some(sq_buf);
         }
 
-        // Before passing the QP to the HW, make sure the ownership bits of the send queue are
-        // set and the SQ headroom is stamped so the hardware doesn't start processing stale work
-        // requests. This used to run in the kernel right before the RST->INIT transition; now
-        // that the buffer is userspace-owned, it has to happen here instead, before `CreateQp`
-        // is even issued (the kernel does the RST->INIT transition as part of that call).
+        // Set the SQ ownership bits and stamp the headroom before `CreateQp` hands the buffer
+        // to the HW, so it doesn't process stale WQEs.
         for i in 0..sq.wqe_cnt {
             let ctrl: &mut WqeControlSegment = sq.get_in_buffer(sq.wqe_byte_offset(i)).ok_or(Error::new(ErrorKind::Other, "invalid send queue offset"))?;
             ctrl.owner_opcode = (1u32 << 31).into();
@@ -738,16 +731,8 @@ impl WorkQueue {
 
     /// Check the work queue element index the card reports against the one we expect next.
     ///
-    /// The reference driver takes the card's index as the truth
-    /// (`wq->tail += (u16)(wqe_ctr - (u16)wq->tail)` in `mlx4_ib_poll_one`), while this driver
-    /// advances the tail by the chain size it recorded when the work request was posted. Those
-    /// two agree only as long as every completion is seen exactly once. If they drift apart the
-    /// queue reports an overflow while the card still has room — and on the receive side that
-    /// means we stop posting receives and the peer starts seeing RNR NAKs.
-    ///
-    /// Only the first disagreement per queue is logged: by then everything after it is suspect,
-    /// and logging goes out over the serial console, which is slow enough to cause the very
-    /// stalls being investigated.
+    /// Unlike Linux, the tail advances by the recorded chain size rather than the card's index,
+    /// so a mismatch means lost or duplicate completions. Only the first one per queue is logged.
     pub(super) fn check_wqe_index(&mut self, qp_num: u32, wqe_index: u32) {
         if self.divergence_reported {
             return;

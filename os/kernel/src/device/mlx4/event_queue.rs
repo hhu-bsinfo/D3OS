@@ -266,13 +266,8 @@ impl EventQueue {
 
 /// Report an event the card has posted.
 ///
-/// These are the only notice the card gives that something has gone wrong on its side: a queue
-/// pair or completion queue moved to the error state, a port that left the active state, or the
-/// card itself failing. They used to be dropped on the floor, which is why failures like the
-/// port falling back to `Initializing` showed up with nothing at all in the log to explain them.
-///
-/// Everything except completions is rare, so it is logged unconditionally; a completion event
-/// arrives per armed completion queue and stays at `trace`.
+/// Events are the card's only notice of errors (QP/CQ errors, port state changes, catastrophic
+/// failures), so they are always logged; completion events are frequent and stay at `trace`.
 fn report_event(eqe: &EventQueueEntry) {
     let raw_type = eqe.event_type();
     let Some(event_type) = EventType::from_repr(raw_type.into()) else {
@@ -438,9 +433,7 @@ impl EventQueueEntry {
 
     /// The syndrome of a completion queue error.
     ///
-    /// `struct mlx4_eqe.event.cq_err` is `{ u32 cqn; u32 reserved1; u8 reserved2[3]; u8
-    /// syndrome; }`: the syndrome byte is the low byte of the third word, not the second (which
-    /// is always-zero padding and was being misread as the syndrome before).
+    /// Low byte of the third word, see `struct mlx4_eqe.event.cq_err`.
     fn cq_error_syndrome(&self) -> u32 {
         self.event_words()[2] & 0xff
     }

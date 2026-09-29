@@ -1,12 +1,7 @@
-//! The client side: runs the benchmark matrix the CLI asked for — one run per (mode, size) pair.
-//! With neither `--mode` nor `--size` given that matrix is the complete suite (every mode over a
-//! power-of-two size sweep); with both given it collapses to the single run the client has always
-//! done.
+//! The client side: one run per (mode, size) pair. Without `--mode` and `--size` it runs every
+//! mode over a power-of-two size sweep.
 //!
-//! Every pair is an ordinary run on the wire: a fresh TCP connection, a fresh completion queue
-//! and a fresh queue pair, using the unchanged handshake protocol. That keeps the server (and a
-//! native `rust-rdma-bench` peer) oblivious to suites — it only has to be serving in a loop, i.e.
-//! started with `--listen`.
+//! Each run uses a fresh TCP connection, CQ and QP, so the server only needs `--listen`.
 
 use alloc::string::String;
 use crate::bench::{self, Role};

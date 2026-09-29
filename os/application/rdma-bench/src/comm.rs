@@ -1,7 +1,4 @@
-//! Out-of-band TCP handshake, newline-delimited-JSON-encoded (mirrors `rust-rdma-bench`'s
-//! `comm.rs` on the wire, so a D3OS peer and a native `rust-rdma-bench` peer can talk to each
-//! other) — see `rdma/mlx4/src/handshake.rs` for the unrelated bincode-based kernel<->userspace
-//! handshake, which this does not touch.
+//! Out-of-band TCP handshake as newline-delimited JSON, wire-compatible with `rust-rdma-bench`.
 
 use crate::cli::{Mode, Transport};
 use crate::error::{other, Result};

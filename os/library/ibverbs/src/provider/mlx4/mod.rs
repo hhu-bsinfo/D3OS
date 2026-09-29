@@ -21,14 +21,8 @@ use crate::provider::{IbvCompletionQueue, IbvContext, IbvQueuePair, QpInitAttr};
 use queue_pair::QueuePair;
 use rdma::{DeviceHandle, Gid, MemoryRegionMetadata, PdHandle};
 
-/// A per-device registry of live queue pairs, shared between whichever `ibv_qp`s and `ibv_cq`s
-/// were created against this device.
-///
-/// Posting (`post_send`/`post_recv`) reaches a QP directly through the `ibv_qp` that owns it,
-/// but resolving a completion (`CompletionQueue::poll`) only has the CQE's `qp_number` to go on
-/// and needs to reach *some other* QP's `WorkQueue` state — this registry is what makes that
-/// possible, mirroring the "find by number in a `Vec`" lookup that used to live in the kernel's
-/// `ConnectX3Nic::qps` before posting and polling moved out here.
+/// Per-device context holding a registry of live queue pairs, so `CompletionQueue::poll` can
+/// resolve a CQE's `qp_number` to that queue pair's work queue state.
 pub struct Mlx4Context {
     device_handle: DeviceHandle,
     /// Retrieved from QUERY_DEV_CAP -> log_max_qp_sz

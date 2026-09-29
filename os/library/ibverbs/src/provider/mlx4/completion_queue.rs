@@ -1,10 +1,5 @@
-//! Userspace-owned completion queue: creation still goes through the kernel (it needs to build
-//! an MTT for the CQE buffer and run the `Sw2HwCq` CMD-interface transition), but polling and
-//! CQE parsing happen entirely against the mapped buffer from here on, without a syscall per
-//! poll. Arming goes through the UAR page the kernel maps into this process at creation, so it
-//! needs no syscall either. This mirrors the kernel's former
-//! `os/kernel/src/device/mlx4/cq` `poll`/`poll_one`/`get_next_cqe_sw`/`arm`,
-//! which were deleted from the kernel once this moved here.
+//! Userspace-owned completion queue. Creation goes through the kernel (MTT and `Sw2HwCq`);
+//! polling and arming work directly on the mapped buffer and UAR page, without syscalls.
 
 use alloc::sync::Arc;
 use core::mem::MaybeUninit;
@@ -48,10 +43,8 @@ impl IbvCompletionQueue for CompletionQueue {
     }
 
 
-    /// Poll this completion queue and return the number of new completions.
-    ///
-    /// This is used by ibv_poll_cq. `device` is the shared registry of live queue pairs used to
-    /// resolve a CQE's `wr_id` and advance the queue pair's tail.
+    /// Poll this completion queue, saving new completions in the supplied slice
+    /// and returns the count of completions added.
     fn poll(&self, wc: &mut [WorkCompletion]) -> io::Result<usize> {
         let mut consumer_index = self.consumer_index.lock();
 
@@ -149,11 +142,7 @@ impl CompletionQueue {
             match self.context.resolve_completion(cqe.qp_number(), cqe.wqe_index().into(), cqe.is_send()) {
                 Some(wr_id) => wc.wr_id = wr_id,
                 None => {
-                    // Either the QP number isn't in the registry, or the wr_id/meta lookup for
-                    // this WQE index failed. Either way we cannot say which work request this
-                    // completion belongs to, so report it as failed rather than silently handing
-                    // back a default (wr_id = 0) success completion — that would look like a
-                    // completion for whatever request happens to occupy slot 0.
+                    // Unknown QP or WQE index: report an error rather than a bogus success.
                     error!(
                         "completion for QP {} WQE index {} could not be resolved to a work request",
                         cqe.qp_number(),
@@ -256,13 +245,8 @@ impl CompletionQueue {
 
     /// Get the CQE at `index` if it is owned by software
     ///
-    /// The HCA writes a CQE back-to-front and sets the ownership bit — the top bit of the last
-    /// byte of the CQE — last, so it acts as the publication flag for the rest of the entry. We
-    /// therefore read that one byte alone (volatile: the compiler must not reorder or elide this
-    /// load, since nothing else touches this memory from its point of view), check ownership, and
-    /// only once we've established the CQE is ours do we read the remaining body — again
-    /// volatile, and after an `Acquire` fence so the body read cannot be speculated/reordered
-    /// ahead of the ownership check on either the compiler or the CPU side.
+    /// The ownership bit (top bit of the last byte) is written last by the HCA, so it is read
+    /// first; the rest of the CQE is read only afterwards, behind an `Acquire` fence.
     fn get_cqe_sw(&self, index: u32) -> Option<CompletionQueueEntry> {
         let base = unsafe { self.buffer.as_ptr().add((index & (self.num_entries - 1)) as usize * CQE_SIZE) };
         let mut cqe = CompletionQueueEntry::new();

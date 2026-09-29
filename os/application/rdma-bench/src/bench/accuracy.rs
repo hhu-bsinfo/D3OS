@@ -1,13 +1,5 @@
-//! Windowed one-way streaming with a deterministic per-message payload/header used to detect
-//! loss, duplication, corruption and truncation. Ported from
-//! `rust-rdma-bench/src/bench/accuracy.rs`; on RC this should always land at 100% (a self-check
-//! of the harness), while UC is where loss/duplication/corruption actually become nonzero.
-//!
-//! The one D3OS-specific addition versus the Linux port: after polling a receive completion, the
-//! CPU must flush the cache line(s) covering the received bytes before reading them for
-//! verification, or it may observe stale cache contents instead of what the NIC DMA'd in (see
-//! `rdma/mlx4/src/rdma_read.rs` for the precedent). Bandwidth/latency don't inspect payload
-//! content, so they don't need this.
+//! Windowed one-way streaming with deterministic payloads to detect loss, duplication,
+//! corruption and truncation. Ported from `rust-rdma-bench`.
 
 use crate::bench::{self, Role, IDLE_TIMEOUT_US};
 use crate::comm::{AccuracyReport, Conn};

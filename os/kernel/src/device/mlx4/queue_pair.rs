@@ -177,11 +177,7 @@ impl QueuePair {
         let opcode = match (self.state, next_qp_state) {
             // initialize
             (QueuePairtState::Reset, Some(QueuePairtState::Init)) => {
-                // save the port number for later on
-                // In earlier versions of the API, the port number was required
-                // to be set as part of this transition. This is no longer the
-                // case as it moved into INIT2RTR, but applications may set it
-                // here, so save it for later.
+                // The port belongs to INIT2RTR, but applications may already set it here.
                 if attr_mask.contains(QueuePairAttrMask::IBV_QP_PORT) {
                     self.port_number = Some(attr.port_num);
                 }
@@ -240,10 +236,7 @@ impl QueuePair {
                 context.set_mtt_base_addr(self.mtt.ok_or("queue pair has no MTT")?);
                 context.set_db_record_addr(self.doorbell_address.as_u64().try_into().unwrap());
 
-                // The send queue's ownership bits and headroom stamping must be initialized
-                // before the HW takes ownership of the buffer; since userspace now owns the
-                // buffer, that init happens in `mlx4::QueuePair::create` before this transition
-                // is requested.
+                // Userspace initializes the SQ ownership bits and headroom before requesting this.
 
                 Opcode::Rst2InitQp
             }

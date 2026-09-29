@@ -306,13 +306,8 @@ impl Mlx4Device {
 
     /// Read the card's internal error buffer and report it if it is not empty.
     ///
-    /// The card signals a fatal internal error by writing it into a buffer in one of its BARs
-    /// and then going quiet. It keeps the link up, but stops serving MADs, so the subnet
-    /// manager's `SubnGet(NodeInfo)` times out, it drops the port from the subnet, and the port
-    /// is left in the `Initializing` state with nothing in our own log to explain it. The
-    /// reference driver maps this buffer and polls it every five seconds
-    /// (`mlx4_start_catas_poll`); this is the same check, driven from the paths that run
-    /// regularly here.
+    /// After a fatal internal error the card stops serving MADs and the port falls back to
+    /// `Initializing`. Equivalent to Linux's `mlx4_start_catas_poll`.
     ///
     /// Returns whether an error was found.
     pub fn check_internal_error(&mut self) -> bool {
@@ -407,13 +402,7 @@ impl Mlx4Device {
         Ok(())
     }
 
-    /// Create a completion queue and return its number, plus the UAR doorbell page mapped into
-    /// the calling process.
-    ///
-    /// This is used by ibv_create_cq. `buffer` and `doorbell_ptr` are userspace-owned and
-    /// -mapped; polling, CQE parsing and arming happen entirely in userspace against them (the
-    /// latter through the returned UAR page), so from here on the kernel only needs the buffer
-    /// for building its MTT.
+    /// Create a completion queue and return its number
     pub fn create_cq(&mut self, min_num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64, uar_index: u32) -> Result<u32, &'static str> {
         // TODO min_num_entries should be u32
         let process = process_manager().read().current_process();
@@ -441,11 +430,7 @@ impl Mlx4Device {
         self.cqs.iter().find(|cq| cq.number() == number && cq.owner() == process.id())
     }
 
-    /// Create a queue pair and return its number.
-    ///
-    /// This is used by ibv_create_qp.
-    /// Create a queue pair and return its number, plus the UAR and BlueFlame pages mapped into
-    /// the calling process.
+    /// Create a queue pair and return its number
     pub fn create_qp(&mut self,
                      pd: PdHandle,
                      qp_type: QueuePairType,
@@ -641,7 +626,7 @@ impl UarPage {
 
     /// Map a single Doorbell page (used for ringing SQ/CQ doorbells) into `process`'s address space.
     ///
-    /// Shared by QP creation (which also maps a BlueFlame page via [`Self::map_bf`]) and CQ
+    /// Shared by QP creation (which also maps a BlueFlame page via [`Self::map_blueflame_page`]) and CQ
     /// creation (which only needs the UAR page).
     pub fn map_doorbell_page(&self, process: &Process) -> Result<Page, &'static str> {
         let uar_vma = process.virtual_address_space.alloc_vma(
@@ -661,7 +646,7 @@ impl UarPage {
 
     /// Map the BlueFlame page paired with the context into `process`'s address space.
     ///
-    /// Used only by QP creation; CQs only need [`Self::map_uar`].
+    /// Used only by QP creation; CQs only need [`Self::map_doorbell_page`].
     pub fn map_blueflame_page(&self, process: &Process) -> Result<Page, &'static str> {
         let bf_frame = self.blueflame.ok_or("No BlueFlame Page present")?;
         let bf_vma = process.virtual_address_space.alloc_vma(
