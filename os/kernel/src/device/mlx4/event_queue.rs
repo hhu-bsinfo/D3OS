@@ -5,39 +5,36 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use core::{
     mem::size_of,
-    sync::atomic::{compiler_fence, Ordering},
+    sync::atomic::{Ordering, compiler_fence},
 };
 
-use super::{device_handle_to_idx, get_dev_list, utils, DEV_LIST};
 use super::utils::MappedPages;
+use super::{DEV_LIST, device_handle_to_idx, get_dev_list, utils};
+use super::{
+    Offsets,
+    cmd::{CommandInterface, InputParam, Opcode, OutputParam},
+    device::PAGE_SHIFT,
+    fw::{Capabilities, DoorbellPage},
+    icm::{ICM_PAGE_SHIFT, MrTable},
+};
+use crate::interrupt::interrupt_dispatcher::InterruptVector;
+use crate::interrupt::interrupt_handler::InterruptHandler;
+use crate::interrupt_dispatcher;
 use crate::memory::PAGE_SIZE;
 use alloc::vec::Vec;
-use core::ptr::eq;
-use core::sync::atomic::AtomicUsize;
 use bitflags::bitflags;
 use byteorder::BigEndian;
+use core::ptr::eq;
+use core::sync::atomic::AtomicUsize;
 use log::{debug, error, trace, warn};
-use zerocopy::U32;
-use modular_bitfield_msb::{
-    bitfield,
-    specifiers::{B10, B16, B2, B22, B24, B4, B40, B5, B6, B60, B7, B72, B96},
-};
+use modular_bitfield_msb::{bitfield, prelude::*};
 use spin::{Mutex, RwLock};
 use strum_macros::FromRepr;
 use tock_registers::interfaces::Writeable;
 use tock_registers::registers::WriteOnly;
-use x86_64::structures::paging::Page;
 use x86_64::VirtAddr;
-use crate::interrupt::interrupt_dispatcher::InterruptVector;
-use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::interrupt_dispatcher;
-use super::{
-    cmd::{CommandInterface, InputParam, Opcode, OutputParam},
-    device::PAGE_SHIFT,
-    fw::{Capabilities, DoorbellPage},
-    icm::{MrTable, ICM_PAGE_SHIFT},
-    Offsets,
-};
+use x86_64::structures::paging::Page;
+use zerocopy::U32;
 
 const _NUM_ASYNC_EQE: u32 = 0x100;
 const NUM_SPARE_EQE: u32 = 0x80;
@@ -46,14 +43,13 @@ const NUM_SPARE_EQE: u32 = 0x80;
 /// This creates all of the EQs ahead of time,
 /// passes their ownership to the hardware and calls MapEq.
 pub(super) fn init_eqs(
-    cmd: &mut CommandInterface, doorbell_pages: &[DoorbellPage], caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable,
-    clr_int: ClrInt,
+    cmd: &mut CommandInterface, doorbell_pages: &[DoorbellPage], caps: &Capabilities, offsets: &mut Offsets, memory_regions: &mut MrTable, clr_int: ClrInt,
 ) -> Result<Vec<Arc<RwLock<EventQueue>>>, &'static str> {
     const NUM_EQS: usize = 1;
     let mut eqs = Vec::with_capacity(NUM_EQS);
     for i in 0..NUM_EQS {
         // four EQE doorbells per page;
-        let doorbell_page = Page::from_start_address(VirtAddr::from_ptr(&doorbell_pages[i/4] as *const _)).expect("Doorbell not aligned");
+        let doorbell_page = Page::from_start_address(VirtAddr::from_ptr(&doorbell_pages[i / 4] as *const _)).expect("Doorbell not aligned");
         // TODO: use interrupts here
         let eq = EventQueue::new(cmd, caps, offsets, memory_regions, doorbell_page, None)?;
         eqs.push(Arc::new(RwLock::new(eq)));
@@ -83,12 +79,19 @@ pub(super) struct ClrInt {
 
 impl ClrInt {
     pub(super) fn new(regs: MappedPages, offset: u64, inta_pin: u8) -> Self {
-        Self { regs, offset: offset as usize, mask: 1 << inta_pin }
+        Self {
+            regs,
+            offset: offset as usize,
+            mask: 1 << inta_pin,
+        }
     }
 
     fn clear(&self) {
         unsafe {
-            self.regs.page_range().start.start_address()
+            self.regs
+                .page_range()
+                .start
+                .start_address()
                 .as_mut_ptr::<u8>()
                 .add(self.offset)
                 .cast::<u64>()
@@ -142,14 +145,24 @@ impl EventQueue {
         let intr_vector = base_vector.and_then(|_| todo!());
 
         let mut ctx = EventQueueContext::new();
-        ctx.set_state(if base_vector.is_some() { EventQueueState::Armed } else { EventQueueState::Fired } as u8);
+        ctx.set_state(if base_vector.is_some() {
+            EventQueueState::Armed
+        } else {
+            EventQueueState::Fired
+        } as u8);
         ctx.set_log_eq_size(num_entries.ilog2().try_into().unwrap());
         if let Some(base_vector) = base_vector {
             ctx.set_intr(base_vector.try_into().unwrap());
         }
         ctx.set_log_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
         ctx.set_mtt_base_addr(mtt);
-        cmd.execute_command(Opcode::Sw2HwEq, None, InputParam::Mailbox(&ctx.bytes), Some(number.try_into().unwrap()), OutputParam::Empty)?;
+        cmd.execute_command(
+            Opcode::Sw2HwEq,
+            None,
+            InputParam::Mailbox(&ctx.bytes),
+            Some(number.try_into().unwrap()),
+            OutputParam::Empty,
+        )?;
 
         let async_ev_mask = AsyncEventMask::empty();
         let eq = Self {
@@ -202,7 +215,13 @@ impl EventQueue {
         if !self.async_ev_mask.is_empty() {
             self.unmap(cmd)?;
         }
-        cmd.execute_command(Opcode::Hw2SwEq, None, InputParam::Empty, Some(self.number.try_into().unwrap()), OutputParam::Empty)?;
+        cmd.execute_command(
+            Opcode::Hw2SwEq,
+            None,
+            InputParam::Empty,
+            Some(self.number.try_into().unwrap()),
+            OutputParam::Empty,
+        )?;
         // actually free the memory
         self.memory.take().unwrap();
         Ok(())
@@ -214,8 +233,10 @@ impl EventQueue {
     /// If armed, events will generate interrupts.
     fn ring(&self, arm: bool) {
         // There are four EQE doorbell per page
-        let doorbell: &mut DoorbellPage = unsafe { &mut *self.doorbell_page.start_address().as_mut_ptr()};
-        doorbell.eqs[self.number % 4].val.set(((*self.consumer_index.lock() & 0xffffff) | (arm as u32) << 31).to_be());
+        let doorbell: &mut DoorbellPage = unsafe { &mut *self.doorbell_page.start_address().as_mut_ptr() };
+        doorbell.eqs[self.number % 4]
+            .val
+            .set(((*self.consumer_index.lock() & 0xffffff) | (arm as u32) << 31).to_be());
         compiler_fence(Ordering::SeqCst);
     }
 
@@ -280,7 +301,11 @@ fn report_event(eqe: &EventQueueEntry) {
         // The card is telling us it is broken. After this it may keep the link up while no
         // longer answering the subnet manager, so nothing else will report it.
         EventType::InternalError | EventType::FatalWarning => {
-            error!("the card reported {event_type:?} (subtype {:#04x}, {:08x?})", eqe.event_subtype(), eqe.event_words());
+            error!(
+                "the card reported {event_type:?} (subtype {:#04x}, {:08x?})",
+                eqe.event_subtype(),
+                eqe.event_words()
+            );
         }
         EventType::CqError => {
             error!("completion queue {} is in error, syndrome {:#04x}", eqe.cq_number(), eqe.cq_error_syndrome());

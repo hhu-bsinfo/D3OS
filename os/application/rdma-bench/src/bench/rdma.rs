@@ -18,16 +18,8 @@ pub enum Direction {
 }
 
 pub fn run(
-    direction: Direction,
-    pd: &ProtectionDomain,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    role: Role,
-    msg_size: usize,
-    iterations: usize,
-    tx_depth: usize,
-    _rx_depth: usize,
+    direction: Direction, pd: &ProtectionDomain, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, role: Role, msg_size: usize, iterations: usize,
+    tx_depth: usize, _rx_depth: usize,
 ) -> Result<Report> {
     // Sized from `tx_depth` (the initiator's outstanding-WRITE/READ depth), not `rx_depth`: the
     // responder never posts a receive for a one-sided op, so it has no receive queue to size.
@@ -53,44 +45,22 @@ fn respond(mr: &mut LocalMemoryRegion<u8>, conn: &Conn) -> Result<Report> {
 }
 
 fn post(
-    direction: Direction,
-    qp: &mut QueuePair,
-    local_mr: &mut LocalMemoryRegion<u8>,
-    remote_slice: &mut RemoteMemorySlice,
-    slot: usize,
-    msg_size: usize,
+    direction: Direction, qp: &mut QueuePair, local_mr: &mut LocalMemoryRegion<u8>, remote_slice: &mut RemoteMemorySlice, slot: usize, msg_size: usize,
     wr_id: u64,
 ) -> Result<()> {
     let start = slot * msg_size;
-    let sges = [local_mr.slice(start..start+msg_size)];
-    let remote_slice = remote_slice.slice(start..start+msg_size);
+    let sges = [local_mr.slice(start..start + msg_size)];
+    let remote_slice = remote_slice.slice(start..start + msg_size);
     let wr = match direction {
-        Direction::Write => SendWorkRequest::rdma_write(
-            wr_id,
-            &sges,
-            remote_slice,
-            SendFlags::SIGNALED
-        ).expect("failed to create work request"),
-        Direction::Read => SendWorkRequest::rdma_read(
-            wr_id,
-            &sges,
-            remote_slice,
-            SendFlags::SIGNALED
-        ).expect("failed to create work request"),
+        Direction::Write => SendWorkRequest::rdma_write(wr_id, &sges, remote_slice, SendFlags::SIGNALED).expect("failed to create work request"),
+        Direction::Read => SendWorkRequest::rdma_read(wr_id, &sges, remote_slice, SendFlags::SIGNALED).expect("failed to create work request"),
     };
     unsafe { qp.post_send([wr]) }
 }
 
 fn initiate(
-    direction: Direction,
-    local_mr: &mut LocalMemoryRegion<u8>,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    remote_mr: &mut RemoteMemorySlice,
-    msg_size: usize,
-    iterations: usize,
-    window: usize,
+    direction: Direction, local_mr: &mut LocalMemoryRegion<u8>, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, remote_mr: &mut RemoteMemorySlice,
+    msg_size: usize, iterations: usize, window: usize,
 ) -> Result<Report> {
     conn.sync()?; // "ready"
     let t0 = get_time_in_us();
@@ -122,5 +92,10 @@ fn initiate(
     let elapsed_us = get_time_in_us() - t0;
     conn.sync()?; // "done"
 
-    Ok(Report::Bandwidth(BandwidthStats { msg_size, iterations, tx_depth: window, elapsed_us }))
+    Ok(Report::Bandwidth(BandwidthStats {
+        msg_size,
+        iterations,
+        tx_depth: window,
+        elapsed_us,
+    }))
 }

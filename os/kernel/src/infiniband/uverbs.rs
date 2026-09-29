@@ -1,13 +1,15 @@
 use super::uverbs_cmd::*;
-use crate::device::mlx4::{device_in_range, Mlx4Device};
+use crate::device::mlx4::{Mlx4Device, device_in_range};
 use crate::process_manager;
 use core::mem::MaybeUninit;
 use core::slice::from_raw_parts_mut;
 use log::error;
-use rdma::uverbs_uapi::{CreateCqRequest, CreateMrRequest, CreateQpRequest, ModifyQpRequest, UverbsCmd, AllocPdResponse, DeallocPdRequest, QueryPortRequest, UserSlice};
+use rdma::DeviceHandle;
+use rdma::uverbs_uapi::{
+    AllocPdResponse, CreateCqRequest, CreateMrRequest, CreateQpRequest, DeallocPdRequest, ModifyQpRequest, QueryPortRequest, UserSlice, UverbsCmd,
+};
 use syscall::return_vals::{Errno, SyscallResult};
 use x86_64::VirtAddr;
-use rdma::DeviceHandle;
 
 /// user_in describes the parameters provided by the user
 /// user_out describes a user buffer for return values
@@ -16,7 +18,7 @@ pub fn uverbs_ctl(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user
 
     let requires_device_handle = match cmd {
         UverbsCmd::QueryDevices => false,
-        _ => true
+        _ => true,
     };
 
     if requires_device_handle && !device_in_range(device_handle) {
@@ -91,7 +93,7 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
         UverbsCmd::OpenDevice => {
             let resp = uverbs_open_device(device_handle).map_err(log_error_and_invalid)?;
             copy_to_user(user_out, &resp)
-        },
+        }
         UverbsCmd::AllocPd => {
             let resp: AllocPdResponse = uverbs_alloc_pd(device_handle).map_err(log_error_and_invalid)?;
             copy_to_user(user_out, &resp)
@@ -112,34 +114,45 @@ fn log_error_and_invalid(msg: &str) -> Errno {
 #[inline]
 fn copy_from_user<T: Copy>(user_in: UserSlice) -> Result<T, Errno> {
     let size = size_of::<T>();
-    if user_in.address == 0 || user_in.size < size  {
+    if user_in.address == 0 || user_in.size < size {
         return Err(Errno::EINVAL);
     }
 
     let process = process_manager().read().current_process();
     let mut req = MaybeUninit::<T>::uninit();
-    unsafe { process.virtual_address_space.copy_bytes_from_user(req.as_mut_ptr() as *mut u8, VirtAddr::new(user_in.address), size) }
-        .map_err(|_| {
-            error!("copy_from_user failed: address={:#x}, size={} (requested {})", user_in.address, size, user_in.size);
-            Errno::EFAULT
-        })?;
+    unsafe {
+        process
+            .virtual_address_space
+            .copy_bytes_from_user(req.as_mut_ptr() as *mut u8, VirtAddr::new(user_in.address), size)
+    }
+    .map_err(|_| {
+        error!(
+            "copy_from_user failed: address={:#x}, size={} (requested {})",
+            user_in.address, size, user_in.size
+        );
+        Errno::EFAULT
+    })?;
     Ok(unsafe { req.assume_init() })
 }
 
 #[inline]
 fn copy_to_user<T: Copy>(user_out: UserSlice, resp: &T) -> SyscallResult {
     let size = size_of::<T>();
-    if user_out.address == 0 || user_out.size < size  {
+    if user_out.address == 0 || user_out.size < size {
         return Err(Errno::EINVAL);
     }
 
     let process = process_manager().read().current_process();
-    unsafe { process.virtual_address_space.copy_bytes_to_user(VirtAddr::new(user_out.address), resp as *const T as *const _, size) }
-        .map_err(|_| {
-            error!("copy_to_user failed: address={:#x}, size={} (buffer {})", user_out.address, size, user_out.size);
-            Errno::EFAULT
-        })
-        .map(|()| 0)
+    unsafe {
+        process
+            .virtual_address_space
+            .copy_bytes_to_user(VirtAddr::new(user_out.address), resp as *const T as *const _, size)
+    }
+    .map_err(|_| {
+        error!("copy_to_user failed: address={:#x}, size={} (buffer {})", user_out.address, size, user_out.size);
+        Errno::EFAULT
+    })
+    .map(|()| 0)
 }
 
 #[inline]
@@ -150,10 +163,20 @@ fn copy_slice_to_user<T: Copy>(user_out: UserSlice, resp: &[T]) -> SyscallResult
     assert!(user_out.size >= size);
 
     let process = process_manager().read().current_process();
-    unsafe { process.virtual_address_space.copy_bytes_to_user(VirtAddr::new(user_out.address), resp.as_ptr() as *const u8, size) }
-        .map_err(|_| {
-            error!("copy_slice_to_user failed: address={:#x}, size={} (buffer {}, {} elements)", user_out.address, size, user_out.size, resp.len());
-            Errno::EFAULT
-        })
-        .map(|()| resp.len())
+    unsafe {
+        process
+            .virtual_address_space
+            .copy_bytes_to_user(VirtAddr::new(user_out.address), resp.as_ptr() as *const u8, size)
+    }
+    .map_err(|_| {
+        error!(
+            "copy_slice_to_user failed: address={:#x}, size={} (buffer {}, {} elements)",
+            user_out.address,
+            size,
+            user_out.size,
+            resp.len()
+        );
+        Errno::EFAULT
+    })
+    .map(|()| resp.len())
 }

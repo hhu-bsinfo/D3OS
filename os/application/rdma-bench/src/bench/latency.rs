@@ -3,7 +3,7 @@
 //! `tx_depth`/`rx_depth` are accepted (to match the shared `bench::run` dispatch signature) but
 //! unused.
 
-use crate::bench::{self, Role, IDLE_TIMEOUT_US, WARMUP_SETTLE_MS};
+use crate::bench::{self, IDLE_TIMEOUT_US, Role, WARMUP_SETTLE_MS};
 use crate::comm::Conn;
 use crate::error::Result;
 use crate::report::{LatencyStats, Report};
@@ -17,14 +17,7 @@ const WR_SEND: u64 = 1;
 const WR_RECV: u64 = 2;
 
 pub fn run(
-    pd: &ProtectionDomain,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    role: Role,
-    msg_size: usize,
-    iterations: usize,
-    _tx_depth: usize,
+    pd: &ProtectionDomain, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, role: Role, msg_size: usize, iterations: usize, _tx_depth: usize,
     _rx_depth: usize,
 ) -> Result<Report> {
     // Two separate buffers: reusing one for both directions would let the echo overwrite bytes
@@ -57,12 +50,7 @@ fn wait_for(cq: &CompletionQueue, wc: &mut [WorkCompletion], want: u64) -> Resul
 }
 
 fn ping(
-    send_mr: &mut LocalMemoryRegion<u8>,
-    recv_mr: &mut LocalMemoryRegion<u8>,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    msg_size: usize,
+    send_mr: &mut LocalMemoryRegion<u8>, recv_mr: &mut LocalMemoryRegion<u8>, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, msg_size: usize,
     iterations: usize,
 ) -> Result<Report> {
     let mut wc = vec![WorkCompletion::default(); 4];
@@ -70,11 +58,7 @@ fn ping(
     let sge = [recv_mr.slice(0..msg_size)];
     let recv_wr = ReceiveWorkRequest::new(WR_RECV, &sge);
     let send_sge = [send_mr.slice(0..msg_size)];
-    let send_wr = SendWorkRequest::send(
-        WR_SEND,
-        &send_sge,
-        SendFlags::SIGNALED
-    );
+    let send_wr = SendWorkRequest::send(WR_SEND, &send_sge, SendFlags::SIGNALED);
 
     // Warm-up: see `bench::WARMUP_SETTLE_MS`'s doc comment. Without this, the queue pair's
     // one-time settling cost shows up as a single, wildly-outlying first sample here.
@@ -112,12 +96,7 @@ fn ping(
 }
 
 fn pong(
-    send_mr: &mut LocalMemoryRegion<u8>,
-    recv_mr: &mut LocalMemoryRegion<u8>,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    msg_size: usize,
+    send_mr: &mut LocalMemoryRegion<u8>, recv_mr: &mut LocalMemoryRegion<u8>, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, msg_size: usize,
     iterations: usize,
 ) -> Result<Report> {
     let mut wc = vec![WorkCompletion::default(); 4];
@@ -126,11 +105,7 @@ fn pong(
     let recv_wr = ReceiveWorkRequest::new(WR_RECV, &sge);
 
     let send_sge = [send_mr.slice(0..msg_size)];
-    let send_wr = SendWorkRequest::send(
-        WR_SEND,
-        &send_sge,
-        SendFlags::SIGNALED
-    );
+    let send_wr = SendWorkRequest::send(WR_SEND, &send_sge, SendFlags::SIGNALED);
 
     // Warm-up: see ping()'s matching comment.
     conn.sync()?; // warm-up barrier

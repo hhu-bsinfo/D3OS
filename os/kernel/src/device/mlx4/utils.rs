@@ -23,7 +23,10 @@ impl MappedPages {
     pub unsafe fn from_identity_unchecked(page_range: PageRange<Size4KiB>) -> Self {
         let phys_addr = PhysAddr::new(page_range.start.start_address().as_u64());
         let phys_frame = unsafe { PhysFrame::from_start_address_unchecked(phys_addr) };
-        Self { range: page_range, start_frame: phys_frame }
+        Self {
+            range: page_range,
+            start_frame: phys_frame,
+        }
     }
 
     pub fn start_frame(&self) -> PhysFrame<Size4KiB> {
@@ -52,7 +55,7 @@ impl MappedPages {
         if end_bound_vaddr > end_vaddr {
             error!("{:?}", self);
             error!("Out of bounds: offset = {:x}, size = {:x}", offset, size);
-            return Err("Doesn't fit within pages")
+            return Err("Doesn't fit within pages");
         }
 
         Ok(start_bound_vaddr)
@@ -115,9 +118,9 @@ pub fn pci_map_bar_mem(bar: Bar, tag: &str) -> Option<MappedPages> {
     let pages = process.virtual_address_space.kernel_map_devm_identity(
         address as u64,
         end_address as u64,
-        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE, 
+        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
         VmaType::DeviceMemory,
-        tag
+        tag,
     );
 
     // SAFETY: identity mapped
@@ -134,7 +137,7 @@ pub fn create_cont_mapping_with_dma_flags(frame_count: usize) -> Result<MappedPa
         frame_count as u64,
         PageTableFlags::NO_EXECUTE | PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
         VmaType::DeviceMemory,
-        "mlx_dma"
+        "mlx_dma",
     );
 
     if page_range.is_empty() {

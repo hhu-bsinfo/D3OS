@@ -1,14 +1,14 @@
-use crate::device::mlx4::{get_dev_list, device_handle_to_idx, Mlx4Device};
-use alloc::vec::Vec;
-use rdma::uverbs_uapi::{AllocPdResponse, CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, CreateQpResponse, DeallocPdRequest, ModifyQpRequest, OpenDeviceResponse};
-use rdma::{AccessFlags, DeviceAttr, DeviceHandle, PortAttr, PdHandle};
+use crate::device::mlx4::{Mlx4Device, device_handle_to_idx, get_dev_list};
 use crate::process_manager;
+use alloc::vec::Vec;
+use rdma::uverbs_uapi::{
+    AllocPdResponse, CreateCqRequest, CreateCqResponse, CreateMrResponse, CreateQpRequest, CreateQpResponse, DeallocPdRequest, ModifyQpRequest,
+    OpenDeviceResponse,
+};
+use rdma::{AccessFlags, DeviceAttr, DeviceHandle, PdHandle, PortAttr};
 
 pub fn uverbs_query_devices(max_len: usize) -> Vec<DeviceHandle> {
-    get_dev_list().lock().iter()
-        .map(|dev| DeviceHandle::from(dev.handle) )
-        .take(max_len)
-        .collect()
+    get_dev_list().lock().iter().map(|dev| DeviceHandle::from(dev.handle)).take(max_len).collect()
 }
 
 pub fn uverbs_open_device(device_handle: usize) -> Result<OpenDeviceResponse, &'static str> {
@@ -24,54 +24,57 @@ pub fn uverbs_open_device(device_handle: usize) -> Result<OpenDeviceResponse, &'
 }
 
 pub fn uverbs_query_device(device_handle: usize) -> Result<DeviceAttr, &'static str> {
-    get_dev_list().lock()
-        .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .query_device()
+    get_dev_list().lock().get_mut(device_handle_to_idx(device_handle)).unwrap().query_device()
 }
 
 pub fn uverbs_query_port(device_handle: usize, port_num: u8) -> Result<PortAttr, &'static str> {
-    get_dev_list().lock()
-        .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .query_port(port_num)
+    get_dev_list().lock().get_mut(device_handle_to_idx(device_handle)).unwrap().query_port(port_num)
 }
 
-pub fn uverbs_register_mem_region(device_handle: usize, pd: PdHandle, access_flags: AccessFlags, user_data_ref: &mut [u8]) -> Result<CreateMrResponse, &'static str> {
-    get_dev_list().lock().get_mut(device_handle_to_idx(device_handle)).unwrap()
+pub fn uverbs_register_mem_region(
+    device_handle: usize, pd: PdHandle, access_flags: AccessFlags, user_data_ref: &mut [u8],
+) -> Result<CreateMrResponse, &'static str> {
+    get_dev_list()
+        .lock()
+        .get_mut(device_handle_to_idx(device_handle))
+        .unwrap()
         .create_mr(pd, user_data_ref, access_flags)
-        .map(|metadata| { CreateMrResponse { metadata } })
+        .map(|metadata| CreateMrResponse { metadata })
         .map_err(|_| "failed to create memory region")
 }
 
 pub fn uverbs_create_cq<'cq>(device_handle: usize, req: &'cq CreateCqRequest) -> Result<CreateCqResponse, &'static str> {
-    let cq_num = get_dev_list().lock()
-        .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .create_cq(req.cq_entries, req.buffer, req.doorbell_ptr, req.uar_index)?;
+    let cq_num =
+        get_dev_list()
+            .lock()
+            .get_mut(device_handle_to_idx(device_handle))
+            .unwrap()
+            .create_cq(req.cq_entries, req.buffer, req.doorbell_ptr, req.uar_index)?;
     Ok(CreateCqResponse { cq_num })
 }
 
 pub fn uverbs_create_qp<'qp>(device_handle: usize, req: &CreateQpRequest) -> Result<CreateQpResponse, &'static str> {
-    let qp_num = get_dev_list().lock()
-        .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .create_qp(
-            req.pd,
-            req.qp_type,
-            req.send_cq_num,
-            req.recv_cq_num,
-            req.buffer,
-            req.doorbell_ptr,
-            req.uar_index,
-            req.log_sq_bb_count,
-            req.log_sq_stride,
-            req.log_rq_wqe_count,
-            req.log_rq_stride,
-        )?;
+    let qp_num = get_dev_list().lock().get_mut(device_handle_to_idx(device_handle)).unwrap().create_qp(
+        req.pd,
+        req.qp_type,
+        req.send_cq_num,
+        req.recv_cq_num,
+        req.buffer,
+        req.doorbell_ptr,
+        req.uar_index,
+        req.log_sq_bb_count,
+        req.log_sq_stride,
+        req.log_rq_wqe_count,
+        req.log_rq_stride,
+    )?;
     Ok(CreateQpResponse { qp_num })
 }
 
 pub fn uverbs_modify_qp(device_handle: usize, qp_modify_container: ModifyQpRequest) -> Result<(), &'static str> {
-    get_dev_list().lock()
-        .get_mut(device_handle_to_idx(device_handle)).unwrap()
-        .modify_qp(qp_modify_container.qp_num, &qp_modify_container.attr, qp_modify_container.attr_mask,
+    get_dev_list().lock().get_mut(device_handle_to_idx(device_handle)).unwrap().modify_qp(
+        qp_modify_container.qp_num,
+        &qp_modify_container.attr,
+        qp_modify_container.attr_mask,
     )
 }
 

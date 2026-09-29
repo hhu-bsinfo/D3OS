@@ -2,29 +2,29 @@
 
 use core::mem::size_of;
 
-use crate::memory::PAGE_SIZE;
-use alloc::{format, string::String, vec::Vec};
-use core::cmp::min;
-use byteorder::BigEndian;
-use tock_registers::{register_bitfields, register_structs, registers::WriteOnly};
-use core::fmt::Debug;
-use core::ops::Shl;
-use log::{debug, trace, warn};
-use modular_bitfield_msb::{bitfield, prelude::*, Specifier};
-use pci_types::Bar;
-use rdma::Mtu;
-use x86_64::structures::paging::{page::Page, Size4KiB};
-use x86_64::structures::paging::frame::PhysFrameRange;
-use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
-use crate::memory;
 use super::{
     cmd::{CommandInterface, InputParam, MadDemuxOpcodeModifier, Opcode, OutputParam},
     device::{DEFAULT_UAR_PAGE_SHIFT, PAGE_SHIFT},
-    icm::{MappedIcmAuxiliaryArea, ICM_PAGE_SHIFT},
+    icm::{ICM_PAGE_SHIFT, MappedIcmAuxiliaryArea},
     port::Port,
     utils,
     utils::MappedPages,
 };
+use crate::memory;
+use crate::memory::PAGE_SIZE;
+use alloc::{format, string::String, vec::Vec};
+use byteorder::BigEndian;
+use core::cmp::min;
+use core::fmt::Debug;
+use core::ops::Shl;
+use log::{debug, trace, warn};
+use modular_bitfield_msb::{Specifier, bitfield, prelude::*};
+use pci_types::Bar;
+use rdma::Mtu;
+use tock_registers::{register_bitfields, register_structs, registers::WriteOnly};
+use x86_64::structures::paging::frame::PhysFrameRange;
+use x86_64::structures::paging::{Size4KiB, page::Page};
+use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 
 /// The output of QUERY_FW.
 ///
@@ -34,22 +34,22 @@ use super::{
 #[derive(Clone, FromBytes)]
 #[repr(C, packed)]
 pub(super) struct Firmware {
-    pages: U16<BigEndian>,           // 0x00
-    pub(super) major: U16<BigEndian>, // 0x02
+    pages: U16<BigEndian>,                // 0x00
+    pub(super) major: U16<BigEndian>,     // 0x02
     pub(super) sub_minor: U16<BigEndian>, // 0x04
-    pub(super) minor: U16<BigEndian>, // 0x06
-    _padding1: u16,                  // 0x08, holds the PPF id
-    ix_rev: U16<BigEndian>,          // 0x0a, the command interface revision
-    _padding2: [u8; 0x14],           // 0x0c, contains the max command count and the build timestamp
-    clr_int_base: U64<BigEndian>,    // 0x20
-    clr_int_bar: u8,                 // 0x28
-    _padding3: [u8; 7],              // 0x29
+    pub(super) minor: U16<BigEndian>,     // 0x06
+    _padding1: u16,                       // 0x08, holds the PPF id
+    ix_rev: U16<BigEndian>,               // 0x0a, the command interface revision
+    _padding2: [u8; 0x14],                // 0x0c, contains the max command count and the build timestamp
+    clr_int_base: U64<BigEndian>,         // 0x20
+    clr_int_bar: u8,                      // 0x28
+    _padding3: [u8; 7],                   // 0x29
     /// Offset of the internal error buffer within `err_bar`.
     err_start_offset: U64<BigEndian>, // 0x30
     /// Size of the internal error buffer, in 32-bit words.
-    err_size: U32<BigEndian>,        // 0x38
-    err_bar: u8,                     // 0x3c
-    // many fields follow
+    err_size: U32<BigEndian>, // 0x38
+    err_bar: u8,                          // 0x3c
+                                          // many fields follow
 }
 
 impl Firmware {
@@ -82,10 +82,19 @@ impl Firmware {
         trace!("mapping firmware area...");
 
         let frame_ranges = alloc_frames_in_chunks(self.pages.get() as usize, 6);
-        assert!(frame_ranges.len() * size_of::<VirtualPhysicalMapping>() <= PAGE_SIZE, "Too many chunks for one Mailbox"); // TODO do multiple calls to MapFa
+        assert!(
+            frame_ranges.len() * size_of::<VirtualPhysicalMapping>() <= PAGE_SIZE,
+            "Too many chunks for one Mailbox"
+        ); // TODO do multiple calls to MapFa
         let vpms = vpms_from_frames(frame_ranges.as_slice());
 
-        cmd.execute_command(Opcode::MapFa, None, InputParam::Mailbox(vpms.as_bytes()), Some(vpms.len() as u32), OutputParam::Empty)?;
+        cmd.execute_command(
+            Opcode::MapFa,
+            None,
+            InputParam::Mailbox(vpms.as_bytes()),
+            Some(vpms.len() as u32),
+            OutputParam::Empty,
+        )?;
         trace!("mapped {} pages for firmware area in {} chunks", self.pages, vpms.len());
 
         Ok(MappedFirmwareArea {
@@ -200,7 +209,9 @@ impl MappedFirmwareArea {
     ///
     /// Returns `aux_pages`, the auxiliary ICM size in pages.
     pub(crate) fn set_icm(&self, cmd: &mut CommandInterface, icm_size: u64) -> Result<u64, &'static str> {
-        let aux_pages = cmd.execute_command(Opcode::SetIcmSize, None, InputParam::Immediate(icm_size), None, OutputParam::Immediate)?.unwrap();
+        let aux_pages = cmd
+            .execute_command(Opcode::SetIcmSize, None, InputParam::Immediate(icm_size), None, OutputParam::Immediate)?
+            .unwrap();
         // TODO: round up number of system pages needed if ICM_PAGE_SIZE < PAGE_SIZE
         trace!("ICM auxilliary area requires {aux_pages} 4K pages");
         Ok(aux_pages)
@@ -216,10 +227,19 @@ impl MappedFirmwareArea {
 
         // batch as many vpm entries as fit in a mailbox to make bootup faster
         let frame_ranges = alloc_frames_in_chunks(aux_pages as usize, 6);
-        assert!(frame_ranges.len() * size_of::<VirtualPhysicalMapping>() <= PAGE_SIZE, "Too many chunks for one Mailbox"); // TODO do multiple calls to MapIcmAux
+        assert!(
+            frame_ranges.len() * size_of::<VirtualPhysicalMapping>() <= PAGE_SIZE,
+            "Too many chunks for one Mailbox"
+        ); // TODO do multiple calls to MapIcmAux
         let vpms = vpms_from_frames(frame_ranges.as_slice());
 
-        cmd.execute_command(Opcode::MapIcmAux, None, InputParam::Mailbox(vpms.as_bytes()), Some(vpms.len() as u32), OutputParam::Empty)?;
+        cmd.execute_command(
+            Opcode::MapIcmAux,
+            None,
+            InputParam::Mailbox(vpms.as_bytes()),
+            Some(vpms.len() as u32),
+            OutputParam::Empty,
+        )?;
         trace!("mapped {} pages for ICM auxiliary area in {} chunks", aux_pages, vpms.len());
 
         self.icm_aux_area = Some(MappedIcmAuxiliaryArea::new(frame_ranges));
@@ -244,7 +264,10 @@ fn vpms_from_frames(frame_ranges: &[PhysFrameRange]) -> Vec<VirtualPhysicalMappi
         assert!(frame_range.len().is_power_of_two(), "The amount of pages in the VPM has to be a power of 2");
         let size_log = frame_range.len().trailing_zeros() as usize;
         // TODO if the start_addr does not align with the CHUNK_SIZE find the maximal alignment and split the chunk by that.
-        assert!(start_addr.as_u64().trailing_zeros() >= (size_log as u32 + PAGE_SHIFT as u32), "physical frame should be aligned to the chunk size");
+        assert!(
+            start_addr.as_u64().trailing_zeros() >= (size_log as u32 + PAGE_SHIFT as u32),
+            "physical frame should be aligned to the chunk size"
+        );
         let mut vpm = VirtualPhysicalMapping::default();
         vpm.physical_address.set(start_addr.as_u64() | size_log as u64);
         vpms.push(vpm)
@@ -668,11 +691,7 @@ impl Capabilities {
     }
 
     pub(super) fn bf_reg_size(&self) -> usize {
-        if self.bf() {
-            1 << self.log_bf_reg_sz()
-        } else {
-            0
-        }
+        if self.bf() { 1 << self.log_bf_reg_sz() } else { 0 }
     }
 
     // Number of UAR pages
@@ -796,9 +815,9 @@ register_bitfields![u32,
 ];
 
 #[repr(C)]
-pub struct DoorbellEq  {
+pub struct DoorbellEq {
     pub val: WriteOnly<u32, DoorbellEqField::Register>,
-    _reserved1: u32
+    _reserved1: u32,
 }
 
 register_structs! {
@@ -825,7 +844,6 @@ register_structs! {
     (0x1000 => @END),
     }
 }
-
 
 #[bitfield]
 pub(super) struct InitHcaParameters {
@@ -1041,7 +1059,7 @@ impl InitHcaParameters {
     pub(super) fn init_hca(&mut self, cmd: &mut CommandInterface) -> Result<Hca, &'static str> {
         // set the needed values
         self.set_version(2); // version must be 2
-                             // TODO: use a library for this
+        // TODO: use a library for this
         let mut flags = 0;
         flags &= !(1 << 1); // little endian on the host
         flags |= 1 << 4; // enable counters / checksums

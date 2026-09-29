@@ -4,27 +4,31 @@
 
 use core::mem::size_of;
 
-use alloc::{vec, vec::Vec};
-use alloc::sync::Arc;
-use bitflags::bitflags;
-use byteorder::BigEndian;
-use log::trace;
-use modular_bitfield_msb::{
-    bitfield,
-    prelude::{B12, B16, B17, B19, B2, B20, B24, B3, B4, B40, B48, B5, B53, B56, B6, B7},
+use super::{
+    Mlx4Device, PdHandle,
+    cmd::{CommandInterface, Opcode},
+    device::{PAGE_SHIFT, uar_index_to_hw},
+    fw::Capabilities,
+    icm::ICM_PAGE_SHIFT,
+    utils,
 };
-use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairtState, QueuePairType, ScatterGatherEntry};
-use strum_macros::FromRepr;
-use tock_registers::registers::WriteOnly;
-use x86_64::{PhysAddr, VirtAddr};
-use uuid::Uuid;
-use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
-use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 use crate::device::mlx4::cmd::{InputParam, OutputParam};
 use crate::device::mlx4::utils::MappedPages;
 use crate::process::process::Process;
 use crate::process_manager;
-use super::{cmd::{CommandInterface, Opcode}, device::{uar_index_to_hw, PAGE_SHIFT}, fw::Capabilities, icm::ICM_PAGE_SHIFT, utils, Mlx4Device, PdHandle};
+use alloc::sync::Arc;
+use alloc::{vec, vec::Vec};
+use bitflags::bitflags;
+use byteorder::BigEndian;
+use log::trace;
+use modular_bitfield_msb::{bitfield, prelude::*};
+use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairType, QueuePairtState, ScatterGatherEntry};
+use strum_macros::FromRepr;
+use tock_registers::registers::WriteOnly;
+use uuid::Uuid;
+use x86_64::structures::paging::{Page, PhysFrame, Size4KiB};
+use x86_64::{PhysAddr, VirtAddr};
+use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 
 const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
 const IB_MAX_HEADROOM: u32 = 2048;
@@ -34,7 +38,6 @@ const SEGMENT_SIZE_CONTROL: usize = 16;
 const SEGMENT_SIZE_WQE_DATA: usize = 16;
 const SEGMENT_SIZE_DATAGRAM: usize = 48;
 const SEGMENT_SIZE_REMOTE_ADDR: usize = 16;
-
 
 const fn ib_sq_headroom(shift: u32) -> u32 {
     (IB_MAX_HEADROOM >> shift) + 1
@@ -71,19 +74,8 @@ impl QueuePair {
     ///
     /// This is similar to creating a completion queue or an event queue.
     pub(super) fn new(
-        dev: &mut Mlx4Device,
-        process: Arc<Process>,
-        qp_type: QueuePairType,
-        pd: PdHandle,
-        send_cq_number: u32,
-        receive_cq_number: u32,
-        buffer: *const u8,
-        doorbell_ptr: *const u32,
-        uar_index: u32,
-        log_sq_bb_count: u8,
-        log_sq_stride: u8,
-        log_rq_wqe_count: u8,
-        log_rq_stride: u8,
+        dev: &mut Mlx4Device, process: Arc<Process>, qp_type: QueuePairType, pd: PdHandle, send_cq_number: u32, receive_cq_number: u32, buffer: *const u8,
+        doorbell_ptr: *const u32, uar_index: u32, log_sq_bb_count: u8, log_sq_stride: u8, log_rq_wqe_count: u8, log_rq_stride: u8,
     ) -> Result<Self, &'static str> {
         if log_sq_stride < 4 || log_rq_stride < 4 {
             return Err("stride is not multiple of 16 bytes");
@@ -112,11 +104,16 @@ impl QueuePair {
         }
         let start: Page<Size4KiB> = Page::containing_address(buffer_addr);
         let end = start + buffer_size.div_ceil(start.size());
-        let mtt = Some(dev.icm_tables.memory_regions().alloc_mtt_for_pages(&dev.capabilities, Page::range(start, end))?);
+        let mtt = Some(
+            dev.icm_tables
+                .memory_regions()
+                .alloc_mtt_for_pages(&dev.capabilities, Page::range(start, end))?,
+        );
         // Offset from the first page in units of 64 bytes
         let page_offset: u8 = ((buffer_addr - start.start_address()) >> 6) as u8;
 
-        let doorbell_address = process.virtual_address_space
+        let doorbell_address = process
+            .virtual_address_space
             .get_phys(doorbell_ptr as u64)
             .ok_or("doorbell not mapped to physical address")?;
 
@@ -275,7 +272,9 @@ impl QueuePair {
                 if self.qp_type == QueuePairType::RC {
                     assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_MAX_DEST_RD_ATOMIC));
                     // TODO: check if the devices supports that many outstanding read/atomic operations
-                    context.set_rra_max_checked(attr.max_dest_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|_| "rra_max out of bounds")?;
+                    context
+                        .set_rra_max_checked(attr.max_dest_rd_atomic.next_power_of_two().ilog2() as u8)
+                        .map_err(|_| "rra_max out of bounds")?;
                 }
 
                 // TODO: required parameters for all types: rate_limit_index
@@ -359,7 +358,9 @@ impl QueuePair {
                 if self.qp_type == QueuePairType::RC {
                     assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_MAX_QP_RD_ATOMIC));
                     // TODO: check if the devices supports that many outstanding read/atomic operations
-                    context.set_sra_max_checked(attr.max_rd_atomic.next_power_of_two().ilog2() as u8).map_err(|_| "sra_max out of bounds")?;
+                    context
+                        .set_sra_max_checked(attr.max_rd_atomic.next_power_of_two().ilog2() as u8)
+                        .map_err(|_| "sra_max out of bounds")?;
                     assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_RNR_RETRY));
                     context.set_rnr_retry(attr.rnr_retry);
                     assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_TIMEOUT));
@@ -406,7 +407,7 @@ impl QueuePair {
             }
 
             // we can modify values in rts
-            (QueuePairtState::ReadyToSend, Some(QueuePairtState::ReadyToSend)) | (QueuePairtState::ReadyToSend, None)  => {
+            (QueuePairtState::ReadyToSend, Some(QueuePairtState::ReadyToSend)) | (QueuePairtState::ReadyToSend, None) => {
                 unimplemented!()
             }
 
@@ -428,7 +429,6 @@ impl QueuePair {
             // once, e.g. from INIT to RTS (through RTR) with one command. The Card then does the
             // intermediates transitions automatically. Support has to be checked in the device
             // capabilities, but ConnectX-3 only support 2 variants: INIT to RTS and Reset to RTS
-
             (QueuePairtState::Reset, Some(_)) => return Err("Can not go from RESET to the supplied State"),
             (QueuePairtState::Init, Some(_)) => return Err("Can not go from INIT to the supplied State"),
             (QueuePairtState::ReadyToReceive, Some(_)) => return Err("Can not go from RTR to the supplied State"),

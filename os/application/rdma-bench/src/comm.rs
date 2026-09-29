@@ -1,7 +1,7 @@
 //! Out-of-band TCP handshake as newline-delimited JSON, wire-compatible with `rust-rdma-bench`.
 
 use crate::cli::{Mode, Transport};
-use crate::error::{other, Result};
+use crate::error::{Result, other};
 use alloc::collections::VecDeque;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -85,7 +85,10 @@ pub struct Conn {
 
 impl Conn {
     fn new(stream: TcpStream) -> Self {
-        Self { stream, pending: RefCell::new(VecDeque::new()) }
+        Self {
+            stream,
+            pending: RefCell::new(VecDeque::new()),
+        }
     }
 
     pub fn send_msg<T: Serialize>(&self, msg: &T) -> Result<()> {

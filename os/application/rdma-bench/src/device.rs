@@ -1,4 +1,4 @@
-use crate::error::{other, Result};
+use crate::error::{Result, other};
 use ibverbs::Context;
 
 /// Opens the first available RDMA device. D3OS's `Device::name()` is not functional yet (it

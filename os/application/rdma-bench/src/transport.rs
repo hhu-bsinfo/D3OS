@@ -5,12 +5,7 @@ use ibverbs::{CompletionQueue, PreparedQueuePair, ProtectionDomain, QueuePairTyp
 /// Builds a queue pair of the requested transport type, ready to be handshaked with a remote
 /// endpoint.
 pub fn build<'res>(
-    transport: Transport,
-    mode: Mode,
-    pd: &'res ProtectionDomain<'res>,
-    cq: &'res CompletionQueue,
-    tx_depth: usize,
-    rx_depth: usize,
+    transport: Transport, mode: Mode, pd: &'res ProtectionDomain<'res>, cq: &'res CompletionQueue, tx_depth: usize, rx_depth: usize,
 ) -> Result<PreparedQueuePair<'res>> {
     let qp_type = match transport {
         Transport::Rc => QueuePairType::RC,
@@ -20,9 +15,7 @@ pub fn build<'res>(
 
     let mut builder = pd.create_qp(cq, cq, qp_type);
 
-    builder
-        .set_max_send_wr(tx_depth as u32)
-        .set_max_recv_wr(rx_depth as u32);
+    builder.set_max_send_wr(tx_depth as u32).set_max_recv_wr(rx_depth as u32);
 
     if let Mode::RdmaWrite | Mode::RdmaRead = mode {
         builder.allow_remote_rw();

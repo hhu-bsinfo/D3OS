@@ -2,22 +2,22 @@
 //! completion queues. Furthermore its functions can consume and print
 //! completion queue elements.
 
+use crate::process::process::Process;
+use crate::process_manager;
 use alloc::sync::Arc;
 use core::mem::size_of;
 use core::ops::Div;
 use log::{error, trace};
 use modular_bitfield_msb::{bitfield, prelude::*};
 use uuid::Uuid;
-use x86_64::structures::paging::{Page, Size4KiB};
 use x86_64::VirtAddr;
-use crate::process::process::Process;
-use crate::process_manager;
+use x86_64::structures::paging::{Page, Size4KiB};
 
 use super::{
-    cmd::{CommandInterface, InputParam, OutputParam, Opcode},
-    device::{uar_index_to_hw, PAGE_SHIFT},
-    icm::ICM_PAGE_SHIFT,
     Mlx4Device,
+    cmd::{CommandInterface, InputParam, Opcode, OutputParam},
+    device::{PAGE_SHIFT, uar_index_to_hw},
+    icm::ICM_PAGE_SHIFT,
 };
 
 /// Size in bytes of a hardware completion queue entry. CX3 also supports a 64 B format, but this
@@ -41,12 +41,7 @@ impl CompletionQueue {
     /// for the buffer and transitions ownership of the CQ to the HCA.
     /// All CQs are registered to the first EQ of the device.
     pub(super) fn new(
-        dev: &mut Mlx4Device,
-        process: Arc<Process>,
-        num_entries: u32,
-        buffer: *const u8,
-        doorbell_ptr: *const u64,
-        uar_idx: u32,
+        dev: &mut Mlx4Device, process: Arc<Process>, num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64, uar_idx: u32,
     ) -> Result<Self, &'static str> {
         let number: u32 = dev.offsets.alloc_cqn().try_into().unwrap();
 
@@ -64,29 +59,40 @@ impl CompletionQueue {
         let buffer_addr = VirtAddr::from_ptr(buffer);
         // The buffer must be aligned to the cqe_stride set in HCA_INIT
         if !buffer_addr.is_aligned(size_of::<u32>() as u64) {
-            return Err("Buffer is not aligned to CQE stride")
+            return Err("Buffer is not aligned to CQE stride");
         }
         let buffer_size = num_entries as usize * CQE_SIZE;
         let start: Page<Size4KiB> = Page::containing_address(buffer_addr);
         let end = start + (buffer_size as u64).div_ceil(start.size());
-        let mtt = dev.icm_tables.memory_regions().alloc_mtt_for_pages(&dev.capabilities, Page::range(start, end))?;
+        let mtt = dev
+            .icm_tables
+            .memory_regions()
+            .alloc_mtt_for_pages(&dev.capabilities, Page::range(start, end))?;
 
-        let doorbell_address = process.virtual_address_space
+        let doorbell_address = process
+            .virtual_address_space
             .get_phys(doorbell_ptr as u64)
             .ok_or("doorbell not mapped to physical address")?;
 
-        let eq_number = dev.eqs.get(0)
-            .map(|eq| eq.read().number());
+        let eq_number = dev.eqs.get(0).map(|eq| eq.read().number());
 
         let mut ctx = CompletionQueueContext::new();
         ctx.set_page_offset(buffer_addr.page_offset().into());
         ctx.set_log_size(log2num_entries);
         ctx.set_usr_page(uar_index_to_hw(uar_idx).try_into().unwrap());
-        if let Some(eqn) = eq_number { ctx.set_comp_eqn(eqn as u8); }
+        if let Some(eqn) = eq_number {
+            ctx.set_comp_eqn(eqn as u8);
+        }
         ctx.set_log_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
         ctx.set_mtt_base_addr(mtt);
         ctx.set_doorbell_record_addr(doorbell_address.as_u64());
-        dev.cmd.execute_command(Opcode::Sw2HwCq, None, InputParam::Mailbox(&ctx.bytes), Some(number.try_into().unwrap()), OutputParam::Empty)?;
+        dev.cmd.execute_command(
+            Opcode::Sw2HwCq,
+            None,
+            InputParam::Mailbox(&ctx.bytes),
+            Some(number.try_into().unwrap()),
+            OutputParam::Empty,
+        )?;
 
         let cq = Self {
             number,
@@ -107,7 +113,13 @@ impl CompletionQueue {
     /// Destroy this completion queue.
     pub(super) fn destroy(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         // TODO: should make sure to undo all card state tied to this CQ
-        cmd.execute_command(Opcode::Hw2SwCq, None, InputParam::Empty, Some(self.number.try_into().unwrap()), OutputParam::Empty)?;
+        cmd.execute_command(
+            Opcode::Hw2SwCq,
+            None,
+            InputParam::Empty,
+            Some(self.number.try_into().unwrap()),
+            OutputParam::Empty,
+        )?;
         // TODO: deallocate mtt properly
         let _ = self.mtt.take();
         Ok(())

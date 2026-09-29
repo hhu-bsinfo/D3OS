@@ -3,20 +3,20 @@
 //!
 //! Each run uses a fresh TCP connection, CQ and QP, so the server only needs `--listen`.
 
-use alloc::string::String;
 use crate::bench::{self, Role};
 use crate::cli::{ClientArgs, Mode, Transport};
 use crate::comm::{self, BenchmarkRequest, ClientEndpoint, HandshakeAck};
 use crate::device;
-use crate::error::{other, Result};
+use crate::error::{Result, other};
 use crate::report::{self, Report};
 use crate::transport;
+use alloc::string::String;
 use alloc::vec::Vec;
-use core::fmt::{write, Write};
 use concurrent::thread::sleep;
+use core::fmt::{Write, write};
 use core::net::IpAddr;
-use log::info;
 use ibverbs::{Context, ProtectionDomain};
+use log::info;
 use terminal::println;
 
 /// Pause between runs, giving the server time to tear the finished connection down and get back
@@ -102,7 +102,7 @@ fn run_suite(ctx: &Context, pd: &ProtectionDomain, args: &ClientArgs) -> Result<
         for size in sizes {
             if mode == Mode::Accuracy && size > 32 * 1024 {
                 println!("{:>8} too big for accuracy, skipped", size);
-                break
+                break;
             }
             // Every run after the first reconnects to a server that just finished one.
             if !first_run {
@@ -131,7 +131,9 @@ fn run_suite(ctx: &Context, pd: &ProtectionDomain, args: &ClientArgs) -> Result<
                         if let Some(notes) = result.notes() {
                             println!("{:>8}  {}", "", notes);
                         }
-                        if args.csv && let Some(row) = result.csv_row() {
+                        if args.csv
+                            && let Some(row) = result.csv_row()
+                        {
                             writeln!(&mut csv_string_buffer, "{}", row).unwrap();
                         }
                     }
@@ -167,8 +169,7 @@ fn run_suite(ctx: &Context, pd: &ProtectionDomain, args: &ClientArgs) -> Result<
 fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams, verbose: bool) -> Result<Report> {
     let cq = ctx.create_cq((params.tx_depth + params.rx_depth) as i32, 0)?;
 
-    let prepared =
-        transport::build(params.transport, params.mode, pd, &cq, params.tx_depth, params.rx_depth)?;
+    let prepared = transport::build(params.transport, params.mode, pd, &cq, params.tx_depth, params.rx_depth)?;
     let local_endpoint = prepared.endpoint();
 
     let conn = comm::connect(params.host, params.port)?;

@@ -1,9 +1,9 @@
 #![no_std]
 
 use ibverbs::devices;
-use terminal::println;
 #[allow(unused_imports)]
 use runtime::*;
+use terminal::println;
 
 pub fn invoke() {
     let devices = devices().expect("failed to get device list");

@@ -70,8 +70,7 @@ pub enum Mode {
 
 impl Mode {
     /// Every mode, in the order a suite runs them.
-    pub const ALL: [Mode; 5] =
-        [Mode::Bandwidth, Mode::Latency, Mode::Accuracy, Mode::RdmaWrite, Mode::RdmaRead];
+    pub const ALL: [Mode; 5] = [Mode::Bandwidth, Mode::Latency, Mode::Accuracy, Mode::RdmaWrite, Mode::RdmaRead];
 
     fn parse(s: &str) -> Result<Self, String> {
         match s {
@@ -80,10 +79,7 @@ impl Mode {
             "accuracy" => Ok(Mode::Accuracy),
             "rdma-write" => Ok(Mode::RdmaWrite),
             "rdma-read" => Ok(Mode::RdmaRead),
-            _ => Err(format!(
-                "unknown mode '{}': expected bandwidth, latency, accuracy, rdma-write, or rdma-read",
-                s
-            )),
+            _ => Err(format!("unknown mode '{}': expected bandwidth, latency, accuracy, rdma-write, or rdma-read", s)),
         }
     }
 
@@ -164,7 +160,10 @@ impl Cli {
     }
 
     fn parse_server(mut args: Peekable<Args>) -> Result<ServerArgs, String> {
-        let mut server = ServerArgs { port: DEFAULT_PORT, listen: false };
+        let mut server = ServerArgs {
+            port: DEFAULT_PORT,
+            listen: false,
+        };
 
         loop {
             match args.peek().map(String::as_str) {
@@ -228,7 +227,7 @@ impl Cli {
                     let val = Self::next_value(&mut args, "--runs")?;
                     client.runs = val.parse().map_err(|_| "invalid --runs value".to_string())?;
                     if client.runs == 0 {
-                        return Err("--runs must be positive".to_string())
+                        return Err("--runs must be positive".to_string());
                     }
                 }
                 Some("--transport") => {

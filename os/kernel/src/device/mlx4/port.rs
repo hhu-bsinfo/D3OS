@@ -1,18 +1,14 @@
+use super::cmd::{CommandInterface, InputParam, MadIfcOpcodeModifier, Opcode, OutputParam, SetPortOpcodeModifier};
+use crate::process::core_local_storage::scheduler;
 use byteorder::BigEndian;
 use core::{
     fmt::{self, Debug},
     mem::size_of,
 };
-use modular_bitfield_msb::{
-    bitfield,
-    prelude::{B3, B5, B11, B28, B60, B84},
-    specifiers::{B2, B4, B9, B48},
-};
-use rdma::{PhysicalPortState, Mtu, PortAttr, PortState};
-use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
-use super::cmd::{CommandInterface, InputParam, MadIfcOpcodeModifier, Opcode, OutputParam, SetPortOpcodeModifier};
 use log::{debug, trace, warn};
-use crate::process::core_local_storage::scheduler;
+use modular_bitfield_msb::{bitfield, prelude::*};
+use rdma::{Mtu, PhysicalPortState, PortAttr, PortState};
+use zerocopy::{AsBytes, FromBytes, U16, U32, U64};
 
 #[derive(Debug)]
 pub struct Port {
@@ -52,7 +48,13 @@ impl Port {
         set_port_input.set_mtu_cap(mtu as u8);
         for vl_cap_shift in (0..=3).rev() {
             set_port_input.set_vl_cap(1 << vl_cap_shift);
-            cmd.execute_command(Opcode::SetPort, Some(SetPortOpcodeModifier::IB.into()), InputParam::Mailbox(&set_port_input.bytes), Some(number.into()), OutputParam::Empty)?;
+            cmd.execute_command(
+                Opcode::SetPort,
+                Some(SetPortOpcodeModifier::IB.into()),
+                InputParam::Mailbox(&set_port_input.bytes),
+                Some(number.into()),
+                OutputParam::Empty,
+            )?;
         }
 
         // get the current state
@@ -123,7 +125,13 @@ impl Port {
         madifc_input.method = MGMT_METHOD_GET;
         madifc_input.attr_id = SMP_ATTR_PORT_INFO.into();
         madifc_input.attr_mod = u32::from(self.number).into();
-        cmd.execute_command(Opcode::MadIfc, Some(madifc_modifier.into()), InputParam::Mailbox(madifc_input.as_bytes()), Some(self.number.into()), OutputParam::Mailbox)?;
+        cmd.execute_command(
+            Opcode::MadIfc,
+            Some(madifc_modifier.into()),
+            InputParam::Mailbox(madifc_input.as_bytes()),
+            Some(self.number.into()),
+            OutputParam::Mailbox,
+        )?;
         let madifc_output: &MadPacket = unsafe { cmd.output_mailbox_as_ref() };
         // The command itself succeeding does not mean the MAD did: its status field says
         // whether the data in it is valid (e.g. the SMA may answer "busy").
@@ -136,24 +144,29 @@ impl Port {
         let madifc_output_data = MadPacketData::from_bytes(self.madifc_output.as_ref().unwrap().data);
 
         // finally, format it nicely for the application
-        let attr = (|| Ok(PortAttr {
-            state: PortState::from_repr(madifc_output_data.state().into()).ok_or("invalid state")?,
-            max_mtu: Mtu::from_repr(madifc_output_data.max_mtu().into()).ok_or("invalid max MTU")?,
-            active_mtu: Mtu::from_repr(madifc_output_data.active_mtu()).ok_or("invalid MTU")?,
-            port_cap_flags: madifc_output_data.port_cap_flags(),
-            lid: madifc_output_data.lid(),
-            sm_lid: madifc_output_data.sm_lid(),
-            lmc: madifc_output_data.lmc(),
-            phys_state: PhysicalPortState::from_repr(madifc_output_data.phys_state()).ok_or("invalid physical port state")?,
-            link_layer: 0, // TODO
-        }))();
+        let attr = (|| {
+            Ok(PortAttr {
+                state: PortState::from_repr(madifc_output_data.state().into()).ok_or("invalid state")?,
+                max_mtu: Mtu::from_repr(madifc_output_data.max_mtu().into()).ok_or("invalid max MTU")?,
+                active_mtu: Mtu::from_repr(madifc_output_data.active_mtu()).ok_or("invalid MTU")?,
+                port_cap_flags: madifc_output_data.port_cap_flags(),
+                lid: madifc_output_data.lid(),
+                sm_lid: madifc_output_data.sm_lid(),
+                lmc: madifc_output_data.lmc(),
+                phys_state: PhysicalPortState::from_repr(madifc_output_data.phys_state()).ok_or("invalid physical port state")?,
+                link_layer: 0, // TODO
+            })
+        })();
         if attr.is_err() {
             // The error only says which field was off; the raw values tell whether the
             // whole response was empty or just one field was unexpected.
             warn!(
                 "PortInfo for port {} has invalid fields: state {}, phys_state {}, max_mtu {}, active_mtu {}",
-                self.number, madifc_output_data.state(), madifc_output_data.phys_state(),
-                madifc_output_data.max_mtu(), madifc_output_data.active_mtu(),
+                self.number,
+                madifc_output_data.state(),
+                madifc_output_data.phys_state(),
+                madifc_output_data.max_mtu(),
+                madifc_output_data.active_mtu(),
             );
         }
         attr

@@ -1,11 +1,13 @@
 //! This module consists of functions to create a direct memory access mailbox for passing parameters to the hca
 //! and getting output back from the hca during verb calls and functions to execute verb calls.
 
-use core::sync::atomic::{compiler_fence, Ordering};
+use core::sync::atomic::{Ordering, compiler_fence};
 
 use crate::device::mlx4::utils;
-use core::fmt::Debug;
+use crate::memory::vma::VmaType;
+use crate::{get_time_in_us, process_manager};
 use bitflags::bitflags;
+use core::fmt::Debug;
 use log::{trace, warn};
 use strum_macros::{FromRepr, IntoStaticStr};
 use tock_registers::interfaces::{Readable, Writeable};
@@ -13,8 +15,6 @@ use tock_registers::register_bitfields;
 use tock_registers::registers::{ReadWrite, WriteOnly};
 use x86_64::PhysAddr;
 use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB};
-use crate::memory::vma::VmaType;
-use crate::{get_time_in_us, process_manager};
 
 const HCR_BASE: usize = 0x80680;
 const HCR_OPMOD_SHIFT: u32 = 12;
@@ -188,13 +188,12 @@ impl CmdMailbox {
             1,
             PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
             VmaType::DeviceMemory,
-            "mlx_mailbox");
+            "mlx_mailbox",
+        );
         if pages.is_empty() {
             return None;
         }
-        Some(Self {
-            page: pages.start
-        })
+        Some(Self { page: pages.start })
     }
 
     /// Clears the Mailbox
@@ -216,7 +215,6 @@ impl CmdMailbox {
         let size = self.page.size() as usize;
         unsafe { core::slice::from_raw_parts_mut(ptr, size) }
     }
-
 
     #[inline]
     pub fn copy_from_bytes(&mut self, bytes: &[u8]) {
@@ -255,7 +253,7 @@ impl CommandInterface {
             hcr,
             exp_toggle: 1,
             input_mailbox,
-            output_mailbox
+            output_mailbox,
         })
     }
 
@@ -271,7 +269,9 @@ impl CommandInterface {
     ///
     /// This function does not check whether the specified opcode takes the
     /// provided type of input or output.
-    pub(super) fn execute_command(&mut self, opcode: Opcode, opcode_modifier: Option<u8>, input: InputParam, input_modifier: Option<u32>, output: OutputParam) -> Result<Option<u64>, ReturnStatus> {
+    pub(super) fn execute_command(
+        &mut self, opcode: Opcode, opcode_modifier: Option<u8>, input: InputParam, input_modifier: Option<u32>, output: OutputParam,
+    ) -> Result<Option<u64>, ReturnStatus> {
         // TODO: timeout
         trace!("executing command: {opcode:?}");
 
@@ -285,10 +285,10 @@ impl CommandInterface {
                 self.input_mailbox.clear();
                 self.input_mailbox.copy_from_bytes(s);
                 self.input_mailbox.phys_addr().as_u64()
-            },
+            }
         };
 
-        let (output_mailbox, immediate)  = match output {
+        let (output_mailbox, immediate) = match output {
             OutputParam::Empty => (0_u64, false),
             OutputParam::Immediate => (0, true),
             OutputParam::Mailbox => {
@@ -332,7 +332,7 @@ impl CommandInterface {
                     Ok(None)
                 }
             }
-            err => Err(err)
+            err => Err(err),
         }
     }
 
@@ -374,7 +374,6 @@ impl CommandInterface {
     pub(super) fn output_mailbox_as_bytes(&self) -> &[u8] {
         self.output_mailbox.as_bytes()
     }
-
 }
 
 #[repr(u32)]

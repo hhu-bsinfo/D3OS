@@ -18,19 +18,19 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::marker::PhantomData;
-use core::ptr::eq;
+use byteorder::BigEndian;
 use cmd::CommandInterface;
 use completion_queue::CompletionQueue;
+use core::marker::PhantomData;
+use core::ptr::eq;
 use event_queue::{ClrInt, EventQueue, init_eqs};
 use fw::{Capabilities, Hca, MappedFirmwareArea};
-use byteorder::BigEndian;
 use icm::MappedIcmTables;
 use log::{error, info, trace, warn};
 use pci_types::{Bar, CommandRegister, EndpointHeader};
 use zerocopy::U32;
 
-use rdma::{AccessFlags, DeviceAttr, PortAttr, PdHandle, QueuePairAttr, QueuePairAttrMask, QueuePairType, MemoryRegionMetadata};
+use rdma::{AccessFlags, DeviceAttr, MemoryRegionMetadata, PdHandle, PortAttr, QueuePairAttr, QueuePairAttrMask, QueuePairType};
 
 use crate::{interrupt_dispatcher, pci_bus, process_manager};
 use port::Port;
@@ -42,17 +42,17 @@ use device::{Ownership, ResetRegisters};
 use fw::Firmware;
 use profile::Profile;
 
+use crate::device::mlx4::fw::DoorbellPage;
+use crate::device::mlx4::icm::map_icm_tables;
+use crate::interrupt::interrupt_dispatcher::InterruptVector;
+use crate::memory::vma::VmaType;
+use crate::memory::{MemorySpace, PAGE_SIZE};
+use crate::process::process::Process;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
 use uuid::Uuid;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::{Page, PageSize, PageTableFlags, PhysFrame, Size4KiB};
-use crate::device::mlx4::fw::DoorbellPage;
-use crate::device::mlx4::icm::map_icm_tables;
-use crate::interrupt::interrupt_dispatcher::InterruptVector;
-use crate::memory::{MemorySpace, PAGE_SIZE};
-use crate::memory::vma::VmaType;
-use crate::process::process::Process;
 
 /// Vendor ID for Mellanox
 pub const MLX_VEND: u16 = 0x15b3;
@@ -139,10 +139,8 @@ impl Mlx4Device {
         mlx4_pci_dev.update_command(config_space, |creg| creg & !CommandRegister::MEMORY_ENABLE);
 
         // map the Global Device Configuration registers
-        let mut config_regs = utils::pci_map_bar_mem(
-            mlx4_pci_dev.bar(0, config_space).ok_or("No config regs (BAR 0)")?,
-            "mlx4-config-regs"
-        ).ok_or("failed map BAR 0")?;
+        let mut config_regs =
+            utils::pci_map_bar_mem(mlx4_pci_dev.bar(0, config_space).ok_or("No config regs (BAR 0)")?, "mlx4-config-regs").ok_or("failed map BAR 0")?;
         trace!("mlx4 configuration registers: {:?}", config_regs);
 
         // set the memory space bit for this PciDevice
@@ -178,9 +176,14 @@ impl Mlx4Device {
         // From here on the card holds resources that panic when dropped, so an error has to
         // release them first; otherwise the panic replaces the actual error.
         // give us the interrupt pin
-        let adapter = hca.query_adapter(&mut cmd).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
+        let adapter = hca
+            .query_adapter(&mut cmd)
+            .or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
 
-        let uar_bf_bar = mlx4_pci_dev.bar(2, &config_space).ok_or("No UAR (BAR 2)").or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
+        let uar_bf_bar = mlx4_pci_dev
+            .bar(2, &config_space)
+            .ok_or("No UAR (BAR 2)")
+            .or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
         trace!("mlx4 User Access Region (UAR) Bar : {:?}", uar_bf_bar);
         let num_uars = capabilities.num_uars();
         let mut uar_list = Vec::with_capacity(num_uars);
@@ -190,23 +193,18 @@ impl Mlx4Device {
             let uar_addr = start_addr + PAGE_SIZE * index;
             let bf_addr = start_addr + PAGE_SIZE * (num_uars + index);
             let doorbell = PhysFrame::from_start_address(PhysAddr::new(uar_addr as u64)).expect("Doorbell page not aligned");
-            let blueflame  = if capabilities.bf() {
+            let blueflame = if capabilities.bf() {
                 Some(PhysFrame::from_start_address(PhysAddr::new(bf_addr as u64)).expect("BlueFlame page not aligned"))
             } else {
                 None
             };
-            uar_list.push(UarPage {
-                index,
-                doorbell,
-                blueflame,
-            })
+            uar_list.push(UarPage { index, doorbell, blueflame })
         }
 
         // Identity Mapping of the UAR pages. This is only relevant for the kernel, mainly for EQ
         // Doorbells. A UAR page also has to be mapped individually for each process that open this
         // device and should not be shared with different processes
-        let mut identity_mapped_uar = utils::pci_map_bar_mem(uar_bf_bar, "mlx4-uar")
-            .ok_or("Failed to map UAR BAR")?;
+        let mut identity_mapped_uar = utils::pci_map_bar_mem(uar_bf_bar, "mlx4-uar").ok_or("Failed to map UAR BAR")?;
 
         // The clr_int register lives in whichever BAR QUERY_FW reported; on this card that's
         // always one of the two we already have mapped (config regs or UAR).
@@ -214,20 +212,27 @@ impl Mlx4Device {
         let clr_int_regs = match clr_int_bar {
             0 => config_regs,
             2 => identity_mapped_uar,
-            _ => Err("legacy interrupt clear register is in an unmapped BAR").or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?,
+            _ => Err("legacy interrupt clear register is in an unmapped BAR")
+                .or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?,
         };
         let clr_int = ClrInt::new(clr_int_regs, clr_int_offset, adapter.inta_pin());
 
         // The first 128 UAR pages are reserved for EQs
-        let eq_doorbells: &mut [DoorbellPage] = identity_mapped_uar.as_slice_mut(0, 128).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
-        eqs = init_eqs(&mut cmd, eq_doorbells, &capabilities, &mut offsets, icm_tables.memory_regions(), clr_int).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
+        let eq_doorbells: &mut [DoorbellPage] = identity_mapped_uar
+            .as_slice_mut(0, 128)
+            .or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
+        eqs = init_eqs(&mut cmd, eq_doorbells, &capabilities, &mut offsets, icm_tables.memory_regions(), clr_int)
+            .or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
 
-        hca.config_mad_demux(&mut cmd, &capabilities).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
+        hca.config_mad_demux(&mut cmd, &capabilities)
+            .or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
 
         // TODO: Configure Special QPs (QP0, QP1) for SMI and GSI MAD packets
         //       before initializing the ports
 
-        let ports = hca.init_ports(&mut cmd, &capabilities, offsets.base_qpn).or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
+        let ports = hca
+            .init_ports(&mut cmd, &capabilities, offsets.base_qpn)
+            .or_else(|e| Self::abort_init(e, &mut cmd, &mut hca, &mut eqs, &mut icm_tables, &mut firmware_area))?;
 
         let handle = next_device_handle();
 
@@ -250,7 +255,7 @@ impl Mlx4Device {
             internal_error_countdown: 0,
             handle,
             uar_list,
-            identity_mapped_uar
+            identity_mapped_uar,
         };
         get_dev_list().lock().push(nic);
         Ok(handle)
@@ -262,8 +267,8 @@ impl Mlx4Device {
     /// Failures while releasing are only logged: the card is in an unknown state at this point
     /// anyway, and the error that got us here is the one worth returning.
     fn abort_init<T>(
-        error: &'static str, cmd: &mut CommandInterface, hca: &mut Hca, eqs: &mut Vec<Arc<RwLock<EventQueue>>>,
-        icm_tables: &mut MappedIcmTables, firmware_area: &mut MappedFirmwareArea,
+        error: &'static str, cmd: &mut CommandInterface, hca: &mut Hca, eqs: &mut Vec<Arc<RwLock<EventQueue>>>, icm_tables: &mut MappedIcmTables,
+        firmware_area: &mut MappedFirmwareArea,
     ) -> Result<T, &'static str> {
         error!("mlx4 initialization failed after INIT_HCA: {error}");
         while let Some(eq) = eqs.pop() {
@@ -382,12 +387,12 @@ impl Mlx4Device {
         // TODO: impl random pd sampling
         let first = self.capabilities.num_rsvd_pds() as u32;
         let count = 1 << self.capabilities.log_max_pd();
-        for pd in first..first+count {
+        for pd in first..first + count {
             let pd = PdHandle(pd);
             if !self.pds.contains_key(&pd) {
                 let process = process_manager().read().current_process();
                 self.pds.insert(pd, process.id());
-                return Ok(pd)
+                return Ok(pd);
             }
         }
         Err("No protection domains available")
@@ -431,18 +436,9 @@ impl Mlx4Device {
     }
 
     /// Create a queue pair and return its number
-    pub fn create_qp(&mut self,
-                     pd: PdHandle,
-                     qp_type: QueuePairType,
-                     send_cq_number: u32,
-                     receive_cq_number: u32,
-                     buffer: *const u8,
-                     doorbell_ptr: *const u32,
-                     uar_index: u32,
-                     log_sq_bb_count: u8,
-                     log_sq_stride: u8,
-                     log_rq_wqe_count: u8,
-                     log_rq_stride: u8,
+    pub fn create_qp(
+        &mut self, pd: PdHandle, qp_type: QueuePairType, send_cq_number: u32, receive_cq_number: u32, buffer: *const u8, doorbell_ptr: *const u32,
+        uar_index: u32, log_sq_bb_count: u8, log_sq_stride: u8, log_rq_wqe_count: u8, log_rq_stride: u8,
     ) -> Result<u32, &'static str> {
         let process = process_manager().read().current_process();
         self.validate_pd(&pd, &process)?;
@@ -474,7 +470,9 @@ impl Mlx4Device {
     /// This is used by ibv_modify_qp.
     pub fn modify_qp(&mut self, number: u32, attr: &QueuePairAttr, attr_mask: QueuePairAttrMask) -> Result<(), &'static str> {
         let process = process_manager().read().current_process();
-        let qp = self.qps.iter_mut()
+        let qp = self
+            .qps
+            .iter_mut()
             .find(|qp| qp.number() == number && qp.owner() == process.id())
             .ok_or("queue pair not found")?;
         qp.modify(&mut self.cmd, &mut self.capabilities, attr, attr_mask)
@@ -499,16 +497,9 @@ impl Mlx4Device {
     pub fn create_mr<T>(&mut self, pd: PdHandle, data: &mut [T], access: AccessFlags) -> Result<MemoryRegionMetadata, &'static str> {
         let process = process_manager().read().current_process();
         self.validate_pd(&pd, &process)?;
-        self.icm_tables.memory_regions().alloc_dmpt(
-            &mut self.cmd,
-            &mut self.capabilities,
-            &mut self.offsets,
-            &process,
-            pd,
-            data,
-            None,
-            access,
-        )
+        self.icm_tables
+            .memory_regions()
+            .alloc_dmpt(&mut self.cmd, &mut self.capabilities, &mut self.offsets, &process, pd, data, None, access)
     }
 
     /// Destroy a memory region.
@@ -619,7 +610,6 @@ pub struct UarPage {
 }
 
 impl UarPage {
-
     pub fn index(&self) -> usize {
         self.index
     }
@@ -629,18 +619,18 @@ impl UarPage {
     /// Shared by QP creation (which also maps a BlueFlame page via [`Self::map_blueflame_page`]) and CQ
     /// creation (which only needs the UAR page).
     pub fn map_doorbell_page(&self, process: &Process) -> Result<Page, &'static str> {
-        let uar_vma = process.virtual_address_space.alloc_vma(
-            None,
-            1,
-            MemorySpace::User,
-            VmaType::DeviceMemory,
-            format!("db-{}", self.index).as_str()
-        ).ok_or("Failed to allocate VMA for UAR")?;
-        process.virtual_address_space.map_pfr_for_vma(
-            &uar_vma,
-            PhysFrame::range(self.doorbell, self.doorbell + 1),
-            PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE | PageTableFlags::NO_CACHE,
-        ).map_err(|_| "Failed to map UAR")?;
+        let uar_vma = process
+            .virtual_address_space
+            .alloc_vma(None, 1, MemorySpace::User, VmaType::DeviceMemory, format!("db-{}", self.index).as_str())
+            .ok_or("Failed to allocate VMA for UAR")?;
+        process
+            .virtual_address_space
+            .map_pfr_for_vma(
+                &uar_vma,
+                PhysFrame::range(self.doorbell, self.doorbell + 1),
+                PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE | PageTableFlags::NO_CACHE,
+            )
+            .map_err(|_| "Failed to map UAR")?;
         Ok(uar_vma.range.start)
     }
 
@@ -649,19 +639,18 @@ impl UarPage {
     /// Used only by QP creation; CQs only need [`Self::map_doorbell_page`].
     pub fn map_blueflame_page(&self, process: &Process) -> Result<Page, &'static str> {
         let bf_frame = self.blueflame.ok_or("No BlueFlame Page present")?;
-        let bf_vma = process.virtual_address_space.alloc_vma(
-            None,
-            1,
-            MemorySpace::User,
-            VmaType::DeviceMemory,
-            format!("bf-{}", self.index).as_str()
-        ).ok_or("Failed to allocate VMA for BF")?;
-        process.virtual_address_space.map_pfr_for_vma(
-            &bf_vma,
-            PhysFrame::range(bf_frame, bf_frame + 1),
-            PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE | PageTableFlags::NO_CACHE,
-        ).map_err(|_| "Failed to map BF")?;
+        let bf_vma = process
+            .virtual_address_space
+            .alloc_vma(None, 1, MemorySpace::User, VmaType::DeviceMemory, format!("bf-{}", self.index).as_str())
+            .ok_or("Failed to allocate VMA for BF")?;
+        process
+            .virtual_address_space
+            .map_pfr_for_vma(
+                &bf_vma,
+                PhysFrame::range(bf_frame, bf_frame + 1),
+                PageTableFlags::USER_ACCESSIBLE | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE | PageTableFlags::NO_CACHE,
+            )
+            .map_err(|_| "Failed to map BF")?;
         Ok(bf_vma.range.start)
     }
-
 }

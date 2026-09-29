@@ -1,9 +1,9 @@
 //! Windowed one-way streaming with deterministic payloads to detect loss, duplication,
 //! corruption and truncation. Ported from `rust-rdma-bench`.
 
-use crate::bench::{self, Role, IDLE_TIMEOUT_US};
+use crate::bench::{self, IDLE_TIMEOUT_US, Role};
 use crate::comm::{AccuracyReport, Conn};
-use crate::error::{other, Result};
+use crate::error::{Result, other};
 use crate::report::Report;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -40,14 +40,7 @@ fn slot_range(slot: usize, msg_size: usize) -> Range<usize> {
 }
 
 pub fn run(
-    pd: &ProtectionDomain,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    role: Role,
-    msg_size: usize,
-    iterations: usize,
-    tx_depth: usize,
+    pd: &ProtectionDomain, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, role: Role, msg_size: usize, iterations: usize, tx_depth: usize,
     rx_depth: usize,
 ) -> Result<Report> {
     if iterations == 0 {
@@ -74,13 +67,7 @@ pub fn run(
 }
 
 fn send(
-    mr: &mut LocalMemoryRegion<u8>,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    msg_size: usize,
-    iterations: usize,
-    window: usize,
+    mr: &mut LocalMemoryRegion<u8>, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, msg_size: usize, iterations: usize, window: usize,
 ) -> Result<Report> {
     for seq in 0..window {
         let range = slot_range(seq, msg_size);
@@ -124,21 +111,17 @@ fn send(
 }
 
 fn receive(
-    mr: &mut LocalMemoryRegion<u8>,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    msg_size: usize,
-    iterations: usize,
-    window: usize,
+    mr: &mut LocalMemoryRegion<u8>, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, msg_size: usize, iterations: usize, window: usize,
 ) -> Result<Report> {
     for slot in 0..window {
-        unsafe { qp.post_receive([
-            ReceiveWorkRequest::new(slot as u64, &[mr.slice(slot_range(slot, msg_size))])
-        ])? };
+        unsafe { qp.post_receive([ReceiveWorkRequest::new(slot as u64, &[mr.slice(slot_range(slot, msg_size))])])? };
     }
 
-    let mut report = AccuracyReport { msg_size, sent: iterations, ..AccuracyReport::default() };
+    let mut report = AccuracyReport {
+        msg_size,
+        sent: iterations,
+        ..AccuracyReport::default()
+    };
     let mut seen = vec![false; iterations];
     let mut distinct_seen = 0usize;
     let mut expected = vec![0u8; msg_size];

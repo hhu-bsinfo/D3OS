@@ -674,15 +674,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ibping"
-version = "0.1.0"
-dependencies = [
- "ibverbs",
- "runtime",
- "terminal",
-]
-
-[[package]]
 name = "ibstat"
 version = "0.1.0"
 dependencies = [

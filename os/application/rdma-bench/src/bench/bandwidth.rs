@@ -3,7 +3,7 @@
 //! receiver's idle-timeout early exit and a "never arrived" count instead of always draining to
 //! `iterations`.
 
-use crate::bench::{self, Role, IDLE_TIMEOUT_US, WARMUP_SETTLE_MS};
+use crate::bench::{self, IDLE_TIMEOUT_US, Role, WARMUP_SETTLE_MS};
 use crate::comm::Conn;
 use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
@@ -13,14 +13,7 @@ use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, R
 use time::get_time_in_us;
 
 pub fn run(
-    pd: &ProtectionDomain,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    role: Role,
-    msg_size: usize,
-    iterations: usize,
-    tx_depth: usize,
+    pd: &ProtectionDomain, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, role: Role, msg_size: usize, iterations: usize, tx_depth: usize,
     rx_depth: usize,
 ) -> Result<Report> {
     let mut mr = pd.allocate::<u8>(msg_size)?;
@@ -32,13 +25,7 @@ pub fn run(
 }
 
 fn send(
-    mr: &mut LocalMemoryRegion<u8>,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    msg_size: usize,
-    iterations: usize,
-    tx_depth: usize,
+    mr: &mut LocalMemoryRegion<u8>, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, msg_size: usize, iterations: usize, tx_depth: usize,
 ) -> Result<Report> {
     // Warm-up: see `bench::WARMUP_SETTLE_MS`'s doc comment.
     conn.sync()?; // warm-up barrier
@@ -79,17 +66,16 @@ fn send(
     let elapsed_us = get_time_in_us() - t0;
     conn.sync()?;
 
-    Ok(Report::Bandwidth(BandwidthStats { msg_size, iterations, tx_depth, elapsed_us }))
+    Ok(Report::Bandwidth(BandwidthStats {
+        msg_size,
+        iterations,
+        tx_depth,
+        elapsed_us,
+    }))
 }
 
 fn receive(
-    mr: &mut LocalMemoryRegion<u8>,
-    cq: &CompletionQueue,
-    qp: &mut QueuePair,
-    conn: &Conn,
-    msg_size: usize,
-    iterations: usize,
-    rx_depth: usize,
+    mr: &mut LocalMemoryRegion<u8>, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, msg_size: usize, iterations: usize, rx_depth: usize,
 ) -> Result<Report> {
     // Warm-up: see send()'s matching comment.
     conn.sync()?; // warm-up barrier

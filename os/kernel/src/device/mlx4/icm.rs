@@ -1,28 +1,32 @@
 use core::mem::size_of;
 
+use super::{
+    Offsets, PdHandle,
+    cmd::{CommandInterface, Opcode},
+    fw::{Capabilities, VirtualPhysicalMapping},
+    profile::{Profile, get_mgm_entry_size},
+    queue_pair::QueuePair,
+    utils,
+};
+use crate::device::mlx4::cmd::{InputParam, OutputParam};
+use crate::device::mlx4::device::PAGE_SHIFT;
+use crate::device::mlx4::utils::MappedPages;
 use crate::memory::PAGE_SIZE;
+use crate::memory::vma::VmaType;
+use crate::process::process::Process;
+use crate::{memory, process_manager};
 use alloc::vec::Vec;
 use core::cmp::min;
 use core::intrinsics::offset;
 use log::{debug, error, info, trace};
-use modular_bitfield_msb::{
-    bitfield,
-    prelude::{B10, B11, B21, B24, B28, B3, B4, B40, B7},
-};
-use uuid::Uuid;
-use zerocopy::AsBytes;
+use modular_bitfield_msb::{bitfield, prelude::*};
 use rdma::{AccessFlags, MemoryRegionMetadata};
-use x86_64::{PhysAddr, VirtAddr};
+use uuid::Uuid;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame, Size4KiB};
-use crate::device::mlx4::cmd::{InputParam, OutputParam};
-use crate::{memory, process_manager};
-use crate::device::mlx4::device::PAGE_SHIFT;
-use crate::device::mlx4::utils::MappedPages;
-use crate::memory::vma::VmaType;
-use crate::process::process::Process;
-use super::{cmd::{CommandInterface, Opcode}, fw::{Capabilities, VirtualPhysicalMapping}, profile::{get_mgm_entry_size, Profile}, queue_pair::QueuePair, utils, Offsets, PdHandle};
+use x86_64::{PhysAddr, VirtAddr};
+use zerocopy::AsBytes;
 
 pub(super) const ICM_PAGE_SHIFT: u8 = 12;
 const TABLE_CHUNK_SIZE: usize = 1 << 18;
@@ -189,9 +193,7 @@ pub(super) struct MappedIcmAuxiliaryArea {
 
 impl MappedIcmAuxiliaryArea {
     pub(super) fn new(frame_ranges: Vec<PhysFrameRange>) -> Self {
-        Self {
-            frame_ranges
-        }
+        Self { frame_ranges }
     }
 
     /// Unmaps the area from the card.
@@ -226,7 +228,10 @@ struct IcmTable {
 
 impl IcmTable {
     fn init(cmd: &mut CommandInterface, entry_size: u16, entry_capacity: usize, reserved: usize, virt: u64) -> Result<IcmTable, &'static str> {
-        trace!("Creating icm table of {} objects with size {} at {:016x}, reserved = {}", entry_capacity, entry_size, virt, reserved);
+        trace!(
+            "Creating icm table of {} objects with size {} at {:016x}, reserved = {}",
+            entry_capacity, entry_size, virt, reserved
+        );
         assert!(entry_capacity >= reserved);
 
         let mut icm = IcmTable {
@@ -245,7 +250,7 @@ impl IcmTable {
         let bytes_start = index * self.entry_size as usize;
         let byte_end = bytes_start + count * self.entry_size as usize;
         for table_offset in (bytes_start..byte_end).step_by(TABLE_CHUNK_SIZE) {
-            self.map_chunk(cmd, table_offset, (TABLE_CHUNK_SIZE/PAGE_SIZE) as u32)?;
+            self.map_chunk(cmd, table_offset, (TABLE_CHUNK_SIZE / PAGE_SIZE) as u32)?;
         }
         Ok(())
     }
@@ -256,7 +261,10 @@ impl IcmTable {
     //       Theoretically can the alignment be: page_size * 2^log2size = 4KB * 2^32 = 16TB
     //       See PRM p. 373: Table 161 - Virtual_Physical_Mapping Field Descriptions
     fn map_chunk(&mut self, cmd: &mut CommandInterface, byte_offset: usize, num_pages: u32) -> Result<(), &'static str> {
-        trace!("Mapping a chunk of {num_pages} pages at byte offset 0x{byte_offset:x} for ICM Table at 0x{:x}", self.virt);
+        trace!(
+            "Mapping a chunk of {num_pages} pages at byte offset 0x{byte_offset:x} for ICM Table at 0x{:x}",
+            self.virt
+        );
         assert!(num_pages > 0);
         assert!(num_pages as usize <= MAX_CHUNK_SIZE);
 
@@ -267,7 +275,6 @@ impl IcmTable {
         let memory = utils::create_cont_mapping_with_dma_flags(num_pages as usize)?;
         let phys_start = memory.start_frame().start_address().as_u64();
         let card_virtual = self.virt + byte_offset as u64;
-
 
         let chunk_size = vpms.len().min(num_pages as usize);
 
@@ -283,7 +290,7 @@ impl IcmTable {
             None,
             InputParam::Mailbox(vpms.as_bytes()),
             Some(chunk_size.try_into().unwrap()),
-            OutputParam::Empty
+            OutputParam::Empty,
         )?;
 
         self.icm.push(MappedIcm {
@@ -299,11 +306,15 @@ impl IcmTable {
     /// ICM is ordinary host memory that the card reads by DMA, so the driver can update table
     /// entries in place.
     fn host_bytes_mut(&mut self, byte_offset: usize, len: usize) -> Result<&mut [u8], &'static str> {
-        let index = self.icm.iter().position(|chunk| {
-            let start = (chunk.card_virtual - self.virt) as usize;
-            let end = chunk.num_pages as usize * PAGE_SIZE;
-            start <= byte_offset && byte_offset < end
-        }).ok_or("chunk not found")?;
+        let index = self
+            .icm
+            .iter()
+            .position(|chunk| {
+                let start = (chunk.card_virtual - self.virt) as usize;
+                let end = chunk.num_pages as usize * PAGE_SIZE;
+                start <= byte_offset && byte_offset < end
+            })
+            .ok_or("chunk not found")?;
         let memory = self.icm[index].memory.as_mut().ok_or("ICM chunk has no memory")?;
         memory.as_slice_mut(byte_offset % TABLE_CHUNK_SIZE, len)
     }
@@ -372,7 +383,7 @@ impl MrTable {
         let process = process_manager().read().current_process();
         let kernel = process_manager().read().kernel_process().ok_or("No Kernel Process")?;
         if process.id() != kernel.id() && !process.virtual_address_space.access_ok(pages.start.start_address(), pages.size() as usize) {
-            return Err("User has no access to all pages")
+            return Err("User has no access to all pages");
         }
 
         debug!("Create MTT mappings for {:?}", pages);
@@ -459,7 +470,13 @@ impl MrTable {
         dmpt_bytes.copy_from_slice(&cmd.output_mailbox_as_bytes()[..size_of::<DmptEntry>()]);
         let mut dmpt = DmptEntry::from_bytes(dmpt_bytes);
         assert_eq!(dmpt_index, dmpt.index());
-        trace!("memory region of size {} with mem key {}, lkey {}, index {} created successfully", dmpt.length(), dmpt.key(), dmpt.lkey(), dmpt.index());
+        trace!(
+            "memory region of size {} with mem key {}, lkey {}, index {} created successfully",
+            dmpt.length(),
+            dmpt.key(),
+            dmpt.lkey(),
+            dmpt.index()
+        );
 
         // The `lkey` field of the entry is owned by the firmware and is not a
         // usable key (Linux writes a zero there and never reads it back). The
@@ -469,7 +486,7 @@ impl MrTable {
 
         self.regions.push(MemoryRegion {
             owner: owner.id(),
-            dmpt: Some(dmpt)
+            dmpt: Some(dmpt),
         });
         Ok(MemoryRegionMetadata {
             handle: dmpt_index,
@@ -631,7 +648,13 @@ struct MappedIcm {
 impl MappedIcm {
     /// Unmaps the area from the card.
     pub(super) fn unmap(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
-        cmd.execute_command(Opcode::UnmapIcm, None, InputParam::Immediate(self.card_virtual), Some(self.num_pages), OutputParam::Empty)?;
+        cmd.execute_command(
+            Opcode::UnmapIcm,
+            None,
+            InputParam::Immediate(self.card_virtual),
+            Some(self.num_pages),
+            OutputParam::Empty,
+        )?;
         // actually free the memory
         self.memory.take().unwrap();
         Ok(())

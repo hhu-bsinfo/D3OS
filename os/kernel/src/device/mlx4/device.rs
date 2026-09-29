@@ -1,5 +1,9 @@
 //! This module consists of functions that work close to the hardware of the hca.
-use tock_registers::{interfaces::{Readable, Writeable}, register_structs, registers::{ReadOnly, WriteOnly}};
+use tock_registers::{
+    interfaces::{Readable, Writeable},
+    register_structs,
+    registers::{ReadOnly, WriteOnly},
+};
 
 use super::utils::MappedPages;
 use crate::pci_bus;

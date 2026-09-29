@@ -12,7 +12,6 @@ mod report;
 mod server;
 mod transport;
 
-use log::LevelFilter;
 use cli::Cli;
 
 #[unsafe(no_mangle)]
