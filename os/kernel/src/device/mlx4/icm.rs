@@ -415,7 +415,7 @@ impl MrTable {
     ) -> Result<MemoryRegionMetadata, &'static str> {
         let size = data.len() * size_of::<T>();
         let addr = VirtAddr::from_ptr(data.as_ptr());
-        let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size as u64) + 1);
+        let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size as u64 - 1) + 1);
         debug!("Create dMTP for addr: 0x{:016x}, size: 0x{:x}", addr, size);
 
         // TODO: check if icm has sufficient space available for the new dmpt entry
