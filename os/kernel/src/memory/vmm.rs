@@ -384,7 +384,7 @@ impl VirtualAddressSpace {
             return true;
         }
 
-        // TODO: Map
+        // TODO: Map page lazily
         warn!("trying to access a page that is not mapped");
         false
     }
@@ -395,8 +395,8 @@ impl VirtualAddressSpace {
         }
 
         let first_page = Page::containing_address(dst);
-        let last_page = Page::containing_address(dst + size as u64);
-        for page in first_page..last_page {
+        let last_page = Page::containing_address(dst + size as u64 - 1);
+        for page in first_page..=last_page {
             if !self.ensure_user_page_is_mapped(page) {
                 return Err(UserCopyError::PageNotMapped);
             }
@@ -412,8 +412,8 @@ impl VirtualAddressSpace {
         }
 
         let first_page = Page::containing_address(src);
-        let last_page = Page::containing_address(src + size as u64);
-        for page in first_page..last_page {
+        let last_page = Page::containing_address(src + size as u64 - 1);
+        for page in first_page..=last_page {
             if !self.ensure_user_page_is_mapped(page) {
                 return Err(UserCopyError::PageNotMapped);
             }
