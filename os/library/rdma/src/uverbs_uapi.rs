@@ -48,7 +48,7 @@ const CHAR_BUF: &[u8] = &[0u8; 64];
 /// for the response (out) buffer. An empty slice (address and size zero) means
 /// that the command does not use that direction.
 #[repr(C)]
-#[derive(Default, Debug, Copy, Clone)]
+#[derive( Debug, Copy, Clone)]
 pub struct UserSlice {
     pub address: u64,
     pub size: usize,

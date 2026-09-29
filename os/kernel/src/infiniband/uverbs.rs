@@ -157,10 +157,10 @@ fn copy_to_user<T: Copy>(user_out: UserSlice, resp: &T) -> SyscallResult {
 
 #[inline]
 fn copy_slice_to_user<T: Copy>(user_out: UserSlice, resp: &[T]) -> SyscallResult {
-    assert_ne!(user_out.address, 0);
-
     let size = size_of_val(resp);
-    assert!(user_out.size >= size);
+    if user_out.address == 0 || user_out.size < size {
+        return Err(Errno::EINVAL);
+    }
 
     let process = process_manager().read().current_process();
     unsafe {
