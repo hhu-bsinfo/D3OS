@@ -886,7 +886,6 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "acpi",
- "bincode",
  "bitfield-struct 0.1.8",
  "bitflags 2.10.0",
  "built",
