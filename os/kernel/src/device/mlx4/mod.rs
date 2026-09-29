@@ -510,12 +510,6 @@ impl ConnectX3Nic {
             .position(|qp| qp.number() == number && qp.owner() == process.id())
             .ok_or("queue pair not found")?;
         let qp = self.qps.swap_remove(index);
-        // FIXME: this could result in a race condition, when the qp list is modified by another thread
-        if qp.number() != number {
-            error!("The removed queue pair number does not match with the provided");
-            self.qps.push(qp);
-            return Err("could not remove queue pair")
-        }
         qp.destroy(&mut self.cmd, &mut self.capabilities)?;
         Ok(())
     }

@@ -98,7 +98,7 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
         }
         UverbsCmd::DeallocPd => {
             let req: DeallocPdRequest = copy_from_user(user_in)?;
-            uverbs_dealloc_qp(device_handle, req).map_err(log_error_and_invalid)?;
+            uverbs_dealloc_pd(device_handle, req).map_err(log_error_and_invalid)?;
             Ok(0)
         }
     }

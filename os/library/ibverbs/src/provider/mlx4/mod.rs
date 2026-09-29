@@ -171,7 +171,7 @@ impl IbvContext for Mlx4Context {
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
-enum CqArmCmd {
+pub enum CqArmCmd {
     ArmSolicit = 1,
     ArmNext = 2,
 }

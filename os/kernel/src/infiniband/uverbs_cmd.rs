@@ -88,12 +88,8 @@ pub fn uverbs_alloc_pd(device_handle: usize) -> Result<AllocPdResponse, &'static
     Ok(AllocPdResponse { pd })
 }
 
-pub fn uverbs_dealloc_qp(device_handle: usize, req: DeallocPdRequest) -> Result<(), &'static str> {
+pub fn uverbs_dealloc_pd(device_handle: usize, req: DeallocPdRequest) -> Result<(), &'static str> {
     let mut device_list = get_dev_list().lock();
     let device = device_list.get_mut(device_handle_to_idx(device_handle)).unwrap();
     device.dealloc_pd(req.pd)
 }
-
-
-// todo; map user address region into user space, let user ring doorbell
-pub fn uverbs_mmap_uar() {}

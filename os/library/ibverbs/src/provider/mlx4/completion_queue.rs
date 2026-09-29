@@ -39,7 +39,6 @@ pub struct CompletionQueue {
     doorbell: *mut CompletionQueueDoorbell,
     arm_sequence_number: u32,
     consumer_index: Mutex<u32>,
-    poll_count: AtomicU32,
 }
 
 impl IbvCompletionQueue for CompletionQueue {
@@ -54,7 +53,6 @@ impl IbvCompletionQueue for CompletionQueue {
     /// This is used by ibv_poll_cq. `device` is the shared registry of live queue pairs used to
     /// resolve a CQE's `wr_id` and advance the queue pair's tail.
     fn poll(&self, wc: &mut [WorkCompletion]) -> io::Result<usize> {
-        let poll_count = self.poll_count.fetch_add(1, Ordering::AcqRel);
         let mut consumer_index = self.consumer_index.lock();
 
         let mut completions = 0;
@@ -115,7 +113,6 @@ impl CompletionQueue {
             doorbell: doorbell_ptr,
             arm_sequence_number: 1,
             consumer_index: Mutex::new(0),
-            poll_count: AtomicU32::new(0),
         };
         // The event-driven completion model this enables isn't used by this driver (everything
         // polls), but the initial arm matches what the reference driver does and costs nothing on

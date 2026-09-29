@@ -53,12 +53,7 @@ impl CompletionQueue {
         //   event `IBV_EVENT_CQ_ERR` will be triggered, and the CQ cannot be used anymore.
         //
         let n = self.inner.poll(completions)?;
-
-        if n < 0 {
-            Err(io::Error::new(io::ErrorKind::Other, "ibv_poll_cq failed"))
-        } else {
-            Ok(&mut completions[0..n as usize])
-        }
+        Ok(&mut completions[0..n as usize])
     }
 }
 
