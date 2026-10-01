@@ -8,9 +8,6 @@ pub struct CompletionQueue {
     pub(super) inner: Arc<dyn IbvCompletionQueue>,
 }
 
-unsafe impl Send for CompletionQueue {}
-unsafe impl Sync for CompletionQueue {}
-
 impl CompletionQueue {
     /// The queue number the device assigned to this completion queue.
     ///

@@ -21,9 +21,6 @@ pub fn devices() -> io::Result<DeviceList> {
 /// List of available RDMA devices.
 pub struct DeviceList(Vec<DeviceHandle>);
 
-unsafe impl Sync for DeviceList {}
-unsafe impl Send for DeviceList {}
-
 impl DeviceList {
     /// Returns an iterator over all found devices.
     pub fn iter(&self) -> DeviceListIter<'_> {

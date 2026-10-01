@@ -13,9 +13,6 @@ pub struct Context {
     pub(crate) gid: Gid,
 }
 
-unsafe impl Sync for Context {}
-unsafe impl Send for Context {}
-
 impl Context {
 
     /// Opens a context for the given device, and queries its port and gid.

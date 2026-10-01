@@ -13,9 +13,6 @@ pub struct ProtectionDomain<'ctx> {
     pub pd: PdHandle,
 }
 
-unsafe impl<'a> Sync for ProtectionDomain<'a> {}
-unsafe impl<'a> Send for ProtectionDomain<'a> {}
-
 impl Drop for ProtectionDomain<'_> {
     fn drop(&mut self) {
         if let Err(e) = self.ctx.inner.dealloc_pd(self.pd) {
