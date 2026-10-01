@@ -1,6 +1,7 @@
 //! This module consists of functions to create a direct memory access mailbox for passing parameters to the hca
 //! and getting output back from the hca during verb calls and functions to execute verb calls.
 
+use core::cmp::PartialEq;
 use core::sync::atomic::{Ordering, compiler_fence};
 
 use crate::device::infiniband::mlx4::utils;
@@ -8,6 +9,7 @@ use crate::memory::vma::VmaType;
 use crate::{get_time_in_us, process_manager};
 use bitflags::bitflags;
 use core::fmt::Debug;
+use chrono::Duration;
 use log::{trace, warn};
 use strum_macros::{FromRepr, IntoStaticStr};
 use tock_registers::interfaces::{Readable, Writeable};
@@ -15,6 +17,7 @@ use tock_registers::register_bitfields;
 use tock_registers::registers::{ReadWrite, WriteOnly};
 use x86_64::PhysAddr;
 use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB};
+use crate::device::infiniband::mlx4::profile::get_mgm_entry_size;
 
 const HCR_BASE: usize = 0x80680;
 const HCR_OPMOD_SHIFT: u32 = 12;
@@ -22,6 +25,8 @@ const HCR_T_BIT: u32 = 21;
 const HCR_E_BIT: u32 = 22;
 const HCR_GO_BIT: u32 = 23;
 const POLL_TOKEN: u32 = 0xffff;
+const GO_BIT_SET_TIMEOUT: Duration = Duration::seconds(10);
+const POLL_TIMEOUT: Duration = Duration::seconds(10);
 
 #[repr(u16)]
 #[derive(Clone, Copy, Debug)]
@@ -163,6 +168,7 @@ register_bitfields![u32,
     ]
 ];
 
+// Writes of less than 32 bits to the HCR are not supported
 #[repr(C)]
 struct Hcr {
     in_param_h: WriteOnly<u32>,
@@ -235,6 +241,7 @@ pub(super) enum InputParam<'a> {
     Mailbox(&'a [u8]),
 }
 
+#[derive(PartialEq)]
 pub(super) enum OutputParam {
     Empty,
     Immediate,
@@ -272,52 +279,27 @@ impl CommandInterface {
     pub(super) fn execute_command(
         &mut self, opcode: Opcode, opcode_modifier: Option<u8>, input: InputParam, input_modifier: Option<u32>, output: OutputParam,
     ) -> Result<Option<u64>, ReturnStatus> {
-        // TODO: timeout
         trace!("executing command: {opcode:?}");
+        let immediate = output == OutputParam::Immediate;
+        // TODO: allow events to be completed via event queue, instead of polling.
+        //       probably require multiple input and output mailboxes or the user supplies the mailbox again
+        self.post(opcode, opcode_modifier, input, input_modifier, output, false)?;
+        self.poll(immediate)
+    }
 
-        // wait until the previous command is done
-        self.wait_while_pending(opcode, "the previous command");
-
-        let input_param = match input {
-            InputParam::Empty => 0,
-            InputParam::Immediate(v) => v,
-            InputParam::Mailbox(s) => {
-                self.input_mailbox.clear();
-                self.input_mailbox.copy_from_bytes(s);
-                self.input_mailbox.phys_addr().as_u64()
-            }
-        };
-
-        let (output_mailbox, immediate) = match output {
-            OutputParam::Empty => (0_u64, false),
-            OutputParam::Immediate => (0, true),
-            OutputParam::Mailbox => {
-                self.output_mailbox.clear();
-                (self.output_mailbox.phys_addr().as_u64(), false)
-            }
-        };
-
-        // post the command
-        self.hcr.in_param_h.set(((input_param >> 32) as u32).to_be());
-        self.hcr.in_param_l.set((input_param as u32).to_be());
-        self.hcr.in_mod.set(input_modifier.unwrap_or(0).to_be());
-        self.hcr.out_param_h.set(((output_mailbox >> 32) as u32).to_be());
-        self.hcr.out_param_l.set((output_mailbox as u32).to_be());
-        self.hcr.token.set((POLL_TOKEN << 16).to_be());
-        compiler_fence(Ordering::SeqCst);
-        let status_opcode = (1 << HCR_GO_BIT)
-            | (self.exp_toggle << HCR_T_BIT)
-            | (0 << HCR_E_BIT) // TODO: event
-            | ((opcode_modifier.unwrap_or(0) as u32) << HCR_OPMOD_SHIFT)
-            | opcode as u16 as u32;
-        self.hcr.status_opcode.set(status_opcode.to_be());
-        self.exp_toggle ^= 1;
-
+    /// Polls the HCR for completion
+    fn poll(&mut self, immediate: bool) -> Result<Option<u64>, ReturnStatus> {
         trace!("polling for completion");
-        self.wait_while_pending(opcode, "the command");
+        let end = get_time_in_us() + POLL_TIMEOUT.num_microseconds().unwrap_or(i64::MAX) as u64;
+        while self.is_pending() {
+            if get_time_in_us() > end {
+                warn!("timout after {}ms: polling failed", POLL_TIMEOUT.num_milliseconds());
+                return Err(ReturnStatus::PrevTimeout)
+            }
+        }
 
         let status_opcode = u32::from_be(self.hcr.status_opcode.get());
-        let status = ReturnStatus::from_repr(status_opcode >> 24).expect("return status invalid");
+        let status = ReturnStatus::from_repr((status_opcode >> 24) & 0xff).expect("return status invalid");
         trace!("status: {status:?}");
 
         match status {
@@ -336,25 +318,58 @@ impl CommandInterface {
         }
     }
 
-    /// Spin until the card hands the command register back, reporting if that takes long.
-    ///
-    /// A command that blocks the firmware for too long delays its MAD processing, and the subnet
-    /// manager may drop the port. There is no timeout, so a command that never completes hangs.
-    fn wait_while_pending(&mut self, opcode: Opcode, what: &str) {
-        /// How long the card may take before it is reported.
-        const SLOW_COMMAND_US: u64 = 10_000;
-
-        let start = get_time_in_us();
-        let mut reported = false;
+    /// Posts a command via the HCR. Check if the previous command completed.
+    /// When the `event` parameter is `true` the completion of the command emits an entry in the EQ
+    fn post(&mut self, opcode: Opcode, opcode_modifier: Option<u8>, input: InputParam, input_modifier: Option<u32>, output: OutputParam, event: bool) -> Result<(), ReturnStatus> {
+        let end =  if event {
+            get_time_in_us() + GO_BIT_SET_TIMEOUT.num_microseconds().unwrap_or(i64::MAX) as u64
+        } else {
+            // When running synchronously the CMD should not be owned by HW
+            0
+        };
         while self.is_pending() {
-            if !reported && get_time_in_us() - start > SLOW_COMMAND_US {
-                reported = true;
-                warn!("waiting for {what} ({opcode:?}) for more than {} ms", SLOW_COMMAND_US / 1000);
+            if get_time_in_us() > end {
+                warn!("timout after {}ms: polling for previous cmd failed", GO_BIT_SET_TIMEOUT.num_milliseconds());
+                warn!("waiting for previous cmd failed");
+                return Err(ReturnStatus::PrevTimeout);
             }
         }
-        if reported {
-            warn!("{what} ({opcode:?}) took {} ms", (get_time_in_us() - start) / 1000);
-        }
+
+        let input_param = match input {
+            InputParam::Empty => 0,
+            InputParam::Immediate(v) => v,
+            InputParam::Mailbox(s) => {
+                self.input_mailbox.clear();
+                self.input_mailbox.copy_from_bytes(s);
+                self.input_mailbox.phys_addr().as_u64()
+            }
+        };
+
+        let output_mailbox = match output {
+            OutputParam::Empty => 0_u64,
+            OutputParam::Immediate => 0,
+            OutputParam::Mailbox => {
+                self.output_mailbox.clear();
+                self.output_mailbox.phys_addr().as_u64()
+            }
+        };
+
+        // post the command
+        self.hcr.in_param_h.set(((input_param >> 32) as u32).to_be());
+        self.hcr.in_param_l.set((input_param as u32).to_be());
+        self.hcr.in_mod.set(input_modifier.unwrap_or(0).to_be());
+        self.hcr.out_param_h.set(((output_mailbox >> 32) as u32).to_be());
+        self.hcr.out_param_l.set((output_mailbox as u32).to_be());
+        self.hcr.token.set((POLL_TOKEN << 16).to_be());
+        compiler_fence(Ordering::SeqCst);
+        let status_opcode = (1 << HCR_GO_BIT)
+            | (self.exp_toggle << HCR_T_BIT)
+            | ((event as u32) << HCR_E_BIT)
+            | ((opcode_modifier.unwrap_or(0) as u32) << HCR_OPMOD_SHIFT)
+            | opcode as u16 as u32;
+        self.hcr.status_opcode.set(status_opcode.to_be());
+        self.exp_toggle ^= 1;
+        Ok(())
     }
 
     fn is_pending(&self) -> bool {
@@ -405,4 +420,8 @@ pub(super) enum ReturnStatus {
 
     // CQ
     BadSize = 0x40,
+
+    // Not defined by standard
+    PrevTimeout = 0x100,
+    PollTimeout = 0x101,
 }
