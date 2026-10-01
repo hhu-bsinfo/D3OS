@@ -11,7 +11,7 @@ use bincode::{Decode, Encode, BorrowDecode};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, FromRepr)]
 #[non_exhaustive]
 #[repr(u8)]
 pub enum QueuePairType {
@@ -217,7 +217,8 @@ pub struct PortAttr {
     pub phys_state: PhysicalPortState,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, FromRepr)]
+#[repr(u8)]
 pub enum QueuePairState {
     #[default]
     Reset,

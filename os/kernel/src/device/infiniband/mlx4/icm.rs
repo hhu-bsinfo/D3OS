@@ -430,8 +430,11 @@ impl MrTable {
             return Err("MR must not be empty");
         }
         let size = data.size as u64;
-        let addr = VirtAddr::new(data.address);
-        process_manager().read().current_process().virtual_address_space.access_ok(addr, size as usize);
+        let addr = VirtAddr::try_new(data.address).map_err(|_| "MR address is not canonical")?;
+        // Checked before computing the page range, which would panic past the canonical range.
+        if !owner.virtual_address_space.access_ok(addr, data.size) {
+            return Err("User has no access to MR");
+        }
         let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size - 1) + 1);
         debug!("Create dMTP for addr: 0x{:016x}, size: 0x{:x}", addr, size);
 

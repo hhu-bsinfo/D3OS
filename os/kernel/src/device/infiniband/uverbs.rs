@@ -1,14 +1,15 @@
 use super::uverbs_cmd::*;
 use crate::device::infiniband::mlx4::{Mlx4Device, device_in_range};
 use crate::process_manager;
-use core::mem::MaybeUninit;
+use core::mem::{MaybeUninit, offset_of};
 use log::error;
-use rdma::DeviceHandle;
 use rdma::uverbs_uapi::{
     AllocPdResponse, CreateCqRequest, CreateMrRequest, CreateQpRequest, DeallocPdRequest, ModifyQpRequest, QueryPortRequest, UserSlice, UverbsCmd,
 };
+use rdma::{DeviceHandle, Mtu, QueuePairState, QueuePairType};
 use syscall::return_vals::{Errno, SyscallResult};
 use x86_64::VirtAddr;
+use zerocopy::FromBytes;
 
 /// user_in describes the parameters provided by the user
 /// user_out describes a user buffer for return values
@@ -85,8 +86,10 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
             uverbs_destroy(device_handle, Mlx4Device::destroy_mr, mr_index).map_err(log_error_and_invalid)?;
             Ok(0)
         }
-        UverbsCmd::QueryQp => todo!("QueryQp"),
-        UverbsCmd::SetMrSize => todo!("SetMrSize"),
+        UverbsCmd::QueryQp | UverbsCmd::SetMrSize => {
+            error!("{:?} is not supported", cmd);
+            Err(Errno::ENOTSUP)
+        }
         UverbsCmd::OpenDevice => {
             let resp = uverbs_open_device(device_handle).map_err(log_error_and_invalid)?;
             copy_to_user(user_out, &resp)

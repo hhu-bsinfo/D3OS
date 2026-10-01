@@ -58,34 +58,34 @@ impl QueuePair {
         dev: &mut Mlx4Device, process: Arc<Process>, qp_type: QueuePairType, pd: PdHandle, send_cq_number: u32, receive_cq_number: u32, buffer: *const u8,
         doorbell_ptr: *const u32, uar_index: u32, log_sq_bb_count: u8, log_sq_stride: u8, log_rq_wqe_count: u8, log_rq_stride: u8,
     ) -> Result<Self, &'static str> {
-        if !process.virtual_address_space.access_ok(VirtAddr::from_ptr(doorbell_ptr), size_of::<u32>()) {
+        let doorbell_addr = VirtAddr::try_new(doorbell_ptr as u64).map_err(|_| "Doorbell address is not canonical")?;
+        if !process.virtual_address_space.access_ok(doorbell_addr, size_of::<u32>()) {
             return Err("User has no access to Doorbell");
         }
 
+        // The context stores each stride as `log_stride - 4` in 3 bits.
         if log_sq_stride < 4 || log_rq_stride < 4 {
             return Err("stride is not multiple of 16 bytes");
         }
+        if log_sq_stride > 11 || log_rq_stride > 11 {
+            return Err("stride is larger than 2048 bytes");
+        }
 
-        // Bound WQE counts against the HCA's max QP size and guard the `buffer_size` shifts
-        // below from overflowing.
-        let log_max_qp_sz = dev.capabilities.log_max_qp_sz();
+        // Bound WQE counts against the HCA's max QP size and the context's 4-bit size fields.
+        let log_max_qp_sz = dev.capabilities.log_max_qp_sz().min(15);
         if log_sq_bb_count > log_max_qp_sz || log_rq_wqe_count > log_max_qp_sz {
             return Err("WQE count exceeds the HCA's max QP size");
         }
-        if log_sq_bb_count.checked_add(log_sq_stride).is_none_or(|shift| shift >= 64)
-            || log_rq_wqe_count.checked_add(log_rq_stride).is_none_or(|shift| shift >= 64)
-        {
-            return Err("QP buffer size overflows");
-        }
-
-        // TODO: make sure ICM entry for this queue pair number is mapped to physical memory
-        let number = dev.offsets.alloc_qpn().try_into().unwrap();
 
         let buffer_size: u64 = (1 << (log_sq_bb_count + log_sq_stride)) + (1 << (log_rq_wqe_count + log_rq_stride));
-        let buffer_addr = VirtAddr::from_ptr(buffer);
+        let buffer_addr = VirtAddr::try_new(buffer as u64).map_err(|_| "Buffer address is not canonical")?;
 
-        if buffer.addr() % 64 != 0 {
+        if !buffer_addr.is_aligned(64u64) {
             return Err("buffer is not aligned to 64");
+        }
+        // Checked before computing the page range, which would panic past the canonical range.
+        if !process.virtual_address_space.access_ok(buffer_addr, buffer_size as usize) {
+            return Err("User has no access to QP buffer");
         }
         let start: Page<Size4KiB> = Page::containing_address(buffer_addr);
         let end = start + buffer_size.div_ceil(start.size());
@@ -101,6 +101,9 @@ impl QueuePair {
             .virtual_address_space
             .get_phys(doorbell_ptr as u64)
             .ok_or("doorbell not mapped to physical address")?;
+
+        // TODO: make sure ICM entry for this queue pair number is mapped to physical memory
+        let number = dev.offsets.alloc_qpn().try_into().unwrap();
 
         let qp = Self {
             number,
@@ -151,6 +154,12 @@ impl QueuePair {
         let mut context = QueuePairContext::new();
         let mut param_mask = OptionalParameterMask::empty();
 
+        // Every attribute comes straight from userspace, so a missing or out-of-range one is an
+        // error for the caller, never a panic.
+        if attr_mask.contains(QueuePairAttrMask::IBV_QP_PORT) && !(1..=caps.num_ports()).contains(&attr.port_num) {
+            return Err("port number out of range");
+        }
+
         let next_qp_state = if attr_mask.contains(QueuePairAttrMask::IBV_QP_STATE) {
             Some(attr.qp_state)
         } else {
@@ -180,26 +189,34 @@ impl QueuePair {
                 // RC needs remote read
                 if self.qp_type == QueuePairType::RC {
                     // TODO: this might have been set in an earlier call
-                    assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_ACCESS_FLAGS));
+                    if !attr_mask.contains(QueuePairAttrMask::IBV_QP_ACCESS_FLAGS) {
+                        return Err("access flags are required");
+                    }
                     context.set_remote_read(attr.qp_access_flags.contains(AccessFlags::REMOTE_READ));
                 }
                 // RC and UC need remote write
                 if self.qp_type == QueuePairType::RC || self.qp_type == QueuePairType::UC {
                     // TODO: this might have been set in an earlier call
-                    assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_ACCESS_FLAGS));
+                    if !attr_mask.contains(QueuePairAttrMask::IBV_QP_ACCESS_FLAGS) {
+                        return Err("access flags are required");
+                    }
                     context.set_remote_write(attr.qp_access_flags.contains(AccessFlags::REMOTE_WRITE));
                 }
                 // RC needs remote atomic
                 if self.qp_type == QueuePairType::RC {
                     // TODO: this might have been set in an earlier call
-                    assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_ACCESS_FLAGS));
+                    if !attr_mask.contains(QueuePairAttrMask::IBV_QP_ACCESS_FLAGS) {
+                        return Err("access flags are required");
+                    }
                     context.set_remote_atomic(attr.qp_access_flags.contains(AccessFlags::REMOTE_ATOMIC));
                 }
                 context.set_cqn_receive(self.receive_cq_number);
                 // UD needs qkey
                 if self.qp_type == QueuePairType::UD {
                     // TODO: this might have been set in an earlier call
-                    assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_QKEY));
+                    if !attr_mask.contains(QueuePairAttrMask::IBV_QP_QKEY) {
+                        return Err("qkey is required");
+                    }
                     context.set_qkey(attr.qkey);
                 }
                 // TODO: RC and UD need srq
@@ -249,19 +266,24 @@ impl QueuePair {
                 // TODO: required parameters for RC and UC: next_recv_psn, qos_vport, roce_mode,
                 if self.qp_type == QueuePairType::RC || self.qp_type == QueuePairType::UC {
                     // TODO: this might have been set in an earlier call
-                    assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_DEST_QPN));
-                    context.set_remote_qpn(attr.dest_qp_num);
-                    assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_AV));
+                    if !attr_mask.contains(QueuePairAttrMask::IBV_QP_DEST_QPN) {
+                        return Err("destination QPN is required");
+                    }
+                    context.set_remote_qpn_checked(attr.dest_qp_num).map_err(|_| "destination QPN out of range")?;
+                    if !attr_mask.contains(QueuePairAttrMask::IBV_QP_AV) {
+                        return Err("address vector is required");
+                    }
                     context.set_primary_rlid(attr.ah_attr.dlid);
                 }
 
                 // TODO: required parameters for RC: ric
                 if self.qp_type == QueuePairType::RC {
-                    assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_MAX_DEST_RD_ATOMIC));
+                    if !attr_mask.contains(QueuePairAttrMask::IBV_QP_MAX_DEST_RD_ATOMIC) {
+                        return Err("max_dest_rd_atomic is required");
+                    }
                     // TODO: check if the devices supports that many outstanding read/atomic operations
-                    context
-                        .set_rra_max_checked(attr.max_dest_rd_atomic.next_power_of_two().ilog2() as u8)
-                        .map_err(|_| "rra_max out of bounds")?;
+                    let rra_max = attr.max_dest_rd_atomic.checked_next_power_of_two().ok_or("rra_max out of bounds")?;
+                    context.set_rra_max_checked(rra_max.ilog2() as u8).map_err(|_| "rra_max out of bounds")?;
                 }
 
                 // TODO: required parameters for all types: rate_limit_index
@@ -278,7 +300,7 @@ impl QueuePair {
                 if self.qp_type == QueuePairType::RC {
                     if attr_mask.contains(QueuePairAttrMask::IBV_QP_MIN_RNR_TIMER) {
                         // TODO: check encoding
-                        context.set_min_rnr_nak(attr.min_rnr_timer);
+                        context.set_min_rnr_nak_checked(attr.min_rnr_timer).map_err(|_| "min_rnr_timer out of range")?;
                         param_mask.insert(OptionalParameterMask::MIN_RNR_NAK);
                     }
                 }
@@ -289,7 +311,9 @@ impl QueuePair {
                     }
                 }
                 if attr_mask.contains(QueuePairAttrMask::IBV_QP_PKEY_INDEX) {
-                    context.set_primary_pkey_index(attr.pkey_index.try_into().unwrap());
+                    context
+                        .set_primary_pkey_index_checked(attr.pkey_index.try_into().map_err(|_| "pkey index out of range")?)
+                        .map_err(|_| "pkey index out of range")?;
                     param_mask.insert(OptionalParameterMask::PKEY_INDEX);
                 }
                 if self.qp_type == QueuePairType::RC || self.qp_type == QueuePairType::UC {
@@ -302,7 +326,9 @@ impl QueuePair {
                         param_mask.insert(OptionalParameterMask::REMOTE_READ);
                     }
                     if attr_mask.contains(QueuePairAttrMask::IBV_QP_ALT_PATH) {
-                        context.set_alternate_pkey_index(attr.alt_pkey_index.try_into().unwrap());
+                        context
+                            .set_alternate_pkey_index_checked(attr.alt_pkey_index.try_into().map_err(|_| "alternate pkey index out of range")?)
+                            .map_err(|_| "alternate pkey index out of range")?;
                         context.set_alternate_rlid(attr.alt_ah_attr.dlid);
                         // TODO: ack_timeout, mgid_index, ud_force_mgid,
                         // TODO: max_stat_rate, hop_limit, tclass, flow_label,
@@ -325,7 +351,9 @@ impl QueuePair {
                 }
                 // can update pkey_index
                 if attr_mask.contains(QueuePairAttrMask::IBV_QP_PKEY_INDEX) {
-                    context.set_primary_pkey_index(attr.pkey_index.try_into().unwrap());
+                    context
+                        .set_primary_pkey_index_checked(attr.pkey_index.try_into().map_err(|_| "pkey index out of range")?)
+                        .map_err(|_| "pkey index out of range")?;
                     param_mask.insert(OptionalParameterMask::PKEY_INDEX);
                 }
                 // can update access flags for RC and UC
@@ -343,15 +371,20 @@ impl QueuePair {
                 // set required fields
                 // TODO: ack_req_freq, next_send_psn, retry_count
                 if self.qp_type == QueuePairType::RC {
-                    assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_MAX_QP_RD_ATOMIC));
+                    if !attr_mask.contains(QueuePairAttrMask::IBV_QP_MAX_QP_RD_ATOMIC) {
+                        return Err("max_rd_atomic is required");
+                    }
                     // TODO: check if the devices supports that many outstanding read/atomic operations
-                    context
-                        .set_sra_max_checked(attr.max_rd_atomic.next_power_of_two().ilog2() as u8)
-                        .map_err(|_| "sra_max out of bounds")?;
-                    assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_RNR_RETRY));
-                    context.set_rnr_retry(attr.rnr_retry);
-                    assert!(attr_mask.contains(QueuePairAttrMask::IBV_QP_TIMEOUT));
-                    context.set_primary_ack_timeout(attr.timeout);
+                    let sra_max = attr.max_rd_atomic.checked_next_power_of_two().ok_or("sra_max out of bounds")?;
+                    context.set_sra_max_checked(sra_max.ilog2() as u8).map_err(|_| "sra_max out of bounds")?;
+                    if !attr_mask.contains(QueuePairAttrMask::IBV_QP_RNR_RETRY) {
+                        return Err("rnr_retry is required");
+                    }
+                    context.set_rnr_retry_checked(attr.rnr_retry).map_err(|_| "rnr_retry out of range")?;
+                    if !attr_mask.contains(QueuePairAttrMask::IBV_QP_TIMEOUT) {
+                        return Err("timeout is required");
+                    }
+                    context.set_primary_ack_timeout_checked(attr.timeout).map_err(|_| "timeout out of range")?;
                 }
                 // set optional fields
                 // TODO: rate_limit_index
@@ -360,7 +393,7 @@ impl QueuePair {
                 if self.qp_type == QueuePairType::RC {
                     if attr_mask.contains(QueuePairAttrMask::IBV_QP_MIN_RNR_TIMER) {
                         // TODO: check encoding
-                        context.set_min_rnr_nak(attr.min_rnr_timer);
+                        context.set_min_rnr_nak_checked(attr.min_rnr_timer).map_err(|_| "min_rnr_timer out of range")?;
                         param_mask.insert(OptionalParameterMask::MIN_RNR_NAK);
                     }
                 }
@@ -371,7 +404,9 @@ impl QueuePair {
                     }
                 }
                 if attr_mask.contains(QueuePairAttrMask::IBV_QP_PKEY_INDEX) {
-                    context.set_primary_pkey_index(attr.pkey_index.try_into().unwrap());
+                    context
+                        .set_primary_pkey_index_checked(attr.pkey_index.try_into().map_err(|_| "pkey index out of range")?)
+                        .map_err(|_| "pkey index out of range")?;
                     param_mask.insert(OptionalParameterMask::PKEY_INDEX);
                 }
                 if self.qp_type == QueuePairType::RC || self.qp_type == QueuePairType::UC {
@@ -389,25 +424,18 @@ impl QueuePair {
             }
 
             // interestingly, there's no Rtr2RtrQp, but we could emulate it by calling UpdateQp
-            (QueuePairState::ReadyToReceive, None) => {
-                unimplemented!()
-            }
+            (QueuePairState::ReadyToReceive, None) => return Err("modifying a QP in RTR is not supported"),
 
-            // we can modify values in rts
+            // we could modify values in rts
             (QueuePairState::ReadyToSend, Some(QueuePairState::ReadyToSend)) | (QueuePairState::ReadyToSend, None) => {
-                unimplemented!()
+                return Err("modifying a QP in RTS is not supported");
             }
 
             // ignore SQD for now
-            (QueuePairState::ReadyToSend, Some(QueuePairState::SQD)) => {
-                unimplemented!()
-            }
-            (QueuePairState::SQD, Some(QueuePairState::ReadyToSend)) => {
-                unimplemented!()
-            }
-            (QueuePairState::SQD, Some(QueuePairState::SQD)) | (QueuePairState::SQD, None) => {
-                unimplemented!()
-            }
+            (QueuePairState::ReadyToSend, Some(QueuePairState::SQD))
+            | (QueuePairState::SQD, Some(QueuePairState::ReadyToSend))
+            | (QueuePairState::SQD, Some(QueuePairState::SQD))
+            | (QueuePairState::SQD, None) => return Err("the SQD state is not supported"),
 
             // resetting is always possible
             (_, Some(QueuePairState::Reset)) => Opcode::Any2RstQp,

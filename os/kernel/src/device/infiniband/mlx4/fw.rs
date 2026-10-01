@@ -390,7 +390,7 @@ pub(super) struct Capabilities {
     #[skip]
     __: B4,
     #[skip(setters)]
-    num_ports: B4,
+    pub(super) num_ports: B4,
     #[skip]
     __: B3,
     #[skip(setters)]

@@ -44,7 +44,8 @@ impl CompletionQueue {
         dev: &mut Mlx4Device, process: Arc<Process>, num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64, uar_idx: u32,
     ) -> Result<Self, &'static str> {
         dev.validate_uar_index(uar_idx, &process)?;
-        if !process.virtual_address_space.access_ok(VirtAddr::from_ptr(doorbell_ptr), size_of::<u64>()) {
+        let doorbell_addr = VirtAddr::try_new(doorbell_ptr as u64).map_err(|_| "Doorbell address is not canonical")?;
+        if !process.virtual_address_space.access_ok(doorbell_addr, size_of::<u64>()) {
             return Err("User has no access to Doorbell");
         }
 
@@ -57,15 +58,18 @@ impl CompletionQueue {
             return Err("Too many CQEs");
         }
 
-        let number: u32 = dev.offsets.alloc_cqn().try_into().unwrap();
         let log2num_entries = num_entries.ilog2() as u8;
 
-        let buffer_addr = VirtAddr::from_ptr(buffer);
+        let buffer_addr = VirtAddr::try_new(buffer as u64).map_err(|_| "Buffer address is not canonical")?;
         // The buffer must be aligned to the cqe_stride set in HCA_INIT
         if !buffer_addr.is_aligned(size_of::<u32>() as u64) {
             return Err("Buffer is not aligned to CQE stride");
         }
         let buffer_size = num_entries as usize * CQE_SIZE;
+        // Checked before computing the page range, which would panic past the canonical range.
+        if !process.virtual_address_space.access_ok(buffer_addr, buffer_size) {
+            return Err("User has no access to CQ buffer");
+        }
         let start: Page<Size4KiB> = Page::containing_address(buffer_addr);
         let end = start + (buffer_size as u64).div_ceil(start.size());
         let mtt = dev
@@ -78,6 +82,7 @@ impl CompletionQueue {
             .get_phys(doorbell_ptr as u64)
             .ok_or("doorbell not mapped to physical address")?;
 
+        let number: u32 = dev.offsets.alloc_cqn().try_into().unwrap();
         let eq_number = dev.eqs.get(0).map(|eq| eq.read().number());
 
         let mut ctx = CompletionQueueContext::new();
