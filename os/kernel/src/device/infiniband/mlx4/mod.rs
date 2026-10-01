@@ -13,7 +13,7 @@ mod profile;
 mod queue_pair;
 mod utils;
 
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -22,14 +22,14 @@ use cmd::CommandInterface;
 use completion_queue::CompletionQueue;
 use event_queue::{ClrInt, EventQueue, init_eqs};
 use fw::{Capabilities, Hca, MappedFirmwareArea};
-use icm::MappedIcmTables;
+use icm::{MappedIcmTables, MemoryRegion};
 use log::{error, info, trace, warn};
 use pci_types::{CommandRegister, EndpointHeader};
 use zerocopy::U32;
 
-use rdma::{AccessFlags, DeviceAttr, MemoryRegionMetadata, PdHandle, PortAttr, QueuePairAttr, QueuePairAttrMask, QueuePairType};
+use rdma::{AccessFlags, ContextHandle, DeviceAttr, MemoryRegionMetadata, PdHandle, PortAttr, QueuePairAttr, QueuePairAttrMask, QueuePairType};
 
-use crate::{pci_bus, process_manager};
+use crate::pci_bus;
 use port::Port;
 use queue_pair::QueuePair;
 use spin::{Mutex, Once, RwLock};
@@ -97,12 +97,13 @@ pub struct Mlx4Device {
     offsets: Offsets,
     icm_tables: MappedIcmTables,
     hca: Hca,
-    contexts: Vec<Context>,
-    pds: BTreeMap<PdHandle, Uuid>, // Protection Domain -> Process id
+    /// Every open context, each owning everything created in it.
+    contexts: BTreeMap<ContextHandle, UContext>,
+    /// Handle for the next context; handles are never reused.
+    next_context: u32,
+    /// Protection domain numbers in use, across all contexts.
+    pd_numbers: BTreeSet<u32>,
     eqs: Vec<Arc<RwLock<EventQueue>>>,
-    // TODO: find some way to bind this to the relevant EQ
-    cqs: Vec<CompletionQueue>,
-    qps: Vec<QueuePair>,
     ports: Vec<Port>,
     /// Set once the internal error buffer has been dumped, so it is reported once and not on
     /// every poll afterwards.
@@ -239,11 +240,10 @@ impl Mlx4Device {
             offsets,
             icm_tables,
             hca,
-            contexts: Vec::new(),
-            pds: BTreeMap::new(),
+            contexts: BTreeMap::new(),
+            next_context: 1,
+            pd_numbers: BTreeSet::new(),
             eqs,
-            cqs: Vec::new(),
-            qps: Vec::new(),
             ports,
             internal_error_reported: false,
             handle,
@@ -280,13 +280,64 @@ impl Mlx4Device {
         Err(error)
     }
 
-    /// Open a context to the device
-    pub fn open(&mut self) -> Result<&Context, &'static str> {
-        let context = Context {
-            uar_page: self.uar_list.pop().ok_or("No UAR page available")?,
-            owner: process_manager().read().current_process().id(),
+    /// Open a new context on the device for `process`.
+    pub fn open(&mut self, process: &Process) -> Result<&UContext, &'static str> {
+        let handle = ContextHandle(self.next_context);
+        let next_context = self.next_context.checked_add(1).ok_or("No context handle available")?;
+        let uar_page = self.uar_list.pop().ok_or("No UAR page available")?;
+        let pages = uar_page.map_doorbell_page(process).and_then(|doorbell| Ok((doorbell, uar_page.map_blueflame_page(process)?)));
+        let (doorbell_page, blueflame_page) = match pages {
+            Ok(pages) => pages,
+            Err(e) => {
+                self.uar_list.push(uar_page);
+                return Err(e);
+            }
         };
-        Ok(self.contexts.push_mut(context))
+        self.next_context = next_context;
+        let context = UContext {
+            handle,
+            owner: process.id(),
+            uar_page,
+            doorbell_page,
+            blueflame_page,
+            pds: Vec::new(),
+            cqs: Vec::new(),
+            qps: Vec::new(),
+            mrs: Vec::new(),
+        };
+        Ok(self.contexts.entry(handle).or_insert(context))
+    }
+
+    /// Destroy everything `pid` created and close its contexts.
+    ///
+    /// Used right before the process is dropped. No thread of it can still be in a verb then,
+    /// since each holds a reference to the process, so nothing can open a new context. If the
+    /// card refuses to let go of any resource, that context is kept, so its UAR page is never
+    /// handed out again, and an error is returned: the card may still access the process's
+    /// memory.
+    pub fn release(&mut self, pid: Uuid) -> Result<(), &'static str> {
+        let handles: Vec<ContextHandle> = self.contexts.iter().filter(|(_, ctx)| ctx.owner == pid).map(|(handle, _)| *handle).collect();
+        let mut result = Ok(());
+        for handle in handles {
+            let Some(mut ctx) = self.contexts.remove(&handle) else {
+                continue;
+            };
+            let counts = (ctx.qps.len(), ctx.mrs.len(), ctx.cqs.len(), ctx.pds.len());
+            if let Err(e) = ctx.destroy(&mut self.cmd, &self.capabilities) {
+                self.contexts.insert(handle, ctx);
+                result = Err(e);
+                continue;
+            }
+            for pd in &ctx.pds {
+                self.pd_numbers.remove(&pd.0);
+            }
+            self.uar_list.push(ctx.uar_page);
+            info!(
+                "released context {} of process {pid}: {} QPs, {} MRs, {} CQs, {} PDs",
+                handle.0, counts.0, counts.1, counts.2, counts.3
+            );
+        }
+        result
     }
 
     /// Get statistics about the device.
@@ -368,94 +419,90 @@ impl Mlx4Device {
         }
     }
 
-    fn validate_uar_index(&self, uar_index: u32, process: &Process) -> Result<(), &'static str> {
-        match self.contexts.iter().find(|ctx| ctx.uar_page.index == uar_index as usize ) {
-            None => Err("No context with corresponding UAR index found"),
-            Some(ctx) if ctx.owner == process.id() => Ok(()),
-            _ => Err("Context corresponding to UAR index is owned by other process")
-        }
-
-
-    }
-
-    fn validate_pd(&self, pd: &PdHandle, process: &Process) -> Result<(), &'static str> {
-        if self.pds.get(&pd).map_or(false, |p| p.eq(&process.id())) {
-            Ok(())
-        } else {
-            Err("PD not found")
-        }
-    }
-
-    pub fn alloc_pd(&mut self) -> Result<PdHandle, &'static str> {
+    pub fn alloc_pd(&mut self, process: &Process, context: ContextHandle) -> Result<PdHandle, &'static str> {
+        let ctx = context_of(&mut self.contexts, context, process)?;
         // TODO: impl random pd sampling
         let first = self.capabilities.num_rsvd_pds() as u32;
         let count = 1 << self.capabilities.log_max_pd();
-        for pd in first..first + count {
-            let pd = PdHandle(pd);
-            if !self.pds.contains_key(&pd) {
-                let process = process_manager().read().current_process();
-                self.pds.insert(pd, process.id());
-                return Ok(pd);
-            }
-        }
-        Err("No protection domains available")
+        let pd = (first..first + count)
+            .find(|pd| !self.pd_numbers.contains(pd))
+            .ok_or("No protection domains available")?;
+        self.pd_numbers.insert(pd);
+        ctx.pds.push(PdHandle(pd));
+        Ok(PdHandle(pd))
     }
 
-    pub fn dealloc_pd(&mut self, pd: PdHandle) -> Result<(), &'static str> {
+    pub fn dealloc_pd(&mut self, process: &Process, context: ContextHandle, pd: PdHandle) -> Result<(), &'static str> {
         // todo check if some qp or mr is register with this pd before allowing it to be deallocated
-        let process = process_manager().read().current_process();
-        self.validate_pd(&pd, &process)?;
-        self.pds.remove(&pd);
+        let ctx = context_of(&mut self.contexts, context, process)?;
+        let index = ctx.pds.iter().position(|p| *p == pd).ok_or("PD not found")?;
+        ctx.pds.swap_remove(index);
+        self.pd_numbers.remove(&pd.0);
         info!("deallocated PD {pd:?}");
         Ok(())
     }
 
     /// Create a completion queue and return its number
-    pub fn create_cq(&mut self, min_num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64, uar_index: u32) -> Result<u32, &'static str> {
-        // TODO min_num_entries should be u32
-        let process = process_manager().read().current_process();
-        let mut cq = CompletionQueue::new(self, process, min_num_entries, buffer, doorbell_ptr, uar_index)?;
-        cq.query(&mut self.cmd)?;
+    pub fn create_cq(
+        &mut self, process: &Process, context: ContextHandle, num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64,
+    ) -> Result<u32, &'static str> {
+        let ctx = context_of(&mut self.contexts, context, process)?;
+        let uar_index = ctx.uar_index();
+        let eq_number = self.eqs.first().map(|eq| eq.read().number());
+        let mut cq = CompletionQueue::new(
+            &mut self.cmd,
+            &self.capabilities,
+            &mut self.offsets,
+            self.icm_tables.memory_regions(),
+            eq_number,
+            process,
+            num_entries,
+            buffer,
+            doorbell_ptr,
+            uar_index,
+        )?;
+        // Only for the log, so a failure here must not leave the CQ untracked.
+        if let Err(e) = cq.query(&mut self.cmd) {
+            warn!("failed to query CQ {}: {e}", cq.number());
+        }
         let number = cq.number();
-        self.cqs.push(cq);
+        ctx.cqs.push(cq);
         Ok(number)
     }
 
     /// Destroy a completion queue.
-    pub fn destroy_cq(&mut self, number: u32) -> Result<(), &'static str> {
-        let process = process_manager().read().current_process();
-        let index = self
-            .cqs
-            .iter()
-            .position(|cq| cq.number() == number && cq.owner() == process.id())
-            .ok_or("completion queue not found")?;
-        let cq = self.cqs.remove(index);
-        cq.destroy(&mut self.cmd)?;
+    pub fn destroy_cq(&mut self, process: &Process, context: ContextHandle, number: u32) -> Result<(), &'static str> {
+        let ctx = context_of(&mut self.contexts, context, process)?;
+        let index = ctx.cqs.iter().position(|cq| cq.number() == number).ok_or("completion queue not found")?;
+        ctx.cqs[index].destroy(&mut self.cmd)?;
+        ctx.cqs.remove(index);
         Ok(())
-    }
-
-    fn find_cq(&self, number: u32, process: &Process) -> Option<&CompletionQueue> {
-        self.cqs.iter().find(|cq| cq.number() == number && cq.owner() == process.id())
     }
 
     /// Create a queue pair and return its number
     pub fn create_qp(
-        &mut self, pd: PdHandle, qp_type: QueuePairType, send_cq_number: u32, receive_cq_number: u32, buffer: *const u8, doorbell_ptr: *const u32,
-        uar_index: u32, log_sq_bb_count: u8, log_sq_stride: u8, log_rq_wqe_count: u8, log_rq_stride: u8,
+        &mut self, process: &Process, context: ContextHandle, pd: PdHandle, qp_type: QueuePairType, send_cq_number: u32, receive_cq_number: u32,
+        buffer: *const u8, doorbell_ptr: *const u32, log_sq_bb_count: u8, log_sq_stride: u8, log_rq_wqe_count: u8, log_rq_stride: u8,
     ) -> Result<u32, &'static str> {
-        let process = process_manager().read().current_process();
-        self.validate_uar_index(uar_index, &process)?;
-        self.validate_pd(&pd, &process)?;
-        let send_cq = self.find_cq(send_cq_number, &process).ok_or("send completion queue not found")?;
-        let receive_cq = self.find_cq(receive_cq_number, &process).ok_or("receive completion queue not found")?;
+        let ctx = context_of(&mut self.contexts, context, process)?;
+        let uar_index = ctx.uar_index();
+        ctx.validate_pd(pd)?;
+        if !ctx.cqs.iter().any(|cq| cq.number() == send_cq_number) {
+            return Err("send completion queue not found");
+        }
+        if !ctx.cqs.iter().any(|cq| cq.number() == receive_cq_number) {
+            return Err("receive completion queue not found");
+        }
 
         let qp = QueuePair::new(
-            self,
+            &self.capabilities,
+            &mut self.offsets,
+            self.icm_tables.memory_regions(),
             process,
             qp_type,
             pd,
-            send_cq.number(),
-            receive_cq.number(),
+            send_cq_number,
+            receive_cq_number,
             buffer,
             doorbell_ptr,
             uar_index,
@@ -465,62 +512,63 @@ impl Mlx4Device {
             log_rq_stride,
         )?;
         let number = qp.number();
-        self.qps.push(qp);
+        ctx.qps.push(qp);
         Ok(number)
     }
 
     /// Modify a queue pair.
     ///
     /// This is used by ibv_modify_qp.
-    pub fn modify_qp(&mut self, number: u32, attr: &QueuePairAttr, attr_mask: QueuePairAttrMask) -> Result<(), &'static str> {
-        let process = process_manager().read().current_process();
-        let qp = self
-            .qps
-            .iter_mut()
-            .find(|qp| qp.number() == number && qp.owner() == process.id())
-            .ok_or("queue pair not found")?;
-        qp.modify(&mut self.cmd, &mut self.capabilities, attr, attr_mask)
+    pub fn modify_qp(&mut self, process: &Process, context: ContextHandle, number: u32, attr: &QueuePairAttr, attr_mask: QueuePairAttrMask) -> Result<(), &'static str> {
+        let ctx = context_of(&mut self.contexts, context, process)?;
+        let qp = ctx.qps.iter_mut().find(|qp| qp.number() == number).ok_or("queue pair not found")?;
+        qp.modify(&mut self.cmd, &self.capabilities, attr, attr_mask)
     }
 
     /// Destroy a queue pair.
-    pub fn destroy_qp(&mut self, number: u32) -> Result<(), &'static str> {
-        let process = process_manager().read().current_process();
-        let index = self
-            .qps
-            .iter()
-            .position(|qp| qp.number() == number && qp.owner() == process.id())
-            .ok_or("queue pair not found")?;
-        let qp = self.qps.swap_remove(index);
-        qp.destroy(&mut self.cmd, &mut self.capabilities)?;
+    pub fn destroy_qp(&mut self, process: &Process, context: ContextHandle, number: u32) -> Result<(), &'static str> {
+        let ctx = context_of(&mut self.contexts, context, process)?;
+        let index = ctx.qps.iter().position(|qp| qp.number() == number).ok_or("queue pair not found")?;
+        ctx.qps[index].destroy(&mut self.cmd, &self.capabilities)?;
+        ctx.qps.swap_remove(index);
         Ok(())
     }
 
     /// Create a memory region and return its index, physical address, lkey and rkey.
     ///
     /// This is used by ibv_reg_mr.
-    pub fn create_mr(&mut self, pd: PdHandle, data: UserSlice, access: AccessFlags) -> Result<MemoryRegionMetadata, &'static str> {
-        let process = process_manager().read().current_process();
-        self.validate_pd(&pd, &process)?;
-        self.icm_tables
-            .memory_regions()
-            .alloc_dmpt(&mut self.cmd, &mut self.capabilities, &mut self.offsets, &process, pd, data, None, access)
+    pub fn create_mr(&mut self, process: &Process, context: ContextHandle, pd: PdHandle, data: UserSlice, access: AccessFlags) -> Result<MemoryRegionMetadata, &'static str> {
+        let ctx = context_of(&mut self.contexts, context, process)?;
+        ctx.validate_pd(pd)?;
+        let (mr, metadata) = self.icm_tables.memory_regions().alloc_dmpt(
+            &mut self.cmd,
+            &self.capabilities,
+            &mut self.offsets,
+            process,
+            pd,
+            data,
+            None,
+            access,
+        )?;
+        ctx.mrs.push(mr);
+        Ok(metadata)
     }
 
     /// Destroy a memory region.
-    pub fn destroy_mr(&mut self, index: u32) -> Result<(), &'static str> {
-        let process = process_manager().read().current_process();
-        self.icm_tables.memory_regions().destroy(&mut self.cmd, process.id(), index)
+    pub fn destroy_mr(&mut self, process: &Process, context: ContextHandle, index: u32) -> Result<(), &'static str> {
+        let ctx = context_of(&mut self.contexts, context, process)?;
+        let position = ctx.mrs.iter().position(|mr| mr.index() == Some(index)).ok_or("dmpt entry not found")?;
+        ctx.mrs[position].destroy(&mut self.cmd)?;
+        ctx.mrs.swap_remove(position);
+        Ok(())
     }
 }
 
 impl Drop for Mlx4Device {
     fn drop(&mut self) {
-        self.icm_tables.memory_regions().destroy_all(&mut self.cmd).unwrap();
-        while let Some(qp) = self.qps.pop() {
-            qp.destroy(&mut self.cmd, &mut self.capabilities).unwrap()
-        }
-        while let Some(cq) = self.cqs.pop() {
-            cq.destroy(&mut self.cmd).unwrap()
+        let pids: Vec<Uuid> = self.contexts.values().map(|ctx| ctx.owner).collect();
+        for pid in pids {
+            self.release(pid).unwrap();
         }
         while let Some(port) = self.ports.pop() {
             port.close(&mut self.cmd).unwrap()
@@ -600,9 +648,89 @@ impl Offsets {
     }
 }
 
-pub struct Context {
-    pub uar_page: UarPage,
+/// Look up the context `handle`, provided `process` opened it.
+///
+/// A context of another process is reported as not found, so its handle reveals nothing.
+fn context_of<'a>(
+    contexts: &'a mut BTreeMap<ContextHandle, UContext>, handle: ContextHandle, process: &Process,
+) -> Result<&'a mut UContext, &'static str> {
+    contexts.get_mut(&handle).filter(|ctx| ctx.owner == process.id()).ok_or("context not found")
+}
+
+/// One opened instance of a device and everything created in it, like Linux's `ib_ucontext`.
+///
+/// Every verb names a context and looks its objects up in that context only, so a handle from
+/// another context is simply not found, and closing the context destroys everything in it.
+pub struct UContext {
+    handle: ContextHandle,
+    /// The process that opened this context, i.e. the only one allowed to use it.
     owner: Uuid,
+    uar_page: UarPage,
+    doorbell_page: Page,
+    blueflame_page: Page,
+    pds: Vec<PdHandle>,
+    cqs: Vec<CompletionQueue>,
+    qps: Vec<QueuePair>,
+    mrs: Vec<MemoryRegion>,
+}
+
+impl UContext {
+    pub fn handle(&self) -> ContextHandle {
+        self.handle
+    }
+
+    fn uar_index(&self) -> u32 {
+        self.uar_page.index() as u32
+    }
+
+    /// Where the doorbell page is mapped in the process.
+    pub fn doorbell_page(&self) -> Page {
+        self.doorbell_page
+    }
+
+    /// Where the BlueFlame page is mapped in the process.
+    pub fn blueflame_page(&self) -> Page {
+        self.blueflame_page
+    }
+
+    fn validate_pd(&self, pd: PdHandle) -> Result<(), &'static str> {
+        if self.pds.contains(&pd) { Ok(()) } else { Err("PD not found") }
+    }
+
+    /// Destroy every QP, MR and CQ, in the same order as Linux's `ib_uverbs_cleanup_ucontext`:
+    /// resetting the QPs first stops all work queue DMA, and the CQs go last because the QPs
+    /// complete to them.
+    ///
+    /// Keeps going past failures, so as much as possible is released, and keeps whatever could
+    /// not be destroyed.
+    fn destroy(&mut self, cmd: &mut CommandInterface, caps: &Capabilities) -> Result<(), &'static str> {
+        let mut ok = true;
+        self.qps.retain_mut(|qp| match qp.destroy(cmd, caps) {
+            Ok(()) => false,
+            Err(e) => {
+                error!("failed to destroy QP {}: {e}", qp.number());
+                ok = false;
+                true
+            }
+        });
+        self.mrs.retain_mut(|mr| match mr.destroy(cmd) {
+            Ok(()) => false,
+            Err(e) => {
+                error!("failed to destroy MR {:?}: {e}", mr.index());
+                ok = false;
+                true
+            }
+        });
+        self.cqs.retain_mut(|cq| match cq.destroy(cmd) {
+            Ok(()) => false,
+            Err(e) => {
+                error!("failed to destroy CQ {}: {e}", cq.number());
+                ok = false;
+                true
+            }
+        });
+        if ok { Ok(()) } else { Err("failed to destroy all resources of the context") }
+    }
 }
 
 pub struct UarPage {

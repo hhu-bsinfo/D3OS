@@ -93,6 +93,12 @@ pub struct QueryPortRequest {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+pub struct AllocPdRequest {
+    pub context: ContextHandle,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
 pub struct AllocPdResponse {
     pub pd: PdHandle,
 }
@@ -100,13 +106,23 @@ pub struct AllocPdResponse {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct DeallocPdRequest {
+    pub context: ContextHandle,
     pub pd: PdHandle,
+}
+
+/// Destroys the CQ, QP or MR `handle` of `context` (DestroyCq, DestroyQp, DeregMr).
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct DestroyRequest {
+    pub context: ContextHandle,
+    pub handle: u32,
 }
 
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateMrRequest {
+    pub context: ContextHandle,
     pub pd: PdHandle,
     pub access_flags: AccessFlags,
     pub data_ptr: u64,
@@ -122,13 +138,13 @@ pub struct CreateMrResponse {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateCqRequest {
+    pub context: ContextHandle,
     pub cq_entries: u32,
 
     // mlx4 specific (Linux: driver_data[]): the userspace-owned CQE ring and its doorbell record.
     pub buffer: *const u8,
     /// CQ doorbell records are aligned on an 8 B boundary per the PRM.
     pub doorbell_ptr: *const u64,
-    pub uar_index: u32,
 }
 
 #[repr(C)]
@@ -140,6 +156,7 @@ pub struct CreateCqResponse {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CreateQpRequest {
+    pub context: ContextHandle,
     pub pd: PdHandle,
     pub send_cq_num: u32,
     pub recv_cq_num: u32,
@@ -151,7 +168,6 @@ pub struct CreateQpRequest {
 
     pub buffer: *const u8,
     pub doorbell_ptr: *const u32,
-    pub uar_index: u32,
     pub log_sq_bb_count: u8,
     pub log_sq_stride: u8,
     pub inline_recv_size: u16,
@@ -170,6 +186,7 @@ pub struct CreateQpResponse {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct ModifyQpRequest {
+    pub context: ContextHandle,
     pub qp_num: u32,
     pub attr: QueuePairAttr,
     pub attr_mask: QueuePairAttrMask
@@ -178,7 +195,7 @@ pub struct ModifyQpRequest {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct OpenDeviceResponse {
-    pub uar_index: u32,
+    pub context: ContextHandle,
     pub doorbell_page: *mut u8,
     pub blueflame_page: *mut u8,
 }

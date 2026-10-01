@@ -13,7 +13,7 @@ use rdma::ib_core::{AccessFlags, DeviceAttr, PortAttr, QueuePairAttr, QueuePairA
 use rdma::uverbs_uapi::UverbsCmd::QueryDevices;
 use rdma::uverbs_uapi::{UserSlice, UVERBS_MAX_QUERY_DEVICES_REQ};
 use rdma::{MemoryRegionMetadata, PdHandle};
-use rdma::{DeviceHandle, Gid, QueuePairType};
+use rdma::{ContextHandle, DeviceHandle, Gid, QueuePairType};
 use spin::RwLock;
 
 mod mlx4;
@@ -51,6 +51,8 @@ pub trait IbvCompletionQueue {
 }
 
 pub trait IbvContext {
+    /// The kernel context this device was opened as.
+    fn handle(&self) -> ContextHandle;
     fn query_device(&self) -> io::Result<DeviceAttr>;
     fn query_port(&self, port_num: u8) -> io::Result<PortAttr>;
     fn query_gid(&self, port_num: u8, index: i32) -> io::Result<Gid>;

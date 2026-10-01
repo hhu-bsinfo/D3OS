@@ -10,7 +10,10 @@ pub mod uverbs_cmd;
 #[cfg(feature = "infiniband_mlx4")]
 fn init_mlx4() {
     use crate::pci_bus;
+    use crate::process::process::register_cleanup_handler;
     use log::{info, trace};
+
+    register_cleanup_handler(release_process);
 
     let devices = pci_bus().search_by_ids(mlx4::MLX_VEND, mlx4::CONNECTX3_DEV);
     for (i, dev) in devices.iter().enumerate() {
@@ -28,4 +31,16 @@ fn init_mlx4() {
 pub fn init() {
     #[cfg(feature = "infiniband_mlx4")]
     init_mlx4()
+}
+
+/// Cleanup handler: destroy everything `process` created on any mlx4 device, before its memory
+/// is freed.
+#[cfg(feature = "infiniband_mlx4")]
+fn release_process(process: &crate::process::process::Process) {
+    for dev in mlx4::get_dev_list().lock().iter_mut() {
+        if let Err(e) = dev.release(process.id()) {
+            // Nothing left to do about it here: the memory is freed right after this returns.
+            log::error!("mlx4 device {} may still access memory of process {}: {e}", dev.handle, process.id());
+        }
+    }
 }

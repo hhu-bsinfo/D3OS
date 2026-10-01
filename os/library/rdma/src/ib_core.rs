@@ -47,6 +47,12 @@ impl Into<usize> for DeviceHandle {
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PdHandle(pub u32);
 
+/// A context returned by opening a device. Every resource belongs to the context it was created
+/// in, and every verb on a resource names that context.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct ContextHandle(pub u32);
+
 bitflags! {
     #[derive(Default, Clone, Copy)]
     pub struct AccessFlags: i32 {

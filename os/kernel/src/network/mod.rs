@@ -15,7 +15,7 @@ use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint
 use spin::{Once, RwLock};
 use crate::device::rtl8139::Rtl8139;
 use crate::process::core_local_storage::scheduler;
-use crate::process::process::Process;
+use crate::process::process::{register_cleanup_handler, Process};
 use crate::{pci_bus, process_manager, timer};
 use crate::process::thread::Thread;
 
@@ -40,6 +40,8 @@ pub enum SocketType {
 }
 
 pub fn init() {
+    register_cleanup_handler(close_sockets_for_process);
+
     SOCKETS.call_once(|| RwLock::new(SocketSet::new(Vec::new())));
 
     let devices = pci_bus().search_by_ids(0x10ec, 0x8139);
@@ -522,7 +524,7 @@ fn poll_sockets() -> Option<()> {
     Some(())
 }
 
-pub(crate) fn close_sockets_for_process(process: &mut Process) {
+pub(crate) fn close_sockets_for_process(process: &Process) {
     let mut lock = SOCKET_PROCESS.write();
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
     let handles: Vec<_> = lock

@@ -19,7 +19,7 @@ use super::{
 };
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::interrupt_dispatcher;
+use crate::{interrupt_dispatcher, process_manager};
 use crate::memory::PAGE_SIZE;
 use alloc::vec::Vec;
 use bitflags::bitflags;
@@ -137,7 +137,9 @@ impl EventQueue {
         // Invalidate all EQEs
         mapped_page_to_frame.as_bytes_mut().fill(0);
 
-        let mtt = memory_regions.alloc_mtt_for_pages(caps, mapped_page_to_frame.page_range())?;
+        // Only runs during device init, so taking the process manager lock here is fine.
+        let kernel = process_manager().read().kernel_process().ok_or("No Kernel Process")?;
+        let mtt = memory_regions.alloc_mtt_for_pages(caps, &kernel, mapped_page_to_frame.page_range())?;
         // TODO: register interrupt correctly
         // TODO: Should use MSI-X instead of legacy INTs
         let intr_vector = base_vector.and_then(|_| todo!());

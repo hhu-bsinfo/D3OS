@@ -6,7 +6,10 @@ use core::ptr::NonNull;
 use core3::io;
 use core3::io::{Error, ErrorKind};
 use rdma::ib_core::{AccessFlags, DeviceAttr, PortAttr};
-use rdma::uverbs_uapi::{AllocPdResponse, CreateMrRequest, CreateMrResponse, DeallocPdRequest, OpenDeviceResponse, QueryPortRequest, UserSlice, UverbsCmd};
+use rdma::uverbs_uapi::{
+    AllocPdRequest, AllocPdResponse, CreateMrRequest, CreateMrResponse, DeallocPdRequest, DestroyRequest, OpenDeviceResponse, QueryPortRequest,
+    UserSlice, UverbsCmd,
+};
 use spin::{Mutex, RwLock};
 use tock_registers::interfaces::Writeable;
 use tock_registers::registers::WriteOnly;
@@ -19,7 +22,7 @@ use crate::cmd::uverbs;
 use crate::provider::mlx4::completion_queue::CompletionQueue;
 use crate::provider::{IbvCompletionQueue, IbvContext, IbvQueuePair, QpInitAttr};
 use queue_pair::QueuePair;
-use rdma::{DeviceHandle, Gid, MemoryRegionMetadata, PdHandle};
+use rdma::{ContextHandle, DeviceHandle, Gid, MemoryRegionMetadata, PdHandle};
 
 /// Per-device context holding a registry of live queue pairs, so `CompletionQueue::poll` can
 /// resolve a CQE's `qp_number` to that queue pair's work queue state.
@@ -29,7 +32,8 @@ pub struct Mlx4Context {
     /// Maximum size of Send Queue in WQEBB (including SQ Headroom) or Receive Queue in WQE is 2^log_max_qp_size.
     // TODO: query the device for these instead of hardcoding them; nothing surfaces
     // QUERY_DEV_CAP to userspace yet.
-    uar_index: u32,
+    /// The kernel context this was opened as; every verb names it.
+    context: ContextHandle,
     doorbell_page: NonNull<DoorbellPage>,
     // Not written to yet: WQEs are posted through the doorbell page only.
     #[allow(dead_code)]
@@ -50,7 +54,7 @@ impl Mlx4Context {
             .ok_or(Error::new(ErrorKind::Other, "Doorbell page not mapped"))?;
         Ok(Self {
             device_handle,
-            uar_index: resp.uar_index,
+            context: resp.context,
             doorbell_page,
             blueflame_page: resp.blueflame_page,
             log_max_qp_size: 16,
@@ -71,6 +75,12 @@ impl Mlx4Context {
     #[inline(always)]
     pub(super) fn device_handle(&self) -> DeviceHandle {
         self.device_handle
+    }
+
+    /// Ask the kernel to destroy CQ, QP or MR `handle` of this context.
+    pub(super) fn destroy(&self, cmd: UverbsCmd, handle: u32) -> io::Result<usize> {
+        let req = DestroyRequest { context: self.context, handle };
+        uverbs(self.device_handle.into(), cmd, UserSlice::from_ref(&req), UserSlice::EMPTY)
     }
 
     pub(super) fn ring_qp_doorbell(&self, qp_number: u32) {
@@ -94,6 +104,10 @@ impl Mlx4Context {
 }
 
 impl IbvContext for Mlx4Context {
+    fn handle(&self) -> ContextHandle {
+        self.context
+    }
+
     fn query_device(&self) -> io::Result<DeviceAttr> {
         let mut resp = MaybeUninit::<DeviceAttr>::uninit();
         uverbs(self.device_handle.into(), UverbsCmd::QueryDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
@@ -129,14 +143,15 @@ impl IbvContext for Mlx4Context {
     }
 
     fn alloc_pd(&self) -> io::Result<PdHandle> {
+        let req = AllocPdRequest { context: self.context };
         let mut resp = MaybeUninit::<AllocPdResponse>::uninit();
-        uverbs(self.device_handle.into(), UverbsCmd::AllocPd, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
+        uverbs(self.device_handle.into(), UverbsCmd::AllocPd, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
         let resp = unsafe { resp.assume_init() };
         Ok(resp.pd)
     }
 
     fn dealloc_pd(&self, pd: PdHandle) -> io::Result<()> {
-        let req = DeallocPdRequest { pd };
+        let req = DeallocPdRequest { context: self.context, pd };
         uverbs(self.device_handle.into(), UverbsCmd::DeallocPd, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
         Ok(())
     }
@@ -147,6 +162,7 @@ impl IbvContext for Mlx4Context {
         }
 
         let req = CreateMrRequest {
+            context: self.context,
             pd,
             access_flags: access,
             data_ptr: ptr as u64,
@@ -160,8 +176,7 @@ impl IbvContext for Mlx4Context {
     }
 
     fn dereg_mr(&self, meta: MemoryRegionMetadata) {
-        uverbs(self.device_handle.into(), UverbsCmd::DeregMr, UserSlice::from_ref(&meta.handle), UserSlice::EMPTY)
-            .expect("failed to destroy memory region");
+        self.destroy(UverbsCmd::DeregMr, meta.handle).expect("failed to destroy memory region");
     }
 }
 

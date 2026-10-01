@@ -229,6 +229,7 @@ impl IbvQueuePair for QueuePair {
         let attr = *attr;
 
         let req = ModifyQpRequest {
+            context: self.context.context,
             qp_num: self.number,
             attr,
             attr_mask
@@ -248,8 +249,7 @@ impl IbvQueuePair for QueuePair {
 impl Drop for QueuePair {
     fn drop(&mut self) {
         let qp_num = self.number();
-        uverbs(self.context.device_handle().into(), DestroyQp, UserSlice::from_ref(&qp_num), UserSlice::EMPTY)
-            .expect("failed to destroy queue pair");
+        self.context.destroy(DestroyQp, qp_num).expect("failed to destroy queue pair");
     }
 }
 
@@ -291,6 +291,7 @@ impl QueuePair {
         }
 
         let req = CreateQpRequest {
+            context: context.context,
             pd,
             qp_type: attr.qp_type,
             send_cq_num: attr.send_cq.number(),
@@ -299,7 +300,6 @@ impl QueuePair {
             _reserved: 0,
             buffer: buffer_ptr,
             doorbell_ptr: receive_wqe_counter_ptr.cast(),
-            uar_index: context.uar_index,
             log_sq_bb_count: sq.wqe_cnt.ilog2().try_into().unwrap(),
             log_sq_stride: sq.wqe_shift.try_into().unwrap(),
             inline_recv_size: 0,

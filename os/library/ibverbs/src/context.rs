@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 use core3::io;
-use rdma::{DeviceAttr, Gid, PortAttr, PortState};
+use rdma::{ContextHandle, DeviceAttr, Gid, PortAttr, PortState};
 use crate::{CompletionQueue, PORT_NUM};
 use crate::device::Device;
 use crate::pd::ProtectionDomain;
@@ -102,6 +102,11 @@ impl Context {
 
     pub fn query_device(&self) -> io::Result<DeviceAttr> {
         self.inner.query_device()
+    }
+
+    /// The kernel context this device was opened as.
+    pub fn handle(&self) -> ContextHandle {
+        self.inner.handle()
     }
 }
 

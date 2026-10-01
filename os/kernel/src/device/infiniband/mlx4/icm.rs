@@ -13,12 +13,11 @@ use crate::device::infiniband::mlx4::device::PAGE_SHIFT;
 use crate::device::infiniband::mlx4::utils::MappedPages;
 use crate::memory::PAGE_SIZE;
 use crate::process::process::Process;
-use crate::{memory, process_manager};
+use crate::memory;
 use alloc::vec::Vec;
 use log::{debug, error, trace};
 use modular_bitfield_msb::{bitfield, prelude::*};
 use rdma::{AccessFlags, MemoryRegionMetadata};
-use uuid::Uuid;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::Page;
@@ -354,8 +353,6 @@ pub(super) struct MrTable {
     dmpt_table: IcmTable,
     reserved_mtts: u64,
     offset: u64,
-    regions: Vec<MemoryRegion>,
-    // TODO
 }
 
 impl MrTable {
@@ -365,21 +362,16 @@ impl MrTable {
             dmpt_table,
             reserved_mtts,
             offset: 0,
-            regions: Vec::new(),
         }
     }
 
-    /// Allocate MTT entries for an existing buffer.
+    /// Allocate MTT entries for an existing buffer in `process`'s address space.
     /// Returns the byte offset in the global mtt to the first entry
-    pub(crate) fn alloc_mtt_for_pages(&mut self, caps: &Capabilities, pages: PageRange) -> Result<u64, &'static str> {
+    ///
+    /// For a user buffer, the caller must already have checked that `process` may access it.
+    pub(crate) fn alloc_mtt_for_pages(&mut self, caps: &Capabilities, process: &Process, pages: PageRange) -> Result<u64, &'static str> {
         if pages.is_empty() {
             return Err("No pages provides");
-        }
-
-        let process = process_manager().read().current_process();
-        let kernel = process_manager().read().kernel_process().ok_or("No Kernel Process")?;
-        if process.id() != kernel.id() && !process.virtual_address_space.access_ok(pages.start.start_address(), pages.size() as usize) {
-            return Err("User has no access to all pages");
         }
 
         debug!("Create MTT mappings for {:?}", pages);
@@ -420,26 +412,26 @@ impl MrTable {
         &mut self, cmd: &mut CommandInterface,
         caps: &Capabilities,
         offsets: &mut Offsets,
-        owner: &Process,
+        process: &Process,
         pd: PdHandle,
         data: UserSlice,
         queue_pair: Option<&QueuePair>,
         access: AccessFlags,
-    ) -> Result<MemoryRegionMetadata, &'static str> {
+    ) -> Result<(MemoryRegion, MemoryRegionMetadata), &'static str> {
         if data.is_empty() {
             return Err("MR must not be empty");
         }
         let size = data.size as u64;
         let addr = VirtAddr::try_new(data.address).map_err(|_| "MR address is not canonical")?;
         // Checked before computing the page range, which would panic past the canonical range.
-        if !owner.virtual_address_space.access_ok(addr, data.size) {
+        if !process.virtual_address_space.access_ok(addr, data.size) {
             return Err("User has no access to MR");
         }
         let pages = Page::range(Page::containing_address(addr), Page::containing_address(addr + size - 1) + 1);
         debug!("Create dMTP for addr: 0x{:016x}, size: 0x{:x}", addr, size);
 
         // TODO: check if icm has sufficient space available for the new dmpt entry
-        let mtt = self.alloc_mtt_for_pages(caps, pages)?;
+        let mtt = self.alloc_mtt_for_pages(caps, process, pages)?;
         let mut dmpt = DmptEntry::new();
         // Set the index directly, not via `set_key`: rotating it would land in the
         // firmware-reserved range.
@@ -493,50 +485,34 @@ impl MrTable {
         let lkey = dmpt.key();
         let rkey = dmpt.key();
 
-        self.regions.push(MemoryRegion {
-            owner: owner.id(),
-            dmpt: Some(dmpt),
-        });
-        Ok(MemoryRegionMetadata {
+        let metadata = MemoryRegionMetadata {
             handle: dmpt_index,
             lkey,
             rkey,
-        })
-    }
-
-    /// Tear down all memory regions.
-    pub(super) fn destroy_all(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
-        while let Some(region) = self.regions.pop() {
-            region.destroy(cmd)?;
-        }
-        Ok(())
-    }
-
-    /// Tear down a memory region, provided it belongs to `owner`.
-    pub(super) fn destroy(&mut self, cmd: &mut CommandInterface, owner: Uuid, index: u32) -> Result<(), &'static str> {
-        let idx = self
-            .regions
-            .iter()
-            .position(|region| region.dmpt.as_ref().unwrap().index() == index && region.owner == owner)
-            .ok_or("dmpt entry not found")?;
-        let dmpt = self.regions.remove(idx);
-        dmpt.destroy(cmd)
+        };
+        Ok((MemoryRegion { dmpt: Some(dmpt) }, metadata))
     }
 }
 
 /// This is a wrapper around DmptEntry, so that we can implement Drop.
-struct MemoryRegion {
-    /// The process that registered this region, i.e. the only process allowed to deregister it.
-    owner: Uuid,
+pub(super) struct MemoryRegion {
     dmpt: Option<DmptEntry>,
 }
 
 impl MemoryRegion {
+    /// The index of this region's entry in the dMPT, which is also its handle for userspace.
+    pub(super) fn index(&self) -> Option<u32> {
+        self.dmpt.as_ref().map(|dmpt| dmpt.index())
+    }
+
     /// Tear down this region.
-    fn destroy(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
-        let dmpt = self.dmpt.take().unwrap();
+    ///
+    /// On failure the region stays registered with the card and can be destroyed again.
+    pub(super) fn destroy(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
+        let index = self.index().ok_or("memory region already destroyed")?;
         // TODO: free ICM space
-        cmd.execute_command(Opcode::Hw2SwMpt, None, InputParam::Empty, Some(dmpt.index()), OutputParam::Empty)?;
+        cmd.execute_command(Opcode::Hw2SwMpt, None, InputParam::Empty, Some(index), OutputParam::Empty)?;
+        self.dmpt = None;
         Ok(())
     }
 }

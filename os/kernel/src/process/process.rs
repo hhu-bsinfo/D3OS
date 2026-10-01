@@ -10,7 +10,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use log::warn;
-use spin::Mutex;
+use spin::{Mutex, RwLock};
 use uuid::{ContextV7, Timestamp, Uuid};
 use core::ops::Deref;
 use core::sync::atomic::Ordering::Relaxed;
@@ -21,6 +21,20 @@ use crate::memory::vmm::VirtualAddressSpace;
 use core::sync::atomic::AtomicU64;
 
 static UUID_CONTEXT: Mutex<ContextV7> = Mutex::new(ContextV7::new());
+
+/// Called for every process right before it is dropped, while its address space still exists.
+///
+/// Used by drivers that let the hardware access process memory, to take that access away before
+/// the memory is freed. A handler can run while the process manager lock is held, so it must not
+/// take it.
+pub type CleanupHandler = fn(&Process);
+
+static CLEANUP_HANDLERS: RwLock<Vec<CleanupHandler>> = RwLock::new(Vec::new());
+
+/// Register `handler` to run for every process before it is dropped.
+pub fn register_cleanup_handler(handler: CleanupHandler) {
+    CLEANUP_HANDLERS.write().push(handler);
+}
 
 /// A process contains virtual memory and [`super::thread::Thread`]s.
 pub struct Process {
@@ -147,6 +161,10 @@ impl core::fmt::Debug for Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
+        // Runs before the fields are dropped, so the address space is still intact here.
+        for handler in CLEANUP_HANDLERS.read().iter() {
+            handler(self);
+        }
         network::close_sockets_for_process(self)
     }
 }

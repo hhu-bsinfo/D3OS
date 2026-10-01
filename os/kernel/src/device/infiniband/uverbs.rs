@@ -1,10 +1,12 @@
 use super::uverbs_cmd::*;
 use crate::device::infiniband::mlx4::{Mlx4Device, device_in_range};
-use crate::process_manager;
+use crate::process::process::Process;
+use crate::process::core_local_storage::scheduler;
 use core::mem::{MaybeUninit, offset_of};
 use log::error;
 use rdma::uverbs_uapi::{
-    AllocPdResponse, CreateCqRequest, CreateMrRequest, CreateQpRequest, DeallocPdRequest, ModifyQpRequest, QueryPortRequest, UserSlice, UverbsCmd,
+    AllocPdRequest, AllocPdResponse, CreateCqRequest, CreateMrRequest, CreateQpRequest, DeallocPdRequest, DestroyRequest, ModifyQpRequest,
+    QueryPortRequest, UserSlice, UverbsCmd,
 };
 use rdma::{DeviceHandle, Mtu, QueuePairState, QueuePairType};
 use syscall::return_vals::{Errno, SyscallResult};
@@ -31,59 +33,60 @@ pub fn uverbs_ctl(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user
         return Err(Errno::EINVAL);
     }
 
-    let result = dispatch(device_handle, cmd, user_in, user_out);
-
-    result
+    // Resolved once and without the process manager lock, so that no device lock below ever
+    // nests it.
+    let process = scheduler().current_thread().process();
+    dispatch(&process, device_handle, cmd, user_in, user_out)
 }
 
-fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: UserSlice) -> SyscallResult {
+fn dispatch(process: &Process, device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: UserSlice) -> SyscallResult {
     match cmd {
         UverbsCmd::QueryDevices => {
             let devices = uverbs_query_devices(user_out.capacity::<DeviceHandle>());
-            copy_slice_to_user(user_out, &devices)
+            copy_slice_to_user(process, user_out, &devices)
         }
         UverbsCmd::QueryDevice => {
             let dev_attr = uverbs_query_device(device_handle).map_err(log_error_and_invalid)?;
-            copy_to_user(user_out, &dev_attr)
+            copy_to_user(process, user_out, &dev_attr)
         }
         UverbsCmd::QueryPort => {
-            let req: QueryPortRequest = copy_from_user(user_in)?;
+            let req: QueryPortRequest = copy_from_user(process, user_in)?;
             let port_attr = uverbs_query_port(device_handle, req.port_num).map_err(log_error_and_invalid)?;
-            copy_to_user(user_out, &port_attr)
+            copy_to_user(process, user_out, &port_attr)
         }
         UverbsCmd::RegMr => {
-            let req: CreateMrRequest = copy_from_user(user_in)?;
-            let resp = uverbs_register_mem_region(device_handle, &req).map_err(log_error_and_invalid)?;
-            copy_to_user(user_out, &resp)
+            let req: CreateMrRequest = copy_from_user(process, user_in)?;
+            let resp = uverbs_register_mem_region(device_handle, process, &req).map_err(log_error_and_invalid)?;
+            copy_to_user(process, user_out, &resp)
         }
         UverbsCmd::CreateCq => {
-            let req: CreateCqRequest = copy_from_user(user_in)?;
-            let resp = uverbs_create_cq(device_handle, &req).map_err(log_error_and_invalid)?;
-            copy_to_user(user_out, &resp)
+            let req: CreateCqRequest = copy_from_user(process, user_in)?;
+            let resp = uverbs_create_cq(device_handle, process, &req).map_err(log_error_and_invalid)?;
+            copy_to_user(process, user_out, &resp)
         }
         UverbsCmd::CreateQp => {
-            let req: CreateQpRequest = copy_from_user(user_in)?;
-            let resp = uverbs_create_qp(device_handle, &req).map_err(log_error_and_invalid)?;
-            copy_to_user(user_out, &resp)
+            let req: CreateQpRequest = copy_from_user(process, user_in)?;
+            let resp = uverbs_create_qp(device_handle, process, &req).map_err(log_error_and_invalid)?;
+            copy_to_user(process, user_out, &resp)
         }
         UverbsCmd::ModifyQp => {
-            let req: ModifyQpRequest = copy_from_user(user_in)?;
-            uverbs_modify_qp(device_handle, req).map_err(log_error_and_invalid)?;
+            let req: ModifyQpRequest = copy_from_user(process, user_in)?;
+            uverbs_modify_qp(device_handle, process, req).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::DestroyCq => {
-            let cq_num: u32 = copy_from_user(user_in)?;
-            uverbs_destroy(device_handle, Mlx4Device::destroy_cq, cq_num).map_err(log_error_and_invalid)?;
+            let req: DestroyRequest = copy_from_user(process, user_in)?;
+            uverbs_destroy(device_handle, process, Mlx4Device::destroy_cq, req).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::DestroyQp => {
-            let qp_num: u32 = copy_from_user(user_in)?;
-            uverbs_destroy(device_handle, Mlx4Device::destroy_qp, qp_num).map_err(log_error_and_invalid)?;
+            let req: DestroyRequest = copy_from_user(process, user_in)?;
+            uverbs_destroy(device_handle, process, Mlx4Device::destroy_qp, req).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::DeregMr => {
-            let mr_index: u32 = copy_from_user(user_in)?;
-            uverbs_destroy(device_handle, Mlx4Device::destroy_mr, mr_index).map_err(log_error_and_invalid)?;
+            let req: DestroyRequest = copy_from_user(process, user_in)?;
+            uverbs_destroy(device_handle, process, Mlx4Device::destroy_mr, req).map_err(log_error_and_invalid)?;
             Ok(0)
         }
         UverbsCmd::QueryQp | UverbsCmd::SetMrSize => {
@@ -91,16 +94,17 @@ fn dispatch(device_handle: usize, cmd: UverbsCmd, user_in: UserSlice, user_out: 
             Err(Errno::ENOTSUP)
         }
         UverbsCmd::OpenDevice => {
-            let resp = uverbs_open_device(device_handle).map_err(log_error_and_invalid)?;
-            copy_to_user(user_out, &resp)
+            let resp = uverbs_open_device(device_handle, process).map_err(log_error_and_invalid)?;
+            copy_to_user(process, user_out, &resp)
         }
         UverbsCmd::AllocPd => {
-            let resp: AllocPdResponse = uverbs_alloc_pd(device_handle).map_err(log_error_and_invalid)?;
-            copy_to_user(user_out, &resp)
+            let req: AllocPdRequest = copy_from_user(process, user_in)?;
+            let resp: AllocPdResponse = uverbs_alloc_pd(device_handle, process, req).map_err(log_error_and_invalid)?;
+            copy_to_user(process, user_out, &resp)
         }
         UverbsCmd::DeallocPd => {
-            let req: DeallocPdRequest = copy_from_user(user_in)?;
-            uverbs_dealloc_pd(device_handle, req).map_err(log_error_and_invalid)?;
+            let req: DeallocPdRequest = copy_from_user(process, user_in)?;
+            uverbs_dealloc_pd(device_handle, process, req).map_err(log_error_and_invalid)?;
             Ok(0)
         }
     }
@@ -112,13 +116,12 @@ fn log_error_and_invalid(msg: &str) -> Errno {
 }
 
 #[inline]
-fn copy_from_user<T: Copy>(user_in: UserSlice) -> Result<T, Errno> {
+fn copy_from_user<T: Copy>(process: &Process, user_in: UserSlice) -> Result<T, Errno> {
     let size = size_of::<T>();
     if user_in.address == 0 || user_in.size < size {
         return Err(Errno::EINVAL);
     }
 
-    let process = process_manager().read().current_process();
     let mut req = MaybeUninit::<T>::uninit();
     unsafe {
         process
@@ -136,13 +139,12 @@ fn copy_from_user<T: Copy>(user_in: UserSlice) -> Result<T, Errno> {
 }
 
 #[inline]
-fn copy_to_user<T: Copy>(user_out: UserSlice, resp: &T) -> SyscallResult {
+fn copy_to_user<T: Copy>(process: &Process, user_out: UserSlice, resp: &T) -> SyscallResult {
     let size = size_of::<T>();
     if user_out.address == 0 || user_out.size < size {
         return Err(Errno::EINVAL);
     }
 
-    let process = process_manager().read().current_process();
     unsafe {
         process
             .virtual_address_space
@@ -156,13 +158,12 @@ fn copy_to_user<T: Copy>(user_out: UserSlice, resp: &T) -> SyscallResult {
 }
 
 #[inline]
-fn copy_slice_to_user<T: Copy>(user_out: UserSlice, resp: &[T]) -> SyscallResult {
+fn copy_slice_to_user<T: Copy>(process: &Process, user_out: UserSlice, resp: &[T]) -> SyscallResult {
     let size = size_of_val(resp);
     if user_out.address == 0 || user_out.size < size {
         return Err(Errno::EINVAL);
     }
 
-    let process = process_manager().read().current_process();
     unsafe {
         process
             .virtual_address_space

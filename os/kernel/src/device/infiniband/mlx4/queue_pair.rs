@@ -5,21 +5,19 @@
 use core::mem::size_of;
 
 use super::{
-    Mlx4Device, PdHandle,
+    Offsets, PdHandle,
     cmd::{CommandInterface, Opcode},
     device::{PAGE_SHIFT, uar_index_to_hw},
     fw::Capabilities,
-    icm::ICM_PAGE_SHIFT,
+    icm::{ICM_PAGE_SHIFT, MrTable},
 };
 use crate::device::infiniband::mlx4::cmd::{InputParam, OutputParam};
 use crate::process::process::Process;
-use alloc::sync::Arc;
 use bitflags::bitflags;
 use byteorder::BigEndian;
 use log::trace;
 use modular_bitfield_msb::{bitfield, prelude::*};
 use rdma::{AccessFlags, Mtu, QueuePairAttr, QueuePairAttrMask, QueuePairType, QueuePairState};
-use uuid::Uuid;
 use x86_64::structures::paging::{Page, Size4KiB};
 use x86_64::{PhysAddr, VirtAddr};
 use zerocopy::{AsBytes, FromBytes, U32};
@@ -27,7 +25,6 @@ use zerocopy::{AsBytes, FromBytes, U32};
 #[derive(Debug)]
 pub(super) struct QueuePair {
     number: u32,
-    owner: Uuid,
     state: QueuePairState,
     qp_type: QueuePairType,
     port_number: Option<u8>,
@@ -54,8 +51,10 @@ impl QueuePair {
     /// receive queue for the work queue.
     ///
     /// This is similar to creating a completion queue or an event queue.
+    ///
+    /// The caller must have checked that `pd`, both CQs and `uar_index` belong to `process`.
     pub(super) fn new(
-        dev: &mut Mlx4Device, process: Arc<Process>, qp_type: QueuePairType, pd: PdHandle, send_cq_number: u32, receive_cq_number: u32, buffer: *const u8,
+        caps: &Capabilities, offsets: &mut Offsets, mr_table: &mut MrTable, process: &Process, qp_type: QueuePairType, pd: PdHandle, send_cq_number: u32, receive_cq_number: u32, buffer: *const u8,
         doorbell_ptr: *const u32, uar_index: u32, log_sq_bb_count: u8, log_sq_stride: u8, log_rq_wqe_count: u8, log_rq_stride: u8,
     ) -> Result<Self, &'static str> {
         let doorbell_addr = VirtAddr::try_new(doorbell_ptr as u64).map_err(|_| "Doorbell address is not canonical")?;
@@ -72,7 +71,7 @@ impl QueuePair {
         }
 
         // Bound WQE counts against the HCA's max QP size and the context's 4-bit size fields.
-        let log_max_qp_sz = dev.capabilities.log_max_qp_sz().min(15);
+        let log_max_qp_sz = caps.log_max_qp_sz().min(15);
         if log_sq_bb_count > log_max_qp_sz || log_rq_wqe_count > log_max_qp_sz {
             return Err("WQE count exceeds the HCA's max QP size");
         }
@@ -89,11 +88,7 @@ impl QueuePair {
         }
         let start: Page<Size4KiB> = Page::containing_address(buffer_addr);
         let end = start + buffer_size.div_ceil(start.size());
-        let mtt = Some(
-            dev.icm_tables
-                .memory_regions()
-                .alloc_mtt_for_pages(&dev.capabilities, Page::range(start, end))?,
-        );
+        let mtt = Some(mr_table.alloc_mtt_for_pages(caps, process, Page::range(start, end))?);
         // Offset from the first page in units of 64 bytes
         let page_offset: u8 = ((buffer_addr - start.start_address()) >> 6) as u8;
 
@@ -103,11 +98,10 @@ impl QueuePair {
             .ok_or("doorbell not mapped to physical address")?;
 
         // TODO: make sure ICM entry for this queue pair number is mapped to physical memory
-        let number = dev.offsets.alloc_qpn().try_into().unwrap();
+        let number = offsets.alloc_qpn().try_into().unwrap();
 
         let qp = Self {
             number,
-            owner: process.id(),
             state: QueuePairState::Reset,
             qp_type,
             port_number: None,
@@ -464,7 +458,9 @@ impl QueuePair {
     }
 
     /// Destroy this queue pair.
-    pub(super) fn destroy(mut self, cmd: &mut CommandInterface, caps: &Capabilities) -> Result<(), &'static str> {
+    ///
+    /// On failure the QP keeps its MTT and can be destroyed again.
+    pub(super) fn destroy(&mut self, cmd: &mut CommandInterface, caps: &Capabilities) -> Result<(), &'static str> {
         trace!("destroying QP {}..", self.number);
         if self.state != QueuePairState::Reset {
             self.modify(
@@ -485,11 +481,6 @@ impl QueuePair {
     /// Get the number of this queue pair.
     pub(super) fn number(&self) -> u32 {
         self.number
-    }
-
-    /// The process that created this queue pair.
-    pub(super) fn owner(&self) -> Uuid {
-        self.owner
     }
 }
 

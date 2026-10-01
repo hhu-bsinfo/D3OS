@@ -63,8 +63,7 @@ impl IbvCompletionQueue for CompletionQueue {
 
 impl Drop for CompletionQueue {
     fn drop(&mut self) {
-        uverbs(self.context.device_handle.into(), DestroyCq, UserSlice::from_ref(&self.number), UserSlice::EMPTY)
-            .expect("failed to destroy completion queue");
+        self.context.destroy(DestroyCq, self.number).expect("failed to destroy completion queue");
     }
 }
 
@@ -88,10 +87,10 @@ impl CompletionQueue {
         }
 
         let req = CreateCqRequest {
+            context: context.context,
             cq_entries: num_entries,
             buffer: buffer.as_ptr(),
             doorbell_ptr: doorbell_ptr.cast(),
-            uar_index: context.uar_index,
         };
         let mut resp = MaybeUninit::<CreateCqResponse>::uninit();
         uverbs(context.device_handle().into(), CreateCq, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;

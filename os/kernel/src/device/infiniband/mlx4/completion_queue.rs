@@ -3,20 +3,19 @@
 //! completion queue elements.
 
 use crate::process::process::Process;
-use alloc::sync::Arc;
 use core::fmt::{Debug, Formatter};
 use core::mem::size_of;
 use log::{error, trace};
 use modular_bitfield_msb::{bitfield, prelude::*};
-use uuid::Uuid;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{Page, Size4KiB};
 
 use super::{
-    Mlx4Device,
+    Offsets,
     cmd::{CommandInterface, InputParam, Opcode, OutputParam},
     device::{PAGE_SHIFT, uar_index_to_hw},
-    icm::ICM_PAGE_SHIFT,
+    fw::Capabilities,
+    icm::{ICM_PAGE_SHIFT, MrTable},
 };
 
 /// Size in bytes of a hardware completion queue entry. CX3 also supports a 64 B format, but this
@@ -27,7 +26,6 @@ const CQE_SIZE: usize = 32;
 #[derive(Debug)]
 pub(super) struct CompletionQueue {
     number: u32,
-    owner: Uuid,
     // TODO: deallocate mtt properly, see the equivalent TODO on `queue_pair::QueuePair`.
     mtt: Option<u64>,
     // TODO: bind the lifetime to the one of the event queue
@@ -39,11 +37,13 @@ impl CompletionQueue {
     /// Create a new completion queue over a user-owned `buffer` and `doorbell_ptr`
     /// (a two-word consumer-index/arm-index doorbell record). The kernel builds the MTT
     /// for the buffer and transitions ownership of the CQ to the HCA.
-    /// All CQs are registered to the first EQ of the device.
+    /// All CQs are registered to `eq_number`, the first EQ of the device.
+    ///
+    /// The caller must have checked that `uar_idx` belongs to `process`.
     pub(super) fn new(
-        dev: &mut Mlx4Device, process: Arc<Process>, num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64, uar_idx: u32,
+        cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, mr_table: &mut MrTable, eq_number: Option<usize>, process: &Process,
+        num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64, uar_idx: u32,
     ) -> Result<Self, &'static str> {
-        dev.validate_uar_index(uar_idx, &process)?;
         let doorbell_addr = VirtAddr::try_new(doorbell_ptr as u64).map_err(|_| "Doorbell address is not canonical")?;
         if !process.virtual_address_space.access_ok(doorbell_addr, size_of::<u64>()) {
             return Err("User has no access to Doorbell");
@@ -72,18 +72,14 @@ impl CompletionQueue {
         }
         let start: Page<Size4KiB> = Page::containing_address(buffer_addr);
         let end = start + (buffer_size as u64).div_ceil(start.size());
-        let mtt = dev
-            .icm_tables
-            .memory_regions()
-            .alloc_mtt_for_pages(&dev.capabilities, Page::range(start, end))?;
+        let mtt = mr_table.alloc_mtt_for_pages(caps, process, Page::range(start, end))?;
 
         let doorbell_address = process
             .virtual_address_space
             .get_phys(doorbell_ptr as u64)
             .ok_or("doorbell not mapped to physical address")?;
 
-        let number: u32 = dev.offsets.alloc_cqn().try_into().unwrap();
-        let eq_number = dev.eqs.get(0).map(|eq| eq.read().number());
+        let number: u32 = offsets.alloc_cqn().try_into().unwrap();
 
         let mut ctx = CompletionQueueContext::new();
         ctx.set_page_offset(buffer_addr.page_offset().into());
@@ -95,7 +91,7 @@ impl CompletionQueue {
         ctx.set_log2_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
         ctx.set_mtt_base_addr(mtt);
         ctx.set_doorbell_record_addr(doorbell_address.as_u64());
-        dev.cmd.execute_command(
+        cmd.execute_command(
             Opcode::Sw2HwCq,
             None,
             InputParam::Mailbox(&ctx.bytes),
@@ -105,7 +101,6 @@ impl CompletionQueue {
 
         let cq = Self {
             number,
-            owner: process.id(),
             mtt: Some(mtt),
             eq_number,
         };
@@ -113,14 +108,10 @@ impl CompletionQueue {
         Ok(cq)
     }
 
-    /// The process that created this completion queue, i.e. the only process allowed to bind a
-    /// queue pair to it.
-    pub(super) fn owner(&self) -> Uuid {
-        self.owner
-    }
-
     /// Destroy this completion queue.
-    pub(super) fn destroy(mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
+    ///
+    /// On failure the CQ stays owned by the card and can be destroyed again.
+    pub(super) fn destroy(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
         // TODO: should make sure to undo all card state tied to this CQ
         cmd.execute_command(
             Opcode::Hw2SwCq,

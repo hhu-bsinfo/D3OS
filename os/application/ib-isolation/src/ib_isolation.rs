@@ -5,14 +5,19 @@
 //!   queue pair and a memory region — through the normal `ibverbs` API. It publishes
 //!   their raw handle numbers into shared memory, spawns the attacker, and waits.
 //! * The **attacker** (the process started with the `attack` argument) reads the
-//!   victim's handles out of shared memory and issues raw `uverbs` system calls that
-//!   try to operate on them. Because the attacker is a different process, every one
+//!   victim's handles, including its context handle, out of shared memory and issues
+//!   raw `uverbs` system calls that try to operate on them through that context. Because the attacker is a different process, every one
 //!   of these calls must be rejected by the kernel.
 //!
 //! The attacker records the outcome of each attempt; the victim reads the results
 //! back and prints a verdict. It also runs one positive control (the owner
 //! performing the same kind of operation on its *own* resource) to prove that the
 //! ownership check discriminates by owner rather than simply denying everyone.
+//!
+//! With the `leak` argument, the process instead creates the same resources and exits without
+//! destroying any of them, the way a crashed application would. The kernel has to release them
+//! when the process is cleaned up; run it more often than there are UAR pages to check that it
+//! does (`released context of process ...` in the kernel log, and no "No UAR page available").
 //!
 //! Scope: this covers the *control path* (resource ownership). Data-path key
 //! isolation — whether a stolen `rkey` can be used for a remote read/write against a
@@ -30,9 +35,9 @@ use core::sync::atomic::{fence, Ordering};
 
 use concurrent::{shm, thread};
 use ibverbs::QueuePairType;
-use rdma::ib_core::{AccessFlags, PdHandle, QueuePairAttr, QueuePairAttrMask};
+use rdma::ib_core::{AccessFlags, ContextHandle, PdHandle, QueuePairAttr, QueuePairAttrMask};
 use rdma::uverbs_uapi::{
-    CreateMrRequest, CreateMrResponse, DeallocPdRequest, ModifyQpRequest, UserSlice, UverbsCmd,
+    CreateMrRequest, CreateMrResponse, DeallocPdRequest, DestroyRequest, ModifyQpRequest, UserSlice, UverbsCmd,
 };
 use runtime::*;
 use syscall::return_vals::Errno;
@@ -83,6 +88,7 @@ impl AttackOutcome {
 struct SharedState {
     device_handle: u64,
     outcomes: [AttackOutcome; N_ATTACKS],
+    context: u32,
     pd: u32,
     cq_num: u32,
     qp_num: u32,
@@ -97,12 +103,55 @@ pub fn main() {
 
     // argv[0] is the binary name, argv[1..] are the arguments we were spawned with.
     let is_attacker = env::args().any(|arg| arg == "attack");
+    let is_leaker = env::args().any(|arg| arg == "leak");
 
     if is_attacker {
         run_attacker();
+    } else if is_leaker {
+        run_leaker();
     } else {
         run_victim();
     }
+}
+
+// ───────────────────────────── leaker ─────────────────────────────
+
+fn run_leaker() {
+    let devices = match ibverbs::devices() {
+        Ok(devices) => devices,
+        Err(e) => { println!("  could not list RDMA devices: {:?}", e); return; }
+    };
+    let Some(device) = devices.get(0) else {
+        println!("  no RDMA device found — this test needs a ConnectX-3 card");
+        return;
+    };
+    let context = match device.open() {
+        Ok(context) => context,
+        Err(e) => { println!("  could not open device: {:?}", e); return; }
+    };
+    let pd = match context.alloc_pd() {
+        Ok(pd) => pd,
+        Err(e) => { println!("  alloc_pd failed: {:?}", e); return; }
+    };
+    let cq = match context.create_cq(16, 0) {
+        Ok(cq) => cq,
+        Err(e) => { println!("  create_cq failed: {:?}", e); return; }
+    };
+    let mr = match pd.allocate::<u8>(4096) {
+        Ok(mr) => mr,
+        Err(e) => { println!("  reg_mr failed: {:?}", e); return; }
+    };
+    let qp = match pd.create_qp(&cq, &cq, QueuePairType::RC).build() {
+        Ok(qp) => qp,
+        Err(e) => { println!("  create_qp failed: {:?}", e); return; }
+    };
+    println!("  leaking pd={} cq={} qp={} mr={}", pd.pd.0, cq.number(), qp.endpoint().num, mr.handle());
+    // Skip every destructor, so that only the kernel can clean up.
+    core::mem::forget(qp);
+    core::mem::forget(mr);
+    core::mem::forget(cq);
+    core::mem::forget(pd);
+    core::mem::forget(context);
 }
 
 // ───────────────────────────── victim ─────────────────────────────
@@ -153,14 +202,15 @@ fn run_victim() {
         Err(e) => { println!("  create_qp failed: {:?}", e); return; }
     };
 
+    let context_handle = context.handle().0;
     let pd_handle = pd.pd.0;
     let cq_num = cq.number();
     let qp_num = qp.endpoint().num;
     let mr_handle = mr.handle();
 
     println!(
-        "  victim   device={} pd={} cq={} qp={} mr={}",
-        device_handle, pd_handle, cq_num, qp_num, mr_handle
+        "  victim   device={} context={} pd={} cq={} qp={} mr={}",
+        device_handle, context_handle, pd_handle, cq_num, qp_num, mr_handle
     );
 
     // 2. Publish the handles into shared memory for the attacker.
@@ -177,6 +227,7 @@ fn run_victim() {
         core::ptr::write_bytes(ptr, 0, SHM_SIZE);
         let st = ptr as *mut SharedState;
         addr_of_mut!((*st).device_handle).write(device_handle as u64);
+        addr_of_mut!((*st).context).write(context_handle);
         addr_of_mut!((*st).pd).write(pd_handle);
         addr_of_mut!((*st).cq_num).write(cq_num);
         addr_of_mut!((*st).qp_num).write(qp_num);
@@ -273,6 +324,7 @@ fn run_attacker() {
     fence(Ordering::Acquire);
 
     let device: usize = unsafe { addr_of_mut!((*st).device_handle).read() } as usize;
+    let context = ContextHandle(unsafe { addr_of_mut!((*st).context).read() });
     let pd = PdHandle(unsafe { addr_of_mut!((*st).pd).read() });
     let cq_num: u32 = unsafe { addr_of_mut!((*st).cq_num).read() };
     let qp_num: u32 = unsafe { addr_of_mut!((*st).qp_num).read() };
@@ -282,7 +334,7 @@ fn run_attacker() {
 
     // 0: deallocate the victim's protection domain.
     {
-        let req = DeallocPdRequest { pd };
+        let req = DeallocPdRequest { context, pd };
         outcomes[0] = attempt(device, UverbsCmd::DeallocPd, UserSlice::from_ref(&req), UserSlice::EMPTY);
     }
 
@@ -290,6 +342,7 @@ fn run_attacker() {
     {
         let mut buffer = vec![0u8; 4096];
         let req = CreateMrRequest {
+            context,
             pd,
             access_flags: AccessFlags::LOCAL_WRITE,
             data_ptr: buffer.as_mut_ptr() as u64,
@@ -303,11 +356,15 @@ fn run_attacker() {
     }
 
     // 2: destroy the victim's completion queue.
-    outcomes[2] = attempt(device, UverbsCmd::DestroyCq, UserSlice::from_ref(&cq_num), UserSlice::EMPTY);
+    {
+        let req = DestroyRequest { context, handle: cq_num };
+        outcomes[2] = attempt(device, UverbsCmd::DestroyCq, UserSlice::from_ref(&req), UserSlice::EMPTY);
+    }
 
     // 3: modify the victim's queue pair.
     {
         let req = ModifyQpRequest {
+            context,
             qp_num,
             attr: QueuePairAttr::default(),
             attr_mask: QueuePairAttrMask::IBV_QP_STATE,
@@ -316,10 +373,16 @@ fn run_attacker() {
     }
 
     // 4: destroy the victim's queue pair.
-    outcomes[4] = attempt(device, UverbsCmd::DestroyQp, UserSlice::from_ref(&qp_num), UserSlice::EMPTY);
+    {
+        let req = DestroyRequest { context, handle: qp_num };
+        outcomes[4] = attempt(device, UverbsCmd::DestroyQp, UserSlice::from_ref(&req), UserSlice::EMPTY);
+    }
 
     // 5: deregister the victim's memory region.
-    outcomes[5] = attempt(device, UverbsCmd::DeregMr, UserSlice::from_ref(&mr_handle), UserSlice::EMPTY);
+    {
+        let req = DestroyRequest { context, handle: mr_handle };
+        outcomes[5] = attempt(device, UverbsCmd::DeregMr, UserSlice::from_ref(&req), UserSlice::EMPTY);
+    }
 
     // Publish the results, then signal completion.
     unsafe {
