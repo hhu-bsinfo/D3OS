@@ -171,6 +171,7 @@ args = [ "-ex", "break start", "-ex", "target remote 127.0.0.1:1234", "-ex", "co
 [tasks.ovmf]
 command = "wget"
 args = [ "-N", "${OVMF_URL}" ]
+condition = { files_not_exist = [ "RELEASEX64_OVMF.fd" ] }
 
 [tasks.test]
 command = "cargo"
