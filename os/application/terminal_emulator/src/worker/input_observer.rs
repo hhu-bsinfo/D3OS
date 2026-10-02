@@ -115,11 +115,18 @@ impl InputObserver {
 
 impl Worker for InputObserver {
     fn run(&mut self) {
-        let Some(key_event) = self.terminal.read_event_nb() else { return };
-
+        
         // Get terminal input state (canonical, fluid, idle)
         let raw_state = syscall(SystemCall::TerminalCheckInputState, &[]).expect("Unable to check input state");
         let state = TerminalInputState::from(raw_state);
+
+        // early return if terminal is idle
+        // this should stop the InputObserver from dropping any input keys 
+        if state == TerminalInputState::Idle {
+            return;
+        }
+
+        let Some(key_event) = self.terminal.read_event_nb() else { return };
 
         // Process key event into decoded key (unicode char or raw keycode)
         let Some(decoded_key) = self.decoder.process_keyevent(key_event.clone()) else {
