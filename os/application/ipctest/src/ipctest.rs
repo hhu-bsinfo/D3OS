@@ -4,8 +4,10 @@
 extern crate alloc;
 
 use core::fmt::Display;
+use core::sync::atomic::AtomicBool;
 
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use alloc::{format, string::String, vec::Vec};
 use alloc::vec;
 use concurrent::{process, thread};
@@ -18,6 +20,7 @@ use terminal::println;
 use uuid::Uuid;
 
 static LOGGER: logger::Logger = logger::Logger::new();
+static SHOULD_RUN: AtomicBool = AtomicBool::new(true);
 
 #[unsafe(no_mangle)]
 pub fn main() {
@@ -314,10 +317,14 @@ pub fn main() {
         for (endpoint_name, math_fn) in math_fns {
             thread::create(move || {
                 loop {
+                    if !SHOULD_RUN.load(core::sync::atomic::Ordering::Relaxed) {
+                        log::info!("[Mathserver] {} received is exiting...", endpoint_name);
+                        return;
+                    }
                     match ipc::receive_blocking(endpoint_name, 5000) {
                         Ok(msg_wrapper) => {
                             let msg = msg_wrapper.msg();
-                            log::info!("[Mathserver] Received {}", msg);
+                            log::info!("[Mathserver] {} received {}", endpoint_name, msg);
                             let mut result: f64;
                             match msg.data() {
                                 IpcMessageData::UsizeSlice { data, size } => {
@@ -360,7 +367,7 @@ pub fn main() {
                             ipc::answer(msg, result);
                         },
                         Err(err) => {
-                            if err != IpcError::Empty {
+                            if err != IpcError::Empty && err != IpcError::Timeout {
                                 log::error!("[{}] Error: {:?}", tid, err);
                             }
                         },
@@ -378,6 +385,7 @@ pub fn main() {
                         log::info!("{} received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
                         if num_stop_req >= num_child_processes {
                             log::info!("{} received [{}/{}] STOP requests, exiting...", tid, num_stop_req, num_child_processes);
+                            SHOULD_RUN.store(false, core::sync::atomic::Ordering::Relaxed);
                             return;
                         }
                     }

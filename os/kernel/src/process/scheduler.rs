@@ -40,7 +40,7 @@ use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::sync::atomic::AtomicU32;
 use core::sync::atomic::Ordering::{Relaxed};
-use log::{debug, info};
+use log::{debug, info, warn};
 use smallmap::Map;
 use spin::{Mutex, MutexGuard, Once};
 use thingbuf::mpsc::{Sender};
@@ -429,6 +429,7 @@ impl Scheduler {
     fn kill_locally(&self, thread_id: usize, state: &mut ReadyState) -> bool {
         if is_thread_alive(thread_id) == false { return true; }
         let mut changed = false;
+        let mut was_ready_queue = false;
 
         // check ready_queue
         let mut before = state.ready_queue.len();
@@ -436,6 +437,7 @@ impl Scheduler {
         let mut after = state.ready_queue.len();
         if before != after {
             changed = true;
+            was_ready_queue = true;
         }
         if !changed {
             {   // check sleep_list
@@ -472,7 +474,9 @@ impl Scheduler {
         if changed {
             mark_thread_dead(thread_id);
             self.unjoin(thread_id, state);
-            dec_rq_len();
+            if was_ready_queue {
+                dec_rq_len();
+            }
         }
         changed
     }
@@ -663,50 +667,35 @@ impl Scheduler {
     }
 
     /// Unsleep, i.e. prematurely wake up thread with given (pid, tid). \
-    /// Returns true if thread was found and unblocked, false otherwise.
+    /// Returns true if thread was sleeping, and successfully unslept.
     pub fn unsleep(&self, pid: Uuid, tid: usize) -> bool {
         
-        let mut state = self.ready_state.lock();
-
-        // 1) Check if the given thread is in the blocked list -> need to be woken up
-        let sleeping_thread: Option<Arc<Thread>> = {
-            let mut sleep_list = self.sleep_list.lock();
-            if let Some(pos) = sleep_list.iter().position(|(t, ms)| t.id() == tid && t.process().id() == pid) {
-                Some(sleep_list.remove(pos).0)
-            } else {
-                None
-            }
-        };
-
-        // If we found a blocked thread in the block_list, wake it up
-        if let Some(thread) = sleeping_thread {
-            // let mut state = self.get_ready_state();
+        let mut state = self.get_ready_state();
+        
+        // 1. check sleep list
+        let mut sleep_list = self.sleep_list.lock();
+        if let Some(pos) = sleep_list.iter().position(|(t, _ms)| t.id() == tid && t.process().id() == pid) {
+            let thread = sleep_list.swap_remove(pos).0;
             thread.set_state(ThreadState::Ready);
             state.ready_queue.push_front(Arc::clone(&thread));
             inc_rq_len();
             return true;
         }
 
-        // 2a) Check if the thread to be woken up is the current thread (it has not been blocked)
-        {
-            let curr_thread = self.current_thread();
-            if curr_thread.id() == tid && curr_thread.process().id() == pid {
-                curr_thread.set_state(ThreadState::Running);
-                return true;
-            }
-
-        // 2b) Check if the thread to be woken up is in the ready queue
-            if state.ready_queue.iter().any(|t| t.id() == tid && t.process().id() == pid) {
-                // Already runnable (e.g. a previous wakeup raced in); nothing to do
-                return true;
-            }
+        // 2. check if thread isn't sleeping at all
+        // 2a. check current thread
+        let curr_thread = self.current_thread();
+        if curr_thread.id() == tid && curr_thread.process().id() == pid {
+            return false;
         }
 
-        // 3) Not found on this core. The thread may be blocked on the
-        // `blocked_list` of another core (the scheduler is core-local), so ask
-        // every other core to deblock it. The owning core's `Deblock` handler
-        // does the matching `inc_rq_len()`. Only broadcast for live threads to
-        // avoid waking stale (exited) waiters.
+        // 2b. check ready_queue
+        if state.ready_queue.iter().any(|t| t.id() == tid && t.process().id() == pid) {
+            // Already runnable (e.g. a previous wakeup raced in); nothing to do
+            return false;
+        }
+
+        // 3. thread isn't on this core; send message to the other cores
         if is_thread_alive(tid) {
             drop(state); // release ready_state before cross-core scheduling
             schedule_on_all_others(MessageItem::Cmd(MessageCmd::Unsleep { pid, tid }));
@@ -1035,9 +1024,9 @@ impl Scheduler {
                 let mut sleep_list = self.sleep_list.lock();
 
                 if let Some(pos) = sleep_list
-                    .iter().position(|(t, ms)| t.id() == tid && t.process().id() == pid)
+                    .iter().position(|(t, _ms)| t.id() == tid && t.process().id() == pid)
                 {
-                    let thread = sleep_list.remove(pos).0;
+                    let thread = sleep_list.swap_remove(pos).0;
                     thread.set_state(ThreadState::Running);
                     state.ready_queue.push_front(thread);
                     inc_rq_len();
@@ -1216,7 +1205,7 @@ pub fn schedule_on(target_id: usize, item: MessageItem) -> Result<(), MessageIte
     }
 }
 
-/// Schedules a cmd (wrapped in a MessageItem) on ALL remote cores
+/// Schedules a cmd (wrapped in a MessageItem) on ALL remote cores \
 /// Does not send reschedule IPI's since only one core needs to actually do something
 pub fn schedule_on_all_others(item: MessageItem) {
     let own_id = current_core_id() as usize;
@@ -1282,7 +1271,7 @@ pub fn inc_rq_len() {
 /// Owner function to decrease the runqueue length of the current core.
 pub fn dec_rq_len() {
     let id = current_core_id() as usize;
-    per_cpu_ref(id).rq_len.fetch_sub(1, Ordering::Release); // Release for stronger publication before donating
+    per_cpu_ref(id).rq_len.fetch_sub(1, Ordering::Release);
 }
 /// Owner function to read the runqueue length of the current core.
 pub fn read_rq_len() -> u32 {

@@ -3,7 +3,6 @@ use spin::Mutex;
 use crate::queues::{IpcError, IpcQueue};
 use crate::queues::atomic_ringbuffer::Ringbuffer;
 use crate::ipc_message::{IpcMessage, IpcMessageType, IpcMessageWrapper};
-use crate::receive;
 
 
 pub struct IpcRingbufferQueue<T, const S: usize> {
