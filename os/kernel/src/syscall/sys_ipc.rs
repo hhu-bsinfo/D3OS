@@ -1,7 +1,7 @@
 use core::str;
 
 use alloc::{format, slice};
-use ipc::{IpcEndpoints, IpcSyscallParams, MESSAGE_DATA_SIZE};
+use ipc::{IpcEndpoints, IpcRcvBlockingSyscallParams, IpcSendSyscallParams, MESSAGE_DATA_SIZE};
 use ipc::queues::{IpcQueue, IpcQueueType};
 use ipc::ipc_error::IpcError;
 use log::error;
@@ -63,7 +63,7 @@ pub fn remove_endpoints_for_process(process_id: &Uuid) {
     }
 }
 
-pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isize {
+pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSendSyscallParams) -> isize {
 
     let params = unsafe { &*params_ptr };
 
@@ -74,7 +74,7 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
         return IpcError::MsgTooLarge.into();
     }
     
-    let service_name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.service_name_ptr, params.service_name_len)) };
+    let service_name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.service_name_ptr, params.endpoint_name_len)) };
     
     if let Ok(fh) = nameservice::open(&format!("/svc/{}", service_name), OpenOptions::READONLY) {
 
@@ -84,7 +84,7 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
         nameservice::close(fh);
         let service = unsafe { &(*(buf.as_ptr() as *const ServiceObject)).service };
 
-        let endpoints = unsafe { (service.ipc_queue_addr as *const IpcEndpoints).as_ref_unchecked() };
+        let endpoints = unsafe { (service.ipc_endpoints_addr as *const IpcEndpoints).as_ref_unchecked() };
         if let Some(ipc_queue) = endpoints.get(service_name) {
             let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
             let msg_type = params.msg_type;
@@ -93,7 +93,10 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
             let res = ipc_queue.send(name, bytes, msg_type, &scheduler().current_thread().process().id(), scheduler().current_thread().id());
 
             match res {
-                Ok(ok) => return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(ok)),
+                Ok(ok) => {
+                    ipc_queue.unblock_waiting(|p, t| scheduler().unsleep(p, t));
+                    return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(ok));
+                },
                 Err(err) => return err.into(),
             }
         }
@@ -102,25 +105,34 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSyscallParams) -> isiz
     IpcError::Generic.into()
 }
 
-pub extern "sysv64" fn sys_ipc_receive_blocking(timeout_ms: usize) -> isize {
+pub extern "sysv64" fn sys_ipc_receive_blocking(params_ptr: *const IpcRcvBlockingSyscallParams) -> isize {
 
-    todo!("this needs to be updated to use the nameservice and the new endpoints struct");
+    let params = unsafe { &*params_ptr };
+    
+    let endpoint_name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.endpoint_name_ptr, params.service_name_len)) };
+    
+    if let Ok(fh) = nameservice::open(&format!("/svc/{}", endpoint_name), OpenOptions::READONLY) {
 
-    let ipc_queue_ptr = consts::USER_SPACE_MAILBOX_START as *mut IpcQueueType;
-    if let Some(ipc_queue) = unsafe { ipc_queue_ptr.as_mut() } {
+        // read ServiceObject using u8 buffer
+        let mut buf = [0_u8; core::mem::size_of::<ServiceObject>()];
+        let _res = nameservice::read(fh, buf.as_mut_slice());
+        nameservice::close(fh);
+        let service = unsafe { &(*(buf.as_ptr() as *const ServiceObject)).service };
 
-        let num_messages = ipc_queue.messages_left();
-        if num_messages > 0 {
-            return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(num_messages as usize));
-        }
-        let current_time = timer().systime_ms();
-        let timeout_time = current_time + timeout_ms;
-        WAIT_QUEUE.wait(|| ipc_queue.messages_left() > 0 || timer().systime_ms() >= timeout_time, "waiting for ipc receive");
-        let num_messages = ipc_queue.messages_left();
-        if num_messages > 0 {
-            return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(num_messages));
-        } else {
-            return IpcError::Timeout.into();
+        let endpoints = unsafe { (service.ipc_endpoints_addr as *const IpcEndpoints).as_ref_unchecked() };
+        if let Some(ipc_queue) = endpoints.get(endpoint_name) {
+            
+            let current_time = timer().systime_ms();
+            let timeout_time = current_time + params.timeout_ms;
+
+            WAIT_QUEUE.wait(|| ipc_queue.messages_left() > 0 || timer().systime_ms() >= timeout_time, "wating for ipc receive");
+
+            let num_messages = ipc_queue.messages_left();
+            if num_messages > 0 {
+                return return_vals::convert_syscall_result_to_ret_code(SyscallResult::Ok(num_messages));
+            } else {
+                return IpcError::Timeout.into();
+            }
         }
     }
     IpcError::Generic.into()

@@ -38,6 +38,7 @@ pub enum SystemCall {
     ThreadId,
     ThreadSwitch,
     ThreadSleep,
+    ThreadBlock,
     ThreadJoin,
     ThreadExit,
     ThreadKill,

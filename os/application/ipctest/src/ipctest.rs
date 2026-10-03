@@ -314,7 +314,7 @@ pub fn main() {
         for (endpoint_name, math_fn) in math_fns {
             thread::create(move || {
                 loop {
-                    match ipc::receive(endpoint_name) {
+                    match ipc::receive_blocking(endpoint_name, 5000) {
                         Ok(msg_wrapper) => {
                             let msg = msg_wrapper.msg();
                             log::info!("[Mathserver] Received {}", msg);
@@ -370,7 +370,7 @@ pub fn main() {
         }
 
         loop {
-            match ipc::receive("mathserver_ctrl") {
+            match ipc::receive_blocking("mathserver_ctrl", 5000) {
                 Ok(msg_wrapper) => {
                     let msg = msg_wrapper.msg();
                     if msg.name() == "STOP" {

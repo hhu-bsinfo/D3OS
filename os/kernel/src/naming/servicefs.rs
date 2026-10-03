@@ -10,7 +10,7 @@ use crate::{consts, naming::{stat::Mode, traits::{DirectoryObject, FileObject, F
 #[derive(Debug)]
 pub struct Service {
     pub name: String,
-    pub ipc_queue_addr: usize,
+    pub ipc_endpoints_addr: usize,
     pub owning_pid: Uuid,
 }
 
@@ -72,7 +72,7 @@ impl DirectoryObject for ServiceDir {
             .virtual_address_space
             .translate_ptr(consts::USER_SPACE_MAILBOX_START as *const IpcQueueType)
             .expect("IpcQueue isnt mapped into virt addr space") as usize;
-        let svc = Arc::new(Service { name: name.to_string(), ipc_queue_addr, owning_pid: process.id() });
+        let svc = Arc::new(Service { name: name.to_string(), ipc_endpoints_addr: ipc_queue_addr, owning_pid: process.id() });
         self.0.write().services.push(Arc::clone(&svc));
         Ok(NamedObject::FileObject(Arc::new(ServiceObject { service: svc })))
     }

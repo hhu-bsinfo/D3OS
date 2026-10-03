@@ -30,5 +30,7 @@ pub trait IpcQueue {
     fn new() -> Self;
     fn send(&self, name: &str, bytes: &[u8], msg_type: IpcMessageType, sender_pid: &Uuid, sender_tid: usize) -> Result<usize, IpcError>;
     fn receive(&self) -> Result<impl IpcMessageWrapper, IpcError>;
+    fn receive_blocking(&self, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError>;
     fn messages_left(&self) -> usize;
+    fn unblock_waiting<F: Fn(Uuid, usize) -> bool>(&self, unblock_fn: F);
 }

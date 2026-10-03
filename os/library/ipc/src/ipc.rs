@@ -46,7 +46,10 @@ pub struct IpcEndpoints {
 
 impl IpcEndpoints {
     pub fn new() -> Self {
-        Self { endpoints: [const { RwLock::new(ConstString::new()) }; _], queues: core::array::from_fn(|_| IpcQueueType::new()) }
+        Self {
+            endpoints: [const { RwLock::new(ConstString::new()) }; _],
+            queues: core::array::from_fn(|_| IpcQueueType::new())
+        }
     }
     pub fn get(&self, name: &str) -> Option<&IpcQueueType> {
         let pos = self.endpoints.iter().position(|endpoint_name| endpoint_name.read().as_str_unchecked() == name)?;
@@ -114,14 +117,14 @@ pub fn send_struct<T: Copy>(service: &str, msg_name: &str, message: &T) -> Resul
     send_internal(service, msg_name, IpcMessageType::Struct, bytes)
 }
 
-/// and message and busy wait for answer, TODO block thread here
+/// send message and wait for answer
 pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, content: T, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
     match send_internal(service, msg_name, content.msg_type(), content.to_bytes()) {
         Ok(_) => {
             let mut counter = 0;
             let callback_endpoint_name = format!("callback-{}", process::current().id());
             loop {
-                let rec = receive(&callback_endpoint_name);
+                let rec = receive_blocking(&callback_endpoint_name, 5000);
                 match rec {
                     // TODO find specific answer message
                     Ok(_) => return rec,
@@ -152,9 +155,9 @@ pub fn answer<T: IpcMessageContent>(original_message: &IpcMessage, content: T) -
     answer_with_name(original_message, &format!("answer-{}", original_message.name), content)
 }
 
-pub struct IpcSyscallParams {
+pub struct IpcSendSyscallParams {
     pub service_name_ptr: *const u8,
-    pub service_name_len: usize,
+    pub endpoint_name_len: usize,
     pub msg_name_ptr: *const u8,
     pub msg_name_len: usize,
     pub msg_type: IpcMessageType,
@@ -168,9 +171,9 @@ pub fn send_internal(service: &str, msg_name: &str, msg_type: IpcMessageType, da
     let pid = process::current().id();
     let _res = register_ipc_endpoint(&format!("callback-{}", pid));
 
-    let params = IpcSyscallParams {
+    let params = IpcSendSyscallParams {
         service_name_ptr: service.as_ptr(),
-        service_name_len: service.len(),
+        endpoint_name_len: service.len(),
         msg_name_ptr: msg_name.as_ptr(),
         msg_name_len: msg_name.len(),
         msg_type,
@@ -192,11 +195,16 @@ pub fn receive_answer() -> Result<impl IpcMessageWrapper + use<>, IpcError> {
     receive(&endpoint_name)
 }
 
-pub fn receive_blocking(endpoint_name: &str, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
-    match syscall(SystemCall::IpcReceiveBlocking, &timeout_ms) {
-        Ok(_) => receive(endpoint_name),
-        Err(e) => Err(e.into()),
-    }
+pub struct IpcRcvBlockingSyscallParams {
+    pub endpoint_name_ptr: *const u8,
+    pub service_name_len: usize,
+    pub timeout_ms: usize,
+}
+
+pub fn receive_blocking(endpoint_name: &str, timeout_ms: usize) -> Result<impl IpcMessageWrapper + use<>, IpcError> {
+    let endpoints = unsafe { (USER_SPACE_MAILBOX_START as *const IpcEndpoints).as_ref_unchecked() };
+    let ipc_queue = endpoints.get(endpoint_name).ok_or(IpcError::EndpointNotFound)?;
+    ipc_queue.receive_blocking(timeout_ms)
 }
 
 /// Reinterprets an arbitrary struct T into bytes.

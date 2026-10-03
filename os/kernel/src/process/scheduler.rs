@@ -662,6 +662,60 @@ impl Scheduler {
         false
     }
 
+    /// Unsleep, i.e. prematurely wake up thread with given (pid, tid). \
+    /// Returns true if thread was found and unblocked, false otherwise.
+    pub fn unsleep(&self, pid: Uuid, tid: usize) -> bool {
+        
+        let mut state = self.ready_state.lock();
+
+        // 1) Check if the given thread is in the blocked list -> need to be woken up
+        let sleeping_thread: Option<Arc<Thread>> = {
+            let mut sleep_list = self.sleep_list.lock();
+            if let Some(pos) = sleep_list.iter().position(|(t, ms)| t.id() == tid && t.process().id() == pid) {
+                Some(sleep_list.remove(pos).0)
+            } else {
+                None
+            }
+        };
+
+        // If we found a blocked thread in the block_list, wake it up
+        if let Some(thread) = sleeping_thread {
+            // let mut state = self.get_ready_state();
+            thread.set_state(ThreadState::Ready);
+            state.ready_queue.push_front(Arc::clone(&thread));
+            inc_rq_len();
+            return true;
+        }
+
+        // 2a) Check if the thread to be woken up is the current thread (it has not been blocked)
+        {
+            let curr_thread = self.current_thread();
+            if curr_thread.id() == tid && curr_thread.process().id() == pid {
+                curr_thread.set_state(ThreadState::Running);
+                return true;
+            }
+
+        // 2b) Check if the thread to be woken up is in the ready queue
+            if state.ready_queue.iter().any(|t| t.id() == tid && t.process().id() == pid) {
+                // Already runnable (e.g. a previous wakeup raced in); nothing to do
+                return true;
+            }
+        }
+
+        // 3) Not found on this core. The thread may be blocked on the
+        // `blocked_list` of another core (the scheduler is core-local), so ask
+        // every other core to deblock it. The owning core's `Deblock` handler
+        // does the matching `inc_rq_len()`. Only broadcast for live threads to
+        // avoid waking stale (exited) waiters.
+        if is_thread_alive(tid) {
+            drop(state); // release ready_state before cross-core scheduling
+            schedule_on_all_others(MessageItem::Cmd(MessageCmd::Unsleep { pid, tid }));
+            return true;
+        }
+
+        false
+    }
+
     /// Switch from current to next thread (from ready queue). \
     /// If `interrupt` is true, the function is called from an ISR and will send EOI to APIC otherwise not.
     fn switch_thread(&self, interrupt: bool) {
@@ -975,6 +1029,20 @@ impl Scheduler {
                     inc_rq_len();
                 }
             }
+            // If the thread is locally sleeping, requeue it.
+            MessageCmd::Unsleep { pid, tid } => {
+                if is_thread_alive(tid) == false { return; }
+                let mut sleep_list = self.sleep_list.lock();
+
+                if let Some(pos) = sleep_list
+                    .iter().position(|(t, ms)| t.id() == tid && t.process().id() == pid)
+                {
+                    let thread = sleep_list.remove(pos).0;
+                    thread.set_state(ThreadState::Running);
+                    state.ready_queue.push_front(thread);
+                    inc_rq_len();
+                }
+            }
             // if you have this thread, kill it
             MessageCmd::Kill { tid } => {
                 if is_thread_alive(tid) == false { return; }
@@ -1102,6 +1170,9 @@ pub enum MessageCmd {
 
     /// "If you have this thread in your local blocked list, wake it."
     Deblock { pid: Uuid, tid: usize },
+
+    /// "If you have this thread in your local sleep list, wake it."
+    Unsleep { pid: Uuid, tid: usize },
 
     /// "If you have this thread, kill it."
     Kill { tid: usize },
