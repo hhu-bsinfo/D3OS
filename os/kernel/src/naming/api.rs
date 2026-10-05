@@ -18,6 +18,7 @@
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use d3os::copy_from_slice_sizechecked;
 use log::{info, warn};
 use spin::{Mutex, Once, RwLock};
 
@@ -207,8 +208,7 @@ pub fn readdir(dir_handle: usize, dentry: Option<&mut RawDirent>) -> Result<usiz
                     let mut de: RawDirent = RawDirent::new();
                     de.d_type = dir_entry_data.file_type as usize;
                     let name_bytes: &[u8] = dir_entry_data.name.as_bytes();
-                    let len = name_bytes.len().min(255); // Avoid overflow
-                    de.d_name[..len].copy_from_slice(&name_bytes[..len]);
+                    copy_from_slice_sizechecked!(de.d_name, name_bytes, 255);
 
                     // Write the Dirent structure to the provided dentry pointer
                     if let Some(dentry) = dentry {

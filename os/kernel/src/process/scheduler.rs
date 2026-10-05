@@ -31,6 +31,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::{vec};
 use alloc::vec::Vec;
+use d3os::copy_from_slice_sizechecked;
 use syscall::return_vals::Errno;
 use uuid::Uuid;
 use core::{panic, ptr};
@@ -938,8 +939,7 @@ impl Scheduler {
 
         // Copy to caller buffer (truncate if needed)
         let bytes = out.as_bytes();
-        let len = core::cmp::min(bytes.len(), buffer.len());
-        buffer[..len].copy_from_slice(&bytes[..len]);
+        let len = copy_from_slice_sizechecked!(buffer, bytes);
         Ok(len)
     }
 
