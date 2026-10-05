@@ -36,6 +36,7 @@ use alloc::format;
 use alloc::vec::Vec;
 use chrono::{DateTime, FixedOffset, TimeDelta};
 use graphic::color::{BLUE, WHITE};
+use d3os::const_string::ConstString;
 use ::log::{Level, Log, Record, error};
 use acpi::AcpiTables;
 use alloc::string::String;
@@ -82,46 +83,6 @@ pub mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
-/// static sized Strings using a u8 buffer
-/// 
-/// used for heap-less panics & logging
-#[derive(Debug, Copy, Clone)]
-pub struct D3OSStaticString<const SIZE: usize> {
-    buffer: [u8; SIZE],
-    index: usize,
-}
-
-impl <const SIZE: usize> D3OSStaticString<SIZE> {
-
-    pub const fn new() -> Self {
-        D3OSStaticString { buffer: ['\0' as u8; SIZE], index: 0 }
-    }
-
-    pub fn as_str(&self) -> Result<&str, core::str::Utf8Error> {
-        let utf8 = str::from_utf8(&self.buffer)?;
-        let utf8_trimmed = match utf8.find('\0') {
-            Some(i) => &utf8[0..i],
-            None => utf8,
-        };
-        Ok(utf8_trimmed)
-    }
-
-    pub fn clear(&mut self) {
-        self.buffer.fill('\0' as u8);
-        self.index = 0;
-    }
-}
-
-impl <const SIZE: usize> Write for D3OSStaticString<SIZE> {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let i = self.index;
-        let l = core::cmp::min(self.buffer.len() - i, s.len());
-        self.buffer[i..(l+i)].copy_from_slice(&s.as_bytes()[..l]);
-        self.index = self.index.wrapping_add(l);
-        return Ok(());
-    }
-}
-
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     // make sure we never exit
@@ -142,7 +103,7 @@ fn panic(info: &PanicInfo) -> ! {
 
     logger().log(&record);
 
-    let mut panic_message: D3OSStaticString<256> = D3OSStaticString::new();
+    let mut panic_message: ConstString<256> = ConstString::new();
     write!(panic_message, "{info}");
     let panic_message_str = panic_message.as_str().expect("UTF-8 error in panic message!");
     let panic_message_trimmed = match panic_message_str.find('\0') {

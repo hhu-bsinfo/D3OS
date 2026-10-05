@@ -1,4 +1,3 @@
-use crate::D3OSStaticString;
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: log                                                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
@@ -13,6 +12,7 @@ use crate::device::serial::ComPort;
 use crate::device::serial::SerialPort;
 use crate::{allocator, timer};
 use graphic::ansi;
+use d3os::const_string::ConstString;
 use log::debug;
 use stream::OutputStream;
 use core::fmt::Write;
@@ -92,7 +92,7 @@ impl log::Log for Logger {
                 // this could become garbled if we had multiple threads,
                 // but we do not have them at this point
 
-                let mut static_string: D3OSStaticString<256> = D3OSStaticString::new();
+                let mut const_string: ConstString<256> = ConstString::new();
 
                 let systime = if allocator().is_initialized() && !allocator().is_locked() {
                     timer().systime_ms()
@@ -102,14 +102,14 @@ impl log::Log for Logger {
                 let seconds = systime / 1000;
                 let fraction = systime % 1000;
                 writeln!(
-                    static_string,
+                    const_string,
                     "{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}]{} {}",
                     ansi::FOREGROUND_CYAN, seconds, fraction, ansi_color(level),
                     level_token(level),ansi::FOREGROUND_MAGENTA, file, line,
                     ansi::FOREGROUND_DEFAULT, record.args()
                 ).unwrap();
 
-                if let Ok(log_message_str) = static_string.as_str() {
+                if let Ok(log_message_str) = const_string.as_str() {
                     serial.write_str(log_message_str);
                 } else {
                     serial.write_str("UTF-8 error in log message!");
