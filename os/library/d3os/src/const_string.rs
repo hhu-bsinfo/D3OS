@@ -1,7 +1,7 @@
 use core::fmt::{Display, Write};
 use core::slice::SliceIndex;
 use core::ops::{Index, IndexMut};
-use crate::CopySizeChecked;
+use crate::copy_from_slice_sizechecked;
 
 #[derive(Debug, Clone, Copy)]
 /// nul-terminated, const sized string
@@ -46,12 +46,12 @@ impl <const S: usize> ConstString<S> {
     }
     
     pub fn set_from_bytes(&mut self, bytes: &[u8]) {
-        let new_len = self.buffer.copy_from_slice_sizechecked(bytes);
+        let new_len = copy_from_slice_sizechecked!(self.buffer, bytes);
         self.len = new_len;
     }
     /// set this string to `s`
     pub fn set(&mut self, s: &str) {
-        let l = self.buffer.copy_from_slice_sizechecked(s.as_bytes());
+        let l = copy_from_slice_sizechecked!(self.buffer, s.as_bytes());
         self.len = l;
     }
     pub fn clear(&mut self) {
@@ -61,13 +61,11 @@ impl <const S: usize> ConstString<S> {
     /// append `s` to the end of this string
     pub fn append(&mut self, s: &str) {
         let idx = self.len();
-        let space_left = S - idx;
-        let l = core::cmp::min(space_left, s.len());
-        self.buffer[..l].copy_from_slice(&s.as_bytes()[..l]);
+        let l = copy_from_slice_sizechecked!(self.buffer[idx..], s.as_bytes());
         self.len = l;
     }
     pub fn copy_from<const T: usize>(&mut self, other: ConstString<T>) {
-        let l = self.buffer.copy_from_slice_sizechecked(&other[..]);
+        let l = copy_from_slice_sizechecked!(self.buffer, other);
         self.len = l;
     }
 }
@@ -93,7 +91,7 @@ impl <const S: usize> From<[u8; S]> for ConstString<S> {
 impl <const S: usize> From<&str> for ConstString<S> {
     fn from(value: &str) -> Self {
         let mut buffer = [0_u8; S];
-        let l = buffer.copy_from_slice_sizechecked(value.as_bytes());
+        let l = copy_from_slice_sizechecked!(buffer, value.as_bytes());
         Self { buffer, len: l }
     }
 }
@@ -101,7 +99,7 @@ impl <const S: usize> From<&str> for ConstString<S> {
 impl <const S: usize> From<&[u8]> for ConstString<S> {
     fn from(value: &[u8]) -> Self {
         let mut buffer = [0_u8; S];
-        let l = buffer.copy_from_slice_sizechecked(value);
+        let l = copy_from_slice_sizechecked!(buffer, value);
         Self { buffer, len: l }
     }
 }
