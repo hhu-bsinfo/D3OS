@@ -11,7 +11,7 @@ use alloc::sync::Arc;
 use alloc::{format, string::String, vec::Vec};
 use alloc::vec;
 use concurrent::{process, thread};
-use ipc::const_string::ConstString;
+use d3os::const_string::ConstString;
 use ipc::ipc_message::{IpcMessageData, IpcMessageType, IpcMessageWrapper};
 use ipc::ipc_error::IpcError;
 use runtime::*;

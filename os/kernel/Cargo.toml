@@ -20,6 +20,7 @@ frame_alloc_locking = []
 
 [dependencies]
 # Local dependencies
+d3os = { path = "../library/d3os" }
 graphic = { path = "../library/graphic" }
 stream = { path = "../library/stream" }
 syscall = { path = "../library/syscall", default-features = false }

@@ -1,4 +1,4 @@
-use crate::const_string::CopySizeChecked;
+use d3os::CopySizeChecked;
 use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageData, IpcMessageType};
 
 macro_rules! data_as_any_number {

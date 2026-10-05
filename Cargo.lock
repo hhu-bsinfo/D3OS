@@ -256,6 +256,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
+name = "d3os"
+version = "0.1.0"
+
+[[package]]
 name = "date"
 version = "0.1.0"
 dependencies = [
@@ -658,6 +662,7 @@ dependencies = [
  "chrono",
  "concurrent",
  "crossbeam-utils",
+ "d3os",
  "lfqueue",
  "spin 0.12.2",
  "syscall",
@@ -669,6 +674,7 @@ name = "ipctest"
 version = "0.1.0"
 dependencies = [
  "concurrent",
+ "d3os",
  "ipc",
  "log",
  "logger",
@@ -723,6 +729,7 @@ dependencies = [
  "built",
  "chrono",
  "concurrent",
+ "d3os",
  "drawer",
  "goblin",
  "graphic",

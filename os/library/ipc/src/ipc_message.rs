@@ -5,7 +5,8 @@ use alloc::string::String;
 use uuid::Uuid;
 
 use crate::{MESSAGE_DATA_SIZE, MESSAGE_NAME_LEN};
-use crate::const_string::{ConstString, CopySizeChecked};
+use d3os::CopySizeChecked;
+use d3os::const_string::ConstString;
 
 macro_rules! num_slice_from_bytes {
     ($bytes:expr, $num:ty) => {

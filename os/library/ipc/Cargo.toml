@@ -20,6 +20,7 @@ ringbufferqueue = []
 
 [dependencies]
 # Local dependencies
+d3os = { path = "../d3os" }
 syscall = { path = "../syscall" }
 concurrent = { path = "../concurrent" }
 

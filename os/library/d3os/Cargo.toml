@@ -1,0 +1,10 @@
+[package]
+edition = "2024"
+name = "d3os"
+version = "0.1.0"
+authors = ["Richard Schweitzer <risch114@uni-duesseldorf.de"]
+
+[lib]
+test = false
+doctest = false
+bench = false

@@ -12,7 +12,7 @@ use crate::device::serial::ComPort;
 use crate::device::serial::SerialPort;
 use crate::{allocator, timer};
 use graphic::ansi;
-use ipc::const_string::ConstString;
+use d3os::const_string::ConstString;
 use log::debug;
 use stream::OutputStream;
 use core::fmt::Write;

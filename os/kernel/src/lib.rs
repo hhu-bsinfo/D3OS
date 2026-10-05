@@ -36,7 +36,7 @@ use alloc::format;
 use alloc::vec::Vec;
 use chrono::{DateTime, FixedOffset, TimeDelta};
 use graphic::color::{BLUE, WHITE};
-use ipc::const_string::ConstString;
+use d3os::const_string::ConstString;
 use ::log::{Level, Log, Record, error};
 use acpi::AcpiTables;
 use alloc::string::String;

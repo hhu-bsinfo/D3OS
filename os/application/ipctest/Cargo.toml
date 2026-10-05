@@ -13,12 +13,15 @@ bench = false
 
 [dependencies]
 # Local dependencies
+d3os = { path = "../../library/d3os" }
 runtime = { path = "../../library/runtime" }
 terminal = { path = "../../library/terminal" }
 concurrent = { path = "../../library/concurrent" }
 ipc = { path = "../../library/ipc" }
 syscall = { path = "../../library/syscall" }
 logger = { path = "../../library/logger" }
+
+# external dependencies
 log = "0.4.26"
 
 

@@ -7,7 +7,6 @@ pub mod ipc_message;
 pub mod ipc_message_numbers;
 pub mod ipc_error;
 pub mod queues;
-pub mod const_string;
 pub mod scq;
 
 extern crate alloc;
@@ -20,7 +19,7 @@ use syscall::{SystemCall, syscall};
 
 use concurrent::{process, thread};
 
-use crate::const_string::ConstString;
+use d3os::const_string::ConstString;
 use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageData, IpcMessageType, IpcMessageWrapper};
 use crate::ipc_error::IpcError;
 use crate::queues::{IpcQueue, IpcQueueType};
