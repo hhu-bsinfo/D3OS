@@ -1,15 +1,11 @@
-use d3os::CopySizeChecked;
+use d3os::{array_from_slice, copy_from_slice_sizechecked};
 use crate::ipc_message::{IpcMessage, IpcMessageContent, IpcMessageData, IpcMessageType};
 
 macro_rules! data_as_any_number {
     ($msg:expr, $out_type:ty) => {
         match $msg.data() {
             IpcMessageData::Empty => Ok(0 as $out_type),
-            IpcMessageData::Raw { data, size } => {
-                let mut arr = [0; _];
-                arr.copy_from_slice_sizechecked(&data[..*size]);
-                Ok(<$out_type>::from_ne_bytes(arr))
-            },
+            IpcMessageData::Raw { data, size } => Ok(<$out_type>::from_ne_bytes(array_from_slice!(data[..*size]))),
             IpcMessageData::Usize(n) => Ok((*n).saturating_cast()),
             IpcMessageData::Isize(n) => Ok((*n).saturating_cast()),
             IpcMessageData::I32(n) => Ok((*n).saturating_cast()),
@@ -72,11 +68,7 @@ impl IpcMessage {
     pub fn data_as_f64_unchecked(&self) -> f64 {
         match self.data() {
             IpcMessageData::Empty => f64::NAN,
-            IpcMessageData::Raw { data, size } => {
-                let mut arr = [0; _];
-                arr.copy_from_slice_sizechecked(&data[..*size]);
-                f64::from_ne_bytes(arr)
-            },
+            IpcMessageData::Raw { data, size } => f64::from_ne_bytes(array_from_slice!(data[..*size])),
             IpcMessageData::Usize(n) => (*n) as f64,
             IpcMessageData::Isize(n) => (*n) as f64,
             IpcMessageData::I32(n) => (*n) as f64,
@@ -136,9 +128,7 @@ impl IpcMessageContent for &[usize] {
     }
 
     fn to_data(&self) -> IpcMessageData {
-        let mut arr = [0; _];
-        arr.copy_from_slice_sizechecked(self);
-        IpcMessageData::UsizeSlice { data: arr, size: self.len() }
+        IpcMessageData::UsizeSlice { data: array_from_slice!(self), size: self.len() }
     }
 }
 
@@ -154,9 +144,7 @@ impl<const N: usize> IpcMessageContent for &[usize; N] {
     }
 
     fn to_data(&self) -> IpcMessageData {
-        let mut arr = [0; _];
-        arr.copy_from_slice_sizechecked(self.as_slice());
-        IpcMessageData::UsizeSlice { data: arr, size: self.len() }
+        IpcMessageData::UsizeSlice { data: array_from_slice!(self), size: self.len() }
     }
 }
 
@@ -205,9 +193,7 @@ impl<const N: usize> IpcMessageContent for &[isize; N] {
     }
     
     fn to_data(&self) -> IpcMessageData {
-        let mut arr = [0; _];
-        arr.copy_from_slice_sizechecked(self.as_slice());
-        IpcMessageData::IsizeSlice { data: arr, size: self.len() }
+        IpcMessageData::IsizeSlice { data: array_from_slice!(self), size: self.len() }
     }
 }
 
@@ -240,9 +226,7 @@ impl IpcMessageContent for &[i32] {
     }
     
     fn to_data(&self) -> IpcMessageData {
-        let mut arr = [0; _];
-        arr.copy_from_slice_sizechecked(self);
-        IpcMessageData::I32Slice { data: arr, size: self.len() }
+        IpcMessageData::I32Slice { data: array_from_slice!(self), size: self.len() }
     }
 }
 
@@ -258,9 +242,7 @@ impl<const N: usize> IpcMessageContent for &[i32; N] {
     }
     
     fn to_data(&self) -> IpcMessageData {
-        let mut arr = [0; _];
-        arr.copy_from_slice_sizechecked(self.as_slice());
-        IpcMessageData::I32Slice { data: arr, size: self.len() }
+        IpcMessageData::I32Slice { data: array_from_slice!(self), size: self.len() }
     }
 }
 
@@ -293,9 +275,7 @@ impl IpcMessageContent for &[f64] {
     }
     
     fn to_data(&self) -> IpcMessageData {
-        let mut arr = [0.0; _];
-        arr.copy_from_slice_sizechecked(self);
-        IpcMessageData::F64Slice { data: arr, size: self.len() }
+        IpcMessageData::F64Slice { data: array_from_slice!(self), size: self.len() }
     }
 }
 
@@ -311,9 +291,7 @@ impl<const N: usize> IpcMessageContent for &[f64; N] {
     }
     
     fn to_data(&self) -> IpcMessageData {
-        let mut arr = [0.0; _];
-        arr.copy_from_slice_sizechecked(self.as_slice());
-        IpcMessageData::F64Slice { data: arr, size: self.len() }
+        IpcMessageData::F64Slice { data: array_from_slice!(self), size: self.len() }
     }
 }
 

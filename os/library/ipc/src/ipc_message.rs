@@ -5,7 +5,7 @@ use alloc::string::String;
 use uuid::Uuid;
 
 use crate::{MESSAGE_DATA_SIZE, MESSAGE_NAME_LEN};
-use d3os::CopySizeChecked;
+use d3os::{array_from_slice, copy_from_slice_sizechecked};
 use d3os::const_string::ConstString;
 
 macro_rules! num_slice_from_bytes {
@@ -113,17 +113,17 @@ impl IpcMessageData {
     pub fn set_data(&mut self, new_data: &[u8]) {
         match self {
             IpcMessageData::Empty => (),
-            IpcMessageData::Raw { data, size } => *size = data.copy_from_slice_sizechecked(new_data),
+            IpcMessageData::Raw { data, size } => *size = copy_from_slice_sizechecked!(data, new_data),
             IpcMessageData::Usize(n) => *n = cast_bytes_as_number!(new_data, usize),
-            IpcMessageData::UsizeSlice { data, size } => *size = data.copy_from_slice_sizechecked(cast_bytes_as_slice!(new_data, usize)),
+            IpcMessageData::UsizeSlice { data, size } => *size = copy_from_slice_sizechecked!(data, cast_bytes_as_slice!(new_data, usize)),
             IpcMessageData::Isize(n) => *n = cast_bytes_as_number!(new_data, isize),
-            IpcMessageData::IsizeSlice { data, size } => *size = data.copy_from_slice_sizechecked(cast_bytes_as_slice!(new_data, isize)),
+            IpcMessageData::IsizeSlice { data, size } => *size = copy_from_slice_sizechecked!(data, cast_bytes_as_slice!(new_data, isize)),
             IpcMessageData::I32(n) => *n = cast_bytes_as_number!(new_data, i32),
-            IpcMessageData::I32Slice { data, size } => *size = data.copy_from_slice_sizechecked(cast_bytes_as_slice!(new_data, i32)),
+            IpcMessageData::I32Slice { data, size } => *size = copy_from_slice_sizechecked!(data, cast_bytes_as_slice!(new_data, i32)),
             IpcMessageData::F64(n) => *n = cast_bytes_as_number!(new_data, f64),
-            IpcMessageData::F64Slice { data, size } => *size = data.copy_from_slice_sizechecked(cast_bytes_as_slice!(new_data, f64)),
+            IpcMessageData::F64Slice { data, size } => *size = copy_from_slice_sizechecked!(data, cast_bytes_as_slice!(new_data, f64)),
             IpcMessageData::String(const_string) => const_string.set_from_bytes(new_data),
-            IpcMessageData::Struct { bytes, size } => *size = bytes.copy_from_slice_sizechecked(new_data),
+            IpcMessageData::Struct { bytes, size } => *size = copy_from_slice_sizechecked!(bytes, new_data),
         };
     }
 }
@@ -291,9 +291,7 @@ impl IpcMessageContent for &[u8] {
         IpcMessageType::Raw
     }
     fn to_data(&self) -> IpcMessageData {
-        let mut arr = [0; _];
-        arr.copy_from_slice_sizechecked(self);
-        IpcMessageData::Raw { data: arr, size: self.len() }
+        IpcMessageData::Raw { data: array_from_slice!(self), size: self.len() }
     }
 }
 
@@ -305,9 +303,7 @@ impl<const N: usize> IpcMessageContent for &[u8; N] {
         IpcMessageType::Raw
     }
     fn to_data(&self) -> IpcMessageData {
-        let mut arr = [0; _];
-        arr.copy_from_slice_sizechecked(*self);
-        IpcMessageData::Raw { data: arr, size: self.len() }
+        IpcMessageData::Raw { data: array_from_slice!(self), size: self.len() }
     }
 }
 
