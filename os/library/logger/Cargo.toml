@@ -9,9 +9,14 @@ test = false
 doctest = false
 bench = false
 
+[features]
+default = ["userspace"]
+userspace = ["dep:spin"]
+
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall" }
 
 # External depencies
 log = "0.4.26"
+spin = { version = "0.12", optional = true }

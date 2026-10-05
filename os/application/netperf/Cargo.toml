@@ -15,6 +15,7 @@ bench = false
 # Local dependencies
 runtime = { path = "../../library/runtime" }
 terminal = { path = "../../library/terminal" }
+logger = { path = "../../library/logger" }
 network = { path = "../../library/network" }
 concurrent = { path = "../../library/concurrent" }
 time = { path = "../../library/time" }

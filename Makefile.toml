@@ -14,7 +14,7 @@ QEMU_AUDIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "
 QEMU_DISPLAY = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gtk,gl=on,zoom-to-fit=on", mapping = { "macos" = "cocoa" } }
 QEMU_VIRTIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "virtio-vga-gl", mapping = { "macos" = "virtio-vga" } }
 RUSTFLAGS="--cfg getrandom_backend=\"rdrand\""
-QEMU_NUM_CPU_CORES = 4
+NUM_CPU_CORES=4
 
 #VIRGL_DEBUG = "all"
 #GALLIUM_DEBUG = "trace"
@@ -33,7 +33,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
     "-cpu", "Haswell,fsgsbase",
-    "-smp", "${QEMU_NUM_CPU_CORES}",
+    "-smp", "${NUM_CPU_CORES}", # 4 CPUs
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "d",
     "-vga", "none",
@@ -80,7 +80,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
     "-cpu", "Haswell",
-    "-smp", "${QEMU_NUM_CPU_CORES}",
+    "-smp", "${NUM_CPU_CORES}", # 4 CPUs
     "-bios", "${WSL_BIOS_PATH}",
     "-boot", "d",
     "-vga", "std",
@@ -118,7 +118,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
     "-cpu", "Haswell",
-    "-smp", "${QEMU_NUM_CPU_CORES}",
+    "-smp", "${NUM_CPU_CORES}", # 4 CPUs
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "c",
     "-vga", "none",
@@ -172,7 +172,7 @@ args = [ "-ex", "break start", "-ex", "target remote 127.0.0.1:1234", "-ex", "co
 [tasks.ovmf]
 command = "wget"
 args = [ "-N", "${OVMF_URL}" ]
-condition = { files_not_exist = [ "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/RELEASEX64_OVMF.fd" ] }
+condition = { files_not_exist = [ "RELEASEX64_OVMF.fd" ] }
 
 [tasks.test]
 command = "cargo"
