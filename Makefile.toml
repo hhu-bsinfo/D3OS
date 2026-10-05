@@ -14,6 +14,7 @@ QEMU_AUDIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "
 QEMU_DISPLAY = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gtk,gl=on,zoom-to-fit=off", mapping = { "macos" = "cocoa" } }
 QEMU_VIRTIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "virtio-vga-gl", mapping = { "macos" = "virtio-vga" } }
 RUSTFLAGS="--cfg getrandom_backend=\"rdrand\""
+NUM_CPU_CORES=4
 
 #VIRGL_DEBUG = "all"
 #GALLIUM_DEBUG = "trace"
@@ -32,7 +33,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
     "-cpu", "Haswell,fsgsbase",
-    "-smp", "4", # 4 CPUs
+    "-smp", "${NUM_CPU_CORES}", # 4 CPUs
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "d",
     "-vga", "none",
@@ -79,7 +80,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
     "-cpu", "Haswell",
-    "-smp", "4", # 4 CPUs
+    "-smp", "${NUM_CPU_CORES}", # 4 CPUs
     "-bios", "${WSL_BIOS_PATH}",
     "-boot", "d",
     "-vga", "std",
@@ -117,7 +118,7 @@ args = [
     "-machine", "q35,nvdimm=on,pcspk-audiodev=audio0",
     "-m", "512M,slots=2,maxmem=1G",
     "-cpu", "Haswell",
-    "-smp", "4", # 4 CPUs
+    "-smp", "${NUM_CPU_CORES}", # 4 CPUs
     "-bios", "RELEASEX64_OVMF.fd",
     "-boot", "c",
     "-vga", "none",
