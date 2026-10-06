@@ -103,7 +103,7 @@ fn panic(info: &PanicInfo) -> ! {
 
     logger().log(&record);
 
-    let mut panic_message: ConstString<256> = ConstString::new();
+    let mut panic_message: ConstString<512> = ConstString::new();
     write!(panic_message, "{info}");
         
     // if we do have a terminal, try to print the error there, too
@@ -115,7 +115,7 @@ fn panic(info: &PanicInfo) -> ! {
         lfb.direct_lfb().fill_rect(lfb_width/8, lfb_height/4, lfb_width * 3 / 4, lfb_height/3, BLUE);
         lfb.direct_lfb().draw_string(lfb_width/7, lfb_height/3, WHITE, BLUE, "D3OS has encountered an unknown error:");
 
-        for (line_idx, line) in panic_message.as_str_unchecked().split('\n').enumerate() {
+        for (line_idx, line) in panic_message.as_str().unwrap_or("UTF-8 error in panic info!").split('\n').enumerate() {
             lfb.direct_lfb().draw_string(lfb_width/7, lfb_height/3 + 48 + line_idx as u32 * 20, WHITE, BLUE, line);
         }
         (lfb, lfb_height, lfb_width)
