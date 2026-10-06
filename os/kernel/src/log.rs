@@ -109,11 +109,7 @@ impl log::Log for Logger {
                     ansi::FOREGROUND_DEFAULT, record.args()
                 ).unwrap();
 
-                if let Ok(log_message_str) = const_string.as_str() {
-                    serial.write_str(log_message_str);
-                } else {
-                    serial.write_str("UTF-8 error in log message!");
-                }
+                serial.write_str(const_string.as_str().unwrap_or("UTF-8 error in log message!"));
             }
         }
     }

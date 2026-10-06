@@ -105,11 +105,6 @@ fn panic(info: &PanicInfo) -> ! {
 
     let mut panic_message: ConstString<256> = ConstString::new();
     write!(panic_message, "{info}");
-    let panic_message_str = panic_message.as_str().expect("UTF-8 error in panic message!");
-    let panic_message_trimmed = match panic_message_str.find('\0') {
-        Some(i) => &panic_message_str[0..i],
-        None => panic_message_str,
-    };
         
     // if we do have a terminal, try to print the error there, too
     let _lfb_info = BUFFERED_LFB.get().map(|lfb| {
@@ -120,7 +115,7 @@ fn panic(info: &PanicInfo) -> ! {
         lfb.direct_lfb().fill_rect(lfb_width/8, lfb_height/4, lfb_width * 3 / 4, lfb_height/3, BLUE);
         lfb.direct_lfb().draw_string(lfb_width/7, lfb_height/3, WHITE, BLUE, "D3OS has encountered an unknown error:");
 
-        for (line_idx, line) in panic_message_trimmed.split('\n').enumerate() {
+        for (line_idx, line) in panic_message.as_str_unchecked().split('\n').enumerate() {
             lfb.direct_lfb().draw_string(lfb_width/7, lfb_height/3 + 48 + line_idx as u32 * 20, WHITE, BLUE, line);
         }
         (lfb, lfb_height, lfb_width)
