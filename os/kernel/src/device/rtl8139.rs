@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use d3os::copy_from_slice_sizechecked;
 use core::ops::BitOr;
 use core::{ptr, slice};
 use core::alloc::{AllocError, Allocator, Layout};
@@ -508,7 +509,7 @@ impl Rtl8139 {
                 // Copy message to new buffer and enqueue for processing
                 if let Ok(mut target) = self.recv_buffers_empty.0.try_dequeue() {
                     let src = &recv_buffer.data[msg_start..msg_end];
-                    target[0..src.len()].copy_from_slice(src);
+                    copy_from_slice_sizechecked!(target, src);
 
                     let _ = self.recv_messages.1.try_enqueue(target);
                 }

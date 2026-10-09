@@ -62,7 +62,7 @@ impl <const S: usize> ConstString<S> {
     pub fn append(&mut self, s: &str) {
         let idx = self.len();
         let l = copy_from_slice_sizechecked!(self.buffer[idx..], s.as_bytes());
-        self.len = l;
+        self.len += l;
     }
     pub fn copy_from<const T: usize>(&mut self, other: ConstString<T>) {
         let l = copy_from_slice_sizechecked!(self.buffer, other);
