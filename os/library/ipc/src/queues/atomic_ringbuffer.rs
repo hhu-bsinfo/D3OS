@@ -2,7 +2,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use spin::{RelaxStrategy, rwlock::RwLock};
 
-use crate::MAX_NUM_MESSAGES;
+use crate::{MAX_NUM_MESSAGES, queues::YieldD3OS};
 
 /// thread-safe, non-locking ringbuffer using atomics
 pub struct Ringbuffer<T, const S: usize> {
@@ -65,8 +65,15 @@ impl<T: Copy + Default, const S: usize> Ringbuffer<T, S> {
         let tail_idx = self.tail.fetch_add(1, Ordering::SeqCst) % MAX_NUM_MESSAGES;
 
         // return raw ptr to reserved slot
-        let guard = self.data[tail_idx].try_write()?;
-        Some((self.data[tail_idx].as_mut_ptr(), guard))
+        if let Some(guard) = self.data[tail_idx].try_write() {
+            Some((self.data[tail_idx].as_mut_ptr(), guard))
+        } else {
+            // reset num elements
+            self.num_elements.fetch_sub(1, Ordering::SeqCst);
+            // !! TODO !! do we need to decrement tail idx here -> could this lead to errors here (what happens if somebody else increments concurrently)
+            self.tail.fetch_sub(1, Ordering::SeqCst);
+            None
+        }
     }
 
     pub fn pop(&self) -> Option<T> {
@@ -122,13 +129,5 @@ impl<'a, T: 'a> Iterator for Iter<'a, T> {
         let item = &self.data[self.idx];
         self.idx = (self.idx + 1) & self.size;
         Some(item)
-    }
-}
-
-pub struct YieldD3OS;
-
-impl RelaxStrategy for YieldD3OS {
-    fn relax() {
-        concurrent::thread::switch();
     }
 }

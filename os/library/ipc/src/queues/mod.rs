@@ -11,9 +11,17 @@ pub mod atomic_ringbuffer;
 #[cfg(feature = "ringbufferqueue")]
 pub mod ipc_ringbufferqueue;
 
+#[cfg(feature = "ringqueue")]
+pub mod semiatomic_ringqueue;
+#[cfg(feature = "ringqueue")]
+pub mod ipc_ringqueue;
+#[cfg(feature = "ringqueue")]
+pub mod atomic_ringbuffer;
+
 pub type IpcQueueType = cfg_select! {
     feature = "lfqueue" => {ipc_lfqueue::IpcLFQueue}
     feature = "ringbufferqueue" => {ipc_ringbufferqueue::IpcRingbufferQueue<crate::ipc_message::IpcMessage, { crate::MAX_NUM_MESSAGES }>}
+    feature = "ringqueue" => {ipc_ringqueue::IpcRingQueue<crate::ipc_message::IpcMessage, { crate::MAX_NUM_MESSAGES }>}
 };
 
 pub trait IpcQueue {
@@ -39,5 +47,13 @@ impl IpcMessageWrapper for IpcMessageWrapperOwned {
 impl core::fmt::Display for IpcMessageWrapperOwned {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.msg)
+    }
+}
+
+pub struct YieldD3OS;
+
+impl spin::RelaxStrategy for YieldD3OS {
+    fn relax() {
+        concurrent::thread::switch();
     }
 }
