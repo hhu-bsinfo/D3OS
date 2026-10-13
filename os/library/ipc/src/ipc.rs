@@ -7,7 +7,6 @@ pub mod ipc_message;
 pub mod ipc_message_numbers;
 pub mod ipc_error;
 pub mod queues;
-pub mod scq;
 
 extern crate alloc;
 

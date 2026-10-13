@@ -32,7 +32,7 @@ impl<const S: usize> IpcQueue for IpcRingbufferQueue<IpcMessage, S> {
     }
 
     fn receive(&self) -> Result<impl IpcMessageWrapper, IpcError> {
-        self.ringbuffer.pop().map(|msg| IpcMessageWrapperOwned { msg }).ok_or(IpcError::Empty)
+        self.ringbuffer.pop().map(|msg| super::IpcMessageWrapperOwned { msg }).ok_or(IpcError::Empty)
     }
 
     fn receive_blocking(&self, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
@@ -80,21 +80,5 @@ impl<const S: usize> IpcQueue for IpcRingbufferQueue<IpcMessage, S> {
                 // TODO when unblock fails here: thread was registered as waiting but missed unblock
             }
         }
-    }
-}
-
-pub struct IpcMessageWrapperOwned {
-    pub msg: IpcMessage,
-}
-
-impl IpcMessageWrapper for IpcMessageWrapperOwned {
-    fn msg(&self) -> &IpcMessage {
-        &self.msg
-    }
-}
-
-impl core::fmt::Display for IpcMessageWrapperOwned {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.msg)
     }
 }

@@ -42,34 +42,10 @@ impl super::IpcQueue for IpcLFQueue {
     }
     
     fn receive(&self) -> Result<impl IpcMessageWrapper, IpcError> {
-        Ok(IpcMessageWrapperOwned { msg: self.queue.dequeue().ok_or(IpcError::Generic)? })
+        Ok(super::IpcMessageWrapperOwned { msg: self.queue.dequeue().ok_or(IpcError::Generic)? })
     }
     
     fn messages_left(&self) -> usize {
         todo!()
-    }
-}
-
-pub struct IpcMessageWrapperOwned {
-    pub msg: IpcMessage,
-}
-
-impl IpcMessageWrapper for IpcMessageWrapperOwned {
-    fn msg(&self) -> &IpcMessage {
-        &self.msg
-    }
-}
-
-impl core::ops::Deref for IpcMessageWrapperOwned {
-    type Target = IpcMessage;
-
-    fn deref(&self) -> &Self::Target {
-        &self.msg
-    }
-}
-
-impl core::fmt::Display for IpcMessageWrapperOwned {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.msg)
     }
 }

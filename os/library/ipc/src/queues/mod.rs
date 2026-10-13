@@ -1,15 +1,7 @@
 use uuid::Uuid;
 
-use crate::ipc_message::{IpcMessageType, IpcMessageWrapper};
+use crate::ipc_message::{IpcMessage, IpcMessageType, IpcMessageWrapper};
 use crate::ipc_error::IpcError;
-
-#[cfg(feature = "customqueue")]
-pub mod ipc_customqueue;
-
-#[cfg(feature = "lockqueue")]
-pub mod buffer_queue;
-#[cfg(feature = "lockqueue")]
-pub mod ipc_lockqueue;
 
 #[cfg(feature = "lfqueue")]
 pub mod ipc_lfqueue;
@@ -20,8 +12,6 @@ pub mod atomic_ringbuffer;
 pub mod ipc_ringbufferqueue;
 
 pub type IpcQueueType = cfg_select! {
-    feature = "customqueue" => {ipc_customqueue::IpcCustomQueue}
-    feature = "lockqueue" => {ipc_lockqueue::IpcLockQueue}
     feature = "lfqueue" => {ipc_lfqueue::IpcLFQueue}
     feature = "ringbufferqueue" => {ipc_ringbufferqueue::IpcRingbufferQueue<crate::ipc_message::IpcMessage, { crate::MAX_NUM_MESSAGES }>}
 };
@@ -33,4 +23,21 @@ pub trait IpcQueue {
     fn receive_blocking(&self, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError>;
     fn messages_left(&self) -> usize;
     fn unblock_waiting<F: Fn(Uuid, usize) -> bool>(&self, unblock_fn: F);
+}
+
+/// message wrapper which takes ownership of the message (i.e. copies the message)
+pub struct IpcMessageWrapperOwned {
+    pub msg: IpcMessage,
+}
+
+impl IpcMessageWrapper for IpcMessageWrapperOwned {
+    fn msg(&self) -> &IpcMessage {
+        &self.msg
+    }
+}
+
+impl core::fmt::Display for IpcMessageWrapperOwned {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.msg)
+    }
 }
