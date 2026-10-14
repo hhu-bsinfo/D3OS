@@ -234,15 +234,12 @@ pub fn main() {
                 Ok(msg_wrapper) => {
                     let msg = msg_wrapper.msg();
                     match msg.name_as_str() {
-                        "CTRL" => {
-                            let ctrl_msg = msg.data_as_str().unwrap_or("");
-                            if ctrl_msg == "STOP" {
-                                num_stop_req += 1;
-                                log::info!("{} received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
-                                if num_stop_req >= num_child_processes {
-                                    log::info!("{} received {} STOP requests, exiting...", tid, num_stop_req);
-                                    return;
-                                }
+                        "STOP" => {
+                            num_stop_req += 1;
+                            log::info!("{} received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
+                            if num_stop_req >= num_child_processes {
+                                log::info!("{} received {} STOP requests, exiting...", tid, num_stop_req);
+                                return;
                             }
                         },
                         _ => {
@@ -269,7 +266,7 @@ pub fn main() {
         let b = 2;
         loop {
             log::info!("{} Sending {}*{}", tid, a, b);
-            match ipc::send_and_receive("ipctest_contention_recv", "mult", &[a, b], 5000) {
+            match ipc::send_and_receive_busy_polling("ipctest_contention_recv", "mult", &[a, b], 5000) {
                 Ok(msg_wrapper) => {
                     a = msg_wrapper.msg().data_as_usize_unchecked().unwrap();
                     match a {
@@ -278,14 +275,18 @@ pub fn main() {
                         },
                         5000..usize::MAX => {
                             log::info!("{} Received {}", tid, a);
-                            ipc::answer_with_name(msg_wrapper.msg(), "CTRL", ());
+                            //ipc::answer_with_name(msg_wrapper.msg(), "CTRL", ());
+                            ipc::send_empty("ipctest_contention_recv", "STOP");
                             println!("{} Done!", tid);
                             return;
                         },
                         _ => log::info!("{} Received {}", tid, a),
                     }
                 },
-                Err(err) => log::error!("[{}] Error: {:?}", tid, err),
+                Err(err) => match err {
+                    IpcError::Full => thread::sleep(2000),
+                    _ => log::error!("[{}] Error: {:?}", tid, err),
+                },
             }
             thread::sleep(500);
         }
@@ -306,11 +307,11 @@ pub fn main() {
 
         let num_child_processes = 2;
 
-        thread::create(move || {
-            for _ in 0..num_child_processes {
-                thread::start_application("ipctest", vec!["mathclient"]);
-            }
-        });
+        for _ in 0..num_child_processes {
+            thread::start_application("ipctest", vec!["mathclient"]);
+        }
+
+        //thread::sleep(5000);
 
         let mut num_stop_req = 0;
 
@@ -426,7 +427,7 @@ pub fn main() {
             let n1 = (r1 * 1009) % 999;
             let n2 = (r2 * 1093) % 999;
 
-            match ipc::send_and_receive(service_name, "MATH", &[n1, n2], 5000) {
+            match ipc::send_and_receive_busy_polling(service_name, "MATH", &[n1, n2], 5000) {
                 Ok(msg_wrapper) => {
                     let res = msg_wrapper.msg().data_as_f64_unchecked();
                     println!("[{}] Sent {} {} {}, received {}", tid, n1, math_symb[ridx], n2, res);

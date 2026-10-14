@@ -122,7 +122,37 @@ pub fn send_and_receive<T: IpcMessageContent>(service: &str, msg_name: &str, con
             let mut counter = 0;
             let callback_endpoint_name = format!("callback-{}", process::current().id());
             loop {
-                let rec = receive_blocking(&callback_endpoint_name, 5000);
+                let rec = receive_blocking(&callback_endpoint_name, timeout_ms);
+                match rec {
+                    // TODO find specific answer message
+                    Ok(_) => return rec,
+                    Err(err) => {
+                        match err {
+                            IpcError::Empty => {
+                                thread::sleep(200);
+                                counter += 200;
+                                if counter >= timeout_ms {
+                                    return Err(IpcError::Timeout);
+                                }
+                            },
+                            _ => return Err(err),
+                        }
+                    },
+                }
+            }
+        },
+        Err(err) => Err(err),
+    }
+}
+
+/// send message and wait for answer
+pub fn send_and_receive_busy_polling<T: IpcMessageContent>(service: &str, msg_name: &str, content: T, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError> {
+    match send_internal(service, msg_name, content.msg_type(), content.to_bytes()) {
+        Ok(_) => {
+            let mut counter = 0;
+            let callback_endpoint_name = format!("callback-{}", process::current().id());
+            loop {
+                let rec = receive_busy_polling(&callback_endpoint_name, timeout_ms, 100);
                 match rec {
                     // TODO find specific answer message
                     Ok(_) => return rec,
@@ -203,6 +233,29 @@ pub fn receive_blocking(endpoint_name: &str, timeout_ms: usize) -> Result<impl I
     let endpoints = unsafe { (USER_SPACE_MAILBOX_START as *const IpcEndpoints).as_ref_unchecked() };
     let ipc_queue = endpoints.get(endpoint_name).ok_or(IpcError::EndpointNotFound)?;
     ipc_queue.receive_blocking(timeout_ms)
+}
+
+pub fn receive_busy_polling(endpoint_name: &str, timeout_ms: usize, interval_ms: usize) -> Result<impl IpcMessageWrapper + use<>, IpcError> {
+    let time_now = syscall::syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap();
+    let time_timeout = time_now + timeout_ms;
+    loop {
+        let rec = receive(endpoint_name);
+        if rec.is_ok() {
+            return rec;
+        }
+        if let Err(err) = rec {
+            match err {
+                IpcError::Empty => {} // keep spinning if empty
+                _ => return Err(err), // abort if there is a different error
+            }
+        }
+        if syscall::syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap() >= time_timeout {
+            return Err(IpcError::Timeout);
+        }
+        if interval_ms > 0 {
+            thread::sleep(interval_ms);
+        }
+    }
 }
 
 /// Reinterprets an arbitrary struct T into bytes.

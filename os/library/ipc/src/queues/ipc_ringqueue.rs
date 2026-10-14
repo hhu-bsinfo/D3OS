@@ -20,7 +20,7 @@ impl<const S: usize> IpcQueue for IpcRingQueue<IpcMessage, S> {
         // reserve space in ringbuffer
         let reserved = self.ringqueue.reserve();
         if let Some((ptr, _guard)) = reserved {
-            
+
             // write data into msg
             let msg = unsafe { &mut (*ptr) };
             msg.set_from_data_bytes(name, bytes, msg_type, *sender_pid, sender_tid);
@@ -71,13 +71,17 @@ impl<const S: usize> IpcQueue for IpcRingQueue<IpcMessage, S> {
     
     fn unblock_waiting<F: Fn(uuid::Uuid, usize) -> bool>(&self, unblock_fn: F) {
         let mut guard = self.waiting_threads.lock();
-        for opt in guard.iter_mut() {
-            if let Some((pid, tid)) = opt {
-                let unblock_success = unblock_fn(*pid, *tid);
-                if unblock_success {
-                    *opt = None;
+        // debug
+        let num_waiting = guard.iter().filter(|opt| opt.is_some()).count();
+        if num_waiting > 0 {
+            for opt in guard.iter_mut() {
+                if let Some((pid, tid)) = opt {
+                    let unblock_success = unblock_fn(*pid, *tid);
+                    if unblock_success {
+                        *opt = None;
+                    }
+                    // TODO when unblock fails here: thread was registered as waiting but missed unblock
                 }
-                // TODO when unblock fails here: thread was registered as waiting but missed unblock
             }
         }
     }
