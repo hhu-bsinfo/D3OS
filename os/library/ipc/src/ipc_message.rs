@@ -30,6 +30,12 @@ pub enum IpcMessageType {
     Struct,
 }
 
+impl From<IpcMessageData> for IpcMessageType {
+    fn from(value: IpcMessageData) -> Self {
+        IpcMessageData::msg_type(&value)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum IpcMessageData {
     Empty,
@@ -76,6 +82,15 @@ macro_rules! cast_bytes_as_slice {
     };
 }
 
+pub enum IpcMsgCastErr {
+    /// data type is empty -> cannot contain any generic data
+    Empty,
+    /// data isn't empty, but is to small to contain value
+    ToSmall,
+    /// data is unaligned for casting
+    Unaligned
+}
+
 impl IpcMessageData {
     /// actual amount of data space being used
     pub fn size(&self) -> usize {
@@ -94,20 +109,87 @@ impl IpcMessageData {
             IpcMessageData::Struct { bytes: _, size } => *size,
         }
     }
-    pub fn as_ptr<T>(&self) -> *const T {
+    pub fn msg_type(&self) -> IpcMessageType {
         match self {
-            IpcMessageData::Empty => panic!("Empty message cannot be cast to ptr!"),
-            IpcMessageData::Raw { data, size: _ } => data.as_ptr() as *const T,
-            IpcMessageData::Usize(n) => core::ptr::from_ref(n) as *const T,
-            IpcMessageData::UsizeSlice { data, size: _ } => data.as_ptr() as *const T,
-            IpcMessageData::Isize(n) => core::ptr::from_ref(n) as *const T,
-            IpcMessageData::IsizeSlice { data, size: _ } => data.as_ptr() as *const T,
-            IpcMessageData::I32(n) => core::ptr::from_ref(n) as *const T,
-            IpcMessageData::I32Slice { data, size: _ } => data.as_ptr() as *const T,
-            IpcMessageData::F64(n) => core::ptr::from_ref(n) as *const T,
-            IpcMessageData::F64Slice { data, size: _ } => data.as_ptr() as *const T,
-            IpcMessageData::String(const_string) => const_string.as_ptr() as *const T,
-            IpcMessageData::Struct { bytes, size: _ } => bytes.as_ptr() as *const T,
+            IpcMessageData::Empty => IpcMessageType::Empty,
+            IpcMessageData::Raw { data: _, size: _ } => IpcMessageType::Raw,
+            IpcMessageData::Usize(_) => IpcMessageType::Usize,
+            IpcMessageData::UsizeSlice { data: _, size: _ } => IpcMessageType::UsizeSlice,
+            IpcMessageData::Isize(_) => IpcMessageType::Isize,
+            IpcMessageData::IsizeSlice { data: _, size: _ } => IpcMessageType::IsizeSlice,
+            IpcMessageData::I32(_) => IpcMessageType::I32,
+            IpcMessageData::I32Slice { data: _, size: _ } => IpcMessageType::I32Slice,
+            IpcMessageData::F64(_) => IpcMessageType::F64,
+            IpcMessageData::F64Slice { data: _, size: _ } => IpcMessageType::F64Slice,
+            IpcMessageData::String(_) => IpcMessageType::String,
+            IpcMessageData::Struct { bytes: _, size: _ } => IpcMessageType::Struct,
+        }
+    }
+    /// cast the contained data to an generic type `T` \
+    /// this function will return `Err` if the data type is `Empty`
+    pub fn as_ptr<T>(&self) -> Result<*const T, IpcMsgCastErr> {
+        match self {
+            IpcMessageData::Empty => Err(IpcMsgCastErr::Empty),
+            IpcMessageData::Raw { data, size: _ } => Ok(data.as_ptr() as *const T),
+            IpcMessageData::Usize(n) => Ok(core::ptr::from_ref(n) as *const T),
+            IpcMessageData::UsizeSlice { data, size: _ } => Ok(data.as_ptr() as *const T),
+            IpcMessageData::Isize(n) => Ok(core::ptr::from_ref(n) as *const T),
+            IpcMessageData::IsizeSlice { data, size: _ } => Ok(data.as_ptr() as *const T),
+            IpcMessageData::I32(n) => Ok(core::ptr::from_ref(n) as *const T),
+            IpcMessageData::I32Slice { data, size: _ } => Ok(data.as_ptr() as *const T),
+            IpcMessageData::F64(n) => Ok(core::ptr::from_ref(n) as *const T),
+            IpcMessageData::F64Slice { data, size: _ } => Ok(data.as_ptr() as *const T),
+            IpcMessageData::String(const_string) => Ok(const_string.as_ptr() as *const T),
+            IpcMessageData::Struct { bytes, size: _ } => Ok(bytes.as_ptr() as *const T),
+        }
+    }
+    /// reference tas generic type `T`
+    pub fn ref_as_type<T>(&self) -> Result<&T, IpcMsgCastErr> {
+        // check if actual data is large enough to contain T
+        if self.size() < size_of::<T>() {
+            return Err(IpcMsgCastErr::ToSmall);
+        }
+        let ptr = self.as_ptr::<T>()?;
+        // check if pointer is aligned
+        if ptr.is_aligned() {
+            unsafe { Ok(ptr.as_ref().unwrap()) }
+        } else {
+            Err(IpcMsgCastErr::Unaligned)
+        }
+    }
+    /// reference as a slice of generic type `T`
+    pub fn ref_as_slice<T>(&self) -> Result<&[T], IpcMsgCastErr> {
+        let ptr = self.as_ptr::<T>()?;
+        // check if pointer is aligned
+        if ptr.is_aligned() {
+            let num_elements = self.size() / size_of::<T>();
+            unsafe { Ok(core::slice::from_raw_parts(ptr, num_elements)) }
+        } else {
+            Err(IpcMsgCastErr::Unaligned)
+        }
+    }
+    /// deref (i.e. copy) as the generic type `T`
+    pub fn deref_as_type<T: Copy>(&self) -> Result<T, IpcMsgCastErr> {
+        // check if actual data is large enough to contain T
+        if self.size() < size_of::<T>() {
+            return Err(IpcMsgCastErr::ToSmall);
+        }
+        let ptr = self.as_ptr::<T>()?;
+        // check if pointer is aligned
+        if ptr.is_aligned() {
+            unsafe { Ok(*ptr) }
+        } else {
+            Err(IpcMsgCastErr::Unaligned)
+        }
+    }
+    /// returns the underlying data as an u8 slice / bytes \
+    /// if the generic cast fails, this function returns an empty slice
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            IpcMessageData::Empty => &[],
+            IpcMessageData::Raw { data, size } => &data[..*size],
+            IpcMessageData::String(const_string) => const_string.as_bytes(),
+            _ => self.ref_as_slice().unwrap_or(&[]),
         }
     }
     pub fn set_data(&mut self, new_data: &[u8]) {
@@ -186,25 +268,6 @@ impl IpcMessage {
     pub fn sender_tid(&self) -> usize {
         self.sender_tid
     }
-
-    /// reference the data as generic type `T`
-    pub unsafe fn ref_data<T>(&self) -> &T {
-        let ptr = self.data().as_ptr::<T>();
-        unsafe { ptr.as_ref().unwrap() }
-    }
-    /// reference the data as a slice of generic type `T`
-    pub unsafe fn ref_data_as_slice<T>(&self) -> &[T] {
-        let ptr = self.data().as_ptr::<T>();
-        let l = self.data().size() / size_of::<T>();
-        unsafe { core::slice::from_raw_parts(ptr, l) }
-    }
-    /// deref (i.e. copy) the data as the generic type `T`
-    pub unsafe fn deref_data<T: Copy>(&self) -> T {
-        let ptr = self.data().as_ptr::<T>();
-        unsafe { *ptr }
-        //unsafe { *ptr.as_ref().unwrap() }
-    }
-
     pub fn data_as_str(&self) -> Result<&str, &IpcMessageData> {
         match self.data() {
             IpcMessageData::String(const_string) => Ok(const_string.as_str_unchecked()),
@@ -249,12 +312,7 @@ impl IpcMessage {
     }
     
     pub fn data_as_bytes(&self) -> &[u8] {
-        match self.data() {
-            IpcMessageData::Empty => &[],
-            IpcMessageData::Raw { data, size } => &data[..*size],
-            IpcMessageData::String(const_string) => const_string.as_bytes(),
-            _ => unsafe { self.ref_data_as_slice() },
-        }
+        IpcMessageData::as_bytes(&self.data)
     }
 }
 
@@ -333,14 +391,27 @@ impl IpcMessageContent for &String {
 
 impl IpcMessageContent for IpcMessageData {
     fn to_bytes(&self) -> &[u8] {
-        todo!()
+        IpcMessageData::as_bytes(self)
     }
     fn msg_type(&self) -> IpcMessageType {
-        todo!()
+        IpcMessageData::msg_type(self)
+    }
+    fn to_data(&self) -> IpcMessageData {
+        *self
+    }
+}
+
+impl IpcMessageContent for () {
+    fn to_bytes(&self) -> &[u8] {
+        &[]
+    }
+
+    fn msg_type(&self) -> IpcMessageType {
+        IpcMessageType::Empty
     }
 
     fn to_data(&self) -> IpcMessageData {
-        *self
+        IpcMessageData::Empty
     }
 }
 

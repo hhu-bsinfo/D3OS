@@ -278,7 +278,7 @@ pub fn main() {
                         },
                         5000..usize::MAX => {
                             log::info!("{} Received {}", tid, a);
-                            ipc::answer_with_name(msg_wrapper.msg(), "CTRL", "STOP");
+                            ipc::answer_with_name(msg_wrapper.msg(), "CTRL", ());
                             println!("{} Done!", tid);
                             return;
                         },

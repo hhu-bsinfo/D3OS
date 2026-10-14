@@ -20,7 +20,7 @@ impl<const S: usize> IpcQueue for IpcRingQueue<IpcMessage, S> {
         // reserve space in ringbuffer
         let reserved = self.ringqueue.reserve();
         if let Some((ptr, _guard)) = reserved {
-
+            
             // write data into msg
             let msg = unsafe { &mut (*ptr) };
             msg.set_from_data_bytes(name, bytes, msg_type, *sender_pid, sender_tid);
