@@ -236,16 +236,17 @@ pub fn main() {
                     match msg.name_as_str() {
                         "STOP" => {
                             num_stop_req += 1;
-                            log::info!("{} received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
+                            log::info!("[{}] received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
                             if num_stop_req >= num_child_processes {
-                                log::info!("{} received {} STOP requests, exiting...", tid, num_stop_req);
+                                log::info!("[{}] received {} STOP requests, exiting...", tid, num_stop_req);
                                 return;
                             }
                         },
                         _ => {
                             if let Ok(data) = msg.data_as_usize_slice() && data.len() >= 2 {
-                                log::info!("{} received request {} * {} from {}", tid, data[0], data[1], msg.sender_tid());
+                                log::info!("[{}] received request {} * {} from {}", tid, data[0], data[1], msg.sender_tid());
                                 let res = data[0] * data[1];
+                                log::info!("[{}] sending answer {} to {}", tid, res, msg.sender_tid());
                                 ipc::answer(msg, res);
                             } else {
                                 log::warn!("Invalid msg: {}", msg);
@@ -259,7 +260,7 @@ pub fn main() {
                     }
                 },
             }
-            //thread::sleep(300);
+            thread::sleep(100);
         }
     } else if command == "contention_sender" {
         let mut a = tid;
@@ -284,7 +285,10 @@ pub fn main() {
                     }
                 },
                 Err(err) => match err {
-                    IpcError::Full => thread::sleep(2000),
+                    IpcError::Full => {
+                        log::warn!("[{}] Full", tid);
+                        thread::sleep(2000);
+                    },
                     _ => log::error!("[{}] Error: {:?}", tid, err),
                 },
             }
