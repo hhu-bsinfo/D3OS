@@ -35,8 +35,9 @@ pub(super) fn lookup_named_object(path: &str) -> Result<(NamedObject, Option<Arc
             found_named_object = traits::as_named_object(ROOT.get().unwrap().root_dir());
             return Ok((found_named_object, None));
         }
-        let mut components: Vec<&str> = path.split("/").collect();
-        components.remove(0); // remove empty string at position 0
+        let components: Vec<&str> = path.split("/")
+            .skip(1) // skip empty string at position 0
+            .collect();
 
         // get root directory and open the desired file
         let mut current_dir = ROOT.get().unwrap().root_dir();
