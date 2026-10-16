@@ -321,15 +321,17 @@ pub fn main() {
 
         for (endpoint_name, math_fn) in math_fns {
             thread::create(move || {
+                let tid = thread::current().unwrap().id();
+                let debug_name = format!("[Mathserver - {}] {}", tid, endpoint_name);
                 loop {
                     if !SHOULD_RUN.load(core::sync::atomic::Ordering::Relaxed) {
-                        log::info!("[Mathserver] {} received is exiting...", endpoint_name);
+                        log::info!("{} received is exiting...", debug_name);
                         return;
                     }
-                    match ipc::receive_blocking(endpoint_name, 5000) {
+                    match ipc::receive_busy_polling(endpoint_name, 5000, 200) {
                         Ok(msg_wrapper) => {
                             let msg = msg_wrapper.msg();
-                            log::info!("[Mathserver] {} received {}", endpoint_name, msg);
+                            log::info!("{} received {}", debug_name, msg);
                             let mut result: f64;
                             match msg.data() {
                                 IpcMessageData::UsizeSlice { data, size } => {
@@ -368,7 +370,7 @@ pub fn main() {
                                     continue;
                                 },
                             }
-                            log::info!("[Mathserver] Answer is {}", result);
+                            log::info!("{} answer is {}", debug_name, result);
                             ipc::answer(msg, result);
                         },
                         Err(err) => {
