@@ -121,7 +121,7 @@ impl FileObject for ServiceObject {
     /// read `ServiceObject` into `buf`
     fn read(&self, buf: &mut [u8], _offset: usize, _options: naming::shared_types::OpenOptions) -> Result<usize, syscall::return_vals::Errno> {
         let selfslice = unsafe { core::slice::from_raw_parts((self as *const Self) as *const u8, core::mem::size_of::<Self>()) };
-        buf.copy_from_slice(selfslice);
+        d3os::copy_from_slice_sizechecked!(buf, selfslice);
         Ok(0)
     }
 
