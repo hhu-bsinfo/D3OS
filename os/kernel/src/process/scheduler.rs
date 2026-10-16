@@ -55,28 +55,30 @@ static ACTIVE_CPUS: AtomicU32 = AtomicU32::new(1);  //BP automatically
 
 /// Global set of "alive" thread IDs (across all cores).
 /// Presence means: joining on this tid should block (unless it exits concurrently).
-static ACTIVE_TIDS: Once<Mutex<Map<usize, ()>>> = Once::new();
+static ACTIVE_TIDS: Once<Mutex<Vec<(Uuid, usize)>>> = Once::new();
 
 #[inline]
-pub fn active_tids() -> &'static Mutex<Map<usize, ()>> {
-    ACTIVE_TIDS.call_once(|| Mutex::new(Map::new()))
+pub fn active_tids() -> &'static Mutex<Vec<(Uuid, usize)>> {
+    ACTIVE_TIDS.call_once(|| Mutex::new(Vec::new()))
 }
 
 #[inline]
-fn mark_thread_alive(tid: usize) {
-    let mut set = active_tids().lock();
-    set.insert(tid, ());
+fn mark_thread_alive(pid: Uuid, tid: usize) {
+    active_tids().lock().push((pid, tid));
 }
 
 #[inline]
 fn mark_thread_dead(tid: usize) {
-    let mut set = active_tids().lock();
-    set.remove(&tid);
+    let mut tids = active_tids().lock();
+    let pos = tids.iter().position(|t| t.1 == tid);
+    if let Some(p) = pos {
+        tids.remove(p);
+    }
 }
 
 #[inline]
 pub fn is_thread_alive(tid: usize) -> bool {
-    active_tids().lock().contains_key(&tid)
+    active_tids().lock().iter().any(|t| t.1 == tid)
 }
 
 #[inline]
@@ -194,8 +196,8 @@ impl Scheduler {
 
 
     /// Get all active thread IDs
-    pub fn active_thread_ids(&self) -> Vec<usize> {
-        Vec::from_iter(active_tids().lock().iter().cloned().map(|t | t.0))
+    pub fn active_thread_ids(&self) -> Vec<(Uuid, usize)> {
+        active_tids().lock().iter().cloned().collect()
     }
 
     /// Return the current running thread
@@ -252,8 +254,8 @@ impl Scheduler {
 
     /// Insert `thread` into the ready queue of the scheduler
     pub fn ready(&self, thread: Arc<Thread>) {
-        let id = thread.id();
-        mark_thread_alive(id);
+        let tid = thread.id();
+        mark_thread_alive(thread.process().id(), tid);
 
         // If we get the lock on 'self.state' but not on 'self.join_map' the system hangs.
         // The scheduler is not able to switch threads anymore, because of 'self.state' is locked,
@@ -272,8 +274,8 @@ impl Scheduler {
         state.ready_queue.push_front(thread);
 
         // Don't override value if key present
-        if !join_map.contains_key(&id){
-            join_map.insert(id, Vec::new());
+        if !join_map.contains_key(&tid){
+            join_map.insert(tid, Vec::new());
         }
     }
 
