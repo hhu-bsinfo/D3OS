@@ -20,7 +20,6 @@ use terminal::println;
 use uuid::Uuid;
 
 static LOGGER: logger::Logger = logger::Logger::new();
-static SHOULD_RUN: AtomicBool = AtomicBool::new(true);
 
 #[unsafe(no_mangle)]
 pub fn main() {
@@ -324,10 +323,6 @@ pub fn main() {
                 let tid = thread::current().unwrap().id();
                 let debug_name = format!("[Mathserver - {}] {}", tid, endpoint_name);
                 loop {
-                    if !SHOULD_RUN.load(core::sync::atomic::Ordering::Relaxed) {
-                        log::info!("{} received is exiting...", debug_name);
-                        return;
-                    }
                     match ipc::receive_busy_polling(endpoint_name, 5000, 200) {
                         Ok(msg_wrapper) => {
                             let msg = msg_wrapper.msg();
@@ -392,7 +387,6 @@ pub fn main() {
                         log::info!("{} received STOP request from {} -- [{}/{}]", tid, msg.sender_tid(), num_stop_req, num_child_processes);
                         if num_stop_req >= num_child_processes {
                             log::info!("{} received [{}/{}] STOP requests, exiting...", tid, num_stop_req, num_child_processes);
-                            SHOULD_RUN.store(false, core::sync::atomic::Ordering::Relaxed);
                             return;
                         }
                     }
@@ -417,8 +411,9 @@ pub fn main() {
             "+", "-", "*", "/",
         ];
 
-        let r = syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap();
-        let limit = (r * 41) % 13;
+        //let r = syscall(syscall::SystemCall::GetSystemTime, &[]).unwrap();
+        //let limit = (r * 41) % 13;
+        let limit = 2;
 
         let mut count = 0;
 
