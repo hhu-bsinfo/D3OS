@@ -100,10 +100,7 @@ impl Process {
 
     /// Return the ids of all threads of the process
     pub fn thread_ids(&self) -> Vec<usize> {
-        scheduler().active_thread_ids().iter()
-            .filter(|&&thread_id| {
-                scheduler().thread(thread_id).is_some_and(|thread| thread.process().id() == self.id)
-            }).copied().collect()
+        scheduler().active_thread_ids().iter().filter(|t| t.0 == self.id()).map(|t| t.1).collect()
     }
 
     pub fn kill_all_threads_but_current(&self) {
