@@ -65,7 +65,7 @@ impl log::Log for Logger {
                 // this shouldn't fail, because the string is pre-allocated
                 writeln!(
                     *slot,
-                    "{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}]{} {}",
+                    "{}[{}.{:0>3}]{}[{}]{}[{}:{:0>3}]{} {}",
                     ansi::FOREGROUND_CYAN, seconds, fraction, ansi_color(level),
                     level_token(level),ansi::FOREGROUND_MAGENTA, file, line,
                     ansi::FOREGROUND_DEFAULT, record.args()
@@ -103,7 +103,7 @@ impl log::Log for Logger {
                 let fraction = systime % 1000;
                 writeln!(
                     const_string,
-                    "{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}]{} {}",
+                    "{}[{}.{:0>3}]{}[{}]{}[{}:{:0>3}]{} {}",
                     ansi::FOREGROUND_CYAN, seconds, fraction, ansi_color(level),
                     level_token(level),ansi::FOREGROUND_MAGENTA, file, line,
                     ansi::FOREGROUND_DEFAULT, record.args()
