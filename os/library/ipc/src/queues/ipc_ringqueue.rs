@@ -15,7 +15,7 @@ impl<const S: usize> IpcQueue for IpcRingQueue<IpcMessage, S> {
         Self { ringqueue: Ringqueue::new(), waiting_threads: Mutex::new([const { None }; _]) }
     }
     
-    fn send(&self, name: &str, bytes: &[u8], msg_type: IpcMessageType, sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
+    fn send(&self, name: &str, bytes: &[u8], msg_type: IpcMessageType, sender_pid: &uuid::Uuid, sender_tid: usize, callback: &str) -> Result<usize, IpcError> {
 
         // reserve space in ringbuffer
         let reserved = self.ringqueue.reserve();
@@ -23,7 +23,7 @@ impl<const S: usize> IpcQueue for IpcRingQueue<IpcMessage, S> {
 
             // write data into msg
             let msg = unsafe { &mut (*ptr) };
-            msg.set_from_data_bytes(name, bytes, msg_type, *sender_pid, sender_tid);
+            msg.set_from_data_bytes(name, bytes, msg_type, *sender_pid, sender_tid, callback);
             
             Ok(0)
         } else {

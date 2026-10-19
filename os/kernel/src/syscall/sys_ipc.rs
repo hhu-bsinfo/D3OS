@@ -2,7 +2,7 @@ use core::str;
 
 use alloc::{format, slice};
 use ipc::{IpcEndpoints, IpcRcvBlockingSyscallParams, IpcSendSyscallParams, MESSAGE_DATA_SIZE};
-use ipc::queues::{IpcQueue, IpcQueueType};
+use ipc::queues::IpcQueue;
 use ipc::ipc_error::IpcError;
 use log::error;
 use naming::shared_types::OpenOptions;
@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::naming::api as nameservice;
 use crate::naming::servicefs::ServiceObject;
-use crate::{consts, process::core_local_storage::scheduler, sync::wait_queue::WaitQueue, timer};
+use crate::{process::core_local_storage::scheduler, sync::wait_queue::WaitQueue, timer};
 
 static WAIT_QUEUE: WaitQueue = WaitQueue::new();
 
@@ -67,14 +67,14 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSendSyscallParams) -> 
 
     let params = unsafe { &*params_ptr };
 
-    let bytes = unsafe { core::slice::from_raw_parts(params.data_ptr, params.data_len) };
+    let bytes = unsafe { core::slice::from_raw_parts(params.data.0, params.data.1) };
 
     if bytes.len() > MESSAGE_DATA_SIZE {
         error!("ipc message is to large, aborting...");
         return IpcError::MsgTooLarge.into();
     }
     
-    let service_name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.service_name_ptr, params.endpoint_name_len)) };
+    let service_name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.target_endpoint_name.0, params.target_endpoint_name.1)) };
     
     if let Ok(fh) = nameservice::open(&format!("/svc/{}", service_name), OpenOptions::READONLY) {
 
@@ -86,11 +86,12 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSendSyscallParams) -> 
 
         let endpoints = unsafe { (service.ipc_endpoints_addr as *const IpcEndpoints).as_ref_unchecked() };
         if let Some(ipc_queue) = endpoints.get(service_name) {
-            let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name_ptr, params.msg_name_len)) };
+            let name = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.msg_name.0, params.msg_name.1)) };
             let msg_type = params.msg_type;
+            let callback = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.callback.0, params.callback.1)) };
 
             // dereferencing the data here should copy?
-            let res = ipc_queue.send(name, bytes, msg_type, &scheduler().current_thread().process().id(), scheduler().current_thread().id());
+            let res = ipc_queue.send(name, bytes, msg_type, &scheduler().current_thread().process().id(), scheduler().current_thread().id(), callback);
 
             match res {
                 Ok(ok) => {

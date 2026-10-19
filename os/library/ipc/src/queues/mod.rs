@@ -6,10 +6,10 @@ use crate::ipc_error::IpcError;
 #[cfg(feature = "lfqueue")]
 pub mod ipc_lfqueue;
 
-#[cfg(feature = "ringbufferqueue")]
+#[cfg(feature = "ringbuffer")]
 pub mod atomic_ringbuffer;
-#[cfg(feature = "ringbufferqueue")]
-pub mod ipc_ringbufferqueue;
+#[cfg(feature = "ringbuffer")]
+pub mod ipc_ringbuffer;
 
 #[cfg(feature = "ringqueue")]
 pub mod semiatomic_ringqueue;
@@ -20,13 +20,13 @@ pub mod atomic_ringbuffer;
 
 pub type IpcQueueType = cfg_select! {
     feature = "lfqueue" => {ipc_lfqueue::IpcLFQueue}
-    feature = "ringbufferqueue" => {ipc_ringbufferqueue::IpcRingbufferQueue<crate::ipc_message::IpcMessage, { crate::MAX_NUM_MESSAGES }>}
+    feature = "ringbuffer" => {ipc_ringbuffer::IpcRingbuffer<crate::ipc_message::IpcMessage, { crate::MAX_NUM_MESSAGES }>}
     feature = "ringqueue" => {ipc_ringqueue::IpcRingQueue<crate::ipc_message::IpcMessage, { crate::MAX_NUM_MESSAGES }>}
 };
 
 pub trait IpcQueue {
     fn new() -> Self;
-    fn send(&self, name: &str, bytes: &[u8], msg_type: IpcMessageType, sender_pid: &Uuid, sender_tid: usize) -> Result<usize, IpcError>;
+    fn send(&self, name: &str, bytes: &[u8], msg_type: IpcMessageType, sender_pid: &Uuid, sender_tid: usize, callback: &str) -> Result<usize, IpcError>;
     fn receive(&self) -> Result<impl IpcMessageWrapper, IpcError>;
     fn receive_blocking(&self, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError>;
     fn messages_left(&self) -> usize;

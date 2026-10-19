@@ -28,9 +28,9 @@ pub fn main() {
     let tid = thread.id();
 
     log::set_logger(&LOGGER).map(|_| log::set_max_level(log::LevelFilter::Debug));
-    log::info!("[{}:{}] Successfully initialized logger!", process.id(), tid);
+    //log::info!("[{}:{}] Successfully initialized logger!", process.id(), tid);
 
-    println!("Hello from Thread [{}] in Process [{}]", thread.id(), process.id());
+    println!("Started Thread [{}] in Process [{}]", thread.id(), process.id());
 
     let mut args: Vec<String> = env::args().collect();
 
@@ -86,44 +86,63 @@ pub fn main() {
         }
     } else if command == "pingpong" {
 
+        let endpoint_name = "ipctest_pong";
+
         // register self as pong
-        ipc::register_ipc_endpoint("ipctest_pong");
+        ipc::register_ipc_endpoint(endpoint_name);
 
         // start ping
         thread::start_application("ipctest", vec!["pingpong_ping"]);
 
         // wait for ping
         loop {
-            match ipc::receive("ipctest_pong") {
+            match ipc::receive_blocking(endpoint_name, 5000) {
                 Ok(msg) => {
                     let ping = msg.msg().data_as_usize_unchecked().unwrap();
-                    if ping > 100 { return; }
                     let pong = ping + 1;
-                    println!("PONG! [{}]", pong);
-                    ipc::answer_with_name(&msg.msg(), "pong", pong);
+                    log::info!("PONG! [{}]", pong);
+                    ipc::answer_with_callback(&msg.msg(), "pong", endpoint_name, pong);
+                    if ping > 100 {
+                        println!("Pong done!");
+                        return;
+                    }
                 },
-                Err(err) => println!("[{}] Error: {:?}", tid, err),
+                Err(err) => {
+                    match err {
+                        IpcError::Empty => {},
+                        _ => log::error!("[{}] Error: {:?}", tid, err),
+                    }
+                },
             }
-            thread::sleep(200);
         }
     } else if command == "pingpong_ping" {
+
+        let endpoint_name = "ipctest_ping";
+
         // send first ping
-        println!("PING! [{}]", 1);
-        ipc::send("ipctest_pong", "ping", 1);
+        log::info!("PING! [{}]", 1);
+        ipc::send_with_callback("ipctest_pong", "ping", endpoint_name, 1);
 
         // wait for pong
         loop {
-            match ipc::receive_answer() {
+            match ipc::receive_blocking(endpoint_name, 5000) {
                 Ok(msg) => {
                     let pong = msg.msg().data_as_usize_unchecked().unwrap();
-                    if pong > 100 { return; }
                     let ping = pong + 1;
-                    println!("PING! [{}]", ping);
-                    ipc::answer_with_name(&msg.msg(), "ping", ping);
+                    log::info!("PING! [{}]", ping);
+                    ipc::answer_with_callback(&msg.msg(), "ping", endpoint_name, ping);
+                    if pong > 100 {
+                        println!("Ping done!");
+                        return;
+                    }
                 },
-                Err(err) => println!("[{}] Error: {:?}", tid, err),
+                Err(err) => {
+                    match err {
+                        IpcError::Empty => {},
+                        _ => log::error!("[{}] Error: {:?}", tid, err),
+                    }
+                },
             }
-            thread::sleep(200);
         }
     } else if command == "loop" {
 
@@ -246,7 +265,7 @@ pub fn main() {
                                 log::info!("[{}] received request {} * {} from {}", tid, data[0], data[1], msg.sender_tid());
                                 let res = data[0] * data[1];
                                 log::info!("[{}] sending answer {} to {}", tid, res, msg.sender_tid());
-                                ipc::answer(msg, res);
+                                ipc::answer(msg, "answer", res);
                             } else {
                                 log::warn!("Invalid msg: {}", msg);
                             }
@@ -361,12 +380,12 @@ pub fn main() {
                                     }
                                 },
                                 _ => {
-                                    ipc::answer_with_name(msg, "ERROR", "Invalid Message Type!");
+                                    ipc::answer(msg, "ERROR", "Invalid Message Type!");
                                     continue;
                                 },
                             }
                             log::info!("{} answer is {}", debug_name, result);
-                            ipc::answer(msg, result);
+                            ipc::answer(msg, "answer", result);
                         },
                         Err(err) => {
                             if err != IpcError::Empty && err != IpcError::Timeout {

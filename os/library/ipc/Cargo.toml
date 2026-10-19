@@ -11,14 +11,12 @@ bench = false
 path = "src/ipc.rs"
 
 [features]
-#default = ["ringbufferqueue"]
+#default = ["ringbuffer"]
 default = ["ringqueue"]
-#default = ["ringbufferqueue", "customqueue", "lfqueue", "lockqueue"]
-customqueue = []
-lfqueue = ["dep:crossbeam-utils", "dep:lfqueue"]
-lockqueue = []
-ringbufferqueue = []
+#default = ["ringbuffer", "ringqueue", "lfqueue"]
+ringbuffer = []
 ringqueue = []
+lfqueue = ["dep:crossbeam-utils", "dep:lfqueue"]
 
 [dependencies]
 # Local dependencies

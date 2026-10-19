@@ -4,7 +4,7 @@ use alloc::format;
 use alloc::string::String;
 use uuid::Uuid;
 
-use crate::{MESSAGE_DATA_SIZE, MESSAGE_NAME_LEN};
+use crate::{ENDPOINT_NAME_LEN, MESSAGE_DATA_SIZE, MESSAGE_NAME_LEN};
 use d3os::{array_from_slice, copy_from_slice_sizechecked};
 use d3os::const_string::ConstString;
 
@@ -235,16 +235,17 @@ pub struct IpcMessage {
     pub(crate) data: IpcMessageData,
     pub(crate) sender_pid: Uuid,
     pub(crate) sender_tid: usize,
+    pub(crate) callback: ConstString<ENDPOINT_NAME_LEN>,
 }
 
 impl IpcMessage {
     #![allow(clippy::missing_safety_doc)]
 
     pub fn new() -> Self {
-        Self { name: ConstString::new(), data: IpcMessageData::Empty, sender_pid: Uuid::nil(), sender_tid: 0 }
+        Self { name: ConstString::new(), data: IpcMessageData::Empty, sender_pid: Uuid::nil(), sender_tid: 0, callback: ConstString::new() }
     }
-    pub fn new_from(name: &str, data: IpcMessageData, sender_pid: Uuid, sender_tid: usize) -> Self {
-        Self { name: name.into(), data, sender_pid, sender_tid }
+    pub fn new_from(name: &str, data: IpcMessageData, sender_pid: Uuid, sender_tid: usize, callback: &str) -> Self {
+        Self { name: name.into(), data, sender_pid, sender_tid, callback: callback.into() }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -289,7 +290,7 @@ impl IpcMessage {
         self.sender_pid = sender_pid;
         self.sender_tid = sender_tid;
     }
-    pub fn set_from_data_bytes(&mut self, name: &str, bytes: &[u8], data_type: IpcMessageType, sender_pid: Uuid, sender_tid: usize) {
+    pub fn set_from_data_bytes(&mut self, name: &str, bytes: &[u8], data_type: IpcMessageType, sender_pid: Uuid, sender_tid: usize, callback: &str) {
         self.name.set(name);
         // unsafe copy_from_slice directly into the enum + change discriminant manually may be faster
         //      we wouldnt have to set unused part of array to zero
@@ -309,6 +310,7 @@ impl IpcMessage {
         };
         self.sender_pid = sender_pid;
         self.sender_tid = sender_tid;
+        self.callback.set(callback);
     }
     
     pub fn data_as_bytes(&self) -> &[u8] {

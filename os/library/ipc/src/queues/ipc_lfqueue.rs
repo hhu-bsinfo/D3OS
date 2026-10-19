@@ -32,8 +32,8 @@ impl super::IpcQueue for IpcLFQueue {
         Self::new()
     }
 
-    fn send(&self, name: &str, bytes: &[u8], _msg_type: IpcMessageType, sender_pid: &uuid::Uuid, sender_tid: usize) -> Result<usize, IpcError> {
-        let msg = IpcMessage::new_from(name, bytes.to_data(), *sender_pid, sender_tid);
+    fn send(&self, name: &str, bytes: &[u8], _msg_type: IpcMessageType, sender_pid: &uuid::Uuid, sender_tid: usize, callback: &str) -> Result<usize, IpcError> {
+        let msg = IpcMessage::new_from(name, bytes.to_data(), *sender_pid, sender_tid, callback);
         let enq = self.queue.enqueue(msg);
         match enq {
             Ok(_) => Ok(0),
