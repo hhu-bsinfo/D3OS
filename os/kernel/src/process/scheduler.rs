@@ -404,6 +404,19 @@ impl Scheduler {
         mark_thread_dead(current.id());
         self.unjoin(current.id(), &mut ready_state);
 
+        debug!("Exiting thread [{}]", current.id());
+
+        // Mark dead globally *before* waking joiners, so joiners racing in will observe "dead"
+        mark_thread_dead(current.id());
+        self.unjoin(current.id(), &mut ready_state);
+
+        // Drop last_fpu_context reference in ready_state
+        if ready_state.last_fpu_thread.as_ref().filter(|&thread| thread.id() == current.id()).is_some() {
+            if let Some(fpu_ref) = ready_state.last_fpu_thread.take() {
+                drop(fpu_ref);
+            }
+        }
+
         dec_rq_len();
         drop(current); // Decrease Rc manually, because block() does not return
         self.block_and_switch(ready_state);
@@ -427,55 +440,64 @@ impl Scheduler {
     /// Kill the thread with the id `thread_id`, if it is on the same Core
     /// goes through ready_queue, sleep_list, blocked_list, and join_map in this order
     /// returns true if a thread with the given id was found
-    fn kill_locally(&self, thread_id: usize, state: &mut ReadyState) -> bool {
-        if is_thread_alive(thread_id) == false { return true; }
-        let mut changed = false;
+    fn kill_locally(&self, thread_id: usize, ready_state: &mut ReadyState) -> bool {
 
-        // check ready_queue
-        let mut before = state.ready_queue.len();
-        state.ready_queue.retain(|thread| thread.id() != thread_id);
-        let mut after = state.ready_queue.len();
-        if before != after {
-            changed = true;
-        }
-        if !changed {
-            {   // check sleep_list
+        if is_thread_alive(thread_id) == false { return true; }
+
+        #[derive(Debug, PartialEq)]
+        enum Where { ReadyQueue, SleepList, BlockList, JoinMap }
+
+        let found = 'find_thread: {
+            // check ready_queue
+            if let Some(pos) = ready_state.ready_queue.iter().position(|thread| thread.id() == thread_id) {
+                break 'find_thread Some((ready_state.ready_queue.remove(pos).unwrap(), Where::ReadyQueue));
+            }
+            {  // check sleep list
                 let mut sleep_list = self.sleep_list.lock();
-                before = sleep_list.len();
-                sleep_list.retain(|(thread, _)| thread.id() != thread_id);
-                after = state.ready_queue.len() + sleep_list.len();
-            }
-            if before != after {
-                changed = true;
-            }
-            if!changed {
-                {   // check Block List
-                    let mut blocked_list = self.blocked_list.lock();
-                    let before = blocked_list.len();
-                    blocked_list.retain(|t| t.id() != thread_id);
-                    if blocked_list.len() != before {
-                        changed = true;
-                    }
+                if let Some(pos) = sleep_list.iter().position(|(thread, _)| thread.id() == thread_id) {
+                    break 'find_thread Some(((sleep_list.remove(pos).0), Where::SleepList));
                 }
-                if !changed {
-                    // check all join_map's
-                    let mut join_map = self.join_map.lock();
-                    for (_target, wait_list) in join_map.iter_mut() {
-                        let before = wait_list.len();
-                        wait_list.retain(|t| t.id() != thread_id);
-                        if wait_list.len() != before {
-                            changed = true;
-                        }
+            }
+            {  // check block list
+                let mut block_list = self.blocked_list.lock();
+                if let Some(pos) = block_list.iter().position(|thread| thread.id() == thread_id) {
+                    break 'find_thread Some(((block_list.remove(pos)), Where::BlockList));
+                }
+            }
+            {  // check join map
+                let mut join_map = self.join_map.lock();
+                for (_, wait_list) in join_map.iter_mut() {
+                    if let Some(pos) = wait_list.iter().position(|thread| thread.id() == thread_id) {
+                        // return here, or could a thread join on multiple?
+                        break 'find_thread Some(((wait_list.remove(pos)), Where::JoinMap));
                     }
                 }
             }
-        }
-        if changed {
+            None
+        };
+
+        if let Some((_thread, found_where)) = found {
+            
             mark_thread_dead(thread_id);
-            self.unjoin(thread_id, state);
-            dec_rq_len();
+            self.unjoin(thread_id, ready_state);
+    
+            debug!("Killing thread [{}], found on CPU {} in {:?}", thread_id, current_core_id(), found_where);
+    
+            // Drop last_fpu_context reference in ready_state
+            if ready_state.last_fpu_thread.as_ref().filter(|&thread| thread.id() == thread_id).is_some() {
+                if let Some(fpu_ref) = ready_state.last_fpu_thread.take() {
+                    drop(fpu_ref);
+                }
+            }
+    
+            if found_where == Where::ReadyQueue {
+                dec_rq_len();
+            }
+
+            true
+        } else {
+            false
         }
-        changed
     }
 
     /// Gives out current thread id, then calls other debug methods
