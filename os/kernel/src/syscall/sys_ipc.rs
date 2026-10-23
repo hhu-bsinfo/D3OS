@@ -80,8 +80,11 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSendSyscallParams) -> 
 
         // read ServiceObject using u8 buffer
         let mut buf = [0_u8; core::mem::size_of::<ServiceObject>()];
-        let _res = nameservice::read(fh, buf.as_mut_slice());
+        let read_success = nameservice::read(fh, buf.as_mut_slice());
         nameservice::close(fh);
+
+        if read_success.is_err() { return IpcError::Generic.into(); }
+
         let service = unsafe { &(*(buf.as_ptr() as *const ServiceObject)).service };
 
         let endpoints = unsafe { (service.ipc_endpoints_addr as *const IpcEndpoints).as_ref_unchecked() };
