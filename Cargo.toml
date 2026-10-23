@@ -31,6 +31,7 @@ members = [
     "os/application/proctest",
     "os/application/cat",
     "os/application/avxtest",
+    "os/application/ipctest",
 ]
 
 # [profile.release]

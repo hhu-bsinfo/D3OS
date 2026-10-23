@@ -106,6 +106,21 @@ impl Dir {
         // Return the created file as a NamedObject
         Ok((inode as Arc<dyn FileObject>).into())
     }
+
+    pub fn delete_all_entries(&self) {
+        let mut dir_lock = self.0.write();
+
+        // call delete_all_entries on dirs
+        for (_name, inode) in dir_lock.files.iter() {
+            match inode {
+                TmpFsINode::Directory(dir) => dir.delete_all_entries(),
+                _ => {}
+            }
+        }
+
+        // clear directory
+        dir_lock.files.clear();
+    }
 }
 
 impl DirectoryObject for Dir {
@@ -122,6 +137,20 @@ impl DirectoryObject for Dir {
         } else {
             Err(Errno::ENOENT) // Return error if the file is not found
         }
+    }
+    
+    fn list(&self) -> Result<Vec<(NamedObject, String)>, Errno> {
+        let mut res = Vec::new();
+        for (name, inode) in self.0.read().files.iter() {
+            // Match on the TmpFsINode type
+            let named_obj: NamedObject = match inode {
+                TmpFsINode::File(file) => file.clone().into(), // Clone and convert to NamedObject
+                TmpFsINode::Pipe(pipe) => pipe.clone().into(), // Clone and convert to NamedObject
+                TmpFsINode::Directory(dir) => (dir.clone() as Arc<dyn DirectoryObject>).into(), // Clone and cast directory
+            };
+            res.push((named_obj, name.clone()));
+        }
+        Ok(res)
     }
 
     fn create_pipe(&self, name: &str, _mode: Mode) -> Result<NamedObject, Errno> {
@@ -200,6 +229,54 @@ impl DirectoryObject for Dir {
             },
         };
         Ok(Some(entry))
+    }
+    
+    fn delete_file(&self, name: &str) -> Result<(), Errno> {
+        let mut dir_lock = self.0.write();
+
+        // Check if the file exists in the directory
+        if let Some(pos) = dir_lock.files.iter().position(|(file_name, _)| file_name == name) {
+            // Delete the file
+            dir_lock.files.remove(pos);
+            Ok(())
+        } else {
+            // Return an error if the file does not exist
+            Err(Errno::EEXIST)
+        }
+    }
+    
+    fn delete_dir(&self, name: &str) -> Result<(), Errno> {
+        let mut dir_lock = self.0.write();
+
+        // Check if the directory exists in the directory
+        if let Some(pos) = dir_lock.files.iter().position(|(dir_name, _)| dir_name == name) {
+            let found = dir_lock.files.get(pos).unwrap();
+            // first call delete function of directory obj
+            match &found.1 {
+                TmpFsINode::Directory(dir) => dir.delete_all_entries(),
+                _ => return Err(Errno::ENOTDIR)
+            }
+            // Delete the directory
+            dir_lock.files.remove(pos);
+            Ok(())
+        } else {
+            // Return an error if the file does not exist
+            Err(Errno::EEXIST)
+        }
+    }
+    
+    fn delete_pipe(&self, name: &str) -> Result<(), Errno> {
+        let mut dir_lock = self.0.write();
+
+        // Check if the pipe exists in the directory
+        if let Some(pos) = dir_lock.files.iter().position(|(pipe_name, _)| pipe_name == name) {
+            // Delete the pipe
+            dir_lock.files.remove(pos);
+            Ok(())
+        } else {
+            // Return an error if the file does not exist
+            Err(Errno::EEXIST)
+        }
     }
 }
 

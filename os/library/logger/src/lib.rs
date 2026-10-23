@@ -54,6 +54,7 @@ impl Log for Logger {
 }
 
 impl Logger {
+    #![allow(clippy::new_without_default)]
     pub const fn new() -> Self {
         Self {
             level: Level::Debug,

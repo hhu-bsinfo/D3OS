@@ -67,6 +67,11 @@ pub extern "sysv64" fn sys_thread_sleep(ms: usize) -> isize {
     0
 }
 
+pub extern "sysv64" fn sys_thread_block() -> isize {
+    scheduler().block();
+    0
+}
+
 pub extern "sysv64" fn sys_thread_join(id: usize) -> isize {
    return_vals::convert_syscall_result_to_ret_code(scheduler().join(id))
 }

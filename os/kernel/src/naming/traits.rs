@@ -13,7 +13,9 @@
 */
 
 
+use alloc::string::String;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::fmt::{self, Debug};
 use core::result::Result;
 
@@ -46,12 +48,16 @@ pub trait PipeObject: Debug + Send + Sync {
 /// Directory object operations
 pub trait DirectoryObject: Debug + Send + Sync {
     fn lookup(&self, name: &str) -> Result<NamedObject, Errno>;
+    fn list(&self) -> Result<Vec<(NamedObject, String)>, Errno>;
     fn create_file(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno>;
     fn create_dir(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno>;
     fn create_pipe(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno>;
     #[allow(dead_code)]
     fn stat(&self) -> Result<Stat, Errno>;
     fn readdir(&self, index: usize) -> Result<Option<DirEntry>, Errno>;
+    fn delete_file(&self, _name: &str) -> Result<(), Errno>;
+    fn delete_dir(&self, _name: &str) -> Result<(), Errno>;
+    fn delete_pipe(&self, _name: &str) -> Result<(), Errno>;
 }
 
 /// A named object.

@@ -610,6 +610,12 @@ impl Thread {
     }
 }
 
+impl Drop for Thread {
+    fn drop(&mut self) {
+        debug!("Dropping thread [{}]", self.id());
+    }
+}
+
 /// Low-level function for starting a thread in kernel mode
 #[unsafe(naked)]
 unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
