@@ -14,6 +14,12 @@ macro_rules! num_slice_from_bytes {
     };
 }
 
+/// Dupliate implementation of the different possible message data types. \
+/// If we were to use only the `IpcMessageData` struct, which contains the actual data, we would perform two copy operations on the data:
+/// 1. When we create the `IpcMessageData` struct.
+/// 2. When we send the message.
+/// 
+/// By having a version of the enum without the data, we avoid an additonal data copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IpcMessageType {
     Empty,
@@ -36,6 +42,8 @@ impl From<IpcMessageData> for IpcMessageType {
     }
 }
 
+/// This enum contains the actual data to be send. \
+/// We use an enum to allow the receiver to distinguish different message data types using a Rust `match` statement.
 #[derive(Clone, Copy, PartialEq)]
 pub enum IpcMessageData {
     Empty,
@@ -335,11 +343,14 @@ impl Display for IpcMessage {
 }
 
 
-/// Trait for variable types which may be send as message content
-/// this should effectively only be implemented for references --> the data needs to exist long enough to be copied into the receiver
+/// Wrapper Trait to simplify sending of different (primitive) data types. \
+/// This should effectively only be implemented for references --> the data needs to exist long enough to be copied into the receiver.
 pub trait IpcMessageContent {
+    /// Return a byte representation of this message content.
     fn to_bytes(&self) -> &[u8];
+    /// Returns the corresponding `IpcMessageType` enum.
     fn msg_type(&self) -> IpcMessageType;
+    /// Returns the actual data representation struct which will be send by the IPC.
     fn to_data(&self) -> IpcMessageData;
 }
 

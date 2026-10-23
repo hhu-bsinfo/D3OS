@@ -30,6 +30,9 @@ pub trait IpcQueue {
     fn receive(&self) -> Result<impl IpcMessageWrapper, IpcError>;
     fn receive_blocking(&self, timeout_ms: usize) -> Result<impl IpcMessageWrapper, IpcError>;
     fn messages_left(&self) -> usize;
+    /// unblock_fn declares the function which the wait_queue should use to unblock any waiters \
+    /// this is abstraction is used to avoid calling the scheduler directly, as this can only be done from the kernel;
+    /// this solution avoids the direct dependency of this library on the D3OS kernel
     fn unblock_waiting<F: Fn(Uuid, usize) -> bool>(&self, unblock_fn: F);
 }
 
