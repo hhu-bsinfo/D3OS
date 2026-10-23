@@ -212,8 +212,8 @@ pub struct IpcSendSyscallParams {
 
 pub fn send_internal(target_endpoint: &str, msg_name: &str, msg_type: IpcMessageType, data: &[u8], callback: &str) -> Result<usize, IpcError> {
 
-    // register callback endpoint
-    let _res = register_ipc_endpoint(callback);
+    // register callback endpoint -- errors get propagated to caller
+    let _res = register_ipc_endpoint(callback)?;
 
     let params = IpcSendSyscallParams {
         target_endpoint_name: (target_endpoint.as_ptr(), target_endpoint.len()),
