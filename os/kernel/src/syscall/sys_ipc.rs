@@ -93,7 +93,6 @@ pub extern "sysv64" fn sys_ipc_send(params_ptr: *const IpcSendSyscallParams) -> 
             let msg_type = params.msg_type;
             let callback = unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(params.callback.0, params.callback.1)) };
 
-            // dereferencing the data here should copy?
             let res = ipc_queue.send(name, bytes, msg_type, &scheduler().current_thread().process().id(), scheduler().current_thread().id(), callback);
 
             match res {
