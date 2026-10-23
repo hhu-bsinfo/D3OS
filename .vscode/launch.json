@@ -14,7 +14,7 @@
             "setupCommands": [
                 {"text": "-enable-pretty-printing"},
                 {"text": "set disassembly-flavor intel"},
-                {"text": "add-symbol-file ${workspaceRoot}/loader/initrd/bin/ipctest"}
+                {"text": "add-symbol-file ${workspaceRoot}/loader/initrd/bin/hello"}
             ],
             "preLaunchTask": "qemu-gdb"
         }
