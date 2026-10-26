@@ -131,6 +131,11 @@ pub fn sleep(ms: usize) {
     let _ = syscall(SystemCall::ThreadSleep, &[ms]);
 }
 
+#[allow(dead_code)]
+pub fn block() {
+    let _ = syscall(SystemCall::ThreadBlock, &[]);
+}
+
 pub fn exit() -> ! {
     let _ = syscall(SystemCall::ThreadExit, &[]);
     panic!("System call 'ThreadExit' has returned!")

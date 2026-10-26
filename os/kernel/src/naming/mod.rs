@@ -8,3 +8,5 @@ mod traits;
 
 mod procfs;
 mod mount;
+
+pub mod servicefs;

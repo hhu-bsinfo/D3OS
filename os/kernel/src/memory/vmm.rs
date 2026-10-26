@@ -523,6 +523,23 @@ impl VirtualAddressSpace {
         self.page_tables.translate(VirtAddr::new(virt_addr))
     }
 
+    /// Wrapper for manually translating a raw pointer using this address space
+    pub fn translate_ptr<T>(&self, ptr: *const T) -> Option<*const T> {
+        //self.translate_any(ptr, |x| x as u64, |x| x as *const T)
+        self.get_phys(ptr as u64).map(|phys| phys.as_u64() as *const T)
+    }
+
+    /// Wrapper for manually translating a mut raw pointer using this address space
+    pub fn translate_ptr_mut<T>(&self, ptr: *mut T) -> Option<*mut T> {
+        //self.translate_any(ptr, |x| x as u64, |x| x as *mut T)
+        self.get_phys(ptr as u64).map(|phys| phys.as_u64() as *mut T)
+    }
+
+    /// Wrapper for manually translating any variable type using this address space
+    pub fn translate_any<T, U, F, G>(&self, any: T, to_addr: F, from_addr: G) -> Option<U> where F: Fn(T) -> u64, G: Fn(u64) -> U {
+        self.get_phys(to_addr(any)).map(|phys| from_addr(phys.as_u64()))
+    }
+
     /// Copy `total_bytes_to_copy` from `src_ptr` in the `self` address space to `dest_page_start` in the `dest_process` address space. \
     /// Destination addresses are manually retrieved from the page tables of the `dest_process`. \
     /// If `fill_up_with_zeroes` is true, the remaining bytes in the last page will be filled with zeroes.

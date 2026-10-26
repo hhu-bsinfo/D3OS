@@ -41,7 +41,7 @@ use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::sync::atomic::AtomicU32;
 use core::sync::atomic::Ordering::{Relaxed};
-use log::{debug, info};
+use log::{debug, info, warn};
 use smallmap::Map;
 use spin::{Mutex, MutexGuard, Once};
 use thingbuf::mpsc::{Sender};
@@ -225,6 +225,8 @@ impl Scheduler {
     pub fn thread(&self, thread_id: usize) -> Option<Arc<Thread>> {
         self.ready_state.lock().ready_queue
             .iter()
+            .chain(self.blocked_list.lock().iter())
+            .chain(self.sleep_list.lock().iter().map(|e| &e.0))
             .find(|thread| thread.id() == thread_id)
             .cloned()
     }
@@ -399,10 +401,6 @@ impl Scheduler {
         let mut ready_state = self.get_ready_state();
         let current = self.current_thread();
         current.set_state(ThreadState::Exited);
-
-        // Mark dead globally *before* waking joiners, so joiners racing in will observe "dead"
-        mark_thread_dead(current.id());
-        self.unjoin(current.id(), &mut ready_state);
 
         debug!("Exiting thread [{}]", current.id());
 
@@ -679,6 +677,45 @@ impl Scheduler {
         if is_thread_alive(tid) {
             drop(state); // release ready_state before cross-core scheduling
             schedule_on_all_others(MessageItem::Cmd(MessageCmd::Deblock { pid, tid }));
+            return true;
+        }
+
+        false
+    }
+
+    /// Unsleep, i.e. prematurely wake up thread with given (pid, tid). \
+    /// Returns true if thread was sleeping, and successfully unslept.
+    pub fn unsleep(&self, pid: Uuid, tid: usize) -> bool {
+        
+        let mut state = self.get_ready_state();
+        
+        // 1. check sleep list
+        let mut sleep_list = self.sleep_list.lock();
+        if let Some(pos) = sleep_list.iter().position(|(t, _ms)| t.id() == tid && t.process().id() == pid) {
+            let thread = sleep_list.swap_remove(pos).0;
+            thread.set_state(ThreadState::Ready);
+            state.ready_queue.push_front(Arc::clone(&thread));
+            inc_rq_len();
+            return true;
+        }
+
+        // 2. check if thread isn't sleeping at all
+        // 2a. check current thread
+        let curr_thread = self.current_thread();
+        if curr_thread.id() == tid && curr_thread.process().id() == pid {
+            return false;
+        }
+
+        // 2b. check ready_queue
+        if state.ready_queue.iter().any(|t| t.id() == tid && t.process().id() == pid) {
+            // Already runnable (e.g. a previous wakeup raced in); nothing to do
+            return false;
+        }
+
+        // 3. thread isn't on this core; send message to the other cores
+        if is_thread_alive(tid) {
+            drop(state); // release ready_state before cross-core scheduling
+            schedule_on_all_others(MessageItem::Cmd(MessageCmd::Unsleep { pid, tid }));
             return true;
         }
 
@@ -997,6 +1034,20 @@ impl Scheduler {
                     inc_rq_len();
                 }
             }
+            // If the thread is locally sleeping, requeue it.
+            MessageCmd::Unsleep { pid, tid } => {
+                if is_thread_alive(tid) == false { return; }
+                let mut sleep_list = self.sleep_list.lock();
+
+                if let Some(pos) = sleep_list
+                    .iter().position(|(t, _ms)| t.id() == tid && t.process().id() == pid)
+                {
+                    let thread = sleep_list.swap_remove(pos).0;
+                    thread.set_state(ThreadState::Running);
+                    state.ready_queue.push_front(thread);
+                    inc_rq_len();
+                }
+            }
             // if you have this thread, kill it
             MessageCmd::Kill { tid } => {
                 if is_thread_alive(tid) == false { return; }
@@ -1125,6 +1176,9 @@ pub enum MessageCmd {
     /// "If you have this thread in your local blocked list, wake it."
     Deblock { pid: Uuid, tid: usize },
 
+    /// "If you have this thread in your local sleep list, wake it."
+    Unsleep { pid: Uuid, tid: usize },
+
     /// "If you have this thread, kill it."
     Kill { tid: usize },
 }
@@ -1167,7 +1221,7 @@ pub fn schedule_on(target_id: usize, item: MessageItem) -> Result<(), MessageIte
     }
 }
 
-/// Schedules a cmd (wrapped in a MessageItem) on ALL remote cores
+/// Schedules a cmd (wrapped in a MessageItem) on ALL remote cores \
 /// Does not send reschedule IPI's since only one core needs to actually do something
 pub fn schedule_on_all_others(item: MessageItem) {
     let own_id = current_core_id() as usize;
@@ -1233,7 +1287,7 @@ pub fn inc_rq_len() {
 /// Owner function to decrease the runqueue length of the current core.
 pub fn dec_rq_len() {
     let id = current_core_id() as usize;
-    per_cpu_ref(id).rq_len.fetch_sub(1, Ordering::Release); // Release for stronger publication before donating
+    per_cpu_ref(id).rq_len.fetch_sub(1, Ordering::Release);
 }
 /// Owner function to read the runqueue length of the current core.
 pub fn read_rq_len() -> u32 {

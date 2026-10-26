@@ -94,6 +94,11 @@ impl ProcessManager {
         self.active_processes.iter().any(|process| process.id() == pid)
     }
 
+    /// Returns a reference to the process with the given pid
+    pub fn process(&self, pid: Uuid) -> Option<Arc<Process>> {
+        self.active_processes.iter().find(|p| p.id() == pid).map(|p| Arc::clone(p))
+    }
+
     /// Return a snapshot of the process
     pub fn get_stats(&self, pid: Uuid) -> Option<Arc<ProcStat>> {
         self.active_processes

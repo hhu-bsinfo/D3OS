@@ -11,7 +11,7 @@ TOWBOOT_URL = "https://github.com/hhuOS/towboot/releases/download/v${TOWBOOT_VER
 TAR = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "tar", mapping = { "macos" = "gtar" } }
 LINKER = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "ld", mapping = { "macos" = "x86_64-elf-ld" } }
 QEMU_AUDIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "pa", mapping = { "macos" = "coreaudio" } }
-QEMU_DISPLAY = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gtk,gl=on,zoom-to-fit=off", mapping = { "macos" = "cocoa" } }
+QEMU_DISPLAY = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gtk,gl=on,zoom-to-fit=on", mapping = { "macos" = "cocoa" } }
 QEMU_VIRTIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "virtio-vga-gl", mapping = { "macos" = "virtio-vga" } }
 RUSTFLAGS="--cfg getrandom_backend=\"rdrand\""
 NUM_CPU_CORES=4
