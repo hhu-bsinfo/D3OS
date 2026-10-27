@@ -5,6 +5,7 @@ use crate::memory::vma::VmaType;
 use crate::process::core_local_storage::scheduler;
 use crate::{apic, idt, interrupt_dispatcher};
 use alloc::boxed::Box;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use x86_64::registers::segmentation::GS;
 use core::ops::Deref;
@@ -23,6 +24,8 @@ use x86_64::structures::paging::{Page, PageTableFlags};
 // ONLY WORKS ON SINGLE CORE, IF MULTICORE IS PLANNED THIS NEEDS TO BE DEFINED FOR EACH CPU
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::sync::atomic::Ordering::Relaxed;
+use strum_macros::FromRepr;
+use crate::process::process::Process;
 
 static LAST_IRQ_FROM_USER: AtomicBool = AtomicBool::new(false);
 
@@ -35,7 +38,7 @@ pub fn last_irq_from_user() -> bool {
 
 
 #[repr(u8)]
-#[derive(PartialEq, PartialOrd, Copy, Clone, Debug)]
+#[derive(PartialEq, PartialOrd, Copy, Clone, Debug, FromRepr)]
 #[allow(dead_code)]
 pub enum InterruptVector {
     // Hardware exceptions
@@ -238,52 +241,34 @@ fn handle_page_fault(frame: InterruptStackFrame, _index: u8, error: Option<u64>)
     if !thread.is_kernel_thread() {
         let fault_page = Page::containing_address(fault_addr);
 
-        // Check if page fault occurred inside a user stack
-        if let Some(stack) = thread
+        if let Some(vma) = thread
             .process()
             .virtual_address_space
-            .is_address_within_vma(fault_addr.as_u64(), VmaType::UserStack)
+            .vma_for_address(fault_addr.as_u64())
         {
-            if memory::frame_allocator_locked() {
-                panic!("Page Fault, cannot get lock to frame allocator\nError code: [{:?}]\nAddress: [0x{:0>16x}]", error, fault_addr);
+            // Check if page fault occurred inside a user stack, heap or anonymous area
+            if let VmaType::UserStack | VmaType::Heap | VmaType::Anonymous = vma.typ {
+
+                if memory::frame_allocator_locked() {
+                    panic!("Page Fault, cannot get lock to frame allocator\nError code: [{:?}]\nAddress: [0x{:0>16x}]", error, fault_addr);
+                }
+                let proc = thread.process();
+                proc.virtual_address_space.map_partial_vma(
+                    &vma,
+                    PageRange {
+                        start: fault_page,
+                        end: fault_page + 1,
+                    },
+                    MemorySpace::User,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
+                );
+
+                // ProcFS, Count new pages, used for calculating mem-usage
+                proc.account_rss();
+
+                unsafe { maybe_swapgs(&frame) };
+                return; // successfully mapped page
             }
-            let proc = thread.process();
-            proc.virtual_address_space.map_partial_vma(
-                &stack,
-                PageRange {
-                    start: fault_page,
-                    end: fault_page + 1,
-                },
-                MemorySpace::User,
-                PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-            );
-
-            // ProcFS, Count new pages, used for calculating mem-usage
-            proc.account_rss();
-
-            unsafe { maybe_swapgs(&frame) };
-            return ;
-        }
-
-
-        // Check if page fault occurred inside a user heap
-        if let Some(heap) = thread.process().virtual_address_space.is_address_within_vma(fault_addr.as_u64(), VmaType::Heap) {
-            if memory::frame_allocator_locked() {
-                panic!("Page Fault, cannot get lock to frame allocator\nError code: [{:?}]\nAddress: [0x{:0>16x}]", error, fault_addr);
-            }
-            let proc = thread.process();
-            proc.virtual_address_space.map_partial_vma(
-                &heap,
-                PageRange { start: fault_page, end: fault_page + 1 },
-                MemorySpace::User,
-                PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE,
-            );
-            
-            // ProcFS, count new pages, used for calculating mem-usage
-            proc.account_rss();
-
-            unsafe { maybe_swapgs(&frame) };
-            return ;
         }
     }
 
@@ -343,9 +328,12 @@ impl InterruptDispatcher {
     }
 
     pub fn dispatch(&self, frame: &InterruptStackFrame, interrupt: u8) {
-        // if we log the timer interrupt, it just spams the log and nothing else happens
-        if interrupt != 32 {
-            trace!("handling interrupt {interrupt}");
+        match InterruptVector::from_repr(interrupt){
+            Some(InterruptVector::Pit) | Some(InterruptVector::ApicTimer) => {
+                // if we log the timer interrupt, it just spams the log and nothing else happens
+            }
+            Some(interrupt) => trace!("handling interrupt {:?}", interrupt),
+            None => trace!("handling unknown interrupt {}", interrupt)
         }
         let handler_vec_mutex = self
             .int_vectors

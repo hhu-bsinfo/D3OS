@@ -14,9 +14,10 @@ bench = false
 
 [features]
 virtio_tests = []
-default = ["frame_alloc_lockfree"]
+default = ["frame_alloc_lockfree", "infiniband_mlx4"]
 frame_alloc_lockfree = []
 frame_alloc_locking = []
+infiniband_mlx4 = []
 
 [dependencies]
 # Local dependencies
@@ -30,6 +31,8 @@ drawer = { path = "../library/drawer", default-features = false }
 system_info = { path = "../library/system_info", default-features = false }
 input = { path = "../library/input", default-features = false }
 virtio = { package = "virtio-drivers", git = "https://github.com/hhu-bsinfo/virtio-drivers.git", rev = "f127bb0e9f3d71142ed1354e88c76b419261f8f3" }
+rdma = { path = "../library/rdma" }
+mm = { path = "../library/mm" }
 concurrent = { path = "../library/concurrent", default-features = false }
 ipc = { path = "../library/ipc" }
 
@@ -56,6 +59,12 @@ mbrs = { version = "0.3.1", default-features = false, features = ["no-std"] }
 num_enum = { version = "0.7.3", default-features = false }
 llfree = { git = "https://github.com/luhsra/llfree-rs", default-features = false, rev = "da75cc496c5dfcaac84a2814f12477a0b1bca3ba" }
 uuid = { version = "1.23.1", default-features = false, features = ["v7"] }
+byteorder = { version = "1.4.3", default-features = false }
+modular-bitfield-msb = "0.11.2"
+strum = { version = "0.26", default-features = false }
+strum_macros = "0.26"
+tock-registers = "0.10.1"
+zerocopy = "0.5.2"
 
 # these three need to be updated in sync
 multiboot2 = "0.25"

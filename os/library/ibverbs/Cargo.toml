@@ -1,0 +1,33 @@
+[package]
+edition = "2024"
+name = "ibverbs"
+version = "0.1.0"
+authors = [ "Sandro Jose Leal Miudo" ]
+
+[lib]
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# internal depencies
+rdma = { path = "../../library/rdma", features = ["serde"] }
+mm = { path = "../../library/mm" }
+syscall = { path = "../../library/syscall" }
+
+# external depencies
+bincode = { version = "2.0.1", optional = true, default-features = false, features = ["derive", "alloc"] }
+serde = { version = "1.0.219", optional = true, default-features = false, features = ["derive", "alloc"] }
+core3 = { version = "0.1", default-features = false }
+zerocopy = "0.5.2"
+spin = "0.9.8"
+tock-registers = "0.10.1"
+bitflags = "2.9.0"
+modular-bitfield-msb = "0.11.2"
+strum_macros = "0.26"
+log = "0.4.26"
+
+[features]
+default = ["serialize"]
+serialize = ["dep:bincode"]
+serde = ["dep:serde"]

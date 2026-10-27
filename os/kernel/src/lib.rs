@@ -12,6 +12,9 @@
 #![feature(cell_get_cloned)]
 #![feature(map_try_insert)]
 #![no_std]
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
+#![feature(associated_type_defaults)]
 
 use crate::device::apic::Apic;
 use crate::device::cpu::Cpu;
@@ -551,4 +554,31 @@ pub fn boot_info() -> &'static BootInfo {
     BOOT_INFO
         .get()
         .expect("Trying to access boot info before initialization")
+}
+static CYCLES_PER_US: Once<u64> = Once::new();
+
+// assuming pit is set to 1ms for simplicity
+// assuming feature on cpu is supported
+pub fn calibrate(wait_ticks: usize) {
+
+    CYCLES_PER_US.call_once(|| {
+        let end_time = timer().systime_ms() + wait_ticks;
+        let start_tsc = cpu().rdtsc();
+
+        while timer().systime_ms() < end_time {}
+
+        let end_tsc = cpu().rdtsc();
+        let elapsed_cycles = end_tsc - start_tsc;
+
+        // Convert PIT ticks to microseconds (assuming 1 tick = 1 ms)
+        let elapsed_us = wait_ticks * 1000;
+        elapsed_cycles / (elapsed_us as u64)
+    });
+}
+
+pub fn get_time_in_us() -> u64 {
+    let cycles_per_us = unsafe {
+        CYCLES_PER_US.get_unchecked()
+    };
+    cpu().rdtsc() / cycles_per_us
 }

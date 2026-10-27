@@ -1,6 +1,9 @@
 // All user space related code and structures lie above USER_SPACE_START
 pub const USER_SPACE_START: usize = 0x10000000000;  // 1 TiB
 
+// 48-bit paging
+pub const USER_SPACE_END: usize = 0xFFFF_FFFF_FFFF;
+
 // Code lies at the beginning of the user space (Max size: 1 GiB)
 pub const USER_SPACE_CODE_START: usize = USER_SPACE_START;
 

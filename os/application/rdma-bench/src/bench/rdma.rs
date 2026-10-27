@@ -1,0 +1,101 @@
+//! One-sided RDMA WRITE/READ bandwidth benchmark. The client initiates and reports; the server
+//! only registers a buffer and sends its address and rkey.
+//!
+//! Like `bandwidth`, `tx_depth` operations are kept outstanding, each on its own buffer slot.
+
+use crate::bench::{self, Role};
+use crate::comm::{Conn, RemoteBufferInfo};
+use crate::error::Result;
+use crate::report::{BandwidthStats, Report};
+use alloc::vec;
+use ibverbs::{CompletionQueue, LocalMemoryRegion, ProtectionDomain, QueuePair, RemoteMemorySlice, SendFlags, SendWorkRequest, WorkCompletion};
+use time::get_time_in_us;
+
+#[derive(Copy, Clone, Debug)]
+pub enum Direction {
+    Write,
+    Read,
+}
+
+pub fn run(
+    direction: Direction, pd: &ProtectionDomain, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, role: Role, msg_size: usize, iterations: usize,
+    tx_depth: usize, _rx_depth: usize,
+) -> Result<Report> {
+    // Sized from `tx_depth` (the initiator's outstanding-WRITE/READ depth), not `rx_depth`: the
+    // responder never posts a receive for a one-sided op, so it has no receive queue to size.
+    let window = tx_depth.max(1).min(iterations);
+    let mut mr = pd.allocate::<u8>(window * msg_size)?;
+
+    match role {
+        // The responder's own `cq`/`qp` go unused: RDMA WRITE/READ never consumes a receive
+        // request and produces no completion on this side, so all it does is expose memory.
+        Role::Server => respond(&mut mr, conn),
+        Role::Client => {
+            let RemoteBufferInfo { mut remote } = conn.recv_msg()?;
+            initiate(direction, &mut mr, cq, qp, conn, &mut remote, msg_size, iterations, window)
+        }
+    }
+}
+
+fn respond(mr: &mut LocalMemoryRegion<u8>, conn: &Conn) -> Result<Report> {
+    conn.send_msg(&RemoteBufferInfo { remote: mr.remote() })?;
+    conn.sync()?; // "ready": the initiator is about to start
+    conn.sync()?; // "done": the initiator's last operation has completed
+    Ok(Report::Peer)
+}
+
+fn post(
+    direction: Direction, qp: &mut QueuePair, local_mr: &mut LocalMemoryRegion<u8>, remote_slice: &mut RemoteMemorySlice, slot: usize, msg_size: usize,
+    wr_id: u64,
+) -> Result<()> {
+    let start = slot * msg_size;
+    let sges = [local_mr.slice(start..start + msg_size)];
+    let remote_slice = remote_slice.slice(start..start + msg_size);
+    let wr = match direction {
+        Direction::Write => SendWorkRequest::rdma_write(wr_id, &sges, remote_slice, SendFlags::SIGNALED).expect("failed to create work request"),
+        Direction::Read => SendWorkRequest::rdma_read(wr_id, &sges, remote_slice, SendFlags::SIGNALED).expect("failed to create work request"),
+    };
+    unsafe { qp.post_send([wr]) }
+}
+
+fn initiate(
+    direction: Direction, local_mr: &mut LocalMemoryRegion<u8>, cq: &CompletionQueue, qp: &mut QueuePair, conn: &Conn, remote_mr: &mut RemoteMemorySlice,
+    msg_size: usize, iterations: usize, window: usize,
+) -> Result<Report> {
+    conn.sync()?; // "ready"
+    let t0 = get_time_in_us();
+
+    for i in 0..window {
+        post(direction, qp, local_mr, remote_mr, i, msg_size, i as u64)?;
+    }
+
+    let mut posted = window;
+    let mut completed = 0usize;
+    let mut wc = vec![WorkCompletion::default(); window];
+
+    while completed < iterations {
+        let completions = cq.poll(&mut wc)?;
+        let n = completions.len();
+        for c in completions.iter() {
+            bench::completion_error(c)?;
+        }
+        completed += n;
+        for _ in 0..n {
+            if posted < iterations {
+                let slot = posted % window;
+                post(direction, qp, local_mr, remote_mr, slot, msg_size, posted as u64)?;
+                posted += 1;
+            }
+        }
+    }
+
+    let elapsed_us = get_time_in_us() - t0;
+    conn.sync()?; // "done"
+
+    Ok(Report::Bandwidth(BandwidthStats {
+        msg_size,
+        iterations,
+        tx_depth: window,
+        elapsed_us,
+    }))
+}

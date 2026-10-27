@@ -8,6 +8,7 @@ use core::{ffi::CStr, net::{IpAddr, Ipv6Addr, SocketAddr}, str::FromStr};
 use alloc::{ffi::CString, format, string::ToString, vec::Vec, vec};
 use syscall::{return_vals::Errno, syscall, SystemCall};
 
+#[allow(dead_code)]
 pub struct UdpSocket {
     handle: usize,
     /// the (local) address this socket is bound to
@@ -57,7 +58,7 @@ impl UdpSocket {
                 errno => NetworkError::Unknown(errno),
             })
     }
-    
+
     pub fn recv_from(&self, data_buf: &mut [u8]) -> Result<(usize, SocketAddr), NetworkError> {
         let protocol = 0;
         // this should be the maximum length for an IP address
@@ -158,7 +159,7 @@ impl TcpListener {
     }
 
     /// Accept a new connection on this socket.
-    /// 
+    ///
     /// To allow further connections, a new listening socket is created.
     pub fn accept(&mut self) -> Result<TcpStream, NetworkError> {
         let protocol = 1;
@@ -196,6 +197,7 @@ impl Drop for TcpListener {
 }
 
 
+#[allow(dead_code)]
 pub struct TcpStream {
     handle: usize,
     local_address: SocketAddr,
@@ -313,6 +315,7 @@ impl Drop for TcpStream {
     }
 }
 
+#[allow(dead_code)]
 pub struct IcmpSocket {
     handle: usize,
     ident: u16,

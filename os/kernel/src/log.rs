@@ -21,6 +21,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::ptr;
 use log::{Level, Metadata, Record};
+use log::Level::Info;
 use thingbuf::recycling::WithCapacity;
 use thingbuf::ThingBuf;
 use spin::{Mutex, Once};
@@ -42,6 +43,8 @@ pub struct Logger {
 impl log::Log for Logger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= self.level
+                || metadata.target().starts_with("kernel::device::infiniband")
+
     }
 
     fn log(&self, record: &Record) {
@@ -50,7 +53,7 @@ impl log::Log for Logger {
         }
 
         let level = record.metadata().level();
-        let file = record.file().unwrap_or("unknown").split('/').next_back().unwrap_or("unknown");
+        let file = record.file().unwrap_or("unknown");
         let line = record.line().unwrap_or(0);
 
         if let Some(queue) = self.queue.get() {
@@ -137,7 +140,7 @@ impl Logger {
         }
 
         Self {
-            level: if built_info::PROFILE == "debug" { Level::Debug } else { Level::Info },
+            level: if built_info::PROFILE == "debug" { Level::Info } else { Level::Info },
             queue: Once::new(),
             streams: Mutex::new(Vec::new()),
             serial

@@ -19,6 +19,8 @@ use crate::syscall::sys_ipc::{sys_ipc_receive_blocking, sys_ipc_register, sys_ip
 use log::info;
 use x86_64::registers::rflags::RFlags;
 
+use crate::syscall::sys_uverbs::sys_uverbs_ctl;
+
 use super::sys_concurrent::{
     sys_process_count, sys_process_execute_binary, sys_process_exit,
     sys_process_id, sys_thread_count, sys_process_status, 
@@ -43,7 +45,7 @@ use super::sys_terminal::{
     sys_terminal_read_output, sys_terminal_write_input,
     sys_terminal_write_output,
 };
-use super::sys_time::{sys_get_date, sys_get_system_time, sys_set_date};
+use super::sys_time::{sys_get_date, sys_get_system_time, sys_set_date, sys_get_time_us};
 use super::sys_vmem::{sys_map_memory, sys_map_frame_buffer};
 use super::sys_shm::{sys_shm_attach, sys_shm_detach, sys_shm_open, sys_shm_unlink};
 
@@ -154,6 +156,8 @@ impl SyscallTable {
                 sys_ipc_send as *const _,
                 sys_ipc_receive_blocking as *const _,
                 sys_ipc_delete as *const _,
+                sys_uverbs_ctl as *const _,
+                sys_get_time_us as *const _,
             ],
         }
     }

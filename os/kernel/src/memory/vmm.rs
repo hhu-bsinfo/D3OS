@@ -370,7 +370,63 @@ impl VirtualAddressSpace {
         self.page_tables.map(page_range, space, flags);
     }
 
-    /// Set page table `flags` for the give page range `pages`  
+    pub fn access_ok(&self, addr: VirtAddr, len: usize) -> bool {
+        if len == 0 {
+            return false;
+        }
+        let start = addr.as_u64();
+        if let Some(end) = addr.as_u64().checked_add(len as u64 - 1) {
+            self.first_usable_user_addr.as_u64() <= start && end <= self.last_usable_user_addr.as_u64()
+        } else {
+            false
+        }
+    }
+
+    fn ensure_user_page_is_mapped(&self, page: Page) -> bool {
+        if self.page_tables.translate(page.start_address()).is_some() {
+            return true;
+        }
+
+        // TODO: Map page lazily
+        warn!("trying to access a page that is not mapped");
+        false
+    }
+
+    pub unsafe fn copy_bytes_to_user(&self, dst: VirtAddr, src: *const u8, size: usize) -> Result<(), UserCopyError> {
+        if !self.access_ok(dst, size) {
+            return Err(UserCopyError::NoUserAccess);
+        }
+
+        let first_page = Page::containing_address(dst);
+        let last_page = Page::containing_address(dst + size as u64 - 1);
+        for page in first_page..=last_page {
+            if !self.ensure_user_page_is_mapped(page) {
+                return Err(UserCopyError::PageNotMapped);
+            }
+        }
+
+        unsafe { core::ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), size) };
+        Ok(())
+    }
+
+    pub unsafe fn copy_bytes_from_user(&self, dst: *mut u8, src: VirtAddr, size: usize) -> Result<(), UserCopyError> {
+        if !self.access_ok(src, size) {
+            return Err(UserCopyError::NoUserAccess);
+        }
+
+        let first_page = Page::containing_address(src);
+        let last_page = Page::containing_address(src + size as u64 - 1);
+        for page in first_page..=last_page {
+            if !self.ensure_user_page_is_mapped(page) {
+                return Err(UserCopyError::PageNotMapped);
+            }
+        }
+
+        unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), dst, size) };
+        Ok(())
+    }
+
+    /// Set page table `flags` for the give page range `pages`
     pub fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
         self.page_tables.set_flags(pages, flags);
     }
@@ -399,7 +455,7 @@ impl VirtualAddressSpace {
     /// `start_phys_addr` must be page aligned. \
     /// `end_phys_addr` must be greater than `start_phys_addr` but no need to be page aligned. If it is not page aligned, it will be aligned up. \
     /// A vma ist created using the parameters `typ` and `tag`.
-    pub fn kernel_map_devm_identity(&self, start_phys_addr: u64, end_phys_addr: u64, flags: PageTableFlags, typ: VmaType, tag: &str) -> Page {
+    pub fn kernel_map_devm_identity(&self, start_phys_addr: u64, end_phys_addr: u64, flags: PageTableFlags, typ: VmaType, tag: &str) -> PageRange {
         assert!(end_phys_addr > start_phys_addr, "'end_phys_addr' must be larger than 'start_phys_addr'");
 
         // Calc page frame range (needed for mapping))
@@ -429,7 +485,7 @@ impl VirtualAddressSpace {
         // Now we do the mapping
         self.map_pfr_for_vma(&vma, pfr, flags).expect("map_pfr_for_vma failed in map_devmem_identity");
 
-        pr.start
+        pr
     }
 
     /// Alloc `num_pf` page frames, en bloc, identity mapped in kernel space.
@@ -641,4 +697,9 @@ impl Drop for VirtualAddressSpace {
             }
         }
     }
+}
+
+pub enum UserCopyError {
+    NoUserAccess,
+    PageNotMapped,
 }

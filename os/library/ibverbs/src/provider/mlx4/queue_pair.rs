@@ -1,0 +1,771 @@
+//! Userspace-owned queue pair. Creation and state transitions go through the kernel; posting
+//! works directly on the mapped buffer, without syscalls.
+
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use alloc::vec;
+use core::mem::MaybeUninit;
+use core::sync::atomic::{compiler_fence, Ordering};
+use bitflags::bitflags;
+use core3::io;
+use core3::io::{Error, ErrorKind};
+use tock_registers::interfaces::Writeable;
+use tock_registers::registers::WriteOnly;
+use zerocopy::{BigEndian, FromBytes, U16, U32, U64};
+use log::error;
+use spin::RwLock;
+use mm::{mmap, MmapFlags, PAGE_SIZE};
+use rdma::ib_core::{QueuePairAttr, QueuePairAttrMask, QueuePairCapabilities, QueuePairState, SendFlags, ScatterGatherEntry};
+use rdma::uverbs_uapi::{CreateQpRequest, CreateQpResponse, ModifyQpRequest, UserSlice};
+use rdma::uverbs_uapi::UverbsCmd::{CreateQp, DestroyQp, ModifyQp};
+use strum_macros::FromRepr;
+use rdma::QueuePairType;
+use rdma::PdHandle;
+use crate::cmd::uverbs;
+use crate::provider::{IbvQueuePair, QpInitAttr, ReceiveWorkRequest, SendWorkRequest};
+use crate::{DatagramHeader, RemoteMemoryHeader, SendOperation, Payload};
+use super::Mlx4Context;
+
+pub(crate) struct QueuePair {
+    context: Arc<Mlx4Context>,
+    qp_type: QueuePairType,
+    pub(crate) number: u32,
+    state: RwLock<QueuePairState>,
+    rq: RwLock<WorkQueue>,
+    sq: RwLock<WorkQueue>,
+    receive_wqe_counter: *mut ReceiveWQECounter,
+}
+
+impl IbvQueuePair for QueuePair {
+    fn number(&self) -> u32 {
+        self.number
+    }
+
+    /// Post a work request to receive data.
+    ///
+    /// This is used by ibv_post_recv.
+    unsafe fn post_receive(&mut self, wrs: &[ReceiveWorkRequest]) -> io::Result<()> {
+        let state = *self.state.read();
+        if state != QueuePairState::ReadyToReceive && state != QueuePairState::ReadyToSend {
+            return Err(Error::new(ErrorKind::Other, "queue pair cannot receive in this state"));
+        }
+        let mut rq = self.rq.write();
+        let mut num_req = 0;
+        for curr in wrs {
+            // make sure that we're not overflowing
+            if rq.would_overflow() {
+                return Err(Error::new(ErrorKind::Other, "receive queue would overflow"));
+            }
+            // check that this work request is not too big
+            if curr.sges.len() as u32 > rq.max_gs {
+                return Err(Error::new(ErrorKind::Other, "work request has too many sges"));
+            }
+            let mut sge_index = 0;
+            for sge in curr.sges {
+                let elem = rq.get_data_segment(rq.head, sge_index).unwrap();
+                elem.copy_from_sge(sge);
+                sge_index += 1;
+            }
+
+            // For every read WR the CQ should create a completion, therefor chain_size = 1
+            rq.update_meta_for_head(curr.wr_id, 1);
+
+            // Terminate the scatter list, but only if this work request left a segment of the
+            // WQE unused — a full one needs no terminator, and writing one would spill into the
+            // next WQE and invalidate a receive buffer that is still (or about to be) posted.
+            if sge_index < rq.max_gs {
+                let last_elem = rq.get_data_segment(rq.head, sge_index).unwrap();
+                *last_elem = WqeDataSegment::last();
+            }
+            rq.head = rq.head.wrapping_add(1);
+            num_req += 1;
+        }
+
+        // return if we don't have anything to do
+        if num_req == 0 {
+            return Ok(());
+        }
+        // make sure that the descriptors are written before the doorbell
+        compiler_fence(Ordering::SeqCst);
+        unsafe { &*self.receive_wqe_counter }.set(rq.head & 0xffff);
+        Ok(())
+    }
+
+    /// Post a work request to send data.
+    ///
+    /// This is used by ibv_post_send.
+    unsafe fn post_send(&mut self, wrs: &[SendWorkRequest]) -> io::Result<()> {
+        // TODO:
+        // If the QP qp is associated with a shared receive queue, you must use the function
+        // ibv_post_srq_recv(), and not ibv_post_recv(), since the QP's own receive queue will not
+        // be used.
+
+        // TODO:
+        // If a WR is being posted to a UD QP, the Global Routing Header (GRH) of the incoming
+        // message will be placed in the first 40 bytes of the buffer(s) in the scatter list. If no
+        // GRH is present in the incoming message, then the first  bytes  will  be undefined. This
+        // means that in all cases, the actual data of the incoming message will start at an offset
+        // of 40 bytes into the buffer(s) in the scatter list.
+
+        if *self.state.read() != QueuePairState::ReadyToSend {
+            return Err(Error::new(ErrorKind::Other, "queue pair cannot send in this state"));
+        }
+
+        if wrs.is_empty() {
+            return Ok(());
+        }
+
+        if wrs.len() == 1 && self.try_post_send_via_blueflame(wrs.first().unwrap()) {
+            return Ok(())
+        }
+
+        // TODO: the Nautilus driver uses sq.next_wqe
+        let mut sq = self.sq.write();
+        let mut chain_size = 1;
+
+        for curr in wrs {
+            // make sure that we're not overflowing
+            if sq.would_overflow() {
+                return Err(Error::new(ErrorKind::Other, "send queue would overflow"));
+            }
+
+            // check that this work request is not too big
+            if let Payload::Sges(sges) = curr.payload && sges.len() > sq.max_gs as usize {
+                return Err(Error::new(ErrorKind::Other, "work request has too many sges"));
+            }
+
+            let mut wqe_offset: usize = sq.wqe_byte_offset(sq.head);
+            let control_segment_offset = wqe_offset;
+            // TODO: check for buffer overflow
+            let ctrl: &mut WqeControlSegment = sq.get_in_buffer(control_segment_offset).unwrap();
+            ctrl.vlan_cv_f_ds = 0.into();
+            let wqe_segment_flags: WqeControlSegmentFlags = curr.send_flags.into();
+            ctrl.flags = wqe_segment_flags.bits().into();
+            //ctrl.flags = WqeControlSegmentFlags::CQ_UPDATE.bits().into();
+            ctrl.flags2 = 0.into();
+
+            wqe_offset += size_of::<WqeControlSegment>();
+            let mut wqe_size = size_of::<WqeControlSegment>();
+            match self.qp_type {
+                QueuePairType::RC | QueuePairType::UC => {
+                    // extra segments are only required for RDMA
+                    if let SendOperation::RdmaRead(header) | SendOperation::RdmaWrite(header) = curr.op {
+                        let wqe: &mut WqeRemoteAddressSegment = sq.get_in_buffer(wqe_offset).unwrap();
+                        *wqe = WqeRemoteAddressSegment::from(header);
+                        wqe_offset += size_of::<WqeRemoteAddressSegment>();
+                        wqe_size += size_of::<WqeRemoteAddressSegment>();
+                    }
+                }
+                QueuePairType::UD => {
+                    if let SendOperation::UD(header) = curr.op {
+                        let wqe: &mut WqeDatagramSegment = sq.get_in_buffer(wqe_offset).unwrap();
+                        *wqe = WqeDatagramSegment::from(header);
+                        wqe_offset += size_of::<WqeDatagramSegment>();
+                        wqe_size += size_of::<WqeDatagramSegment>();
+                    }
+                }
+                #[allow(unreachable_patterns)]
+                _ => return Err(Error::new(ErrorKind::Other, "invalid queue pair type")),
+            }
+
+            if let Payload::Sges(sges) = curr.payload {
+                // Write data segments in reverse order, so as to overwrite
+                // cacheline stamp last within each cacheline. This avoids issues
+                // with WQE prefetching.
+                wqe_offset += (sges.len() - 1) * size_of::<WqeDataSegment>();
+                for sge in sges.iter().rev() {
+                    let elem: &mut WqeDataSegment = sq.get_in_buffer(wqe_offset).unwrap();
+                    elem.copy_from_sge(sge);
+                    wqe_offset -= size_of::<WqeDataSegment>();
+                    wqe_size += size_of::<WqeDataSegment>();
+                }
+            }
+
+            // Possibly overwrite stamping in cacheline with LSO segment
+            // only after making sure all data segments are written.
+            compiler_fence(Ordering::SeqCst);
+            let ctrl: &mut WqeControlSegment = sq.get_in_buffer(control_segment_offset).unwrap();
+            ctrl.vlan_cv_f_ds = u32::try_from(wqe_size / 16).unwrap().into();
+            // Make sure descriptor is fully written before setting ownership
+            // bit (because HW can start executing as soon as we do).
+            compiler_fence(Ordering::SeqCst);
+            let opcode = match curr.op {
+                SendOperation::Send => QueuePairOpcode::Send,
+                SendOperation::RdmaWrite(_) => QueuePairOpcode::RdmaWrite,
+                SendOperation::RdmaRead(_) => QueuePairOpcode::RdmaRead,
+                SendOperation::Atomic { .. } => todo!("atomic"),
+                SendOperation::UD { .. } => todo!("ud"),
+            } as u32;
+            let owner = match sq.head & sq.wqe_cnt {
+                0 => 0,
+                _ => 1 << 31,
+            };
+            ctrl.owner_opcode = (owner | opcode).into();
+            // We can improve latency by not stamping the last send queue WQE
+            // until after ringing the doorbell, so only stamp here if there are
+            // still more WQEs to post.
+            let end_of_headroom = sq.head + sq.spare_wqes.unwrap();
+            sq.stamp_wqe(end_of_headroom, wqe_size)?;
+
+            if curr.send_flags.contains(SendFlags::SIGNALED) {
+                // Completions should only be generated for signaled send WRs.
+                sq.update_meta_for_head(curr.wr_id, chain_size);
+                chain_size = 1;
+            } else {
+                // A signaled should complete all previous the non-signaled send WRs
+                chain_size += 1;
+            }
+
+            sq.head = sq.head.wrapping_add(1);
+        }
+
+        // Make sure that descriptors are written before doorbell.
+        compiler_fence(Ordering::SeqCst);
+        self.context.ring_qp_doorbell(self.number);
+        Ok(())
+    }
+
+    fn modify(&self, attr: &QueuePairAttr, attr_mask: QueuePairAttrMask) -> io::Result<()> {
+        let attr = *attr;
+
+        let req = ModifyQpRequest {
+            context: self.context.context,
+            qp_num: self.number,
+            attr,
+            attr_mask
+        };
+
+        let mut state = self.state.write();
+        uverbs(self.context.device_handle.into(), ModifyQp, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
+
+        if attr_mask.contains(QueuePairAttrMask::IBV_QP_STATE) {
+            *state = attr.qp_state;
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for QueuePair {
+    fn drop(&mut self) {
+        let qp_num = self.number();
+        self.context.destroy(DestroyQp, qp_num).expect("failed to destroy queue pair");
+    }
+}
+
+impl QueuePair {
+    pub(crate) fn create(context: Arc<Mlx4Context>, pd: PdHandle, attr: &QpInitAttr) -> io::Result<QueuePair> {
+        let mut rq = WorkQueue::new_receive_queue(&context, &attr.cap)?;
+        let mut sq = WorkQueue::new_send_queue(&context, &attr.cap, attr.qp_type)?;
+
+        let buf_size: usize = (rq.size() + sq.size()).try_into().unwrap();
+        let buffer = mmap(0, buf_size.next_multiple_of(PAGE_SIZE), MmapFlags::empty()).expect("failed to allocate buffer");
+        buffer.fill(0);
+        let buffer_ptr = buffer.as_mut_ptr();
+
+        // NOTE: ibverbs does not allocate a complete page for one Doorbell, instead it uses a shared allocator
+        //       in the device context for all Doorbells. This Allocator only allocates pages if it ran out of memory
+        let receive_wqe_counter_ptr: *mut ReceiveWQECounter = mmap(0, size_of::<ReceiveWQECounter>(), MmapFlags::empty()).expect("failed to allocate doorbell page").as_mut_ptr().cast();
+        let receive_wqe_counter = unsafe { &*receive_wqe_counter_ptr };
+        receive_wqe_counter.set(0);
+
+        if rq.wqe_shift > sq.wqe_shift {
+            // RQ first
+            let (rq_buf, sq_buf) = buffer.split_at_mut(rq.size().try_into().unwrap());
+            rq.buffer = Some(rq_buf);
+            sq.buffer = Some(sq_buf);
+        } else {
+            // SQ first
+            let (sq_buf, rq_buf) = buffer.split_at_mut(sq.size().try_into().unwrap());
+            rq.buffer = Some(rq_buf);
+            sq.buffer = Some(sq_buf);
+        }
+
+        // Set the SQ ownership bits and stamp the headroom before `CreateQp` hands the buffer
+        // to the HW, so it doesn't process stale WQEs.
+        for i in 0..sq.wqe_cnt {
+            let ctrl: &mut WqeControlSegment = sq.get_in_buffer(sq.wqe_byte_offset(i)).ok_or(Error::new(ErrorKind::Other, "invalid send queue offset"))?;
+            ctrl.owner_opcode = (1u32 << 31).into();
+            ctrl.vlan_cv_f_ds = (1u32 << (sq.wqe_shift - 4)).into();
+            sq.stamp_wqebb(i)?;
+        }
+
+        let req = CreateQpRequest {
+            context: context.context,
+            pd,
+            qp_type: attr.qp_type,
+            send_cq_num: attr.send_cq.number(),
+            recv_cq_num: attr.recv_cq.number(),
+            _sq_sig_all: 0,
+            _reserved: 0,
+            buffer: buffer_ptr,
+            doorbell_ptr: receive_wqe_counter_ptr.cast(),
+            log_sq_bb_count: sq.wqe_cnt.ilog2().try_into().unwrap(),
+            log_sq_stride: sq.wqe_shift.try_into().unwrap(),
+            inline_recv_size: 0,
+            log_rq_wqe_count: rq.wqe_cnt.ilog2().try_into().unwrap(),
+            log_rq_stride: rq.wqe_shift.try_into().unwrap(),
+        };
+
+        let mut resp = MaybeUninit::<CreateQpResponse>::uninit();
+        uverbs(context.device_handle.into(), CreateQp, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        let resp = unsafe { resp.assume_init() };
+
+        Ok(QueuePair {
+            context,
+            qp_type: attr.qp_type,
+            number: resp.qp_num,
+            state: RwLock::new(QueuePairState::Reset),
+            rq: RwLock::new(rq),
+            sq: RwLock::new(sq),
+            receive_wqe_counter: receive_wqe_counter_ptr,
+        })
+    }
+
+    /// Tries to post a send WQE via BlueFlame
+    /// TODO: add support for posting via BlueFlame Registers
+    /// BlueFlame posting should be used, when the HCA is lightly loaded, otherwise use regular posting
+    ///
+    /// - A BlueFlame Page is divided in to equally sized registers
+    /// - Each register into two equally sized buffers, which must be used alternately,
+    ///   e.g. buffer 0 for even and buffer 1 for odd postings
+    /// - If the WQE size is bigger than the BlueFlame buffer size, then  the WQE cannot be posted using BlueFlame.
+    /// - For WQEs with DS=1, BlueFlame is not supported. DS=1 is the case for the NOP or zero length send operations.
+    ///   Alternatively, the driver can pad the WQE with an extra zero length Data segment
+    fn try_post_send_via_blueflame(&self, _wr: &SendWorkRequest) -> bool {
+        false
+    }
+
+    pub fn resolve_completion(&self, wqe_index: u32, is_send: bool) -> Option<u64> {
+        if is_send {
+            self.sq.write().resolve_completion(self.number, wqe_index)
+        } else {
+            self.rq.write().resolve_completion(self.number, wqe_index)
+        }
+    }
+}
+
+#[repr(transparent)]
+struct ReceiveWQECounter(WriteOnly<u32>);
+
+impl Writeable for ReceiveWQECounter {
+    type T = u32;
+    type R = ();
+
+    #[inline]
+    fn set(&self, value: Self::T) {
+        self.0.set(value.to_be())
+    }
+}
+
+#[repr(u32)]
+#[derive(FromRepr)]
+pub(crate) enum QueuePairOpcode {
+    Nop = 0x00,
+    SendInval = 0x01,
+    RdmaWrite = 0x08,
+    RdmaWriteImm = 0x09,
+    Send = 0x0a,
+    SendImm = 0x0b,
+    Lso = 0x0e,
+    RdmaRead = 0x10,
+    AtomicCs = 0x11,
+    AtomicFa = 0x12,
+    MaskedAtomicCs = 0x14,
+    MaskedAtomicFa = 0x15,
+    BindMw = 0x18,
+    Fmr = 0x19,
+    LocalInval = 0x1b,
+    ConfigCmd = 0x1f,
+}
+
+#[derive(FromBytes)]
+#[repr(C)]
+struct WqeDataSegment {
+    byte_count: U32<BigEndian>,
+    lkey: U32<BigEndian>,
+    addr: U64<BigEndian>,
+}
+
+impl WqeDataSegment {
+    /// Copy information from an sge.
+    fn copy_from_sge(&mut self, sge: &ScatterGatherEntry) {
+        // The address stays virtual: the lkey names a memory region whose MPT
+        // start address is virtual as well, and the card resolves the address
+        // through that region's MTT. (Translating to a physical address here
+        // would only be right for the reserved lkey, which bypasses the MPT.)
+        self.lkey.set(sge.lkey);
+        self.addr.set(sge.addr);
+        // sending needs a barrier here before writing the byte_count
+        // field to make sure that all the data is visible before the
+        // byte_count field is set. Otherwise, if the segment begins a new
+        // cacheline, the HCA prefetcher could grab the 64-byte chunk and
+        // get a valid (!= * 0xffffffff) byte count but stale data, and end
+        // up sending the wrong data.
+        compiler_fence(Ordering::SeqCst);
+        self.byte_count.set(sge.length);
+    }
+
+    /// Create a dummy element to be the last in the queue.
+    fn last() -> WqeDataSegment {
+        const INVALID_LKEY: u32 = 0x100;
+        Self {
+            byte_count: 0.into(),
+            lkey: INVALID_LKEY.into(),
+            addr: 0.into(),
+        }
+    }
+}
+
+bitflags! {
+    struct WqeControlSegmentFlags: u32 {
+        const NEC = 1 << 29;
+        const IIP = 1 << 28;
+        const ILP = 1 << 27;
+        const FENCE = 1 << 6;
+        const CQ_UPDATE = 3 << 2;
+        const SOLICITED = 1 << 1;
+        const IP_CSUM = 1 << 4;
+        const TCP_UDP_CSUM = 1 << 5;
+        const INS_CVLAN = 1 << 6;
+        const INS_SVLAN = 1 << 7;
+        const STRONG_ORDER = 1 << 7;
+        const FORCE_LOOPBACK = 1 << 0;
+    }
+}
+
+impl From<SendFlags> for WqeControlSegmentFlags {
+    fn from(flags: SendFlags) -> Self {
+        let mut out = WqeControlSegmentFlags::empty();
+
+        if flags.contains(SendFlags::FENCE) {
+            out |= WqeControlSegmentFlags::FENCE;
+        }
+        if flags.contains(SendFlags::SOLICITED) {
+            out |= WqeControlSegmentFlags::SOLICITED;
+        }
+        // CQ update for signaled WRs
+        if flags.contains(SendFlags::SIGNALED) {
+            out |= WqeControlSegmentFlags::CQ_UPDATE;
+        }
+        out
+    }
+}
+
+#[derive(FromBytes)]
+#[repr(C)]
+struct WqeRemoteAddressSegment {
+    va: U64<BigEndian>,
+    key: U32<BigEndian>,
+    rsvd: u32,
+}
+
+impl From<RemoteMemoryHeader> for WqeRemoteAddressSegment {
+    /// Create a remote address segment from a wr wr.
+    fn from(header: RemoteMemoryHeader) -> Self {
+        Self {
+            va: header.remote_addr.into(),
+            key: header.rkey.into(),
+            rsvd: 0,
+        }
+    }
+}
+
+#[derive(FromBytes)]
+#[repr(C)]
+struct WqeControlSegment {
+    owner_opcode: U32<BigEndian>,
+    /// DS: WQE size in octowords (16-byte units)
+    vlan_cv_f_ds: U32<BigEndian>,
+    flags: U32<BigEndian>,
+    flags2: U32<BigEndian>,
+}
+
+#[derive(FromBytes)]
+#[repr(C)]
+struct WqeDatagramSegmentAv {
+    port_pd: U32<BigEndian>,
+    _reserved1: u8,
+    g_slid: u8,
+    dlid: U16<BigEndian>,
+    _reserved2: u8,
+    gid_index: u8,
+    stat_rate: u8,
+    hop_limit: u8,
+    sl_tclass_flowlabel: u32,
+    dgid: [u32; 4],
+}
+
+
+const ETH_ALEN: usize = 6;
+
+#[derive(FromBytes)]
+#[repr(C)]
+struct WqeDatagramSegment {
+    av: WqeDatagramSegmentAv,
+    dst_qpn: U32<BigEndian>,
+    qkey: U32<BigEndian>,
+    vlan: u16,
+    mac: [u8; ETH_ALEN],
+}
+
+impl From<DatagramHeader> for WqeDatagramSegment {
+    fn from(header: DatagramHeader) -> Self {
+        Self {
+            av: WqeDatagramSegmentAv {
+                port_pd: (header.ah.port << 24).into(),
+                _reserved1: 0,
+                g_slid: header.ah.slid & 0x7f,
+                dlid: header.ah.dlid.into(),
+                _reserved2: 0,
+                gid_index: 0,
+                stat_rate: 0,
+                hop_limit: 0,
+                sl_tclass_flowlabel: 0,
+                dgid: [0; 4],
+            },
+            dst_qpn: header.remote_qpn.into(),
+            qkey: header.remote_qkey.into(),
+            vlan: 0,
+            mac: [0; ETH_ALEN],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WorkQueueMeta {
+    wr_id: u64,
+    chain_size: u32,
+}
+
+#[derive(Debug)]
+enum WorkQueueType {
+    Send,
+    Receive,
+}
+
+#[derive(Debug)]
+struct WorkQueue {
+    wq_type: WorkQueueType,
+    wqe_cnt: u32,
+    max_post: u32,
+    max_gs: u32,
+    buffer: Option<&'static mut [u8]>,
+    wqe_shift: u32,
+    spare_wqes: Option<u32>,
+    /// Head of the ring buffer in WQE (RQ) or WQEBB (SQ)
+    head: u32,
+    /// Tail of the ring buffer in WQE (RQ) or WQEBB (SQ)
+    tail: u32,
+    meta: Vec<Option<WorkQueueMeta>>,
+    /// Set once this queue's tail has been seen to disagree with the card, see
+    /// [`QueuePair::check_wqe_index`]. Only the first disagreement is worth logging.
+    divergence_reported: bool,
+}
+
+const IB_SQ_MIN_WQE_SHIFT: u32 = 6;
+const IB_MAX_HEADROOM: u32 = 2048;
+const IB_SQ_MAX_SPARE: u32 = ib_sq_headroom(IB_SQ_MIN_WQE_SHIFT);
+
+const fn ib_sq_headroom(shift: u32) -> u32 {
+    (IB_MAX_HEADROOM >> shift) + 1
+}
+
+impl WorkQueue {
+    /// Compute the size of the receive queue and return it.
+    fn new_receive_queue(device: &Mlx4Context, ib_caps: &QueuePairCapabilities) -> io::Result<Self> {
+        // check the RQ size before proceeding
+        if ib_caps.max_recv_wr > ((1 << device.log_max_qp_size) - IB_SQ_MAX_SPARE)
+            || ib_caps.max_recv_sge > 1 << device.log_max_rq_sge
+        {
+            return Err(Error::new(ErrorKind::InvalidInput, "RQ size is invalid"));
+        }
+        let mut wqe_cnt = ib_caps.max_recv_wr;
+        if wqe_cnt < 256 {
+            wqe_cnt = 256;
+        }
+        wqe_cnt = wqe_cnt.next_power_of_two();
+        let mut max_gs = ib_caps.max_recv_sge;
+        if max_gs < 1 {
+            max_gs = 1;
+        }
+        max_gs = max_gs.next_power_of_two();
+        let wqe_shift = (max_gs * u32::try_from(size_of::<WqeDataSegment>()).unwrap()).ilog2();
+        let mut max_post = (1 << device.log_max_qp_size) - IB_SQ_MAX_SPARE;
+        if max_post > wqe_cnt {
+            max_post = wqe_cnt;
+        }
+        Ok(Self {
+            wq_type: WorkQueueType::Receive,
+            wqe_cnt,
+            max_post,
+            max_gs,
+            buffer: None,
+            wqe_shift,
+            spare_wqes: None,
+            head: 0,
+            tail: 0,
+            meta: vec![None; wqe_cnt as usize],
+            divergence_reported: false,
+        })
+    }
+
+    /// Compute the size of the receive queue and return it.
+    fn new_send_queue(device: &Mlx4Context, ib_caps: &QueuePairCapabilities, qp_type: QueuePairType) -> io::Result<Self> {
+        // check the SQ size before proceeding
+        if ib_caps.max_send_wr > ((1 << device.log_max_qp_size) - IB_SQ_MAX_SPARE)
+            || ib_caps.max_send_sge > 1 << device.log_max_sq_sge
+        {
+            return Err(Error::new(ErrorKind::InvalidInput, "SQ size is invalid"));
+        }
+        let size: u16 = (ib_caps.max_send_sge * u32::try_from(size_of::<WqeDataSegment>()).unwrap() + send_wqe_overhead(qp_type)).try_into().unwrap();
+        if size > device.max_wqe_sq_size {
+            return Err(Error::new(ErrorKind::InvalidInput, "SQ size is invalid"));
+        }
+        let wqe_shift = size.next_power_of_two().ilog2();
+        // We need to leave 2 KB + 1 WR of headroom in the SQ to allow HW to prefetch.
+        let spare_wqes = ib_sq_headroom(wqe_shift);
+        let mut wqe_cnt = ib_caps.max_send_wr;
+        if wqe_cnt < 256 {
+            wqe_cnt = 256;
+        }
+        wqe_cnt = (wqe_cnt + spare_wqes).next_power_of_two();
+        let max_gs: u32 = (u32::from(device.max_wqe_sq_size.min((1u32 << wqe_shift).try_into().unwrap())) - send_wqe_overhead(qp_type)) / u32::try_from(size_of::<WqeDataSegment>()).unwrap();
+        let max_post = wqe_cnt - spare_wqes;
+        Ok(Self {
+            wq_type: WorkQueueType::Send,
+            wqe_cnt,
+            max_post,
+            max_gs,
+            buffer: None,
+            wqe_shift,
+            spare_wqes: Some(spare_wqes),
+            head: 0,
+            tail: 0,
+            meta: vec![None; wqe_cnt as usize],
+            divergence_reported: false,
+        })
+    }
+
+    /// Get the size.
+    fn size(&self) -> u32 {
+        self.wqe_cnt << self.wqe_shift
+    }
+
+    #[inline(always)]
+    /// Update the metadata for head of the buffer
+    /// - wr_id: can be used by the user to identify the WR corresponding to the CQ
+    /// - chain_size: is used by poll_one to advance the tail of the appropriate buffer
+    fn update_meta_for_head(&mut self, wr_id: u64, chain_size: u32) {
+        debug_assert_eq!(self.meta.len(), self.wqe_cnt as usize);
+        let idx = self.head & (self.wqe_cnt - 1);
+        self.meta[idx as usize] = Some(WorkQueueMeta { wr_id, chain_size });
+    }
+
+    fn get_in_buffer<T: FromBytes>(&self, byte_offset: usize) -> Option<&mut T> {
+        let buffer = self.buffer.as_ref()?;
+        if buffer.len() < byte_offset + size_of::<T>() {
+            return None;
+        }
+        Some(unsafe { &mut *(buffer.as_ptr().add(byte_offset) as *mut T) })
+    }
+
+    fn wqe_byte_offset(&self, index: u32) -> usize {
+        ((index & self.wqe_cnt - 1) << self.wqe_shift) as usize
+    }
+
+    /// Get the `sge_index`th data segment of the WQE at `index`.
+    ///
+    /// A receive WQE holds `max_gs` data segments, so unlike [`Self::get_element`] this
+    /// addresses within a single WQE — adding the segment index to the WQE index would land in
+    /// the following WQE instead.
+    fn get_data_segment(
+        &self, index: u32, sge_index: u32,
+    ) -> Option<&mut WqeDataSegment> {
+        let offset = self.wqe_byte_offset(index) + sge_index as usize * size_of::<WqeDataSegment>();
+        self.get_in_buffer::<WqeDataSegment>(offset)
+    }
+
+    fn stamp_wqe(&mut self, index: u32, size: usize) -> io::Result<()> {
+        // RPM: 10.2.1.1 SQ Headroom Invalidation
+        // TODO: When the SW uses a WQE size smaller than or equal to the WQEBB, it is possible to do the following optimizations:
+        // - The SW can skip the initialization of the first 64 bytes of each WQE
+        // - For the invalid WQE indication, the SW can use 0xFFFFFFFF for every 64 byte block following the first, except for the first 64 bytes of each WQE
+
+        let wqebb_count = size.div_ceil(1 << self.wqe_shift) as u32;
+        for i in 0..wqebb_count {
+            self.stamp_wqebb(index + i)?
+        }
+        Ok(())
+    }
+
+    /// Stamp this WQEBB so that it is invalid if prefetched by marking the
+    /// first four bytes of every 64 byte chunk with 0xffffffff or 0x7fffffff
+    /// debending on the index, it flips every wqe_cnt
+    fn stamp_wqebb(&mut self, index: u32) -> io::Result<()> {
+        let invalid_owner_bit = (index >> self.wqe_cnt.next_power_of_two().trailing_zeros()) % 2 == 0;
+        let start = self.wqe_byte_offset(index);
+        let end = start + (1 << self.wqe_shift);
+        let buffer = self.buffer.as_mut().ok_or(Error::new(ErrorKind::InvalidData, "queue pair has no buffer"))?;
+        for i in (start..end).step_by(64) {
+            buffer[i] = 0x7F | (invalid_owner_bit as u8) << 7;
+            buffer[i + 1] = 0xFF;
+            buffer[i + 2] = 0xFF;
+            buffer[i + 3] = 0xFF;
+        }
+        Ok(())
+    }
+
+    /// Check if this queue would overflow when adding a work requests.
+    fn would_overflow(&mut self) -> bool {
+        self.head - self.tail + 1 >= self.max_post
+    }
+
+    /// Check the work queue element index the card reports against the one we expect next.
+    ///
+    /// Unlike Linux, the tail advances by the recorded chain size rather than the card's index,
+    /// so a mismatch means lost or duplicate completions. Only the first one per queue is logged.
+    pub(super) fn check_wqe_index(&mut self, qp_num: u32, wqe_index: u32) {
+        if self.divergence_reported {
+            return;
+        }
+        let expected = self.tail & (self.wqe_cnt - 1);
+        let reported = wqe_index & (self.wqe_cnt - 1);
+        if expected != reported {
+            self.divergence_reported = true;
+            error!(
+                "QP {qp_num}: card reports a {:?} completion for WQE {reported}, driver expected {expected} (head {}, tail {})",
+                self.wq_type,
+                self.head,
+                self.tail,
+            );
+        }
+    }
+
+    fn resolve_completion(&mut self, qp_num: u32, wqe_index: u32) -> Option<u64> {
+        self.check_wqe_index(qp_num, wqe_index);
+        let idx = (wqe_index & (self.wqe_cnt - 1)) as usize;
+        let meta = self.meta[idx].take()?;
+        self.tail += meta.chain_size;
+        Some(meta.wr_id)
+    }
+}
+
+fn send_wqe_overhead(qp_type: QueuePairType) -> u32 {
+    // UD WQEs must have a datagram segment.
+    // RC and UC WQEs might have a remote address segment.
+    // MLX WQEs need two extra inline data segments (for the UD header and space
+    // for the ICRC).
+    match qp_type {
+        QueuePairType::UD => size_of::<WqeControlSegment>() + size_of::<WqeDatagramSegment>(),
+        QueuePairType::UC => size_of::<WqeControlSegment>() + size_of::<WqeRemoteAddressSegment>(),
+        QueuePairType::RC => {
+            size_of::<WqeControlSegment>() /* + size_of::<WqeMaskedAtomicSegment>() */
+                + size_of::<WqeRemoteAddressSegment>()
+        }
+        #[allow(unreachable_patterns)]
+        _ => size_of::<WqeControlSegment>(),
+    }
+        .try_into()
+        .unwrap()
+}

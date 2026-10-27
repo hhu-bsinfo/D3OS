@@ -82,6 +82,8 @@ pub enum SystemCall {
     IpcSend,
     IpcReceiveBlocking,
     IpcDelete,
+    Uverb,
+    GetTimeInUs,
 }
 
 pub const NUM_SYSCALLS: usize = mem::variant_count::<SystemCall>() as usize;

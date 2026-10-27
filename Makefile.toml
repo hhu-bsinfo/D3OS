@@ -58,6 +58,9 @@ args = [
     "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797,hostfwd=tcp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
+    # Infiniband configuration
+    #"-device vfio-pci,host=${CARGO_INFINIBAND_BUS_ID}",
+
     # VirtIO Devices
     "-display", "${QEMU_DISPLAY}",
     "-device", "${QEMU_VIRTIO_DEVICE}", # virtio-gpu-pci, virtio-vga
@@ -141,9 +144,12 @@ args = [
     "-nic", "model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797,hostfwd=tcp::1797-:1797",
     "-object", "filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
 
+    # Infiniband configuration
+    #"-device vfio-pci,host=${CARGO_INFINIBAND_BUS_ID}",
+
     # VirtIO Devices
-    "-display", "${QEMU_DISPLAY},gl=on",
-    "-device", "virtio-vga-gl", # virtio-gpu-pci, virtio-vga
+    "-display", "${QEMU_DISPLAY}",
+    "-device", "${QEMU_VIRTIO_DEVICE}", # virtio-gpu-pci, virtio-vga
     "-device", "virtio-rng-pci",
     #"-device", "virtio-keyboard-pci",
     #"-device", "virtio-mouse-pci",

@@ -12,7 +12,7 @@ use crate::process::core_local_storage::{init_gdt_for_this_core, install_gs_base
 use crate::{consts, per_cpu_init};
 use crate::device::pit::Timer;
 use crate::device::ps2::{Keyboard, Mouse};
-use crate::device::{cpu, virtio};
+use crate::device::{cpu, infiniband, virtio};
 use crate::device::serial::SerialPort;
 use crate::interrupt::interrupt_dispatcher;
 use crate::memory::nvmem::Nfit;
@@ -22,8 +22,8 @@ use crate::memory::{dram, nvmem, PAGE_SIZE};
 use crate::process::thread::Thread;
 use crate::syscall::{sys_vmem, syscall_dispatcher};
 use crate::{
-    acpi_tables, allocator, apic, gdt, get_initrd_frames,
-    efi_services_available, init_acpi_tables, init_apic, init_boot_info,
+    acpi_tables, allocator, apic, calibrate, efi_services_available, gdt,
+    get_initrd_frames, init_acpi_tables, init_apic, init_boot_info,
     init_cpu_info, init_initrd, init_lfb, init_lfb_info, init_pci,
     init_serial_port, init_tty, keyboard, logger, mouse,
     process_manager, serial_port, timer, tss,
@@ -47,7 +47,7 @@ use uefi_raw::table::boot::MemoryType;
 use uefi_raw::table::system::SystemTable;
 use x86_64::PrivilegeLevel::Ring0;
 use x86_64::instructions::interrupts;
-use x86_64::instructions::segmentation::{CS, DS, ES, FS, GS, SS, Segment};
+use x86_64::instructions::segmentation::{Segment, CS, DS, ES, FS, GS, SS};
 use x86_64::instructions::tables::load_tss;
 use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr4, Cr4Flags};
 use x86_64::registers::segmentation::SegmentSelector;
@@ -97,7 +97,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // And also the AP boot Region
     let kernel_image_region = kernel_image_region();
     dram::insert_reserved(kernel_image_region);
-    info!("kernel image region: [{:#x} - {:#x}], #frames: [{}]", 
+    info!("kernel image region: [{:#x} - {:#x}], #frames: [{}]",
         kernel_image_region.start.start_address().as_u64(), 
         kernel_image_region.end.start_address().as_u64(),
         kernel_image_region.len()
@@ -105,8 +105,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     let ap_boot_region = ap_boot_region();
     dram::insert_reserved(ap_boot_region);
-    info!("AP boot region:      [{:#x} - {:#x}], #frames: [{}]", 
-        ap_boot_region.start.start_address().as_u64(), 
+    info!("AP boot region:      [{:#x} - {:#x}], #frames: [{}]",
+        ap_boot_region.start.start_address().as_u64(),
         ap_boot_region.end.start_address().as_u64(),
         ap_boot_region.len()
     );
@@ -290,6 +290,12 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     info!("Enabling interrupts");
     interrupts::enable();
 
+    // Calibrate the TSC-to-microsecond conversion factor used by `get_time_in_us()` /
+    // the `GetTimeInUs` syscall. Needs the timer interrupt actively ticking, so this must run
+    // after interrupts are enabled.
+    info!("Calibrating TSC");
+    calibrate(100);
+
     // Initialize EFI runtime service (if available and not done already during memory initialization)
     if uefi::table::system_table_raw().is_none() {
         match multiboot.efi_sdt64_tag() {
@@ -336,6 +342,8 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize network stack
     network::init();
+
+    infiniband::init();
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
