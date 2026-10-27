@@ -14,6 +14,7 @@ bench = false
 [dependencies]
 # Local dependencies
 terminal = { path = "../../library/terminal" }
+logger = { path = "../../library/logger" }
 runtime = { path = "../../library/runtime" }
 concurrent = { path = "../../library/concurrent" }
 ibverbs = { path = "../../library/ibverbs" }

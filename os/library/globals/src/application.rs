@@ -10,7 +10,7 @@ pub struct Application {
 /// Add new applications here.
 ///
 /// Author: Sebastian Keller
-pub const APPLICATION_REGISTRY: &'static [Application] = &[
+pub const APPLICATION_REGISTRY: &[Application] = &[
     //////////////////////
     // Debug
     Application {

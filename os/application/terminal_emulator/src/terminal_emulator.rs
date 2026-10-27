@@ -19,7 +19,7 @@ use graphic::lfb::map_framebuffer;
 use operator::Operator;
 use stream::OutputStream;
 use terminal::lfb_terminal::LFBTerminal;
-use terminal_lib::init_logger;
+use logger::init_logger;
 use util::banner::create_banner_string;
 use worker::cursor::Cursor;
 use worker::input_observer::InputObserver;
@@ -59,7 +59,7 @@ impl TerminalEmulator {
             output_observer: OutputObserver::new(terminal.clone()),
             cursor: Cursor::new(terminal.clone()),
             operator: Operator::new(),
-            event_handler: event_handler,
+            event_handler,
             status_bar: StatusBar::new(terminal),
         }
     }

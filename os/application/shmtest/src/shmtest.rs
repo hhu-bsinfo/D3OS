@@ -11,10 +11,10 @@
 
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec};
-use concurrent::{process, shm, thread};
-#[allow(unused_imports)]
+#[allow(unused_imports, reason = "contains global_allocator")]
 use runtime::*;
+
+use concurrent::{shm, thread};
 use terminal::println;
 
 fn reader_thread() {

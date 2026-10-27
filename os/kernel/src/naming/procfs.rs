@@ -14,6 +14,7 @@
 
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use uuid::Uuid;
 use core::result::Result;
 
@@ -82,38 +83,39 @@ impl DirectoryObject for ProcDir {
             Err(Errno::ENOENT) // Return error if the file is not found
         }
     }
+    
+    fn list(&self) -> Result<Vec<(NamedObject, String)>, Errno> {
+
+        let mut processes = Vec::new();
+
+        // static processes
+        processes.push((NamedObject::FileObject(Arc::new(ProcPsFile {})), "ps".to_string()));
+        processes.push((NamedObject::FileObject(Arc::new(ProcTicksFile {})), "ticks".to_string()));
+        processes.push((NamedObject::FileObject(Arc::new(ProcMemInfoFile {})), "meminfo".to_string()));
+
+        // running processes
+        let pids = process_manager().read().active_process_ids();
+        for pid in pids {
+            processes.push((NamedObject::DirectoryObject(Arc::new(ProcPidDir { pid })), pid.to_string()));
+        }
+
+        Ok(processes)
+    }
 
     fn readdir(&self, index: usize) -> Result<Option<DirEntry>, Errno> {
 
-        // collect the possible Files
-        const STATIC: &[(&str, FileType)] = &[
-            ("ps", FileType::Regular),
-            ("ticks", FileType::Regular),
-            ("meminfo", FileType::Regular),
-        ];
+        let mut all_processes = self.list()?;
 
-        // first return all Files
-        if index < STATIC.len() {
-            let (name, file_type) = STATIC[index];
-            return Ok(Some(DirEntry {
-                file_type,
-                name: name.to_string(),
-            }));
+        if index < 0 || index >= all_processes.len() {
+            return Err(Errno::EEXIST);
         }
 
-        // stop creating Directories if all pids are handled
-        let pids =  process_manager().read().active_process_ids();
-        let pid_index = index - STATIC.len();
-
-        if pid_index >= pids.len() {
-            return Ok(None);
-        }
-        
-        // create a Directory for each Process
-        Ok(Some(DirEntry {
-                file_type: FileType::Directory,
-                name: pids[pid_index].to_string(),
-            }))
+        let process = all_processes.swap_remove(index);
+        let file_type = match process.1.as_str() {
+            "ps" | "ticks" | "meminfo" => FileType::Regular,
+            _ => FileType::Directory,
+        };
+        Ok(Some(DirEntry { file_type, name: process.1 }))
     }
 
     fn create_file(&self, _name: &str, _mode: Mode) -> Result<NamedObject, Errno> {
@@ -129,6 +131,18 @@ impl DirectoryObject for ProcDir {
     }
 
     fn stat(&self) -> Result<Stat, Errno> {
+        Err(Errno::ENOTSUP)
+    }
+    
+    fn delete_file(&self, _name: &str) -> Result<(), Errno> {
+        Err(Errno::ENOTSUP)
+    }
+    
+    fn delete_dir(&self, _name: &str) -> Result<(), Errno> {
+        Err(Errno::ENOTSUP)
+    }
+    
+    fn delete_pipe(&self, _name: &str) -> Result<(), Errno> {
         Err(Errno::ENOTSUP)
     }
 }
@@ -147,14 +161,18 @@ pub struct ProcPidDir {
 }
 
 impl DirectoryObject for ProcPidDir {
-    fn lookup(&self, _name: &str) -> Result<NamedObject, Errno> {
-        match _name {
+    fn lookup(&self, name: &str) -> Result<NamedObject, Errno> {
+        match name {
             "status" => Ok(NamedObject::FileObject(
                 Arc::new(ProcStatusFile { pid: self.pid })
             )),
             _ => Err(Errno::ENOENT),
         }
         
+    }
+    
+    fn list(&self) -> Result<Vec<(NamedObject, String)>, Errno> {
+        todo!()
     }
 
     fn readdir(&self, index: usize) -> Result<Option<DirEntry>, Errno> {
@@ -181,6 +199,18 @@ impl DirectoryObject for ProcPidDir {
     }
 
     fn stat(&self) -> Result<Stat, Errno> {
+        Err(Errno::ENOTSUP)
+    }
+    
+    fn delete_file(&self, _name: &str) -> Result<(), Errno> {
+        Err(Errno::ENOTSUP)
+    }
+    
+    fn delete_dir(&self, _name: &str) -> Result<(), Errno> {
+        Err(Errno::ENOTSUP)
+    }
+    
+    fn delete_pipe(&self, _name: &str) -> Result<(), Errno> {
         Err(Errno::ENOTSUP)
     }
 }

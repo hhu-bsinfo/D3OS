@@ -14,6 +14,8 @@ use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 
 use crate::process::core_local_storage::init_tss_cls;
+use crate::syscall::sys_concurrent::sys_thread_block;
+use crate::syscall::sys_ipc::{sys_ipc_receive_blocking, sys_ipc_register, sys_ipc_delete, sys_ipc_send};
 use log::info;
 use x86_64::registers::rflags::RFlags;
 
@@ -21,9 +23,9 @@ use crate::syscall::sys_uverbs::sys_uverbs_ctl;
 
 use super::sys_concurrent::{
     sys_process_count, sys_process_execute_binary, sys_process_exit,
-    sys_process_id, sys_thread_count, sys_process_status,
-    sys_thread_create, sys_thread_exit, sys_thread_id, sys_thread_join,
-    sys_thread_kill, sys_thread_sleep, sys_thread_switch,
+    sys_process_id, sys_thread_count, sys_process_status, 
+    sys_thread_create, sys_thread_exit, sys_thread_id, sys_thread_join, 
+    sys_thread_kill, sys_thread_sleep, sys_thread_switch, sys_core_id,
 };
 use super::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
 use super::sys_input::{sys_read_keyboard, sys_read_mouse};
@@ -78,8 +80,7 @@ pub fn init() {
     // The CPU clears every flag that is set in the SFMask register
     SFMask::write(RFlags::INTERRUPT_FLAG);
 
-    // Initialize TSS rsp0 in core local storage (accessible via 'swapgs')
-    //let mut core_local_storage = core_local_storage().lock();
+    // Initialize TSS rsp0 in core local storage (accessible via gs)
     init_tss_cls();
 }
 
@@ -111,10 +112,12 @@ impl SyscallTable {
                 sys_thread_id as *const _,
                 sys_thread_switch as *const _,
                 sys_thread_sleep as *const _,
+                sys_thread_block as *const _,
                 sys_thread_join as *const _,
                 sys_thread_exit as *const _,
                 sys_thread_kill as *const _,
                 sys_thread_count as *const _,
+                sys_core_id as *const _,
                 sys_get_system_time as *const _,
                 sys_get_date as *const _,
                 sys_set_date as *const _,
@@ -149,6 +152,10 @@ impl SyscallTable {
                 sys_shm_attach as *const _,
                 sys_shm_detach as *const _,
                 sys_shm_unlink as *const _,
+                sys_ipc_register as *const _,
+                sys_ipc_send as *const _,
+                sys_ipc_receive_blocking as *const _,
+                sys_ipc_delete as *const _,
                 sys_uverbs_ctl as *const _,
                 sys_get_time_us as *const _,
             ],
@@ -177,7 +184,6 @@ unsafe extern "sysv64" fn syscall_handler() {
     "mov rsp, gs:[{CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX}]", // Load pointer to rsp0 entry of tss from core local storage
     "mov rsp, [rsp]", // Dereference rsp0 pointer to switch to kernel stack
     "push gs:[{CORE_LOCAL_STORAGE_USER_RSP_INDEX}]", // Store user rip on kernel stack (core local storage might be overwritten, when a thread switch occurs during system call execution)
-    "swapgs", // Restore gs base
 
     // Store registers according to System V AMD64 ABI
     // (except rax, which is used for system call ID and return value)
@@ -220,6 +226,7 @@ unsafe extern "sysv64" fn syscall_handler() {
     "pop rsp", // Restore rsp from kernel stack
 
     // Return to Ring 3
+    "swapgs", // Restore user gs base
     // Interrupts will be enabled automatically, because rflags is restored from r11
     "sysretq",
     NUM_SYSCALLS = const NUM_SYSCALLS,

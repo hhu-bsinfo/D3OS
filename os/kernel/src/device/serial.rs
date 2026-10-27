@@ -2,10 +2,10 @@ use alloc::boxed::Box;
 use crate::device::serial::ComPort::{Com1, Com2, Com3, Com4};
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::process::core_local_storage::scheduler;
 use stream::{DecodedInputStream, OutputStream};
 use alloc::string::String;
 use alloc::sync::Arc;
+use core::hint::spin_loop;
 use core::ptr;
 use bitflags::bitflags;
 use log::info;
@@ -13,7 +13,7 @@ use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
 use nolock::queues::{mpmc, DequeueError};
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
-use crate::{allocator, apic, interrupt_dispatcher};
+use crate::{apic, interrupt_dispatcher};
 
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -240,10 +240,11 @@ impl Transceiver {
 
     fn write(&self, byte: u8) {
         let mut buffer = self.transmit_buffer.lock();
+        // busy-wait until the controller is ready
+        // we could yield execution here, but we don't know if the scheduler is ready
+        // and calling into the scheduler when it isn't ready causes a reset, unfortunately
         while !self.writable() {
-            if allocator().is_initialized() {
-                scheduler().switch_thread_no_interrupt();
-            }
+            spin_loop();
         }
 
         unsafe { buffer.write(byte) };

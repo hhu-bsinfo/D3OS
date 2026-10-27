@@ -18,6 +18,7 @@
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use d3os::copy_from_slice_sizechecked;
 use log::{info, warn};
 use spin::{Mutex, Once, RwLock};
 
@@ -31,6 +32,7 @@ use super::procfs;
 use naming::shared_types::{OpenOptions, RawDirent, SeekOrigin};
 use syscall::return_vals::Errno;
 use crate::initrd;
+use crate::naming::servicefs;
 use crate::naming::stat::MODE_DIR;
 
 // root of naming service
@@ -54,6 +56,12 @@ pub fn init() {
                 Err(_) => panic!("Failed to create proc directory in tmpfs"),
             };
 
+        // create the svc directory
+        let _svc_dir = match tmpfs.root_dir().create_dir("svc", Mode::new(MODE_DIR)) {
+            Ok(svc_dir) => svc_dir,
+            Err(_) => panic!("Failed to create svc directory in tmpfs"),
+        };
+
         for entry in initrd().entries() {
             let res = tmpfs.create_static_file(entry.filename().as_str().unwrap(), entry.data());
             if res.is_err() {
@@ -64,10 +72,15 @@ pub fn init() {
         Arc::new(tmpfs)
     });
 
-    // mount the Path '/proc' to the FileSystem ProcFS
     MOUNTS.call_once(|| {
         let mut mount = MountTable::new();
+
+        // mount the Path '/proc' to the FileSystem ProcFS
         mount.mount("/proc", Arc::new(procfs::ProcFs::new()));
+
+        // mount the Path '/svc' to the FileSystem ServiceFs
+        mount.mount("/svc", Arc::new(servicefs::ServiceFs::new()));
+
         RwLock::new(mount)
     });
 
@@ -122,6 +135,16 @@ pub fn seek(object_handle: usize, offset: isize, origin: SeekOrigin) -> Result<u
 /// Returns `Ok(0)` or `Err(errno)`
 pub fn close(object_handle: usize) -> Result<usize, Errno> {
     open_objects::close(object_handle)
+}
+
+/// Delete the named object referenced by `object_handle`.
+pub fn delete(object_handle: usize) -> Result<usize, Errno> {
+    open_objects::delete(object_handle)
+}
+
+/// List named objects in the provided directory.
+pub fn list_dir(dir_handle: usize) -> Result<Vec<(super::traits::NamedObject, String)>, Errno> {
+    open_objects::list_dir(dir_handle)
 }
 
 /// Create a directory for the given `path`. \
@@ -207,8 +230,7 @@ pub fn readdir(dir_handle: usize, dentry: Option<&mut RawDirent>) -> Result<usiz
                     let mut de: RawDirent = RawDirent::new();
                     de.d_type = dir_entry_data.file_type as usize;
                     let name_bytes: &[u8] = dir_entry_data.name.as_bytes();
-                    let len = name_bytes.len().min(255); // Avoid overflow
-                    de.d_name[..len].copy_from_slice(&name_bytes[..len]);
+                    copy_from_slice_sizechecked!(de.d_name, name_bytes, 255);
 
                     // Write the Dirent structure to the provided dentry pointer
                     if let Some(dentry) = dentry {

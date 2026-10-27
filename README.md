@@ -18,7 +18,7 @@
 
 For building D3OS, the following packages for Debian/Ubuntu based systems (or their equivalent packages on other distributions) need to be installed:
 ```bash
-apt install rustup build-essential nasm dosfstools wget qemu-system-x86
+apt install rustup build-essential nasm dosfstools fdisk wget qemu-system-x86
 ```
 
 This has been tested on Ubuntu 24.04.
@@ -92,6 +92,17 @@ For further commands check [GDB Quick Reference](docs/gdb-commands.pdf).
 
 The repository contains debug configurations for RustRover, Visual Studio Code and Zed.
 To debug userspace applications, you might need to modify them.
+
+#### Visual Studio Code
+
+A rustgdb launch configuration for visual studio code is provided.
+
+To debug a userspace application, you need to adjust the .vscode/launch.json file. Here, the line 
+```bash
+{"text": "add-symbol-file ${workspaceRoot}/loader/initrd/bin/hello"}
+```
+needs to be adjusted for the specific application, by changing 'hello' to the desired application name.
+
 
 ## Creating a bootable USB stick
 

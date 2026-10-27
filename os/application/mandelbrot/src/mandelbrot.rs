@@ -4,7 +4,7 @@ extern crate alloc;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use concurrent::core::current_core_id;
 use concurrent::thread;
-use graphic::{map_framebuffer, FramebufferInfo};
+use graphic::lfb::{map_framebuffer, FramebufferInfo};
 use terminal::{print, println};
 use ::time::systime;
 use spin::Once;

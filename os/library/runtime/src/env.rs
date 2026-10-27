@@ -11,6 +11,8 @@ const USER_SPACE_START: usize = 0x10000000000;
 const USER_SPACE_CODE_START: usize = USER_SPACE_START;
 const USER_SPACE_ENV_START: usize = USER_SPACE_CODE_START + 0x40000000;
 const USER_SPACE_ARG_START: usize = USER_SPACE_ENV_START;
+pub(crate) const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
+pub(crate) const USER_SPACE_MAILBOX_SIZE: usize = 0x40000000;
 
 pub(crate) const ARGC_PTR: *const usize = USER_SPACE_ARG_START as *const usize;
 pub(crate) const ARGV_PTR: *const *const u8 = (USER_SPACE_ARG_START + size_of::<*const usize>()) as *const *const u8;

@@ -1,3 +1,5 @@
+//! This module contains all network-related system calls.
+
 use core::str::FromStr;
 
 use alloc::{ffi::CString, string::ToString};
@@ -7,7 +9,7 @@ use syscall::return_vals::Errno;
 
 use crate::{network::{accept_tcp, bind_icmp, bind_tcp, bind_udp, close_socket, connect_tcp, get_ip_addresses, open_icmp, open_tcp, open_udp, receive_datagram, receive_icmp, receive_tcp, send_datagram, send_icmp, send_tcp, can_recv, can_send, SocketType}, syscall::sys_naming::ptr_to_string};
 
-/// This module contains all network-related system calls.
+// This module contains all network-related system calls.
 
 pub extern "sysv64" fn sys_sock_open(protocol: SocketType) -> isize {
     info!("opening a {protocol:?} socket");

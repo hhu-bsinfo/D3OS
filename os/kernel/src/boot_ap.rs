@@ -1,8 +1,8 @@
 use log::info;
-use x86_64::registers::control::{Cr4, Cr4Flags};
-use crate::{APIC, apic, process_manager};
+use crate::{APIC, apic};
 use crate::device::apic::Apic;
-use crate::process::core_local_storage::{cls, cls_mut, init_gdt_for_this_core, install_gs_base, scheduler_start, scheduler};
+use crate::device::cpu;
+use crate::process::core_local_storage::{cls, init_gdt_for_this_core, install_gs_base, scheduler_start, scheduler};
 use crate::process::{scheduler};
 use crate::syscall::syscall_dispatcher;
 
@@ -11,9 +11,8 @@ use crate::syscall::syscall_dispatcher;
 pub extern "C" fn startup_ap(cpu_id: u32) {
     info!("    Application processor executing 'startup_ap'");
 
-    unsafe {
-        Cr4::update(|flags| flags.insert(Cr4Flags::FSGSBASE));
-    }
+    cpu::enable_simd();
+    cpu::enable_fsgsbase();
 
     // installs the cpu_id in a cpuLocal struct on the GS segment
     install_gs_base(cpu_id);
@@ -24,7 +23,7 @@ pub extern "C" fn startup_ap(cpu_id: u32) {
 
     info!("Initialized GDT for CPU {}", cpu_id);
 
-    cls_mut().init_apic(false);
+    cls().init_apic(false);
 
     info!("Initialized apic for CPU {}", cpu_id);
 
@@ -41,7 +40,7 @@ pub extern "C" fn startup_ap(cpu_id: u32) {
     apic().start_timer(10);
     scheduler_start();
 
-    loop {}
+    unreachable!()
 }
 
 /// Thread for testing multicore scheduling

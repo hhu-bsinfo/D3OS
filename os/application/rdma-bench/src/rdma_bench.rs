@@ -16,7 +16,7 @@ use cli::Cli;
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    terminal::init_logger();
+    logger::init_logger();
 
     let cli = match Cli::parse() {
         Ok(cli) => cli,

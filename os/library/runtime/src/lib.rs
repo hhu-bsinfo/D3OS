@@ -36,6 +36,9 @@ fn panic(info: &PanicInfo) -> ! {
 
 #[unsafe(no_mangle)]
 extern "sysv64" fn entry() {
+    mmap(env::USER_SPACE_MAILBOX_START, env::USER_SPACE_MAILBOX_SIZE, MmapFlags::empty())
+        .expect("Could not create user mailbox.");
+
     let heap = mmap(env::HEAP_START, env::HEAP_SIZE, MmapFlags::empty()).expect("Could not create user heap.");
 
     unsafe {

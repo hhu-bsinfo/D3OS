@@ -15,7 +15,7 @@ use uuid::{ContextV7, Timestamp, Uuid};
 use core::ops::Deref;
 use core::sync::atomic::Ordering::Relaxed;
 use crate::process::core_local_storage::scheduler;
-use crate::{network, now, process_manager, timer};
+use crate::{now, process_manager, timer};
 use crate::memory::pages::Paging;
 use crate::memory::vmm::VirtualAddressSpace;
 use core::sync::atomic::AtomicU64;
@@ -114,10 +114,7 @@ impl Process {
 
     /// Return the ids of all threads of the process
     pub fn thread_ids(&self) -> Vec<usize> {
-        scheduler().active_thread_ids().iter()
-            .filter(|&&thread_id| {
-                scheduler().thread(thread_id).is_some_and(|thread| thread.process().id() == self.id)
-            }).copied().collect()
+        scheduler().active_thread_ids().iter().filter(|t| t.0 == self.id()).map(|t| t.1).collect()
     }
 
     pub fn kill_all_threads_but_current(&self) {
@@ -161,10 +158,11 @@ impl core::fmt::Debug for Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
+        log::debug!("Dropping process [{}]", self.id());
         // Runs before the fields are dropped, so the address space is still intact here.
         for handler in CLEANUP_HANDLERS.read().iter() {
             handler(self);
         }
-        network::close_sockets_for_process(self)
+        crate::syscall::sys_ipc::remove_endpoints_for_process(&self.id());
     }
 }

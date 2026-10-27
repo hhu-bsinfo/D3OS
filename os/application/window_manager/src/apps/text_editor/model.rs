@@ -78,12 +78,12 @@ impl<'b, 'v, 'r> Document<'b, 'v> {
         config: TextEditorConfig<'v>,
     ) -> Document<'b, 'v> {
         Document {
-            path: path,
-            text_buffer: text_buffer,
+            path,
+            text_buffer,
             copy_buffer: String::new(),
             caret: Caret::Normal(0),
             edit_mode: EditMode::Insert,
-            config: config,
+            config,
             current_view: config.simple_view,
             scroll_offset: 0,
         }

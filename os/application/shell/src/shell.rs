@@ -13,13 +13,14 @@ mod service;
 mod token;
 
 use alloc::{boxed::Box, vec::Vec};
+use logger::init_logger;
 use runtime::env::Args;
 #[allow(unused_imports)]
 use runtime::*;
 use service::{
     command_line::CommandLineService, executor::ExecutorService, history::HistoryService, writer::WriterService,
 };
-use terminal::{init_logger, println, read::read_fluid};
+use terminal::{println, read::read_fluid};
 
 use crate::{
     context::{

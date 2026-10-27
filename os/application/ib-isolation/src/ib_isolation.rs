@@ -99,7 +99,7 @@ struct SharedState {
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    terminal::init_logger();
+    logger::init_logger();
 
     // argv[0] is the binary name, argv[1..] are the arguments we were spawned with.
     let is_attacker = env::args().any(|arg| arg == "attack");

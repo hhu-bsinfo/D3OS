@@ -8,20 +8,13 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 #![feature(allocator_api)]
-#![feature(alloc_layout_extra)]
-#![feature(fmt_internals)]
 #![feature(abi_x86_interrupt)]
+#![feature(cell_get_cloned)]
 #![feature(map_try_insert)]
-#![feature(str_split_remainder)]
-#![allow(internal_features)]
 #![no_std]
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
 #![feature(associated_type_defaults)]
-
-// For ipi.rs volatile_load and volatile_store
-#![feature(core_intrinsics)]
-#![feature(push_mut)]
 
 use crate::device::apic::Apic;
 use crate::device::cpu::Cpu;
@@ -46,12 +39,12 @@ use alloc::format;
 use alloc::vec::Vec;
 use chrono::{DateTime, FixedOffset, TimeDelta};
 use graphic::color::{BLUE, WHITE};
-use ::log::{error, Level, Log, Record};
+use d3os::const_string::ConstString;
+use ::log::{Level, Log, Record, error};
 use acpi::AcpiTables;
 use alloc::string::String;
 use alloc::sync::Arc;
 use x86_64::instructions::interrupts;
-use core::fmt::{Arguments, Display};
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
 use device::tty::{TtyInput, TtyOutput};
@@ -87,51 +80,10 @@ pub mod storage;
 pub mod syscall;
 pub mod sync;
 pub mod boot_ap;
-pub mod ipi;
 
 pub mod built_info {
     // The file has been placed there by the build script
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
-}
-
-/// static sized Strings using a u8 buffer
-/// 
-/// used for heap-less panics & logging
-#[derive(Debug, Copy, Clone)]
-pub struct D3OSStaticString<const SIZE: usize> {
-    buffer: [u8; SIZE],
-    index: usize,
-}
-
-impl <const SIZE: usize> D3OSStaticString<SIZE> {
-
-    pub const fn new() -> Self {
-        D3OSStaticString { buffer: ['\0' as u8; SIZE], index: 0 }
-    }
-
-    pub fn as_str(&self) -> Result<&str, core::str::Utf8Error> {
-        let utf8 = str::from_utf8(&self.buffer)?;
-        let utf8_trimmed = match utf8.find('\0') {
-            Some(i) => &utf8[0..i],
-            None => utf8,
-        };
-        Ok(utf8_trimmed)
-    }
-
-    pub fn clear(&mut self) {
-        self.buffer.fill('\0' as u8);
-        self.index = 0;
-    }
-}
-
-impl <const SIZE: usize> Write for D3OSStaticString<SIZE> {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let i = self.index;
-        let l = core::cmp::min(self.buffer.len() - i, s.len());
-        self.buffer[i..(l+i)].copy_from_slice(&s.as_bytes()[..l]);
-        self.index = self.index.wrapping_add(l);
-        return Ok(());
-    }
 }
 
 #[panic_handler]
@@ -154,13 +106,8 @@ fn panic(info: &PanicInfo) -> ! {
 
     logger().log(&record);
 
-    let mut panic_message: D3OSStaticString<256> = D3OSStaticString::new();
+    let mut panic_message: ConstString<512> = ConstString::new();
     write!(panic_message, "{info}");
-    let panic_message_str = panic_message.as_str().expect("UTF-8 error in panic message!");
-    let panic_message_trimmed = match panic_message_str.find('\0') {
-        Some(i) => &panic_message_str[0..i],
-        None => panic_message_str,
-    };
         
     // if we do have a terminal, try to print the error there, too
     let _lfb_info = BUFFERED_LFB.get().map(|lfb| {
@@ -171,7 +118,7 @@ fn panic(info: &PanicInfo) -> ! {
         lfb.direct_lfb().fill_rect(lfb_width/8, lfb_height/4, lfb_width * 3 / 4, lfb_height/3, BLUE);
         lfb.direct_lfb().draw_string(lfb_width/7, lfb_height/3, WHITE, BLUE, "D3OS has encountered an unknown error:");
 
-        for (line_idx, line) in panic_message_trimmed.split('\n').enumerate() {
+        for (line_idx, line) in panic_message.as_str().unwrap_or("UTF-8 error in panic info!").split('\n').enumerate() {
             lfb.direct_lfb().draw_string(lfb_width/7, lfb_height/3 + 48 + line_idx as u32 * 20, WHITE, BLUE, line);
         }
         (lfb, lfb_height, lfb_width)
