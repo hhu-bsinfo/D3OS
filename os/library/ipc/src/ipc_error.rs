@@ -11,6 +11,7 @@ pub enum IpcError {
     NoIpcQueue = -6,
     Invalid = -7,
     EndpointNotFound = -8,
+    EndpointAlreadyExists = -9,
 }
 
 impl IpcError {

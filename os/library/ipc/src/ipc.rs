@@ -60,7 +60,7 @@ impl IpcEndpoints {
         let opt_duplicate = self.endpoints.iter().find(|name| name.read().as_str_unchecked() == svc_name);
 
         if opt_duplicate.is_some() {
-            return Err(IpcError::Invalid);
+            return Err(IpcError::EndpointAlreadyExists);
         }
 
         match self.endpoints.iter().position(|name| name.read().is_empty()) {
@@ -212,8 +212,16 @@ pub struct IpcSendSyscallParams {
 
 pub fn send_internal(target_endpoint: &str, msg_name: &str, msg_type: IpcMessageType, data: &[u8], callback: &str) -> Result<usize, IpcError> {
 
-    // register callback endpoint -- errors get propagated to caller
-    let _res = register_ipc_endpoint(callback)?;
+    // register callback endpoint
+    let res = register_ipc_endpoint(callback);
+
+    // check for relevant error | if the error is that the endpoint already exists, continue
+    if let Err(err) = res.as_ref() {
+        match err {
+            IpcError::EndpointAlreadyExists => {},
+            _ => return res,
+        }
+    }
 
     let params = IpcSendSyscallParams {
         target_endpoint_name: (target_endpoint.as_ptr(), target_endpoint.len()),
