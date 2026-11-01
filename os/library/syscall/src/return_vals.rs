@@ -35,6 +35,8 @@ pub enum Errno {
     EPIPE      = -19, // Broken pipe
     ENOMEM     = -20, // Not enough space / cannot allocate memory
     EISDIR     = -21, // Is a directory
+    EFAULT     = -22, // Fault occured
+    ENOCMD     = -23,
 }
 
 

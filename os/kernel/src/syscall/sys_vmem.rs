@@ -16,6 +16,7 @@ use crate::memory::vma::VmaType;
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::process_manager;
 use syscall::return_vals::Errno;
+use mm::MmapFlags;
 
 static FB_INFO: Once<FramebufferInfo> = Once::new();
 
@@ -37,25 +38,48 @@ pub fn init_fb_info(tag: &FramebufferTag) {
 ///
 /// This just sets up the VMA, no page tables are created yet.
 /// This happens later on on page faults.
-pub extern "sysv64" fn sys_map_memory(start: usize, size: usize) -> isize {
+/// 
+/// supports populating (aka fault in directly), which reduces overhead for larger buffers
+pub extern "sysv64" fn sys_map_memory(start: usize, size: usize, options: usize) -> isize {
     let process = process_manager().read().current_process();
 
-    let start_addr = VirtAddr::new(start.try_into().unwrap());
-    let start_page = Page::containing_address(start_addr);
+    let m_flags = MmapFlags::from_bits_truncate(options as u8);
+
+    let start_page = if start != 0 {
+        let start_addr = VirtAddr::new(start.try_into().unwrap());
+        Some(Page::containing_address(start_addr))
+    } else {
+        None
+    };
+
     let num_pages = size.div_ceil(PAGE_SIZE);
 
-    let vma = process.virtual_address_space.alloc_vma(
-        Some(start_page),
+    let (vma_type, vma_tag) = if m_flags.contains(MmapFlags::ANONYMOUS) {
+        (VmaType::Anonymous, "anon")
+    } else {
+        (VmaType::Heap, "heap")
+    };
+
+    let Some(vma) = process.virtual_address_space.alloc_vma(
+        start_page,
         num_pages as u64,
         MemorySpace::User,
-        VmaType::Heap,
-        "heap",
-    );
-    if vma.is_none() {
-        Errno::EUNKN as isize
-    } else {
-        0
+        vma_type,
+        vma_tag,
+    ) else {
+        return Errno::EUNKN as isize
+    };
+
+    if m_flags.contains(MmapFlags::POPULATE) {
+        let complete_range = vma.range();
+        process.virtual_address_space.map_partial_vma(
+            &vma,
+            complete_range, 
+            MemorySpace::User, 
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE);
     }
+
+    vma.start().as_u64() as isize
 }
 
 pub extern "sysv64" fn sys_map_frame_buffer(fb_info_user: *mut FramebufferInfo) -> isize {

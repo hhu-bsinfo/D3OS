@@ -1,0 +1,222 @@
+//! This module consists of functions that create, work with and destroy
+//! completion queues. Furthermore its functions can consume and print
+//! completion queue elements.
+
+use crate::process::process::Process;
+use core::fmt::{Debug, Formatter};
+use core::mem::size_of;
+use log::{error, trace};
+use modular_bitfield_msb::{bitfield, prelude::*};
+use x86_64::VirtAddr;
+use x86_64::structures::paging::{Page, Size4KiB};
+
+use super::{
+    Offsets,
+    cmd::{CommandInterface, InputParam, Opcode, OutputParam},
+    device::{PAGE_SHIFT, uar_index_to_hw},
+    fw::Capabilities,
+    icm::{ICM_PAGE_SHIFT, MrTable},
+};
+
+/// Size in bytes of a hardware completion queue entry. CX3 also supports a 64 B format, but this
+/// driver always uses the 32 B one (matches the layout `os/library/ibverbs/src/mlx4/cq`
+/// parses).
+const CQE_SIZE: usize = 32;
+
+#[derive(Debug)]
+pub(super) struct CompletionQueue {
+    number: u32,
+    // TODO: deallocate mtt properly, see the equivalent TODO on `queue_pair::QueuePair`.
+    mtt: Option<u64>,
+    // TODO: bind the lifetime to the one of the event queue
+    #[allow(dead_code)]
+    eq_number: Option<usize>,
+}
+
+impl CompletionQueue {
+    /// Create a new completion queue over a user-owned `buffer` and `doorbell_ptr`
+    /// (a two-word consumer-index/arm-index doorbell record). The kernel builds the MTT
+    /// for the buffer and transitions ownership of the CQ to the HCA.
+    /// All CQs are registered to `eq_number`, the first EQ of the device.
+    ///
+    /// The caller must have checked that `uar_idx` belongs to `process`.
+    pub(super) fn new(
+        cmd: &mut CommandInterface, caps: &Capabilities, offsets: &mut Offsets, mr_table: &mut MrTable, eq_number: Option<usize>, process: &Process,
+        num_entries: u32, buffer: *const u8, doorbell_ptr: *const u64, uar_idx: u32,
+    ) -> Result<Self, &'static str> {
+        let doorbell_addr = VirtAddr::try_new(doorbell_ptr as u64).map_err(|_| "Doorbell address is not canonical")?;
+        if !process.virtual_address_space.access_ok(doorbell_addr, size_of::<u64>()) {
+            return Err("User has no access to Doorbell");
+        }
+
+        if !num_entries.is_power_of_two() {
+            error!("invalid CQE count: {}", num_entries);
+            return Err("The number off CQE is not a power of 2");
+        }
+
+        if num_entries > (1 << 22) {
+            return Err("Too many CQEs");
+        }
+
+        let log2num_entries = num_entries.ilog2() as u8;
+
+        let buffer_addr = VirtAddr::try_new(buffer as u64).map_err(|_| "Buffer address is not canonical")?;
+        // The buffer must be aligned to the cqe_stride set in HCA_INIT
+        if !buffer_addr.is_aligned(size_of::<u32>() as u64) {
+            return Err("Buffer is not aligned to CQE stride");
+        }
+        let buffer_size = num_entries as usize * CQE_SIZE;
+        // Checked before computing the page range, which would panic past the canonical range.
+        if !process.virtual_address_space.access_ok(buffer_addr, buffer_size) {
+            return Err("User has no access to CQ buffer");
+        }
+        let start: Page<Size4KiB> = Page::containing_address(buffer_addr);
+        let end = start + (buffer_size as u64).div_ceil(start.size());
+        let mtt = mr_table.alloc_mtt_for_pages(caps, process, Page::range(start, end))?;
+
+        let doorbell_address = process
+            .virtual_address_space
+            .get_phys(doorbell_ptr as u64)
+            .ok_or("doorbell not mapped to physical address")?;
+
+        let number: u32 = offsets.alloc_cqn().try_into().unwrap();
+
+        let mut ctx = CompletionQueueContext::new();
+        ctx.set_page_offset(buffer_addr.page_offset().into());
+        ctx.set_log_cq_size(log2num_entries);
+        ctx.set_usr_page(uar_index_to_hw(uar_idx).try_into().unwrap());
+        if let Some(eqn) = eq_number {
+            ctx.set_c_eqn(eqn as u8);
+        }
+        ctx.set_log2_page_size(PAGE_SHIFT - ICM_PAGE_SHIFT);
+        ctx.set_mtt_base_addr(mtt);
+        ctx.set_doorbell_record_addr(doorbell_address.as_u64());
+        cmd.execute_command(
+            Opcode::Sw2HwCq,
+            None,
+            InputParam::Mailbox(&ctx.bytes),
+            Some(number.try_into().unwrap()),
+            OutputParam::Empty,
+        )?;
+
+        let cq = Self {
+            number,
+            mtt: Some(mtt),
+            eq_number,
+        };
+        trace!("created new CQ: {:?}", cq);
+        Ok(cq)
+    }
+
+    /// Destroy this completion queue.
+    ///
+    /// On failure the CQ stays owned by the card and can be destroyed again.
+    pub(super) fn destroy(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
+        // TODO: should make sure to undo all card state tied to this CQ
+        cmd.execute_command(
+            Opcode::Hw2SwCq,
+            None,
+            InputParam::Empty,
+            Some(self.number.try_into().unwrap()),
+            OutputParam::Empty,
+        )?;
+        // TODO: deallocate mtt properly
+        let _ = self.mtt.take();
+        Ok(())
+    }
+
+    /// Query this completion queue for debugging purposes.
+    pub(super) fn query(&mut self, cmd: &mut CommandInterface) -> Result<(), &'static str> {
+        cmd.execute_command(Opcode::QueryCq, None, InputParam::Empty, Some(self.number), OutputParam::Mailbox)?;
+        let ctx: &CompletionQueueContext = unsafe { cmd.output_mailbox_as_ref() };
+        trace!("current CQ state: {ctx:?}");
+        Ok(())
+    }
+
+    /// Get the number of this completion queue.
+    pub(super) fn number(&self) -> u32 {
+        self.number
+    }
+}
+
+impl Drop for CompletionQueue {
+    fn drop(&mut self) {
+        if self.mtt.is_some() {
+            panic!("please destroy instead of dropping")
+        }
+    }
+}
+
+#[bitfield]
+#[derive(Debug)]
+struct CompletionQueueContext {
+    // 0x00
+    #[skip(setters)]
+    staus: B4,
+    #[skip]
+    __: B8,
+    timestamp_en: bool,
+    cc: bool,
+    oi: bool,
+    #[skip]
+    __: B5,
+    #[skip(setters)]
+    st: B4,
+    #[skip]
+    __: u8,
+    // 0x00
+    #[skip]
+    __: B32,
+    // 0x08
+    #[skip]
+    __: B16,
+    /// Offset to buffer from the beginning of the first page defined by MTT. Bits 4:0 have to be zero
+    page_offset: B16,
+    // 0x0C
+    #[skip]
+    __: B3,
+    log_cq_size: B5,
+    usr_page: B24,
+    // 0x10
+    cq_period: B16,
+    cq_max_count: B16,
+    // 0x14
+    #[skip]
+    __: B24,
+    c_eqn: u8,
+    // 0x18
+    #[skip]
+    __: B2,
+    log2_page_size: B6,
+    #[skip]
+    __: u16,
+    // the last three bits must be zero
+    mtt_base_addr: B40,
+    // 0x20
+    #[skip]
+    __: u8,
+    #[skip(setters)]
+    last_notified_index: B24,
+    // 0x24
+    #[skip]
+    __: u8,
+    #[skip(setters)]
+    solicit_producer_index: B24,
+    // 0x28
+    #[skip]
+    __: u8,
+    #[skip(setters)]
+    consumer_index: B24,
+    // 0x2C
+    #[skip]
+    __: u8,
+    #[skip(setters)]
+    producer_index: B24,
+    // 0x30
+    #[skip]
+    __: u64,
+    // 0x38
+    // the last three bits must be zero
+    doorbell_record_addr: u64,
+}
+

@@ -1,0 +1,216 @@
+use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
+use core::mem::MaybeUninit;
+use core::ptr::NonNull;
+use core3::io;
+use core3::io::{Error, ErrorKind};
+use rdma::ib_core::{AccessFlags, DeviceAttr, PortAttr};
+use rdma::uverbs_uapi::{
+    AllocPdRequest, AllocPdResponse, CreateMrRequest, CreateMrResponse, DeallocPdRequest, DestroyRequest, OpenDeviceResponse, QueryPortRequest,
+    UserSlice, UverbsCmd,
+};
+use spin::{Mutex, RwLock};
+use tock_registers::interfaces::Writeable;
+use tock_registers::registers::WriteOnly;
+use tock_registers::{register_bitfields, register_structs};
+
+pub(crate) mod completion_queue;
+mod queue_pair;
+
+use crate::cmd::uverbs;
+use crate::provider::mlx4::completion_queue::CompletionQueue;
+use crate::provider::{IbvCompletionQueue, IbvContext, IbvQueuePair, QpInitAttr};
+use queue_pair::QueuePair;
+use rdma::{ContextHandle, DeviceHandle, Gid, MemoryRegionMetadata, PdHandle};
+
+/// Per-device context holding a registry of live queue pairs, so `CompletionQueue::poll` can
+/// resolve a CQE's `qp_number` to that queue pair's work queue state.
+pub struct Mlx4Context {
+    device_handle: DeviceHandle,
+    /// Retrieved from QUERY_DEV_CAP -> log_max_qp_sz
+    /// Maximum size of Send Queue in WQEBB (including SQ Headroom) or Receive Queue in WQE is 2^log_max_qp_size.
+    // TODO: query the device for these instead of hardcoding them; nothing surfaces
+    // QUERY_DEV_CAP to userspace yet.
+    /// The kernel context this was opened as; every verb names it.
+    context: ContextHandle,
+    doorbell_page: NonNull<DoorbellPage>,
+    // Not written to yet: WQEs are posted through the doorbell page only.
+    #[allow(dead_code)]
+    blueflame_page: *mut u8,
+    log_max_qp_size: u8,
+    log_max_rq_sge: u8,
+    log_max_sq_sge: u8,
+    max_wqe_sq_size: u16,
+    qps: Mutex<BTreeMap<u32, Arc<RwLock<QueuePair>>>>,
+}
+
+impl Mlx4Context {
+    pub fn new(device_handle: DeviceHandle) -> io::Result<Self> {
+        let mut resp = MaybeUninit::<OpenDeviceResponse>::uninit();
+        uverbs(device_handle.into(), UverbsCmd::OpenDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
+        let resp = unsafe { resp.assume_init() };
+        let doorbell_page = NonNull::new(resp.doorbell_page.cast())
+            .ok_or(Error::new(ErrorKind::Other, "Doorbell page not mapped"))?;
+        Ok(Self {
+            device_handle,
+            context: resp.context,
+            doorbell_page,
+            blueflame_page: resp.blueflame_page,
+            log_max_qp_size: 16,
+            log_max_rq_sge: 5,
+            log_max_sq_sge: 5,
+            max_wqe_sq_size: 1024,
+            qps: Mutex::new(BTreeMap::new()),
+        })
+    }
+
+    /// Resolve a CQE against the queue pair it belongs to: check the reported WQE index against
+    /// what the driver expected, advance that queue's tail by the chain size, and return the
+    /// `wr_id` to report in the work completion.
+    pub(crate) fn resolve_completion(&self, qp_num: u32, wqe_index: u32, is_send: bool) -> Option<u64> {
+        self.qps.lock().get(&qp_num)?.write().resolve_completion(wqe_index, is_send)
+    }
+
+    #[inline(always)]
+    pub(super) fn device_handle(&self) -> DeviceHandle {
+        self.device_handle
+    }
+
+    /// Ask the kernel to destroy CQ, QP or MR `handle` of this context.
+    pub(super) fn destroy(&self, cmd: UverbsCmd, handle: u32) -> io::Result<usize> {
+        let req = DestroyRequest { context: self.context, handle };
+        uverbs(self.device_handle.into(), cmd, UserSlice::from_ref(&req), UserSlice::EMPTY)
+    }
+
+    pub(super) fn ring_qp_doorbell(&self, qp_number: u32) {
+        assert!(qp_number < 1 << 24);
+        let doorbell_page = unsafe { self.doorbell_page.as_ptr().as_mut() }.unwrap();
+        let value = (qp_number << 8).to_be();
+        doorbell_page.qp_doorbell.set(value);
+    }
+
+    pub(super) fn ring_cq_doorbell(&self, cq_number: u32, cmd: CqArmCmd, cmd_sn: u8, cq_consumer_index: u32) {
+        assert!(cq_number < 1 << 24);
+        assert!(cmd_sn < 1 << 3);
+        assert!(cq_consumer_index < 1 << 24);
+        let doorbell_page = unsafe { self.doorbell_page.as_ptr().as_mut() }.unwrap();
+        let value = CqDoorbellRegister::CQ_NUM.val((cq_number.to_be() >> 8) as u64)
+            + CqDoorbellRegister::CMD.val(cmd as u64)
+            + CqDoorbellRegister::CMD_SN.val(cmd_sn as u64)
+            + CqDoorbellRegister::CQ_CI.val((cq_consumer_index.to_be() >> 8) as u64);
+        doorbell_page.cq_doorbell.write(value);
+    }
+}
+
+impl IbvContext for Mlx4Context {
+    fn handle(&self) -> ContextHandle {
+        self.context
+    }
+
+    fn query_device(&self) -> io::Result<DeviceAttr> {
+        let mut resp = MaybeUninit::<DeviceAttr>::uninit();
+        uverbs(self.device_handle.into(), UverbsCmd::QueryDevice, UserSlice::EMPTY, UserSlice::from_mut(&mut resp))?;
+        Ok(unsafe { resp.assume_init() })
+    }
+
+    fn query_port(&self, port_num: u8) -> io::Result<PortAttr> {
+        let req = QueryPortRequest { port_num };
+        let mut resp = MaybeUninit::<PortAttr>::uninit();
+        uverbs(self.device_handle.into(), UverbsCmd::QueryPort, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        Ok(unsafe { resp.assume_init() })
+    }
+
+    fn query_gid(&self, _port_num: u8, _index: i32) -> io::Result<Gid> {
+        // TODO: figure out how to actually do this as the Nautilus driver can't
+        Ok(Gid { raw: [0; 16] })
+    }
+
+    fn create_qp(self: Arc<Self>, pd: PdHandle, attr: &QpInitAttr) -> io::Result<Arc<RwLock<dyn IbvQueuePair>>> {
+        let qp = QueuePair::create(self.clone(), pd, attr)?;
+        let qp_num = qp.number;
+        let qp_ref = Arc::new(RwLock::new(qp));
+        self.qps.lock().insert(qp_num, qp_ref.clone());
+        Ok(qp_ref)
+    }
+
+    fn create_cq(self: Arc<Self>, min_cpe: i32, _cq_context: isize, channel: Option<()>, comp_vector: i32) -> io::Result<Box<dyn IbvCompletionQueue>> {
+        assert!(channel.is_none());
+        assert_eq!(comp_vector, 0);
+
+        let cq = CompletionQueue::create(self, min_cpe)?;
+        Ok(Box::new(cq))
+    }
+
+    fn alloc_pd(&self) -> io::Result<PdHandle> {
+        let req = AllocPdRequest { context: self.context };
+        let mut resp = MaybeUninit::<AllocPdResponse>::uninit();
+        uverbs(self.device_handle.into(), UverbsCmd::AllocPd, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        let resp = unsafe { resp.assume_init() };
+        Ok(resp.pd)
+    }
+
+    fn dealloc_pd(&self, pd: PdHandle) -> io::Result<()> {
+        let req = DeallocPdRequest { context: self.context, pd };
+        uverbs(self.device_handle.into(), UverbsCmd::DeallocPd, UserSlice::from_ref(&req), UserSlice::EMPTY)?;
+        Ok(())
+    }
+
+    fn reg_mr(&self, pd: PdHandle, ptr: *mut u8, len: usize, access: AccessFlags) -> io::Result<MemoryRegionMetadata> {
+        if len == 0 {
+            return Err(Error::from(ErrorKind::InvalidInput))
+        }
+
+        let req = CreateMrRequest {
+            context: self.context,
+            pd,
+            access_flags: access,
+            data_ptr: ptr as u64,
+            len: len as u64,
+        };
+
+        let mut resp = MaybeUninit::<CreateMrResponse>::uninit();
+        uverbs(self.device_handle.into(), UverbsCmd::RegMr, UserSlice::from_ref(&req), UserSlice::from_mut(&mut resp))?;
+        let CreateMrResponse { metadata } = unsafe { resp.assume_init() };
+        Ok(metadata)
+    }
+
+    fn dereg_mr(&self, meta: MemoryRegionMetadata) {
+        self.destroy(UverbsCmd::DeregMr, meta.handle).expect("failed to destroy memory region");
+    }
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+pub enum CqArmCmd {
+    #[allow(dead_code)]
+    ArmSolicit = 1,
+    ArmNext = 2,
+}
+
+// CQ Doorbell Register
+// BE|63      |55      |47      |39      |31      |23      |15      |7      0|
+//   |--------|    CQ Consumer Index     |CMD & SN|      CQ Number           |
+//
+// CQ Consumer Index and CQ Number are in BigEndian Format
+
+register_bitfields![u64,
+    pub CqDoorbellRegister [
+        CQ_NUM OFFSET(0)  NUMBITS(24),
+        CMD    OFFSET(24) NUMBITS(2),
+        CMD_SN OFFSET(28) NUMBITS(2),
+        CQ_CI  OFFSET(32) NUMBITS(24),
+    ]
+];
+
+register_structs! {
+    pub DoorbellPage {
+    (0x000 => _reserved1),
+    (0x014 => pub qp_doorbell: WriteOnly<u32>),
+    (0x018 => _reserved2),
+    (0x020 => pub cq_doorbell: WriteOnly<u64, CqDoorbellRegister::Register>),
+    (0x028 => _reserved3),
+    (0x1000 => @END),
+    }
+}
+

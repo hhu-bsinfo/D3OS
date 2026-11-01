@@ -1,0 +1,17 @@
+[package]
+edition = "2024"
+name = "ibstat"
+version = "0.1.0"
+authors = [ "Sandro Jose Leal Miudo" ]
+
+[lib]
+crate-type = ["staticlib"]
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../../library/runtime" }
+terminal = { path = "../../../library/terminal" }
+ibverbs = { path = "../../../library/ibverbs" }

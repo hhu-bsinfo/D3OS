@@ -2,7 +2,7 @@
    ║ Module: frames                                                          ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Page frame allocator.                                                   ║
-   ║   - alloc              allooc a range of frames                         ║
+   ║   - alloc              allocate a range of frames                         ║
    ║   - allocator_locked   check if allocator is locked                     ║
    ║   - dump               get a dump of the current free list              ║
    ║   - free               free a range of frames                           ║

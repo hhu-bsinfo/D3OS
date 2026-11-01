@@ -9,7 +9,7 @@
 
 use chrono::{DateTime, Datelike, Timelike};
 use uefi::runtime::{Time, TimeParams};
-use crate::{efi_services_available, now, timer};
+use crate::{efi_services_available, now, get_time_in_us, timer};
 
 
 pub extern "sysv64" fn sys_get_system_time() -> isize {
@@ -45,4 +45,8 @@ pub extern "sysv64" fn sys_set_date(date_ms: usize) -> isize {
         Ok(_) => true as isize,
         Err(_) => false as isize,
     }
+}
+
+pub fn sys_get_time_us() -> isize {
+    get_time_in_us() as isize
 }

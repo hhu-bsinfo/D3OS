@@ -1,4 +1,4 @@
 max_width = 160
-fn_args_layout = "Compressed"
-
+fn_params_layout = "Compressed"
+edition = "2024"
 

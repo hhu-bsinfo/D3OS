@@ -1,0 +1,10 @@
+[package]
+edition = "2024"
+name = "mm"
+version = "0.1.0"
+authors = [ "Sandro Jose Leal Miudo" ]
+
+[dependencies]
+syscall = { path = "../syscall" }
+
+bitflags = "1.3"
