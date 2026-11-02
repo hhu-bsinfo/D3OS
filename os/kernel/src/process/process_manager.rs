@@ -134,6 +134,40 @@ impl ProcessManager {
             self.kernel_process().unwrap()
         }
     }
+        
+    /// Exit a process by its id: tear it down regardless of how many threads
+    /// are still alive. Called by a process's authoritative thread via
+    /// `Process::exit`.
+    pub fn exit(&mut self, process_id: Uuid) {
+        if !self.is_active_process(process_id) {
+            return;
+        }
+
+        // Forcibly end every other thread while the process is still in the
+        // active set; the victims exit via a bare `Scheduler::exit`.
+        if let Some(process) = self
+            .active_processes
+            .iter()
+            .find(|process| process.id() == process_id) {
+                process.kill_all_threads_but_current();
+            }
+
+        self.finalize_exit(process_id);
+    }
+
+    /// Kill a process by its id. Like `exit`, but the caller is not one of the
+    /// process's threads, so every thread is killed.
+    pub fn kill(&mut self, process_id: Uuid) {
+        if !self.is_active_process(process_id) {
+            return;
+        }
+
+        for thread_id in scheduler::active_threads_for_process(&process_id) {
+            scheduler().kill(thread_id);
+        }
+
+        self.finalize_exit(process_id);
+    }
 
     /// Remove `process_id` from the active set and reclaim its resources.
     ///
@@ -159,42 +193,6 @@ impl ProcessManager {
         // handles behind the sweep.
         crate::naming::api::close_handles_for_process(process_id);
         true
-    }
-
-    /// Exit a process by its id: tear it down regardless of how many threads
-    /// are still alive. Called by a process's authoritative thread via
-    /// `Process::exit`.
-    pub fn exit(&mut self, process_id: Uuid) {
-        if !self.is_active_process(process_id) {
-            return;
-        }
-
-        // Forcibly end every other thread while the process is still in the
-        // active set; the victims exit via a bare `Scheduler::exit`.
-        if let Some(process) = self
-            .active_processes
-            .iter()
-            .find(|process| process.id() == process_id)
-            .map(Arc::clone)
-        {
-            process.kill_all_threads_but_current();
-        }
-
-        self.finalize_exit(process_id);
-    }
-
-    /// Kill a process by its id. Like `exit`, but the caller is not one of the
-    /// process's threads, so every thread is killed.
-    pub fn kill(&mut self, process_id: Uuid) {
-        if !self.is_active_process(process_id) {
-            return;
-        }
-
-        for thread_id in scheduler::thread_ids_of_process(process_id) {
-            scheduler().kill(thread_id);
-        }
-
-        self.finalize_exit(process_id);
     }
 
     /// Drop processes that exited at least one cleanup cycle ago.

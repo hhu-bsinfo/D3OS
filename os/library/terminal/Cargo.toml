@@ -25,3 +25,4 @@ naming = { path = "../naming", optional = true }
 spin = { version = "0.12", optional = true }
 num_enum = { version = "0.7", default-features = false }
 pc-keyboard = { version = "0.9", default-features = false, optional = true }
+log = { version = "0.4.26", optional = true }

@@ -73,8 +73,19 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
         None
     };
 
+    // get object name from path
+    let object_name = lookup::get_filename_from_path(path).to_string();
+
     // try to allocate an new handle
-    let result = get_open_object_table().allocate_handle(Arc::new(OpenedObject::new(Arc::new(found_named_object), AtomicUsize::new(0), flags, current_owner())));
+    let result = get_open_object_table().allocate_handle(Arc::new(OpenedObject::new(
+        Arc::new(found_named_object),
+        object_name,
+        AtomicUsize::new(0),
+        flags,
+        parent_dir,
+        scheduler().current_pid(),
+
+    )));
 
     if result.is_err() {
         if let Some(pipe) = opened_pipe {
@@ -86,7 +97,7 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
 }
 
 pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
-    get_open_object_table().lookup_owned(fh, current_owner()).and_then(|opened_object| {
+    get_open_object_table().lookup_owned(fh, scheduler().current_pid()).and_then(|opened_object| {
         if opened_object.named_object.is_file() {
             // Make `opened_object` mutable here
             return opened_object.named_object.as_file().and_then(|file| {
@@ -113,7 +124,7 @@ pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
 }
 
 pub(super) fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
-    get_open_object_table().lookup_owned(fh, current_owner()).and_then(|opened_object| {
+    get_open_object_table().lookup_owned(fh, scheduler().current_pid()).and_then(|opened_object| {
         if opened_object.named_object.is_file() {
             // Make `opened_object` mutable here
             return opened_object.named_object.as_file().and_then(|file| {
@@ -140,7 +151,7 @@ pub(super) fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
 }
 
 pub fn seek(fh: usize, offset: isize, origin: SeekOrigin) -> Result<usize, Errno> {
-    get_open_object_table().lookup_owned(fh, current_owner()).and_then(|opened_object| {
+    get_open_object_table().lookup_owned(fh, scheduler().current_pid()).and_then(|opened_object| {
         if opened_object.named_object.is_file() {
             // Make `opened_object` mutable here
             return opened_object.named_object.as_file().and_then(|file| {
@@ -158,7 +169,7 @@ pub fn seek(fh: usize, offset: isize, origin: SeekOrigin) -> Result<usize, Errno
 }
 
 pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
-    get_open_object_table().lookup_owned(fh, current_owner()).and_then(|opened_object| {
+    get_open_object_table().lookup_owned(fh, scheduler().current_pid()).and_then(|opened_object| {
         if opened_object.named_object.is_dir() {
             // Make `opened_object` mutable here
             return opened_object.named_object.as_dir().and_then(|dir| {
@@ -174,7 +185,7 @@ pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
 
 pub(super) fn close(fh: usize) -> Result<usize, Errno> {
     debug!("open_object::close: close called for fh={}", fh);
-    if let Ok(opened_object) = get_open_object_table().lookup_owned(fh) {
+    if let Ok(opened_object) = get_open_object_table().lookup_owned(fh, scheduler().current_pid()) {
         if opened_object.named_object.is_pipe() {
             if let Ok(pipe) = opened_object.named_object.as_pipe() {
                 pipe.close(opened_object.options);
@@ -352,7 +363,6 @@ fn get_open_object_table() -> Arc<OpenObjectTable> {
 }
 
 /// ************************ OpenedObject ************************ \
-
 /// Opened object stored in the 'OpenObjectTable' \
 /// (includes NamedObject, current position within object, options, and the id
 ///  of the process that opened it)

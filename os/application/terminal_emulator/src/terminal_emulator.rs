@@ -18,8 +18,7 @@ use event_handler::{Event, EventHandler};
 use graphic::lfb::map_framebuffer;
 use sessions::SessionMux;
 use terminal::lfb_terminal::LFBTerminal;
-use terminal_lib::init_logger;
-use util::banner::create_banner_string;
+use logger::init_logger;
 use worker::cursor::Cursor;
 use worker::input_observer::InputObserver;
 
@@ -55,8 +54,8 @@ impl TerminalEmulator {
             terminal: terminal.clone(),
             input_observer: InputObserver::new(terminal.clone(), event_handler.clone(), mux.clone()),
             cursor: Cursor::new(terminal.clone()),
-            event_handler: event_handler,
-            mux: mux,
+            event_handler,
+            mux,
             status_bar: StatusBar::new(terminal),
         }
     }

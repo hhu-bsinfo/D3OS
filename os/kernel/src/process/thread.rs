@@ -106,6 +106,7 @@ pub struct Thread {
     entry: extern "sysv64" fn(),
     state: AtomicU8,
     wake_pending: AtomicBool, // false => allowed to block; true => do NOT block (wake pending)
+    kill_requested: AtomicBool, // kill was requested, cooperatively exit on own stack
     xsave_state: XSaveState,
     cls_references: AtomicUsize,
 }
@@ -159,6 +160,7 @@ impl Thread {
             entry,
             state: AtomicU8::new(ThreadState::Created.as_u8()),
             wake_pending: AtomicBool::new(false),
+            kill_requested: AtomicBool::new(false),
             xsave_state: XSaveState::new(),
             cls_references: AtomicUsize::default(),
         };
@@ -239,6 +241,7 @@ impl Thread {
             entry,
             state: AtomicU8::new(ThreadState::Created.as_u8()),
             wake_pending: AtomicBool::new(false),
+            kill_requested: AtomicBool::new(false),
             xsave_state: XSaveState::new(),
             cls_references: AtomicUsize::default(),
         };
@@ -798,12 +801,12 @@ pub enum ProcessLoadError {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ThreadState {
     Created,
-    Ready,       // runnable, waiting to be scheduled
-    Running,     // currently executing on a core
-    Parking,     // prepared to block
-    Blocked,     // blocked
-    Sleeping,    // sleeping for some time
-    Exited,      // finished, waiting to be reaped
+    Ready,          // runnable, waiting to be scheduled
+    Running,        // currently executing on a core
+    Parking,        // prepared to block
+    Blocked,        // blocked
+    Sleeping,       // sleeping for some time
+    Exited,         // finished, waiting to be reaped
 }
 
 impl ThreadState {

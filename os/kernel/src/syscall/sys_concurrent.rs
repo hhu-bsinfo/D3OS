@@ -7,6 +7,7 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use crate::process::core_local_storage::{current_core_id, scheduler};
+use crate::process::scheduler;
 use crate::process::thread::{ProcessLoadError, Thread};
 use crate::{process_manager};
 use alloc::format;
@@ -92,11 +93,7 @@ pub extern "sysv64" fn sys_thread_exit() -> ! {
 }
 
 pub extern "sysv64" fn sys_thread_count() -> isize {
-    scheduler().active_thread_ids().len() as isize
-}
-
-pub extern "sysv64" fn sys_core_id() -> isize {
-    current_core_id() as isize
+    scheduler::active_tids().lock().len() as isize
 }
 
 pub extern "sysv64" fn sys_core_id() -> isize {

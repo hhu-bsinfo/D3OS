@@ -113,7 +113,7 @@ impl Process {
 
     /// Return the ids of all threads of the process (across all cores).
     pub fn thread_ids(&self) -> Vec<usize> {
-        scheduler().active_thread_ids().iter().filter(|t| t.0 == self.id()).map(|t| t.1).collect()
+        scheduler::active_threads_for_process(&self.id())
     }
 
     pub fn kill_all_threads_but_current(&self) {
