@@ -425,6 +425,7 @@ impl Scheduler {
             }
         }
 
+        drop(current); // manually drop thread ref count because we do not return from block_and_switch
         dec_rq_len();
         self.block_and_switch(ready_state);
         unreachable!()

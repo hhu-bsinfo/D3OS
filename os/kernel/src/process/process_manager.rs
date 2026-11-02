@@ -185,13 +185,9 @@ impl ProcessManager {
             return false;
         };
 
-        let process = Arc::clone(&self.active_processes[index]);
-        self.active_processes.swap_remove(index);
+        let process = self.active_processes.swap_remove(index);
         self.exited_processes.push(process);
-
-        // Last: Pipe::close needs a live caller, and nothing should open
-        // handles behind the sweep.
-        crate::naming::api::close_handles_for_process(process_id);
+        
         true
     }
 
@@ -204,7 +200,10 @@ impl ProcessManager {
     /// across that switch. Dropping immediately is a triple-fault/reset.
     pub fn drop_exited_process(&mut self) {
         self.graveyard.clear();
-        core::mem::swap(&mut self.graveyard, &mut self.exited_processes);
+        // only swap if there are exited processes
+        if self.exited_processes.len() > 0 {
+            core::mem::swap(&mut self.graveyard, &mut self.exited_processes);
+        }
     }
 
     /// Dump all active processes

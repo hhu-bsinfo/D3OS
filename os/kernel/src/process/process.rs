@@ -157,8 +157,10 @@ impl core::fmt::Debug for Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
-        log::debug!("Dropping process [{}]", self.id());
+        let pid = self.id();
+        log::debug!("Dropping process [{}]", pid);
         network::close_sockets_for_process(self);
-        crate::syscall::sys_ipc::remove_endpoints_for_process(&self.id());
+        crate::syscall::sys_ipc::remove_endpoints_for_process(&pid);
+        crate::naming::api::close_handles_for_process(pid);
     }
 }
