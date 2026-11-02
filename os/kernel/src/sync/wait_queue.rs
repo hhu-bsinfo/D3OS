@@ -22,7 +22,7 @@ pub struct WaitQueue {
 }
 
 impl WaitQueue {
-    pub fn new() -> WaitQueue {
+    pub const fn new() -> WaitQueue {
         WaitQueue {
             queue: IrqSaveSpinlock::new(VecDeque::<(Uuid, usize)>::new()),
         }
@@ -86,24 +86,20 @@ impl WaitQueue {
     pub fn notify_all(&self) -> usize {
         let mut guard = self.queue.lock();
         
-        let mut unblocked_success_idxs = Vec::new();
+        let mut unblocked_success_tids = Vec::new();
 
-        for (idx, (pid, tid)) in guard.iter().enumerate() {
+        // check queue and try to unblock waiting threads
+        for (pid, tid) in guard.iter() {
             if scheduler().unblock(*pid, *tid) {
-                unblocked_success_idxs.push(idx);
+                unblocked_success_tids.push(*tid);
             }
         }
 
-        let mut woke = 0;
+        let prev_len = guard.len();
+        // remove successfully unblocked threads from the queue
+        guard.retain(|(_pid, tid)| !unblocked_success_tids.contains(tid));
+        let num_removed = prev_len - guard.len();
 
-        // Remove highest indices first: VecDeque::remove shifts later entries
-        // down, so ascending removal would hit the wrong slots (or skip them).
-        for idx in unblocked_success_idxs.into_iter().rev() {
-            if guard.remove(idx).is_some() {
-                woke += 1;
-            }
-        }
-
-        woke
+        num_removed
     }
 }

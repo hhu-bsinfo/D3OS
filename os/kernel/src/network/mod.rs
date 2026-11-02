@@ -11,7 +11,7 @@ use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
 use smoltcp::socket;
 use smoltcp::socket::{dhcpv4, dns, icmp, tcp, udp};
 use smoltcp::time::Instant;
-use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint};
+use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint, Ipv6Cidr};
 use spin::{Once, RwLock};
 use crate::device::rtl8139::Rtl8139;
 use crate::process::core_local_storage::scheduler;
@@ -62,8 +62,10 @@ pub fn init() {
         
         // Set up network interface
         let time = timer().systime_ms();
-        let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
+        let hw_addr = HardwareAddress::from(rtl8139.read_mac_address());
+        let mut conf = iface::Config::new(hw_addr);
         conf.random_seed = time as u64;
+        conf.slaac = true;
 
         // The Smoltcp interface struct wants a mutable reference to the device.
         // However, the RTL8139 driver is designed to work with shared references.
@@ -72,7 +74,14 @@ pub fn init() {
         // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
         // since it does not modify the device itself.)
         let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-        add_interface(Interface::new(conf, device, Instant::from_millis(time as i64)));
+        let mut interface = Interface::new(conf, device, Instant::from_millis(time as i64));
+        interface.update_ip_addrs(|addrs| {
+            // https://github.com/smoltcp-rs/smoltcp/blob/main/src/iface/interface/tests/ipv6.rs
+            let ll_prefix = Ipv6Cidr::new(Ipv6Cidr::LINK_LOCAL_PREFIX.address(), 64);
+            let local_addr = Ipv6Cidr::from_link_prefix(&ll_prefix, hw_addr).unwrap();
+            addrs.push(local_addr.into()).expect("failed to add link-local address");
+        });
+        add_interface(interface);
 
         let sockets = SOCKETS.get().expect("Socket set not initialized!");
         let current_process = process_manager().read().current_process();
@@ -196,7 +205,6 @@ pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
 }
 
 pub fn open_udp() -> SocketHandle {
-    let sockets = SOCKETS.get().expect("Socket set not initialized!");
 
     let rx_buffer = udp::PacketBuffer::new(
         vec![udp::PacketMetadata::EMPTY; 44],
@@ -207,7 +215,7 @@ pub fn open_udp() -> SocketHandle {
         vec![0; 65535],
     );
 
-    let handle = sockets.write().add(udp::Socket::new(rx_buffer, tx_buffer));
+    let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(udp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
         .try_insert(handle, process_manager().read().current_process())
@@ -216,11 +224,10 @@ pub fn open_udp() -> SocketHandle {
 }
 
 pub fn open_tcp() -> SocketHandle {
-    let sockets = SOCKETS.get().expect("Socket set not initialized!");
     let rx_buffer = tcp::SocketBuffer::new(vec![0; 65535]);
     let tx_buffer = tcp::SocketBuffer::new(vec![0; 65535]);
 
-    let handle = sockets.write().add(tcp::Socket::new(rx_buffer, tx_buffer));
+    let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(tcp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
         .try_insert(handle, process_manager().read().current_process())
@@ -229,8 +236,7 @@ pub fn open_tcp() -> SocketHandle {
 }
 
 pub fn open_icmp() -> SocketHandle {
-    let sockets = SOCKETS.get().expect("Socket set not initialized!");
-    
+
     let rx_buffer = icmp::PacketBuffer::new(
         vec![icmp::PacketMetadata::EMPTY, icmp::PacketMetadata::EMPTY],
         vec![0; 65535],
@@ -240,7 +246,7 @@ pub fn open_icmp() -> SocketHandle {
         vec![0; 65535],
     );
 
-    let handle = sockets.write().add(icmp::Socket::new(rx_buffer, tx_buffer));
+    let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(icmp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
         .try_insert(handle, process_manager().read().current_process())
@@ -266,6 +272,8 @@ pub fn close_socket(handle: SocketHandle) {
     } else {
         warn!("Socket {} not found in SocketSet", handle);
     }
+
+    drop(sockets);
 
     // Remove permission for the process
     // The socket remains in the set until poll_sockets() garbage collects it.
@@ -327,10 +335,13 @@ pub fn accept_tcp(handle: SocketHandle) -> Result<(IpEndpoint, SocketHandle), tc
     Ok((client, listen_handle))
 }
 
-pub fn connect_tcp(handle: SocketHandle, host: IpAddress, port: u16) -> Result<IpEndpoint, tcp::ConnectError> {    get_socket_for_current_process!(socket, handle, tcp::Socket);
+pub fn connect_tcp(handle: SocketHandle, host: IpAddress, port: u16) -> Result<IpEndpoint, tcp::ConnectError> {
+    let local_port = pick_port(0);
+
     let mut interfaces = INTERFACES.write();
     let interface = interfaces.get_mut(0).ok_or(tcp::ConnectError::InvalidState)?;
-    let local_port = pick_port(0);
+
+    get_socket_for_current_process!(socket, handle, tcp::Socket);
 
     socket.connect(interface.context(), (host, port), local_port)?;
     Ok(socket.local_endpoint().unwrap())
@@ -453,14 +464,18 @@ fn poll_sockets() -> Option<()> {
         match event {
             dhcpv4::Event::Deconfigured => {
                 info!("lost DHCP lease");
-                interface.update_ip_addrs(|addrs| addrs.clear());
+                // remove all IPv4 addresses
+                interface.update_ip_addrs(|addrs|
+                    addrs.retain(|addr| matches!(addr, IpCidr::Ipv6(_)))
+                );
                 interface.routes_mut().remove_default_ipv4_route();
             },
             dhcpv4::Event::Configured(config) => {
                 info!("acquired DHCP lease:");
                 info!("IP address: {}", config.address);
                 interface.update_ip_addrs(|addrs| {
-                    addrs.clear();
+                    // remove all other IPv4 addresses
+                    addrs.retain(|addr| matches!(addr, IpCidr::Ipv6(_)));
                     addrs.push(IpCidr::Ipv4(config.address)).unwrap();
                 });
 
@@ -488,10 +503,12 @@ fn poll_sockets() -> Option<()> {
         }
     }
 
+    drop(interfaces);
+
     // Remove closed sockets
     let mut sockets_to_remove = Vec::new();
 
-    let socket_map = SOCKET_PROCESS.read();
+    let socket_map = SOCKET_PROCESS.try_read()?;
     let dns_handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
 
     for (handle, socket) in sockets.iter() {
@@ -504,7 +521,7 @@ fn poll_sockets() -> Option<()> {
             // Only remove TCP sockets that have fully traversed the state machine to the CLOSED state.
             socket::Socket::Tcp(s) => s.state() == tcp::State::Closed,
             // UDP sockets are stateless so whe can remove them immediately
-            socket::Socket::Udp(s) => true,
+            socket::Socket::Udp(_s) => true,
             _ => false,
         };
 
@@ -523,8 +540,8 @@ fn poll_sockets() -> Option<()> {
 }
 
 pub(crate) fn close_sockets_for_process(process: &mut Process) {
-    let mut lock = SOCKET_PROCESS.write();
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let mut lock = SOCKET_PROCESS.write();
     let handles: Vec<_> = lock
         .iter()
         .filter(|(_handle, proc)| ***proc == *process)

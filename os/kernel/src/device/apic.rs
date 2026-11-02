@@ -1,7 +1,7 @@
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::memory::vma::VmaType;
-use crate::process::core_local_storage::{cls, cls_mut, current_core_id, local_apic_static, scheduler};
+use crate::process::core_local_storage::{cls, current_core_id, local_apic_static, scheduler};
 use crate::{acpi_tables, allocator, apic, interrupt_dispatcher, process_manager, timer};
 use acpi::InterruptModel;
 use acpi::madt::Madt;
@@ -266,7 +266,7 @@ impl Apic {
         }
 
         // Initialization is finished -> Enable Local Apic
-        cls_mut().init_apic(true);
+        cls().init_apic(true);
         let mut bp_local_apic = local_apic_static().expect("local APIC not initialized").lock();
         // Initialization is finished -> Enable Local Apic
         unsafe {
@@ -279,7 +279,7 @@ impl Apic {
 
         // Calibrate APIC timer
         let timer_ticks_per_ms = Apic::calibrate_timer(&mut *bp_local_apic);
-        cls_mut().set_timer_ticks_per_ms(timer_ticks_per_ms);
+        cls().set_timer_ticks_per_ms(timer_ticks_per_ms);
 
         Self {
             io_apics,
@@ -313,11 +313,11 @@ impl Apic {
         // let timer_ticks_per_ms = Apic::calibrate_timer(&mut local_apic.lock());
         let timer_ticks_per_ms = apic().timer_ticks_per_ms;
         info!("   APIC Timer ticks per millisecond: [{timer_ticks_per_ms}]");
-        cls_mut().set_timer_ticks_per_ms(timer_ticks_per_ms);
+        cls().set_timer_ticks_per_ms(timer_ticks_per_ms);
     }
 
-    /// Creates a new local APIC instance and wraps it in a Mutex.
-    pub fn new_local_apic(is_bp: bool) -> Mutex<LocalApic> {
+    /// Creates a new local APIC instance.
+    pub fn new_local_apic(is_bp: bool) -> LocalApic {
         // Find APIC relevant structures in ACPI tables
         let madt_mapping = acpi_tables()
             .lock()
@@ -326,8 +326,7 @@ impl Apic {
         let madt = madt_mapping.get();
 
         // Create Local APIC instance
-        let local_apic = Mutex::new(Self::create_local_apic(&madt, is_bp));
-        local_apic
+        Self::create_local_apic(&madt, is_bp)
     }
 
     /// Creates a new local APIC instance.
@@ -447,6 +446,33 @@ impl Apic {
             ticks_per_ms
         }
     }
+
+    /// Send an init inter-process interrupt to all application processors.
+    pub fn send_init(&self) {
+        let mut local_apic = local_apic_static()
+            .expect("local APIC not initialized")
+            .try_lock()
+            .expect("failed to acquire lock for the local APIC");
+        unsafe { local_apic.send_init_ipi_all() };
+    }
+
+    /// Send a start-up inter-process interrupt to all application processors.
+    pub fn send_startup(&self, vector: u8) {
+        let mut local_apic = local_apic_static()
+            .expect("local APIC not initialized")
+            .try_lock()
+            .expect("failed to acquire lock for the local APIC");
+        unsafe { local_apic.send_sipi_all(vector) };
+    }
+
+    /// Send a reschedule inter-process interrupt to a specific application processor.
+    pub fn send_reschedule(&self, dest: u32) {
+        let mut local_apic = local_apic_static()
+            .expect("local APIC not initialized")
+            .try_lock()
+            .expect("failed to acquire lock for the local APIC");
+        unsafe { local_apic.send_ipi(InterruptVector::Reschedule as u8, dest) };
+    }
 }
 
 /// returns cpu count with bootstrap processor included
@@ -480,9 +506,9 @@ pub fn get_cpu_count() -> usize {
 
 /// returns this cpu's apic id
 /// needed to init perCpu global variables
-pub fn get_apic_id() -> usize {
+pub fn get_apic_id() -> u32 {
     if let Some(feat) = CpuId::new().get_feature_info() {
-        feat.initial_local_apic_id() as usize
+        feat.initial_local_apic_id().into()
     }
     else{
         error!("Problem while reading CPU ID features! APIC ID WILL BE SET TO 1!");

@@ -185,7 +185,7 @@ impl ComponentStylingBuilder {
     }
 }
 
-/**
+/*
 Any size-relations with the words "rel" or "relative" in them refer to the size inside the window
 as if the window was occupying the full screen
 */

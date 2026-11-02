@@ -4,7 +4,6 @@ use core::ffi::{c_char, c_int, c_size_t, VaList};
 use core::ops::DerefMut;
 use terminal::{print, println};
 use terminal::write::TERMINAL_WRITER;
-use crate::errno::errno::{set_errno, Errno};
 use crate::stdio::{stderr, stdout, FILE};
 use crate::str_from_c_ptr;
 

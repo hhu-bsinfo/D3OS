@@ -1,0 +1,32 @@
+[package]
+edition = "2024"
+name = "ipc"
+version = "0.1.0"
+authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>, Richard Schweitzer <risch114@uni-duesseldorf.de>"]
+
+[lib]
+test = false
+doctest = false
+bench = false
+path = "src/ipc.rs"
+
+[features]
+#default = ["ringbuffer"]
+default = ["ringqueue"]
+#default = ["ringbuffer", "ringqueue", "lfqueue"]
+ringbuffer = []
+ringqueue = []
+lfqueue = ["dep:crossbeam-utils", "dep:lfqueue"]
+
+[dependencies]
+# Local dependencies
+d3os = { path = "../d3os" }
+syscall = { path = "../syscall" }
+concurrent = { path = "../concurrent" }
+
+# External dependencies
+chrono = { version = "0.4.42", default-features = false, features = ["alloc"] }
+spin = "0.12"
+uuid = { version = "1.23.1", default-features = false, features = ["v7"] }
+lfqueue = { version = "0.8.1", default-features = false, optional = true }
+crossbeam-utils = { version = "0.8.23", default-features = false, optional = true }

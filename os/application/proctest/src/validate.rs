@@ -5,7 +5,7 @@ extern crate alloc;
 use naming::shared_types::{OpenOptions};
 #[allow(unused_imports)]
 use runtime::*;
-use terminal::{print, println};
+use terminal::println;
 
 use alloc::format;
 

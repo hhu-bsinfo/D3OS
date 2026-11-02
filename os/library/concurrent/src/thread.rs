@@ -105,7 +105,7 @@ pub fn create(entry: impl FnOnce() + Send + 'static) -> Option<Thread> {
     functions.insert(func_id, Box::new(entry));
     
     let res = syscall(SystemCall::ThreadCreate, &[
-        kickoff_user_thread as *const () as usize, func_id as usize,
+        kickoff_user_thread as *const () as usize, func_id,
     ]);
     match res {
         Ok(id) => Some(Thread::new(id)),
@@ -131,6 +131,11 @@ pub fn sleep(ms: usize) {
     let _ = syscall(SystemCall::ThreadSleep, &[ms]);
 }
 
+#[allow(dead_code)]
+pub fn block() {
+    let _ = syscall(SystemCall::ThreadBlock, &[]);
+}
+
 pub fn exit() -> ! {
     let _ = syscall(SystemCall::ThreadExit, &[]);
     panic!("System call 'ThreadExit' has returned!")
@@ -145,7 +150,7 @@ pub fn kill(id: usize) {
 }
 
 pub fn count() -> usize {
-    syscall(SystemCall::ThreadCount, &[]).unwrap_or_else(|_| 0)
+    syscall(SystemCall::ThreadCount, &[]).unwrap_or(0)
 }
 
 /// Launch an application, inheriting the caller's environment variables.

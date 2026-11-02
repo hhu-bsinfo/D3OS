@@ -53,7 +53,7 @@ use alloc::vec::Vec;
 use log::debug;
 use core::arch::naked_asm;
 use core::ptr;
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use goblin::elf::Elf;
 use goblin::elf64;
 use log::error;
@@ -106,9 +106,8 @@ pub struct Thread {
     entry: extern "sysv64" fn(),
     state: AtomicU8,
     wake_pending: AtomicBool, // false => allowed to block; true => do NOT block (wake pending)
-    /// Cooperative kill: the thread must run `exit` itself so syscall locks are dropped.
-    kill_requested: AtomicBool,
-    xsave_state: XSaveState
+    xsave_state: XSaveState,
+    cls_references: AtomicUsize,
 }
 
 impl core::fmt::Debug for Thread {
@@ -160,8 +159,8 @@ impl Thread {
             entry,
             state: AtomicU8::new(ThreadState::Created.as_u8()),
             wake_pending: AtomicBool::new(false),
-            kill_requested: AtomicBool::new(false),
-            xsave_state: XSaveState::new()
+            xsave_state: XSaveState::new(),
+            cls_references: AtomicUsize::default(),
         };
 
         thread.prepare_kernel_stack();
@@ -240,8 +239,8 @@ impl Thread {
             entry,
             state: AtomicU8::new(ThreadState::Created.as_u8()),
             wake_pending: AtomicBool::new(false),
-            kill_requested: AtomicBool::new(false),
-            xsave_state: XSaveState::new()
+            xsave_state: XSaveState::new(),
+            cls_references: AtomicUsize::default(),
         };
 
         thread.prepare_kernel_stack();
@@ -636,6 +635,37 @@ impl Thread {
         }
         // no wake pending -> block is allowed
         true
+    }
+
+    /// Increase the number of core local storage references.
+    /// 
+    /// See [`can_migrate`] for details.
+    pub(super) fn incr_cls_ref(&self) {
+        self.cls_references.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Decrease the number of core local storage references.
+    /// 
+    /// See [`can_migrate`] for details.
+    pub(super) fn decr_cls_ref(&self) {
+        let prev = self.cls_references.fetch_sub(1, Ordering::SeqCst);
+        // we can't destroy more references than we created
+        assert!(prev > 0);
+    }
+
+    /// Check if this thread can be migrated to a different CPU core.
+    /// 
+    /// They usually can, unless they hold a reference to the core local storage.
+    /// In that case, the thread would access the wrong (old) one after the
+    /// migration.
+    pub(super) fn can_migrate(&self) -> bool {
+        self.cls_references.load(Ordering::SeqCst) == 0 
+    }
+}
+
+impl Drop for Thread {
+    fn drop(&mut self) {
+        debug!("Dropping thread [{}]", self.id());
     }
 }
 

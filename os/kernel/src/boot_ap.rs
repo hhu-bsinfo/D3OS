@@ -2,7 +2,7 @@ use log::info;
 use crate::{APIC, apic};
 use crate::device::apic::Apic;
 use crate::device::cpu;
-use crate::process::core_local_storage::{cls, cls_mut, init_gdt_for_this_core, install_gs_base, scheduler_start, scheduler};
+use crate::process::core_local_storage::{cls, init_gdt_for_this_core, install_gs_base, scheduler_start, scheduler};
 use crate::process::{scheduler};
 use crate::syscall::syscall_dispatcher;
 
@@ -23,7 +23,7 @@ pub extern "C" fn startup_ap(cpu_id: u32) {
 
     info!("Initialized GDT for CPU {}", cpu_id);
 
-    cls_mut().init_apic(false);
+    cls().init_apic(false);
 
     info!("Initialized apic for CPU {}", cpu_id);
 

@@ -3,7 +3,7 @@
 #![no_std]
 extern crate alloc;
 
-use core::{ffi::CStr, net::{IpAddr, Ipv6Addr, SocketAddr}, ptr, str::FromStr};
+use core::{ffi::CStr, net::{IpAddr, Ipv6Addr, SocketAddr}, str::FromStr};
 
 use alloc::{ffi::CString, format, string::ToString, vec::Vec, vec};
 use syscall::{return_vals::Errno, syscall, SystemCall};
@@ -79,7 +79,7 @@ impl UdpSocket {
         let remote_addr = if num_bytes > 0 {
             let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
             SocketAddr::new(
-                IpAddr::from_str(addr_str).expect(&format!("failed to parse '{addr_str}'")),
+                IpAddr::from_str(addr_str).unwrap_or_else(|_| panic!("failed to parse '{addr_str}'")),
                 remote_port,
             )
         } else {
@@ -179,7 +179,7 @@ impl TcpListener {
         let remote_port = listen_port as u16;
         let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
         let remote_addr = SocketAddr::new(
-            IpAddr::from_str(addr_str).expect(&format!("failed to parse '{addr_str}'")),
+            IpAddr::from_str(addr_str).unwrap_or_else(|_| panic!("failed to parse '{addr_str}'")),
             remote_port,
         );
         Ok(TcpStream { handle: old_handle, local_address: self.address, peer_address: remote_addr })
@@ -378,7 +378,7 @@ impl IcmpSocket {
             })?;
         let address = if num_bytes > 0 {
             let addr_str = CStr::from_bytes_until_nul(&addr_buf).unwrap().to_str().unwrap();
-            IpAddr::from_str(addr_str).expect(&format!("failed to parse '{addr_str}'"))
+            IpAddr::from_str(addr_str).unwrap_or_else(|_| panic!("failed to parse '{addr_str}'"))
         } else {
             IpAddr::V6(Ipv6Addr::UNSPECIFIED)
         };

@@ -19,6 +19,7 @@ use graphic::lfb::map_framebuffer;
 use sessions::SessionMux;
 use terminal::lfb_terminal::LFBTerminal;
 use terminal_lib::init_logger;
+use util::banner::create_banner_string;
 use worker::cursor::Cursor;
 use worker::input_observer::InputObserver;
 

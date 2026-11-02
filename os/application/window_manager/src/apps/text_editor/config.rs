@@ -13,6 +13,7 @@ pub struct TextEditorConfig<'v> {
     pub code_view: ViewConfig<'v>,
 }
 
+#[allow(clippy::redundant_field_names)]
 impl<'c> TextEditorConfig<'c> {
     pub fn new(width: usize, height: usize, keywords: &'c [&'c str]) -> TextEditorConfig<'c> {
         let bg_color = Color::new(20, 20, 20, 255);

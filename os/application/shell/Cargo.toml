@@ -15,11 +15,12 @@ bench = false
 # Local dependencies
 runtime = { path = "../../library/runtime" }
 terminal = { path = "../../library/terminal" }
+logger = { path = "../../library/logger" }
 concurrent = { path = "../../library/concurrent" }
 naming = { path = "../../library/naming" }
 syscall = { path = "../../library/syscall" }
 globals = { path = "../../library/globals" }
 
 # Extern dependencies
-spin = "0.10.0"
+spin = "0.12"
 log = "0.4.26"

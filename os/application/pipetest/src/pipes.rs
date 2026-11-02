@@ -7,15 +7,15 @@ mod test2;
 mod test3;
 mod test4;
 
+#[allow(unused_imports, reason = "contains global_allocator")]
+use runtime::*;
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use naming::mkfifo;
 use syscall::return_vals::Errno;
 
-use concurrent::{process, thread};
-#[allow(unused_imports)]
-use runtime::*;
+use concurrent::{thread,process};
 use terminal::println;
 
 const FIFO_PATH: &str = "/mypipe";

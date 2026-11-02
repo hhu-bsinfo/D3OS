@@ -305,7 +305,7 @@ impl IdeController {
                 false => 0,
             };
 
-            let mut interface = rev_and_class.3 >> i * 2; // Each channel has two bits in the programming interface
+            let mut interface = rev_and_class.3 >> (i * 2); // Each channel has two bits in the programming interface
             // First bit defines whether the channel is running in compatibility or native mode
             // Second bit defines whether mode change is supported
             if interface & 0x01 == 0x00 && interface & 0x02 == 0x02 {
@@ -313,11 +313,11 @@ impl IdeController {
                 unsafe {
                     // Set first bit of channel interface to 1
                     let value = pci_config_space.read(pci_device.header().address(), 0x08);
-                    pci_config_space.write(pci_device.header().address(), 0x08, value | (0x01 << i * 2) << 8);
+                    pci_config_space.write(pci_device.header().address(), 0x08, value | (0x01 << (i * 2)) << 8);
                 }
 
                 rev_and_class = pci_device.header().revision_and_class(pci_config_space);
-                interface = rev_and_class.3 >> i * 2;
+                interface = rev_and_class.3 >> (i * 2);
             }
 
             let mut interrupts: [InterruptVector; CHANNELS_PER_CONTROLLER as usize] = [InterruptVector::PrimaryAta, InterruptVector::SecondaryAta];

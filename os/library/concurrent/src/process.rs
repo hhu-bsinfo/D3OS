@@ -36,11 +36,7 @@ pub fn exit() {
 }
 
 pub fn count() -> usize {
-    match syscall(SystemCall::ProcessCount, &[]) {
-        Ok(count) => count,
-        Err(_) => 0,
-    }
-    
+    syscall(SystemCall::ProcessCount, &[]).unwrap_or(0)
 }
 
 pub fn ps(buf: &mut [u8]) -> Result<usize, Errno> {

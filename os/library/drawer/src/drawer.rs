@@ -85,23 +85,17 @@ impl Drawer {
     */
     pub fn full_clear_screen(do_flush: bool) {
         let command: DrawerCommand<'_> = DrawerCommand::FullClearScreen(do_flush);
-
         Self::execute(command);
     }
 
     pub fn partial_clear_screen(part_of_screen: RectData) {
         let command = DrawerCommand::PartialClearScreen { part_of_screen };
-
         Self::execute(command);
     }
 
     pub fn get_graphic_resolution() -> (u32, u32) {
         let raw_graphic_resolution: usize = syscall(SystemCall::GetGraphicResolution, &[]).expect("Failed to get graphic resolution");
-
-        return (
-            (raw_graphic_resolution >> 32) as u32,
-            raw_graphic_resolution as u32,
-        );
+        ((raw_graphic_resolution >> 32) as u32, raw_graphic_resolution as u32)
     }
 
     pub fn draw_line(from: Vertex, to: Vertex, color: Color) {
@@ -111,13 +105,11 @@ impl Drawer {
 
     pub fn draw_polygon(vertices: Vec<Vertex>, color: Color) {
         let command = DrawerCommand::DrawPolygon { vertices, color };
-
         Self::execute(command);
     }
 
     pub fn draw_polygon_direct(vertices: Vec<Vertex>, color: Color) {
         let command = DrawerCommand::DrawPolygonDirect { vertices, color };
-
         Self::execute(command);
     }
 

@@ -9,13 +9,16 @@
 */
 
 use alloc::boxed::Box;
+use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::result::Result;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Once;
 use spin::rwlock::RwLock;
-use log::{info, warn};
+use log::{info, debug, warn};
+
+use crate::naming::traits::DirectoryObject;
 use uuid::Uuid;
 
 use super::lookup;
@@ -40,13 +43,13 @@ pub(super) fn open_object_table_init() {
 }
 
 pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
-    info!("open_object::open: open called for path '{}', flags={:?}", path, flags);
+    debug!("open_object::open: open called for path '{}', flags={:?}", path, flags);
     // try to open the named object for the given path
     let result = lookup::lookup_named_object(path);
     if result.is_err() {
         return Err(Errno::ENOENT);
     }
-    let found_named_object: NamedObject = result.unwrap();
+    let (found_named_object, parent_dir) = result.unwrap();
 
     // check if path is a directory and this was requested
     if flags.contains(OpenOptions::DIRECTORY) {
@@ -170,14 +173,12 @@ pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
 }
 
 pub(super) fn close(fh: usize) -> Result<usize, Errno> {
-    info!("open_object::close: close called for fh={}", fh);
-
-    // Reject foreign handles before touching the pipe or freeing the slot, so a
-    // process cannot close another process's handle.
-    let opened_object = get_open_object_table().lookup_owned(fh, current_owner())?;
-    if opened_object.named_object.is_pipe() {
-        if let Ok(pipe) = opened_object.named_object.as_pipe() {
-            pipe.close(opened_object.options);
+    debug!("open_object::close: close called for fh={}", fh);
+    if let Ok(opened_object) = get_open_object_table().lookup_owned(fh) {
+        if opened_object.named_object.is_pipe() {
+            if let Ok(pipe) = opened_object.named_object.as_pipe() {
+                pipe.close(opened_object.options);
+            }
         }
     }
 
@@ -209,12 +210,36 @@ pub(super) fn close_all_for_process(owner: Uuid) -> usize {
     reclaimed
 }
 
+/// delete an opened object and free its handle
+pub(super) fn delete(fh: usize) -> Result<usize, Errno> {
+    debug!("delete called for fh={}", fh);
+    if let Ok(opened_object) = get_open_object_table().lookup_opened_object(fh) {
+        match opened_object.delete() {
+            Ok(_) => debug!("  deleted {}", opened_object.name),
+            Err(e) => warn!("  error when deleting {}: {:?}", opened_object.name, e),
+        }
+    }
+    get_open_object_table().free_handle(fh)
+}
+
+pub(super) fn list_dir(fh: usize) -> Result<Vec<(NamedObject, String)>, Errno> {
+    debug!("lsdir called for fh={}", fh);
+    if let Ok(opened_object) = get_open_object_table().lookup_opened_object(fh) {
+        if let Ok(dir) = opened_object.named_object.as_dir() {
+            dir.list()
+        } else {
+            Err(Errno::ENOTDIR)
+        }
+    } else {
+        Err(Errno::EEXIST)
+    }
+}
+
 /*pub(super) fn dump() {
     get_open_object_table().lock().dump();
 }*/
 
 /// ************************ OpenedObject ************************
-
 impl OpenObjectTable {
     /// Create a new OpenObjectTable
     fn new() -> OpenObjectTable {
@@ -326,33 +351,35 @@ fn get_open_object_table() -> Arc<OpenObjectTable> {
     OPEN_OBJECTS.get().unwrap().clone()
 }
 
-/// ************************ OpenedObject ************************
+/// ************************ OpenedObject ************************ \
 
-// Opened object stored in the 'OpenObjectTable'
-// (includes NamedObject, current position within object, options, and the id
-//  of the process that opened it)
+/// Opened object stored in the 'OpenObjectTable' \
+/// (includes NamedObject, current position within object, options, and the id
+///  of the process that opened it)
 pub struct OpenedObject {
     named_object: Arc<NamedObject>,
+    name: String,
     pos: AtomicUsize, // current position within file or number of next DirEntry
     options: OpenOptions,
+    parent: Option<Arc<dyn DirectoryObject>>, // parent directory
     owner: Uuid, // id of the process that opened this object
 }
 
 impl OpenedObject {
-    pub fn new(named_object: Arc<NamedObject>, pos: AtomicUsize, options: OpenOptions, owner: Uuid) -> OpenedObject {
-        OpenedObject { named_object, pos, options, owner }
+    pub fn new(named_object: Arc<NamedObject>, name: String, pos: AtomicUsize, options: OpenOptions, parent: Option<Arc<dyn DirectoryObject>>, owner: Uuid) -> OpenedObject {
+        OpenedObject { named_object, name, pos, options, parent, owner }
     }
-}
 
-/// Return the id of the process that owns the current thread.
-///
-/// Uses `try_current_thread` because the naming service is initialized at boot
-/// before the scheduler has a current thread. `Uuid::nil()` is the kernel
-/// process id (see `Process::new_kernel`), so kernel- and boot-time opens are
-/// owned by the kernel process, which never exits and is never reclaimed.
-fn current_owner() -> Uuid {
-    scheduler()
-        .try_current_thread()
-        .map(|thread| thread.process().id())
-        .unwrap_or_else(Uuid::nil)
+    pub fn delete(&self) -> Result<(), Errno> {
+        if let Some(parent_dir) = &self.parent {
+            match Arc::as_ref(&self.named_object) {
+                NamedObject::FileObject(_) => parent_dir.delete_file(&self.name),
+                NamedObject::PipeObject(_) => parent_dir.delete_pipe(&self.name),
+                NamedObject::DirectoryObject(_) => parent_dir.delete_dir(&self.name),
+            }
+        } else {
+            // TODO: allow deleting root directories
+            Err(Errno::EACCES)
+        }
+    }
 }

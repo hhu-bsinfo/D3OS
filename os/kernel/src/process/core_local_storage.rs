@@ -1,11 +1,11 @@
 use alloc::boxed::Box;
-use core::mem::{offset_of, ManuallyDrop};
-use core::ops::{Deref, DerefMut};
+use core::mem::offset_of;
+use core::ops::Deref;
 use core::ptr;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use log::info;
 use raw_cpuid::CpuId;
-use spin::{Mutex};
+use spin::{Mutex, Once};
 use thingbuf::mpsc::errors::TryRecvError;
 use thingbuf::mpsc::Receiver;
 use x2apic::lapic::LocalApic;
@@ -20,8 +20,6 @@ use crate::device::apic::Apic;
 use crate::process::scheduler::{per_cpu_apic_id, set_inbox_apic_id, Scheduler, MessageItem};
 use crate::take_inbox_receiver;
 
-const PREEMPT_COUNT_OFFSET: usize = offset_of!(CoreLocalStorage, preempt_count);
-
 /// Core Local Storage
 /// 
 /// This struct contains information, which is needed eg. by the syscall handler.
@@ -34,13 +32,12 @@ pub struct CoreLocalStorage {
     tss_rsp0_ptr: VirtAddr,
     user_rsp: VirtAddr,
     id: u32,
-    local_apic: Option<Mutex<LocalApic>>,
-    timer_ticks_per_ms: usize,  // currently unused => needs new calibration method
+    local_apic: Once<Mutex<LocalApic>>,
+    timer_ticks_per_ms: AtomicUsize,  // currently unused => needs new calibration method
     tss: Mutex<TaskStateSegment>,
     gdt: Mutex<GlobalDescriptorTable>,
     scheduler: Scheduler,
     rx: Receiver<Option<MessageItem>>,  // single owner (this core)
-    preempt_count: AtomicUsize,
 }
 
 impl CoreLocalStorage {
@@ -50,25 +47,24 @@ impl CoreLocalStorage {
             tss_rsp0_ptr: VirtAddr::zero(),
             user_rsp: VirtAddr::zero(),
             id,
-            local_apic: None,
-            timer_ticks_per_ms: 0,
+            local_apic: Once::new(),
+            timer_ticks_per_ms: AtomicUsize::default(),
             tss: Mutex::new(TaskStateSegment::new()),
             gdt: Mutex::new(GlobalDescriptorTable::new()),
             scheduler: Scheduler::new(),
             rx: take_inbox_receiver(id as usize),
-            preempt_count: AtomicUsize::new(0),
         }
     }
 
     /// Returns a reference to the local_apic of this core.
     #[inline(always)]
     pub fn local_apic(&self) -> &Mutex<LocalApic> {
-        &self.local_apic.as_ref().expect("Local Apic not initialized")
+        &self.local_apic.get().expect("Local Apic not initialized")
     }
 
-    pub fn init_apic(&mut self, is_bp: bool) {
+    pub fn init_apic(&self, is_bp: bool) {
         assert_eq!(is_bp, self.id == 0);
-        self.local_apic = Some(Apic::new_local_apic(is_bp));
+        self.local_apic.call_once(|| Mutex::new(Apic::new_local_apic(is_bp)));
     }
 
     /// Tries to receive a MessageItem from the inbox.
@@ -78,14 +74,14 @@ impl CoreLocalStorage {
 
     /// Sets the timer ticks per ms that will be used for the timer interrupt in the future.
     /// (needs to be fixed)
-    pub fn set_timer_ticks_per_ms(&mut self, ticks: usize) {
+    pub fn set_timer_ticks_per_ms(&self, ticks: usize) {
         assert_ne!(ticks, 0);
-        self.timer_ticks_per_ms = ticks;
+        self.timer_ticks_per_ms.store(ticks, Ordering::SeqCst);
     }
 
     /// Returns the timer ticks per ms that will be used for the timer interrupt.
     pub fn timer_ticks_per_ms(&self) -> usize {
-        self.timer_ticks_per_ms
+        self.timer_ticks_per_ms.load(Ordering::SeqCst)
     }
 }
 
@@ -122,107 +118,44 @@ fn cls_ptr() -> *mut CoreLocalStorage {
     struct_ptr as *mut CoreLocalStorage
 }
 
-    //// Preemption Guard and accessors ////
+    //// Guard and accessors ////
 
-/// Preemption Guard
-pub struct ClsGuard<R> {
-    _preempt: PreemptGuard,
-    r: R,
+/// Guard for the [`CoreLocalStorage`]
+/// 
+/// If a thread holds a reference to the core-local storage,
+/// it can't be migrated to a different core.
+pub struct ClsGuard {
+    cls: &'static CoreLocalStorage,
 }
-impl<R> ClsGuard<R> {
-    fn new(r: R) -> Self {
-        let _preempt = PreemptGuard::new();
-        Self { _preempt, r }
+
+impl ClsGuard {
+    fn new(cls: &'static CoreLocalStorage) -> Self {
+        // disable migration
+        if let Some(t) = cls.scheduler.try_current_thread() {
+            t.incr_cls_ref();
+        }
+        Self { cls }
     }
 }
-impl<'a> Deref for ClsGuard<&'a CoreLocalStorage> {
-    type Target = CoreLocalStorage;
-    fn deref(&self) -> &CoreLocalStorage { self.r }
-}
-impl<'a> Deref for ClsGuard<&'a mut CoreLocalStorage> {
-    type Target = CoreLocalStorage;
-    fn deref(&self) -> &CoreLocalStorage { self.r }
-}
-impl<'a> DerefMut for ClsGuard<&'a mut CoreLocalStorage> {
-    fn deref_mut(&mut self) -> &mut CoreLocalStorage { self.r }
-}
 
-/// Map a mutable CLS guard into a guard of one of its fields. (for future work)
-impl<'a> ClsGuard<&'a CoreLocalStorage> {
-    #[inline(always)]
-    pub fn map_ref<T>(self, f: impl FnOnce(& CoreLocalStorage) -> & T) -> ClsGuard<&'a  T> {
-        // Prevent `self` from being dropped (moving preempt out manually).
-        let me = ManuallyDrop::new(self);
-
-        // Move the preemption guard out (no drop of the old guard).
-        let preempt = unsafe { ptr::read(&me._preempt) };
-        // Getting the field reference.
-        let sub: &T = f(me.r);
-
-        // Building the new guard (keeping preemption disabled).
-        ClsGuard { _preempt: preempt, r: sub }
+impl Drop for ClsGuard {
+    fn drop(&mut self) {
+        // re-enable migration
+        if let Some(t) = self.cls.scheduler.try_current_thread() {
+            t.decr_cls_ref();
+        }
     }
 }
-/*
-pub type SchedulerRefGuard<'a> = ClsGuard<&'a Scheduler>;
-#[inline(always)]     // sleep() needs to be modified for this to work
-pub fn scheduler() -> SchedulerRefGuard<'static> {
-    cls().map_ref(|c| &c.scheduler)
-}*/
 
-/// CLS getter with preemption guard.
-pub fn cls() -> ClsGuard<&'static CoreLocalStorage> {
+impl Deref for ClsGuard {
+    type Target = CoreLocalStorage;
+    fn deref(&self) -> &CoreLocalStorage { &self.cls }
+}
+
+/// CLS getter with guard.
+pub fn cls() -> ClsGuard {
     let r = unsafe { & *cls_ptr() };
     ClsGuard::new(r)
-}
-
-/// mut CLS getter with preemption guard.
-pub fn cls_mut() -> ClsGuard<&'static mut CoreLocalStorage> {
-    let r = unsafe { &mut *cls_ptr() };
-    ClsGuard::new(r)
-}
-
-pub struct PreemptGuard { /* !Send, !Sync; holds pinned state */ }
-impl Drop for PreemptGuard {
-    #[inline(always)]
-    fn drop(&mut self) { preempt_enable(); }
-}
-
-impl PreemptGuard {
-    #[inline(always)]
-    pub fn new() -> Self { preempt_disable(); Self{} }
-}
-
-/// Disables preemption temporarily.
-#[inline(always)]
-fn preempt_disable() {
-    let base: *mut u8 = cls_ptr().cast();
-    unsafe {
-        let cnt_ptr = base.add(PREEMPT_COUNT_OFFSET) as *mut AtomicUsize;
-        (*cnt_ptr).fetch_add(1, Ordering::SeqCst);
-    }
-}
-
-/// Enables preemption temporarily.
-#[inline(always)]
-fn preempt_enable() {
-    let base: *mut u8 = cls_ptr().cast();
-    let prev_counter;
-    unsafe {
-        let cnt_ptr = base.add(PREEMPT_COUNT_OFFSET) as *mut AtomicUsize;
-        prev_counter = (*cnt_ptr).fetch_sub(1, Ordering::SeqCst);
-    }
-    debug_assert!(prev_counter > 0);
-}
-
-/// Returns true if preemption is currently disabled. (without switching gs bases)
-#[inline(always)]
-pub fn preempt_is_disabled() -> bool {
-    let base: *const u8 = cls_ptr().cast();
-    unsafe {
-        let cnt_ptr = base.add(PREEMPT_COUNT_OFFSET) as *const AtomicUsize;
-        (*cnt_ptr).load(Ordering::SeqCst) != 0
-    }
 }
 
     //// Everything about the fields of the CLS ////
@@ -233,8 +166,9 @@ pub fn current_core_id() -> u32 {
     let id: u32;
     unsafe {
         core::arch::asm!(
-        "mov {tmp:e}, gs:[24]",    //id is after 3 pointers (3*8 bytes)
+        "mov {tmp:e}, gs:[{offset}]",
         tmp = out(reg) id,
+        offset = const offset_of!(CoreLocalStorage, id),
         options(nostack, preserves_flags, readonly)
         );
     }
@@ -244,7 +178,7 @@ pub fn current_core_id() -> u32 {
 /// Returns the APIC of this core.
 #[inline(always)]
 pub fn local_apic_static() -> Option<&'static Mutex<LocalApic>> {
-    unsafe { (*cls_ptr()).local_apic.as_ref() }
+    unsafe { (*cls_ptr()).local_apic.get() }
 }
 
 /// Returns the Task State Segment of this core.
@@ -261,7 +195,7 @@ pub fn tss_static() -> &'static Mutex<TaskStateSegment> {
 pub fn init_tss_cls() {
     let tss_rsp0_ptr =
         VirtAddr::new(ptr::from_ref(tss_static().lock().deref()) as u64 + size_of::<u32>() as u64);
-    cls_mut().tss_rsp0_ptr = tss_rsp0_ptr;
+    unsafe { &mut *cls_ptr() }.tss_rsp0_ptr = tss_rsp0_ptr;
 }
 
 /// Returns the Global Descriptor Table of this core.
@@ -327,13 +261,14 @@ pub fn scheduler_start() {
 }
 
 /// Function for debugging cls specific information
+#[allow(dead_code)]
 fn debug_cls() {
 
     let cls = cls();
     let tss_rsp0 = cls.tss_rsp0_ptr;
     let user_rsp = cls.user_rsp;
     let id = cls.id;
-    let timer_ticks_per_ms = cls.timer_ticks_per_ms;
+    let timer_ticks_per_ms = cls.timer_ticks_per_ms.load(Ordering::SeqCst);
 
     if let Some(feat) = CpuId::new().get_feature_info() {
         let has_tsc = feat.has_tsc();

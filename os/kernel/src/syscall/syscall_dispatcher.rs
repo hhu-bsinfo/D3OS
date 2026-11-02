@@ -14,6 +14,8 @@ use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 
 use crate::process::core_local_storage::init_tss_cls;
+use crate::syscall::sys_concurrent::sys_thread_block;
+use crate::syscall::sys_ipc::{sys_ipc_receive_blocking, sys_ipc_register, sys_ipc_delete, sys_ipc_send};
 use log::info;
 use x86_64::registers::rflags::RFlags;
 
@@ -22,7 +24,7 @@ use super::sys_concurrent::{
     sys_process_count, sys_process_execute_binary, sys_process_exit,
     sys_process_id, sys_thread_count, sys_process_status, 
     sys_thread_create, sys_thread_exit, sys_thread_id, sys_thread_join, 
-    sys_thread_kill, sys_thread_sleep, sys_thread_switch,
+    sys_thread_kill, sys_thread_sleep, sys_thread_switch, sys_core_id,
 };
 use super::sys_graphic::{sys_get_graphic_resolution, sys_write_graphic};
 use super::sys_input::{sys_read_keyboard, sys_read_mouse};
@@ -99,10 +101,12 @@ impl SyscallTable {
                 sys_thread_id as *const _,
                 sys_thread_switch as *const _,
                 sys_thread_sleep as *const _,
+                sys_thread_block as *const _,
                 sys_thread_join as *const _,
                 sys_thread_exit as *const _,
                 sys_thread_kill as *const _,
                 sys_thread_count as *const _,
+                sys_core_id as *const _,
                 sys_get_system_time as *const _,
                 sys_get_date as *const _,
                 sys_set_date as *const _,
@@ -137,6 +141,10 @@ impl SyscallTable {
                 sys_shm_attach as *const _,
                 sys_shm_detach as *const _,
                 sys_shm_unlink as *const _,
+                sys_ipc_register as *const _,
+                sys_ipc_send as *const _,
+                sys_ipc_receive_blocking as *const _,
+                sys_ipc_delete as *const _,
             ],
         }
     }

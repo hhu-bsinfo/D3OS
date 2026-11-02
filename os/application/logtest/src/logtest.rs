@@ -7,7 +7,7 @@ use runtime::*;
 use terminal::println;
 
 use logger::*;
-use log::{debug, error, info, trace, warn};
+use log::{error, info, warn};
 use log::LevelFilter;
 
 static LOGGER: Logger = Logger::new();

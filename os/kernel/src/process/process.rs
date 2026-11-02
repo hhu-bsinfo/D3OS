@@ -113,7 +113,7 @@ impl Process {
 
     /// Return the ids of all threads of the process (across all cores).
     pub fn thread_ids(&self) -> Vec<usize> {
-        scheduler::thread_ids_of_process(self.id)
+        scheduler().active_thread_ids().iter().filter(|t| t.0 == self.id()).map(|t| t.1).collect()
     }
 
     pub fn kill_all_threads_but_current(&self) {
@@ -157,6 +157,8 @@ impl core::fmt::Debug for Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
-        network::close_sockets_for_process(self)
+        log::debug!("Dropping process [{}]", self.id());
+        network::close_sockets_for_process(self);
+        crate::syscall::sys_ipc::remove_endpoints_for_process(&self.id());
     }
 }
