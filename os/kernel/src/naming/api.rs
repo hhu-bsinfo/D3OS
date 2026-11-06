@@ -137,6 +137,13 @@ pub fn close(object_handle: usize) -> Result<usize, Errno> {
     open_objects::close(object_handle)
 }
 
+/// Reclaim every open naming handle owned by the process `pid`, restoring pipe
+/// endpoint counts. Called from the process exit/kill path. Returns the number
+/// of handles reclaimed.
+pub fn close_handles_for_process(pid: uuid::Uuid) -> usize {
+    open_objects::close_all_for_process(pid)
+}
+
 /// Delete the named object referenced by `object_handle`.
 pub fn delete(object_handle: usize) -> Result<usize, Errno> {
     open_objects::delete(object_handle)

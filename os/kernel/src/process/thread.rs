@@ -36,7 +36,7 @@
 */
 use crate::consts::MAIN_USER_STACK_START;
 use crate::consts::MAX_USER_STACK_SIZE;
-use crate::consts::USER_SPACE_ENV_START;
+use crate::consts::USER_SPACE_BOOTSTRAP_START;
 use crate::initrd;
 use crate::memory::PAGE_SIZE;
 use crate::process::core_local_storage::scheduler;
@@ -47,6 +47,7 @@ use crate::process::process::Process;
 use crate::process::scheduler;
 use crate::syscall::syscall_dispatcher::CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX;
 use crate::{process_manager, tss};
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use log::debug;
@@ -59,6 +60,7 @@ use log::error;
 use log::info;
 use log::warn;
 use spin::Mutex;
+use syscall::ProcessEnvMode;
 use x86_64::PrivilegeLevel::Ring3;
 use x86_64::VirtAddr;
 use x86_64::structures::gdt::SegmentSelector;
@@ -104,6 +106,7 @@ pub struct Thread {
     entry: extern "sysv64" fn(),
     state: AtomicU8,
     wake_pending: AtomicBool, // false => allowed to block; true => do NOT block (wake pending)
+    kill_requested: AtomicBool, // kill was requested, cooperatively exit on own stack
     xsave_state: XSaveState,
     cls_references: AtomicUsize,
 }
@@ -157,6 +160,7 @@ impl Thread {
             entry,
             state: AtomicU8::new(ThreadState::Created.as_u8()),
             wake_pending: AtomicBool::new(false),
+            kill_requested: AtomicBool::new(false),
             xsave_state: XSaveState::new(),
             cls_references: AtomicUsize::default(),
         };
@@ -165,10 +169,12 @@ impl Thread {
         Arc::new(thread)
     }
 
-    /// Load application code from `elf_buffer`, create a process with a main thread. \
+    /// Load application code from `path`, create a process with a main thread. \
     /// `name` is the name of the application, `args` are the arguments passed to the application. \
+    /// `env` is the environment variables passed to the application. \
+    /// `env_mode` decides whether `env` overrides or the current process environment is inherited. \
     /// Returns the main thread of the application which is not yet registered in the scheduler.
-    pub fn load_application(path: &str, name: &str, args: &Vec<&str>) -> Result<Arc<Thread>, ProcessLoadError> {
+    pub fn load_application(path: &str, name: &str, args: &Vec<&str>, env: &Vec<&str>, env_mode: ProcessEnvMode) -> Result<Arc<Thread>, ProcessLoadError> {
         let elf_buffer = match initrd().entries().find(|entry| entry.filename().as_str().unwrap() == path) {
             Some(app) => app.data(),
             None => return Err(ProcessLoadError::NotFound),
@@ -183,8 +189,17 @@ impl Thread {
         // parse elf file headers and map and copy code if successful
         let entry = Thread::parse_and_map_elf_bin(&current_process, &new_process, elf_buffer, name)?;
 
-        // create environment for the application and copy arguments
-        Thread::copy_args(&new_process, name, args);
+        // Resolve the child environment from the explicit launch mode. The
+        // kernel applies no semantics to the entries (e.g. it does not know
+        // about terminal sessions); it just propagates the bootstrap block.
+        let resolved_env: Vec<String> = match env_mode {
+            ProcessEnvMode::Override => env.iter().map(|s| String::from(*s)).collect(),
+            ProcessEnvMode::Inherit => current_process.env(),
+        };
+        new_process.set_env(resolved_env.clone());
+
+        // create environment for the application and copy bootstrap block
+        Thread::copy_process_bootstrap(&new_process, name, args, &resolved_env);
 
         // create thread
         // this first thread is special in that there is not really a kickoff;
@@ -226,6 +241,7 @@ impl Thread {
             entry,
             state: AtomicU8::new(ThreadState::Created.as_u8()),
             wake_pending: AtomicBool::new(false),
+            kill_requested: AtomicBool::new(false),
             xsave_state: XSaveState::new(),
             cls_references: AtomicUsize::default(),
         };
@@ -479,62 +495,94 @@ impl Thread {
         Ok(elf.entry)
     }
 
-    /// Helper function to provide arguments to a new application
-    /// Used only by `load_application()`
-    fn copy_args(new_process: &Arc<Process>, name: &str, args: &Vec<&str>) {
-        let args_size = args.iter().map(|arg| arg.len()).sum::<usize>();
-        let env_size = args_size;
+    /// Helper function to provide arguments and environment to a new application.
+    /// Used only by `load_application()`.
+    ///
+    /// The single user-space bootstrap page is laid out as:
+    ///   `[argc][argv[0..argc] ptrs][NULL][envp[0..envc] ptrs][NULL][string blob]`
+    /// `argc` and the `argv` pointer array stay at the same offsets as before, so
+    /// `runtime::env::args()` is unaffected; `envp` follows the `argv` NULL
+    /// terminator and is itself NULL-terminated so `runtime::env::var()` can scan
+    /// it. `env` entries are `KEY=VALUE` C strings.
+    fn copy_process_bootstrap(new_process: &Arc<Process>, name: &str, args: &Vec<&str>, env_vars: &Vec<alloc::string::String>) {
+        let argc = args.len() + 1; // program name + args
+        let env_var_count = env_vars.len();
+        // argv pointers + argv NULL + envp pointers + envp NULL
+        let ptr_table_len = argc + 1 + env_var_count + 1;
 
-        let env_virt_start = Page::from_start_address(VirtAddr::new(USER_SPACE_ENV_START as u64)).unwrap();
-        let env_page_count = if env_size > 0 && env_size % PAGE_SIZE == 0 {
-            env_size / PAGE_SIZE
+        let argv_strings_size = name.len() + 1 + args.iter().map(|arg| arg.len() + 1).sum::<usize>();
+        let env_var_strings_size = env_vars.iter().map(|var| var.len() + 1).sum::<usize>();
+
+        let bootstrap_size = size_of::<usize>() // argc
+            + ptr_table_len * size_of::<*const u8>() // pointer table
+            + argv_strings_size
+            + env_var_strings_size;
+
+        let bootstrap_virt_start = Page::from_start_address(VirtAddr::new(USER_SPACE_BOOTSTRAP_START as u64)).unwrap();
+        let bootstrap_page_count = if bootstrap_size > 0 && bootstrap_size % PAGE_SIZE == 0 {
+            bootstrap_size / PAGE_SIZE
         } else {
-            (env_size / PAGE_SIZE) + 1
+            (bootstrap_size / PAGE_SIZE) + 1
         };
 
         // create mapping for 'total_page_count'
         let _vma = new_process
             .virtual_address_space
-            .user_alloc_map_full(Some(env_virt_start), env_page_count as u64, VmaType::Environment, "env")
+            .user_alloc_map_full(Some(bootstrap_virt_start), bootstrap_page_count as u64, VmaType::Environment, "env")
             .expect("user_alloc_map_full failed");
 
-        if env_page_count > 1 {
+        if bootstrap_page_count > 1 {
             panic!("Environment size exceeds one page, which is not supported yet");
         }
 
-        let env_frame = new_process
+        let bootstrap_frame = new_process
             .virtual_address_space
-            .get_phys(env_virt_start.start_address().as_u64())
-            .expect("get_phys failed for environment");
+            .get_phys(bootstrap_virt_start.start_address().as_u64())
+            .expect("get_phys failed for bootstrap");
 
-        // create argc and argv in the user space environment
-        let env_addr = VirtAddr::new(env_frame.as_u64()); // Start address of user space environment
-        let argc = env_addr.as_mut_ptr::<usize>(); // First entry in environment is argc (number of arguments)
-        let argv = (env_addr + size_of::<usize>() as u64).as_mut_ptr::<*const u8>(); // Second entry in environment is argv (array of pointers to arguments)
+        // create argc and the pointer table in the user space environment
+        let bootstrap_addr = VirtAddr::new(bootstrap_frame.as_u64()); // Physical start address of user space bootstrap (used for writing)
+        let argc_ptr = bootstrap_addr.as_mut_ptr::<usize>(); // First entry in environment is argc (number of arguments)
+        let ptr_table = (bootstrap_addr + size_of::<usize>() as u64).as_mut_ptr::<*const u8>(); // argv/envp pointer table
 
-        // copy arguments directly behind argv array and store pointers to them in argv
+        // copy strings directly behind the pointer table and store (virtual) pointers to them
         unsafe {
-            argc.write(args.len() + 1);
+            argc_ptr.write(argc);
 
-            let args_begin = argv.add(args.len() + 1) as *mut u8; // Physical start address of arguments (we use this address to copy them)
-            let args_begin_virt = env_virt_start.start_address() + size_of::<usize>() as u64 + ((args.len() + 1) * size_of::<usize>()) as u64; // Virtual start address of arguments (they will be visible here in user space)
+            let strings_begin = ptr_table.add(ptr_table_len) as *mut u8; // Physical start address of the string blob (for writing)
+            let strings_begin_virt = bootstrap_virt_start.start_address()
+                + size_of::<usize>() as u64
+                + (ptr_table_len * size_of::<*const u8>()) as u64; // Virtual start address of the string blob (visible in user space)
 
-            // copy program name as first argument
-            args_begin.copy_from(name.as_bytes().as_ptr(), name.len());
-            args_begin.add(name.len()).write(0); // null-terminate the string for C compatibility
-            argv.write(args_begin_virt.as_ptr());
+            let mut offset = 0usize;
 
-            let mut offset = name.len() + 1;
+            // argv[0] = program name
+            strings_begin.add(offset).copy_from(name.as_bytes().as_ptr(), name.len());
+            strings_begin.add(offset + name.len()).write(0); // null-terminate for C compatibility
+            ptr_table.write((strings_begin_virt + offset as u64).as_ptr());
+            offset += name.len() + 1;
 
-            // copy remaining arguments
+            // argv[1..] = args
             for (i, arg) in args.iter().enumerate() {
-                let target = args_begin.add(offset);
-                target.copy_from(arg.as_bytes().as_ptr(), arg.len());
-                target.add(arg.len()).write(0); // null-terminate the string for C compatibility
-
-                argv.add(i + 1).write((args_begin_virt + offset as u64).as_ptr());
+                strings_begin.add(offset).copy_from(arg.as_bytes().as_ptr(), arg.len());
+                strings_begin.add(offset + arg.len()).write(0); // null-terminate for C compatibility
+                ptr_table.add(1 + i).write((strings_begin_virt + offset as u64).as_ptr());
                 offset += arg.len() + 1;
             }
+
+            // argv NULL terminator (index argc)
+            ptr_table.add(argc).write(ptr::null());
+
+            // envp[..] = KEY=VALUE entries (start at index argc + 1)
+            for (i, var) in env_vars.iter().enumerate() {
+                strings_begin.add(offset).copy_from(var.as_bytes().as_ptr(), var.len());
+                strings_begin.add(offset + var.len()).write(0); // null-terminate for C compatibility
+                ptr_table.add(argc + 1 + i).write((strings_begin_virt + offset as u64).as_ptr());
+                offset += var.len() + 1;
+            }
+
+            // envp NULL terminator (index argc + 1 + envc)
+            ptr_table.add(argc + 1 + env_var_count).write(ptr::null());
         }
     }
 
@@ -568,6 +616,14 @@ impl Thread {
 
     pub fn set_wake_pending(&self) {
         self.wake_pending.store(true, Ordering::Release);
+    }
+
+    pub fn request_kill(&self) {
+        self.kill_requested.store(true, Ordering::Release);
+    }
+
+    pub fn is_kill_requested(&self) -> bool {
+        self.kill_requested.load(Ordering::Acquire)
     }
 
     /// Returns true if calling thread should actually block.
@@ -745,12 +801,12 @@ pub enum ProcessLoadError {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ThreadState {
     Created,
-    Ready,       // runnable, waiting to be scheduled
-    Running,     // currently executing on a core
-    Parking,     // prepared to block
-    Blocked,     // blocked
-    Sleeping,    // sleeping for some time
-    Exited,      // finished, waiting to be reaped
+    Ready,          // runnable, waiting to be scheduled
+    Running,        // currently executing on a core
+    Parking,        // prepared to block
+    Blocked,        // blocked
+    Sleeping,       // sleeping for some time
+    Exited,         // finished, waiting to be reaped
 }
 
 impl ThreadState {

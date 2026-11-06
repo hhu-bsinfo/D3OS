@@ -44,7 +44,6 @@ use alloc::sync::Arc;
 use x86_64::instructions::interrupts;
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
-use device::tty::{TtyInput, TtyOutput};
 use graphic::buffered_lfb::BufferedLFB;
 use graphic::lfb::LFB;
 use multiboot2::ModuleTag;
@@ -413,32 +412,6 @@ pub fn serial_port() -> Option<Arc<SerialPort>> {
         Some(port) => Some(Arc::clone(port)),
         None => None,
     }
-}
-
-/// TTY-IO-Buffer (Workaround for missing pipes)
-/// Used to buffer IO streams between applications and Terminal
-///
-/// Author: Sebastian Keller
-static TTY_INPUT: Once<Arc<TtyInput>> = Once::new();
-static TTY_OUTPUT: Once<Arc<TtyOutput>> = Once::new();
-
-pub fn init_tty() {
-    TTY_INPUT.call_once(|| Arc::new(TtyInput::new()));
-    TTY_OUTPUT.call_once(|| Arc::new(TtyOutput::new()));
-}
-
-pub fn tty_input() -> Arc<TtyInput> {
-    let tty_input = TTY_INPUT
-        .get()
-        .expect("Trying to access tty input before initialization!");
-    Arc::clone(tty_input)
-}
-
-pub fn tty_output() -> Arc<TtyOutput> {
-    let tty_output = TTY_OUTPUT
-        .get()
-        .expect("Trying to access tty output before initialization!");
-    Arc::clone(tty_output)
 }
 
 /// PS/2 Controller.

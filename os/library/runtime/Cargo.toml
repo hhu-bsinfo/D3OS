@@ -11,6 +11,7 @@ bench = false
 
 [dependencies]
 # Local dependencies
+bootstrap_env = { path = "../bootstrap_env" }
 terminal = { path = "../terminal" }
 syscall = { path = "../syscall" }
 concurrent = { path = "../concurrent" }

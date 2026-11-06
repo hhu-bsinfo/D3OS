@@ -84,6 +84,16 @@ pub const APPLICATION_REGISTRY: &[Application] = &[
         key_value_pair: &[],
     },
     Application {
+        namespace: "session_manager",
+        single_value: &[],
+        key_value_pair: &[],
+    },
+    Application {
+        namespace: "terminal_emulator",
+        single_value: &[],
+        key_value_pair: &[],
+    },
+    Application {
         namespace: "debug_error",
         single_value: &[],
         key_value_pair: &[],

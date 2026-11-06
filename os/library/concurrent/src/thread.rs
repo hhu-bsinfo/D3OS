@@ -14,7 +14,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use chrono::TimeDelta;
 use time::systime;
 use spin::Mutex;
-use syscall::{SystemCall, syscall,return_vals::Errno};
+use syscall::{ProcessEnvMode, SystemCall, syscall, return_vals::Errno};
 
 static NEXT_FUNCTION_ID: AtomicUsize = AtomicUsize::new(0);
 /// These are functions to be spawned in new threads.
@@ -141,14 +141,44 @@ pub fn exit() -> ! {
     panic!("System call 'ThreadExit' has returned!")
 }
 
+/// Kill a thread by its id.
+///
+/// Used by supervisors (e.g. the session manager) that only retain a thread id
+/// and need to terminate the corresponding thread without holding a [`Thread`].
+pub fn kill(id: usize) {
+    let _ = syscall(SystemCall::ThreadKill, &[id]);
+}
+
 pub fn count() -> usize {
     syscall(SystemCall::ThreadCount, &[]).unwrap_or(0)
 }
 
+/// Launch an application, inheriting the caller's environment variables.
+///
+/// This is the normal launch path: a child automatically inherits its parent's
+/// environment (e.g. the terminal session descriptor), so callers do not need
+/// to know about it.
 pub fn start_application(name: &str, args: Vec<&str>) -> Option<Thread> {
-    let res = syscall(SystemCall::ProcessExecuteBinary, &[name.as_bytes().as_ptr() as usize,
-    name.len(),
-    ptr::from_ref(&args) as usize,]);
+    start_application_with_env_mode(name, args, Vec::new(), ProcessEnvMode::Inherit)
+}
+
+/// Launch an application with an explicit environment override.
+///
+/// `env` entries are `KEY=VALUE` strings and fully replace the caller's
+/// environment for the child.
+/// Used by the session manager to place an app into a specific terminal session.
+pub fn start_application_with_env(name: &str, args: Vec<&str>, env: Vec<&str>) -> Option<Thread> {
+    start_application_with_env_mode(name, args, env, ProcessEnvMode::Override)
+}
+
+fn start_application_with_env_mode(name: &str, args: Vec<&str>, env: Vec<&str>, env_mode: ProcessEnvMode) -> Option<Thread> {
+    let res = syscall(SystemCall::ProcessExecuteBinary, &[
+        name.as_bytes().as_ptr() as usize,
+        name.len(),
+        ptr::from_ref(&args) as usize,
+        ptr::from_ref(&env) as usize,
+        env_mode as usize,
+    ]);
     match res {
         Ok(id) => Some(Thread::new(id)),
         Err(_) => None,

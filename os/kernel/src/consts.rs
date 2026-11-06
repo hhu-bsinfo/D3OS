@@ -4,10 +4,9 @@ pub const USER_SPACE_START: usize = 0x10000000000;  // 1 TiB
 // Code lies at the beginning of the user space (Max size: 1 GiB)
 pub const USER_SPACE_CODE_START: usize = USER_SPACE_START;
 
-// User space environment data (Max size: 1 GiB)
-pub const USER_ENV_SIZE: usize = 0x40000000;  // 1 GiB
-pub const USER_SPACE_ENV_START: usize = USER_SPACE_CODE_START + USER_ENV_SIZE;  // 1 GiB
-pub const USER_SPACE_ARG_START: usize = USER_SPACE_ENV_START;
+// User space bootstrap data (Max size: 1 GiB)
+pub const USER_SPACE_BOOTSTRAP_START: usize = USER_SPACE_CODE_START + 0x40000000;  // 1 GiB
+pub const USER_SPACE_ARG_START: usize = USER_SPACE_BOOTSTRAP_START;
 
 // User space mailbox
 pub const USER_MAILBOX_SIZE: usize = 0x40000000;  // 1 GiB
@@ -15,7 +14,7 @@ pub const USER_SPACE_MAILBOX_START: usize = 0x10100000000;
 
 // User space stacks (Max size per stack: 1 GiB)
 pub const MAX_USER_STACK_SIZE: usize = 0x40000000;  // 1 GiB
-pub const MAIN_USER_STACK_START: usize = USER_SPACE_ENV_START + USER_ENV_SIZE;
+pub const MAIN_USER_STACK_START: usize = USER_SPACE_BOOTSTRAP_START + 0x40000000;  // 1 GiB
 pub const KERNEL_STACK_PAGES: usize = 64;
 pub const STACK_ENTRY_SIZE: usize = 8;  
 

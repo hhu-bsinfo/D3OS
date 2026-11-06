@@ -18,6 +18,7 @@ bitflags! {
         const EXCLUSIVE = 8;
         const DIRECTORY = 16;
         const WRITEONLY = 32; // relevant for pipes
+        const NONBLOCK  = 64; // relevant for pipes: read returns immediately instead of blocking
     }
 }
 

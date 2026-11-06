@@ -24,13 +24,14 @@ pub mod errno;
 pub mod sys;
 
 use core::ffi::c_char;
-use syscall::{syscall, SystemCall};
+use core::slice;
 use crate::string::string::strlen;
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn terminal_write(buffer: *const c_char) {
-    let res = syscall(SystemCall::TerminalWriteOutput, &[buffer as usize, unsafe { strlen(buffer) }]);
-    if res.is_err() {
+    let len = unsafe { strlen(buffer) };
+    let bytes = unsafe { slice::from_raw_parts(buffer as *const u8, len) };
+    if !terminal::write::write_bytes(bytes) {
         panic!("Error while writing to the terminal!");
     }
 }

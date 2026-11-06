@@ -7,6 +7,7 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use crate::process::core_local_storage::{current_core_id, scheduler};
+use crate::process::scheduler;
 use crate::process::thread::{ProcessLoadError, Thread};
 use crate::{process_manager};
 use alloc::format;
@@ -16,6 +17,7 @@ use alloc::vec::Vec;
 use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
 use syscall::return_vals::{self, Errno};
+use syscall::ProcessEnvMode;
 use x86_64::VirtAddr;
 
 pub extern "sysv64" fn sys_process_id(destination: *mut u128) -> isize {
@@ -81,23 +83,34 @@ pub extern "sysv64" fn sys_thread_kill(id: usize) -> isize {
     0
 }
 
+#[unsafe(no_mangle)]
+pub extern "sysv64" fn check_killed_on_syscall_return() {
+    scheduler().exit_if_killed();
+}
+
 pub extern "sysv64" fn sys_thread_exit() -> ! {
     scheduler().exit();
 }
 
 pub extern "sysv64" fn sys_thread_count() -> isize {
-    scheduler().active_thread_ids().len() as isize
+    scheduler::active_tids().lock().len() as isize
 }
 
 pub extern "sysv64" fn sys_core_id() -> isize {
     current_core_id() as isize
 }
 
-pub unsafe extern "sysv64" fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize, args: *const Vec<&str>) -> isize {
+pub unsafe extern "sysv64" fn sys_process_execute_binary(name_buffer: *const u8, name_length: usize, args: *const Vec<&str>, env: *const Vec<&str>, env_mode: usize) -> isize {
     let app_name = from_utf8(unsafe { slice_from_raw_parts(name_buffer, name_length).as_ref().unwrap() }).unwrap();
     let path = format!("bin/{}", app_name);
 
-    match Thread::load_application(&path, app_name, unsafe { args.as_ref().unwrap() }) {
+    let Some(env_mode) = ProcessEnvMode::from_usize(env_mode) else {
+        return Errno::EINVAL.into();
+    };
+
+    let args_ref = unsafe { args.as_ref().unwrap() };
+    let env_ref = unsafe { env.as_ref().unwrap() };
+    match Thread::load_application(&path, app_name, args_ref, env_ref, env_mode) {
         Ok(thread) => {
             scheduler().ready(Arc::clone(&thread));
             thread.id() as isize

@@ -151,6 +151,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
+name = "bootstrap_env"
+version = "0.1.0"
+
+[[package]]
 name = "built"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1344,6 +1348,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "runtime"
 version = "0.1.0"
 dependencies = [
+ "bootstrap_env",
  "concurrent",
  "linked_list_allocator",
  "syscall",
@@ -1456,6 +1461,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "session_manager"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "naming",
+ "runtime",
+ "spin 0.10.1",
+ "terminal",
+]
+
+[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1535,6 +1551,15 @@ name = "spin"
 version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
+dependencies = [
+ "lock_api",
+]
+
+[[package]]
+name = "spin"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "023a211cb3138dbc438680b32560ad89f699977624c9f8dbb95a47d5b4c07dd3"
 dependencies = [
  "lock_api",
 ]
@@ -1641,6 +1666,10 @@ dependencies = [
 name = "terminal"
 version = "0.1.0"
 dependencies = [
+ "bootstrap_env",
+ "log",
+ "logger",
+ "naming",
  "num_enum",
  "pc-keyboard",
  "spin 0.12.2",
@@ -1661,6 +1690,7 @@ dependencies = [
  "input",
  "log",
  "logger",
+ "naming",
  "num_enum",
  "pc-keyboard",
  "runtime",
@@ -1670,6 +1700,7 @@ dependencies = [
  "system_info",
  "terminal",
  "time",
+ "unifont",
 ]
 
 [[package]]

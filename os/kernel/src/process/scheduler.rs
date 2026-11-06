@@ -41,7 +41,7 @@ use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::sync::atomic::AtomicU32;
 use core::sync::atomic::Ordering::{Relaxed};
-use log::{debug, info, warn};
+use log::{debug, info};
 use smallmap::Map;
 use spin::{Mutex, MutexGuard, Once};
 use thingbuf::mpsc::{Sender};
@@ -60,6 +60,10 @@ static ACTIVE_TIDS: Once<Mutex<Vec<(Uuid, usize)>>> = Once::new();
 #[inline]
 pub fn active_tids() -> &'static Mutex<Vec<(Uuid, usize)>> {
     ACTIVE_TIDS.call_once(|| Mutex::new(Vec::new()))
+}
+
+pub fn active_threads_for_process(process_id: &Uuid) -> Vec<usize> {
+    active_tids().lock().iter().filter(|(pid, _)| *pid == *process_id).map(|(_, tid)| *tid).collect()
 }
 
 #[inline]
@@ -194,16 +198,22 @@ impl Scheduler {
         }
     }
 
-
-    /// Get all active thread IDs
-    pub fn active_thread_ids(&self) -> Vec<(Uuid, usize)> {
-        active_tids().lock().iter().cloned().collect()
-    }
-
     /// Return the current running thread
     pub fn current_thread(&self) -> Arc<Thread> {
         self.try_current_thread()
             .expect("Trying to access current thread before initialization!")
+    }
+
+    /// Return the id of the process that owns the current thread.
+    ///
+    /// Uses `try_current_thread` because the naming service is initialized at boot
+    /// before the scheduler has a current thread. `Uuid::nil()` is the kernel
+    /// process id (see `Process::new_kernel`), so kernel- and boot-time opens are
+    /// owned by the kernel process, which never exits and is never reclaimed.
+    pub fn current_pid(&self) -> Uuid {
+        self.try_current_thread()
+            .map(|thread| thread.process().id())
+            .unwrap_or_else(Uuid::nil)
     }
 
     /// Return reference to current thread, if possible.
@@ -415,10 +425,27 @@ impl Scheduler {
             }
         }
 
+        drop(current); // manually drop thread ref count because we do not return from block_and_switch
         dec_rq_len();
-        drop(current); // Decrease Rc manually, because block() does not return
         self.block_and_switch(ready_state);
         unreachable!()
+    }
+
+    /// If the current thread was asked to die, exit on this stack so syscall
+    /// locks are released first. A killed thread is exactly a cooperative
+    /// `ThreadExit`; process-level teardown (if this is the process's last
+    /// thread) happens inside `exit`. Never returns when killed.
+    pub fn exit_if_killed(&self) {
+        // check if current thread exists
+        let Some(thread) = self.try_current_thread() else {
+            return;
+        };
+        // check if current thread kill was requested
+        if !thread.is_kill_requested() {
+            return;
+        }
+        drop(thread);
+        self.exit();
     }
 
     /// Kill the thread with the id `thread_id`, if it is on the same Core
@@ -442,10 +469,17 @@ impl Scheduler {
 
         if is_thread_alive(thread_id) == false { return true; }
 
+        let current_thread = scheduler().current_thread();
+        
+        
         #[derive(Debug, PartialEq)]
-        enum Where { ReadyQueue, SleepList, BlockList, JoinMap }
-
+        enum Where { Current, ReadyQueue, SleepList, BlockList, JoinMap }
+        
         let found = 'find_thread: {
+            // Check if the current thread is the target thread
+            if thread_id == current_thread.id() {
+                break 'find_thread Some((current_thread, Where::Current));
+            }
             // check ready_queue
             if let Some(pos) = ready_state.ready_queue.iter().position(|thread| thread.id() == thread_id) {
                 break 'find_thread Some((ready_state.ready_queue.remove(pos).unwrap(), Where::ReadyQueue));
@@ -474,22 +508,18 @@ impl Scheduler {
             None
         };
 
-        if let Some((_thread, found_where)) = found {
+        if let Some((thread, found_where)) = found {
             
-            mark_thread_dead(thread_id);
-            self.unjoin(thread_id, ready_state);
-    
-            debug!("Killing thread [{}], found on CPU {} in {:?}", thread_id, current_core_id(), found_where);
-    
-            // Drop last_fpu_context reference in ready_state
-            if ready_state.last_fpu_thread.as_ref().filter(|&thread| thread.id() == thread_id).is_some() {
-                if let Some(fpu_ref) = ready_state.last_fpu_thread.take() {
-                    drop(fpu_ref);
-                }
-            }
-    
-            if found_where == Where::ReadyQueue {
-                dec_rq_len();
+            debug!("Requesting kill for thread [{}], found on CPU {} in {:?}", thread_id, current_core_id(), found_where);
+
+            thread.request_kill();
+
+            match found_where {
+                Where::SleepList | Where::BlockList | Where::JoinMap => {
+                    ready_state.ready_queue.push_front(thread);
+                    inc_rq_len();
+                },
+                _ => {},
             }
 
             true

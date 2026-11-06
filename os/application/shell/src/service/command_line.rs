@@ -91,8 +91,7 @@ impl CommandLineService {
     }
 
     fn move_cursor_to_end(line_clx: &mut LineContext) -> Result<Response, Error> {
-        let end_pos = line_clx.len();
-        line_clx.set_cursor_pos(end_pos);
+        line_clx.set_cursor_pos(line_clx.char_len());
         Ok(Response::Ok)
     }
 

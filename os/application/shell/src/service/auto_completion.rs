@@ -112,7 +112,7 @@ impl AutoCompletionService {
             let intercept_char = line_clx.pop().expect("Expected at least one char in line");
             line_clx.push_str(&suggestion_clx.get());
             line_clx.push(intercept_char);
-            line_clx.move_cursor_right(suggestion_clx.len());
+            line_clx.move_cursor_right(suggestion_clx.get().chars().count());
         }
 
         event_bus.trigger(Event::LineWritten);

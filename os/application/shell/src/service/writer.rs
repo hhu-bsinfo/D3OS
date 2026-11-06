@@ -69,7 +69,7 @@ impl WriterService {
     fn write_prompt(&mut self) -> Result<Response, Error> {
         let prompt = self.prompt();
         print!("{}{}\x1b[0m", self.prompt_color(&TokenStatus::Valid), prompt);
-        self.terminal_cursor_pos += prompt.len();
+        self.terminal_cursor_pos += prompt.chars().count();
         Ok(Response::Ok)
     }
 
@@ -133,7 +133,7 @@ impl WriterService {
     }
 
     fn cursor_to_dirty_line(&mut self) -> String {
-        let offset = self.prompt().len() + self.line_provider.borrow().get_dirty_index();
+        let offset = self.prompt().chars().count() + self.line_provider.borrow().get_dirty_char_index();
         let step = self.terminal_cursor_pos as isize - offset as isize;
         self.move_cursor_by(step)
     }
@@ -148,7 +148,7 @@ impl WriterService {
                 false => {
                     self.terminal_cursor_pos as isize
                         - line_clx.get_cursor_pos() as isize
-                        - self.prompt().len() as isize
+                        - self.prompt().chars().count() as isize
                 }
             }
         };
@@ -175,7 +175,7 @@ impl WriterService {
             formatted_tokens.push_str(color);
             formatted_tokens.push_str(dirty_content);
             formatted_tokens.push_str("\x1b[0m");
-            self.terminal_cursor_pos += dirty_content.len();
+            self.terminal_cursor_pos += dirty_content.chars().count();
         }
         formatted_tokens
     }
@@ -187,7 +187,7 @@ impl WriterService {
         }
         let theme = self.theme_provider.borrow().get_current();
         let line = suggestion_clx.get();
-        self.terminal_cursor_pos += line.len();
+        self.terminal_cursor_pos += line.chars().count();
         format!("{}{}\x1b[0m", theme.suggestion, line)
     }
 
@@ -229,7 +229,9 @@ impl WriterService {
     }
 
     fn total_line_len(&self) -> usize {
-        self.prompt().len() + self.line_provider.borrow().len() + self.suggestion_provider.borrow().len()
+        self.prompt().chars().count()
+            + self.line_provider.borrow().char_len()
+            + self.suggestion_provider.borrow().get().chars().count()
     }
 
     fn clear_right_of_cursor() -> &'static str {

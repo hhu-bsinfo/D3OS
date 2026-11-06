@@ -15,6 +15,7 @@ use uuid::{ContextV7, Timestamp, Uuid};
 use core::ops::Deref;
 use core::sync::atomic::Ordering::Relaxed;
 use crate::process::core_local_storage::scheduler;
+use crate::process::scheduler;
 use crate::{network, now, process_manager, timer};
 use crate::memory::pages::Paging;
 use crate::memory::vmm::VirtualAddressSpace;
@@ -31,6 +32,7 @@ pub struct Process {
     pub utime: AtomicU64,
     pub stime: AtomicU64,
     pub rss_user_pages: AtomicU64, // only userpages, because kernel mapping 1:1
+    env: Mutex<Vec<String>>,
 }
 
 
@@ -48,7 +50,8 @@ impl Process {
             virtual_address_space: VirtualAddressSpace::new(page_tables), 
             utime: AtomicU64::new(0), // track the time spent in User-Mode
             stime: AtomicU64::new(0), // track the time spent in Kernel-Mode 
-            rss_user_pages: AtomicU64::new(0) } // track the amount of pages allocated
+            rss_user_pages: AtomicU64::new(0), // track the amount of pages allocated
+            env: Mutex::new(Vec::new()) }
     }
     
     /// Get a new ID for a new process.
@@ -79,6 +82,16 @@ impl Process {
         &self.name
     }
 
+    /// Return a clone of the process environment (`KEY=VALUE` entries).
+    pub fn env(&self) -> Vec<String> {
+        self.env.lock().clone()
+    }
+
+    /// Replace the process environment (`KEY=VALUE` entries).
+    pub fn set_env(&self, env: Vec<String>) {
+        *self.env.lock() = env;
+    }
+
     /// Return the utime of the process
     pub fn utime(&self) -> u64 {
         self.utime.load(Relaxed) 
@@ -98,9 +111,9 @@ impl Process {
         process_manager().write().exit(self.id);
     }
 
-    /// Return the ids of all threads of the process
+    /// Return the ids of all threads of the process (across all cores).
     pub fn thread_ids(&self) -> Vec<usize> {
-        scheduler().active_thread_ids().iter().filter(|t| t.0 == self.id()).map(|t| t.1).collect()
+        scheduler::active_threads_for_process(&self.id())
     }
 
     pub fn kill_all_threads_but_current(&self) {
@@ -144,8 +157,10 @@ impl core::fmt::Debug for Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
-        log::debug!("Dropping process [{}]", self.id());
+        let pid = self.id();
+        log::debug!("Dropping process [{}]", pid);
         network::close_sockets_for_process(self);
-        crate::syscall::sys_ipc::remove_endpoints_for_process(&self.id());
+        crate::syscall::sys_ipc::remove_endpoints_for_process(&pid);
+        crate::naming::api::close_handles_for_process(pid);
     }
 }

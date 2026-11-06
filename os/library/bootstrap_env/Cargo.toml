@@ -1,0 +1,10 @@
+[package]
+edition = "2024"
+name = "bootstrap_env"
+version = "0.1.0"
+authors = ["Aymen Sellami"]
+
+[lib]
+test = false
+doctest = false
+bench = false

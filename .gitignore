@@ -142,3 +142,10 @@ rustc-ice-*.txt
 .rustfmt.toml
 .idea/copilot*
 .gdb_history
+
+### Local Cursor / AI assistant ###
+.cursor/
+AGENTS.md
+context/
+.agents/
+skills-lock.json

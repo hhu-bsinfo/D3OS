@@ -91,7 +91,8 @@ impl HistoryService {
         let line = self.history.get(self.history_position as usize).unwrap().clone();
         line_clx.reset();
         line_clx.push_str(&line);
-        line_clx.set_cursor_pos(line.len());
+        let end = line_clx.char_len();
+        line_clx.set_cursor_pos(end);
         event_bus.trigger(Event::HistoryRestored);
         Ok(Response::Ok)
     }

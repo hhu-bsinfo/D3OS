@@ -25,7 +25,7 @@ use crate::{
     acpi_tables, allocator, apic, gdt, get_initrd_frames,
     efi_services_available, init_acpi_tables, init_apic, init_boot_info,
     init_cpu_info, init_initrd, init_lfb, init_lfb_info, init_pci,
-    init_serial_port, init_tty, keyboard, logger, mouse,
+    init_serial_port, keyboard, logger, mouse,
     process_manager, serial_port, timer, tss,
 };
 use crate::{built_info, memory, naming, network, storage};
@@ -40,6 +40,7 @@ use core::ops::Deref;
 use core::ptr;
 use log::{info, warn, LevelFilter};
 use multiboot2::{BootInformation, BootInformationHeader, EFIMemoryMapTag, MemoryAreaType, MemoryMapTag, TagHeader};
+use syscall::ProcessEnvMode;
 use uefi::data_types::Handle;
 use uefi::mem::memory_map::MemoryMap;
 use uefi::runtime::Time;
@@ -384,19 +385,18 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     }
     scheduler().ready(Thread::new_kernel_thread(cleanup, "cleanup"));
 
-    //Initialize tty buffer (Workaround for missing pipes)
-    init_tty();
-
     if BOOT_TO_GUI {
         // Create and register the 'window_manager' thread in the scheduler
         scheduler().ready(Thread::load_application(
-            "bin/window_manager", "window_manager", &[].to_vec(),
+            "bin/window_manager", "window_manager", &[].to_vec(), &[].to_vec(), ProcessEnvMode::Inherit,
         ).expect("failed to load window_manager"));
     } else {
-        // Create and register the 'terminal_emulator' thread (from app image in ramdisk) in the scheduler
+        // Create and register the 'session_manager' thread (from app image in ramdisk) in the scheduler.
+        // The session manager owns terminal session lifecycle and launches the
+        // terminal emulator and the initial shell itself.
         scheduler().ready(Thread::load_application(
-            "bin/terminal_emulator", "terminal_emulator", &[].to_vec(),
-        ).expect("failed to load terminal_emulator"));
+            "bin/session_manager", "session_manager", &[].to_vec(), &[].to_vec(), ProcessEnvMode::Inherit,
+        ).expect("failed to load session_manager"));
     }
 
     // Dump information about all processes (including VMAs)

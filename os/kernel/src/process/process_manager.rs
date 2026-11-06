@@ -20,10 +20,15 @@ use crate::memory::vma::VmaType;
 use crate::process::core_local_storage::scheduler;
 use crate::process::process::Process;
 use crate::process::process_stats::ProcStat;
+use crate::process::scheduler;
 
 pub struct ProcessManager {
     active_processes: Vec<Arc<Process>>,
-    exited_processes: Vec<Arc<Process>>, // processed by cleanup thread later
+    /// Processes that have exited but whose last thread may still be in
+    /// `scheduler.exit()` / `Thread::switch`. Dropped on the *next* cleanup pass.
+    exited_processes: Vec<Arc<Process>>,
+    /// Staged from `exited_processes` last cleanup cycle; safe to drop now.
+    graveyard: Vec<Arc<Process>>,
 }
 
 impl ProcessManager {
@@ -31,6 +36,7 @@ impl ProcessManager {
         Self {
             active_processes: Vec::new(),
             exited_processes: Vec::new(),
+            graveyard: Vec::new(),
         }
     }
 
@@ -128,42 +134,76 @@ impl ProcessManager {
             self.kernel_process().unwrap()
         }
     }
-
-    /// Exit a process by its id
+        
+    /// Exit a process by its id: tear it down regardless of how many threads
+    /// are still alive. Called by a process's authoritative thread via
+    /// `Process::exit`.
     pub fn exit(&mut self, process_id: Uuid) {
-        let index = self
+        if !self.is_active_process(process_id) {
+            return;
+        }
+
+        // Forcibly end every other thread while the process is still in the
+        // active set; the victims exit via a bare `Scheduler::exit`.
+        if let Some(process) = self
             .active_processes
             .iter()
-            .position(|process| process.id() == process_id)
-            .expect("Process: Trying to exit a non-existent process!");
+            .find(|process| process.id() == process_id) {
+                process.kill_all_threads_but_current();
+            }
 
-        let process = Arc::clone(&self.active_processes[index]);
-        process.kill_all_threads_but_current();
-
-        self.active_processes.swap_remove(index);
-        self.exited_processes.push(process);
+        self.finalize_exit(process_id);
     }
 
-    /// Kill a process by its id
+    /// Kill a process by its id. Like `exit`, but the caller is not one of the
+    /// process's threads, so every thread is killed.
     pub fn kill(&mut self, process_id: Uuid) {
-        let index = self
-            .active_processes
-            .iter()
-            .position(|process| process.id() == process_id)
-            .expect("Process: Trying to kill a non-existent process!");
+        if !self.is_active_process(process_id) {
+            return;
+        }
 
-        let process = Arc::clone(&self.active_processes[index]);
-        for thread_id in process.thread_ids() {
+        for thread_id in scheduler::active_threads_for_process(&process_id) {
             scheduler().kill(thread_id);
         }
 
-        self.active_processes.swap_remove(index);
-        self.exited_processes.push(process);
+        self.finalize_exit(process_id);
     }
 
-    /// 
+    /// Remove `process_id` from the active set and reclaim its resources.
+    ///
+    /// No-op (returns `false`) if it was already torn down: an explicit
+    /// `Process::exit` may have run while cooperatively-killed siblings were
+    /// still winding down, and each of those siblings still passes through the
+    /// last-thread hook in `Scheduler::exit`. This is what makes teardown
+    /// exactly-once.
+    pub(crate) fn finalize_exit(&mut self, process_id: Uuid) -> bool {
+        let Some(index) = self
+            .active_processes
+            .iter()
+            .position(|process| process.id() == process_id)
+        else {
+            return false;
+        };
+
+        let process = self.active_processes.swap_remove(index);
+        self.exited_processes.push(process);
+        
+        true
+    }
+
+    /// Drop processes that exited at least one cleanup cycle ago.
+    ///
+    /// The last thread of a process cannot unmap its own address space: its
+    /// kernel stack lives in that space, and `Thread::switch` still runs there
+    /// after `ProcessManager::exit` returns. If cleanup was blocked on this
+    /// write lock during exit, a one-cycle delay keeps the `Arc<Process>` alive
+    /// across that switch. Dropping immediately is a triple-fault/reset.
     pub fn drop_exited_process(&mut self) {
-        self.exited_processes.clear();
+        self.graveyard.clear();
+        // only swap if there are exited processes
+        if self.exited_processes.len() > 0 {
+            core::mem::swap(&mut self.graveyard, &mut self.exited_processes);
+        }
     }
 
     /// Dump all active processes

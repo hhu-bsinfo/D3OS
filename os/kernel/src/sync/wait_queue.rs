@@ -33,26 +33,31 @@ impl WaitQueue {
     where
         F: FnMut() -> bool,
     {
-        let ids = scheduler().current_ids();
-
         loop {
             if pred() {
                 return;
             }
 
+            let ids = scheduler().park_current();
             {
                 let mut guard = self.queue.lock();
-
-                // re-check under lock
-                if pred() {
-                    return;
-                }
-
-                // register current thread with the WaitQueue
                 guard.push_back(ids);
             }
 
-            scheduler().block();
+            // Blocks only if we are still Parking AND still need to wait. The
+            // predicate is re-evaluated under the scheduler lock, which is
+            // serialized against `unblock()`, so a wakeup can never be lost.
+            scheduler().block_if_parking(|| !pred());
+            scheduler().exit_if_killed();
+
+            // Drop our registration if a notify has not already removed it (e.g.
+            // when `block_if_parking` returned without blocking due to a race).
+            {
+                let mut guard = self.queue.lock();
+                if let Some(pos) = guard.iter().position(|entry| *entry == ids) {
+                    guard.remove(pos);
+                }
+            }
         }
     }
 
