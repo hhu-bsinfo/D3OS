@@ -25,6 +25,8 @@
 
 extern crate alloc;
 
+use core::sync::atomic::{AtomicU8, Ordering};
+
 use alloc::collections::btree_map::BTreeMap;
 use alloc::format;
 use alloc::vec::Vec;
@@ -55,40 +57,45 @@ struct SessionEntry {
 }
 
 struct ManagerState {
-    sessions: BTreeMap<u8, SessionEntry>,
-    active: u8,
-    next_id: u8,
-    generation: u8,
+    sessions: Mutex<BTreeMap<u8, SessionEntry>>,
+    active: AtomicU8,
+    next_id: AtomicU8,
+    generation: AtomicU8,
 }
 
-static STATE: Mutex<ManagerState> = Mutex::new(ManagerState {
-    sessions: BTreeMap::new(),
-    active: 0,
-    next_id: 0,
-    generation: 0,
-});
+static STATE: ManagerState = ManagerState {
+    sessions: Mutex::new(BTreeMap::new()),
+    active: AtomicU8::new(0),
+    next_id: AtomicU8::new(1),
+    generation: AtomicU8::new(0),
+};
 
 fn is_alive(id: u8) -> bool {
-    STATE.lock().sessions.contains_key(&id)
+    STATE.sessions.lock().contains_key(&id)
 }
 
 fn set_shell_tid(id: u8, tid: usize) {
-    if let Some(entry) = STATE.lock().sessions.get_mut(&id) {
-        entry.shell_tid = tid;
-    }
+    STATE
+        .sessions
+        .lock()
+        .get_mut(&id)
+        .expect("session is mising")
+        .shell_tid = tid;
 }
 
 /// Publish the authoritative live-session snapshot on the manager `ctl` record:
 /// the active id, live count, a freshly bumped generation, and the live mask.
 fn publish_ctl(ctl: usize) {
-    let (active, count, generation, mask) = {
-        let mut state = STATE.lock();
-        state.generation = state.generation.wrapping_add(1);
-        let count = state.sessions.len() as u8;
-        let mask = manager::live_mask_from_ids(state.sessions.keys().copied());
-        (state.active, count, state.generation, mask)
+    let (count, generation, mask) = {
+        let sessions = STATE.sessions.lock();
+        let generation = STATE.generation.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+        let count = sessions.len() as u8;
+        let mask = manager::live_mask_from_ids(sessions.keys().copied());
+        (count, generation, mask)
     };
-    let _ = manager::write_ctl(ctl, &ManagerCtl::new(active, count, generation, mask));
+    manager::write_ctl(ctl, &ManagerCtl::new(
+        STATE.active.load(Ordering::SeqCst), count, generation, mask,
+    )).expect("failed to write manager ctl");
 }
 
 /// Restart loop for a single session's shell.
@@ -139,15 +146,14 @@ fn handle_command(command: u8, ctl: usize) {
 
 fn new_tab(ctl: usize) {
     let id = {
-        let mut state = STATE.lock();
-        let live = state.sessions.len();
+        let mut sessions = STATE.sessions.lock();
+        let live = sessions.len();
         if live >= MAX_SESSIONS {
             return; // Refuse gracefully; see MAX_SESSIONS.
         }
-        let id = state.next_id;
-        state.next_id = state.next_id.wrapping_add(1);
-        state.sessions.insert(id, SessionEntry { shell_tid: 0 });
-        state.active = id;
+        let id = STATE.next_id.fetch_add(1, Ordering::SeqCst);
+        sessions.insert(id, SessionEntry { shell_tid: 0 });
+        STATE.active.store(id, Ordering::SeqCst);
         id
     };
 
@@ -158,19 +164,19 @@ fn new_tab(ctl: usize) {
 
 fn close_active(ctl: usize) {
     let shell_tid = {
-        let mut state = STATE.lock();
+        let mut sessions = STATE.sessions.lock();
         // Always keep at least one session alive.
-        if state.sessions.len() <= 1 {
+        if sessions.len() <= 1 {
             return;
         }
 
-        let id = state.active;
-        let shell_tid = state.sessions.get(&id).map(|entry| entry.shell_tid).unwrap_or(0);
-        state.sessions.remove(&id);
+        let id = STATE.active.load(Ordering::SeqCst);
+        let shell_tid = sessions.get(&id).map(|entry| entry.shell_tid).unwrap_or(0);
+        sessions.remove(&id);
 
         // Pick the lowest remaining session id as the new active session.
-        if let Some(&next) = state.sessions.keys().next() {
-            state.active = next;
+        if let Some(&next) = sessions.keys().next() {
+            STATE.active.store(next, Ordering::SeqCst);
         }
         shell_tid
     };
@@ -185,9 +191,8 @@ fn close_active(ctl: usize) {
 
 fn switch_relative(ctl: usize, direction: i32) {
     {
-        let mut state = STATE.lock();
-        let live: Vec<u8> = state
-            .sessions
+        let sessions = STATE.sessions.lock();
+        let live: Vec<u8> = sessions
             .iter()
             .map(|(id, _)| *id)
             .collect();
@@ -195,10 +200,12 @@ fn switch_relative(ctl: usize, direction: i32) {
             return;
         }
 
-        let position = live.iter().position(|&id| id == state.active).unwrap_or(0) as i32;
+        let position = live.iter().position(
+            |&id| id == STATE.active.load(Ordering::SeqCst)
+        ).unwrap_or_default() as i32;
         let len = live.len() as i32;
-        let next = (((position + direction) % len) + len) % len;
-        state.active = live[next as usize];
+        let next = (((position + direction) % len) + len) % len; // TODO
+        STATE.active.store(live[next as usize], Ordering::SeqCst);
     }
     publish_ctl(ctl);
 }
@@ -212,12 +219,7 @@ pub fn main() {
 
     // Create the initial session 0 and record it.
     Session::with_id(0).create();
-    {
-        let mut state = STATE.lock();
-        state.sessions.insert(0, SessionEntry { shell_tid: 0 });
-        state.active = 0;
-        state.next_id = 1;
-    }
+    STATE.sessions.lock().insert(0, SessionEntry { shell_tid: 0 });
     publish_ctl(ctl);
     spawn_supervisor(0);
 

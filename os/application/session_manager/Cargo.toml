@@ -20,3 +20,4 @@ naming = { path = "../../library/naming" }
 
 # External dependencies
 spin = "0.10.0"
+log = "0.4"
