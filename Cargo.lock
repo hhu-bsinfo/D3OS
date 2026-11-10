@@ -1466,6 +1466,7 @@ version = "0.1.0"
 dependencies = [
  "concurrent",
  "log",
+ "logger",
  "naming",
  "runtime",
  "spin 0.10.1",

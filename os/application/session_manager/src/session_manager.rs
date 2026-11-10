@@ -32,8 +32,9 @@ use alloc::format;
 use alloc::vec::Vec;
 
 use concurrent::thread;
+use log::{error, info};
 use naming::shared_types::OpenOptions;
-use spin::Mutex;
+use spin::{Mutex, MutexGuard};
 use terminal::manager::{self, cmd, ManagerCtl};
 use terminal::session::{Session, SESSION_DESCRIPTOR_KEY};
 
@@ -66,7 +67,7 @@ struct ManagerState {
 static STATE: ManagerState = ManagerState {
     sessions: Mutex::new(BTreeMap::new()),
     active: AtomicU8::new(0),
-    next_id: AtomicU8::new(1),
+    next_id: AtomicU8::new(0),
     generation: AtomicU8::new(0),
 };
 
@@ -85,143 +86,152 @@ fn set_shell_tid(id: u8, tid: usize) {
 
 /// Publish the authoritative live-session snapshot on the manager `ctl` record:
 /// the active id, live count, a freshly bumped generation, and the live mask.
-fn publish_ctl(ctl: usize) {
-    let (count, generation, mask) = {
-        let sessions = STATE.sessions.lock();
-        let generation = STATE.generation.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
-        let count = sessions.len() as u8;
-        let mask = manager::live_mask_from_ids(sessions.keys().copied());
-        (count, generation, mask)
-    };
+fn publish_ctl(ctl: usize, sessions: &MutexGuard<'_, BTreeMap<u8, SessionEntry>>) {
+    let generation = STATE.generation.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+    let count = sessions.len() as u8;
+    let mask = manager::live_mask_from_ids(sessions.keys().copied());
     manager::write_ctl(ctl, &ManagerCtl::new(
         STATE.active.load(Ordering::SeqCst), count, generation, mask,
     )).expect("failed to write manager ctl");
 }
 
-/// Restart loop for a single session's shell.
+/// Loop for a single session's shell
 ///
-/// Runs in its own thread so the manager's command loop never blocks on
-/// `join()`. Restarts the shell when it exits normally (e.g. the user runs the
-/// `exit` built-in) and terminates once the session is closed.
-fn supervise(id: u8) {
-    loop {
-        if !is_alive(id) {
-            break;
-        }
+/// It runs in its own thread, so the manager's command loop never blocks on
+/// `join()`. When the shell exits, it terminates the session.
+fn supervise(ctl: usize, id: u8) {
+    // Don't start if we shouldn't be alive.
+    if !is_alive(id) {
+        return;
+    }
+    info!("starting shell for session {id}");
 
-        let descriptor = format!("{}={}", SESSION_DESCRIPTOR_KEY, id);
-        let env: Vec<&str> = alloc::vec![descriptor.as_str()];
+    let descriptor = format!("{}={}", SESSION_DESCRIPTOR_KEY, id);
+    let env: Vec<&str> = alloc::vec![descriptor.as_str()];
 
-        match thread::start_application_with_env("shell", Vec::new(), env) {
-            Some(shell) => {
-                set_shell_tid(id, shell.id());
-                let _ = shell.join();
-            }
-            None => {
-                thread::sleep(500);
-            }
+    if let Some(shell) = thread::start_application_with_env("shell", Vec::new(), env) {    
+        set_shell_tid(id, shell.id());
+        match shell.join() {
+            Ok(_) => info!("shell for session {id} exited"),
+            Err(e) => error!("shell for session {id} failed to start: {e:?}"),
         }
+    } else {
+        error!("failed to start shell for session {id}");
+    }
 
-        // If the session was closed while the shell ran, stop; otherwise the
-        // shell exited on its own and we restart it.
-        if !is_alive(id) {
-            break;
-        }
+    // If the shell is dead, but the session is still alive, close it.
+    if is_alive(id) {
+        close(ctl, id);
     }
 }
 
-fn spawn_supervisor(id: u8) {
-    thread::create(move || supervise(id));
+fn spawn_supervisor(ctl: usize, id: u8) {
+    thread::create(move || supervise(ctl, id));
 }
 
 fn handle_command(command: u8, ctl: usize) {
     match command {
         cmd::NEW_TAB => new_tab(ctl),
-        cmd::CLOSE_ACTIVE => close_active(ctl),
+        cmd::CLOSE_ACTIVE => close(ctl, STATE.active.load(Ordering::SeqCst)),
         cmd::NEXT_TAB => switch_relative(ctl, 1),
         cmd::PREV_TAB => switch_relative(ctl, -1),
         _ => {}
     }
 }
 
+/// Create a new tab.
 fn new_tab(ctl: usize) {
-    let id = {
-        let mut sessions = STATE.sessions.lock();
-        let live = sessions.len();
-        if live >= MAX_SESSIONS {
-            return; // Refuse gracefully; see MAX_SESSIONS.
-        }
-        let id = STATE.next_id.fetch_add(1, Ordering::SeqCst);
-        sessions.insert(id, SessionEntry { shell_tid: 0 });
-        STATE.active.store(id, Ordering::SeqCst);
-        id
-    };
+    info!("creating a new tab");
+    let mut sessions = STATE.sessions.lock();
+    let live = sessions.len();
+    if live >= MAX_SESSIONS {
+        return; // Refuse gracefully; see MAX_SESSIONS.
+    }
+    let id = new_session(ctl, &mut sessions);
+    STATE.active.store(id, Ordering::SeqCst);
 
-    let _ = Session::with_id(id as usize).create();
-    spawn_supervisor(id);
-    publish_ctl(ctl);
+    publish_ctl(ctl, &sessions);
 }
 
-fn close_active(ctl: usize) {
-    let shell_tid = {
-        let mut sessions = STATE.sessions.lock();
-        // Always keep at least one session alive.
-        if sessions.len() <= 1 {
-            return;
-        }
+/// Create a new session and return its id.
+/// 
+/// This also spawns the shell.
+fn new_session(ctl: usize, sessions: &mut MutexGuard<'_, BTreeMap<u8, SessionEntry>>) -> u8 {
+    let id = STATE.next_id.fetch_add(1, Ordering::SeqCst);
+    sessions.insert(id, SessionEntry { shell_tid: 0 });
+    let _ = Session::with_id(id.into()).create();
+    spawn_supervisor(ctl, id);
+    id
+}
 
-        let id = STATE.active.load(Ordering::SeqCst);
-        let shell_tid = sessions.get(&id).map(|entry| entry.shell_tid).unwrap_or(0);
-        sessions.remove(&id);
+/// Close a session.
+/// 
+/// This may be an active or an inactive one.
+/// If we're closing the last one, spawn a new one.
+fn close(ctl: usize, id: u8) {
+    let mut sessions = STATE.sessions.lock();
 
-        // Pick the lowest remaining session id as the new active session.
-        if let Some(&next) = sessions.keys().next() {
-            STATE.active.store(next, Ordering::SeqCst);
-        }
-        shell_tid
-    };
+    let shell_tid = sessions
+        .get(&id)
+        .map(|entry| entry.shell_tid)
+        .expect("session is missing");
+    sessions.remove(&id);
+    
+    // We need to always have at least one session.
+    if sessions.len() == 0 {
+        new_session(ctl, &mut sessions);
+    }
+
+    // if we're closing the currently active session,
+    // we need to pick a new one (the lowest remaining session)
+    if id == STATE.active.load(Ordering::SeqCst) {
+        STATE.active.store(
+            *sessions.keys().next().expect("no sessions"), Ordering::SeqCst,
+        );
+    }
 
     // Terminate the closed session's shell so its supervisor's join() returns
     // and the supervisor stops (the session is no longer alive).
     if shell_tid != 0 {
         thread::kill(shell_tid);
     }
-    publish_ctl(ctl);
+
+    publish_ctl(ctl, &sessions);
 }
 
 fn switch_relative(ctl: usize, direction: i32) {
-    {
-        let sessions = STATE.sessions.lock();
-        let live: Vec<u8> = sessions
-            .iter()
-            .map(|(id, _)| *id)
-            .collect();
-        if live.len() <= 1 {
-            return;
-        }
-
-        let position = live.iter().position(
-            |&id| id == STATE.active.load(Ordering::SeqCst)
-        ).unwrap_or_default() as i32;
-        let len = live.len() as i32;
-        let next = (((position + direction) % len) + len) % len; // TODO
-        STATE.active.store(live[next as usize], Ordering::SeqCst);
+    let sessions = STATE.sessions.lock();
+    let live: Vec<u8> = sessions
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+    if live.len() <= 1 {
+        return;
     }
-    publish_ctl(ctl);
+
+    let position = live.iter().position(
+        |&id| id == STATE.active.load(Ordering::SeqCst)
+    ).unwrap_or_default() as i32;
+    let len = live.len() as i32;
+    let next = (((position + direction) % len) + len) % len; // TODO
+    STATE.active.store(live[next as usize], Ordering::SeqCst);
+    publish_ctl(ctl, &sessions);
 }
 
 #[unsafe(no_mangle)]
 pub fn main() {
+    logger::init_logger();
     manager::create_namespace();
 
     let ctl = naming::open(&manager::ctl_path(), OpenOptions::READWRITE)
         .expect("failed to open manager ctl");
 
     // Create the initial session 0 and record it.
-    Session::with_id(0).create();
-    STATE.sessions.lock().insert(0, SessionEntry { shell_tid: 0 });
-    publish_ctl(ctl);
-    spawn_supervisor(0);
+    {
+        let mut sessions = STATE.sessions.lock();
+        new_session(ctl, &mut sessions);
+        publish_ctl(ctl, &sessions);
+    }
 
     // Launch the renderer. It connects back to the manager namespace and opens
     // its endpoints for each session it finds in the `ctl` snapshot.
