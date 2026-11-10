@@ -3,32 +3,26 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Descr.: Per-session screen multiplexer for the terminal emulator.       ║
    ║                                                                         ║
-   ║ The emulator is a pure renderer/input client of the standalone          ║
-   ║ `session_manager`. This module owns, per live session, the endpoints    ║
-   ║ (`out` reader, `ctl` reader, lazily-opened `in` writer), a semantic      ║
-   ║ terminal model, and a canonical line editor. Every loop it drains        ║
-   ║ *every* session's `out` FIFO into that session's model (so background     ║
-   ║ apps never block on the bounded pipe), and renders only the active        ║
-   ║ session's damage to the framebuffer. Switching tabs presents the target   ║
-   ║ session's semantic viewport in one repaint - no history is replayed.     ║
-   ║                                                                         ║
-   ║ It also speaks the manager protocol: each loop it polls the manager      ║
-   ║ `ctl` record (an authoritative live-session snapshot: active id +        ║
-   ║ generation + 256-bit live mask), diffs that set against its local map    ║
-   ║ to open/close endpoints, applies the active id, and forwards UI          ║
-   ║ commands (new/close/next/prev tab) on the `cmd` FIFO.                   ║
+   ║ This module owns, per live session, the endpoints (`out` reader, `ctl`  ║
+   ║ reader, lazily-opened `in` writer), a semantic terminal model, and a    ║
+   ║ canonical line editor. Every loop it drains *every* session's `out`     ║
+   ║ FIFO into that session's model (so background apps never block on the   ║
+   ║ bounded pipe), and renders only the active session's damage to the      ║
+   ║ framebuffer. Switching tabs presents the target session's semantic      ║
+   ║ viewport in one repaint - no history is replayed.                       ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Aymen Sellami                                                   ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
 pub(crate) mod screen;
+pub(crate) mod manager;
 
 use alloc::collections::btree_map::BTreeMap;
 use alloc::rc::Rc;
 
+use log::info;
 use naming::shared_types::OpenOptions;
-use terminal_lib::manager;
 use terminal_lib::session::{read_ctl, CtlRecord, Session, WaitState};
 
 use crate::terminal::lfb_terminal::LFBTerminal;
@@ -46,10 +40,6 @@ const NO_ACTIVE: u8 = u8::MAX;
 
 pub struct SessionMux {
     terminal: Rc<LFBTerminal>,
-    /// Manager `ctl` record reader (pollable live-session snapshot).
-    manager_ctl: Option<usize>,
-    /// Manager `cmd` FIFO writer (UI commands emulator -> manager).
-    manager_cmd: Option<usize>,
     sessions: BTreeMap<u8, SessionScreen>,
     active: u8,
     /// Generation of the last snapshot applied, so unchanged snapshots are
@@ -61,59 +51,43 @@ impl SessionMux {
     pub fn new(terminal: Rc<LFBTerminal>) -> Self {
         Self {
             terminal,
-            manager_ctl: None,
-            manager_cmd: None,
             sessions: BTreeMap::new(),
             active: NO_ACTIVE,
             last_generation: None,
         }
     }
 
-    /// Connect to the manager namespace.
-    ///
-    /// The only rendezvous is the `cmd` FIFO: opening it WRITEONLY blocks until
-    /// the manager's `cmd` reader is present. The `ctl` record is a pollable
-    /// tmpfs file with no rendezvous, so it is opened afterwards.
-    pub fn connect(&mut self) {
-        self.manager_cmd = naming::open(&manager::cmd_path(), OpenOptions::WRITEONLY).ok();
-        self.manager_ctl = naming::open(&manager::ctl_path(), OpenOptions::READWRITE).ok();
-    }
-
     /// Poll the manager `ctl` snapshot: skip if the generation is unchanged,
     /// otherwise diff the live-session set against the local map (add/remove
     /// endpoints) and then apply the active id.
     pub fn poll_snapshot(&mut self) {
-        let Some(handle) = self.manager_ctl else {
-            return;
-        };
-        let Ok(record) = manager::read_ctl(handle) else {
-            return;
-        };
-        if !record.is_published() {
+        // check if there's a new snapshot
+        if let Some(generation) = self.last_generation && generation == manager::generation() {
             return;
         }
-        if self.last_generation == Some(record.generation) {
-            return;
-        }
+        // else, we need to get it.
+        info!("getting new session manager snapshot (generation >= {:?})", self.last_generation);
+        let record = manager::ManagerCtl::get();
 
         // Diff membership before touching the active id, so a newly announced id
         // has its endpoints open before it can be selected.
-        for id in record.live_ids() {
-            if !self.sessions.contains_key(&id) {
-                self.add_session(id);
+        for id in &record.live_ids {
+            if !self.sessions.contains_key(id) {
+                self.add_session(*id);
             }
         }
         let stale: alloc::vec::Vec<u8> = self
             .sessions
             .keys()
+            .filter(|id| !record.live_ids.contains(*id))
             .copied()
-            .filter(|id| !record.is_live(*id))
             .collect();
         for id in stale {
             self.remove_session(id);
         }
 
-        if record.active_id != self.active && self.sessions.contains_key(&record.active_id) {
+        if record.active_id != self.active {
+            assert!(self.sessions.contains_key(&record.active_id));
             self.switch_to(record.active_id);
         }
 
@@ -204,13 +178,6 @@ impl SessionMux {
         }
     }
 
-    /// Forward a one-shot UI command to the manager.
-    pub fn send_command(&mut self, command: u8) {
-        if let Some(handle) = self.manager_cmd {
-            let _ = naming::write(handle, &[command]);
-        }
-    }
-
     /// Repaint the active session's full viewport (used after GUI mode returns).
     pub fn present_active(&self) {
         if let Some(screen) = self.sessions.get(&self.active) {
@@ -219,9 +186,7 @@ impl SessionMux {
     }
 
     fn add_session(&mut self, id: u8) {
-        if self.sessions.contains_key(&id) {
-            return;
-        }
+        assert!(!self.sessions.contains_key(&id));
         let mut screen = SessionScreen::new(self.terminal.screen_size());
         let session = Session::with_id(id as usize);
         screen.out = naming::open(

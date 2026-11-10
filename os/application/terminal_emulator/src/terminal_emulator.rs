@@ -3,10 +3,10 @@
 extern crate alloc;
 extern crate terminal as terminal_lib;
 
-pub mod event_handler;
-pub mod sessions;
-pub mod terminal;
-pub mod util;
+mod event_handler;
+mod sessions;
+mod terminal;
+mod util;
 mod worker;
 
 use core::cell::RefCell;
@@ -60,12 +60,6 @@ impl TerminalEmulator {
         }
     }
 
-    pub fn init(&mut self) {
-        // The session manager owns session lifecycle; the emulator just connects
-        // to the manager namespace and renders the sessions it announces.
-        self.mux.borrow_mut().connect();
-    }
-
     pub fn enter_gui(&self) {
         {
             let mut display = self.terminal.display.lock();
@@ -109,7 +103,9 @@ impl TerminalEmulator {
 
 #[unsafe(no_mangle)]
 pub fn main() {
+    init_logger();
     let lfb_info = map_framebuffer().expect("failed to get framebuffer");
+    sessions::manager::init();
     let mut emulator = TerminalEmulator::new(
         lfb_info.addr as *mut u8,
         lfb_info.pitch,
@@ -117,7 +113,5 @@ pub fn main() {
         lfb_info.height,
         lfb_info.bpp,
     );
-    init_logger();
-    emulator.init();
     emulator.run()
 }

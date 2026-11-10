@@ -7,10 +7,10 @@ use globals::hotkeys::{
 use pc_keyboard::layouts::{AnyLayout, De105Key};
 use pc_keyboard::{DecodedKey, EventDecoder, HandleControl, KeyCode, KeyEvent};
 use stream::{event_to_u16, RawInputStream};
-use terminal_lib::manager::cmd;
 use terminal_lib::session::{CtlRecord, WaitState};
 use terminal_lib::{DecodedKeyType, TerminalMode};
 
+use crate::sessions;
 use crate::{
     event_handler::{Event, EventHandler},
     sessions::SessionMux,
@@ -125,19 +125,19 @@ impl InputObserver {
                 None
             }
             DecodedKey::RawKey(HKEY_NEW_TAB) => {
-                self.mux.borrow_mut().send_command(cmd::NEW_TAB);
+                sessions::manager::new_tab();
                 None
             }
             DecodedKey::RawKey(HKEY_CLOSE_TAB) => {
-                self.mux.borrow_mut().send_command(cmd::CLOSE_ACTIVE);
+                sessions::manager::close_active();
                 None
             }
             DecodedKey::RawKey(HKEY_NEXT_TAB) => {
-                self.mux.borrow_mut().send_command(cmd::NEXT_TAB);
+                sessions::manager::next_tab();
                 None
             }
             DecodedKey::RawKey(HKEY_PREV_TAB) => {
-                self.mux.borrow_mut().send_command(cmd::PREV_TAB);
+                sessions::manager::prev_tab();
                 None
             }
             key => Some(key),

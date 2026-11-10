@@ -1,30 +1,18 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
-   ║ Module: session_manager                                                 ║
+   ║ Module: sessions::manager                                               ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Descr.: Standalone userspace owner of terminal sessions/tabs.           ║
-   ║                                                                         ║
    ║ The session manager owns session-id allocation, the `/term/<id>/`       ║
    ║ namespace lifecycle, active-session selection, and the policy for       ║
-   ║ launching shells/apps into sessions. In terminal-boot mode the kernel   ║
-   ║ boots this process; it launches the `terminal_emulator` (renderer) and  ║
-   ║ a shell per session, tagging each shell with the `D3OS_TERM_SESSION`    ║
-   ║ env descriptor so the shell and its children resolve the right session. ║
+   ║ launching shells/apps into sessions. It launches a shell per session,   ║
+   ║ tagging them with the `D3OS_TERM_SESSION` env descriptor, so the shell  ║              
+   ║ and its children resolve the right session.                             ║
    ║                                                                         ║
-   ║ It coordinates with the emulator over `/term/manager/{ctl,cmd}`:        ║
-   ║   - it publishes the authoritative live-session snapshot (active id +   ║
-   ║     generation + 256-bit live mask) on the `ctl` record,                ║
-   ║   - it consumes UI commands (new/close/next/prev tab) on `cmd`.         ║
-   ║                                                                         ║
-   ║ A per-session supervisor thread restarts a session's shell when it      ║
-   ║ exits, and stops once the session is closed.                            ║
+   ║ A per-session supervisor thread monitors a session's shell and stops    ║
+   ║ once the session is closed.                                             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Aymen Sellami                                                   ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
-#![no_std]
-
-extern crate alloc;
-
 use core::sync::atomic::{AtomicU8, Ordering};
 
 use alloc::collections::btree_map::BTreeMap;
@@ -33,13 +21,8 @@ use alloc::vec::Vec;
 
 use concurrent::thread;
 use log::{error, info};
-use naming::shared_types::OpenOptions;
 use spin::{Mutex, MutexGuard};
-use terminal::manager::{self, cmd, ManagerCtl};
 use terminal::session::{Session, SESSION_DESCRIPTOR_KEY};
-
-#[allow(unused_imports)]
-use runtime::*;
 
 /// Maximum number of concurrent sessions.
 ///
@@ -84,22 +67,16 @@ fn set_shell_tid(id: u8, tid: usize) {
         .shell_tid = tid;
 }
 
-/// Publish the authoritative live-session snapshot on the manager `ctl` record:
-/// the active id, live count, a freshly bumped generation, and the live mask.
-fn publish_ctl(ctl: usize, sessions: &MutexGuard<'_, BTreeMap<u8, SessionEntry>>) {
-    let generation = STATE.generation.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
-    let count = sessions.len() as u8;
-    let mask = manager::live_mask_from_ids(sessions.keys().copied());
-    manager::write_ctl(ctl, &ManagerCtl::new(
-        STATE.active.load(Ordering::SeqCst), count, generation, mask,
-    )).expect("failed to write manager ctl");
+/// Publish the authoritative live-session snapshot.
+fn publish() {
+    STATE.generation.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
 }
 
 /// Loop for a single session's shell
 ///
 /// It runs in its own thread, so the manager's command loop never blocks on
 /// `join()`. When the shell exits, it terminates the session.
-fn supervise(ctl: usize, id: u8) {
+fn supervise(id: u8) {
     // Don't start if we shouldn't be alive.
     if !is_alive(id) {
         return;
@@ -121,54 +98,48 @@ fn supervise(ctl: usize, id: u8) {
 
     // If the shell is dead, but the session is still alive, close it.
     if is_alive(id) {
-        close(ctl, id);
+        close(id);
     }
 }
 
-fn spawn_supervisor(ctl: usize, id: u8) {
-    thread::create(move || supervise(ctl, id));
-}
-
-fn handle_command(command: u8, ctl: usize) {
-    match command {
-        cmd::NEW_TAB => new_tab(ctl),
-        cmd::CLOSE_ACTIVE => close(ctl, STATE.active.load(Ordering::SeqCst)),
-        cmd::NEXT_TAB => switch_relative(ctl, 1),
-        cmd::PREV_TAB => switch_relative(ctl, -1),
-        _ => {}
-    }
+fn spawn_supervisor(id: u8) {
+    thread::create(move || supervise(id));
 }
 
 /// Create a new tab.
-fn new_tab(ctl: usize) {
+pub(crate) fn new_tab() {
     info!("creating a new tab");
     let mut sessions = STATE.sessions.lock();
     let live = sessions.len();
     if live >= MAX_SESSIONS {
         return; // Refuse gracefully; see MAX_SESSIONS.
     }
-    let id = new_session(ctl, &mut sessions);
+    let id = new_session(&mut sessions);
     STATE.active.store(id, Ordering::SeqCst);
-
-    publish_ctl(ctl, &sessions);
+    publish();
 }
 
 /// Create a new session and return its id.
 /// 
 /// This also spawns the shell.
-fn new_session(ctl: usize, sessions: &mut MutexGuard<'_, BTreeMap<u8, SessionEntry>>) -> u8 {
+fn new_session(sessions: &mut MutexGuard<'_, BTreeMap<u8, SessionEntry>>) -> u8 {
     let id = STATE.next_id.fetch_add(1, Ordering::SeqCst);
     sessions.insert(id, SessionEntry { shell_tid: 0 });
     let _ = Session::with_id(id.into()).create();
-    spawn_supervisor(ctl, id);
+    spawn_supervisor(id);
     id
+}
+
+/// Close the currently active tab.
+pub(crate) fn close_active() {
+    close(STATE.active.load(Ordering::SeqCst));
 }
 
 /// Close a session.
 /// 
 /// This may be an active or an inactive one.
 /// If we're closing the last one, spawn a new one.
-fn close(ctl: usize, id: u8) {
+fn close(id: u8) {
     let mut sessions = STATE.sessions.lock();
 
     let shell_tid = sessions
@@ -179,7 +150,7 @@ fn close(ctl: usize, id: u8) {
     
     // We need to always have at least one session.
     if sessions.len() == 0 {
-        new_session(ctl, &mut sessions);
+        new_session(&mut sessions);
     }
 
     // if we're closing the currently active session,
@@ -195,11 +166,18 @@ fn close(ctl: usize, id: u8) {
     if shell_tid != 0 {
         thread::kill(shell_tid);
     }
-
-    publish_ctl(ctl, &sessions);
+    publish();
 }
 
-fn switch_relative(ctl: usize, direction: i32) {
+pub(crate) fn next_tab() {
+    switch_relative(1);
+}
+
+pub(crate) fn prev_tab() {
+    switch_relative(-1);
+}
+
+fn switch_relative(direction: i32) {
     let sessions = STATE.sessions.lock();
     let live: Vec<u8> = sessions
         .iter()
@@ -215,40 +193,41 @@ fn switch_relative(ctl: usize, direction: i32) {
     let len = live.len() as i32;
     let next = (((position + direction) % len) + len) % len; // TODO
     STATE.active.store(live[next as usize], Ordering::SeqCst);
-    publish_ctl(ctl, &sessions);
+    publish();
 }
 
-#[unsafe(no_mangle)]
-pub fn main() {
-    logger::init_logger();
-    manager::create_namespace();
-
-    let ctl = naming::open(&manager::ctl_path(), OpenOptions::READWRITE)
-        .expect("failed to open manager ctl");
-
+pub(crate) fn init() {
     // Create the initial session 0 and record it.
-    {
-        let mut sessions = STATE.sessions.lock();
-        new_session(ctl, &mut sessions);
-        publish_ctl(ctl, &sessions);
-    }
+    let mut sessions = STATE.sessions.lock();
+    assert!(sessions.is_empty());
+    new_session(&mut sessions);
+    publish();
+}
 
-    // Launch the renderer. It connects back to the manager namespace and opens
-    // its endpoints for each session it finds in the `ctl` snapshot.
-    thread::start_application("terminal_emulator", Vec::new())
-        .expect("failed to start terminal_emulator");
+/// Get the current generation.
+pub(crate) fn generation() -> u8 {
+    STATE.generation.load(Ordering::SeqCst)
+}
 
-    // Open the command FIFO reader. the emulator's `cmd` writer open blocks
-    // until this reader is present.
-    // It is non-blocking so the command loop doesn't stall when no key has been pressed.
-    let cmd_r = naming::open(&manager::cmd_path(), OpenOptions::READONLY | OpenOptions::NONBLOCK)
-        .expect("failed to open manager cmd");
-    // Command loop: react to UI commands from the emulator.
-    loop {
-        let mut byte = [0u8; 1];
-        if let Ok(1) = naming::read(cmd_r, &mut byte) {
-            handle_command(byte[0], ctl);
+/// The pollable manager control record: the authoritative membership snapshot.
+// TODO: do we actually need this?
+#[derive(Debug, Clone)]
+pub struct ManagerCtl {
+    pub active_id: u8,
+    pub session_count: u8,
+    pub generation: u8,
+    pub live_ids: Vec<u8>,
+}
+
+impl ManagerCtl {
+    /// Get a current snapshot. Blocks.
+    pub(super) fn get() -> Self {
+        let sessions = STATE.sessions.lock();
+        Self {
+            active_id: STATE.active.load(Ordering::SeqCst),
+            session_count: sessions.len().try_into().unwrap(),
+            generation: STATE.generation.load(Ordering::SeqCst),
+            live_ids: sessions.keys().copied().collect(),
         }
-        thread::sleep(20);
     }
 }

@@ -2,7 +2,7 @@
 edition = "2024"
 name = "terminal_emulator"
 version = "0.1.0"
-authors = ["Michael Schöttner <michael.schoettner@hhu.de>, Fabian Ruhland <ruhland@hhu.de>, Sebastian Keller <sebastian.keller@hhu.de>"]
+authors = ["Aymen Sellami <aymen.sellami@hhu.de>", "Sebastian Keller <sebastian.keller@hhu.de>", "Fabian Ruhland <ruhland@hhu.de>", "Niklas Sombert <niklas.sombert@uni-duesseldorf.de>", "Michael Schöttner <michael.schoettner@hhu.de>",]
 
 [lib]
 crate-type = ["staticlib"]
