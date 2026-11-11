@@ -2,6 +2,10 @@ use alloc::collections::vec_deque::VecDeque;
 
 pub enum Event {
     EnterGuiMode,
+    NewTab,
+    CloseActiveTab,
+    NextTab,
+    PrevTab,
 }
 
 pub struct EventHandler {

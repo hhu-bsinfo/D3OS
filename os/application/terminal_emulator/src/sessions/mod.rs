@@ -16,82 +16,71 @@
 */
 
 pub(crate) mod screen;
-pub(crate) mod manager;
+mod entry;
+
+use core::sync::atomic::Ordering;
 
 use alloc::collections::btree_map::BTreeMap;
 use alloc::rc::Rc;
 
-use log::info;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use concurrent::thread;
+use log::error;
+use log::{info, warn};
 use naming::shared_types::OpenOptions;
 use terminal_lib::session::{read_ctl, CtlRecord, Session, WaitState};
 
+use entry::spawn_supervisor;
+use entry::SessionEntry;
+use screen::SessionScreen;
 use crate::terminal::lfb_terminal::LFBTerminal;
 use crate::util::banner::create_banner_string;
 use crate::worker::canonical::CanonicalAction;
 
-use screen::SessionScreen;
+
+/// Maximum number of concurrent sessions.
+///
+/// This cap is a drain-all / memory / supervisor cost bound:
+/// every live session forces the emulator to drain its bounded `out` pipe each loop,
+/// keeps a per-session screen model resident, and runs a per-session supervisor thread.
+/// Ids are `u8` and never reused within a boot, so the snapshot represents a set with holes
+/// (not slots 0..7); this number bounds concurrency, not the id space.
+const MAX_SESSIONS: usize = 8;
 
 /// Bytes drained from a session `out` pipe per loop iteration.
 const OUT_READ_CHUNK: usize = 256;
 
-/// Sentinel "no active session selected yet" so the first manager `ctl` poll
-/// always triggers an initial render.
-const NO_ACTIVE: u8 = u8::MAX;
-
 pub struct SessionMux {
     terminal: Rc<LFBTerminal>,
-    sessions: BTreeMap<u8, SessionScreen>,
+    sessions: BTreeMap<u8, Arc<SessionEntry>>,
     active: u8,
-    /// Generation of the last snapshot applied, so unchanged snapshots are
-    /// skipped. `None` until the first published snapshot is seen.
-    last_generation: Option<u8>,
+    next_id: u8,
 }
 
 impl SessionMux {
     pub fn new(terminal: Rc<LFBTerminal>) -> Self {
-        Self {
+        let mut s = Self {
             terminal,
             sessions: BTreeMap::new(),
-            active: NO_ACTIVE,
-            last_generation: None,
-        }
+            active: 0,
+            next_id: 0,
+        };
+        s.new_session();
+        s
     }
 
-    /// Poll the manager `ctl` snapshot: skip if the generation is unchanged,
-    /// otherwise diff the live-session set against the local map (add/remove
-    /// endpoints) and then apply the active id.
-    pub fn poll_snapshot(&mut self) {
-        // check if there's a new snapshot
-        if let Some(generation) = self.last_generation && generation == manager::generation() {
-            return;
-        }
-        // else, we need to get it.
-        info!("getting new session manager snapshot (generation >= {:?})", self.last_generation);
-        let record = manager::ManagerCtl::get();
-
-        // Diff membership before touching the active id, so a newly announced id
-        // has its endpoints open before it can be selected.
-        for id in &record.live_ids {
-            if !self.sessions.contains_key(id) {
-                self.add_session(*id);
-            }
-        }
-        let stale: alloc::vec::Vec<u8> = self
+    pub(super) fn check_for_exited_shells(&mut self) {
+        let exited: Vec<_> = self
             .sessions
-            .keys()
-            .filter(|id| !record.live_ids.contains(*id))
+            .iter()
+            .filter(|(_id, session)| session.exited.load(Ordering::SeqCst))
+            .map(|(id, _session)| id)
             .copied()
             .collect();
-        for id in stale {
-            self.remove_session(id);
+        for id in exited {
+            self.close_session(id);
         }
-
-        if record.active_id != self.active {
-            assert!(self.sessions.contains_key(&record.active_id));
-            self.switch_to(record.active_id);
-        }
-
-        self.last_generation = Some(record.generation);
     }
 
     /// Drain every session's output: feed it to that session's semantic model
@@ -100,12 +89,10 @@ impl SessionMux {
     pub fn drain_outputs(&mut self) {
         let active = self.active;
         let terminal = self.terminal.clone();
-        for (id, screen) in self.sessions.iter_mut() {
-            let Some(handle) = screen.out else {
-                continue;
-            };
+        for (id, session) in self.sessions.iter() {
+            let mut screen = session.screen.try_lock().expect("failed to get lock on session screen");
             let mut buffer = [0u8; OUT_READ_CHUNK];
-            let read = naming::read(handle, &mut buffer).unwrap_or(0);
+            let read = naming::read(screen.out, &mut buffer).unwrap_or(0);
             if read == 0 {
                 continue;
             }
@@ -119,8 +106,8 @@ impl SessionMux {
     /// The active session's foreground control record, if a foreground app has
     /// published one.
     pub fn active_ctl(&self) -> Option<CtlRecord> {
-        let screen = self.sessions.get(&self.active)?;
-        let handle = screen.ctl?;
+        let session = self.sessions.get(&self.active)?;
+        let handle = session.screen.try_lock().expect("failed to get lock on session screen").ctl?;
         match read_ctl(handle) {
             Ok(record) if record.is_published() => Some(record),
             _ => None,
@@ -136,11 +123,12 @@ impl SessionMux {
         if !waiting {
             return;
         }
-        let active = self.active;
-        if let Some(screen) = self.sessions.get_mut(&active) {
+        if let Some(session) = self.sessions.get_mut(&self.active) {
+            let mut screen = session.screen.try_lock().expect("failed to get lock on session screen");
             if screen.in_writer.is_none() {
-                let session = Session::with_id(active as usize);
-                screen.in_writer = naming::open(&session.in_path(), OpenOptions::WRITEONLY).ok();
+                screen.in_writer = naming::open(&Session::with_id(
+                    self.active as usize
+                ).in_path(), OpenOptions::WRITEONLY).ok();
             }
         }
     }
@@ -148,8 +136,8 @@ impl SessionMux {
     /// Deliver a decoded input buffer to the active session's foreground app.
     pub fn deliver(&mut self, bytes: &[u8]) {
         self.ensure_active_in_writer();
-        if let Some(screen) = self.sessions.get(&self.active) {
-            if let Some(handle) = screen.in_writer {
+        if let Some(session) = self.sessions.get(&self.active) {
+            if let Some(handle) = session.screen.try_lock().expect("failed to get lock on session screen").in_writer {
                 let _ = naming::write(handle, bytes);
             }
         }
@@ -163,9 +151,10 @@ impl SessionMux {
         let terminal = self.terminal.clone();
 
         let submit = {
-            let Some(screen) = self.sessions.get_mut(&active) else {
+            let Some(session) = self.sessions.get_mut(&active) else {
                 return;
             };
+            let mut screen = session.screen.try_lock().expect("failed to get lock on session screen");
             let (damage, submit) = screen.edit(action);
             if !damage.is_clean() {
                 terminal.present_damage(screen.model(), damage);
@@ -180,58 +169,103 @@ impl SessionMux {
 
     /// Repaint the active session's full viewport (used after GUI mode returns).
     pub fn present_active(&self) {
-        if let Some(screen) = self.sessions.get(&self.active) {
-            self.terminal.present_full(screen.model());
+        if let Some(session) = self.sessions.get(&self.active) {
+            self.terminal.present_full(session.screen.try_lock().expect("failed to get lock on session screen").model());
         }
     }
 
-    fn add_session(&mut self, id: u8) {
-        assert!(!self.sessions.contains_key(&id));
-        let mut screen = SessionScreen::new(self.terminal.screen_size());
-        let session = Session::with_id(id as usize);
-        screen.out = naming::open(
-            &session.out_path(),
+    pub(super) fn new_session(&mut self) {
+        // TODO: move parts of this into SessionEntry::new
+        info!("creating a new session");
+        if self.sessions.len() >= MAX_SESSIONS {
+            warn!("can't create any more sessions");
+            return; // Refuse gracefully; see MAX_SESSIONS.
+        }
+        let id = self.next_id;
+        self.next_id += 1;
+        
+        let sess = Session::with_id(id as usize);
+        sess.create();
+        let out = match naming::open(
+            &sess.out_path(),
             OpenOptions::READONLY | OpenOptions::NONBLOCK,
-        )
-        .ok();
-        screen.ctl = naming::open(&session.ctl_path(), OpenOptions::READWRITE).ok();
+        ) {
+            Ok(out) => out,
+            Err(e) => {
+                error!("failed to open stdout for shell: {e:?}");
+                return;
+            },
+        };
+        let mut screen = SessionScreen::new(self.terminal.screen_size(), out);
+        screen.ctl = naming::open(&sess.ctl_path(), OpenOptions::READWRITE).ok();
         // Seed the banner so each tab shows it (survives tab switches via the
         // semantic model, not a byte replay ring).
         let _ = screen.feed(create_banner_string().as_bytes());
-        self.sessions.insert(id, screen);
+        let session = SessionEntry::new(id, screen);
+        spawn_supervisor(session.clone());
+        self.sessions.insert(id, session);
 
+        self.active = id;
         self.publish_tabs();
-
-        if self.active == id {
-            self.present_active();
-        }
+        self.present_active();
     }
 
-    fn remove_session(&mut self, id: u8) {
-        if let Some(screen) = self.sessions.remove(&id) {
-            if let Some(handle) = screen.out {
-                let _ = naming::close(handle);
+    pub(super) fn close_active(&mut self) {
+        self.close_session(self.active);
+    }
+
+    /// Close a session.
+    /// 
+    /// This may be an active or an inactive one.
+    /// If we're closing the last one, spawn a new one.
+    fn close_session(&mut self, id: u8) {
+        if let Some(session) = self.sessions.remove(&id) {
+            // Terminate the closed session's shell so its supervisor's join() returns
+            // and the supervisor stops (the session is no longer alive).
+            let shell_tid = session.shell_tid.load(Ordering::SeqCst);
+            if shell_tid != 0 {
+                thread::kill(shell_tid);
             }
+            
+            let screen = session.screen.try_lock().expect("failed to get lock on session screen");
+            let _ = naming::close(screen.out);
             if let Some(handle) = screen.ctl {
                 let _ = naming::close(handle);
             }
             if let Some(handle) = screen.in_writer {
                 let _ = naming::close(handle);
             }
+            // TODO: delete the pipes and the folder
         }
 
+        // We need to always have at least one session.
+        if self.sessions.len() == 0 {
+            self.new_session();
+        }
+    
         // Don't keep pointing at a session that is gone: input and repaints
-        // would silently go nowhere until the manager published a new active
-        // id. Dropping to the sentinel makes the next `ctl` poll re-select.
+        // would silently go nowhere. Choose the lowest remaining session.
         if self.active == id {
-            self.active = NO_ACTIVE;
+            self.active = *self.sessions.keys().next().expect("no sessions");
         }
 
         self.publish_tabs();
+        self.present_active();
     }
 
-    fn switch_to(&mut self, id: u8) {
-        self.active = id;
+    pub(crate) fn switch_relative(&mut self, direction: i32) {
+        let live: Vec<u8> = self.sessions.keys().copied().collect();
+        if live.len() <= 1 {
+            return;
+        }
+    
+        let position = live.iter().position(
+            |&id| id == self.active
+        ).unwrap_or_default() as i32;
+        let len = live.len() as i32;
+        let next = (((position + direction) % len) + len) % len; // TODO
+        self.active = live[next as usize];
+        
         self.publish_tabs();
         self.present_active();
     }

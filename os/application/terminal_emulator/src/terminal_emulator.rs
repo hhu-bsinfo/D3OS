@@ -33,7 +33,8 @@ use worker::worker::Worker;
 /// Special operations like IO, Cursor or status bar are managed in individual worker objects.
 /// Input is handled by `InputObserver`; output/session multiplexing is handled by `SessionMux`.
 ///
-/// The terminal is running single threaded but has been structured to support multi threading in future if needed.
+/// The terminal itself is running single threaded but has been structured to support multi threading in future if needed.
+/// Each tabs gets its own supervising thread.
 ///
 /// Authors: Sebastian Keller, Aymen Sellami
 pub struct TerminalEmulator {
@@ -78,7 +79,7 @@ impl TerminalEmulator {
             self.handle_events();
             {
                 let mut mux = self.mux.borrow_mut();
-                mux.poll_snapshot();
+                mux.check_for_exited_shells();
                 mux.drain_outputs();
             }
             self.input_observer.run();
@@ -88,16 +89,15 @@ impl TerminalEmulator {
     }
 
     fn handle_events(&self) {
-        let event = match self.event_handler.borrow_mut().handle() {
-            Some(event) => event,
-            None => return,
-        };
-
-        match event {
-            Event::EnterGuiMode => self.enter_gui(),
+        while let Some(event) = self.event_handler.borrow_mut().handle() {
+            match event {
+                Event::EnterGuiMode => self.enter_gui(),
+                Event::NewTab => self.mux.borrow_mut().new_session(),
+                Event::CloseActiveTab => self.mux.borrow_mut().close_active(),
+                Event::NextTab => self.mux.borrow_mut().switch_relative(1),
+                Event::PrevTab => self.mux.borrow_mut().switch_relative(-1),
+            }
         }
-
-        self.handle_events();
     }
 }
 
@@ -105,7 +105,6 @@ impl TerminalEmulator {
 pub fn main() {
     init_logger();
     let lfb_info = map_framebuffer().expect("failed to get framebuffer");
-    sessions::manager::init();
     let mut emulator = TerminalEmulator::new(
         lfb_info.addr as *mut u8,
         lfb_info.pitch,

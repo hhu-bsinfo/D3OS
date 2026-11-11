@@ -10,7 +10,6 @@ use stream::{event_to_u16, RawInputStream};
 use terminal_lib::session::{CtlRecord, WaitState};
 use terminal_lib::{DecodedKeyType, TerminalMode};
 
-use crate::sessions;
 use crate::{
     event_handler::{Event, EventHandler},
     sessions::SessionMux,
@@ -118,30 +117,20 @@ impl Worker for InputObserver {
 }
 
 impl InputObserver {
+    /// Check if the pressed key corresponds to a command.
+    /// 
+    /// If this is the case, queue it. Else, this is just input for the applications.
     fn try_intercept_reserved_key(&self, key: DecodedKey) -> Option<DecodedKey> {
-        match key {
-            DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => {
-                self.event_handler.borrow_mut().trigger(Event::EnterGuiMode);
-                None
-            }
-            DecodedKey::RawKey(HKEY_NEW_TAB) => {
-                sessions::manager::new_tab();
-                None
-            }
-            DecodedKey::RawKey(HKEY_CLOSE_TAB) => {
-                sessions::manager::close_active();
-                None
-            }
-            DecodedKey::RawKey(HKEY_NEXT_TAB) => {
-                sessions::manager::next_tab();
-                None
-            }
-            DecodedKey::RawKey(HKEY_PREV_TAB) => {
-                sessions::manager::prev_tab();
-                None
-            }
-            key => Some(key),
-        }
+        self.event_handler.borrow_mut().trigger(match key {
+            DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => Event::EnterGuiMode,
+            DecodedKey::RawKey(HKEY_NEW_TAB) => Event::NewTab,
+            DecodedKey::RawKey(HKEY_CLOSE_TAB) => Event::CloseActiveTab,
+            DecodedKey::RawKey(HKEY_NEXT_TAB) => Event::NextTab,
+            DecodedKey::RawKey(HKEY_PREV_TAB) => Event::PrevTab,
+            // no event, just normal input
+            key => return Some(key),
+        });
+        None
     }
 
     fn buffer_raw(&self, event: KeyEvent) -> Option<Vec<u8>> {
