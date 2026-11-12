@@ -16,9 +16,6 @@
 */
 
 pub(crate) mod screen;
-mod entry;
-
-use core::sync::atomic::Ordering;
 
 use alloc::collections::btree_map::BTreeMap;
 use alloc::rc::Rc;
@@ -29,10 +26,8 @@ use concurrent::thread;
 use log::error;
 use log::{info, warn};
 use naming::shared_types::OpenOptions;
-use terminal_lib::session::{read_ctl, CtlRecord, Session, WaitState};
+use terminal_lib::session::{CtlRecord, Session, WaitState, read_ctl, spawn_supervisor};
 
-use entry::spawn_supervisor;
-use entry::SessionEntry;
 use screen::SessionScreen;
 use crate::terminal::lfb_terminal::LFBTerminal;
 use crate::util::banner::create_banner_string;
@@ -53,7 +48,7 @@ const OUT_READ_CHUNK: usize = 256;
 
 pub struct SessionMux {
     terminal: Rc<LFBTerminal>,
-    sessions: BTreeMap<u8, Arc<SessionEntry>>,
+    sessions: BTreeMap<u8, Arc<Session<SessionScreen>>>,
     active: u8,
     next_id: u8,
 }
@@ -74,7 +69,7 @@ impl SessionMux {
         let exited: Vec<_> = self
             .sessions
             .iter()
-            .filter(|(_id, session)| session.exited.load(Ordering::SeqCst))
+            .filter(|(_id, session)| session.exited())
             .map(|(id, _session)| id)
             .copied()
             .collect();
@@ -92,7 +87,10 @@ impl SessionMux {
         for (id, session) in self.sessions.iter() {
             let mut screen = session.screen.try_lock().expect("failed to get lock on session screen");
             let mut buffer = [0u8; OUT_READ_CHUNK];
-            let read = naming::read(screen.out, &mut buffer).unwrap_or(0);
+            let Some(handle) = screen.out else {
+                continue;
+            };
+            let read = naming::read(handle, &mut buffer).unwrap_or(0);
             if read == 0 {
                 continue;
             }
@@ -126,9 +124,9 @@ impl SessionMux {
         if let Some(session) = self.sessions.get_mut(&self.active) {
             let mut screen = session.screen.try_lock().expect("failed to get lock on session screen");
             if screen.in_writer.is_none() {
-                screen.in_writer = naming::open(&Session::with_id(
-                    self.active as usize
-                ).in_path(), OpenOptions::WRITEONLY).ok();
+                screen.in_writer = naming::open(
+                    &session.in_path(), OpenOptions::WRITEONLY,
+                ).ok();
             }
         }
     }
@@ -184,24 +182,28 @@ impl SessionMux {
         let id = self.next_id;
         self.next_id += 1;
         
-        let sess = Session::with_id(id as usize);
-        sess.create();
-        let out = match naming::open(
-            &sess.out_path(),
-            OpenOptions::READONLY | OpenOptions::NONBLOCK,
-        ) {
-            Ok(out) => out,
-            Err(e) => {
-                error!("failed to open stdout for shell: {e:?}");
-                return;
-            },
-        };
-        let mut screen = SessionScreen::new(self.terminal.screen_size(), out);
-        screen.ctl = naming::open(&sess.ctl_path(), OpenOptions::READWRITE).ok();
-        // Seed the banner so each tab shows it (survives tab switches via the
-        // semantic model, not a byte replay ring).
-        let _ = screen.feed(create_banner_string().as_bytes());
-        let session = SessionEntry::new(id, screen);
+        let session = Arc::new(Session::with_id(
+            id as usize,
+            SessionScreen::new(self.terminal.screen_size()),
+        ));
+        session.create();
+        {
+            let mut screen = session.screen.try_lock().expect("failed to get lock on screen");
+            screen.out = naming::open(
+                &session.out_path(),
+                OpenOptions::READONLY | OpenOptions::NONBLOCK,
+            ).ok();
+            if screen.out.is_none() {
+                error!("failed to open stdout for new session");
+            }
+            screen.ctl = naming::open(&session.ctl_path(), OpenOptions::READWRITE).ok();
+            if screen.ctl.is_none() {
+                error!("failed to open ctl for new session");
+            }
+            // Seed the banner so each tab shows it (survives tab switches via the
+            // semantic model, not a byte replay ring).
+            let _ = screen.feed(create_banner_string().as_bytes());
+        }
         spawn_supervisor(session.clone());
         self.sessions.insert(id, session);
 
@@ -222,13 +224,15 @@ impl SessionMux {
         if let Some(session) = self.sessions.remove(&id) {
             // Terminate the closed session's shell so its supervisor's join() returns
             // and the supervisor stops (the session is no longer alive).
-            let shell_tid = session.shell_tid.load(Ordering::SeqCst);
+            let shell_tid = session.shell_tid();
             if shell_tid != 0 {
                 thread::kill(shell_tid);
             }
             
             let screen = session.screen.try_lock().expect("failed to get lock on session screen");
-            let _ = naming::close(screen.out);
+            if let Some(handle) = screen.out {
+                let _ = naming::close(handle);
+            }
             if let Some(handle) = screen.ctl {
                 let _ = naming::close(handle);
             }

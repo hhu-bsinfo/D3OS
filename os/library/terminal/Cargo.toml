@@ -10,6 +10,7 @@ bench = false
 
 [features]
 default = []
+manager = ["dep:concurrent"]
 
 [dependencies]
 # Local dependencies
@@ -18,6 +19,7 @@ syscall = { path = "../syscall" }
 stream = { path = "../stream" }
 logger = { path = "../logger" }
 naming = { path = "../naming" }
+concurrent = { path = "../concurrent", optional = true }
 
 # External dependencies
 spin = "0.12"

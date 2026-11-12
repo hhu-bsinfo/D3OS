@@ -1646,6 +1646,7 @@ name = "terminal"
 version = "0.1.0"
 dependencies = [
  "bootstrap_env",
+ "concurrent",
  "log",
  "logger",
  "naming",

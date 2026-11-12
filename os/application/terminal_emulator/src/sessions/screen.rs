@@ -21,7 +21,7 @@ use crate::worker::canonical::{CanonicalAction, CanonicalEditor};
 
 pub struct SessionScreen {
     /// Non-blocking reader on the session `out` FIFO (app stdout).
-    pub(crate) out: usize,
+    pub(crate) out: Option<usize>,
     /// Reader on the session `ctl` record (foreground mode/wait state).
     pub(crate) ctl: Option<usize>,
     /// Lazily-opened writer on the session `in` FIFO (app stdin).
@@ -33,9 +33,9 @@ pub struct SessionScreen {
 }
 
 impl SessionScreen {
-    pub fn new(size: ScreenSize, out: usize) -> Self {
+    pub fn new(size: ScreenSize) -> Self {
         Self {
-            out,
+            out: None,
             ctl: None,
             in_writer: None,
             terminal: SemanticTerminal::new(size),

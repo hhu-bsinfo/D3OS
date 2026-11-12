@@ -22,7 +22,7 @@ time = { path = "../../library/time" }
 system_info = { path = "../../library/system_info" }
 input = { path = "../../library/input" }
 syscall = {path ="../../library/syscall"}
-terminal = {path ="../../library/terminal"}
+terminal = {path ="../../library/terminal", features=["manager"]}
 logger = {path ="../../library/logger"}
 naming = {path ="../../library/naming"}
 globals = {path ="../../library/globals"}

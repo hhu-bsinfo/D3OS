@@ -22,10 +22,16 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-use alloc::format;
-use alloc::string::String;
+#[cfg(feature = "manager")]
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+use alloc::format;
+use alloc::string::{String, ToString};
+
+#[cfg(feature = "manager")]
+use alloc::sync::Arc;
 use naming::shared_types::SeekOrigin;
+use spin::Mutex;
 use syscall::return_vals::Errno;
 
 use crate::TerminalMode;
@@ -80,6 +86,7 @@ impl WaitState {
         }
     }
 
+    #[cfg(feature = "manager")]
     fn from_byte(b: u8) -> Self {
         match b {
             1 => WaitState::Waiting,
@@ -136,6 +143,7 @@ impl CtlRecord {
         buf
     }
 
+    #[cfg(feature = "manager")]
     fn decode(buf: &[u8]) -> Self {
         if buf.len() < CTL_RECORD_SIZE || buf[OFF_VERSION] == 0 {
             return Self::empty();
@@ -156,38 +164,65 @@ impl CtlRecord {
 
 /// A resolved terminal session: just the absolute paths of its objects. All
 /// path knowledge is confined to this type.
-pub struct Session {
+/// 
+/// For the manager, this type also contains metadata.
+pub struct Session<S> {
     base: String,
+
+    /// Thread id of the session's current shell (`0` if not yet running). Used
+    /// to terminate the shell when the tab is closed.
+    #[cfg(feature = "manager")]
+    pub(super) shell_tid: AtomicUsize,
+    // The screen is only ever accessed by the main thread, but Rust requires this.
+    // We still need to store the S somewhere, even if it's ().
+    // TODO: try to replace this with PhantomData
+    pub screen: Mutex<S>,
+    #[cfg(feature = "manager")]
+    exited: AtomicBool,
 }
 
-impl Session {
+impl Session<()> {
     /// Resolve the session the current process belongs to.
     ///
     /// Resolves the launch-time descriptor [`SESSION_DESCRIPTOR_KEY`] from the
     /// process environment (set by the session manager when launching an app
     /// into a specific session, and inherited automatically by children). When
-    /// no descriptor is present - e.g. the session manager and emulator
-    /// themselves, launched directly by the kernel - this falls back to the
+    /// no descriptor is present - e.g. the terminal emulator itself,
+    /// launched directly by the kernel - this falls back to the
     /// well-known default session [`DEFAULT_SESSION_ID`].
     pub fn current() -> Self {
-        bootstrap_env::var(SESSION_DESCRIPTOR_KEY)
-            .and_then(|descriptor| Self::from_descriptor(&descriptor))
-            .unwrap_or_else(|| Self::with_id(DEFAULT_SESSION_ID))
+        match bootstrap_env::var(SESSION_DESCRIPTOR_KEY) {
+            Some(descriptor) => Self::from_descriptor(&descriptor, ()),
+            None => Self::with_id(DEFAULT_SESSION_ID, ()),
+        }
     }
+}
 
-    /// Resolve a session by explicit id (used by the owner that allocates ids).
-    pub fn with_id(id: usize) -> Self {
+impl<S> Session<S> {
+    /// Resolve a session by explicit id.
+    pub fn with_id(id: usize, screen: S) -> Self {
         Session {
             base: format!("{}/{}", TERM_ROOT, id),
+            screen: Mutex::new(screen),
+            #[cfg(feature = "manager")]
+            shell_tid: AtomicUsize::default(),
+            #[cfg(feature = "manager")]
+            exited: AtomicBool::default(),
         }
     }
 
     /// Resolve a session from a launch-time descriptor string.
     ///
-    /// The descriptor is currently the decimal session id carried in
-    /// [`SESSION_DESCRIPTOR_KEY`].
-    pub fn from_descriptor(descriptor: &str) -> Option<Self> {
-        descriptor.trim().parse::<usize>().ok().map(Self::with_id)
+    /// The descriptor is the folder carried in [`SESSION_DESCRIPTOR_KEY`].
+    pub fn from_descriptor(descriptor: &str, screen: S) -> Self {
+        Self {
+            base: descriptor.trim().to_string(),
+            screen: Mutex::new(screen),
+            #[cfg(feature = "manager")]
+            shell_tid: AtomicUsize::default(),
+            #[cfg(feature = "manager")]
+            exited: AtomicBool::default(),
+        }
     }
 
     pub fn in_path(&self) -> String {
@@ -208,6 +243,7 @@ impl Session {
     /// (`session_manager`). Errors on already-existing components are ignored
     /// so a restart does not fail. The `ctl` file is left empty, which decodes
     /// to an unpublished record.
+    #[cfg(feature = "manager")]
     pub fn create(&self) {
         let _ = naming::mkdir(TERM_ROOT);
         let _ = naming::mkdir(&self.base);
@@ -216,10 +252,50 @@ impl Session {
         let _ = naming::touch(&self.ctl_path());
     }
 
+    /// Loop for a single session's shell
+    ///
+    /// It runs in its own thread, so the manager's command loop never blocks on
+    /// `join()`. When the shell exits, it terminates the session.
+    #[cfg(feature = "manager")]
+    fn supervise(self: Arc<Self>) {
+        use alloc::vec::Vec;
+        use core::sync::atomic::Ordering;
+        use log::{info, error};
+        
+        info!("starting shell for session {}", self.base);
+    
+        let descriptor = format!("{}={}", SESSION_DESCRIPTOR_KEY, self.base);
+        let env: Vec<&str> = alloc::vec![descriptor.as_str()];
+    
+        if let Some(shell) = concurrent::thread::start_application_with_env("shell", Vec::new(), env) {
+
+            self.shell_tid.store(shell.id(), Ordering::SeqCst);
+            match shell.join() {
+                Ok(_) => info!("shell for session {} exited", self.base),
+                Err(e) => error!("shell for session {} failed to start: {:?}", self.base, e),
+            }
+        } else {
+            error!("failed to start shell for session {}", self.base);
+        }
+
+        // Update the state, so that the session will be removed.
+        self.exited.store(true, Ordering::SeqCst);
+    }
+
+    #[cfg(feature = "manager")]
+    pub fn exited(&self) -> bool {
+        self.exited.load(Ordering::SeqCst)
+    }
+
+    #[cfg(feature = "manager")]
+    pub fn shell_tid(&self) -> usize {
+        self.shell_tid.load(Ordering::SeqCst)
+    }
 }
 
 /// Read the full control record from an open `ctl` handle (offset is reset to
 /// 0 first, so the same handle can be polled repeatedly).
+#[cfg(feature = "manager")]
 pub fn read_ctl(handle: usize) -> Result<CtlRecord, Errno> {
     naming::seek(handle, 0, SeekOrigin::Start)?;
     let mut buf = [0u8; CTL_RECORD_SIZE];
@@ -232,9 +308,14 @@ pub fn read_ctl(handle: usize) -> Result<CtlRecord, Errno> {
 }
 
 /// Write the full control record to an open `ctl` handle at offset 0.
-pub fn write_ctl(handle: usize, record: &CtlRecord) -> Result<(), Errno> {
+pub(super) fn write_ctl(handle: usize, record: &CtlRecord) -> Result<(), Errno> {
     naming::seek(handle, 0, SeekOrigin::Start)?;
     let buf = record.encode();
     naming::write(handle, &buf)?;
     Ok(())
+}
+
+#[cfg(feature = "manager")]
+pub fn spawn_supervisor<S: Send + 'static>(session: Arc<Session<S>>) {
+    concurrent::thread::create(move || session.supervise());
 }
