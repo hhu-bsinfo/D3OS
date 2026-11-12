@@ -25,7 +25,6 @@ graphic = { path = "../library/graphic" }
 stream = { path = "../library/stream" }
 syscall = { path = "../library/syscall", default-features = false }
 naming = { path = "../library/naming", default-features = false }
-terminal = { path = "../library/terminal", default-features = false }
 drawer = { path = "../library/drawer", default-features = false }
 system_info = { path = "../library/system_info", default-features = false }
 input = { path = "../library/input", default-features = false }

@@ -1,17 +1,11 @@
 #![no_std]
 extern crate alloc;
 
-#[cfg(feature = "userspace")]
 pub mod read;
-#[cfg(feature = "userspace")]
 pub mod session;
-#[cfg(feature = "userspace")]
 pub mod write;
 
-#[cfg(feature = "userspace")]
 pub use session::{CtlRecord, Session, WaitState};
-
-#[cfg(feature = "userspace")]
 pub use pc_keyboard::{DecodedKey, KeyCode};
 
 use num_enum::{FromPrimitive, IntoPrimitive};

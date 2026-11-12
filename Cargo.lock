@@ -758,7 +758,6 @@ dependencies = [
  "syscall",
  "system_info",
  "tar-no-std",
- "terminal",
  "thingbuf",
  "uefi",
  "uefi-raw",
