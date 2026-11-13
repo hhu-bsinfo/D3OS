@@ -382,7 +382,7 @@ pub fn receive_tcp(handle: SocketHandle, data: &mut [u8]) -> Result<usize, tcp::
         // this extra block is needed so that we don't block all sockets
         {
             get_socket_for_current_process!(socket, handle, tcp::Socket);
-            if socket.can_recv() {
+            if socket.can_recv() || !socket.may_recv() {
                 break;
             }
         }
