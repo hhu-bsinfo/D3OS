@@ -669,6 +669,9 @@ impl Thread {
 impl Drop for Thread {
     fn drop(&mut self) {
         info!("Dropping thread [{}]", self.id());
+        if self.process.thread_ids().is_empty() {
+            self.process.exit();
+        }
     }
 }
 
