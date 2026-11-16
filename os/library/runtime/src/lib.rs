@@ -31,7 +31,7 @@ pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("Panic: {}!", info);
-    thread::exit();
+    process::exit();
 }
 
 #[unsafe(no_mangle)]
