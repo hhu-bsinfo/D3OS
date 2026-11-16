@@ -9,7 +9,7 @@
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use log::warn;
+use log::{info, warn};
 use spin::Mutex;
 use uuid::{ContextV7, Timestamp, Uuid};
 use core::ops::Deref;
@@ -158,7 +158,7 @@ impl core::fmt::Debug for Process {
 impl Drop for Process {
     fn drop(&mut self) {
         let pid = self.id();
-        log::debug!("Dropping process [{}]", pid);
+        info!("Dropping process [{}]", pid);
         network::close_sockets_for_process(self);
         crate::syscall::sys_ipc::remove_endpoints_for_process(&pid);
         crate::naming::api::close_handles_for_process(pid);

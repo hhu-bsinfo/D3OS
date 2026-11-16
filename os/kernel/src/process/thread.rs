@@ -668,7 +668,7 @@ impl Thread {
 
 impl Drop for Thread {
     fn drop(&mut self) {
-        debug!("Dropping thread [{}]", self.id());
+        info!("Dropping thread [{}]", self.id());
     }
 }
 

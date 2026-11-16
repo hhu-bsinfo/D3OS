@@ -3,6 +3,7 @@ use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use smoltcp::socket::dns::GetQueryResultError;
+use uuid::Uuid;
 use core::net::{Ipv4Addr, Ipv6Addr};
 use core::ops::Deref;
 use core::ptr;
@@ -28,7 +29,7 @@ static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
 /// We use this to check whether a process can access a particular socket.
 /// We can't just create a SocketSet per process because smoltcp drops all
 /// packets for non-existing sockets when polling.
-static SOCKET_PROCESS: RwLock<BTreeMap<SocketHandle, Arc<Process>>> = RwLock::new(BTreeMap::new());
+static SOCKET_PROCESS: RwLock<BTreeMap<SocketHandle, Uuid>> = RwLock::new(BTreeMap::new());
 static DNS_SOCKET: Once<SocketHandle> = Once::new();
 static DHCP_SOCKET: Once<SocketHandle> = Once::new();
 
@@ -91,7 +92,7 @@ pub fn init() {
             let dns_socket = dns::Socket::new(&[], Vec::new());
             let dns_handle = sockets.write().add(dns_socket);
             process_map
-                .try_insert(dns_handle, current_process.clone())
+                .try_insert(dns_handle, current_process.id())
                 .expect("failed to insert socket into socket-process map");
             dns_handle
         });
@@ -102,7 +103,7 @@ pub fn init() {
                 .write()
                 .add(dhcp_socket);
             process_map
-                .try_insert(dhcp_handle, current_process)
+                .try_insert(dhcp_handle, current_process.id())
                 .expect("failed to insert socket into socket-process map");
             dhcp_handle
         });
@@ -112,10 +113,10 @@ pub fn init() {
 fn check_ownership(handle: SocketHandle) {
     // TODO: these panics should probably kill the process that made the call, not the kernel
     let lock = SOCKET_PROCESS.read();
-    let owning_process = lock
+    let owning_process_id = lock
         .get(&handle)
         .expect("process tried accessing non-existent socket");
-    if *owning_process != process_manager().read().current_process() {
+    if *owning_process_id != process_manager().read().current_process().id() {
         panic!("process tried to access socket of a different process");
     }
 }
@@ -218,7 +219,7 @@ pub fn open_udp() -> SocketHandle {
     let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(udp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
-        .try_insert(handle, process_manager().read().current_process())
+        .try_insert(handle, process_manager().read().current_process().id())
         .expect("failed to insert socket into socket-process map");
     handle
 }
@@ -230,7 +231,7 @@ pub fn open_tcp() -> SocketHandle {
     let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(tcp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
-        .try_insert(handle, process_manager().read().current_process())
+        .try_insert(handle, process_manager().read().current_process().id())
         .expect("failed to insert socket into socket-process map");
     handle
 }
@@ -249,7 +250,7 @@ pub fn open_icmp() -> SocketHandle {
     let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(icmp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
-        .try_insert(handle, process_manager().read().current_process())
+        .try_insert(handle, process_manager().read().current_process().id())
         .expect("failed to insert socket into socket-process map");
     handle
 }
@@ -360,6 +361,10 @@ pub fn send_tcp(handle: SocketHandle, data: &[u8]) -> Result<usize, tcp::SendErr
             if socket.can_send() {
                 break;
             }
+            // we won't be able to send new data on a closed socket
+            if !socket.is_active() {
+                break;
+            }
         }
         scheduler().sleep(100);
     }
@@ -383,6 +388,10 @@ pub fn receive_tcp(handle: SocketHandle, data: &mut [u8]) -> Result<usize, tcp::
         {
             get_socket_for_current_process!(socket, handle, tcp::Socket);
             if socket.can_recv() {
+                break;
+            }
+            // there will be no new data on a closed socket
+            if socket.state() == tcp::State::CloseWait {
                 break;
             }
         }
@@ -520,8 +529,8 @@ fn poll_sockets() -> Option<()> {
         let is_closed = match socket {
             // Only remove TCP sockets that have fully traversed the state machine to the CLOSED state.
             socket::Socket::Tcp(s) => s.state() == tcp::State::Closed,
-            // UDP sockets are stateless so whe can remove them immediately
-            socket::Socket::Udp(_s) => true,
+            // UDP and Icmp sockets are stateless so whe can remove them immediately
+            socket::Socket::Udp(_) | socket::Socket::Icmp(_) => true,
             _ => false,
         };
 
@@ -541,16 +550,26 @@ fn poll_sockets() -> Option<()> {
 
 pub(crate) fn close_sockets_for_process(process: &mut Process) {
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
-    let mut lock = SOCKET_PROCESS.write();
-    let handles: Vec<_> = lock
+    let mut socket_map = SOCKET_PROCESS.write();
+    // find out which handles belong to the process
+    let handles: Vec<_> = socket_map
         .iter()
-        .filter(|(_handle, proc)| ***proc == *process)
-        .map(|(handle, _proc)| handle)
+        .filter(|(_handle, pid)| **pid == process.id())
+        .map(|(handle, _pid)| handle)
         .copied()
         .collect();
-    for handle in handles {
-        lock.remove(&handle).unwrap();
-        sockets.remove(handle);
+    for (handle, socket) in sockets.iter_mut() {
+        if !handles.contains(&handle) {
+            continue;
+        }
+        info!("closing socket {handle:?} of {process:?}");
+        match socket {
+            socket::Socket::Udp(socket) => socket.close(),
+            socket::Socket::Tcp(socket) => socket.close(),
+            _ => (),
+        }
+        socket_map.remove(&handle).unwrap();
+        // the socket will be removed from the socket set when it has closed
     }
 }
 

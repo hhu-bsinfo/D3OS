@@ -1,4 +1,4 @@
-//! ping – answer HTTP requests
+//! httpd – answer HTTP requests
 #![no_std]
 extern crate alloc;
 
