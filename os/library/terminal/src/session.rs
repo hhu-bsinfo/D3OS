@@ -240,7 +240,7 @@ impl<S: Send + 'static> Session<S> {
     /// Create the session namespace and its three objects and launch the shell.
     ///
     /// The `ctl` file is left empty, which decodes to an unpublished record.
-    #[cfg(feature = "manager")]
+    #[cfg(all(feature = "manager", target_arch = "x86_64"))]
     pub fn launch(self: Arc<Self>) -> Result<(), &'static str> {
         // this can fail; it probably already exists
         let _ = naming::mkdir(TERM_ROOT);

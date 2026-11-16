@@ -46,12 +46,14 @@ impl Thread {
         let _ = syscall(SystemCall::ThreadKill, &[self.id]);
     }
 
+    #[cfg(target_arch = "x86_64")]
     pub fn start_time(&self) -> TimeDelta {
         let thread_env = thread_environment();
         thread_env.start_time
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 pub fn thread_environment() -> &'static mut ThreadEnvironment {
     let thread_env: *mut ThreadEnvironment;
 
@@ -65,6 +67,7 @@ pub fn thread_environment() -> &'static mut ThreadEnvironment {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 pub fn init_thread_environment() {
     let thread_env = Box::new(ThreadEnvironment {
         start_time: systime(),
@@ -79,6 +82,7 @@ pub fn init_thread_environment() {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 extern "sysv64" fn kickoff_user_thread(func_id: usize) {
     // set up the thread environment, which is stored at FS:0
     init_thread_environment();
@@ -92,6 +96,7 @@ extern "sysv64" fn kickoff_user_thread(func_id: usize) {
     exit();
 }
 
+#[cfg(target_arch = "x86_64")]
 pub fn create(entry: impl FnOnce() + Send + 'static) -> Option<Thread> {
     // impl Fn() allows us to work on closures, but we can't pass this through the syscall.
     // So, we generate a unique ID and save it with that ID in our process.
