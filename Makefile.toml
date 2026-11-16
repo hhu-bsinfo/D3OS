@@ -13,7 +13,6 @@ LINKER = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "ld", mappin
 QEMU_AUDIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "pa", mapping = { "macos" = "coreaudio" } }
 QEMU_DISPLAY = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "gtk,gl=on,zoom-to-fit=on", mapping = { "macos" = "cocoa" } }
 QEMU_VIRTIO_DEVICE = { source = "${CARGO_MAKE_RUST_TARGET_OS}", default_value = "virtio-vga-gl", mapping = { "macos" = "virtio-vga" } }
-RUSTFLAGS="--cfg getrandom_backend=\"rdrand\""
 NUM_CPU_CORES=4
 
 #VIRGL_DEBUG = "all"
@@ -181,13 +180,16 @@ args = [ "test" ]
 # Build tasks
 
 [tasks.link-members]
+env = { RUSTFLAGS="--cfg getrandom_backend=\"rdrand\"" }
 run_task = { name = "link", fork = true }
 dependencies = [ "create-initrd-directory" ]
 
 [tasks.check-members]
+env = { RUSTFLAGS="--cfg getrandom_backend=\"rdrand\"" }
 run_task = { name = "check", fork = true }
 
 [tasks.clippy-members]
+env = { RUSTFLAGS="--cfg getrandom_backend=\"rdrand\"" }
 run_task = { name = "clippy", fork = true }
 
 [tasks.create-initrd-directory]
