@@ -172,7 +172,7 @@ pub struct Session<S> {
     /// Thread id of the session's current shell (`0` if not yet running). Used
     /// to terminate the shell when the tab is closed.
     #[cfg(feature = "manager")]
-    pub(super) shell_tid: AtomicUsize,
+    shell_tid: AtomicUsize,
     // The screen is only ever accessed by the main thread, but Rust requires this.
     // We still need to store the S somewhere, even if it's ().
     // TODO: try to replace this with PhantomData
@@ -198,7 +198,7 @@ impl Session<()> {
     }
 }
 
-impl<S> Session<S> {
+impl<S: Send + 'static> Session<S> {
     /// Resolve a session by explicit id.
     pub fn with_id(id: usize, screen: S) -> Self {
         Session {
@@ -237,19 +237,20 @@ impl<S> Session<S> {
         format!("{}/ctl", self.base)
     }
 
-    /// Create the session namespace and its three objects.
+    /// Create the session namespace and its three objects and launch the shell.
     ///
-    /// Best-effort and intended to be called by the session owner
-    /// (`session_manager`). Errors on already-existing components are ignored
-    /// so a restart does not fail. The `ctl` file is left empty, which decodes
-    /// to an unpublished record.
+    /// The `ctl` file is left empty, which decodes to an unpublished record.
     #[cfg(feature = "manager")]
-    pub fn create(&self) {
+    pub fn launch(self: Arc<Self>) -> Result<(), &'static str> {
+        // this can fail; it probably already exists
         let _ = naming::mkdir(TERM_ROOT);
-        let _ = naming::mkdir(&self.base);
-        let _ = naming::mkfifo(&self.in_path());
-        let _ = naming::mkfifo(&self.out_path());
-        let _ = naming::touch(&self.ctl_path());
+        naming::mkdir(&self.base).map_err(|_| "failed to create folder for terminal session")?;
+        naming::mkfifo(&self.in_path()).map_err(|_| "failed to create stdin fifo")?;
+        naming::mkfifo(&self.out_path()).map_err(|_| "failed to create stdout fifo")?;
+        naming::touch(&self.ctl_path()).map_err(|_| "failed to create status file")?;
+
+        concurrent::thread::create(move || self.supervise());
+        Ok(())
     }
 
     /// Loop for a single session's shell
@@ -282,14 +283,19 @@ impl<S> Session<S> {
         self.exited.store(true, Ordering::SeqCst);
     }
 
+    /// Terminate the closed session's shell so its supervisor's join() returns
+    /// and the supervisor stops (the session is no longer alive).
     #[cfg(feature = "manager")]
-    pub fn exited(&self) -> bool {
-        self.exited.load(Ordering::SeqCst)
+    pub fn kill(&self) {
+        let shell_tid = self.shell_tid.swap(0, Ordering::SeqCst);
+        if shell_tid != 0 {
+            concurrent::thread::kill(shell_tid);
+        }
     }
 
     #[cfg(feature = "manager")]
-    pub fn shell_tid(&self) -> usize {
-        self.shell_tid.load(Ordering::SeqCst)
+    pub fn exited(&self) -> bool {
+        self.exited.load(Ordering::SeqCst)
     }
 }
 
@@ -313,9 +319,4 @@ pub(super) fn write_ctl(handle: usize, record: &CtlRecord) -> Result<(), Errno> 
     let buf = record.encode();
     naming::write(handle, &buf)?;
     Ok(())
-}
-
-#[cfg(feature = "manager")]
-pub fn spawn_supervisor<S: Send + 'static>(session: Arc<Session<S>>) {
-    concurrent::thread::create(move || session.supervise());
 }

@@ -15,23 +15,21 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-pub(crate) mod screen;
-
 use alloc::collections::btree_map::BTreeMap;
 use alloc::rc::Rc;
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use concurrent::thread;
 use log::error;
 use log::{info, warn};
 use naming::shared_types::OpenOptions;
-use terminal_lib::session::{CtlRecord, Session, WaitState, read_ctl, spawn_supervisor};
+use terminal_lib::session::{CtlRecord, Session, WaitState, read_ctl};
 
-use screen::SessionScreen;
+use crate::terminal::ansi::SemanticTerminal;
 use crate::terminal::lfb_terminal::LFBTerminal;
+use crate::terminal::model::{Damage, ScreenSize, TerminalModel};
 use crate::util::banner::create_banner_string;
-use crate::worker::canonical::CanonicalAction;
+use crate::worker::canonical::{CanonicalAction, CanonicalEditor};
 
 
 /// Maximum number of concurrent sessions.
@@ -173,7 +171,6 @@ impl SessionMux {
     }
 
     pub(super) fn new_session(&mut self) {
-        // TODO: move parts of this into SessionEntry::new
         info!("creating a new session");
         if self.sessions.len() >= MAX_SESSIONS {
             warn!("can't create any more sessions");
@@ -186,7 +183,10 @@ impl SessionMux {
             id as usize,
             SessionScreen::new(self.terminal.screen_size()),
         ));
-        session.create();
+        if let Err(e) = session.clone().launch() {
+            error!("failed to create session: {e}");
+            return;
+        };
         {
             let mut screen = session.screen.try_lock().expect("failed to get lock on screen");
             screen.out = naming::open(
@@ -204,7 +204,6 @@ impl SessionMux {
             // semantic model, not a byte replay ring).
             let _ = screen.feed(create_banner_string().as_bytes());
         }
-        spawn_supervisor(session.clone());
         self.sessions.insert(id, session);
 
         self.active = id;
@@ -222,12 +221,7 @@ impl SessionMux {
     /// If we're closing the last one, spawn a new one.
     fn close_session(&mut self, id: u8) {
         if let Some(session) = self.sessions.remove(&id) {
-            // Terminate the closed session's shell so its supervisor's join() returns
-            // and the supervisor stops (the session is no longer alive).
-            let shell_tid = session.shell_tid();
-            if shell_tid != 0 {
-                thread::kill(shell_tid);
-            }
+            session.kill();
             
             let screen = session.screen.try_lock().expect("failed to get lock on session screen");
             if let Some(handle) = screen.out {
@@ -282,3 +276,58 @@ impl SessionMux {
         self.terminal.update_tabs(&ids, self.active);
     }
 }
+
+/// One session's screen state, independent of any I/O.
+///
+/// A `SessionScreen` owns everything that makes a tab a tab: its semantic
+/// terminal (parser, grid, cursor, colors, scrollback) and its canonical
+/// line editor. Feeding output and applying edits are pure functions of
+/// that state, which is what lets a tab switch repaint instead of replay.
+/// The FIFO handles live here too, but only `SessionMux` touches them.
+pub struct SessionScreen {
+    /// Non-blocking reader on the session `out` FIFO (app stdout).
+    pub(crate) out: Option<usize>,
+    /// Reader on the session `ctl` record (foreground mode/wait state).
+    pub(crate) ctl: Option<usize>,
+    /// Lazily-opened writer on the session `in` FIFO (app stdin).
+    pub(crate) in_writer: Option<usize>,
+    /// Semantic screen state: parser + grid + cursor + colors + scrollback.
+    terminal: SemanticTerminal,
+    /// Canonical-mode line editor for this session.
+    canonical: CanonicalEditor,
+}
+
+impl SessionScreen {
+    pub fn new(size: ScreenSize) -> Self {
+        Self {
+            out: None,
+            ctl: None,
+            in_writer: None,
+            terminal: SemanticTerminal::new(size),
+            canonical: CanonicalEditor::new(),
+        }
+    }
+
+    /// Parse application output into this session's screen state.
+    pub fn feed(&mut self, bytes: &[u8]) -> Damage {
+        self.terminal.feed(bytes)
+    }
+
+    /// Apply a canonical-mode edit. The echo is rendered into this session's
+    /// own screen rather than the framebuffer, so an unsubmitted line survives
+    /// a switch to another tab and back. The second half of the result is the
+    /// completed line, present only once the user submits it.
+    pub fn edit(&mut self, action: CanonicalAction) -> (Damage, Option<Vec<u8>>) {
+        let effect = self.canonical.apply(action);
+        let damage = match effect.echo.is_empty() {
+            true => Damage::none(),
+            false => self.terminal.feed(effect.echo.as_bytes()),
+        };
+        (damage, effect.submit)
+    }
+
+    pub fn model(&self) -> &TerminalModel {
+        self.terminal.model()
+    }
+}
+
