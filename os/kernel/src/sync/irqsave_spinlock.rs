@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ A irq save and multicore save spinlock for a generic data type.         ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 01.09.2025               ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 18.11.2026               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use crate::device::cpu; 
@@ -73,6 +73,20 @@ impl<'a, T> Deref for IrqSaveGuard<'a, T> {
     type Target = T;
     #[inline] fn deref(&self) -> &T { unsafe { &*self.lock.value.get() } }
 }
+
 impl<'a, T> DerefMut for IrqSaveGuard<'a, T> {
     #[inline] fn deref_mut(&mut self) -> &mut T { unsafe { &mut *self.lock.value.get() } }
+}
+
+// Allow unlocking while keeping irqs off
+// Needed for wait_queue implementation
+impl<'a, T> IrqSaveGuard<'a, T> {
+    /// Release lock but keep IE off. Caller must enable IE manually later
+    pub fn unlock_keep_irqs_off(self) -> bool {
+        let prev = self.irq_prev.get();
+        self.lock.locked.store(false, Ordering::Release);
+        // Manually drop avoding `cpu::enable_int_nested`
+        core::mem::forget(self); 
+        prev
+    }
 }

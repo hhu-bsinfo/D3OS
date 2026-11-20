@@ -48,6 +48,9 @@ use thingbuf::mpsc::{Sender};
 use crate::device::apic::get_apic_id;
 use crate::device::cpu::{disable_int_nested, enable_int_nested};
 use crate::process::core_local_storage::{cls, current_core_id, scheduler, tss_static};
+use crate::sync::irqsave_spinlock::IrqSaveGuard;
+use crate::device::cpu;
+
 
 // thread IDs
 pub static THREAD_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -352,6 +355,31 @@ impl Scheduler {
             schedule_on_all_others(MessageItem::Cmd(MessageCmd::Deblock {pid, tid}))
         }
     }
+
+    /// Block calling thread and unlock guard
+    /// Used only by wait_queue::wait
+    pub fn block_and_release<T>(&self, guard: IrqSaveGuard<'_, T>) {
+        let state = self.get_ready_state();
+        if !state.initialized {
+            // Scheduler is not initialized yet, so We panic
+            panic!("Scheduler: Cannot block thread before scheduler is initialized!");
+        } else {
+            let thread = self.current_thread();
+            thread.set_state(ThreadState::Blocked);
+            self.blocked_list.lock().push(Arc::clone(&thread));
+            dec_rq_len();
+
+            // Unlock guard but keep irqs off because an ISR calling notify/unblock 
+            // on this core would spin forever. Reason is we are holding the lock 
+            // on ready_state which is released when switching threads
+            let ie_prev = guard.unlock_keep_irqs_off();
+            self.block_and_switch(state);
+
+            // we continue here after being unblocked
+            cpu::enable_int_nested(ie_prev);
+        }
+    }
+
 
     /// Helper function for switching a thread not caused by an interrupt
     pub fn switch_thread_no_interrupt(&self) {
