@@ -58,6 +58,9 @@ pub trait DirectoryObject: Debug + Send + Sync {
     fn delete_file(&self, _name: &str) -> Result<(), Errno>;
     fn delete_dir(&self, _name: &str) -> Result<(), Errno>;
     fn delete_pipe(&self, _name: &str) -> Result<(), Errno>;
+    fn unlink(&self, _name: &str) -> Result<(), Errno> {
+        Err(Errno::ENOTSUP)
+    }
 }
 
 /// A named object.

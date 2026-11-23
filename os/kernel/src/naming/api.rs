@@ -10,6 +10,7 @@
    ║   - mkdir  create a directory                                           ║
    ║   - touch  create a file                                                ║
    ║   - mkfifo create a named pipe                                          ║
+   ║   - unlink remove a file or named pipe                                  ║
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Author: Michael Schoettner, Univ. Duesseldorf, 4.4.2026                 ║
    ╚═════════════════════════════════════════════════════════════════════════╝
@@ -218,6 +219,29 @@ pub fn touch(path: &str) -> Result<usize, Errno> {
         Err(Errno::EEXIST) => Ok(0),  // this is ok for touch
         Err(e) => Err(e),
     }
+}
+
+/// Remove the file or named pipe referenced by the absolute `path`. 
+/// Returns `Ok(0)` or `Err(errno)`
+pub fn unlink(path: &str) -> Result<usize, Errno> {
+    if !path.starts_with('/') || path == "/" {
+        return Err(Errno::EINVAL);
+    }
+
+    // Split into parent directory and the name of the entry to remove
+    let (parent_dir, name) = match path.rsplit_once('/') {
+        Some(("", name)) => ("/".to_string(), name),
+        Some((parent, name)) => (parent.to_string(), name),
+        None => return Err(Errno::EINVAL),
+    };
+
+    // A trailing '/' (e.g. "/tmp/foo/") names a directory, not a file
+    if name.is_empty() {
+        return Err(Errno::EISDIR);
+    }
+
+    lookup::lookup_dir(&parent_dir)?.unlink(name)?;
+    Ok(0)
 }
 
 /// Read next directory entry of directory referenced by `dir_handle` \

@@ -277,6 +277,28 @@ impl DirectoryObject for Dir {
             Err(Errno::EEXIST)
         }
     }
+
+    fn unlink(&self, name: &str) -> Result<(), Errno> {
+        if name.is_empty() || name == "." || name == ".." || name.contains('/') {
+            return Err(Errno::EINVAL);
+        }
+
+        let mut dir_lock = self.0.write();
+
+        let pos = match dir_lock.files.iter().position(|(entry_name, _)| entry_name == name) {
+            Some(pos) => pos,
+            None => return Err(Errno::ENOENT),
+        };
+
+        match &dir_lock.files[pos].1 {
+            TmpFsINode::Directory(_) => return Err(Errno::EISDIR),
+            TmpFsINode::File(_) | TmpFsINode::Pipe(_) => {}
+        }
+
+        // Drop the directory's reference; open handles keep the inode alive.
+        dir_lock.files.remove(pos);
+        Ok(())
+    }
 }
 
 impl fmt::Debug for Dir {
