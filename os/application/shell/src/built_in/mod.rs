@@ -13,3 +13,4 @@ pub mod pwd;
 pub mod theme;
 pub mod unalias;
 pub mod window_manager;
+pub mod touch;

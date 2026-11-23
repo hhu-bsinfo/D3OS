@@ -215,10 +215,8 @@ pub fn touch(path: &str) -> Result<usize, Errno> {
 
     match result {
         Ok(_) => Ok(0), // Successfully created the file
-        Err(_) => {
-            // Handle the error here (e.g., logging or returning the error code)
-            Err(Errno::ENOTDIR)
-        }
+        Err(Errno::EEXIST) => Ok(0),  // this is ok for touch
+        Err(e) => Err(e),
     }
 }
 
