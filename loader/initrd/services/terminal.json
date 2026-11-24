@@ -1,6 +1,6 @@
 {
   "name": "terminal",
-  "binary": "svc_dummy",
+  "binary": "terminal_emulator",
   "args": [],
   "enabled": true,
   "targets": ["terminal"],

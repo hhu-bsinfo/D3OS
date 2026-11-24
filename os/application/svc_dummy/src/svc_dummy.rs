@@ -101,53 +101,7 @@ pub fn main() {
         None
     };
 
-        // 2. NEU: Nachricht über das Netzwerk senden! (einmal)
-        // Erfolgreich von QEMU zu Linux gesendet via lauschen mit nc -l -p 8080
-        if let Some(target_addr) = send_to_addr {
         
-        info!("svc_dummy: Versuche TCP Verbindung zu {}", target_addr);
-        
-        
-        // TCP Verbindung aufbauen
-        match TcpStream::connect(target_addr) {
-            Ok(stream) => {
-                //let msg = format!("Hello from D3OS Node! Mein Service heißt: {}\n", service_name);
-
-                // Neuer Test: Nachricht an etcd senden
-                // Base64! "test_a" = "dGVzdF9h", "online" = "b25saW5l"
-                let payload = "{\"key\": \"dGVzdF9h\", \"value\": \"b25saW5l\"}";
-
-                // HTTP/1.1 POST Request
-                // \r\n sind zwingenden Zeilenumbrüche im HTTP-Protokoll
-                let msg = format!("POST /v3/kv/put HTTP/1.1\r\nHost: 10.0.2.2:2379\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-                    payload.len(), payload);
-                
-                // Nachricht in den Socket schreiben
-                match stream.write(msg.as_bytes()) {
-                    Ok(bytes) => {
-                        info!("svc_dummy: Erfolgreich {} Bytes an {} gesendet!", bytes, target_addr);
-                        
-                        // Neu: warten auf die HTTP-Antwort von etcd
-                        let mut buf = [0u8; 1024];
-                        match stream.read(&mut buf) {
-                            Ok(n) => {
-                                if let Ok(response) = core::str::from_utf8(&buf[..n]) {
-                                    info!("svc_dummy: ANTWORT VON ETCD:\n{}", response);
-                                }
-                            }
-                            Err(e) => error!("svc_dummy: Fehler beim Lesen der Antwort: {:?}", e),
-                        }
-                    }
-                    Err(e) => error!("svc_dummy: Fehler beim Senden: {:?}", e),
-                }
-            }
-            Err(e) => {
-                error!("svc_dummy: Konnte keine Verbindung aufbauen zu {}: {:?}", target_addr, e);
-            }
-        }
-    }
-
-
 
     let mut elapsed_ms: usize = 0;
 
