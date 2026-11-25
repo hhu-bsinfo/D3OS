@@ -21,6 +21,10 @@ Built‑In Commands (1 of 2):
       Print ARGS to stdout followed by newline.
       Example: echo "Hello, world!"
 
+  touch FILENAME
+      Create file if not existing.
+      Example: touch hello.txt
+
 Type `help controls` to see navigation keys.
 Type `help tokens`   to see special symbols.
 Type `help built‑in‑1` or `help built‑in‑2` for built‑ins.

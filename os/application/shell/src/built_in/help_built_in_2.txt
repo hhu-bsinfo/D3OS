@@ -16,6 +16,10 @@ Built‑In Commands (2 of 2):
       Print working directory.
       Example: pwd
 
+  rm FILE...
+      Remove FILE(s). Directories are not removed.
+      Example: rm hello.txt
+
   theme NAME
       Set shell theme to NAME.
       Available: d3os, plain, debug.
