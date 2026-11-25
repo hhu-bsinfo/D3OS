@@ -109,6 +109,7 @@ pub enum Command<'a> {
         log_rect_data: RectData,
         buffer: Rc<RwLock<Bitmap>>,
         input: Option<Box<dyn Fn(DecodedKey) -> ()>>,
+        accepts_text_input: Option<Box<dyn Fn() -> bool>>,
         scaling_mode: ScalingMode,
     },
     CreateContainer {
@@ -527,6 +528,7 @@ impl Api {
                 log_rect_data,
                 buffer,
                 input,
+                accepts_text_input,
                 scaling_mode,
             } => {
                 self.validate_log_pos(&log_rect_data.top_left)?;
@@ -538,6 +540,7 @@ impl Api {
                     buffer,
                     scaling_mode,
                     input,
+                    accepts_text_input,
                 );
                 let component = ComponentRef::from_component(Box::new(canvas));
                 let dispatch_data = NewCompData {

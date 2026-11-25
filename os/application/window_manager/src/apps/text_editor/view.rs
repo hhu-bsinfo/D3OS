@@ -10,7 +10,7 @@ use drawer::vertex::Vertex;
 use graphic::{
     bitmap::Bitmap,
     color::{Color, WHITE, YELLOW},
-    lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH},
+    lfb::{DEFAULT_CHAR_HEIGHT, char_width},
 };
 use pulldown_cmark::{Event, HeadingLevel, Parser};
 use syntax::{
@@ -67,7 +67,7 @@ impl View {
                 new_lines.push(i as u32);
                 continue;
             }
-            if buffer.width - x + 1 < font.char_width * font.scale {
+            if buffer.width.saturating_sub(x) < char_width(c) * font.scale + 1 {
                 x = 0;
                 y += font.char_height * font.scale;
                 new_lines.push(i as u32);
@@ -141,7 +141,7 @@ impl View {
                 new_lines.push(i as u32);
                 continue;
             }
-            if buffer.width - x + 1 < DEFAULT_CHAR_WIDTH * font_scale {
+            if buffer.width.saturating_sub(x) < char_width(c) * font_scale + 1 {
                 x = 0;
                 y += DEFAULT_CHAR_HEIGHT * font_scale;
             }

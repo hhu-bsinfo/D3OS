@@ -79,19 +79,6 @@ pub fn touch(path: &str) -> Result<usize, Errno> {
     }
 }
 
-/// Remove the file or named pipe at the absolute `path`. \
-/// Returns `Ok(0)` or `Err(errno)`, e.g. `ENOENT`, `EISDIR`, `ENOTSUP`.
-#[cfg(feature = "userspace")]
-pub fn unlink(path: &str) -> Result<usize, Errno> {
-    if !path.starts_with('/') {
-        return Err(Errno::EINVAL);
-    }
-    match CString::new(path) {
-        Ok(c_path) => syscall(SystemCall::Unlink, &[c_path.as_bytes().as_ptr() as usize]),
-        Err(_) => Err(Errno::EBADSTR),
-    }
-}
-
 #[cfg(feature = "userspace")]
 pub fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
     let mut raw_dirent = RawDirent::new();

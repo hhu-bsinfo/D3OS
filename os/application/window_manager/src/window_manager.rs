@@ -10,7 +10,7 @@
 
 extern crate alloc;
 
-use alloc::{borrow::ToOwned, vec::Vec};
+use alloc::{borrow::ToOwned, string::String, vec::Vec};
 use api::{
     Api, NewCompData, NewLoopIterFnData, Receivers, ScreenSplitType, Senders, WindowData,
     WindowManagerMessage, DEFAULT_APP,
@@ -25,8 +25,9 @@ use drawer::drawer::Drawer;
 use drawer::rect_data::RectData;
 use drawer::vertex::Vertex;
 use globals::hotkeys::HKEY_TOGGLE_TERMINAL_WINDOW;
-use graphic::lfb::DEFAULT_CHAR_HEIGHT;
-use keyboard_decoder::KeyboardDecoder;
+use graphic::color::{HHU_BLUE, HHU_GREEN};
+use graphic::lfb::{DEFAULT_CHAR_HEIGHT, DEFAULT_CHAR_WIDTH, fit_text};
+use ime::pinyin::{Delivery, PinyinClient};
 use nolock::queues::mpsc::jiffy;
 
 use input::mouse::try_read_mouse;
@@ -45,7 +46,6 @@ pub mod api;
 mod apps;
 mod components;
 mod config;
-mod keyboard_decoder;
 mod mouse_state;
 mod signal;
 mod utils;
@@ -54,6 +54,7 @@ mod windows;
 mod workspace;
 
 const WORKSPACE_SELECTION_WINDOW_HEIGHT: u32 = 30;
+const LAYOUT_BAR_HEIGHT: u32 = DEFAULT_CHAR_HEIGHT;
 
 // IDs are unique across all components
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -81,12 +82,15 @@ struct WindowManager {
     on_loop_iter_fns: Vec<NewLoopIterFnData>,
     /// Determines if a full redraw is required in the next loop-iteration
     is_dirty: bool,
+    layout_bar_label: Option<&'static str>,
+    layout_bar_status: String,
+    pinyin: PinyinClient,
+    text_target: Option<usize>,
     last_frame_time: TimeDelta,
     start_time: TimeDelta,
     frames: i64,
 
     mouse_state: MouseState,
-    keyboard_decoder: KeyboardDecoder,
 }
 
 impl WindowManager {
@@ -127,7 +131,7 @@ impl WindowManager {
 
         // Workspace selection window
         let workspace_selection_window = WorkspaceSelectionWindow::new(RectData {
-            top_left: Vertex::new(DIST_TO_SCREEN_EDGE, DIST_TO_SCREEN_EDGE),
+            top_left: Vertex::new(DIST_TO_SCREEN_EDGE, LAYOUT_BAR_HEIGHT + DIST_TO_SCREEN_EDGE),
             width: screen.0 - DIST_TO_SCREEN_EDGE * 2,
             height: WORKSPACE_SELECTION_WINDOW_HEIGHT,
         });
@@ -156,12 +160,15 @@ impl WindowManager {
                 command_line_window,
                 receivers,
                 is_dirty: true,
+                layout_bar_label: None,
+                layout_bar_status: String::new(),
+                pinyin: PinyinClient::default(),
+                text_target: None,
                 on_loop_iter_fns: Vec::new(),
                 last_frame_time: time,
                 start_time: time,
                 frames: 0,
                 mouse_state: MouseState::new(),
-                keyboard_decoder: KeyboardDecoder::new(),
             },
             senders,
         )
@@ -261,87 +268,119 @@ impl WindowManager {
         }
     }
 
+    fn sync_text_target(&mut self) {
+        let target = if self.command_line_window.is_active() {
+            Some(usize::MAX)
+        } else {
+            self.get_current_workspace().get_focused_window().focused_text_input()
+        };
+        if self.text_target != target {
+            self.text_target = target;
+            self.pinyin.cancel();
+        }
+    }
+
     fn process_keyboard_input(&mut self) {
-        let read_option = self.keyboard_decoder.read_decoded();
+        let Ok(Some(input)) = ime::read_event(false) else {
+            return;
+        };
+        self.sync_text_target();
+        match self.pinyin.handle(&input, self.text_target.is_some()) {
+            Delivery::Pass => {
+                if let Some(keyboard_press) = input.decoded {
+                    self.deliver_key(keyboard_press);
+                }
+            }
+            Delivery::Commit(text) => {
+                let target = self.text_target;
+                for character in text.chars() {
+                    self.sync_text_target();
+                    if self.text_target != target || target.is_none() {
+                        break;
+                    }
+                    self.deliver_key(DecodedKey::Unicode(character));
+                }
+            }
+        }
+    }
 
-        if let Some(keyboard_press) = read_option {
-            // `enter_app_mode` overrides all other keyboard-interactions
-            if self.command_line_window.is_active() {
-                let keep_enter_app_mode = self
-                    .command_line_window
-                    .process_keyboard_input(keyboard_press);
+    fn deliver_key(&mut self, keyboard_press: DecodedKey) {
+        // `enter_app_mode` overrides all other keyboard-interactions
+        if self.command_line_window.is_active() {
+            let keep_enter_app_mode = self
+                .command_line_window
+                .process_keyboard_input(keyboard_press);
 
-                if !keep_enter_app_mode {
+            if !keep_enter_app_mode {
+                self.is_dirty = true;
+            }
+
+            return;
+        }
+
+        // Pass the input to the focused component
+        let block_interact = self
+            .get_current_workspace_mut()
+            .get_focused_window_mut()
+            .interact_with_focused_component(Interaction::Keyboard(keyboard_press));
+
+        if block_interact {
+            return;
+        }
+
+        match keyboard_press {
+            DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => {
+                self.enter_text_mode();
+            }
+            DecodedKey::Unicode('c') => {
+                self.create_new_workspace();
+            }
+            DecodedKey::Unicode('x') => {
+                self.remove_current_workspace();
+            }
+            DecodedKey::Unicode('q') => {
+                self.switch_prev_workspace();
+            }
+            DecodedKey::Unicode('e') => {
+                self.switch_next_workspace();
+            }
+            DecodedKey::Unicode('o') => {
+                self.get_current_workspace_mut()
+                    .move_focused_window_forward();
+            }
+            DecodedKey::Unicode('i') => {
+                self.get_current_workspace_mut()
+                    .move_focused_window_backward();
+            }
+            DecodedKey::Unicode('h') => {
+                self.command_line_window
+                    .activate_enter_app_mode(ScreenSplitType::Horizontal);
+            }
+            DecodedKey::Unicode('v') => {
+                self.command_line_window
+                    .activate_enter_app_mode(ScreenSplitType::Vertical);
+            }
+            DecodedKey::Unicode('w') => {
+                self.get_current_workspace_mut().focus_next_component();
+            }
+            DecodedKey::Unicode('s') => {
+                self.get_current_workspace_mut().focus_prev_component();
+            }
+            DecodedKey::Unicode('a') => {
+                self.get_current_workspace_mut().focus_prev_window();
+            }
+            DecodedKey::Unicode('d') => {
+                self.get_current_workspace_mut().focus_next_window();
+            }
+            DecodedKey::Unicode('m') => {
+                /* Only works, if both buddies don't have subwindows inside them.
+                Move windows up before merging, if that is a problem */
+                let was_closed = self.get_current_workspace_mut().close_focused_window();
+                if was_closed {
                     self.is_dirty = true;
                 }
-
-                return;
             }
-
-            // Pass the input to the focused component
-            let block_interact = self
-                .get_current_workspace_mut()
-                .get_focused_window_mut()
-                .interact_with_focused_component(Interaction::Keyboard(keyboard_press));
-
-            if block_interact {
-                return;
-            }
-
-            match keyboard_press {
-                DecodedKey::RawKey(HKEY_TOGGLE_TERMINAL_WINDOW) => {
-                    self.enter_text_mode();
-                }
-                DecodedKey::Unicode('c') => {
-                    self.create_new_workspace();
-                }
-                DecodedKey::Unicode('x') => {
-                    self.remove_current_workspace();
-                }
-                DecodedKey::Unicode('q') => {
-                    self.switch_prev_workspace();
-                }
-                DecodedKey::Unicode('e') => {
-                    self.switch_next_workspace();
-                }
-                DecodedKey::Unicode('o') => {
-                    self.get_current_workspace_mut()
-                        .move_focused_window_forward();
-                }
-                DecodedKey::Unicode('i') => {
-                    self.get_current_workspace_mut()
-                        .move_focused_window_backward();
-                }
-                DecodedKey::Unicode('h') => {
-                    self.command_line_window
-                        .activate_enter_app_mode(ScreenSplitType::Horizontal);
-                }
-                DecodedKey::Unicode('v') => {
-                    self.command_line_window
-                        .activate_enter_app_mode(ScreenSplitType::Vertical);
-                }
-                DecodedKey::Unicode('w') => {
-                    self.get_current_workspace_mut().focus_next_component();
-                }
-                DecodedKey::Unicode('s') => {
-                    self.get_current_workspace_mut().focus_prev_component();
-                }
-                DecodedKey::Unicode('a') => {
-                    self.get_current_workspace_mut().focus_prev_window();
-                }
-                DecodedKey::Unicode('d') => {
-                    self.get_current_workspace_mut().focus_next_window();
-                }
-                DecodedKey::Unicode('m') => {
-                    /* Only works, if both buddies don't have subwindows inside them.
-                    Move windows up before merging, if that is a problem */
-                    let was_closed = self.get_current_workspace_mut().close_focused_window();
-                    if was_closed {
-                        self.is_dirty = true;
-                    }
-                }
-                _ => {}
-            }
+            _ => {}
         }
     }
 
@@ -349,6 +388,9 @@ impl WindowManager {
         let mouse_packet = try_read_mouse();
         if let Some(mouse_packet) = mouse_packet {
             let mouse_event = self.mouse_state.process(&mouse_packet);
+            if mouse_event.buttons.left.is_pressed() {
+                self.pinyin.cancel();
+            }
 
             // Ask the workspace manager first
             if let Some(callback) = self
@@ -473,11 +515,12 @@ impl WindowManager {
         let window_rect_data = RectData {
             top_left: Vertex::new(
                 DIST_TO_SCREEN_EDGE,
-                DIST_TO_SCREEN_EDGE + WORKSPACE_SELECTION_WINDOW_HEIGHT,
+                LAYOUT_BAR_HEIGHT + DIST_TO_SCREEN_EDGE + WORKSPACE_SELECTION_WINDOW_HEIGHT,
             ),
             width: screen_res.0 - DIST_TO_SCREEN_EDGE * 2,
-            height: screen_res.1
-                - (DIST_TO_SCREEN_EDGE * 2 + WORKSPACE_SELECTION_WINDOW_HEIGHT),
+            height: screen_res.1.saturating_sub(
+                LAYOUT_BAR_HEIGHT + DIST_TO_SCREEN_EDGE * 2 + WORKSPACE_SELECTION_WINDOW_HEIGHT,
+            ),
         };
 
         // Create a new window for the workspace
@@ -578,6 +621,7 @@ impl WindowManager {
 
         if is_dirty {
             Drawer::full_clear_screen(false);
+            self.layout_bar_label = None;
             self.workspace_selection_window.mark_dirty();
         }
 
@@ -633,10 +677,50 @@ impl WindowManager {
         elapsed >= FLUSHING_DELAY_MS
     }
 
+    fn draw_layout_bar(&mut self) {
+        self.sync_text_target();
+        let layout = ime::get_layout().ok();
+        self.pinyin.sync_layout(layout);
+        let label = layout.map_or("KB --", ime::Layout::status_label);
+        let status = self.pinyin.status();
+        if self.layout_bar_label == Some(label) && self.layout_bar_status == status {
+            return;
+        }
+        self.layout_bar_label = Some(label);
+        self.layout_bar_status.clear();
+        self.layout_bar_status.push_str(status);
+        let (width, height) = Self::get_screen_res();
+        Drawer::draw_filled_rectangle(
+            RectData {
+                top_left: Vertex::new(0, 0),
+                width,
+                height: LAYOUT_BAR_HEIGHT.min(height),
+            },
+            HHU_GREEN,
+            None,
+        );
+
+        let cols = (width / DEFAULT_CHAR_WIDTH) as usize;
+        let label = &label[label.len().saturating_sub(cols)..];
+        let label_x = (cols - label.len()) as u32 * DEFAULT_CHAR_WIDTH;
+        let preview = fit_text(status, label_x.saturating_sub(DIST_TO_SCREEN_EDGE * 2));
+        if !preview.is_empty() {
+            Drawer::draw_string(preview.to_owned(), Vertex::new(DIST_TO_SCREEN_EDGE, 0), HHU_BLUE, None, (1, 1));
+        }
+        Drawer::draw_string(
+            label.to_owned(),
+            Vertex::new(label_x, 0),
+            HHU_BLUE,
+            None,
+            (1, 1),
+        );
+    }
+
     /// Flushes the changes from the backbuffer and displays them on the front buffer,
     /// if allowed by `should_flush()`.
     fn flush(&mut self) {
         if self.should_flush() {
+            self.draw_layout_bar();
             Drawer::flush();
             self.last_frame_time = systime();
             self.frames = self
@@ -652,6 +736,7 @@ impl WindowManager {
     }
 
     fn enter_text_mode(&mut self) {
+        self.pinyin.disconnect();
         Drawer::full_clear_screen(true);
         process::exit();
     }

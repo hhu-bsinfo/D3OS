@@ -51,13 +51,14 @@ impl TerminalEmulator {
         let terminal = Rc::new(LFBTerminal::new(address, pitch, width, height, bpp));
         let event_handler = Rc::new(RefCell::new(EventHandler::new()));
         let mux = Rc::new(RefCell::new(SessionMux::new(terminal.clone())));
+        let pinyin = Rc::new(RefCell::new(ime::pinyin::PinyinClient::default()));
         Self {
             terminal: terminal.clone(),
-            input_observer: InputObserver::new(terminal.clone(), event_handler.clone(), mux.clone()),
+            input_observer: InputObserver::new(event_handler.clone(), mux.clone(), pinyin.clone()),
             cursor: Cursor::new(terminal.clone()),
             event_handler,
             mux,
-            status_bar: StatusBar::new(terminal),
+            status_bar: StatusBar::new(terminal, pinyin),
         }
     }
 
@@ -104,6 +105,7 @@ impl TerminalEmulator {
 #[unsafe(no_mangle)]
 pub fn main() {
     init_logger();
+    let _ = thread::start_application("imed", vec![]);
     let lfb_info = map_framebuffer().expect("failed to get framebuffer");
     let mut emulator = TerminalEmulator::new(
         lfb_info.addr as *mut u8,

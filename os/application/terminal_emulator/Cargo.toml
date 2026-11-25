@@ -13,6 +13,7 @@ bench = false
 
 [dependencies]
 # Local dependencies
+ime = { path = "../../library/ime", features = ["pinyin"] }
 runtime = { path = "../../library/runtime" }
 graphic = { path = "../../library/graphic" }
 stream = { path = "../../library/stream" }
@@ -20,7 +21,6 @@ concurrent = { path = "../../library/concurrent" }
 drawer = { path = "../../library/drawer" }
 time = { path = "../../library/time" }
 system_info = { path = "../../library/system_info" }
-input = { path = "../../library/input" }
 syscall = {path ="../../library/syscall"}
 terminal = {path ="../../library/terminal", features=["manager"]}
 logger = {path ="../../library/logger"}
@@ -31,7 +31,6 @@ globals = {path ="../../library/globals"}
 anstyle-parse = "0.2.6"
 unifont = "1.1.0"
 chrono = { version = "0.4.42", default-features = false, features = ["alloc"] }
-pc-keyboard = "0.9"
 spin = "0.12"
 log = "0.4.26"
 num_enum = { version = "0.7", default-features = false }

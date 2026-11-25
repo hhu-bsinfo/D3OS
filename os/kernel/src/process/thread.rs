@@ -51,7 +51,6 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use log::debug;
-use x86_64::instructions::interrupts;
 use core::arch::naked_asm;
 use core::ptr;
 use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
@@ -275,13 +274,11 @@ impl Thread {
         }
     }
 
-    /// High-level function for starting the first thread in kernel mode
+    /// High-level function for starting a thread in kernel mode
     pub unsafe fn start_first(thread_ptr: *const Thread) {
         let thread = unsafe { thread_ptr.as_ref().unwrap() };
         let old_rsp0 = thread.stacks.lock().old_rsp0;
 
-        // disable interrupts until the thread is started properly
-        interrupts::disable();
         unsafe {
             thread_kernel_start(old_rsp0.as_u64());
         }
@@ -678,7 +675,7 @@ impl Drop for Thread {
     }
 }
 
-/// Low-level function for starting the first thread in kernel mode
+/// Low-level function for starting a thread in kernel mode
 #[unsafe(naked)]
 unsafe extern "C" fn thread_kernel_start(old_rsp0: u64) {
     naked_asm!(
@@ -733,8 +730,6 @@ unsafe extern "C" fn thread_switch(current_rsp0: *mut u64, next_rsp0: u64, next_
     naked_asm!(
     // Save registers of current thread
     "pushf",
-    // disable interrupts until we're done with the thread switch
-    "cli",
     "push r8",
     "push r9",
     "push r10",

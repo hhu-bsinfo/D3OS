@@ -25,7 +25,7 @@ use super::lookup;
 use super::traits::NamedObject;
 use crate::process::core_local_storage::scheduler;
 use naming::shared_types::{DirEntry, OpenOptions, SeekOrigin};
-use syscall::return_vals::Errno;
+use syscall::return_vals::{Errno, SyscallResult};
 
 /// Max. number of open objetcs
 const MAX_OPEN_OBJECTS: usize = 0x1000;
@@ -155,16 +155,11 @@ pub fn seek(fh: usize, offset: isize, origin: SeekOrigin) -> Result<usize, Errno
         if opened_object.named_object.is_file() {
             // Make `opened_object` mutable here
             return opened_object.named_object.as_file().and_then(|file| {
-                // base position the offset is relative to
-                let base = match origin {
-                    SeekOrigin::Start => 0,
-                    SeekOrigin::End => file.stat()?.size,
-                    SeekOrigin::Current => opened_object.pos.load(Ordering::SeqCst),
-                };
-
-                // new position = base + offset; must not become negative or overflow
-                // (a negative isize cast to usize would become a huge position)
-                let new_pos = base.checked_add_signed(offset).ok_or(Errno::EINVAL)?;
+                let new_pos = match origin {
+                    SeekOrigin::Start => offset,
+                    SeekOrigin::End => file.stat()?.size as isize + offset,
+                    SeekOrigin::Current => opened_object.pos.load(Ordering::SeqCst) as isize + offset,
+                } as usize;
                 opened_object.pos.store(new_pos, Ordering::SeqCst);
                 Ok(new_pos) // Success
             });
@@ -190,17 +185,15 @@ pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
 
 pub(super) fn close(fh: usize) -> Result<usize, Errno> {
     debug!("open_object::close: close called for fh={}", fh);
-
-    // Remove the entry, if it is owned by the calling process
-    let opened_object = get_open_object_table().remove_owned(fh, scheduler().current_pid())?;
-
-    // Close the pipe endpoint without holding the table lock
-    // (`Pipe::close` wakes waiters via the scheduler).
-    if let Ok(pipe) = opened_object.named_object.as_pipe() {
-        pipe.close(opened_object.options);
+    if let Ok(opened_object) = get_open_object_table().lookup_owned(fh, scheduler().current_pid()) {
+        if opened_object.named_object.is_pipe() {
+            if let Ok(pipe) = opened_object.named_object.as_pipe() {
+                pipe.close(opened_object.options);
+            }
+        }
     }
 
-    Ok(0)
+    get_open_object_table().free_handle(fh)
 }
 
 /// Reclaim every handle owned by `owner`, restoring pipe endpoint counts.
@@ -228,27 +221,16 @@ pub(super) fn close_all_for_process(owner: Uuid) -> usize {
     reclaimed
 }
 
-/// Delete an opened object and free its handle.
-/// The handle is freed (and a pipe endpoint closed) even if deleting the object fails;
-/// in that case the error of the delete is returned.
+/// delete an opened object and free its handle
 pub(super) fn delete(fh: usize) -> Result<usize, Errno> {
-
-    // Remove the entry, if it is owned by the calling process (atomic, see `close`)
-    let opened_object = get_open_object_table().remove_owned(fh, scheduler().current_pid())?;
-
-    // Delete the object from its parent directory
-    let result = opened_object.delete();
-    match &result {
-        Ok(_) => debug!("  deleted {}", opened_object.name),
-        Err(e) => warn!("  error when deleting {}: {:?}", opened_object.name, e),
+    debug!("delete called for fh={}", fh);
+    if let Ok(opened_object) = get_open_object_table().lookup_opened_object(fh) {
+        match opened_object.delete() {
+            Ok(_) => debug!("  deleted {}", opened_object.name),
+            Err(e) => warn!("  error when deleting {}: {:?}", opened_object.name, e),
+        }
     }
-
-    // Close the pipe endpoint without holding the table lock
-    if let Ok(pipe) = opened_object.named_object.as_pipe() {
-        pipe.close(opened_object.options);
-    }
-
-    result.map(|_| 0)
+    get_open_object_table().free_handle(fh)
 }
 
 pub(super) fn list_dir(fh: usize) -> Result<Vec<(NamedObject, String)>, Errno> {
@@ -313,28 +295,16 @@ impl OpenObjectTable {
         Ok(handle)
     }
 
-    /// Remove and return the entry for `handle` if it is owned by `owner`,
-    /// freeing the handle slot. Returns `EINVALH` for an unknown handle and,
-    /// as in `lookup_owned`, also for a handle of another process.
-    fn remove_owned(&self, handle: usize, owner: Uuid) -> Result<Arc<OpenedObject>, Errno> {
+    /// Free handle
+    fn free_handle(&self, handle: usize) -> SyscallResult {
         let mut guard = self.open_handles.write();
 
-        let idx = guard
-            .iter()
-            .position(|(h, obj)| *h == handle && obj.as_ref().is_some_and(|obj| obj.owner == owner));
-
-        match idx {
-            Some(idx) => {
-                let (_, obj) = guard.swap_remove(idx);
-                self.free_handles.write()[handle] = 0;
-                obj.ok_or(Errno::EINVALH)
-            }
-            None => {
-                if guard.iter().any(|(h, _)| *h == handle) {
-                    warn!("open_object: process {} tried to close foreign handle {}", owner, handle);
-                }
-                Err(Errno::EINVALH)
-            }
+        if let Some(idx) = guard.iter().position(|(h, _)| *h == handle) {
+            guard.swap_remove(idx);
+            self.free_handles.write()[handle] = 0;
+            Ok(0)
+        } else {
+            Err(Errno::EINVALH)
         }
     }
 

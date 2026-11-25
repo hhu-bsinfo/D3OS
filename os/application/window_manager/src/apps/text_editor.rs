@@ -297,6 +297,7 @@ impl Runnable for TextEditor {
             },
         );
 
+        let input_model = Rc::clone(&model);
         *edit_canvas.write() = api
             .execute(
                 handle,
@@ -312,6 +313,7 @@ impl Runnable for TextEditor {
                         apply_message(&model, &canvs_clone, Message::DecodedKey(c));
                     })),
                     buffer: Rc::clone(&canvas),
+                    accepts_text_input: Some(Box::new(move || input_model.read().accepts_text_input())),
                     scaling_mode: ScalingMode::None,
                 },
             )

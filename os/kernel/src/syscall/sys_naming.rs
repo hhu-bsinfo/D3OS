@@ -60,13 +60,6 @@ pub unsafe extern "sysv64" fn sys_touch(path: *const u8) -> isize {
     return_vals::convert_syscall_result_to_ret_code(api::touch(&unsafe { ptr_to_string(path).unwrap() }))
 }
 
-pub unsafe extern "sysv64" fn sys_unlink(path: *const u8) -> isize {
-    match unsafe { ptr_to_string(path) } {
-        Ok(path) => return_vals::convert_syscall_result_to_ret_code(api::unlink(&path)),
-        Err(e) => e as isize,
-    }
-}
-
 pub unsafe extern "sysv64" fn sys_mkfifo(path: *const u8) -> isize {
     return_vals::convert_syscall_result_to_ret_code(api::mkfifo(&unsafe { ptr_to_string(path).unwrap() }))
 }

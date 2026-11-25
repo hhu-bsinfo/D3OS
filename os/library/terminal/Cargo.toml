@@ -14,9 +14,9 @@ manager = ["dep:concurrent"]
 
 [dependencies]
 # Local dependencies
+ime = { path = "../ime", default-features = false }
 bootstrap_env = { path = "../bootstrap_env" }
 syscall = { path = "../syscall" }
-stream = { path = "../stream" }
 logger = { path = "../logger" }
 naming = { path = "../naming" }
 concurrent = { path = "../concurrent", optional = true }
@@ -24,5 +24,4 @@ concurrent = { path = "../concurrent", optional = true }
 # External dependencies
 spin = "0.12"
 num_enum = { version = "0.7", default-features = false }
-pc-keyboard = { version = "0.9", default-features = false }
 log = "0.4"

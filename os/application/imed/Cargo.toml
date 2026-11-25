@@ -1,0 +1,18 @@
+[package]
+edition = "2024"
+name = "imed"
+version = "0.1.0"
+authors = ["Xiaochen Xing (xixin100@hhu.de)"]
+autobins = false
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/main.rs"
+doctest = false
+bench = false
+
+[dependencies]
+# Local dependencies
+runtime = { path = "../../library/runtime" }
+concurrent = { path = "../../library/concurrent" }
+ime = { path = "../../library/ime", features = ["pinyin"] }

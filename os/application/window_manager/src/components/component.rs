@@ -237,6 +237,10 @@ pub trait Focusable {
 }
 
 pub trait Interactable {
+    fn accepts_text_input(&self) -> bool {
+        false
+    }
+
     fn consume_keyboard_press(&mut self, keyboard_press: DecodedKey) -> Option<Box<dyn FnOnce() -> ()>>;
 
     fn consume_mouse_event(&mut self, mouse_event: &MouseEvent) -> Option<Box<dyn FnOnce() -> ()>>;

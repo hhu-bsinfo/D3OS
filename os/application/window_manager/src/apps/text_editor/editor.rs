@@ -162,6 +162,10 @@ impl<'a, 'b> OpenDocuments<'a, 'b> {
         self.documents.push(document);
     }
 
+    pub fn accepts_text_input(&self) -> bool {
+        self.documents.get(self.current).is_some_and(Document::accepts_text_input)
+    }
+
     pub fn current(&mut self) -> Option<&mut Document<'a, 'b>> {
         self.documents.get_mut(self.current)
     }

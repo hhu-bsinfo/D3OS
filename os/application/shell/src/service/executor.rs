@@ -12,7 +12,7 @@ use crate::{
         alias::AliasBuiltIn, built_in::BuiltIn, cd::CdBuiltIn, clear::ClearBuiltIn, debug_error::DebugErrorBuiltIn,
         debug_success::DebugSuccessBuiltIn, echo::EchoBuiltIn, exit::ExitBuiltIn, help::HelpBuiltIn, ls::LsBuiltIn,
         mkdir::MkdirBuiltIn, pwd::PwdBuiltIn, theme::ThemeBuiltIn, unalias::UnaliasBuiltIn,
-        window_manager::WindowManagerBuiltIn, touch::TouchBuiltIn, rm::RmBuiltIn,
+        window_manager::WindowManagerBuiltIn,
     },
     context::{
         alias_context::AliasContext,
@@ -62,8 +62,6 @@ impl ExecutorService {
         built_ins.push(Box::new(DebugErrorBuiltIn::new()));
         built_ins.push(Box::new(HelpBuiltIn::new()));
         built_ins.push(Box::new(LsBuiltIn::new(wd_provider.clone())));
-        built_ins.push(Box::new(TouchBuiltIn::new(wd_provider.clone())));
-        built_ins.push(Box::new(RmBuiltIn::new(wd_provider.clone())));
 
         Self {
             executable_provider,

@@ -99,6 +99,10 @@ impl SessionMux {
         }
     }
 
+    pub fn active_id(&self) -> u8 {
+        self.active
+    }
+
     /// The active session's foreground control record, if a foreground app has
     /// published one.
     pub fn active_ctl(&self) -> Option<CtlRecord> {

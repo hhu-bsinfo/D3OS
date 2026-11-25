@@ -9,11 +9,10 @@
 */
 use alloc::string::{String, ToString};
 use naming::shared_types::OpenOptions;
-use pc_keyboard::{DecodedKey, KeyEvent};
+use ime::{DecodedKey, KeyEvent};
 use spin::Mutex;
-use stream::event_from_u16;
 use crate::session::{write_ctl, CtlRecord, Session, WaitState};
-use crate::{DecodedKeyType, TerminalMode};
+use crate::TerminalMode;
 
 /// Per-process input endpoints, opened lazily and kept open for the process
 /// lifetime so the session pipe is never reset between reads.
@@ -59,14 +58,14 @@ fn in_handle(nonblock: bool) -> Option<usize> {
     *slot
 }
 
-/// Read a single 2-byte key frame from a non-blocking stdin handle.
+/// Read a single 4-byte key frame from a non-blocking stdin handle.
 ///
 /// Returns `None` when no input is currently buffered. The emulator always
-/// writes keys as 2-byte frames, but on a multi-core system a poll can observe
-/// a write mid-flight and read only the first byte; in that case we complete
-/// the frame so the stream stays 2-byte aligned.
-fn read_key(handle: usize) -> Option<[u8; 2]> {
-    let mut buffer = [0u8; 2];
+/// writes keys as 4-byte frames, but on a multi-core system a poll can observe
+/// a write mid-flight and read only part of the frame; in that case we complete
+/// the frame so the stream stays frame-aligned.
+fn read_key(handle: usize) -> Option<[u8; 4]> {
+    let mut buffer = [0u8; 4];
     let mut got = naming::read(handle, &mut buffer).unwrap_or(0);
     if got == 0 {
         return None;
@@ -112,13 +111,7 @@ pub fn read_fluid() -> Option<DecodedKey> {
     let handle = in_handle(true)?;
     let buffer = read_key(handle)?;
 
-    let key_type = DecodedKeyType::from(buffer[0]);
-    let key = buffer[1];
-
-    match key_type {
-        DecodedKeyType::Unicode => Some(DecodedKey::Unicode(key as char)),
-        DecodedKeyType::RawKey => Some(DecodedKey::RawKey(unsafe { core::mem::transmute(key) })),
-    }
+    ime::wire::decode_key(u32::from_ne_bytes(buffer))
 }
 
 /// Read from terminal in raw mode.
@@ -132,6 +125,6 @@ pub fn read_raw() -> Option<KeyEvent> {
     let handle = in_handle(true)?;
     let buffer = read_key(handle)?;
 
-    let raw = u16::from_ne_bytes(buffer);
-    Some(event_from_u16(raw))
+    let raw = u32::from_ne_bytes(buffer).try_into().ok()?;
+    ime::wire::decode_raw(raw)
 }

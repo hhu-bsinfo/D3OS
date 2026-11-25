@@ -18,6 +18,7 @@ with_runtime = []
 
 [dependencies]
 # Local dependencies
+ime = { path = "../../library/ime", features = ["pinyin"] }
 runtime = { path = "../../library/runtime" }
 # io = { path = "../../library/io" }
 terminal = { path = "../../library/terminal" }
