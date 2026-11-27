@@ -1,14 +1,26 @@
 /* ╔═════════════════════════════════════════════════════════════════════════╗
    ║ Module: open_objects                                                    ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Managing opened objects in a global table (OPEN_OBJECTS). And providing ║
-   ║ all major functions for the naming service.                             ║
+   ║ Managing handles for opened objects per process as well as implementing ║
+   ║ operations on opened objects through a handle.                          ║
+   ║                                                                         ║
+   ║ Public functions (called by api.rs):                                    ║
+   ║   - open_object_table_init init the map of handle tables, called once   ║
+   ║   - open                   open a named object, returns a handle        ║
+   ║   - read                   read bytes through a handle                  ║
+   ║   - write                  write bytes through a handle                 ║
+   ║   - seek                   set file position (for files)                ║
+   ║   - readdir                read next directory entry                    ║
+   ║   - list_dir               list all entries of a directory              ║
+   ║   - close                  close a handle                               ║
+   ║   - delete                 delete the object and close its handle       ║
+   ║   - close_all_for_process  close all handles of an exiting process      ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 07.04.2026               ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 27.11.2026               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -23,28 +35,59 @@ use uuid::Uuid;
 
 use super::lookup;
 use super::traits::NamedObject;
-use crate::process::core_local_storage::scheduler;
 use naming::shared_types::{DirEntry, OpenOptions, SeekOrigin};
 use syscall::return_vals::Errno;
 
-/// Max. number of open objetcs
-const MAX_OPEN_OBJECTS: usize = 0x1000;
+/// Max. number of open objects per process = 16384
+const MAX_OPEN_OBJECTS: usize = 0x4000;
 
-//static OPEN_OBJECTS: Once<Arc<Mutex<Box<OpenObjectTable>>>> = Once::new();
-static OPEN_OBJECTS: Once<Arc<OpenObjectTable>> = Once::new();
-
-struct OpenObjectTable {
-    open_handles: RwLock<Vec<(usize, Option<Arc<OpenedObject>>)>>,
-    free_handles: RwLock<Box<[usize; MAX_OPEN_OBJECTS]>>,
-}
+/// All open object tables of all processes
+static OPEN_OBJECTS: Once<RwLock<BTreeMap<Uuid, Arc<OpenObjectTable>>>> = Once::new();
 
 pub(super) fn open_object_table_init() {
-    OPEN_OBJECTS.call_once(|| Arc::new(OpenObjectTable::new()));
+    OPEN_OBJECTS.call_once(|| RwLock::new(BTreeMap::new()));
 }
 
-pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
-    debug!("open_object::open: open called for path '{}', flags={:?}", path, flags);
-    // try to open the named object for the given path
+/// Helper function returning the map of all open object tables
+fn tables() -> &'static RwLock<BTreeMap<Uuid, Arc<OpenObjectTable>>> {
+    OPEN_OBJECTS.get().expect("open_objects: naming service not initialized")
+}
+
+/// Return the table of process `owner`. A process that has not opened anything
+/// has no table, so all its handles are invalid (`EINVALH`).
+fn table_of(owner: Uuid) -> Result<Arc<OpenObjectTable>, Errno> {
+    let table = tables().read().get(&owner).cloned(); // map lock released here
+    table.ok_or(Errno::EINVALH)
+}
+
+/// Return the table of process `owner`, creating it on its first open.
+fn table_of_or_create(owner: Uuid) -> Arc<OpenObjectTable> {
+    let existing = tables().read().get(&owner).cloned(); // map lock released here
+    if let Some(table) = existing {
+        return table;
+    }
+    // No table exists, create it
+    tables()
+        .write()
+        .entry(owner)
+        .or_insert_with(|| Arc::new(OpenObjectTable::new()))
+        .clone()
+}
+
+/// Lookup the opened object for the given `handle` of process `owner`.
+/// (Returns a clone of the `Arc`, so no lock is held afterwards)
+fn lookup_opened_object(owner: Uuid, handle: usize) -> Result<Arc<OpenedObject>, Errno> {
+    table_of(owner)?.lookup(handle)
+}
+
+
+/// Remove `handle` of process `owner` and return its opened object.
+fn remove_opened_object(owner: Uuid, handle: usize) -> Result<Arc<OpenedObject>, Errno> {
+    table_of(owner)?.remove(handle)
+}
+
+/// Try to open the named object for the given `path` for process `owner` 
+pub(super) fn open(owner: Uuid, path: &str, flags: OpenOptions) -> Result<usize, Errno> {
     let result = lookup::lookup_named_object(path);
     if result.is_err() {
         return Err(Errno::ENOENT);
@@ -65,6 +108,7 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
         }
     }
 
+    // pipe rendezvous (may block), done before any table lock is taken
     let opened_pipe = if found_named_object.is_pipe() {
         let pipe = found_named_object.as_pipe()?.clone();
         pipe.open(flags)?; // ignore return value
@@ -76,16 +120,15 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
     // get object name from path
     let object_name = lookup::get_filename_from_path(path).to_string();
 
-    // try to allocate an new handle
-    let result = get_open_object_table().allocate_handle(Arc::new(OpenedObject::new(
+    // try to allocate an new handle in the table of process `owner`
+    let opened_object = Arc::new(OpenedObject::new(
         Arc::new(found_named_object),
         object_name,
         AtomicUsize::new(0),
         flags,
         parent_dir,
-        scheduler().current_pid(),
-
-    )));
+    ));
+    let result = table_of_or_create(owner).allocate_handle(opened_object);
 
     if result.is_err() {
         if let Some(pipe) = opened_pipe {
@@ -96,10 +139,10 @@ pub(super) fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
     result
 }
 
-pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
-    get_open_object_table().lookup_owned(fh, scheduler().current_pid()).and_then(|opened_object| {
+/// `write` data in `buf` to object `handle` opened by process `owner`
+pub(super) fn write(owner: Uuid, handle: usize, buf: &[u8]) -> Result<usize, Errno> {
+    lookup_opened_object(owner, handle).and_then(|opened_object| {
         if opened_object.named_object.is_file() {
-            // Make `opened_object` mutable here
             return opened_object.named_object.as_file().and_then(|file| {
                 let pos = opened_object.pos.load(Ordering::SeqCst);
                 let bytes_written = file.write(buf, pos, opened_object.options)?;
@@ -108,7 +151,6 @@ pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
             });
         }
         if opened_object.named_object.is_pipe() {
-            // Make `opened_object` mutable here
             return opened_object.named_object.as_pipe().and_then(|pipe| {
                 let bytes_written = pipe.write(buf, 0, opened_object.options)?;
                 Ok(bytes_written) // Return the bytes written
@@ -123,10 +165,10 @@ pub(super) fn write(fh: usize, buf: &[u8]) -> Result<usize, Errno> {
     })
 }
 
-pub(super) fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
-    get_open_object_table().lookup_owned(fh, scheduler().current_pid()).and_then(|opened_object| {
+/// `read` data into `buf` from object `handle` opened by process `owner`
+pub(super) fn read(owner: Uuid, handle: usize, buf: &mut [u8]) -> Result<usize, Errno> {
+    lookup_opened_object(owner, handle).and_then(|opened_object| {
         if opened_object.named_object.is_file() {
-            // Make `opened_object` mutable here
             return opened_object.named_object.as_file().and_then(|file| {
                 let pos = opened_object.pos.load(Ordering::SeqCst);
                 let bytes_read = file.read(buf, pos, opened_object.options)?;
@@ -135,25 +177,24 @@ pub(super) fn read(fh: usize, buf: &mut [u8]) -> Result<usize, Errno> {
             });
         }
         if opened_object.named_object.is_pipe() {
-            // Make `opened_object` mutable here
             return opened_object.named_object.as_pipe().and_then(|pipe| {
                 let bytes_read = pipe.read(buf, 0, opened_object.options)?;
-                Ok(bytes_read) // Return the bytes written
+                Ok(bytes_read) // Return the bytes read
             });
         }
 
         if opened_object.named_object.is_dir() {
             return Err(Errno::EISDIR);
         }
-        
+
         Err(Errno::ENOTSUP)
     })
 }
 
-pub fn seek(fh: usize, offset: isize, origin: SeekOrigin) -> Result<usize, Errno> {
-    get_open_object_table().lookup_owned(fh, scheduler().current_pid()).and_then(|opened_object| {
+/// Change position in byte stream of object `handle` opened by process `owner`
+pub(super) fn seek(owner: Uuid, fh: usize, offset: isize, origin: SeekOrigin) -> Result<usize, Errno> {
+    lookup_opened_object(owner, fh).and_then(|opened_object| {
         if opened_object.named_object.is_file() {
-            // Make `opened_object` mutable here
             return opened_object.named_object.as_file().and_then(|file| {
                 // base position the offset is relative to
                 let base = match origin {
@@ -173,10 +214,10 @@ pub fn seek(fh: usize, offset: isize, origin: SeekOrigin) -> Result<usize, Errno
     })
 }
 
-pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
-    get_open_object_table().lookup_owned(fh, scheduler().current_pid()).and_then(|opened_object| {
+/// Read next directory entry of directory referenced by `handle` \
+pub(super) fn readdir(owner: Uuid, handle: usize) -> Result<Option<DirEntry>, Errno> {
+    lookup_opened_object(owner, handle).and_then(|opened_object| {
         if opened_object.named_object.is_dir() {
-            // Make `opened_object` mutable here
             return opened_object.named_object.as_dir().and_then(|dir| {
                 let pos = opened_object.pos.load(Ordering::SeqCst);
                 let dir_entry = dir.readdir(pos)?;
@@ -188,39 +229,41 @@ pub(super) fn readdir(fh: usize) -> Result<Option<DirEntry>, Errno> {
     })
 }
 
-pub(super) fn close(fh: usize) -> Result<usize, Errno> {
-    debug!("open_object::close: close called for fh={}", fh);
-
-    // Remove the entry, if it is owned by the calling process
-    let opened_object = get_open_object_table().remove_owned(fh, scheduler().current_pid())?;
+/// Close object `handle` opened by process `owner`
+pub(super) fn close(owner: Uuid, handle: usize) -> Result<usize, Errno> {
+    // Remove the entry (atomic under the table lock): if two threads close the
+    // same handle, only one gets the entry, so a pipe endpoint is closed once.
+    let opened_object = remove_opened_object(owner, handle)?;
 
     // Close the pipe endpoint without holding the table lock
     // (`Pipe::close` wakes waiters via the scheduler).
-    if let Ok(pipe) = opened_object.named_object.as_pipe() {
-        pipe.close(opened_object.options);
-    }
+    opened_object.close_pipe_endpoint();
 
     Ok(0)
 }
 
-/// Reclaim every handle owned by `owner`, restoring pipe endpoint counts.
+/// Reclaim every handle of process `owner` and forget its table, restoring pipe
+/// endpoint counts. Called when the process exits. Returns the number of handles
+/// reclaimed.
 ///
-/// Two phases: `drain_owned` removes all owned entries under the table locks and
-/// returns them, then pipe endpoints are closed *without* holding those locks.
-/// `Pipe::close` wakes waiters via the scheduler, so holding the global table
-/// write lock across it would stall `open`/`read` on other cores. Draining first
-/// also makes the sweep atomic against a concurrent `close(fh)` from a dying
-/// sibling: whichever side removes the entry owns the `pipe.close`, so an
-/// endpoint counter cannot be decremented twice.
+/// The table is removed from the map first, then its entries are taken out under
+/// the table lock, and the pipe endpoints are closed without holding any lock
+/// (`Pipe::close` wakes waiters via the scheduler). A concurrent `close(fh)` of
+/// the same process either removed its entry before (and closes it itself) or
+/// finds no entry, so an endpoint counter cannot be decremented twice.
 pub(super) fn close_all_for_process(owner: Uuid) -> usize {
-    let victims = get_open_object_table().drain_owned(owner);
+    info!("close_all_for_process {}", owner);
+
+    let table = tables().write().remove(&owner); // map lock released here
+    let Some(table) = table else {
+        return 0;
+    };
+
+    let victims = table.drain();
     for opened_object in &victims {
-        if opened_object.named_object.is_pipe() {
-            if let Ok(pipe) = opened_object.named_object.as_pipe() {
-                pipe.close(opened_object.options);
-            }
-        }
+        opened_object.close_pipe_endpoint();
     }
+
     let reclaimed = victims.len();
     if reclaimed > 0 {
         info!("naming: reclaimed {} handles for pid {}", reclaimed, owner);
@@ -231,10 +274,11 @@ pub(super) fn close_all_for_process(owner: Uuid) -> usize {
 /// Delete an opened object and free its handle.
 /// The handle is freed (and a pipe endpoint closed) even if deleting the object fails;
 /// in that case the error of the delete is returned.
-pub(super) fn delete(fh: usize) -> Result<usize, Errno> {
+pub(super) fn delete(owner: Uuid, fh: usize) -> Result<usize, Errno> {
+    debug!("delete called for fh={}", fh);
 
-    // Remove the entry, if it is owned by the calling process (atomic, see `close`)
-    let opened_object = get_open_object_table().remove_owned(fh, scheduler().current_pid())?;
+    // Remove the entry (atomic, see `close`)
+    let opened_object = remove_opened_object(owner, fh)?;
 
     // Delete the object from its parent directory
     let result = opened_object.delete();
@@ -244,170 +288,103 @@ pub(super) fn delete(fh: usize) -> Result<usize, Errno> {
     }
 
     // Close the pipe endpoint without holding the table lock
-    if let Ok(pipe) = opened_object.named_object.as_pipe() {
-        pipe.close(opened_object.options);
-    }
+    opened_object.close_pipe_endpoint();
 
     result.map(|_| 0)
 }
 
-pub(super) fn list_dir(fh: usize) -> Result<Vec<(NamedObject, String)>, Errno> {
+pub(super) fn list_dir(owner: Uuid, fh: usize) -> Result<Vec<(NamedObject, String)>, Errno> {
     debug!("lsdir called for fh={}", fh);
-    if let Ok(opened_object) = get_open_object_table().lookup_opened_object(fh) {
-        if let Ok(dir) = opened_object.named_object.as_dir() {
-            dir.list()
-        } else {
-            Err(Errno::ENOTDIR)
-        }
-    } else {
-        Err(Errno::EEXIST)
+    let opened_object = lookup_opened_object(owner, fh)?;
+    match opened_object.named_object.as_dir() {
+        Ok(dir) => dir.list(),
+        Err(_) => Err(Errno::ENOTDIR),
     }
 }
 
-/*pub(super) fn dump() {
-    get_open_object_table().lock().dump();
-}*/
+/// Table of the objects opened by one process. The handle is the index into
+/// `slots`; the lowest free handle is reused first (like POSIX file descriptors).
+/// Handles are only valid within the owning process.
+struct OpenObjectTable {
+    slots: RwLock<Vec<Option<Arc<OpenedObject>>>>,
+}
 
-/// ************************ OpenedObject ************************
 impl OpenObjectTable {
-    /// Create a new OpenObjectTable
+    /// Create a new, empty table (memory is allocated on the first open)
     fn new() -> OpenObjectTable {
-        OpenObjectTable {
-            open_handles: RwLock::new(Vec::with_capacity(MAX_OPEN_OBJECTS)),
-            free_handles: RwLock::new(Box::new([0; MAX_OPEN_OBJECTS])),
-        }
+        OpenObjectTable { slots: RwLock::new(Vec::new()) }
     }
 
     /// Lookup an 'OpenedObject' for a given handle
-    fn lookup_opened_object(&self, handle: usize) -> Result<Arc<OpenedObject>, Errno> {
-        let guard = self.open_handles.read();
-        guard
-            .iter()
-            .find(|(h, _)| *h == handle)
-            .and_then(|(_, obj)| obj.as_ref())
-            .cloned()
+    fn lookup(&self, handle: usize) -> Result<Arc<OpenedObject>, Errno> {
+        self.slots
+            .read()
+            .get(handle)
+            .and_then(|slot| slot.clone())
             .ok_or(Errno::EINVALH)
     }
 
-    /// Lookup an 'OpenedObject' for a given handle, rejecting access by any
-    /// process other than the one that opened it. A foreign handle is reported
-    /// as `EINVALH` (the same code as a nonexistent handle) so ownership is not
-    /// disclosed across processes.
-    fn lookup_owned(&self, handle: usize, owner: Uuid) -> Result<Arc<OpenedObject>, Errno> {
-        let opened_object = self.lookup_opened_object(handle)?;
-        if opened_object.owner != owner {
-            warn!("open_object: process {} tried to access foreign handle {}", owner, handle);
-            return Err(Errno::EINVALH);
+    /// Allocate a new handle for a given 'OpenedObject'
+    fn allocate_handle(&self, opened_object: Arc<OpenedObject>) -> Result<usize, Errno> {
+        let mut slots = self.slots.write();
+
+        // reuse the lowest free handle
+        if let Some(handle) = slots.iter().position(|slot| slot.is_none()) {
+            slots[handle] = Some(opened_object);
+            return Ok(handle);
+        }
+
+        // otherwise grow the table up to the limit
+        if slots.len() >= MAX_OPEN_OBJECTS {
+            return Err(Errno::ENOHANDLES);
+        }
+        slots.push(Some(opened_object));
+        Ok(slots.len() - 1)
+    }
+
+    /// Remove the entry for `handle` and return it; the handle becomes free
+    fn remove(&self, handle: usize) -> Result<Arc<OpenedObject>, Errno> {
+        let mut slots = self.slots.write();
+        let opened_object = slots
+            .get_mut(handle)
+            .and_then(|slot| slot.take())
+            .ok_or(Errno::EINVALH)?;
+
+        // drop free slots at the end, so the table shrinks again
+        while matches!(slots.last(), Some(None)) {
+            slots.pop();
         }
         Ok(opened_object)
     }
 
-    /// Allocate a new handle for a given 'OpenObject'
-    fn allocate_handle(&self, opened_object: Arc<OpenedObject>) -> Result<usize, Errno> {
-        // We modify both vectors, so take a write lock
-        let mut guard = self.open_handles.write();
-
-        // find a free slot
-        let handle = self.find_free_handle().ok_or(Errno::ENOHANDLES)?;
-        guard.push((handle, Some(opened_object)));
-        Ok(handle)
+    /// Remove and return all entries. Pipe endpoints are *not* closed here
+    /// (see `close_all_for_process`); this only touches the table.
+    fn drain(&self) -> Vec<Arc<OpenedObject>> {
+        self.slots.write().drain(..).flatten().collect()
     }
-
-    /// Remove and return the entry for `handle` if it is owned by `owner`,
-    /// freeing the handle slot. Returns `EINVALH` for an unknown handle and,
-    /// as in `lookup_owned`, also for a handle of another process.
-    fn remove_owned(&self, handle: usize, owner: Uuid) -> Result<Arc<OpenedObject>, Errno> {
-        let mut guard = self.open_handles.write();
-
-        let idx = guard
-            .iter()
-            .position(|(h, obj)| *h == handle && obj.as_ref().is_some_and(|obj| obj.owner == owner));
-
-        match idx {
-            Some(idx) => {
-                let (_, obj) = guard.swap_remove(idx);
-                self.free_handles.write()[handle] = 0;
-                obj.ok_or(Errno::EINVALH)
-            }
-            None => {
-                if guard.iter().any(|(h, _)| *h == handle) {
-                    warn!("open_object: process {} tried to close foreign handle {}", owner, handle);
-                }
-                Err(Errno::EINVALH)
-            }
-        }
-    }
-
-    /// Remove and return every entry owned by `owner`, freeing each handle slot.
-    ///
-    /// Pipe endpoints are *not* closed
-    /// here (see `close_all_for_process`); this only touches the table.
-    fn drain_owned(&self, owner: Uuid) -> Vec<Arc<OpenedObject>> {
-        let mut guard = self.open_handles.write();
-        let mut free = self.free_handles.write();
-
-        let mut victims = Vec::new();
-        guard.retain(|(handle, obj)| {
-            let owned = obj.as_ref().is_some_and(|obj| obj.owner == owner);
-            if owned {
-                free[*handle] = 0;
-                if let Some(obj) = obj {
-                    victims.push(obj.clone());
-                }
-            }
-            !owned
-        });
-        victims
-    }
-
-    /// Helper function of 'allocate' to find a free handle
-    fn find_free_handle(&self) -> Option<usize> {
-        let mut free = self.free_handles.write(); // hold guard for the whole loop
-        for (i, v) in free.iter_mut().enumerate() {
-            if *v == 0 {
-                *v = 1;
-                return Some(i);
-            }
-        }
-        None
-    }
-
-    /*
-    fn dump(&self) {
-        info!("OpenObjectTable: dumping used handles");
-        for (handle, opened_object) in &self.open_handles {
-            if let Some(opened_object) = opened_object {
-                info!(
-                    "    handle = {:?}, named object = {:?}",
-                    handle, opened_object.named_object
-                );
-            }
-        }
-    }
-    */
 }
 
-/// Helper function returning safe access to the open object table (oot)
-fn get_open_object_table() -> Arc<OpenObjectTable> {
-    OPEN_OBJECTS.get().unwrap().clone()
-}
 
-/// ************************ OpenedObject ************************ \
-/// Opened object stored in the 'OpenObjectTable' \
-/// (includes NamedObject, current position within object, options, and the id
-///  of the process that opened it)
+/// Opened object stored in an 'OpenObjectTable' \
+/// (includes NamedObject, current position within object, and options)
 pub struct OpenedObject {
     named_object: Arc<NamedObject>,
     name: String,
     pos: AtomicUsize, // current position within file or number of next DirEntry
     options: OpenOptions,
     parent: Option<Arc<dyn DirectoryObject>>, // parent directory
-    owner: Uuid, // id of the process that opened this object
 }
 
 impl OpenedObject {
-    pub fn new(named_object: Arc<NamedObject>, name: String, pos: AtomicUsize, options: OpenOptions, parent: Option<Arc<dyn DirectoryObject>>, owner: Uuid) -> OpenedObject {
-        OpenedObject { named_object, name, pos, options, parent, owner }
+    pub fn new(named_object: Arc<NamedObject>, name: String, pos: AtomicUsize, options: OpenOptions, parent: Option<Arc<dyn DirectoryObject>>) -> OpenedObject {
+        OpenedObject { named_object, name, pos, options, parent }
+    }
+
+    /// If this is a pipe, release the endpoint taken in `open`
+    fn close_pipe_endpoint(&self) {
+        if let Ok(pipe) = self.named_object.as_pipe() {
+            pipe.close(self.options);
+        }
     }
 
     pub fn delete(&self) -> Result<(), Errno> {

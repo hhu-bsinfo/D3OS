@@ -35,6 +35,7 @@ use syscall::return_vals::Errno;
 use crate::initrd;
 use crate::naming::servicefs;
 use crate::naming::stat::MODE_DIR;
+use crate::process::core_local_storage::scheduler;
 
 // root of naming service
 pub(super) static ROOT: Once<Arc<dyn FileSystem>> = Once::new();
@@ -104,10 +105,11 @@ pub fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
         }
     }
 
-    // Try to open the object
-    open_objects::open(path, flags).or_else(|e| {
+    // Try to open the object (in the open object table of the calling process)
+    let owner = scheduler().current_pid();
+    open_objects::open(owner, path, flags).or_else(|e| {
         if flags.contains(OpenOptions::CREATE) && e != Errno::EEXIST {
-            touch(path).and_then(|_| open_objects::open(path, flags))
+            touch(path).and_then(|_| open_objects::open(owner, path, flags))
         } else {
             Err(e)
         }
@@ -117,25 +119,25 @@ pub fn open(path: &str, flags: OpenOptions) -> Result<usize, Errno> {
 /// Write all bytes from the given `buffer` into the named object referenced by `object_handle`. \
 /// Returns `Ok(number of bytes written)` or `Err`.
 pub fn write(object_handle: usize, buffer: &[u8]) -> Result<usize, Errno> {
-    open_objects::write(object_handle, buffer)
+    open_objects::write(scheduler().current_pid(), object_handle, buffer)
 }
 
 /// Read from the named object referenced by `object_handle` into the given `buffer`. \
 /// Returns `Ok(number of bytes read)` or `Err`.
 pub fn read(object_handle: usize, buffer: &mut [u8]) -> Result<usize, Errno> {
-    open_objects::read(object_handle, buffer)
+    open_objects::read(scheduler().current_pid(), object_handle, buffer)
 }
 
 /// Move the object pointer for the named object referenced by `object_handle` to the specified `offset` from the `origin`. \
 /// Returns `Ok(nr of bytes seeked)` or `Err`.
 pub fn seek(object_handle: usize, offset: isize, origin: SeekOrigin) -> Result<usize, Errno> {
-    open_objects::seek(object_handle, offset, origin)
+    open_objects::seek(scheduler().current_pid(), object_handle, offset, origin)
 }
 
 /// Close the named object referenced by `object_handle`.
 /// Returns `Ok(0)` or `Err(errno)`
 pub fn close(object_handle: usize) -> Result<usize, Errno> {
-    open_objects::close(object_handle)
+    open_objects::close(scheduler().current_pid(), object_handle)
 }
 
 /// Reclaim every open naming handle owned by the process `pid`, restoring pipe
@@ -147,12 +149,12 @@ pub fn close_handles_for_process(pid: uuid::Uuid) -> usize {
 
 /// Delete the named object referenced by `object_handle`.
 pub fn delete(object_handle: usize) -> Result<usize, Errno> {
-    open_objects::delete(object_handle)
+    open_objects::delete(scheduler().current_pid(), object_handle)
 }
 
 /// List named objects in the provided directory.
 pub fn list_dir(dir_handle: usize) -> Result<Vec<(super::traits::NamedObject, String)>, Errno> {
-    open_objects::list_dir(dir_handle)
+    open_objects::list_dir(scheduler().current_pid(), dir_handle)
 }
 
 /// Create a directory for the given `path`. \
@@ -250,7 +252,7 @@ pub fn unlink(path: &str) -> Result<usize, Errno> {
 ///   `Ok(0)` no more entries in the directory \
 ///   `Err`   error code
 pub fn readdir(dir_handle: usize, dentry: Option<&mut RawDirent>) -> Result<usize, Errno> {
-    let res = open_objects::readdir(dir_handle);
+    let res = open_objects::readdir(scheduler().current_pid(), dir_handle);
     match res {
         Ok(dir_entry) => {
             match dir_entry {
