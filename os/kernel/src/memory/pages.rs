@@ -3,7 +3,7 @@
    ╟─────────────────────────────────────────────────────────────────────────╢
    ║ Public functions related to paging, protection, and memory mapping.     ║
    ║   - map           map a range of pages to the given memory space        ║
-   ║   - map_physical  map a range of frames to the given page range in the  ║ 
+   ║   - map_physical  map a range of frames to the given page range in the  ║
    ║                   in the given memory space                             ║
    ║   - set_flags     set flags of page table entries for a range of pages  ║
    ║   - translate     translate a virtual address to a physical address     ║
@@ -14,17 +14,16 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-
 use core::cmp::min;
-use core::{ptr, fmt};
+use core::{fmt, ptr};
+use log::{debug, info};
 use spin::RwLock;
+use x86_64::registers::control::{Cr3, Cr3Flags};
+use x86_64::structures::paging::Size4KiB;
+use x86_64::structures::paging::frame::PhysFrameRange;
+use x86_64::structures::paging::page::{Page, PageRange};
 use x86_64::structures::paging::{PageTable, PageTableFlags, PageTableIndex, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
-use x86_64::registers::control::{Cr3, Cr3Flags};
-use x86_64::structures::paging::frame::PhysFrameRange;
-use x86_64::structures::paging::page::{PageRange,Page};
-use x86_64::structures::paging::Size4KiB;
-use log::{info, debug};
 
 use crate::memory::{self, MemorySpace, PAGE_SIZE};
 
@@ -33,11 +32,10 @@ pub fn page_from_u64(addr: u64) -> Result<Page<Size4KiB>, x86_64::structures::pa
     Page::from_start_address(VirtAddr::new(addr))
 }
 
-
 /// Address space for a process
 pub struct Paging {
     root_table: RwLock<*mut PageTable>, // Root page table (pml4)
-    depth: usize  // Depth of the page table hierarchy
+    depth: usize,                       // Depth of the page table hierarchy
 }
 
 unsafe impl Send for Paging {}
@@ -58,14 +56,18 @@ impl Drop for Paging {
 }
 
 impl Paging {
-
     /// Create a new root page table for address space `self` with the given `depth`
     pub(super) fn new(depth: usize) -> Self {
         let table_addr = memory::alloc_frames(1).start;
         let root_table = table_addr.start_address().as_u64() as *mut PageTable;
-        unsafe { root_table.as_mut().unwrap().zero(); }
+        unsafe {
+            root_table.as_mut().unwrap().zero();
+        }
 
-        Self { root_table: RwLock::new(root_table), depth }
+        Self {
+            root_table: RwLock::new(root_table),
+            depth,
+        }
     }
 
     /// Create a new address space from `other` address space (copying all page tables)
@@ -89,7 +91,6 @@ impl Paging {
         unsafe { Cr3::write(PhysFrame::from_start_address(self.page_table_address()).unwrap(), Cr3Flags::empty()) };
     }
 
-
     /// Return physical address of root page table address (pml4) of `self`
     pub(super) fn page_table_address(&self) -> PhysAddr {
         // Get root table pointer without locking.
@@ -101,18 +102,21 @@ impl Paging {
 
     /// Map page range `pages` to the given memory `space` with the given page table entry `flags` \
     /// If `space` is `MemorySpace::Kernel`, the frames are not allocated but pages are identity mapped. \
-    /// If `space` is `MemorySpace::User` and if frames.start = frames.end: frames are allocated from the frame allocator. 
+    /// If `space` is `MemorySpace::User` and if frames.start = frames.end: frames are allocated from the frame allocator.
     /// Otherwise the given `frames` are used for the mapping
     pub(super) fn map(&self, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
-        let frames = PhysFrameRange { start: PhysFrame::from_start_address(PhysAddr::zero()).unwrap(), end: PhysFrame::from_start_address(PhysAddr::zero()).unwrap() };
+        let frames = PhysFrameRange {
+            start: PhysFrame::from_start_address(PhysAddr::zero()).unwrap(),
+            end: PhysFrame::from_start_address(PhysAddr::zero()).unwrap(),
+        };
         Paging::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
     /// Map a range of `frames` to the given page range `pages` in the given memory `space` with the given page table entry `flags` \
-    /// This is only allowed for `space`set to `MemorySpace::User` 
+    /// This is only allowed for `space`set to `MemorySpace::User`
     pub(super) fn map_physical(&self, frames: PhysFrameRange, pages: PageRange, space: MemorySpace, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
@@ -123,19 +127,19 @@ impl Paging {
         Paging::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
-/*    /// Map a range of `frames` of a device into kernel space 
-    pub(super) fn map_io(&self, frames: PhysFrameRange) {
-        let v_start = VirtAddr::new(frames.start.start_address().as_u64());
-        let v_end = VirtAddr::new(frames.end.start_address().as_u64());
+    /*    /// Map a range of `frames` of a device into kernel space
+        pub(super) fn map_io(&self, frames: PhysFrameRange) {
+            let v_start = VirtAddr::new(frames.start.start_address().as_u64());
+            let v_end = VirtAddr::new(frames.end.start_address().as_u64());
 
-        let start_page = Page::containing_address(v_start);
-        let end_page = Page::containing_address(v_end);
-        let pages = PageRange { start: start_page, end: end_page };
+            let start_page = Page::containing_address(v_start);
+            let end_page = Page::containing_address(v_end);
+            let pages = PageRange { start: start_page, end: end_page };
 
-        // We have 1:1 mapping in kernel space
-        self.map(pages, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
-    }
-*/
+            // We have 1:1 mapping in kernel space
+            self.map(pages, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
+        }
+    */
     /// Return physical address for the give a virtual address `addr`
     pub(super) fn translate(&self, addr: VirtAddr) -> Option<PhysAddr> {
         let depth = self.depth;
@@ -145,7 +149,7 @@ impl Paging {
         Paging::translate_in_table(root_table, addr, depth)
     }
 
-    /// Unmap a range of `pages` from the address space. 
+    /// Unmap a range of `pages` from the address space.
     /// `free_physical` indicates if the physical frames should be freed.
     pub(super) fn unmap(&self, pages: PageRange, free_physical: bool) {
         let depth = self.depth;
@@ -155,7 +159,7 @@ impl Paging {
         Paging::unmap_in_table(root_table, pages, depth, free_physical);
     }
 
-    /// Set `flags` of page table entries for the give range of `pages`` 
+    /// Set `flags` of page table entries for the give range of `pages``
     pub(super) fn set_flags(&self, pages: PageRange, flags: PageTableFlags) {
         let depth = self.depth;
         let root_table_guard = self.root_table.write();
@@ -163,24 +167,24 @@ impl Paging {
 
         Paging::set_flags_in_table(root_table, pages, flags, depth);
     }
-    
+
     pub fn dump(&self) {
         // TODO: A read lock should be enough, maybe we can do without unsafe?
         let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
         let mut area: PageTableArea = PageTableArea::new(None, 0);
-        
+
         debug!("Dumping page tables");
-        
+
         Paging::dump_table(root_table, 0, 4, &mut area);
     }
-    
+
     fn dump_table(table: &PageTable, base_address: usize, level: usize, area: &mut PageTableArea) {
         let mut entry_address = base_address;
 
         for (index, entry) in table.iter().enumerate() {
             entry_address = base_address + (index << (12 + (level - 1) * 9));
-            
+
             if !entry.is_unused() {
                 if level > 1 {
                     let next_level = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
@@ -192,7 +196,7 @@ impl Paging {
                 area.check_and_set(PageTableAreaType::Empty, entry_address);
             }
         }
-        
+
         // If we are at the end of the top level page directory, we need to print the last detected area
         if level == 4 {
             let end_address = (entry_address + 1) << (12 + level * 9);
@@ -200,13 +204,14 @@ impl Paging {
         }
     }
 
-
     /// Internal recursive function to copy page tables from `source` to `target`
     fn copy_table(source: &PageTable, target: &mut PageTable, level: usize) {
-        if level > 1 { // On all levels larger than 1, we allocate new page frames
+        if level > 1 {
+            // On all levels larger than 1, we allocate new page frames
             for (index, target_entry) in target.iter_mut().enumerate() {
                 let source_entry = &source[index];
-                if source_entry.is_unused() { // Skip empty entries
+                if source_entry.is_unused() {
+                    // Skip empty entries
                     target_entry.set_unused();
                     continue;
                 }
@@ -219,7 +224,8 @@ impl Paging {
                 let next_level_target = unsafe { (target_entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
                 Paging::copy_table(next_level_source, next_level_target, level - 1);
             }
-        } else { // Only on the last level, we create a 1:1 copy of the page table
+        } else {
+            // Only on the last level, we create a 1:1 copy of the page table
             for (index, target_entry) in target.iter_mut().enumerate() {
                 let source_entry = &source[index];
                 target_entry.set_addr(source_entry.addr(), source_entry.flags());
@@ -229,16 +235,18 @@ impl Paging {
 
     /// Internal recursive function to map a range of `frames` to the given page range `pages` in the given memory `space` with the given page table entry `flags`. \
     /// If `space` is `MemorySpace::Kernel`, the frames are not allocated but pages are identity mapped. \
-    /// If `space` is `MemorySpace::User` and if frames.start = frames.end: frames are allocated from the frame allocator. 
+    /// If `space` is `MemorySpace::User` and if frames.start = frames.end: frames are allocated from the frame allocator.
     /// Otherwise the given `frames` are used for the mapping
     fn map_in_table(table: &mut PageTable, mut frames: PhysFrameRange, mut pages: PageRange, space: MemorySpace, flags: PageTableFlags, level: usize) -> usize {
         let mut total_allocated_pages: usize = 0;
         let start_index = usize::from(page_table_index(pages.start.start_address(), level));
 
-        if level > 1 { // Calculate next level page table until level == 1
+        if level > 1 {
+            // Calculate next level page table until level == 1
             for entry in table.iter_mut().skip(start_index) {
                 let next_level_table;
-                if entry.is_unused() { // Entry is empty -> Allocate new page frame
+                if entry.is_unused() {
+                    // Entry is empty -> Allocate new page frame
                     let phys_frame = memory::alloc_frames(1).start;
                     entry.set_frame(phys_frame, flags);
 
@@ -249,18 +257,25 @@ impl Paging {
                 }
 
                 let allocated_pages = Paging::map_in_table(next_level_table, frames, pages, space, flags, level - 1);
-                pages = PageRange { start: pages.start + allocated_pages as u64, end: pages.end };
+                pages = PageRange {
+                    start: pages.start + allocated_pages as u64,
+                    end: pages.end,
+                };
                 total_allocated_pages += allocated_pages;
 
                 if frames.end > frames.start {
-                    frames = PhysFrameRange { start: frames.start + allocated_pages as u64, end: frames.end };
+                    frames = PhysFrameRange {
+                        start: frames.start + allocated_pages as u64,
+                        end: frames.end,
+                    };
                 }
 
                 if pages.start >= pages.end {
                     break;
                 }
             }
-        } else { // Reached level 1 page table
+        } else {
+            // Reached level 1 page table
             total_allocated_pages += match space {
                 MemorySpace::Kernel => Paging::identity_map_kernel(table, pages, flags),
                 MemorySpace::User => {
@@ -276,60 +291,50 @@ impl Paging {
         total_allocated_pages
     }
 
+    /// Teil von `pages`, der in den Eintrag von `pages.start` auf Ebene `level` fällt
+    fn part_in_entry(pages: PageRange, level: usize) -> PageRange {
+        let per_entry = 1u64 << (9 * (level - 1)); // Seiten pro Eintrag
+        let offset = (pages.start.start_address().as_u64() >> 12) & (per_entry - 1);
+        let len = (per_entry - offset).min(pages.end - pages.start);
+        PageRange {
+            start: pages.start,
+            end: pages.start + len,
+        }
+    }
+
     /// Internal recursive function to unmap a range of `pages` where `free_phyisical` defines if frame should be freed.
-    fn unmap_in_table(table: &mut PageTable, mut pages: PageRange, level: usize, free_physical: bool) -> usize {
-        let mut total_freed_pages: usize = 0;
-        let start_index = usize::from(page_table_index(pages.start.start_address(), level));
+    fn unmap_in_table(table: &mut PageTable, pages: PageRange, level: usize, free_physical: bool) {
+        let mut rest = pages;
+        while rest.start < rest.end {
+            let part = Self::part_in_entry(rest, level);
+            let entry = &mut table[page_table_index(part.start.start_address(), level)];
 
-        if level > 1 { // Calculate next level page table until level == 1
-            for entry in table.iter_mut().skip(start_index) {
-                if entry.is_unused() {
-                    continue;
-                }
-
-                let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
-                let freed_pages = Paging::unmap_in_table(next_level_table, pages, level - 1, free_physical);
-                pages = PageRange { start: pages.start + freed_pages as u64, end: pages.end };
-                total_freed_pages += freed_pages;
-
-                if Paging::is_table_empty(next_level_table) {
-                    let table_frame = PhysFrame::from_start_address(entry.addr()).unwrap();
-                    memory::free_frames(PhysFrameRange { start: table_frame, end: table_frame + 1 }); 
-                    entry.set_unused();
-                }
-
-                if pages.start >= pages.end {
-                    break;
-                }
-            }
-        } else { // Reached level 1 page table
-            let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
-            let free_count = min((pages.end - pages.start) as usize, 512 - start_index);
-
-            for (count, entry) in table.iter_mut().skip(start_index).enumerate() {
-                if count >= free_count {
-                    break;
-                }
-
-                if !entry.is_unused() {
+            if !entry.is_unused() {
+                if level > 1 {
+                    let next = unsafe { &mut *(entry.addr().as_u64() as *mut PageTable) };
+                    Paging::unmap_in_table(next, part, level - 1, free_physical);
+                    if Paging::is_table_empty(next) {
+                        let frame = PhysFrame::from_start_address(entry.addr()).unwrap();
+                        memory::free_frames(PhysFrameRange { start: frame, end: frame + 1 });
+                        entry.set_unused();
+                    }
+                } else {
                     if free_physical {
                         let frame = PhysFrame::from_start_address(entry.addr()).unwrap();
                         memory::free_frames(PhysFrameRange { start: frame, end: frame + 1 });
                     }
-
                     entry.set_unused();
                 }
             }
 
-            return free_count;
+            rest.start = part.end; // immer weiter, auch wenn der Eintrag leer war
         }
-
-        total_freed_pages
     }
 
     /// Internal recursive function to delete page tables
     fn drop_table(table: &mut PageTable, level: usize) {
-        if level > 1 { // Calculate next level page table until level == 1
+        if level > 1 {
+            // Calculate next level page table until level == 1
             for entry in table.iter_mut() {
                 if entry.addr() == PhysAddr::zero() {
                     continue;
@@ -344,46 +349,30 @@ impl Paging {
         table.iter_mut().for_each(|entry| entry.set_unused());
 
         let table_frame = PhysFrame::from_start_address(PhysAddr::new(ptr::from_ref(table) as u64)).unwrap();
-        memory::free_frames(PhysFrameRange { start: table_frame, end: table_frame + 1 });
+        memory::free_frames(PhysFrameRange {
+            start: table_frame,
+            end: table_frame + 1,
+        });
     }
 
     /// Internal recursive function to set `flags` in page table entries for a range of `pages`.
-    fn set_flags_in_table(table: &mut PageTable, mut pages: PageRange, flags: PageTableFlags, level: usize) -> usize {
-        let mut total_edited_pages: usize = 0;
-        let start_index = usize::from(page_table_index(pages.start.start_address(), level));
+    fn set_flags_in_table(table: &mut PageTable, pages: PageRange, flags: PageTableFlags, level: usize) {
+        let mut rest = pages;
+        while rest.start < rest.end {
+            let part = Paging::part_in_entry(rest, level);
+            let entry = &mut table[page_table_index(part.start.start_address(), level)];
 
-        if level > 1 { // Calculate next level page table until level == 1
-            for entry in table.iter_mut().skip(start_index) {
-                if entry.is_unused() { // Skip empty entries
-                    continue;
-                }
-
-                let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
-
-                let edited_pages = Paging::set_flags_in_table(next_level_table, pages, flags, level - 1);
-                pages = PageRange { start: pages.start + edited_pages as u64, end: pages.end };
-                total_edited_pages += edited_pages;
-
-                if pages.start >= pages.end {
-                    break;
+            if !entry.is_unused() {
+                if level > 1 {
+                    let next = unsafe { &mut *(entry.addr().as_u64() as *mut PageTable) };
+                    Paging::set_flags_in_table(next, part, flags, level - 1);
+                } else {
+                    entry.set_flags(flags);
                 }
             }
-        } else { // Reached level 1 page table
-            let start_index = usize::from(page_table_index(pages.start.start_address(), 1));
-            let edit_count = min((pages.end - pages.start) as usize, 512 - start_index);
 
-            for (count, entry) in table.iter_mut().skip(start_index).enumerate() {
-                if count >= edit_count {
-                    break;
-                }
-
-                entry.set_flags(flags);
-            }
-
-            return edit_count;
+            rest.start = part.end; // always move on, even if the entry was empty
         }
-
-        total_edited_pages
     }
 
     /// Internal recursive function returning physical address for the given virtual address `addr` or None.
@@ -395,10 +384,12 @@ impl Paging {
             return None;
         }
 
-        if level > 1 { // Calculate next level page table until level == 1
+        if level > 1 {
+            // Calculate next level page table until level == 1
             let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
             Paging::translate_in_table(next_level_table, addr, level - 1)
-        } else { // Reached level 1 page table
+        } else {
+            // Reached level 1 page table
             Some(entry.addr() + (addr - aligned_addr))
         }
     }
@@ -473,14 +464,14 @@ impl Paging {
 /// A struct for storing the address of a page table entry, allowing to pretty-print the position of this page table entry in the page table tree (e.g. 1.2.5.2 = 2nd entry in the fifth level-three page of the second level-two page of the first level-one page)
 pub struct PageTableEntryAddress {
     address: usize,
-    level: usize
+    level: usize,
 }
 
 impl PageTableEntryAddress {
     pub fn new(address: usize, level: usize) -> Self {
         Self { address, level }
     }
-    
+
     pub fn get_pml_part(&self, level: usize) -> usize {
         let shift_bit_count = 12 + ((level - 1) * 9);
         let mask = ((1 << 9) - 1) << shift_bit_count; // PML entries are 9 bit wide
@@ -493,7 +484,9 @@ impl fmt::Debug for PageTableEntryAddress {
         write!(f, "PageTableEntry ").unwrap();
         for level in (self.level..5).rev() {
             write!(f, "{}", self.get_pml_part(level)).unwrap();
-            if level != 1 { write!(f, ".").unwrap(); }
+            if level != 1 {
+                write!(f, ".").unwrap();
+            }
         }
         Ok(())
     }
@@ -509,7 +502,7 @@ enum PageTableAreaType {
 /// Struct to store the type and the start of an area of continuous page table entries of the same type
 struct PageTableArea {
     area_type: Option<PageTableAreaType>,
-    start_address: usize
+    start_address: usize,
 }
 
 /// Functions to actually dump the page table by printing the size and start and end addresses of continous page table areas whenever the area type changes (e.g. an identity mapping ends and the following page table entries are empty)
@@ -517,26 +510,27 @@ impl PageTableArea {
     pub fn new(area_type: Option<PageTableAreaType>, start_address: usize) -> Self {
         PageTableArea { area_type, start_address }
     }
-    
+
     pub fn check(&mut self, current_address: usize) {
         if let Some(value) = &self.area_type {
-            info!("{:?} mapping for addresses 0x{:x} - 0x{:x}, {:?} - {:?}",
-                    value,
-                    self.start_address,
-                    current_address - 1,
-                    PageTableEntryAddress::new(self.start_address, 1),
-                    PageTableEntryAddress::new(current_address - 1, 1)
+            info!(
+                "{:?} mapping for addresses 0x{:x} - 0x{:x}, {:?} - {:?}",
+                value,
+                self.start_address,
+                current_address - 1,
+                PageTableEntryAddress::new(self.start_address, 1),
+                PageTableEntryAddress::new(current_address - 1, 1)
             );
             self.area_type = None
         }
     }
-    
+
     pub fn check_and_set(&mut self, current_area_type: PageTableAreaType, current_address: usize) {
         if let Some(value) = &self.area_type {
             if *value != current_area_type {
                 // We have a different area type now, so print the old one and store a new start address
                 self.check(current_address);
-                
+
                 self.area_type = Some(current_area_type);
                 self.start_address = current_address;
             }
