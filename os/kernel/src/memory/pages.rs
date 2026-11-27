@@ -16,7 +16,7 @@
 
 use core::cmp::min;
 use core::{fmt, ptr};
-use log::{debug, info};
+use log::{debug, info, warn};
 use spin::RwLock;
 use x86_64::instructions::tlb;
 use x86_64::registers::control::{Cr3, Cr3Flags};
@@ -128,25 +128,11 @@ impl Paging {
         Paging::map_in_table(root_table, frames, pages, space, flags, depth);
     }
 
-    /*    /// Map a range of `frames` of a device into kernel space
-        pub(super) fn map_io(&self, frames: PhysFrameRange) {
-            let v_start = VirtAddr::new(frames.start.start_address().as_u64());
-            let v_end = VirtAddr::new(frames.end.start_address().as_u64());
-
-            let start_page = Page::containing_address(v_start);
-            let end_page = Page::containing_address(v_end);
-            let pages = PageRange { start: start_page, end: end_page };
-
-            // We have 1:1 mapping in kernel space
-            self.map(pages, MemorySpace::Kernel, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
-        }
-    */
     /// Return physical address for the give a virtual address `addr`
     pub(super) fn translate(&self, addr: VirtAddr) -> Option<PhysAddr> {
         let depth = self.depth;
         let root_table_guard = self.root_table.read();
-        let root_table = unsafe { root_table_guard.as_mut().unwrap() };
-
+        let root_table = unsafe { (*root_table_guard).as_ref().unwrap() };
         Paging::translate_in_table(root_table, addr, depth)
     }
 
@@ -154,8 +140,6 @@ impl Paging {
     /// `free_physical` indicates if the physical frames should be freed.
     pub(super) fn unmap(&self, pages: PageRange, free_physical: bool) {
         let depth = self.depth;
-        // before:
-        // let root_table_guard = self.root_table.read();
         // Write lock: unmapping clears entries and frees frames and page tables
         let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
@@ -319,8 +303,9 @@ impl Paging {
                     Paging::unmap_in_table(next, part, level - 1, free_physical);
                     if Paging::is_table_empty(next) {
                         let frame = PhysFrame::from_start_address(entry.addr()).unwrap();
-                        memory::free_frames(PhysFrameRange { start: frame, end: frame + 1 });
                         entry.set_unused();
+                        tlb::flush(part.start.start_address()); // flush potential TLB entry
+                        memory::free_frames(PhysFrameRange { start: frame, end: frame + 1 });
                     }
                 } else {
                     let frame = PhysFrame::from_start_address(entry.addr()).unwrap();
@@ -382,7 +367,7 @@ impl Paging {
     }
 
     /// Internal recursive function returning physical address for the given virtual address `addr` or None.
-    fn translate_in_table(table: &mut PageTable, addr: VirtAddr, level: usize) -> Option<PhysAddr> {
+    fn translate_in_table(table: &PageTable, addr: VirtAddr, level: usize) -> Option<PhysAddr> {
         let aligned_addr = addr.align_down(PAGE_SIZE as u64);
         let index = usize::from(page_table_index(aligned_addr, level));
         let entry = &table[index];
@@ -392,7 +377,7 @@ impl Paging {
 
         if level > 1 {
             // Calculate next level page table until level == 1
-            let next_level_table = unsafe { (entry.addr().as_u64() as *mut PageTable).as_mut().unwrap() };
+            let next_level_table = unsafe { (entry.addr().as_u64() as *const PageTable).as_ref().unwrap() };
             Paging::translate_in_table(next_level_table, addr, level - 1)
         } else {
             // Reached level 1 page table
@@ -411,7 +396,13 @@ impl Paging {
                 break;
             }
 
+            // Overwriting is intended here: at boot the kernel maps all physical memory 1:1,
+            // later parts of it are mapped again 
+            let was_present = !entry.is_unused();
             entry.set_addr(frame_addr, flags);
+            if was_present {
+                tlb::flush((pages.start + count as u64).start_address()); // flush potential TLB entry
+            }
             frame_addr += PAGE_SIZE as u64;
         }
 
@@ -428,6 +419,12 @@ impl Paging {
                 break;
             }
 
+            // Allocate new frame only if necessary
+            if !entry.is_unused() {
+                // Already mapped?
+                debug!("map_user: page {:?} is already mapped, keeping its frame", pages.start + count as u64);
+                continue;
+            }
             let phys_frame = memory::alloc_frames(1).start;
             //info!("map_user: page: {:?} phys_frame: {:?}", pages.start + count as u64, phys_frame);
             entry.set_frame(phys_frame, flags);
@@ -447,7 +444,23 @@ impl Paging {
                 break;
             }
 
-            entry.set_frame(frame_iter.next().unwrap(), flags);
+            let page = pages.start + count as u64;
+            let frame = frame_iter.next().unwrap();
+            let was_present = !entry.is_unused();
+            if was_present && entry.addr() != frame.start_address() {
+                // Remapping to a different frame: the old frame is no longer reachable from here
+                warn!(
+                    "map_user_physical: page {:?} was mapped to {:?}, remapping to {:?}",
+                    page,
+                    entry.addr(),
+                    frame.start_address()
+                );
+            }
+            entry.set_frame(frame, flags);
+            if was_present {
+                // The TLB may still hold the old mapping
+                tlb::flush(page.start_address());
+            }
         }
 
         alloc_count
