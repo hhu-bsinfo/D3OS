@@ -18,6 +18,7 @@ use core::cmp::min;
 use core::{fmt, ptr};
 use log::{debug, info};
 use spin::RwLock;
+use x86_64::instructions::tlb;
 use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::frame::PhysFrameRange;
@@ -153,7 +154,10 @@ impl Paging {
     /// `free_physical` indicates if the physical frames should be freed.
     pub(super) fn unmap(&self, pages: PageRange, free_physical: bool) {
         let depth = self.depth;
-        let root_table_guard = self.root_table.read();
+        // before:
+        // let root_table_guard = self.root_table.read();
+        // Write lock: unmapping clears entries and frees frames and page tables
+        let root_table_guard = self.root_table.write();
         let root_table = unsafe { root_table_guard.as_mut().unwrap() };
 
         Paging::unmap_in_table(root_table, pages, depth, free_physical);
@@ -319,11 +323,12 @@ impl Paging {
                         entry.set_unused();
                     }
                 } else {
+                    let frame = PhysFrame::from_start_address(entry.addr()).unwrap();
+                    entry.set_unused();
+                    tlb::flush(part.start.start_address()); // remove potential TLB entry
                     if free_physical {
-                        let frame = PhysFrame::from_start_address(entry.addr()).unwrap();
                         memory::free_frames(PhysFrameRange { start: frame, end: frame + 1 });
                     }
-                    entry.set_unused();
                 }
             }
 
@@ -367,7 +372,8 @@ impl Paging {
                     let next = unsafe { &mut *(entry.addr().as_u64() as *mut PageTable) };
                     Paging::set_flags_in_table(next, part, flags, level - 1);
                 } else {
-                    entry.set_flags(flags);
+                    entry.set_flags(flags);                    
+                    tlb::flush(part.start.start_address()); // flush potential TLB entry
                 }
             }
 
