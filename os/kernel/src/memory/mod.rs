@@ -14,7 +14,6 @@ pub mod shm;
 
 pub mod heap;
 pub mod stack;
-pub mod acpi_handler;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 use x86_64::PhysAddr;
