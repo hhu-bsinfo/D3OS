@@ -216,10 +216,12 @@ pub fn open_udp() -> SocketHandle {
         vec![0; 65535],
     );
 
-    let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(udp::Socket::new(rx_buffer, tx_buffer));
+    let process = process_manager().read().current_process().id();
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let handle = sockets.add(udp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
-        .try_insert(handle, process_manager().read().current_process().id())
+        .try_insert(handle, process)
         .expect("failed to insert socket into socket-process map");
     handle
 }
@@ -228,10 +230,12 @@ pub fn open_tcp() -> SocketHandle {
     let rx_buffer = tcp::SocketBuffer::new(vec![0; 65535]);
     let tx_buffer = tcp::SocketBuffer::new(vec![0; 65535]);
 
-    let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(tcp::Socket::new(rx_buffer, tx_buffer));
+    let process = process_manager().read().current_process().id();
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let handle = sockets.add(tcp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
-        .try_insert(handle, process_manager().read().current_process().id())
+        .try_insert(handle, process)
         .expect("failed to insert socket into socket-process map");
     handle
 }
@@ -247,10 +251,12 @@ pub fn open_icmp() -> SocketHandle {
         vec![0; 65535],
     );
 
-    let handle = SOCKETS.get().expect("Socket set not initialized!").write().add(icmp::Socket::new(rx_buffer, tx_buffer));
+    let process = process_manager().read().current_process().id();
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").write();
+    let handle = sockets.add(icmp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
         .write()
-        .try_insert(handle, process_manager().read().current_process().id())
+        .try_insert(handle, process)
         .expect("failed to insert socket into socket-process map");
     handle
 }
