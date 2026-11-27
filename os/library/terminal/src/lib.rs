@@ -6,7 +6,7 @@ pub mod session;
 pub mod write;
 
 pub use session::{CtlRecord, Session, WaitState};
-pub use pc_keyboard::{DecodedKey, KeyCode};
+pub use ime::{DecodedKey, KeyCode};
 
 use num_enum::{FromPrimitive, IntoPrimitive};
 

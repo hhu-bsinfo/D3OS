@@ -1,0 +1,23 @@
+[package]
+edition = "2024"
+name = "ime"
+version = "0.0.1"
+authors = ["Xiaochen Xing (xixin100@hhu.de)"]
+
+[lib]
+doctest = false
+bench = false
+
+[features]
+default = ["userspace"]
+userspace = ["dep:syscall"]
+pinyin = ["userspace", "dep:concurrent"]
+
+[dependencies]
+concurrent = { path = "../concurrent", optional = true }
+# Local dependencies
+syscall = { path = "../syscall", optional = true }
+stream = { path = "../stream" }
+
+# External dependencies
+pc-keyboard = "0.9"

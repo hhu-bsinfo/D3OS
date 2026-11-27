@@ -127,6 +127,7 @@ impl Runnable for CanvasApp {
                     input: Some(Box::new(move |c: DecodedKey| {
                         render_input(c, &canvas, &position);
                     })),
+                    accepts_text_input: None,
                     scaling_mode: ScalingMode::NearestNeighbor,
                 },
             )

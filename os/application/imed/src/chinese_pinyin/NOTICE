@@ -1,0 +1,9 @@
+dictionary.tsv is derived from the Rime pinyin-simp dictionary, itself derived
+from the Android Open Source Project PinyinIME dictionary. Apache License 2.0.
+
+Source: https://github.com/rime/rime-pinyin-simp/blob/master/pinyin_simp.dict.yaml
+
+D3OS converts entries to simplified Chinese with ICU Hant-Hans, removes spaces
+from spelling keys, deduplicates candidates, and orders candidates by weight.
+
+Upstream dictionary SHA-256: e341598343a0f0f2035bb1aafc34a7f3bb7887deeecb3f60796262aaa2983e6b

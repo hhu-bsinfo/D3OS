@@ -69,7 +69,7 @@ impl CommandLineWindow {
         Drawer::partial_clear_screen(self.rect_data.sub_border());
         Drawer::draw_rectangle(self.rect_data, border_color);
         Drawer::draw_string(
-            self.command.clone(),
+            graphic::lfb::fit_text(&self.command, self.rect_data.width.saturating_sub(4)).into(),
             self.rect_data.top_left.add(2, 2),
             DEFAULT_FG_COLOR,
             None,

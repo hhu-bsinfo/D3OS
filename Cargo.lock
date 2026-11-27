@@ -635,6 +635,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ime"
+version = "0.0.1"
+dependencies = [
+ "concurrent",
+ "pc-keyboard",
+ "stream",
+ "syscall",
+]
+
+[[package]]
+name = "imed"
+version = "0.1.0"
+dependencies = [
+ "concurrent",
+ "ime",
+ "runtime",
+]
+
+[[package]]
 name = "infer"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -645,8 +664,7 @@ name = "input"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.13.1",
- "pc-keyboard",
- "stream",
+ "ime",
  "syscall",
 ]
 
@@ -737,7 +755,7 @@ dependencies = [
  "drawer",
  "goblin",
  "graphic",
- "input",
+ "ime",
  "ipc",
  "linked_list_allocator",
  "llfree",
@@ -1647,13 +1665,12 @@ version = "0.1.0"
 dependencies = [
  "bootstrap_env",
  "concurrent",
+ "ime",
  "log",
  "logger",
  "naming",
  "num_enum",
- "pc-keyboard",
  "spin 0.12.2",
- "stream",
  "syscall",
 ]
 
@@ -1667,12 +1684,11 @@ dependencies = [
  "drawer",
  "globals",
  "graphic",
- "input",
+ "ime",
  "log",
  "logger",
  "naming",
  "num_enum",
- "pc-keyboard",
  "runtime",
  "spin 0.12.2",
  "stream",
@@ -2010,6 +2026,7 @@ dependencies = [
  "globals",
  "graphic",
  "hashbrown 0.14.5",
+ "ime",
  "input",
  "libm",
  "log",

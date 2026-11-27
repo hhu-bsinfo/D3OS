@@ -11,13 +11,12 @@ bench = false
 
 [features]
 default = ["userspace"]
-userspace = ["dep:syscall", "dep:stream", "dep:bitflags", "dep:pc-keyboard"]
+userspace = ["dep:syscall", "dep:ime", "dep:bitflags"]
 
 [dependencies]
 # Local dependencies
 syscall = { path = "../syscall", optional = true }
-stream = { path = "../stream", optional = true }
+ime = { path = "../ime", optional = true }
 
 # External dependencies
 bitflags = { version = "2.9.0", optional = true }
-pc-keyboard = { version = "0.9", optional = true }

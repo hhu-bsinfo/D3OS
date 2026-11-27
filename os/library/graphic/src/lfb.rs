@@ -45,6 +45,23 @@ unsafe impl Sync for LFB {}
 pub const DEFAULT_CHAR_WIDTH: u32 = 8;
 pub const DEFAULT_CHAR_HEIGHT: u32 = 16;
 
+/// Pixel width of a glyph at normal scale.
+pub fn char_width(character: char) -> u32 {
+    get_glyph(character).map_or(DEFAULT_CHAR_WIDTH, |glyph| glyph.get_width() as u32)
+}
+
+/// Longest prefix that fits in the given unscaled pixel width.
+pub fn fit_text(text: &str, width: u32) -> &str {
+    let mut remaining = width;
+    for (index, character) in text.char_indices() {
+        let Some(next) = remaining.checked_sub(char_width(character)) else {
+            return &text[..index];
+        };
+        remaining = next;
+    }
+    text
+}
+
 macro_rules! keep_iterating_for_dim {
     ($stepsize:expr, $curr:expr, $other:expr) => {
         if $stepsize >= 0.0 {
@@ -276,16 +293,10 @@ impl LFB {
         bg_color: Color,
         string: &str,
     ) {
-        for c in string.chars().enumerate() {
-            self.draw_char_scaled(
-                x + (c.0 as u32 * (8 * x_scale)),
-                y,
-                x_scale,
-                y_scale,
-                fg_color,
-                bg_color,
-                c.1,
-            );
+        let mut x = x;
+        for character in string.chars() {
+            let width = self.draw_char_scaled(x, y, x_scale, y_scale, fg_color, bg_color, character);
+            x += if width == 0 { DEFAULT_CHAR_WIDTH } else { width } * x_scale;
         }
     }
 

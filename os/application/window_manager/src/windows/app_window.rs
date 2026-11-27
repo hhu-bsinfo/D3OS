@@ -239,6 +239,11 @@ impl AppWindow {
         }
     }
 
+    pub fn focused_text_input(&self) -> Option<usize> {
+        let component = self.focused_component.as_ref()?.read();
+        component.as_interactable()?.accepts_text_input().then(|| component.get_id())
+    }
+
     /// Passes the interaction to the focused component and returns, whether the interaction has been handled.
     pub fn interact_with_focused_component(&mut self, interaction: Interaction) -> bool {
         if let Some(focused_component) = &self.focused_component {

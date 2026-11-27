@@ -88,6 +88,10 @@ impl<'b, 'v, 'r> Document<'b, 'v> {
             scroll_offset: 0,
         }
     }
+    pub fn accepts_text_input(&self) -> bool {
+        matches!(self.edit_mode, EditMode::Insert)
+    }
+
     pub fn text_buffer(&self) -> &TextBuffer<'_> {
         &self.text_buffer
     }

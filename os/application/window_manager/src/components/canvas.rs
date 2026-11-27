@@ -27,6 +27,7 @@ pub struct Canvas {
     scale_factor: f64,
     // function to get user input
     input: Rc<Box<dyn Fn(DecodedKey) -> ()>>,
+    accepts_text_input: Option<Box<dyn Fn() -> bool>>,
 }
 
 impl Canvas {
@@ -37,6 +38,7 @@ impl Canvas {
         buffer: Rc<RwLock<Bitmap>>,
         scaling_mode: ScalingMode,
         input: Option<Box<dyn Fn(DecodedKey) -> ()>>,
+        accepts_text_input: Option<Box<dyn Fn() -> bool>>,
     ) -> Self {
         Self {
             id: WindowManager::generate_id(),
@@ -52,6 +54,7 @@ impl Canvas {
             scaling_mode,
             scale_factor: 1.0,
             input: Rc::new(input.unwrap_or_else(|| Box::new(|_| {}))),
+            accepts_text_input,
         }
     }
 }
@@ -155,6 +158,10 @@ impl Focusable for Canvas {
 }
 
 impl Interactable for Canvas {
+    fn accepts_text_input(&self) -> bool {
+        !self.is_disabled && self.accepts_text_input.as_ref().is_some_and(|accepts| accepts())
+    }
+
     fn consume_keyboard_press(
         &mut self,
         keyboard_press: DecodedKey,

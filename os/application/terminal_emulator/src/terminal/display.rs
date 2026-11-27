@@ -1,4 +1,4 @@
-use alloc::vec;
+use alloc::{string::String, vec};
 use alloc::vec::Vec;
 use graphic::{
     buffered_lfb::BufferedLFB,
@@ -43,6 +43,7 @@ pub struct DisplayState {
     pub(crate) cursor_visible: bool,
     pub(crate) tab_ids: Vec<u8>,
     pub(crate) active_tab: u8,
+    pub(crate) ime_status: String,
 }
 
 impl DisplayState {
@@ -68,6 +69,7 @@ impl DisplayState {
             cursor_visible: false,
             tab_ids: Vec::new(),
             active_tab: u8::MAX,
+            ime_status: String::new(),
         }
     }
 }

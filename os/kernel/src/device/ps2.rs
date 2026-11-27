@@ -2,15 +2,15 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
 use crate::interrupt::interrupt_handler::InterruptHandler;
-use stream::{DecodedInputStream, RawInputStream};
+use ime::{KeyboardDecoder, KeyboardInput, Layout};
+use stream::RawInputStream;
 use log::{debug, error, info, warn};
 use nolock::queues::{DequeueError, mpmc};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use ps2::{Controller, KeyboardType, MouseType};
 use ps2::error::{ControllerError, KeyboardError, MouseError};
-use pc_keyboard::layouts::{AnyLayout, De105Key};
-use pc_keyboard::{DecodedKey, Error as PcError, HandleControl, KeyEvent, PS2Keyboard, ScancodeSet1, ScancodeSet2};
-use spin::{Mutex, MutexGuard};
+use pc_keyboard::{KeyEvent, ScancodeSet, ScancodeSet1, ScancodeSet2};
+use spin::Mutex;
 use spin::once::Once;
 use crate::{apic, interrupt_dispatcher};
 
@@ -26,28 +26,17 @@ pub struct PS2 {
 pub struct Keyboard {
     controller: Arc<Mutex<Controller>>,
     buffer: (mpmc::bounded::scq::Receiver<u8>, mpmc::bounded::scq::Sender<u8>),
-    decoder: Mutex<KeyboardDecoder>,
+    state: Mutex<KeyboardState>,
 }
 
-enum KeyboardDecoder {
-    Set1(PS2Keyboard<AnyLayout, ScancodeSet1>),
-    Set2(PS2Keyboard<AnyLayout, ScancodeSet2>),
+struct KeyboardState {
+    scancode_set: KeyboardScancodeSet,
+    decoder: KeyboardDecoder,
 }
 
-impl KeyboardDecoder {
-    fn add_byte(&mut self, byte: u8) -> Result<Option<KeyEvent>, PcError> {
-        match self {
-            KeyboardDecoder::Set1(keyboard) => keyboard.add_byte(byte),
-            KeyboardDecoder::Set2(keyboard) => keyboard.add_byte(byte),
-        }
-    }
-    
-    fn process_keyevent(&mut self, ev: KeyEvent) -> Option<DecodedKey> {
-        match self {
-            KeyboardDecoder::Set1(keyboard) => keyboard.process_keyevent(ev),
-            KeyboardDecoder::Set2(keyboard) => keyboard.process_keyevent(ev),
-        }
-    }
+enum KeyboardScancodeSet {
+    Set1(ScancodeSet1),
+    Set2(ScancodeSet2),
 }
 
 struct KeyboardInterruptHandler {
@@ -57,17 +46,9 @@ struct KeyboardInterruptHandler {
 
 impl Keyboard {
     fn new(controller: Arc<Mutex<Controller>>, buffer_cap: usize, scancode_set: u8) -> Result<Self, KeyboardError> {
-        let decoder = match scancode_set {
-            1 => KeyboardDecoder::Set1(PS2Keyboard::new(
-                ScancodeSet1::new(),
-                AnyLayout::De105Key(De105Key),
-                HandleControl::Ignore,
-            )),
-            2 => KeyboardDecoder::Set2(PS2Keyboard::new(
-                ScancodeSet2::new(),
-                AnyLayout::De105Key(De105Key),
-                HandleControl::Ignore,
-            )),
+        let scancode_set = match scancode_set {
+            1 => KeyboardScancodeSet::Set1(ScancodeSet1::new()),
+            2 => KeyboardScancodeSet::Set2(ScancodeSet2::new()),
             s => {
                 error!("invalid scancode set: {s}");
                 return Err(KeyboardError::KeyDetectionError)
@@ -76,7 +57,10 @@ impl Keyboard {
         Ok(Self {
             controller,
             buffer: mpmc::bounded::scq::queue(buffer_cap),
-            decoder: Mutex::new(decoder),
+            state: Mutex::new(KeyboardState {
+                scancode_set,
+                decoder: KeyboardDecoder::default(),
+            }),
         })
     }
 
@@ -85,48 +69,33 @@ impl Keyboard {
         apic().allow(InterruptVector::Keyboard);
     }
     
-    /// Parse a byte and get the next key event.
-    /// 
-    /// This also returns the held decoder lock, in case you want to decode the key event.
-    fn get_next_keyevent(&self) -> (MutexGuard<'_, KeyboardDecoder>, Option<KeyEvent>) {
-        let mut decoder = self.decoder.lock();
-
-        let scancode = match self.buffer.0.try_dequeue() {
-            Ok(code) => code,
-            Err(DequeueError::Closed) => panic!("Keyboard stream closed!"),
-            Err(DequeueError::Empty) => return (decoder, None),
-        };
-        match decoder.add_byte(scancode) {
-            Ok(key_event) => (decoder, key_event),
-            Err(e) => {
-                warn!("failed to parse scancode {scancode}: {e:?}");
-                (decoder, None)
-            },
-        }
-    }
-}
-
-impl DecodedInputStream for Keyboard {
-    fn decoded_read_byte(&self) -> i16 {
+    /// Reads one complete event and applies the shared IME state in queue order.
+    pub fn read_input_nb(&self) -> Option<KeyboardInput> {
+        let mut state = self.state.lock();
         loop {
-            if let Some(byte) = self.decoded_try_read_byte() {
-                return byte
+            let scancode = match self.buffer.0.try_dequeue() {
+                Ok(code) => code,
+                Err(DequeueError::Closed) => panic!("Keyboard stream closed!"),
+                Err(DequeueError::Empty) => return None,
+            };
+            let event = match &mut state.scancode_set {
+                KeyboardScancodeSet::Set1(set) => set.advance_state(scancode),
+                KeyboardScancodeSet::Set2(set) => set.advance_state(scancode),
+            };
+            match event {
+                Ok(Some(event)) => return Some(state.decoder.decode_event(event)),
+                Ok(None) => {}
+                Err(error) => warn!("failed to parse scancode {scancode}: {error:?}"),
             }
         }
     }
 
-    fn decoded_try_read_byte(&self) -> Option<i16> {
-        let (mut decoder, key_event) = self.get_next_keyevent();
+    pub fn layout(&self) -> Layout {
+        self.state.lock().decoder.layout()
+    }
 
-        if let Some(event) = key_event {
-            let key = decoder.process_keyevent(event)?;
-            return match key {
-                DecodedKey::Unicode(c) => Some(c as i16),
-                _ => None,
-            };
-        } else {
-            None
-        }
+    pub fn set_layout(&self, layout: Layout) {
+        self.state.lock().decoder.set_layout(layout);
     }
 }
 
@@ -141,8 +110,7 @@ impl RawInputStream for Keyboard {
     }
     
     fn read_event_nb(&self) -> Option<KeyEvent> {
-        let (_decoder, key_event) = self.get_next_keyevent();
-        key_event
+        self.read_input_nb().map(|input| input.raw)
     }
 }
 

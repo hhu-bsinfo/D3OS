@@ -130,8 +130,9 @@ impl Component for InputField {
 
         self.drawn_rect_data = self.abs_rect_data;
 
+        let text_width = self.abs_rect_data.width.saturating_sub(4) / self.font_scale.0.max(1);
         Drawer::draw_string(
-            self.current_text.clone(),
+            graphic::lfb::fit_text(&self.current_text, text_width).into(),
             self.abs_rect_data.top_left.add(
                 2,
                 (self.abs_rect_data.height - DEFAULT_CHAR_HEIGHT * self.font_scale.1) / 2,
@@ -240,6 +241,11 @@ impl Focusable for InputField {
 }
 
 impl Interactable for InputField {
+    fn accepts_text_input(&self) -> bool {
+        self.is_selected && !self.is_disabled
+    }
+
+
     fn consume_keyboard_press(&mut self, keyboard_press: DecodedKey) -> Option<Box<dyn FnOnce() -> ()>> {
         if keyboard_press == INTERACT_BUTTON && !self.is_selected && !self.is_disabled {
             self.is_selected = true;
@@ -265,7 +271,7 @@ impl Interactable for InputField {
                     );
                 }
                 DecodedKey::Unicode(c) => {
-                    if self.current_text.len() < self.max_chars {
+                    if self.current_text.chars().count() < self.max_chars {
                         self.current_text.push(c);
                         self.mark_dirty();
 

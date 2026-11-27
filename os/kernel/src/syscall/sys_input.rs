@@ -1,6 +1,6 @@
-use input::ReadKeyboardOption;
-use log::error;
-use stream::{event_to_u16, DecodedInputStream, RawInputStream};
+use ime::{DecodedKey, Layout, wire};
+use stream::event_to_u16;
+use syscall::return_vals::Errno;
 
 use crate::{keyboard, mouse, process::core_local_storage::scheduler};
 
@@ -11,48 +11,43 @@ pub extern "sysv64" fn sys_read_mouse() -> usize {
     }
 }
 
-/// SystemCall implementation for SystemCall::KeyboardRead.
-/// Reads from keyboard with given mode (Raw or Decoded).
-pub extern "sysv64" fn sys_read_keyboard(option: ReadKeyboardOption, blocking: bool) -> isize {
-    // if VIRTIO_INPUT_PENDING.load(Ordering::Acquire) {
-    //     if let Some(input_dev_mutex) = virtio_input() {
-    //         if let Some(mut input_dev) = input_dev_mutex.try_lock() {
-    //             let mut event_processed = false;
-    //             while let Some(event) = input_dev.pop_pending_event(){
-    //                 event_processed = true;
-    //                 if event.event_type == 1 && event.value == 1 {
-    //                     info!("VirtIO Input Event (from Terminal): type={}, code={}, value={}", event.event_type, event.code, event.value);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-    if let Some(keyboard) = keyboard() {
-        match option {
-            ReadKeyboardOption::Raw => {
-                let event = if blocking {
-                    Some(keyboard.read_event())
-                } else {
-                    keyboard.read_event_nb()
-                };
-                if let Some(event) = event {
-                    event_to_u16(event).try_into().unwrap()
-                } else { 0 }
-            },
-            ReadKeyboardOption::Decode => (if blocking {
-                keyboard.decoded_read_byte()
-            } else {
-                keyboard.decoded_try_read_byte().unwrap_or_default()
-            } as isize),
+/// Read from the shared keyboard or access its active layout.
+pub extern "sysv64" fn sys_read_keyboard(option: usize, argument: usize) -> isize {
+    let Some(keyboard) = keyboard() else {
+        return match option {
+            wire::READ_RAW | wire::READ_UNICODE | wire::READ_EVENT if argument == 0 => 0,
+            _ => Errno::ENOENT as isize,
+        };
+    };
+
+    match option {
+        wire::GET_LAYOUT => return keyboard.layout() as isize,
+        wire::SET_LAYOUT => {
+            let Some(layout) = Layout::from_id(argument) else {
+                return Errno::EINVAL as isize;
+            };
+            keyboard.set_layout(layout);
+            return 0;
         }
-    } else {
-        if blocking {
-            error!("failed to read from keyboard");
-            loop {
-                scheduler().yield_now();
+        wire::READ_RAW | wire::READ_UNICODE | wire::READ_EVENT => {}
+        _ => return Errno::EINVAL as isize,
+    }
+
+    loop {
+        if let Some(input) = keyboard.read_input_nb() {
+            match option {
+                wire::READ_EVENT => return wire::encode_event(input) as isize,
+                wire::READ_RAW => return event_to_u16(input.raw) as isize,
+                _ => {
+                    if let Some(DecodedKey::Unicode(character)) = input.decoded {
+                        return character as isize;
+                    }
+                }
             }
-        } else {
-            0
         }
+        if argument == 0 {
+            return 0;
+        }
+        scheduler().yield_now();
     }
 }
