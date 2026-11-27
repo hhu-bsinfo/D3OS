@@ -371,7 +371,8 @@ impl Paging {
         let aligned_addr = addr.align_down(PAGE_SIZE as u64);
         let index = usize::from(page_table_index(aligned_addr, level));
         let entry = &table[index];
-        if entry.is_unused() {
+
+        if !entry.flags().contains(PageTableFlags::PRESENT) {
             return None;
         }
 
@@ -421,8 +422,17 @@ impl Paging {
 
             // Allocate new frame only if necessary
             if !entry.is_unused() {
-                // Already mapped?
-                debug!("map_user: page {:?} is already mapped, keeping its frame", pages.start + count as u64);
+                if entry.flags().contains(PageTableFlags::PRESENT) {
+                    // Already mapped?
+                    debug!("map_user: page {:?} is already mapped, keeping its frame", pages.start + count as u64);
+                } else {
+                    // Entry still holds a frame but is not present (flags without PRESENT):
+                    // reuse its frame and make it present again, otherwise a page fault
+                    // on this page would repeat forever.
+                    // No TLB flush needed, the CPU does not cache non-present entries.
+                    let frame_addr = entry.addr();
+                    entry.set_addr(frame_addr, flags);
+                }
                 continue;
             }
             let phys_frame = memory::alloc_frames(1).start;
