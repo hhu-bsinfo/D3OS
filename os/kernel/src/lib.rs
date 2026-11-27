@@ -24,7 +24,7 @@ use crate::device::speaker::Speaker;
 use crate::interrupt::interrupt_dispatcher::InterruptDispatcher;
 use crate::log::Logger;
 use crate::memory::PAGE_SIZE;
-use crate::memory::acpi_handler::AcpiHandler;
+use crate::device::acpi_handler::AcpiHandler;
 use crate::memory::heap::KernelAllocator;
 use crate::process::process_manager::ProcessManager;
 use crate::process::scheduler::{MessageItem, PerCpuRef};

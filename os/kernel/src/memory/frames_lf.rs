@@ -12,7 +12,7 @@
    ║   - dump               reserve a range of frames during boot            ║
    ║   - frame_from_u64     convert a u64 address to a PhysFrame             ║
    ╟─────────────────────────────────────────────────────────────────────────╢
-   ║ Author: Michael Schoettner, Univ. Duesseldorf, 01.4.2026                ║
+   ║ Author: Michael Schoettner, Univ. Duesseldorf, 27.11.2026               ║
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 use alloc::alloc::alloc_zeroed;
@@ -23,7 +23,7 @@ use spin::Once;
 use x86_64::PhysAddr;
 use x86_64::structures::paging::Size4KiB;
 use x86_64::structures::paging::{PhysFrame, frame::PhysFrameRange};
-use llfree::{Alloc, FrameId, Init, LLFree, MetaData, Request, Tiering, MAX_ORDER};
+use llfree::{Alloc, Classing, FrameId, Init, LLFree, MetaData, Request, TREE_ORDER};
 
 use crate::memory::{PAGE_SIZE, dram};
 
@@ -43,16 +43,16 @@ pub fn init() {
 
         debug!("Initializing new page frame allocator with {} frames for {} cores", num_frames, cores);
 
-        // 'tiering':
-        //    Tiering describes the allocator layout (tiers, sizes, structure)
-        //    Here we use 'simple' policy => two tiers, `0` for small and `1` for huge frames, and local reservations for each core.
+        // 'classing':
+        //    Classing describes the allocator layout (classes, sizes, structure)
+        //    Here we use 'simple' policy => two classes, `0` for small and `1` for huge frames, and local reservations for each core.
         // 'request':
-        //    Translates allocation parameters into an internal tiered allocation model.
+        //    Translates allocation parameters into an internal class-based allocation model.
         //    Here params are (order, core_nr)
-        let (tiering, request) = Tiering::simple(1);
+        let (classing, request) = Classing::simple(1);
 
         // Create meta data required for the allocator
-        let m = LLFree::metadata_size(&tiering, num_frames);
+        let m = LLFree::metadata_size(&classing, num_frames);
         let local = aligned_buf(m.local);
         let trees = aligned_buf(m.trees);
         let meta = MetaData {
@@ -66,7 +66,7 @@ pub fn init() {
         debug!("   lower = {}", meta.lower.len());
 
         // Create allocator for frames
-        (LLFree::new(num_frames, Init::FreeAll, &tiering, meta).unwrap(), Box::new(request))
+        (LLFree::new(num_frames, Init::FreeAll, &classing, meta).unwrap(), Box::new(request))
     });
 
     // remove reserved regions from the allocator so they are not available for allocation later
@@ -129,12 +129,13 @@ fn mark_reserved(at_phys_addr: u64, frame_count: usize) {
     let mut remaining = frame_count;
     let mut current_addr = at_phys_addr;
 
-    let max_chunk = 1usize << MAX_ORDER;
+    // Largest order llfree supports per request (an entire tree)
+    let max_chunk = 1usize << TREE_ORDER;
 
     while remaining > 0 {
         let current_frame = current_addr as usize / PAGE_SIZE;
 
-        // Largest power of two <= remaining, but never larger than MAX_ORDER.
+        // Largest power of two <= remaining, but never larger than TREE_ORDER.
         let mut chunk = if remaining >= max_chunk {
             max_chunk
         } else {
@@ -164,7 +165,7 @@ fn alloc_internal(frame_start: Option<FrameId>, frame_count: usize) -> PhysFrame
     // Allocate 2^order frames
     // returning the offset in number of frames from beginning = 0
     match alloc.0.get(frame_start, (alloc.1)(order, CORE_NR)) {
-        Ok((frame_id, _tier)) => {
+        Ok((frame_id, _class)) => {
             let start_addr = PhysAddr::new(frame_id.into_bits() as u64 * PAGE_SIZE as u64);
             let start_frame = PhysFrame::from_start_address(start_addr).expect("llfree returned unaligned frame address");
 
